@@ -1,223 +1,369 @@
 import React, { useState } from 'react';
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable';
+import {
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
 import MainLayout from '@/components/layout/MainLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { 
-  Search, 
-  Plus, 
-  FileText, 
-  User,
-  Phone,
-  Mail,
-  Calendar,
-  DollarSign
-} from 'lucide-react';
-import type { Lead } from '@/types';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Users, TrendingUp, Calendar, Filter } from 'lucide-react';
+import { LeadCard } from '@/components/crm/LeadCard';
+import { LeadDialog } from '@/components/crm/LeadDialog';
+import { useLeads } from '@/hooks/useLeads';
+import { Lead, LeadStatus } from '@/types';
+import { useToast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
-const CRM = () => {
-  const [searchTerm, setSearchTerm] = useState('');
+const statusConfig = {
+  new: { 
+    title: 'Nuevos', 
+    color: 'bg-blue-100 text-blue-800 border-blue-200', 
+    icon: Users,
+    description: 'Leads recién llegados'
+  },
+  quoted: { 
+    title: 'Cotizados', 
+    color: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
+    icon: Calendar,
+    description: 'Con cotización enviada' 
+  },
+  negotiating: { 
+    title: 'Negociando', 
+    color: 'bg-orange-100 text-orange-800 border-orange-200', 
+    icon: TrendingUp,
+    description: 'En proceso de cierre'
+  },
+  won: { 
+    title: 'Ganados', 
+    color: 'bg-green-100 text-green-800 border-green-200', 
+    icon: TrendingUp,
+    description: 'Ventas confirmadas'
+  },
+  lost: { 
+    title: 'Perdidos', 
+    color: 'bg-red-100 text-red-800 border-red-200', 
+    icon: Users,
+    description: 'Oportunidades perdidas'
+  }
+};
 
-  const mockLeads: Lead[] = [
-    {
-      id: '1',
-      tenant_id: 'tenant1',
-      agency_id: 'agency1',
-      contact: { name: 'María González', phone: '+54911234567', email: 'maria@email.com' },
-      trip: {
-        type: 'hotel',
-        dates: { checkin: '2024-03-15', checkout: '2024-03-22' },
-        city: 'Madrid',
-        adults: 2,
-        children: 0
-      },
-      status: 'quoted',
-      pdf_urls: ['https://example.com/quote-1.pdf'],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: '2',
-      tenant_id: 'tenant1',
-      agency_id: 'agency1',
-      contact: { name: 'Carlos Ruiz', phone: '+54911987654' },
-      trip: {
-        type: 'package',
-        dates: { checkin: '2024-04-10', checkout: '2024-04-17' },
-        city: 'Cancún',
-        adults: 2,
-        children: 1
-      },
-      status: 'new',
-      pdf_urls: [],
-      created_at: new Date(Date.now() - 86400000).toISOString(),
-      updated_at: new Date(Date.now() - 86400000).toISOString(),
-    },
-    {
-      id: '3',
-      tenant_id: 'tenant1',
-      agency_id: 'agency1',
-      contact: { name: 'Ana López', phone: '+54911555444', email: 'ana@email.com' },
-      trip: {
-        type: 'flight',
-        dates: { checkin: '2024-05-01', checkout: '2024-05-08' },
-        city: 'Miami',
-        adults: 1,
-        children: 0
-      },
-      status: 'won',
-      pdf_urls: ['https://example.com/quote-3.pdf', 'https://example.com/booking-3.pdf'],
-      created_at: new Date(Date.now() - 172800000).toISOString(),
-      updated_at: new Date(Date.now() - 86400000).toISOString(),
-    }
-  ];
+// Dummy data for initial testing - usar tenant y agency reales después
+const DUMMY_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+const DUMMY_AGENCY_ID = '00000000-0000-0000-0000-000000000002';
 
-  const statusColumns = [
-    { status: 'new' as const, title: 'New Leads', color: 'bg-muted' },
-    { status: 'quoted' as const, title: 'Quoted', color: 'bg-warning/10' },
-    { status: 'negotiating' as const, title: 'Negotiating', color: 'bg-primary/10' },
-    { status: 'won' as const, title: 'Won', color: 'bg-success/10' },
-    { status: 'lost' as const, title: 'Lost', color: 'bg-destructive/10' },
-  ];
+function SortableLeadCard({ lead, onEdit, onDelete }: { 
+  lead: Lead; 
+  onEdit: () => void; 
+  onDelete: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: lead.id });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'new': return 'default';
-      case 'quoted': return 'secondary';
-      case 'negotiating': return 'outline';
-      case 'won': return 'default';
-      case 'lost': return 'destructive';
-      default: return 'secondary';
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
   };
 
   return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="touch-none"
+    >
+      <LeadCard 
+        lead={lead}
+        onClick={onEdit}
+        onDelete={onDelete}
+        isDragging={isDragging}
+      />
+    </div>
+  );
+}
+
+function KanbanColumn({ 
+  status, 
+  leads, 
+  onEdit, 
+  onDelete 
+}: { 
+  status: LeadStatus; 
+  leads: Lead[];
+  onEdit: (lead: Lead) => void;
+  onDelete: (lead: Lead) => void;
+}) {
+  const config = statusConfig[status];
+  const Icon = config.icon;
+
+  return (
+    <Card className="flex-1 min-h-[600px]">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Icon className="h-4 w-4" />
+            {config.title}
+            <Badge variant="secondary" className={config.color}>
+              {leads.length}
+            </Badge>
+          </CardTitle>
+        </div>
+        <p className="text-sm text-muted-foreground">{config.description}</p>
+      </CardHeader>
+
+      <CardContent>
+        <SortableContext 
+          items={leads.map(lead => lead.id)} 
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-3">
+            {leads.map((lead) => (
+              <SortableLeadCard
+                key={lead.id}
+                lead={lead}
+                onEdit={() => onEdit(lead)}
+                onDelete={() => onDelete(lead)}
+              />
+            ))}
+            {leads.length === 0 && (
+              <div className="text-center text-muted-foreground py-8">
+                <div className="text-4xl mb-2">📋</div>
+                <p>No hay leads en {config.title.toLowerCase()}</p>
+              </div>
+            )}
+          </div>
+        </SortableContext>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function CRM() {
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
+  const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
+
+  const { leadsByStatus, loading, addLead, editLead, removeLead, moveLeadToStatus } = useLeads();
+  const { toast } = useToast();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const lead = findLeadById(active.id as string);
+    setDraggedLead(lead);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (!over) {
+      setDraggedLead(null);
+      return;
+    }
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Check if we're dropping on a column (status)
+    const targetStatus = overId as LeadStatus;
+    if (statusConfig[targetStatus]) {
+      // Moving lead to different status
+      const lead = findLeadById(activeId);
+      if (lead && lead.status !== targetStatus) {
+        moveLeadToStatus(activeId, targetStatus);
+      }
+    }
+
+    setDraggedLead(null);
+  };
+
+  const findLeadById = (id: string): Lead | null => {
+    for (const statusLeads of Object.values(leadsByStatus)) {
+      const lead = statusLeads.find(l => l.id === id);
+      if (lead) return lead;
+    }
+    return null;
+  };
+
+  const handleEditLead = (lead: Lead) => {
+    setSelectedLead(lead);
+    setIsEditing(true);
+    setIsDialogOpen(true);
+  };
+
+  const handleNewLead = () => {
+    setSelectedLead(null);
+    setIsEditing(false);
+    setIsDialogOpen(true);
+  };
+
+  const handleDeleteLead = (lead: Lead) => {
+    setLeadToDelete(lead);
+  };
+
+  const confirmDelete = () => {
+    if (leadToDelete) {
+      removeLead(leadToDelete.id);
+      setLeadToDelete(null);
+    }
+  };
+
+  const handleSaveLead = async (data: any) => {
+    if (isEditing && selectedLead) {
+      await editLead({
+        id: selectedLead.id,
+        ...data
+      });
+    } else {
+      await addLead({
+        ...data,
+        tenant_id: DUMMY_TENANT_ID,
+        agency_id: DUMMY_AGENCY_ID
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <MainLayout>
+        <div className="p-6 space-y-6">
+          <div className="animate-pulse">
+            <div className="h-8 bg-muted rounded w-48 mb-4"></div>
+            <div className="grid grid-cols-5 gap-6">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-96 bg-muted rounded"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  return (
     <MainLayout userRole="ADMIN">
-      <div className="p-8 space-y-8">
+      <div className="p-6 space-y-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">CRM</h1>
-            <p className="text-muted-foreground mt-1">Manage leads and customer relationships</p>
+            <h1 className="text-3xl font-bold bg-gradient-hero bg-clip-text text-transparent">
+              CRM - Gestión de Leads
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Gestiona el embudo de ventas arrastrando los leads entre estados
+            </p>
           </div>
-          <Button className="bg-gradient-hero shadow-primary">
-            <Plus className="h-4 w-4 mr-2" />
-            New Lead
-          </Button>
-        </div>
-
-        {/* Search and Filters */}
-        <div className="flex items-center space-x-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search leads..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          
+          <div className="flex items-center gap-3">
+            <Button variant="outline" className="gap-2">
+              <Filter className="h-4 w-4" />
+              Filtros
+            </Button>
+            <Button onClick={handleNewLead} className="gap-2 bg-gradient-hero shadow-primary">
+              <Plus className="h-4 w-4" />
+              Nuevo Lead
+            </Button>
           </div>
         </div>
 
         {/* Kanban Board */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 min-h-[600px]">
-          {statusColumns.map((column) => {
-            const leads = mockLeads.filter(lead => lead.status === column.status);
-            
-            return (
-              <div key={column.status} className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">
-                    {column.title}
-                  </h3>
-                  <Badge variant="secondary" className="text-xs">
-                    {leads.length}
-                  </Badge>
-                </div>
-
-                <div className="space-y-3">
-                  {leads.map((lead) => (
-                    <Card key={lead.id} className="shadow-card cursor-pointer hover:shadow-lg transition-shadow">
-                      <CardContent className="p-4 space-y-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="font-medium">{lead.contact.name}</h4>
-                            <div className="flex items-center text-xs text-muted-foreground mt-1">
-                              <Phone className="h-3 w-3 mr-1" />
-                              {lead.contact.phone}
-                            </div>
-                            {lead.contact.email && (
-                              <div className="flex items-center text-xs text-muted-foreground">
-                                <Mail className="h-3 w-3 mr-1" />
-                                {lead.contact.email}
-                              </div>
-                            )}
-                          </div>
-                          <Badge variant={getStatusColor(lead.status) as any} className="text-xs">
-                            {lead.status}
-                          </Badge>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex items-center text-sm">
-                            <Calendar className="h-3 w-3 mr-2 text-muted-foreground" />
-                            <span className="font-medium">{lead.trip.city}</span>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatDate(lead.trip.dates.checkin)} - {formatDate(lead.trip.dates.checkout)}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {lead.trip.adults} adults{lead.trip.children > 0 && `, ${lead.trip.children} children`} • {lead.trip.type}
-                          </div>
-                        </div>
-
-                        {lead.pdf_urls.length > 0 && (
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center text-xs text-muted-foreground">
-                              <FileText className="h-3 w-3 mr-1" />
-                              {lead.pdf_urls.length} PDF{lead.pdf_urls.length > 1 ? 's' : ''}
-                            </div>
-                            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs">
-                              View
-                            </Button>
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between pt-2 border-t">
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(lead.created_at)}
-                          </span>
-                          {lead.status === 'won' && (
-                            <div className="flex items-center text-xs text-success">
-                              <DollarSign className="h-3 w-3 mr-1" />
-                              Revenue
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-
-                  {leads.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <div className={`w-full h-32 rounded-lg ${column.color} flex items-center justify-center`}>
-                        <User className="h-8 w-8 opacity-50" />
-                      </div>
-                      <p className="text-sm mt-2">No leads in {column.title.toLowerCase()}</p>
-                    </div>
-                  )}
-                </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="grid grid-cols-5 gap-6 min-h-[600px]">
+            {(Object.keys(statusConfig) as LeadStatus[]).map((status) => (
+              <div
+                key={status}
+                id={status}
+                className="droppable"
+                style={{ minHeight: '600px' }}
+              >
+                <KanbanColumn
+                  status={status}
+                  leads={leadsByStatus[status]}
+                  onEdit={handleEditLead}
+                  onDelete={handleDeleteLead}
+                />
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+
+          <DragOverlay>
+            {draggedLead ? (
+              <div className="transform rotate-2">
+                <LeadCard lead={draggedLead} isDragging />
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+
+        {/* Lead Dialog */}
+        <LeadDialog
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          lead={selectedLead}
+          onSave={handleSaveLead}
+          isEditing={isEditing}
+        />
+
+        {/* Delete Confirmation */}
+        <AlertDialog open={!!leadToDelete} onOpenChange={() => setLeadToDelete(null)}>
+          <AlertDialogContent className="bg-background">
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar Lead?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer. El lead "{leadToDelete?.contact.name}" 
+                será eliminado permanentemente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmDelete}
+                className="bg-destructive hover:bg-destructive/90"
+              >
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );
-};
-
-export default CRM;
+}
