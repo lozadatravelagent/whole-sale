@@ -29,7 +29,9 @@ import {
   Loader2,
   Plus,
   ChevronDown,
-  Archive
+  Archive,
+  Check,
+  CheckCheck
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -42,6 +44,7 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState('active');
+  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -69,14 +72,24 @@ const Chat = () => {
       conversation_id: selectedConversation,
       role: 'user',
       content: { text: message },
-      meta: {},
+      meta: { status: 'sending' },
       created_at: new Date().toISOString(),
     };
 
-            setMessages(prev => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     const currentMessage = message;
     setMessage('');
     setIsLoading(true);
+    setIsTyping(true);
+
+    // Update message status to sent
+    setTimeout(() => {
+      setMessages(prev => prev.map(msg => 
+        msg.id === userMessage.id 
+          ? { ...msg, meta: { ...msg.meta, status: 'sent' } }
+          : msg
+      ));
+    }, 500);
 
     // Update conversation title if it's the first message
     if (messages.length === 0 || (messages.length === 1 && messages[0].id === 'welcome')) {
@@ -91,6 +104,8 @@ const Chat = () => {
     }
 
     try {
+      console.log('Sending message to travel-chat:', currentMessage);
+      
       // Call travel chat API
       const { data, error } = await supabase.functions.invoke('travel-chat', {
         body: {
@@ -99,25 +114,30 @@ const Chat = () => {
         }
       });
 
+      console.log('Travel-chat response:', data, error);
+
       if (error) {
+        console.error('Supabase function error:', error);
         throw error;
       }
+
+      // Mark message as delivered
+      setMessages(prev => prev.map(msg => 
+        msg.id === userMessage.id 
+          ? { ...msg, meta: { ...msg.meta, status: 'delivered' } }
+          : msg
+      ));
+
+      setIsTyping(false);
 
       const response: Message = {
         id: (Date.now() + 1).toString(),
         conversation_id: selectedConversation,
         role: 'assistant',
         content: { 
-          text: data.response,
-          metadata: {
-            searchParams: data.searchParams,
-            results: data.results,
-            recommendations: data.recommendations || []
-          }
+          text: data?.message || 'Lo siento, no pude procesar tu mensaje.'
         },
-        meta: { 
-          type: data.type
-        },
+        meta: {},
         created_at: new Date().toISOString(),
       };
 
@@ -125,6 +145,15 @@ const Chat = () => {
 
     } catch (error) {
       console.error('Error sending message:', error);
+      setIsTyping(false);
+      
+      // Mark message as failed
+      setMessages(prev => prev.map(msg => 
+        msg.id === userMessage.id 
+          ? { ...msg, meta: { ...msg.meta, status: 'failed' } }
+          : msg
+      ));
+
       toast({
         title: "Error",
         description: "No se pudo enviar el mensaje. Inténtalo de nuevo.",
@@ -143,6 +172,21 @@ const Chat = () => {
       setMessages(prev => [...prev, errorResponse]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const getMessageStatusIcon = (status?: string) => {
+    switch (status) {
+      case 'sending':
+        return <Loader2 className="inline h-3 w-3 animate-spin" />;
+      case 'sent':
+        return <Check className="inline h-3 w-3" />;
+      case 'delivered':
+        return <CheckCheck className="inline h-3 w-3" />;
+      case 'failed':
+        return <Clock className="inline h-3 w-3 text-destructive" />;
+      default:
+        return <Clock className="inline h-3 w-3" />;
     }
   };
 
@@ -203,6 +247,7 @@ const Chat = () => {
       meta: {},
       created_at: new Date().toISOString(),
     }]);
+    setIsTyping(false);
 
     toast({
       title: "Nuevo Chat",
@@ -432,6 +477,29 @@ const Chat = () => {
               {/* Messages */}
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
+                  {/* Emilia is typing indicator */}
+                  {isTyping && (
+                    <div className="flex justify-start">
+                      <div className="max-w-lg flex items-start space-x-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-accent" />
+                        </div>
+                        <div className="rounded-lg p-3 bg-muted">
+                          <div className="flex items-center space-x-1">
+                            <div className="typing-dots">
+                              <span>Emilia está escribiendo</span>
+                              <div className="dots">
+                                <span>.</span>
+                                <span>.</span>
+                                <span>.</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
@@ -455,84 +523,12 @@ const Chat = () => {
                           <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert prose-sm max-w-none">
                             {msg.content.text || ''}
                           </ReactMarkdown>
-                          
-                           {msg.content.metadata?.searchParams && (
-                             <div className="mt-3 p-3 bg-background/20 rounded-lg">
-                               <div className="flex items-center gap-2 mb-2">
-                                 <Plane className="h-4 w-4 text-blue-500" />
-                                 <span className="text-sm font-medium">Búsqueda de Viaje</span>
-                               </div>
-                               <div className="space-y-1 text-xs">
-                                 <div className="flex items-center gap-2">
-                                   <MapPin className="h-3 w-3" />
-                                   <span>{msg.content.metadata.searchParams.origin} → {msg.content.metadata.searchParams.destination}</span>
-                                 </div>
-                                 <div className="flex items-center gap-2">
-                                   <Calendar className="h-3 w-3" />
-                                   <span>{msg.content.metadata.searchParams.departureDate}</span>
-                                   {msg.content.metadata.searchParams.returnDate && (
-                                     <span> - {msg.content.metadata.searchParams.returnDate}</span>
-                                   )}
-                                 </div>
-                                 <div className="flex items-center gap-2">
-                                   <Users className="h-3 w-3" />
-                                   <span>{msg.content.metadata.searchParams.adults} adultos</span>
-                                   {msg.content.metadata.searchParams.children > 0 && (
-                                     <span>, {msg.content.metadata.searchParams.children} niños</span>
-                                   )}
-                                 </div>
-                               </div>
-                             </div>
-                           )}
 
-                           {msg.content.metadata?.recommendations?.length > 0 && (
-                             <div className="mt-3 space-y-3">
-                               {msg.content.metadata.recommendations.map((rec: any, index: number) => (
-                                 <div key={index} className="bg-background/20 p-3 rounded-lg">
-                                   <div className="flex items-center justify-between">
-                                     <span className="font-medium text-sm">{rec.title}</span>
-                                     {rec.price && (
-                                       <span className="text-sm font-semibold">
-                                         {(rec.currency || 'USD')} {rec.price}
-                                       </span>
-                                     )}
-                                   </div>
-                                   {rec.flightSummary && (
-                                     <div className="mt-1 text-xs flex items-center gap-2">
-                                       <Plane className="h-3 w-3" />
-                                       <span>{rec.flightSummary}</span>
-                                     </div>
-                                   )}
-                                   {rec.hotelSummary && (
-                                     <div className="mt-1 text-xs flex items-center gap-2">
-                                       <Hotel className="h-3 w-3" />
-                                       <span>{rec.hotelSummary}</span>
-                                     </div>
-                                   )}
-                                   {Array.isArray(rec.notes) && rec.notes.length > 0 && (
-                                     <ul className="mt-2 text-xs list-disc pl-4 space-y-1">
-                                       {rec.notes.map((n: string, i: number) => (
-                                         <li key={i}>{n}</li>
-                                       ))}
-                                     </ul>
-                                   )}
-                                 </div>
-                               ))}
-                             </div>
-                           )}
-
-                           {msg.content.pdfUrl && (
-                             <div className="mt-2">
-                               <Button size="sm" variant="outline" className="text-xs">
-                                 <FileText className="h-3 w-3 mr-1" />
-                                 Download Quote PDF
-                               </Button>
-                             </div>
-                           )}
-
-                          <p className="text-xs opacity-70 mt-1">
-                            <Clock className="inline h-3 w-3 mr-1" />
-                            {formatTime(msg.created_at)}
+                          <p className="text-xs opacity-70 mt-1 flex items-center justify-between">
+                            <span className="flex items-center">
+                              {getMessageStatusIcon(msg.meta?.status)}
+                              <span className="ml-1">{formatTime(msg.created_at)}</span>
+                            </span>
                           </p>
                         </div>
                       </div>
