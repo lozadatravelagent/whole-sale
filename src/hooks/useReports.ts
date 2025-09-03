@@ -68,9 +68,15 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
       // === MÉTRICAS BÁSICAS ===
       const totalLeads = filteredLeads.length;
       const totalConversations = conversations.length;
-      const totalRevenue = filteredLeads
-        .filter(lead => lead.status === 'won')
-        .reduce((sum, lead) => sum + (lead.budget || 0), 0);
+      
+      // Calcular ingresos totales sumando presupuestos de la sección "Ganados"
+      const ganadosSection = sections.find(section => section.name === 'Ganados');
+      const totalRevenue = ganadosSection 
+        ? filteredLeads
+            .filter(lead => lead.section_id === ganadosSection.id)
+            .reduce((sum, lead) => sum + (lead.budget || 0), 0)
+        : 0;
+        
       const averageBudget = filteredLeads.length > 0 
         ? filteredLeads.reduce((sum, lead) => sum + (lead.budget || 0), 0) / filteredLeads.length 
         : 0;
