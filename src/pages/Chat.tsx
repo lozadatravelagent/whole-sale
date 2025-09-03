@@ -133,7 +133,7 @@ const Chat = () => {
       setIsTyping(false);
 
       // Save AI response to database
-      await saveMessage({
+      const assistantMessage = await saveMessage({
         conversation_id: selectedConversation,
         role: 'assistant',
         content: { 
@@ -142,19 +142,31 @@ const Chat = () => {
         meta: {}
       });
 
-      // NUEVO: Crear lead con información extraída después del primer mensaje del usuario
-      if (messages.length === 1) { // Solo el mensaje de bienvenida existe
-        const conversation = conversations.find(c => c.id === selectedConversation);
-        if (conversation) {
-          console.log('Creating lead from first user message');
-          const leadId = await createLeadFromChat(conversation, messages);
-          if (leadId) {
-            console.log('Lead created from chat with ID:', leadId);
-            toast({
-              title: "Lead Creado",
-              description: "Se ha creado automáticamente un lead en el CRM con tu información.",
-            });
-          }
+      // NUEVO: Crear o actualizar lead con información extraída después del primer mensaje del usuario
+      const conversation = conversations.find(c => c.id === selectedConversation);
+      if (conversation) {
+        console.log('Processing lead creation/update from user message');
+        
+        // Obtener todos los mensajes actuales incluyendo el que acabamos de guardar
+        const allMessages = [...messages, 
+          { 
+            id: 'temp-user', 
+            role: 'user' as const,
+            content: { text: currentMessage },
+            conversation_id: selectedConversation,
+            created_at: new Date().toISOString(),
+            meta: {}
+          } as MessageRow,
+          assistantMessage
+        ];
+        
+        const leadId = await createLeadFromChat(conversation, allMessages);
+        if (leadId) {
+          console.log('Lead created/updated from chat with ID:', leadId);
+          toast({
+            title: "Lead Actualizado",
+            description: "Se ha creado/actualizado automáticamente tu lead en el CRM con la información del chat.",
+          });
         }
       }
 

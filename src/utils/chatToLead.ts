@@ -46,34 +46,50 @@ export async function extractTravelInfoFromMessages(messages: MessageRow[]): Pro
 
   if (!userMessages.trim()) return {};
 
-  console.log('Processing user messages:', userMessages);
+  console.log('🔍 Processing user messages for extraction:', userMessages);
+
+  // SIEMPRE usar extracción básica primero como garantía
+  const basicInfo = extractBasicInfo(userMessages);
+  console.log('📊 Basic extraction result:', basicInfo);
 
   try {
-    // Llamar a una edge function para extraer información estructurada
+    // Intentar mejorar con AI
+    console.log('🤖 Attempting AI extraction...');
     const { data, error } = await supabase.functions.invoke('extract-travel-info', {
       body: { messages: userMessages }
     });
 
-    console.log('Extract travel info response:', data, error);
+    console.log('🤖 AI extraction response:', { data, error });
 
     if (error) {
-      console.warn('Error extracting travel info via AI, using basic extraction:', error);
-      return extractBasicInfo(userMessages);
+      console.warn('⚠️ AI extraction failed, using basic extraction:', error);
+      return basicInfo;
     }
 
-    const extractedInfo = data?.travelInfo || {};
+    const aiInfo = data?.travelInfo || {};
     
-    // Si la extracción AI no devolvió información útil, usar extracción básica
-    if (!extractedInfo.destination && !extractedInfo.budget && !extractedInfo.travelers) {
-      console.log('AI extraction incomplete, falling back to basic extraction');
-      return extractBasicInfo(userMessages);
-    }
+    // Combinar información: AI primero, básica como respaldo
+    const combinedInfo = {
+      destination: aiInfo.destination || basicInfo.destination,
+      dates: {
+        checkin: aiInfo.dates?.checkin || basicInfo.dates?.checkin || '',
+        checkout: aiInfo.dates?.checkout || basicInfo.dates?.checkout || ''
+      },
+      travelers: {
+        adults: aiInfo.travelers?.adults || basicInfo.travelers?.adults || 1,
+        children: aiInfo.travelers?.children || basicInfo.travelers?.children || 0
+      },
+      budget: aiInfo.budget || basicInfo.budget || 0,
+      tripType: aiInfo.tripType || basicInfo.tripType || 'package',
+      contactInfo: aiInfo.contactInfo || basicInfo.contactInfo || {},
+      description: aiInfo.description || basicInfo.description || `Consulta: ${userMessages}`
+    };
 
-    console.log('Successfully extracted info via AI:', extractedInfo);
-    return extractedInfo;
+    console.log('✅ Final combined extraction result:', combinedInfo);
+    return combinedInfo;
   } catch (error) {
-    console.warn('Failed to extract travel info via AI, using basic extraction:', error);
-    return extractBasicInfo(userMessages);
+    console.warn('❌ AI extraction completely failed, using basic extraction:', error);
+    return basicInfo;
   }
 }
 
@@ -229,60 +245,84 @@ export async function createLeadFromChat(
   messages: MessageRow[] = []
 ): Promise<string | null> {
   try {
+    console.log('=== CREATING LEAD FROM CHAT ===');
+    console.log('Conversation:', conversation.external_key);
+    console.log('Messages count:', messages.length);
+    
     // Obtener información de la conversación
     const travelInfo = await extractTravelInfoFromMessages(messages);
+    
+    console.log('Extracted travel info:', travelInfo);
     
     // Obtener la primera sección (Nuevos) para asignar el lead
     const sections = await getSections(DUMMY_AGENCY_ID);
     const firstSectionId = sections.length > 0 ? sections[0].id : undefined;
 
+    console.log('Target section ID:', firstSectionId);
+
     // Generar nombre del contacto desde el chat
-    const contactName = `Cliente Chat ${conversation.external_key}`;
+    const contactName = travelInfo.contactInfo?.name || `Cliente Chat ${conversation.external_key}`;
+    
+    // Asegurar valores por defecto
+    const safeInfo = {
+      destination: travelInfo.destination || 'Por definir',
+      checkin: travelInfo.dates?.checkin || '',
+      checkout: travelInfo.dates?.checkout || '',
+      adults: travelInfo.travelers?.adults || 1,
+      children: travelInfo.travelers?.children || 0,
+      budget: travelInfo.budget || 0,
+      tripType: travelInfo.tripType || 'package',
+      description: travelInfo.description || `Lead generado desde chat: ${conversation.external_key}`
+    };
+
+    console.log('Safe info for lead creation:', safeInfo);
     
     // Crear el lead
     const leadData = {
       contact: {
-        name: travelInfo.contactInfo?.name || contactName,
+        name: contactName,
         phone: travelInfo.contactInfo?.phone || 'No especificado',
         email: travelInfo.contactInfo?.email || ''
       },
       trip: {
-        type: travelInfo.tripType || 'package',
-        city: travelInfo.destination || 'Por definir',
+        type: safeInfo.tripType,
+        city: safeInfo.destination,
         dates: {
-          checkin: travelInfo.dates?.checkin || '',
-          checkout: travelInfo.dates?.checkout || ''
+          checkin: safeInfo.checkin,
+          checkout: safeInfo.checkout
         },
-        adults: travelInfo.travelers?.adults || 1,
-        children: travelInfo.travelers?.children || 0
+        adults: safeInfo.adults,
+        children: safeInfo.children
       },
       tenant_id: DUMMY_TENANT_ID,
       agency_id: DUMMY_AGENCY_ID,
       status: 'new' as const,
       section_id: firstSectionId,
-      budget: travelInfo.budget || 0,
-      description: `Lead generado automáticamente desde chat: ${conversation.external_key}\n\n${travelInfo.description || 'Sin descripción adicional.'}`,
+      budget: safeInfo.budget,
+      description: safeInfo.description,
       conversation_id: conversation.id,
       checklist: [
         { id: '1', text: 'Chat iniciado', completed: true },
-        { id: '2', text: 'Usuario Contactado', completed: false },
-        { id: '3', text: 'Presupuesto Enviado', completed: false },
-        { id: '4', text: 'Presupuesto Pagado', completed: false }
+        { id: '2', text: 'Información recopilada', completed: safeInfo.destination !== 'Por definir' },
+        { id: '3', text: 'Presupuesto definido', completed: safeInfo.budget > 0 },
+        { id: '4', text: 'Contacto pendiente', completed: false }
       ]
     };
 
-    console.log('Creating lead from chat with data:', leadData);
+    console.log('Creating lead with data:', leadData);
 
     const newLead = await createLead(leadData);
     
     if (newLead) {
-      console.log('Lead created successfully:', newLead.id);
+      console.log('✅ Lead created successfully:', newLead.id);
       return newLead.id;
+    } else {
+      console.error('❌ Failed to create lead');
+      return null;
     }
     
-    return null;
   } catch (error) {
-    console.error('Error creating lead from chat:', error);
+    console.error('❌ Error creating lead from chat:', error);
     return null;
   }
 }
