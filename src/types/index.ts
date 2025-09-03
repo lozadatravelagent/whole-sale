@@ -2,7 +2,7 @@
 
 export type Role = 'SUPERADMIN' | 'ADMIN';
 export type ConversationChannel = 'wa' | 'web';
-export type ConversationState = 'active' | 'closed' | 'pending';
+export type ConversationState = 'active' | 'closed' | 'pending' | 'archived';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type LeadStatus = 'new' | 'quoted' | 'negotiating' | 'won' | 'lost';
 export type IntegrationStatus = 'active' | 'pending' | 'disabled';
