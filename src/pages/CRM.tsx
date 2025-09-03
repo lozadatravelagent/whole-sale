@@ -294,24 +294,40 @@ export default function CRM() {
   };
 
   const handleSaveLead = async (data: any) => {
-    // Add default section if no section specified
-    if (!data.section_id && sections.length > 0) {
-      data.section_id = sections[0].id;
-    }
+    try {
+      // Add default section if no section specified
+      if (!data.section_id && sections.length > 0) {
+        data.section_id = sections[0].id;
+      }
 
-    if (isEditing && selectedLead) {
-      await editLead({
-        id: selectedLead.id,
-        ...data
-      });
-    } else {
-      await addLead({
-        ...data,
-        tenant_id: DUMMY_TENANT_ID,
-        agency_id: DUMMY_AGENCY_ID
+      if (isEditing && selectedLead) {
+        await editLead({
+          id: selectedLead.id,
+          ...data
+        });
+        toast({
+          title: "Lead actualizado",
+          description: "Los cambios se han guardado correctamente.",
+        });
+      } else {
+        await addLead({
+          ...data,
+          tenant_id: DUMMY_TENANT_ID,
+          agency_id: DUMMY_AGENCY_ID
+        });
+        toast({
+          title: "Lead creado",
+          description: "El nuevo lead se ha creado correctamente.",
+        });
+      }
+      setIsDialogOpen(false);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo guardar el lead. Inténtalo de nuevo.",
+        variant: "destructive",
       });
     }
-    setIsDialogOpen(false);
   };
 
   const handleNewSection = async () => {
