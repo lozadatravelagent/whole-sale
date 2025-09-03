@@ -39,13 +39,15 @@ function DraggableLeadCard({
   onEdit, 
   onDelete, 
   onSave,
-  seller 
+  seller,
+  sectionName 
 }: { 
   lead: Lead; 
   onEdit: () => void; 
   onDelete: () => void;
   onSave: (updates: Partial<Lead>) => void;
   seller?: any;
+  sectionName?: string;
 }) {
   const {
     attributes,
@@ -82,6 +84,7 @@ function DraggableLeadCard({
         onSave={onSave}
         isDragging={isDragging}
         seller={seller}
+        sectionName={sectionName}
       />
     </div>
   );
@@ -152,7 +155,11 @@ function DroppableSection({
           </Button>
         </div>
         {totalBudget > 0 && (
-          <div className="flex items-center gap-1 text-sm text-green-600 font-semibold">
+          <div className={`flex items-center gap-1 text-sm font-semibold ${
+            section.name.toLowerCase().includes('perdido') || section.name.toLowerCase().includes('lost') 
+              ? 'text-red-600' 
+              : 'text-green-600'
+          }`}>
             <DollarSign className="h-4 w-4" />
             {formatCurrency(totalBudget)}
           </div>
@@ -175,6 +182,7 @@ function DroppableSection({
                   onDelete={() => onDelete(lead)}
                   onSave={(updates) => onSave(lead, updates)}
                   seller={seller}
+                  sectionName={section.name}
                 />
               );
             })}

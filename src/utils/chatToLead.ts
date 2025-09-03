@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import { createLead, getSections } from '@/lib/supabase-leads';
+import { createLead, getSections, getLeads } from '@/lib/supabase-leads';
 import type { Database } from '@/integrations/supabase/types';
 
 type MessageRow = Database['public']['Tables']['messages']['Row'];
@@ -260,8 +260,13 @@ export async function createLeadFromChat(
 
     console.log('Target section ID:', firstSectionId);
 
-    // Generar nombre del contacto desde el chat
-    const contactName = travelInfo.contactInfo?.name || `Cliente Chat ${conversation.external_key}`;
+    // Generar nombre del contacto secuencial
+    const allLeads = await getLeads();
+    const chatLeads = allLeads.filter(lead => 
+      lead.contact.name.startsWith('Chat-')
+    );
+    const nextChatNumber = chatLeads.length + 1;
+    const contactName = travelInfo.contactInfo?.name || `Chat-${nextChatNumber}`;
     
     // Asegurar valores por defecto
     const safeInfo = {

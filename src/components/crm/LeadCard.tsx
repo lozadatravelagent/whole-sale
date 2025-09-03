@@ -10,9 +10,10 @@ interface LeadCardProps {
   onSave?: (updates: Partial<Lead>) => void;
   isDragging?: boolean;
   seller?: Seller;
+  sectionName?: string; // Nueva prop para el nombre de la sección
 }
 
-export function LeadCard({ lead, onClick, isDragging }: LeadCardProps) {
+export function LeadCard({ lead, onClick, isDragging, sectionName }: LeadCardProps) {
   const formatCurrency = (amount?: number) => {
     if (!amount) return '$0';
     return new Intl.NumberFormat('es-ES', {
@@ -45,8 +46,16 @@ export function LeadCard({ lead, onClick, isDragging }: LeadCardProps) {
 
         {/* Presupuesto */}
         <div className="flex items-center gap-2">
-          <DollarSign className="h-4 w-4 text-green-600" />
-          <span className="text-lg font-bold text-green-600">
+          <DollarSign className={`h-4 w-4 ${
+            sectionName?.toLowerCase().includes('perdido') || sectionName?.toLowerCase().includes('lost')
+              ? 'text-red-600' 
+              : 'text-green-600'
+          }`} />
+          <span className={`text-lg font-bold ${
+            sectionName?.toLowerCase().includes('perdido') || sectionName?.toLowerCase().includes('lost')
+              ? 'text-red-600' 
+              : 'text-green-600'
+          }`}>
             {formatCurrency(lead.budget)}
           </span>
         </div>
