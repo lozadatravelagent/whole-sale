@@ -47,7 +47,7 @@ export default function MainLayout({ children, userRole }: MainLayoutProps) {
       {/* Sidebar */}
       <div className="fixed inset-y-0 left-0 z-50 w-64 bg-gradient-card border-r border-border">
         <div className="flex h-16 items-center px-6">
-          <div className="text-xl font-bold bg-gradient-hero bg-clip-text text-transparent">
+          <div className="text-xl font-bold text-primary">
             VBOOK
           </div>
         </div>
