@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   DndContext,
   DragEndEvent,
-  DragOverEvent,
   DragOverlay,
   DragStartEvent,
   PointerSensor,
@@ -12,7 +11,6 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  arrayMove,
   verticalListSortingStrategy
 } from '@dnd-kit/sortable';
 import {
@@ -24,55 +22,23 @@ import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Users, TrendingUp, Calendar, Filter } from 'lucide-react';
+import { Plus, Users, DollarSign } from 'lucide-react';
 import { LeadCard } from '@/components/crm/LeadCard';
 import { LeadDialog } from '@/components/crm/LeadDialog';
 import { useLeads } from '@/hooks/useLeads';
-import { Lead, LeadStatus } from '@/types';
+import { Lead, Section } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-
-const statusConfig = {
-  new: { 
-    title: 'Nuevos', 
-    color: 'bg-blue-100 text-blue-800 border-blue-200', 
-    icon: Users,
-    description: 'Leads recién llegados'
-  },
-  quoted: { 
-    title: 'Cotizados', 
-    color: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
-    icon: Calendar,
-    description: 'Con cotización enviada' 
-  },
-  negotiating: { 
-    title: 'Negociando', 
-    color: 'bg-orange-100 text-orange-800 border-orange-200', 
-    icon: TrendingUp,
-    description: 'En proceso de cierre'
-  },
-  won: { 
-    title: 'Ganados', 
-    color: 'bg-green-100 text-green-800 border-green-200', 
-    icon: TrendingUp,
-    description: 'Ventas confirmadas'
-  },
-  lost: { 
-    title: 'Perdidos', 
-    color: 'bg-red-100 text-red-800 border-red-200', 
-    icon: Users,
-    description: 'Oportunidades perdidas'
-  }
-};
 
 // Dummy data for initial testing - usar tenant y agency reales después
 const DUMMY_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const DUMMY_AGENCY_ID = '00000000-0000-0000-0000-000000000002';
 
-function SortableLeadCard({ lead, onEdit, onDelete }: { 
+function SortableLeadCard({ lead, onEdit, onDelete, seller }: { 
   lead: Lead; 
   onEdit: () => void; 
   onDelete: () => void;
+  seller?: any;
 }) {
   const {
     attributes,
@@ -101,38 +67,54 @@ function SortableLeadCard({ lead, onEdit, onDelete }: {
         onClick={onEdit}
         onDelete={onDelete}
         isDragging={isDragging}
+        seller={seller}
       />
     </div>
   );
 }
 
-function KanbanColumn({ 
-  status, 
+function SectionColumn({ 
+  section,
   leads, 
   onEdit, 
-  onDelete 
+  onDelete,
+  totalBudget,
+  sellers
 }: { 
-  status: LeadStatus; 
+  section: Section;
   leads: Lead[];
   onEdit: (lead: Lead) => void;
   onDelete: (lead: Lead) => void;
+  totalBudget: number;
+  sellers: any[];
 }) {
-  const config = statusConfig[status];
-  const Icon = config.icon;
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('es-ES', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
 
   return (
-    <Card className="flex-1 min-h-[600px]">
+    <Card className="flex-1 min-h-[600px]" id={section.id}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Icon className="h-4 w-4" />
-            {config.title}
-            <Badge variant="secondary" className={config.color}>
+            <Users className="h-4 w-4" />
+            {section.name}
+            <Badge variant="secondary" className={section.color}>
               {leads.length}
             </Badge>
           </CardTitle>
         </div>
-        <p className="text-sm text-muted-foreground">{config.description}</p>
+        {totalBudget > 0 && (
+          <div className="flex items-center gap-1 text-sm text-green-600 font-semibold">
+            <DollarSign className="h-4 w-4" />
+            {formatCurrency(totalBudget)}
+          </div>
+        )}
       </CardHeader>
 
       <CardContent>
@@ -141,18 +123,22 @@ function KanbanColumn({
           strategy={verticalListSortingStrategy}
         >
           <div className="space-y-3">
-            {leads.map((lead) => (
-              <SortableLeadCard
-                key={lead.id}
-                lead={lead}
-                onEdit={() => onEdit(lead)}
-                onDelete={() => onDelete(lead)}
-              />
-            ))}
+            {leads.map((lead) => {
+              const seller = sellers.find(s => s.id === lead.seller_id);
+              return (
+                <SortableLeadCard
+                  key={lead.id}
+                  lead={lead}
+                  onEdit={() => onEdit(lead)}
+                  onDelete={() => onDelete(lead)}
+                  seller={seller}
+                />
+              );
+            })}
             {leads.length === 0 && (
               <div className="text-center text-muted-foreground py-8">
                 <div className="text-4xl mb-2">📋</div>
-                <p>No hay leads en {config.title.toLowerCase()}</p>
+                <p>No hay leads en {section.name.toLowerCase()}</p>
               </div>
             )}
           </div>
@@ -169,7 +155,20 @@ export default function CRM() {
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
 
-  const { leadsByStatus, sections, sellers, budgetBySection, loading, addLead, editLead, removeLead, moveLeadToStatus, moveLeadToSection, addSection } = useLeads();
+  const { 
+    sections, 
+    sellers, 
+    leadsBySection, 
+    budgetBySection, 
+    loading, 
+    addLead, 
+    editLead, 
+    removeLead, 
+    moveLeadToSection, 
+    addSection,
+    leads
+  } = useLeads();
+  
   const { toast } = useToast();
 
   const sensors = useSensors(
@@ -204,15 +203,10 @@ export default function CRM() {
       const lead = findLeadById(activeId);
       if (lead && lead.section_id !== targetSection.id) {
         moveLeadToSection(activeId, targetSection.id);
-      }
-    } else {
-      // Fallback to status-based movement for backward compatibility
-      const targetStatus = overId as LeadStatus;
-      if (statusConfig[targetStatus]) {
-        const lead = findLeadById(activeId);
-        if (lead && lead.status !== targetStatus) {
-          moveLeadToStatus(activeId, targetStatus);
-        }
+        toast({
+          title: "Lead movido",
+          description: `Lead movido a ${targetSection.name}`
+        });
       }
     }
 
@@ -220,11 +214,7 @@ export default function CRM() {
   };
 
   const findLeadById = (id: string): Lead | null => {
-    for (const statusLeads of Object.values(leadsByStatus)) {
-      const lead = statusLeads.find(l => l.id === id);
-      if (lead) return lead;
-    }
-    return null;
+    return leads.find(lead => lead.id === id) || null;
   };
 
   const handleEditLead = (lead: Lead) => {
@@ -251,6 +241,11 @@ export default function CRM() {
   };
 
   const handleSaveLead = async (data: any) => {
+    // Add default section if no section specified
+    if (!data.section_id && sections.length > 0) {
+      data.section_id = sections[0].id;
+    }
+
     if (isEditing && selectedLead) {
       await editLead({
         id: selectedLead.id,
@@ -263,6 +258,19 @@ export default function CRM() {
         agency_id: DUMMY_AGENCY_ID
       });
     }
+    setIsDialogOpen(false);
+  };
+
+  const handleNewSection = async () => {
+    const colors = [
+      'bg-purple-100 text-purple-800 border-purple-200',
+      'bg-pink-100 text-pink-800 border-pink-200',
+      'bg-indigo-100 text-indigo-800 border-indigo-200',
+      'bg-teal-100 text-teal-800 border-teal-200',
+    ];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    
+    await addSection(DUMMY_AGENCY_ID, `Nueva Sección ${sections.length + 1}`, randomColor);
   };
 
   if (loading) {
@@ -292,12 +300,12 @@ export default function CRM() {
               CRM - Gestión de Leads
             </h1>
             <p className="text-muted-foreground mt-1">
-              Gestiona el embudo de ventas arrastrando los leads entre estados
+              Gestiona el embudo de ventas arrastrando los leads entre secciones
             </p>
           </div>
           
           <div className="flex items-center gap-3">
-            <Button onClick={() => addSection('00000000-0000-0000-0000-000000000002', `Nueva Sección ${sections.length + 1}`)} variant="outline" className="gap-2">
+            <Button onClick={handleNewSection} variant="outline" className="gap-2">
               <Plus className="h-4 w-4" />
               Nueva Sección
             </Button>
@@ -308,47 +316,61 @@ export default function CRM() {
           </div>
         </div>
 
-        {/* Kanban Board */}
+        {/* Kanban Board - Dynamic Sections */}
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="grid grid-cols-5 gap-6 min-h-[600px]">
-            {(Object.keys(statusConfig) as LeadStatus[]).map((status) => (
-              <div
-                key={status}
-                id={status}
-                className="droppable"
-                style={{ minHeight: '600px' }}
-              >
-                <KanbanColumn
-                  status={status}
-                  leads={leadsByStatus[status]}
-                  onEdit={handleEditLead}
-                  onDelete={handleDeleteLead}
-                />
-              </div>
+          <div className={`grid gap-6 min-h-[600px]`} style={{ gridTemplateColumns: `repeat(${sections.length || 1}, 1fr)` }}>
+            {sections.map((section) => (
+              <SectionColumn
+                key={section.id}
+                section={section}
+                leads={leadsBySection[section.id] || []}
+                onEdit={handleEditLead}
+                onDelete={handleDeleteLead}
+                totalBudget={budgetBySection[section.id] || 0}
+                sellers={sellers}
+              />
             ))}
           </div>
 
           <DragOverlay>
             {draggedLead ? (
               <div className="transform rotate-2">
-                <LeadCard lead={draggedLead} isDragging />
+                <LeadCard 
+                  lead={draggedLead} 
+                  isDragging 
+                  seller={sellers.find(s => s.id === draggedLead.seller_id)}
+                />
               </div>
             ) : null}
           </DragOverlay>
         </DndContext>
 
-        {/* Lead Dialog */}
+        {sections.length === 0 && (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-4">🏗️</div>
+            <h3 className="text-lg font-semibold mb-2">No hay secciones configuradas</h3>
+            <p className="text-muted-foreground mb-4">Crea tu primera sección para empezar a organizar leads</p>
+            <Button onClick={handleNewSection} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Crear Primera Sección
+            </Button>
+          </div>
+        )}
+
+        {/* Enhanced Lead Dialog */}
         <LeadDialog
           open={isDialogOpen}
           onOpenChange={setIsDialogOpen}
           lead={selectedLead}
           onSave={handleSaveLead}
           isEditing={isEditing}
+          sections={sections}
+          sellers={sellers}
         />
 
         {/* Delete Confirmation */}
