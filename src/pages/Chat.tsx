@@ -492,12 +492,19 @@ const Chat = () => {
                             <Bot className="h-4 w-4 text-accent" />
                           )}
                         </div>
-                        <div className={`rounded-lg p-3 ${
+                        <div className={`rounded-lg p-4 ${
                           msg.role === 'user' 
                             ? 'bg-primary text-primary-foreground' 
                             : 'bg-muted'
                         }`}>
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert prose-sm max-w-none">
+                          <ReactMarkdown 
+                            remarkPlugins={[remarkGfm]} 
+                            className={`${
+                              msg.role === 'user' 
+                                ? 'prose prose-invert prose-sm max-w-none text-primary-foreground' 
+                                : 'emilia-message prose prose-neutral prose-sm max-w-none'
+                            }`}
+                          >
                             {msg.content.text || ''}
                           </ReactMarkdown>
 

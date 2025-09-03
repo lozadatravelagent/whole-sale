@@ -219,3 +219,151 @@
 .transition-spring {
   transition: var(--transition-spring);
 }
+
+/* Emilia message styling - Enhanced formatting for AI responses */
+.emilia-message {
+  color: hsl(var(--foreground));
+}
+
+.emilia-message h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: hsl(var(--primary));
+  line-height: 1.4;
+  border-bottom: 2px solid hsl(var(--primary) / 0.3);
+  padding-bottom: 0.5rem;
+}
+
+.emilia-message h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: hsl(var(--accent-foreground));
+  line-height: 1.4;
+  position: relative;
+}
+
+.emilia-message h2:before {
+  content: "✈️";
+  margin-right: 0.5rem;
+  font-size: 1rem;
+}
+
+.emilia-message h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  color: hsl(var(--accent-foreground));
+  line-height: 1.4;
+}
+
+.emilia-message h3:before {
+  content: "📍";
+  margin-right: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.emilia-message h1:first-child,
+.emilia-message h2:first-child,
+.emilia-message h3:first-child {
+  margin-top: 0;
+}
+
+.emilia-message p {
+  margin-bottom: 1rem;
+  line-height: 1.7;
+  color: hsl(var(--foreground));
+}
+
+.emilia-message p:last-child {
+  margin-bottom: 0;
+}
+
+.emilia-message ul, .emilia-message ol {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.emilia-message li {
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+  position: relative;
+}
+
+.emilia-message ul li:before {
+  content: "🌟";
+  position: absolute;
+  left: -1.5rem;
+  font-size: 0.75rem;
+}
+
+.emilia-message strong {
+  font-weight: 600;
+  color: hsl(var(--primary));
+}
+
+.emilia-message em {
+  font-style: italic;
+  color: hsl(var(--accent-foreground));
+}
+
+.emilia-message blockquote {
+  border-left: 4px solid hsl(var(--primary));
+  padding-left: 1rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  position: relative;
+}
+
+.emilia-message blockquote:before {
+  content: "💡";
+  position: absolute;
+  top: 1rem;
+  left: -0.75rem;
+  background: hsl(var(--background));
+  padding: 0.25rem;
+  border-radius: 50%;
+}
+
+.emilia-message code {
+  background-color: hsl(var(--muted));
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  color: hsl(var(--primary));
+}
+
+.emilia-message pre {
+  background-color: hsl(var(--muted));
+  padding: 1rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+  border-left: 4px solid hsl(var(--primary));
+}
+
+.emilia-message pre code {
+  background-color: transparent;
+  padding: 0;
+  color: hsl(var(--foreground));
+}
+
+/* Special formatting for travel recommendations */
+.emilia-message p:has(+ ul) {
+  font-weight: 500;
+  color: hsl(var(--primary));
+}
+
+/* Add breathing space between sections */
+.emilia-message > *:not(:last-child) {
+  margin-bottom: 1rem;
+}
