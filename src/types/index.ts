@@ -94,6 +94,39 @@ export interface Message {
   created_at: string;
 }
 
+// New types for enhanced CRM
+export interface Seller {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Section {
+  id: string;
+  agency_id: string;
+  name: string;
+  color: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+}
+
 export interface Lead {
   id: string;
   tenant_id: string;
@@ -113,10 +146,17 @@ export interface Lead {
     adults: number;
     children: number;
   };
-  status: LeadStatus;
+  status: LeadStatus; // Keep for backward compatibility
+  section_id?: string;
   conversation_id?: string;
   pdf_urls: string[];
   assigned_user_id?: string;
+  seller_id?: string;
+  budget?: number;
+  description?: string;
+  due_date?: string;
+  checklist?: ChecklistItem[];
+  attachments?: Attachment[];
   created_at: string;
   updated_at: string;
 }

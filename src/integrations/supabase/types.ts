@@ -181,11 +181,18 @@ export type Database = {
         Row: {
           agency_id: string
           assigned_user_id: string | null
+          attachments: Json | null
+          budget: number | null
+          checklist: Json | null
           contact: Json
           conversation_id: string | null
           created_at: string
+          description: string | null
+          due_date: string | null
           id: string
           pdf_urls: string[]
+          section_id: string | null
+          seller_id: string | null
           status: Database["public"]["Enums"]["lead_status"]
           tenant_id: string
           trip: Json
@@ -194,11 +201,18 @@ export type Database = {
         Insert: {
           agency_id: string
           assigned_user_id?: string | null
+          attachments?: Json | null
+          budget?: number | null
+          checklist?: Json | null
           contact: Json
           conversation_id?: string | null
           created_at?: string
+          description?: string | null
+          due_date?: string | null
           id?: string
           pdf_urls?: string[]
+          section_id?: string | null
+          seller_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tenant_id: string
           trip: Json
@@ -207,11 +221,18 @@ export type Database = {
         Update: {
           agency_id?: string
           assigned_user_id?: string | null
+          attachments?: Json | null
+          budget?: number | null
+          checklist?: Json | null
           contact?: Json
           conversation_id?: string | null
           created_at?: string
+          description?: string | null
+          due_date?: string | null
           id?: string
           pdf_urls?: string[]
+          section_id?: string | null
+          seller_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tenant_id?: string
           trip?: Json
@@ -237,6 +258,20 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "sellers"
             referencedColumns: ["id"]
           },
           {
@@ -321,6 +356,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sections: {
+        Row: {
+          agency_id: string
+          color: string | null
+          created_at: string
+          id: string
+          name: string
+          position: number
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          color?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          position: number
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          color?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sellers: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       tenants: {
         Row: {

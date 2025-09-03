@@ -169,7 +169,7 @@ export default function CRM() {
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
 
-  const { leadsByStatus, loading, addLead, editLead, removeLead, moveLeadToStatus } = useLeads();
+  const { leadsByStatus, sections, sellers, budgetBySection, loading, addLead, editLead, removeLead, moveLeadToStatus, moveLeadToSection, addSection } = useLeads();
   const { toast } = useToast();
 
   const sensors = useSensors(
@@ -197,13 +197,22 @@ export default function CRM() {
     const activeId = active.id as string;
     const overId = over.id as string;
 
-    // Check if we're dropping on a column (status)
-    const targetStatus = overId as LeadStatus;
-    if (statusConfig[targetStatus]) {
-      // Moving lead to different status
+    // Check if we're dropping on a section
+    const targetSection = sections.find(section => section.id === overId);
+    if (targetSection) {
+      // Moving lead to different section
       const lead = findLeadById(activeId);
-      if (lead && lead.status !== targetStatus) {
-        moveLeadToStatus(activeId, targetStatus);
+      if (lead && lead.section_id !== targetSection.id) {
+        moveLeadToSection(activeId, targetSection.id);
+      }
+    } else {
+      // Fallback to status-based movement for backward compatibility
+      const targetStatus = overId as LeadStatus;
+      if (statusConfig[targetStatus]) {
+        const lead = findLeadById(activeId);
+        if (lead && lead.status !== targetStatus) {
+          moveLeadToStatus(activeId, targetStatus);
+        }
       }
     }
 
@@ -288,9 +297,9 @@ export default function CRM() {
           </div>
           
           <div className="flex items-center gap-3">
-            <Button variant="outline" className="gap-2">
-              <Filter className="h-4 w-4" />
-              Filtros
+            <Button onClick={() => addSection('00000000-0000-0000-0000-000000000002', `Nueva Sección ${sections.length + 1}`)} variant="outline" className="gap-2">
+              <Plus className="h-4 w-4" />
+              Nueva Sección
             </Button>
             <Button onClick={handleNewLead} className="gap-2 bg-gradient-hero shadow-primary">
               <Plus className="h-4 w-4" />

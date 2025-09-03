@@ -1,10 +1,24 @@
 import { useState, useEffect } from 'react';
-import { Lead, LeadStatus } from '@/types';
-import { getLeads, createLead, updateLead, deleteLead, updateLeadStatus, CreateLeadInput, UpdateLeadInput } from '@/lib/supabase-leads';
+import { Lead, LeadStatus, Seller, Section } from '@/types';
+import { 
+  getLeads, 
+  createLead, 
+  updateLead, 
+  deleteLead, 
+  updateLeadStatus, 
+  updateLeadSection,
+  getSellers,
+  getSections,
+  createSection,
+  CreateLeadInput, 
+  UpdateLeadInput 
+} from '@/lib/supabase-leads';
 import { useToast } from '@/hooks/use-toast';
 
 export function useLeads() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [sellers, setSellers] = useState<Seller[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
@@ -22,6 +36,26 @@ export function useLeads() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch sellers
+  const fetchSellers = async () => {
+    try {
+      const data = await getSellers();
+      setSellers(data);
+    } catch (error) {
+      console.error('Error fetching sellers:', error);
+    }
+  };
+
+  // Fetch sections
+  const fetchSections = async (agencyId: string) => {
+    try {
+      const data = await getSections(agencyId);
+      setSections(data);
+    } catch (error) {
+      console.error('Error fetching sections:', error);
     }
   };
 
@@ -91,7 +125,7 @@ export function useLeads() {
     }
   };
 
-  // Update lead status (for drag & drop)
+  // Update lead status (for backward compatibility)
   const moveLeadToStatus = async (id: string, newStatus: LeadStatus) => {
     try {
       const updatedLead = await updateLeadStatus(id, newStatus);
@@ -111,7 +145,53 @@ export function useLeads() {
     return null;
   };
 
-  // Group leads by status
+  // Move lead to section (new drag & drop functionality)
+  const moveLeadToSection = async (id: string, sectionId: string) => {
+    try {
+      const updatedLead = await updateLeadSection(id, sectionId);
+      if (updatedLead) {
+        setLeads(prev => prev.map(lead => 
+          lead.id === id ? updatedLead : lead
+        ));
+        toast({
+          title: "Lead movido",
+          description: "Lead movido exitosamente."
+        });
+        return updatedLead;
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo mover el lead."
+      });
+    }
+    return null;
+  };
+
+  // Add new section
+  const addSection = async (agencyId: string, name: string, color?: string) => {
+    try {
+      const newSection = await createSection(agencyId, name, color);
+      if (newSection) {
+        setSections(prev => [...prev, newSection]);
+        toast({
+          title: "Éxito",
+          description: "Sección creada correctamente."
+        });
+        return newSection;
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo crear la sección."
+      });
+    }
+    return null;
+  };
+
+  // Group leads by status (backward compatibility)
   const leadsByStatus = {
     new: leads.filter(lead => lead.status === 'new'),
     quoted: leads.filter(lead => lead.status === 'quoted'),
@@ -120,19 +200,53 @@ export function useLeads() {
     lost: leads.filter(lead => lead.status === 'lost')
   };
 
-  // Load leads on mount
+  // Group leads by section (new functionality)
+  const leadsBySection = sections.reduce((acc, section) => {
+    acc[section.id] = leads.filter(lead => lead.section_id === section.id);
+    return acc;
+  }, {} as Record<string, Lead[]>);
+
+  // Calculate total budget per section
+  const budgetBySection = sections.reduce((acc, section) => {
+    const sectionLeads = leadsBySection[section.id] || [];
+    const total = sectionLeads.reduce((sum, lead) => sum + (lead.budget || 0), 0);
+    acc[section.id] = total;
+    return acc;
+  }, {} as Record<string, number>);
+
+  // Get leads with overdue dates
+  const getOverdueLeads = () => {
+    const today = new Date().toISOString().split('T')[0];
+    return leads.filter(lead => 
+      lead.due_date && lead.due_date < today && lead.status !== 'won' && lead.status !== 'lost'
+    );
+  };
+
+  // Load initial data
   useEffect(() => {
     fetchLeads();
+    fetchSellers();
+    // Fetch sections for the demo agency
+    fetchSections('00000000-0000-0000-0000-000000000002');
   }, []);
 
   return {
     leads,
+    sellers,
+    sections,
     leadsByStatus,
+    leadsBySection,
+    budgetBySection,
     loading,
     addLead,
     editLead,
     removeLead,
     moveLeadToStatus,
-    refresh: fetchLeads
+    moveLeadToSection,
+    addSection,
+    getOverdueLeads,
+    refresh: fetchLeads,
+    refreshSections: () => fetchSections('00000000-0000-0000-0000-000000000002'),
+    refreshSellers: fetchSellers
   };
 }

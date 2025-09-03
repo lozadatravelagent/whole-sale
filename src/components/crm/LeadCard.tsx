@@ -1,10 +1,10 @@
 import React from 'react';
-import { Lead } from '@/types';
+import { Lead, Seller } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, MapPin, Users, FileText, MoreHorizontal, Trash2 } from 'lucide-react';
+import { CalendarDays, MapPin, Users, FileText, MoreHorizontal, Trash2, DollarSign, CheckSquare, AlertTriangle, Mail, User, Paperclip } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -14,9 +14,10 @@ interface LeadCardProps {
   onClick?: () => void;
   onDelete?: () => void;
   isDragging?: boolean;
+  seller?: Seller;
 }
 
-export function LeadCard({ lead, onClick, onDelete, isDragging }: LeadCardProps) {
+export function LeadCard({ lead, onClick, onDelete, isDragging, seller }: LeadCardProps) {
   const tripTypeColors = {
     hotel: 'bg-blue-100 text-blue-800',
     flight: 'bg-green-100 text-green-800',
@@ -37,8 +38,24 @@ export function LeadCard({ lead, onClick, onDelete, isDragging }: LeadCardProps)
     }
   };
 
+  const formatCurrency = (amount?: number) => {
+    if (!amount) return '$0';
+    return new Intl.NumberFormat('es-ES', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const isOverdue = (dueDate?: string) => {
+    if (!dueDate) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return dueDate < today;
   };
 
   const handleMenuClick = (e: React.MouseEvent) => {
@@ -50,11 +67,16 @@ export function LeadCard({ lead, onClick, onDelete, isDragging }: LeadCardProps)
     onDelete?.();
   };
 
+  const completedChecklist = (lead.checklist || []).filter(item => item.completed).length;
+  const totalChecklist = (lead.checklist || []).length;
+  const isTaskOverdue = isOverdue(lead.due_date);
+
   return (
     <Card 
       className={`
         cursor-pointer transition-all duration-200 hover:shadow-md
         ${isDragging ? 'opacity-50 rotate-2 shadow-lg' : ''}
+        ${isTaskOverdue ? 'border-l-4 border-l-red-500' : ''}
       `}
       onClick={onClick}
     >
@@ -69,7 +91,10 @@ export function LeadCard({ lead, onClick, onDelete, isDragging }: LeadCardProps)
             </Avatar>
             <div>
               <h3 className="font-medium text-sm leading-none">{lead.contact.name}</h3>
-              <p className="text-xs text-muted-foreground mt-1">{lead.contact.phone}</p>
+              <div className="flex items-center gap-1 mt-1">
+                <p className="text-xs text-muted-foreground">{lead.contact.phone}</p>
+                {lead.contact.email && <Mail className="h-3 w-3 text-muted-foreground" />}
+              </div>
             </div>
           </div>
           
@@ -87,6 +112,14 @@ export function LeadCard({ lead, onClick, onDelete, isDragging }: LeadCardProps)
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+
+        {/* Overdue Warning */}
+        {isTaskOverdue && (
+          <div className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded mb-2">
+            <AlertTriangle className="h-3 w-3" />
+            <span>Vencido el {formatDate(lead.due_date!)}</span>
+          </div>
+        )}
 
         {/* Trip Info */}
         <div className="space-y-2 mb-3">
@@ -110,16 +143,73 @@ export function LeadCard({ lead, onClick, onDelete, isDragging }: LeadCardProps)
           </div>
         </div>
 
-        {/* PDFs */}
-        {lead.pdf_urls && lead.pdf_urls.length > 0 && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <FileText className="h-3 w-3" />
-            <span>{lead.pdf_urls.length} PDF{lead.pdf_urls.length > 1 ? 's' : ''}</span>
+        {/* Budget */}
+        {lead.budget && lead.budget > 0 && (
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-muted-foreground">Presupuesto:</span>
+            <div className="flex items-center text-sm font-semibold text-green-600">
+              <DollarSign className="h-3 w-3 mr-1" />
+              {formatCurrency(lead.budget)}
+            </div>
           </div>
         )}
 
+        {/* Seller */}
+        {seller && (
+          <div className="flex items-center text-xs text-muted-foreground mb-2">
+            <User className="h-3 w-3 mr-1" />
+            <span>Vendedor: {seller.name}</span>
+          </div>
+        )}
+
+        {/* Due Date (if not overdue) */}
+        {lead.due_date && !isTaskOverdue && (
+          <div className="flex items-center text-xs text-muted-foreground mb-2">
+            <CalendarDays className="h-3 w-3 mr-1" />
+            <span>Vence: {formatDate(lead.due_date)}</span>
+          </div>
+        )}
+
+        {/* Progress Indicators */}
+        <div className="flex items-center justify-between text-xs mb-3">
+          {/* Checklist Progress */}
+          {totalChecklist > 0 && (
+            <div className="flex items-center space-x-1">
+              <CheckSquare className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">
+                {completedChecklist}/{totalChecklist}
+              </span>
+              {completedChecklist === totalChecklist && (
+                <span className="text-green-600 font-bold">✓</span>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center space-x-2">
+            {/* Description indicator */}
+            {lead.description && (
+              <FileText className="h-3 w-3 text-muted-foreground" />
+            )}
+
+            {/* Attachments count */}
+            {(lead.attachments && lead.attachments.length > 0) && (
+              <div className="flex items-center space-x-1">
+                <Paperclip className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground">{lead.attachments.length}</span>
+              </div>
+            )}
+
+            {/* PDF count */}
+            {lead.pdf_urls && lead.pdf_urls.length > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                {lead.pdf_urls.length} PDF
+              </Badge>
+            )}
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="flex items-center justify-between mt-3 pt-2 border-t">
+        <div className="flex items-center justify-between pt-2 border-t">
           <span className="text-xs text-muted-foreground">
             {format(new Date(lead.created_at), 'dd/MM/yyyy')}
           </span>
