@@ -32,26 +32,26 @@ export function LeadCard({ lead, onClick, isDragging, sectionName }: LeadCardPro
       `}
       onClick={onClick}
     >
-      <CardContent className="p-4">
+      <CardContent className="p-3">
         {/* Nombre de la tarjeta */}
-        <h3 className="font-semibold text-base mb-3 text-foreground">
+        <h3 className="font-semibold text-sm mb-2 text-foreground">
           {lead.contact.name}
         </h3>
 
         {/* Destino */}
-        <div className="flex items-center gap-2 mb-3">
-          <MapPin className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">{lead.trip.city}</span>
+        <div className="flex items-center gap-1 mb-2">
+          <MapPin className="h-3 w-3 text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">{lead.trip.city}</span>
         </div>
 
         {/* Presupuesto */}
-        <div className="flex items-center gap-2">
-          <DollarSign className={`h-4 w-4 ${
+        <div className="flex items-center gap-1">
+          <DollarSign className={`h-3 w-3 ${
             sectionName?.toLowerCase().includes('perdido') || sectionName?.toLowerCase().includes('lost')
               ? 'text-red-600' 
               : 'text-green-600'
           }`} />
-          <span className={`text-lg font-bold ${
+          <span className={`text-sm font-bold ${
             sectionName?.toLowerCase().includes('perdido') || sectionName?.toLowerCase().includes('lost')
               ? 'text-red-600' 
               : 'text-green-600'
