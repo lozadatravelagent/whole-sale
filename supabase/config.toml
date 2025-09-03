@@ -1,1 +1,10 @@
 project_id = "ujigyazketblwlzcomve"
+
+[functions.starling-flights]
+verify_jwt = false
+
+[functions.eurovips-hotels]
+verify_jwt = false
+
+[functions.travel-chat]
+verify_jwt = false

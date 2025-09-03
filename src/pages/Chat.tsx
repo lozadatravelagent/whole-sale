@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { useToast } from '@/components/ui/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   Send, 
   MessageSquare, 
@@ -14,7 +16,15 @@ import {
   FileText,
   Clock,
   User,
-  Bot
+  Bot,
+  Plane,
+  Hotel,
+  MapPin,
+  Calendar,
+  Users,
+  DollarSign,
+  Star,
+  Loader2
 } from 'lucide-react';
 import type { Conversation, Message } from '@/types';
 
@@ -22,7 +32,9 @@ const Chat = () => {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   const conversations: Conversation[] = [
     {
@@ -102,9 +114,9 @@ const Chat = () => {
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!message.trim() || !selectedConversation) return;
+    if (!message.trim() || !selectedConversation || isLoading) return;
 
-    const newMessage: Message = {
+    const userMessage: Message = {
       id: Date.now().toString(),
       conversation_id: selectedConversation,
       role: 'user',
@@ -113,24 +125,65 @@ const Chat = () => {
       created_at: new Date().toISOString(),
     };
 
-    setMessages(prev => [...prev, newMessage]);
+    setMessages(prev => [...prev, userMessage]);
+    const currentMessage = message;
     setMessage('');
+    setIsLoading(true);
 
-    // TODO: Call orchestrator API
-    // POST /v1/agent/ask
-    
-    // Simulate response
-    setTimeout(() => {
+    try {
+      // Call travel chat API
+      const { data, error } = await supabase.functions.invoke('travel-chat', {
+        body: {
+          message: currentMessage,
+          conversationId: selectedConversation,
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
       const response: Message = {
         id: (Date.now() + 1).toString(),
         conversation_id: selectedConversation,
         role: 'assistant',
-        content: { text: 'Entendido! Estoy procesando tu consulta...' },
+        content: { 
+          text: data.response,
+          metadata: data.type === 'recommendations' ? {
+            searchParams: data.searchParams,
+            results: data.results
+          } : null
+        },
+        meta: { 
+          type: data.type,
+          searchParams: data.searchParams 
+        },
+        created_at: new Date().toISOString(),
+      };
+
+      setMessages(prev => [...prev, response]);
+
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo enviar el mensaje. Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+
+      const errorResponse: Message = {
+        id: (Date.now() + 2).toString(),
+        conversation_id: selectedConversation,
+        role: 'assistant',
+        content: { text: 'Lo siento, hubo un error procesando tu mensaje. ¿Puedes intentarlo de nuevo?' },
         meta: {},
         created_at: new Date().toISOString(),
       };
-      setMessages(prev => [...prev, response]);
-    }, 1000);
+
+      setMessages(prev => [...prev, errorResponse]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const formatTime = (timestamp: string) => {
@@ -246,16 +299,34 @@ const Chat = () => {
                         }`}>
                           <p className="text-sm">{msg.content.text}</p>
                           
-                          {msg.content.cards && (
-                            <div className="mt-3 space-y-2">
-                              {msg.content.cards.map((card: any, index: number) => (
-                                <div key={index} className="bg-background/10 p-2 rounded">
-                                  <p className="font-medium">{card.hotel}</p>
-                                  <p className="text-sm">${card.price} • {card.rating} stars</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                           {msg.content.metadata?.searchParams && (
+                             <div className="mt-3 p-3 bg-background/20 rounded-lg">
+                               <div className="flex items-center gap-2 mb-2">
+                                 <Plane className="h-4 w-4 text-blue-500" />
+                                 <span className="text-sm font-medium">Búsqueda de Viaje</span>
+                               </div>
+                               <div className="space-y-1 text-xs">
+                                 <div className="flex items-center gap-2">
+                                   <MapPin className="h-3 w-3" />
+                                   <span>{msg.content.metadata.searchParams.origin} → {msg.content.metadata.searchParams.destination}</span>
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                   <Calendar className="h-3 w-3" />
+                                   <span>{msg.content.metadata.searchParams.departureDate}</span>
+                                   {msg.content.metadata.searchParams.returnDate && (
+                                     <span> - {msg.content.metadata.searchParams.returnDate}</span>
+                                   )}
+                                 </div>
+                                 <div className="flex items-center gap-2">
+                                   <Users className="h-3 w-3" />
+                                   <span>{msg.content.metadata.searchParams.adults} adultos</span>
+                                   {msg.content.metadata.searchParams.children > 0 && (
+                                     <span>, {msg.content.metadata.searchParams.children} niños</span>
+                                   )}
+                                 </div>
+                               </div>
+                             </div>
+                           )}
 
                           {msg.content.pdfUrl && (
                             <div className="mt-2">
@@ -290,8 +361,16 @@ const Chat = () => {
                     onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                     className="flex-1"
                   />
-                  <Button onClick={handleSendMessage} className="px-3">
-                    <Send className="h-4 w-4" />
+                  <Button 
+                    onClick={handleSendMessage} 
+                    className="px-3"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>
