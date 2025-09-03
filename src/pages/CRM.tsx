@@ -7,13 +7,12 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  closestCorners
+  DragOverEvent,
+  useDroppable
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  verticalListSortingStrategy
-} from '@dnd-kit/sortable';
-import {
+  verticalListSortingStrategy,
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -34,10 +33,18 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 const DUMMY_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const DUMMY_AGENCY_ID = '00000000-0000-0000-0000-000000000002';
 
-function SortableLeadCard({ lead, onEdit, onDelete, seller }: { 
+// Draggable Lead Card Component
+function DraggableLeadCard({ 
+  lead, 
+  onEdit, 
+  onDelete, 
+  onSave,
+  seller 
+}: { 
   lead: Lead; 
   onEdit: () => void; 
   onDelete: () => void;
+  onSave: (updates: Partial<Lead>) => void;
   seller?: any;
 }) {
   const {
@@ -47,7 +54,13 @@ function SortableLeadCard({ lead, onEdit, onDelete, seller }: {
     transform,
     transition,
     isDragging
-  } = useSortable({ id: lead.id });
+  } = useSortable({ 
+    id: lead.id,
+    data: {
+      type: 'lead',
+      lead
+    }
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -66,6 +79,7 @@ function SortableLeadCard({ lead, onEdit, onDelete, seller }: {
         lead={lead}
         onClick={onEdit}
         onDelete={onDelete}
+        onSave={onSave}
         isDragging={isDragging}
         seller={seller}
       />
@@ -73,21 +87,34 @@ function SortableLeadCard({ lead, onEdit, onDelete, seller }: {
   );
 }
 
-function SectionColumn({ 
+// Droppable Section Column Component
+function DroppableSection({ 
   section,
   leads, 
   onEdit, 
   onDelete,
+  onSave,
   totalBudget,
-  sellers
+  sellers,
+  isOver
 }: { 
   section: Section;
   leads: Lead[];
   onEdit: (lead: Lead) => void;
   onDelete: (lead: Lead) => void;
+  onSave: (lead: Lead, updates: Partial<Lead>) => void;
   totalBudget: number;
   sellers: any[];
+  isOver?: boolean;
 }) {
+  const { setNodeRef } = useDroppable({
+    id: section.id,
+    data: {
+      type: 'section',
+      section
+    }
+  });
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-ES', {
       style: 'currency',
@@ -98,7 +125,12 @@ function SectionColumn({
   };
 
   return (
-    <Card className="flex-1 min-h-[600px]" id={section.id}>
+    <Card 
+      ref={setNodeRef}
+      className={`flex-1 min-h-[600px] transition-colors ${
+        isOver ? 'bg-primary/5 border-primary/30' : ''
+      }`}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
@@ -122,15 +154,16 @@ function SectionColumn({
           items={leads.map(lead => lead.id)} 
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-3">
+          <div className="space-y-3 min-h-[400px]">
             {leads.map((lead) => {
               const seller = sellers.find(s => s.id === lead.seller_id);
               return (
-                <SortableLeadCard
+                <DraggableLeadCard
                   key={lead.id}
                   lead={lead}
                   onEdit={() => onEdit(lead)}
                   onDelete={() => onDelete(lead)}
+                  onSave={(updates) => onSave(lead, updates)}
                   seller={seller}
                 />
               );
@@ -139,6 +172,7 @@ function SectionColumn({
               <div className="text-center text-muted-foreground py-8">
                 <div className="text-4xl mb-2">📋</div>
                 <p>No hay leads en {section.name.toLowerCase()}</p>
+                <p className="text-xs mt-1">Arrastra leads aquí</p>
               </div>
             )}
           </div>
@@ -153,7 +187,8 @@ export default function CRM() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
-  const [draggedLead, setDraggedLead] = useState<Lead | null>(null);
+  const [activeLead, setActiveLead] = useState<Lead | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
   const { 
     sections, 
@@ -181,46 +216,64 @@ export default function CRM() {
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
-    const lead = findLeadById(active.id as string);
-    setDraggedLead(lead);
+    const leadData = active.data.current;
+    
+    if (leadData?.type === 'lead') {
+      setActiveLead(leadData.lead);
+    }
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { over } = event;
+    setOverId(over ? over.id as string : null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     
-    if (!over) {
-      setDraggedLead(null);
-      return;
-    }
+    setActiveLead(null);
+    setOverId(null);
+    
+    if (!over) return;
 
     const activeId = active.id as string;
     const overId = over.id as string;
+    
+    // Get the lead being dragged
+    const lead = leads.find(l => l.id === activeId);
+    if (!lead) return;
 
-    // Check if we're dropping on a section
-    const targetSection = sections.find(section => section.id === overId);
-    if (targetSection) {
-      // Moving lead to different section
-      const lead = findLeadById(activeId);
-      if (lead && lead.section_id !== targetSection.id) {
-        moveLeadToSection(activeId, targetSection.id);
-        toast({
-          title: "Lead movido",
-          description: `Lead movido a ${targetSection.name}`
-        });
-      }
+    // Check if dropping on a different section
+    const targetSection = sections.find(s => s.id === overId);
+    if (targetSection && lead.section_id !== targetSection.id) {
+      // Move lead to new section
+      moveLeadToSection(activeId, targetSection.id);
+      toast({
+        title: "Lead movido",
+        description: `Lead movido a ${targetSection.name}`,
+      });
     }
-
-    setDraggedLead(null);
-  };
-
-  const findLeadById = (id: string): Lead | null => {
-    return leads.find(lead => lead.id === id) || null;
   };
 
   const handleEditLead = (lead: Lead) => {
     setSelectedLead(lead);
     setIsEditing(true);
     setIsDialogOpen(true);
+  };
+
+  const handleQuickSave = async (lead: Lead, updates: Partial<Lead>) => {
+    try {
+      await editLead({
+        id: lead.id,
+        ...updates
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo guardar el lead",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleNewLead = () => {
@@ -296,9 +349,9 @@ export default function CRM() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-          <h1 className="text-3xl font-bold text-primary">
-            CRM - Gestión de Leads
-          </h1>
+            <h1 className="text-3xl font-bold text-primary">
+              CRM - Gestión de Leads
+            </h1>
             <p className="text-muted-foreground mt-1">
               Gestiona el embudo de ventas arrastrando los leads entre secciones
             </p>
@@ -309,41 +362,44 @@ export default function CRM() {
               <Plus className="h-4 w-4" />
               Nueva Sección
             </Button>
-            <Button onClick={handleNewLead} className="gap-2 bg-gradient-hero shadow-primary">
+            <Button onClick={handleNewLead} className="gap-2 bg-primary hover:bg-primary/90">
               <Plus className="h-4 w-4" />
               Nuevo Lead
             </Button>
           </div>
         </div>
 
-        {/* Kanban Board - Dynamic Sections */}
+        {/* Kanban Board with Drag & Drop */}
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
           onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
           <div className={`grid gap-6 min-h-[600px]`} style={{ gridTemplateColumns: `repeat(${sections.length || 1}, 1fr)` }}>
             {sections.map((section) => (
-              <SectionColumn
+              <DroppableSection
                 key={section.id}
                 section={section}
                 leads={leadsBySection[section.id] || []}
                 onEdit={handleEditLead}
                 onDelete={handleDeleteLead}
+                onSave={handleQuickSave}
                 totalBudget={budgetBySection[section.id] || 0}
                 sellers={sellers}
+                isOver={overId === section.id}
               />
             ))}
           </div>
 
+          {/* Drag Overlay - Preview while dragging */}
           <DragOverlay>
-            {draggedLead ? (
-              <div className="transform rotate-2">
+            {activeLead ? (
+              <div className="transform rotate-2 opacity-90 scale-105 shadow-2xl">
                 <LeadCard 
-                  lead={draggedLead} 
+                  lead={activeLead} 
                   isDragging 
-                  seller={sellers.find(s => s.id === draggedLead.seller_id)}
+                  seller={sellers.find(s => s.id === activeLead.seller_id)}
                 />
               </div>
             ) : null}
