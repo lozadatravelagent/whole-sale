@@ -29,9 +29,9 @@ class StarlingAPI {
     const response = await fetch(`${this.baseUrl}/FlightService.json/GetAccessToken`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
-      body: new URLSearchParams({
+      body: JSON.stringify({
         username: this.username,
         password: this.password,
       }),
@@ -82,11 +82,9 @@ class StarlingAPI {
     const response = await fetch(`${this.baseUrl}/FlightService.json/GetFlightAvailability`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
-      body: new URLSearchParams({
-        query: JSON.stringify(query),
-      }),
+      body: JSON.stringify(query),
     });
 
     if (!response.ok) {
