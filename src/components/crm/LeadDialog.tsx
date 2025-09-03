@@ -246,7 +246,7 @@ export function LeadDialog({
                     <Input
                       type="date"
                       {...register('due_date')}
-                      className="w-auto text-sm"
+                      className="w-auto text-sm cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-0 [&::-webkit-calendar-picker-indicator]:bg-transparent"
                     />
                   </div>
                 </div>
@@ -393,11 +393,13 @@ export function LeadDialog({
                   type="date"
                   {...register('trip.dates.checkin')}
                   placeholder="Fecha de ida"
+                  className="cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-0 [&::-webkit-calendar-picker-indicator]:bg-transparent"
                 />
                 <Input
                   type="date"
                   {...register('trip.dates.checkout')}
                   placeholder="Fecha de vuelta"
+                  className="cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-0 [&::-webkit-calendar-picker-indicator]:bg-transparent"
                 />
               </div>
             </div>
