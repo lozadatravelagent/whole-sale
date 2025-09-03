@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { Plane, Mail, Lock } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -20,32 +21,52 @@ const Login = () => {
     setLoading(true);
 
     try {
-      // TODO: Implement Supabase auth
-      // Simulate login for now
-      setTimeout(() => {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.user) {
         toast({
-          title: "Login successful",
-          description: "Welcome to VBOOK!",
+          title: "Login exitoso",
+          description: "¡Bienvenido a VBOOK!",
         });
         navigate('/dashboard');
-        setLoading(false);
-      }, 1000);
-    } catch (error) {
+      }
+    } catch (error: any) {
       toast({
-        title: "Login failed",
-        description: "Please check your credentials and try again.",
+        title: "Error en el login",
+        description: error.message || "Verifica tus credenciales e intenta de nuevo.",
         variant: "destructive",
       });
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleLogin = () => {
-    // TODO: Implement Google OAuth with Supabase
-    toast({
-      title: "Google Login",
-      description: "Google authentication will be implemented with Supabase.",
-    });
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error en Google Login",
+        description: error.message || "Error al iniciar sesión con Google.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

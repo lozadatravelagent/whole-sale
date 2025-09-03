@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
 import { 
   Send, 
   MessageSquare, 
@@ -35,75 +36,80 @@ import {
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import type { Conversation, Message } from '@/types';
+import type { Database } from '@/integrations/supabase/types';
+
+type ConversationRow = Database['public']['Tables']['conversations']['Row'];
+type MessageRow = Database['public']['Tables']['messages']['Row'];
 
 const Chat = () => {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // Initialize with empty conversations - start fresh
-  useEffect(() => {
-    setConversations([]);
-  }, []);
+  // Use our new hooks
+  const { user } = useAuth();
+  const { 
+    conversations, 
+    loading: conversationsLoading, 
+    loadConversations, 
+    createConversation, 
+    updateConversationState, 
+    updateConversationTitle 
+  } = useConversations();
+  const { 
+    messages, 
+    loading: messagesLoading, 
+    saveMessage, 
+    updateMessageStatus 
+  } = useMessages(selectedConversation);
 
+  // Load conversations on mount
   useEffect(() => {
-    if (selectedConversation) {
-      // Load messages for selected conversation - start with empty
-      setMessages([]);
-    }
-  }, [selectedConversation]);
+    loadConversations();
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const generateChatTitle = (text: string) => {
+    // Generate a meaningful title from the first message
+    const words = text.split(' ').slice(0, 4).join(' ');
+    return words.length > 30 ? words.substring(0, 30) + '...' : words;
+  };
+
   const handleSendMessage = async () => {
     if (!message.trim() || !selectedConversation || isLoading) return;
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      conversation_id: selectedConversation,
-      role: 'user',
-      content: { text: message },
-      meta: { status: 'sending' },
-      created_at: new Date().toISOString(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
     const currentMessage = message;
     setMessage('');
     setIsLoading(true);
     setIsTyping(true);
 
-    // Update message status to sent
-    setTimeout(() => {
-      setMessages(prev => prev.map(msg => 
-        msg.id === userMessage.id 
-          ? { ...msg, meta: { ...msg.meta, status: 'sent' } }
-          : msg
-      ));
-    }, 500);
-
-    // Update conversation title if it's the first message
-    if (messages.length === 0 || (messages.length === 1 && messages[0].id === 'welcome')) {
-      const title = generateChatTitle(currentMessage);
-      setConversations(prev => 
-        prev.map(conv => 
-          conv.id === selectedConversation 
-            ? { ...conv, external_key: title, last_message_at: new Date().toISOString() }
-            : conv
-        )
-      );
-    }
-
     try {
+      // Save user message to database
+      const userMessage = await saveMessage({
+        conversation_id: selectedConversation,
+        role: 'user',
+        content: { text: currentMessage },
+        meta: { status: 'sending' }
+      });
+
+      // Update message status to sent
+      setTimeout(async () => {
+        await updateMessageStatus(userMessage.id, 'sent');
+      }, 500);
+
+      // Update conversation title if it's the first message
+      if (messages.length === 0) {
+        const title = generateChatTitle(currentMessage);
+        await updateConversationTitle(selectedConversation, title);
+      }
+
       console.log('Sending message to travel-chat:', currentMessage);
       
       // Call travel chat API
@@ -122,54 +128,36 @@ const Chat = () => {
       }
 
       // Mark message as delivered
-      setMessages(prev => prev.map(msg => 
-        msg.id === userMessage.id 
-          ? { ...msg, meta: { ...msg.meta, status: 'delivered' } }
-          : msg
-      ));
-
+      await updateMessageStatus(userMessage.id, 'delivered');
       setIsTyping(false);
 
-      const response: Message = {
-        id: (Date.now() + 1).toString(),
+      // Save AI response to database
+      await saveMessage({
         conversation_id: selectedConversation,
         role: 'assistant',
         content: { 
           text: data?.message || 'Lo siento, no pude procesar tu mensaje.'
         },
-        meta: {},
-        created_at: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, response]);
+        meta: {}
+      });
 
     } catch (error) {
       console.error('Error sending message:', error);
       setIsTyping(false);
       
-      // Mark message as failed
-      setMessages(prev => prev.map(msg => 
-        msg.id === userMessage.id 
-          ? { ...msg, meta: { ...msg.meta, status: 'failed' } }
-          : msg
-      ));
-
       toast({
         title: "Error",
         description: "No se pudo enviar el mensaje. Inténtalo de nuevo.",
         variant: "destructive",
       });
 
-      const errorResponse: Message = {
-        id: (Date.now() + 2).toString(),
+      // Save error response
+      await saveMessage({
         conversation_id: selectedConversation,
         role: 'assistant',
         content: { text: 'Lo siento, hubo un error procesando tu mensaje. ¿Puedes intentarlo de nuevo?' },
-        meta: {},
-        created_at: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, errorResponse]);
+        meta: {}
+      });
     } finally {
       setIsLoading(false);
     }
@@ -201,58 +189,51 @@ const Chat = () => {
     return channel === 'wa' ? Phone : Globe;
   };
 
-  const generateChatTitle = (message: string) => {
-    // Generate a short title based on the first message
-    const words = message.split(' ').slice(0, 4).join(' ');
-    return words.length > 30 ? words.substring(0, 27) + '...' : words;
-  };
-
   const getChatNumber = (convId: string) => {
     const index = conversations.findIndex(c => c.id === convId);
     return conversations.length - index;
   };
 
-  const updateConversationState = (convId: string, newState: 'active' | 'archived') => {
-    setConversations(prev => 
-      prev.map(conv => 
-        conv.id === convId 
-          ? { ...conv, state: newState }
-          : conv
-      )
-    );
+  const createNewChat = async () => {
+    try {
+      const newConversation = await createConversation();
+      setSelectedConversation(newConversation.id);
+
+      // Add welcome message
+      await saveMessage({
+        conversation_id: newConversation.id,
+        role: 'assistant',
+        content: { 
+          text: '¡Hola! Soy **Emilia**, tu asistente de viajes. Puedo ayudarte con:\n\n🌍 **Recomendaciones de destinos**\n✈️ **Información sobre vuelos y hoteles**\n🎒 **Consejos de viaje**\n💰 **Presupuestos de viaje**\n\n¿En qué puedo ayudarte hoy?' 
+        },
+        meta: {}
+      });
+
+      toast({
+        title: "Nuevo Chat",
+        description: "Chat creado. ¡Pregúntame sobre viajes!",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo crear el chat.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const createNewChat = () => {
-    const chatCount = conversations.length + 1;
-    const newConversation: Conversation = {
-      id: `chat-${Date.now()}`,
-      tenant_id: 'tenant1',
-      agency_id: 'agency1',
-      channel: 'web',
-      external_key: `Nuevo chat de viajes`,
-      state: 'active',
-      last_message_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-    };
+  const getMessageContent = (msg: MessageRow): string => {
+    if (typeof msg.content === 'object' && msg.content && 'text' in msg.content) {
+      return (msg.content as any).text || '';
+    }
+    return '';
+  };
 
-    setConversations(prev => [newConversation, ...prev]);
-    setSelectedConversation(newConversation.id);
-    setMessages([{
-      id: 'welcome',
-      conversation_id: newConversation.id,
-      role: 'assistant',
-      content: { 
-        text: '¡Hola! Soy **Emilia**, tu asistente de viajes. Puedo ayudarte con:\n\n🌍 **Recomendaciones de destinos**\n✈️ **Información sobre vuelos y hoteles**\n🎒 **Consejos de viaje**\n💰 **Presupuestos de viaje**\n\n¿En qué puedo ayudarte hoy?' 
-      },
-      meta: {},
-      created_at: new Date().toISOString(),
-    }]);
-    setIsTyping(false);
-
-    toast({
-      title: "Nuevo Chat",
-      description: "Chat creado. ¡Pregúntame sobre viajes!",
-    });
+  const getMessageStatus = (msg: MessageRow): string | undefined => {
+    if (typeof msg.meta === 'object' && msg.meta && 'status' in msg.meta) {
+      return (msg.meta as any).status;
+    }
+    return undefined;
   };
 
   return (
@@ -270,19 +251,20 @@ const Chat = () => {
                 onClick={createNewChat}
                 size="sm"
                 className="bg-primary hover:bg-primary/90"
+                disabled={conversationsLoading}
               >
                 <Plus className="h-4 w-4 mr-1" />
                 Nuevo Chat
               </Button>
             </div>
 
-            {/* Tabs for Active/Archived */}
+            {/* Tabs for Active/Closed */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="active" className="text-xs">
                   Chats Activos
                 </TabsTrigger>
-                <TabsTrigger value="archived" className="text-xs">
+                <TabsTrigger value="closed" className="text-xs">
                   <Archive className="h-3 w-3 mr-1" />
                   Archivados
                 </TabsTrigger>
@@ -331,7 +313,7 @@ const Chat = () => {
                                   <DropdownMenuItem 
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      updateConversationState(conv.id, 'archived');
+                                      updateConversationState(conv.id, 'closed');
                                     }}
                                   >
                                     <Archive className="h-3 w-3 mr-2" />
@@ -362,10 +344,10 @@ const Chat = () => {
                 </div>
               </TabsContent>
               
-              <TabsContent value="archived" className="m-0 h-full">
+              <TabsContent value="closed" className="m-0 h-full">
                 <div className="p-2 space-y-2">
                   {conversations
-                    .filter(conv => conv.state === 'archived')
+                    .filter(conv => conv.state === 'closed')
                     .map((conv) => {
                       const ChannelIcon = getChannelIcon(conv.channel);
                       const isSelected = selectedConversation === conv.id;
@@ -422,7 +404,7 @@ const Chat = () => {
                         </Card>
                       );
                     })}
-                  {conversations.filter(conv => conv.state === 'archived').length === 0 && (
+                  {conversations.filter(conv => conv.state === 'closed').length === 0 && (
                     <div className="text-center text-muted-foreground text-sm py-8">
                       No hay chats archivados.
                     </div>
@@ -465,7 +447,7 @@ const Chat = () => {
                         Active
                       </DropdownMenuItem>
                       <DropdownMenuItem 
-                        onClick={() => updateConversationState(selectedConversation!, 'archived')}
+                        onClick={() => updateConversationState(selectedConversation!, 'closed')}
                       >
                         Archived
                       </DropdownMenuItem>
@@ -505,12 +487,12 @@ const Chat = () => {
                                 : 'emilia-message prose prose-neutral prose-sm max-w-none'
                             }`}
                           >
-                            {msg.content.text || ''}
+                            {getMessageContent(msg)}
                           </ReactMarkdown>
 
                           <p className="text-xs opacity-70 mt-1 flex items-center justify-between">
                             <span className="flex items-center">
-                              {getMessageStatusIcon(msg.meta?.status)}
+                              {getMessageStatusIcon(getMessageStatus(msg))}
                               <span className="ml-1">{formatTime(msg.created_at)}</span>
                             </span>
                           </p>
