@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -85,16 +85,7 @@ export function LeadDialog({
     formState: { errors }
   } = useForm<LeadFormData>({
     resolver: zodResolver(leadSchema),
-    defaultValues: lead ? {
-      contact: lead.contact,
-      trip: lead.trip,
-      status: lead.status,
-      section_id: lead.section_id,
-      seller_id: lead.seller_id,
-      budget: lead.budget,
-      description: lead.description || '',
-      due_date: lead.due_date || ''
-    } : {
+    defaultValues: {
       contact: { name: '', phone: '', email: '' },
       trip: { 
         type: 'hotel',
@@ -104,6 +95,8 @@ export function LeadDialog({
         children: 0
       },
       status: 'new',
+      section_id: sections.length > 0 ? sections[0].id : '',
+      seller_id: '',
       budget: 0,
       description: '',
       due_date: ''
@@ -121,8 +114,8 @@ export function LeadDialog({
         contact: lead.contact,
         trip: lead.trip,
         status: lead.status,
-        section_id: lead.section_id,
-        seller_id: lead.seller_id,
+        section_id: lead.section_id || '',
+        seller_id: lead.seller_id || '',
         budget: lead.budget,
         description: lead.description || '',
         due_date: lead.due_date || ''
@@ -130,7 +123,7 @@ export function LeadDialog({
       setChecklist(Array.isArray(lead.checklist) ? lead.checklist : []);
     } else {
       // Para nuevo lead, asignar la primera sección por defecto
-      const defaultSectionId = sections.length > 0 ? sections[0].id : undefined;
+      const defaultSectionId = sections.length > 0 ? sections[0].id : '';
       reset({
         contact: { name: '', phone: '', email: '' },
         trip: { 
@@ -142,6 +135,7 @@ export function LeadDialog({
         },
         status: 'new',
         section_id: defaultSectionId,
+        seller_id: '',
         budget: 0,
         description: '',
         due_date: ''
@@ -153,7 +147,7 @@ export function LeadDialog({
         { id: '4', text: 'Pasaporte Subido', completed: false }
       ]);
     }
-  }, [lead, isEditing, reset, sections]);
+  }, [lead, isEditing, reset, sections, open]);
 
   const addChecklistItem = () => {
     if (newChecklistItem.trim()) {
@@ -191,7 +185,12 @@ export function LeadDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden p-0">
-        <form onSubmit={handleSubmit(onSubmit)} className="flex h-full">
+        <DialogHeader className="sr-only">
+          <DialogTitle>
+            {isEditing ? 'Editar Lead' : 'Crear Nuevo Lead'}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex h-full min-h-[600px]">
           {/* Main Content - Left Side */}
           <div className="flex-1 overflow-y-auto">
             <div className="p-6">
