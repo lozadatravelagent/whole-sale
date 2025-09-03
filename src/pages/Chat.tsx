@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/components/ui/use-toast';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { 
   Send, 
@@ -320,7 +322,7 @@ const Chat = () => {
                       </p>
                     </div>
                   </div>
-                  <Badge variant="outline">Active</Badge>
+                  <Badge variant="outline">{conversations.find(c => c.id === selectedConversation)?.state === 'active' ? 'Active' : 'Closed'}</Badge>
                 </div>
               </div>
 
@@ -347,7 +349,9 @@ const Chat = () => {
                             ? 'bg-primary text-primary-foreground' 
                             : 'bg-muted'
                         }`}>
-                          <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content.text}</div>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-invert prose-sm max-w-none">
+                            {msg.content.text || ''}
+                          </ReactMarkdown>
                           
                            {msg.content.metadata?.searchParams && (
                              <div className="mt-3 p-3 bg-background/20 rounded-lg">

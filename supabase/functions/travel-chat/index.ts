@@ -210,7 +210,7 @@ serve(async (req) => {
     console.log('Processing travel chat request:', message);
 
     // Parse user request
-    const searchParams = await agent.parseUserRequest(message);
+    let searchParams = await agent.parseUserRequest(message);
     
     if (!searchParams) {
       return new Response(JSON.stringify({
@@ -222,10 +222,52 @@ serve(async (req) => {
       });
     }
 
-    console.log('Extracted search parameters:', searchParams);
+    // Normalize IATA codes and dates to future
+    const cityMap: Record<string, string> = {
+      'BUENOS AIRES': 'EZE', 'EZEIZA': 'EZE', 'AEROPARQUE': 'AEP', 'AEP': 'AEP', 'EZE': 'EZE',
+      'CANCUN': 'CUN', 'CANCÚN': 'CUN', 'CUN': 'CUN',
+      'PUNTA CANA': 'PUJ', 'PUJ': 'PUJ',
+      'MADRID': 'MAD', 'BARCELONA': 'BCN', 'MIAMI': 'MIA'
+    };
+    const normCode = (s?: string) => {
+      if (!s) return s;
+      const up = s.trim().toUpperCase();
+      if (up.length === 3) return up;
+      return cityMap[up] || up;
+    };
+    searchParams.origin = normCode(searchParams.origin);
+    searchParams.destination = normCode(searchParams.destination);
+
+    const toFuture = (d?: string) => {
+      if (!d) return d;
+      const parts = d.split('-');
+      if (parts.length !== 3) return d;
+      const dt = new Date(d + 'T00:00:00');
+      const today = new Date();
+      // If date is in the past, push to next year same month-day
+      if (dt < new Date(today.getFullYear(), today.getMonth(), today.getDate())) {
+        const next = new Date(dt);
+        next.setFullYear(today.getFullYear() + 1);
+        const mm = String(next.getMonth() + 1).padStart(2, '0');
+        const dd = String(next.getDate()).padStart(2, '0');
+        return `${next.getFullYear()}-${mm}-${dd}`;
+      }
+      return d;
+    };
+
+    searchParams.departureDate = toFuture(searchParams.departureDate)!;
+    if (searchParams.returnDate) {
+      searchParams.returnDate = toFuture(searchParams.returnDate)!;
+    }
+    if (searchParams.type === 'hotel' || searchParams.type === 'package') {
+      searchParams.checkinDate = toFuture(searchParams.checkinDate || searchParams.departureDate)!;
+      searchParams.checkoutDate = toFuture(searchParams.checkoutDate || searchParams.returnDate)!;
+    }
+
+    console.log('Normalized search parameters:', searchParams);
 
     // Search flights and hotels in parallel
-    const searchPromises = [];
+    const searchPromises = [] as any[];
     
     if (searchParams.type === 'flight' || searchParams.type === 'package') {
       searchPromises.push(agent.searchFlights(searchParams));

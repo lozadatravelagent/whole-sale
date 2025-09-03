@@ -52,29 +52,28 @@ class StarlingAPI {
     }
 
     const query: any = {
-      Flights: [
+      Token: this.token,
+      Legs: [
         {
-          Origin: params.origin,
-          Destination: params.destination,
-          DepartureDate: params.departureDate,
+          DepartureAirportCity: params.origin,
+          ArrivalAirportCity: params.destination,
+          FlightDate: params.departureDate,
         }
       ],
       Passengers: [
-        { PaxType: 'ADT', Quantity: params.adults },
-        { PaxType: 'CHD', Quantity: params.children || 0 },
-        { PaxType: 'INF', Quantity: 0 },
+        { Type: 'ADT', Count: params.adults },
+        { Type: 'CHD', Count: params.children || 0 },
+        { Type: 'INF', Count: 0 },
       ],
-      DirectFlight: params.directFlight || false,
-      Currency: 'USD',
-      Token: this.token,
+      Currency: 'USD'
     };
 
-    // Add return flight if roundtrip
+    // Add return leg if roundtrip
     if (params.returnDate) {
-      query.Flights.push({
-        Origin: params.destination,
-        Destination: params.origin,
-        DepartureDate: params.returnDate,
+      query.Legs.push({
+        DepartureAirportCity: params.destination,
+        ArrivalAirportCity: params.origin,
+        FlightDate: params.returnDate,
       });
     }
 
