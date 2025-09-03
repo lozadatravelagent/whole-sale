@@ -7,12 +7,35 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CalendarDays, MapPin, Users, Phone, Mail, FileText, User, DollarSign, CheckSquare, Calendar, Plus, Trash2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { 
+  CalendarDays, 
+  MapPin, 
+  Users, 
+  Phone, 
+  Mail, 
+  FileText, 
+  User, 
+  DollarSign, 
+  CheckSquare, 
+  Calendar, 
+  Plus, 
+  Trash2,
+  Plane,
+  Hotel,
+  Package,
+  Instagram,
+  MessageSquare,
+  Star,
+  Clock,
+  AlertTriangle
+} from 'lucide-react';
 import { Lead, LeadStatus, Section, Seller, ChecklistItem } from '@/types';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 const leadSchema = z.object({
   contact: z.object({
@@ -100,6 +123,8 @@ export function LeadDialog({
   const watchedType = watch('trip.type');
   const watchedSectionId = watch('section_id');
   const watchedSellerId = watch('seller_id');
+  const watchedBudget = watch('budget');
+  const watchedDueDate = watch('due_date');
 
   React.useEffect(() => {
     if (lead && isEditing) {
@@ -115,9 +140,31 @@ export function LeadDialog({
       });
       setChecklist(Array.isArray(lead.checklist) ? lead.checklist : []);
     } else {
-      setChecklist([]);
+      // Para nuevo lead, asignar la primera sección por defecto
+      const defaultSectionId = sections.length > 0 ? sections[0].id : undefined;
+      reset({
+        contact: { name: '', phone: '', email: '' },
+        trip: { 
+          type: 'hotel',
+          city: '',
+          dates: { checkin: '', checkout: '' },
+          adults: 1,
+          children: 0
+        },
+        status: 'new',
+        section_id: defaultSectionId,
+        budget: 0,
+        description: '',
+        due_date: ''
+      });
+      setChecklist([
+        { id: '1', text: 'Usuario Contactado', completed: false },
+        { id: '2', text: 'Presupuesto Enviado', completed: false },
+        { id: '3', text: 'Presupuesto Pagado', completed: false },
+        { id: '4', text: 'Pasaporte Subido', completed: false }
+      ]);
     }
-  }, [lead, isEditing, reset]);
+  }, [lead, isEditing, reset, sections]);
 
   const statusLabels = {
     new: 'Nuevo',
@@ -137,8 +184,39 @@ export function LeadDialog({
 
   const tripTypeLabels = {
     hotel: 'Hotel',
-    flight: 'Vuelo',
+    flight: 'Vuelos',
     package: 'Paquete'
+  };
+
+  const tripTypeIcons = {
+    hotel: Hotel,
+    flight: Plane,
+    package: Package
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    try {
+      return format(new Date(dateString), 'dd/MM/yyyy', { locale: es });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const formatCurrency = (amount?: number) => {
+    if (!amount) return '$0';
+    return new Intl.NumberFormat('es-ES', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const isOverdue = (dueDate?: string) => {
+    if (!dueDate) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return dueDate < today;
   };
 
   const addChecklistItem = () => {
@@ -164,322 +242,398 @@ export function LeadDialog({
   };
 
   const onSubmit = (data: LeadFormData) => {
+    // Ensure section_id is set for new leads
+    if (!data.section_id && sections.length > 0) {
+      data.section_id = sections[0].id;
+    }
     onSave({ ...data, checklist });
   };
 
+  const completedTasks = checklist.filter(item => item.completed).length;
+  const progressPercentage = checklist.length > 0 ? (completedTasks / checklist.length) * 100 : 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            {isEditing ? 'Editar Lead' : 'Nuevo Lead'}
-          </DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <div className="grid grid-cols-2 gap-6">
-            {/* Left Column */}
-            <div className="space-y-6">
-              {/* Contact Info */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Phone className="h-4 w-4" />
-                  Información de Contacto
-                </h3>
-                
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Nombre *</Label>
-                    <Input 
-                      id="name"
-                      {...register('contact.name')}
-                      className={errors.contact?.name ? 'border-red-500' : ''}
-                    />
-                    {errors.contact?.name && (
-                      <p className="text-sm text-red-500">{errors.contact.name.message}</p>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Teléfono *</Label>
-                      <Input 
-                        id="phone"
-                        {...register('contact.phone')}
-                        className={errors.contact?.phone ? 'border-red-500' : ''}
-                      />
-                      {errors.contact?.phone && (
-                        <p className="text-sm text-red-500">{errors.contact.phone.message}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input 
-                        id="email"
-                        type="email"
-                        {...register('contact.email')}
-                        className={errors.contact?.email ? 'border-red-500' : ''}
-                      />
-                      {errors.contact?.email && (
-                        <p className="text-sm text-red-500">{errors.contact.email.message}</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Trip Info */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
-                  Información del Viaje
-                </h3>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Tipo de Viaje *</Label>
-                    <Select value={watchedType} onValueChange={(value: 'hotel' | 'flight' | 'package') => setValue('trip.type', value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(tripTypeLabels).map(([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="city">Ciudad *</Label>
-                    <Input 
-                      id="city"
-                      {...register('trip.city')}
-                      className={errors.trip?.city ? 'border-red-500' : ''}
-                    />
-                    {errors.trip?.city && (
-                      <p className="text-sm text-red-500">{errors.trip.city.message}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="checkin">Check-in *</Label>
-                    <Input 
-                      id="checkin"
-                      type="date"
-                      {...register('trip.dates.checkin')}
-                      className={errors.trip?.dates?.checkin ? 'border-red-500' : ''}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="checkout">Check-out *</Label>
-                    <Input 
-                      id="checkout"
-                      type="date"
-                      {...register('trip.dates.checkout')}
-                      className={errors.trip?.dates?.checkout ? 'border-red-500' : ''}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="adults">Adultos *</Label>
-                    <Input 
-                      id="adults"
-                      type="number"
-                      min="1"
-                      {...register('trip.adults', { valueAsNumber: true })}
-                      className={errors.trip?.adults ? 'border-red-500' : ''}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="children">Niños</Label>
-                    <Input 
-                      id="children"
-                      type="number"
-                      min="0"
-                      {...register('trip.children', { valueAsNumber: true })}
-                      className={errors.trip?.children ? 'border-red-500' : ''}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Column */}
-            <div className="space-y-6">
-              {/* Lead Details */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Detalles del Lead
-                </h3>
-
-                {/* Section Selection */}
-                {sections.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Sección</Label>
-                    <Select value={watchedSectionId} onValueChange={(value: string) => setValue('section_id', value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar sección" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sections.map((section) => (
-                          <SelectItem key={section.id} value={section.id}>
-                            {section.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {/* Seller Selection */}
-                {sellers.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Vendedor Asignado</Label>
-                    <Select value={watchedSellerId} onValueChange={(value: string) => setValue('seller_id', value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar vendedor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sellers.map((seller) => (
-                          <SelectItem key={seller.id} value={seller.id}>
-                            {seller.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Budget */}
-                  <div className="space-y-2">
-                    <Label htmlFor="budget" className="flex items-center gap-1">
-                      <DollarSign className="h-3 w-3" />
-                      Presupuesto
-                    </Label>
-                    <Input 
-                      id="budget"
-                      type="number"
-                      min="0"
-                      step="1"
-                      {...register('budget', { valueAsNumber: true })}
-                    />
-                  </div>
-
-                  {/* Due Date */}
-                  <div className="space-y-2">
-                    <Label htmlFor="due_date" className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      Fecha Límite
-                    </Label>
-                    <Input 
-                      id="due_date"
-                      type="date"
-                      {...register('due_date')}
-                    />
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div className="space-y-2">
-                  <Label htmlFor="description">Descripción</Label>
-                  <Textarea 
-                    id="description"
-                    placeholder="Notas adicionales, detalles del viaje, etc."
-                    rows={3}
-                    {...register('description')}
+      <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden p-0">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex h-full">
+          {/* Main Content - Left Side */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-6">
+              {/* Header with Title */}
+              <div className="mb-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <User className="h-6 w-6 text-muted-foreground" />
+                  <Input
+                    {...register('contact.name')}
+                    placeholder="Nombre del cliente..."
+                    className="text-2xl font-bold border-none p-0 h-auto bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+                    style={{ fontSize: '1.5rem', fontWeight: 'bold' }}
                   />
                 </div>
-              </div>
 
-              {/* Checklist */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <CheckSquare className="h-4 w-4" />
-                  Lista de Tareas
-                </h3>
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2 mb-4">
+                  <Button type="button" variant="outline" size="sm">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add
+                  </Button>
+                  <Button type="button" variant="outline" size="sm">
+                    <FileText className="h-4 w-4 mr-1" />
+                    Labels
+                  </Button>
+                  <Button type="button" variant="outline" size="sm">
+                    <CheckSquare className="h-4 w-4 mr-1" />
+                    Checklist
+                  </Button>
+                  <Button type="button" variant="outline" size="sm">
+                    <Users className="h-4 w-4 mr-1" />
+                    Members
+                  </Button>
+                  <Button type="button" variant="outline" size="sm">
+                    <FileText className="h-4 w-4 mr-1" />
+                    Attachment
+                  </Button>
+                </div>
 
-                <div className="space-y-2">
-                  <div className="flex gap-2">
+                {/* Due Date */}
+                <div className="mb-6">
+                  <Label className="text-sm font-medium text-muted-foreground">Due date</Label>
+                  <div className="flex items-center gap-2 mt-1">
                     <Input
-                      placeholder="Agregar nueva tarea..."
-                      value={newChecklistItem}
-                      onChange={(e) => setNewChecklistItem(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && addChecklistItem()}
+                      type="date"
+                      {...register('due_date')}
+                      className="w-auto text-sm"
                     />
-                    <Button type="button" onClick={addChecklistItem} size="sm">
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  <div className="max-h-32 overflow-y-auto space-y-2">
-                    {checklist.map((item) => (
-                      <div key={item.id} className="flex items-center gap-2 p-2 bg-muted rounded">
-                        <Checkbox
-                          checked={item.completed}
-                          onCheckedChange={() => toggleChecklistItem(item.id)}
-                        />
-                        <span className={`flex-1 text-sm ${item.completed ? 'line-through text-muted-foreground' : ''}`}>
-                          {item.text}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeChecklistItem(item.id)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
+                    {watchedDueDate && isOverdue(watchedDueDate) && (
+                      <Badge variant="destructive" className="text-xs">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Overdue
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Show PDFs if editing */}
-              {isEditing && lead && Array.isArray(lead.pdf_urls) && lead.pdf_urls.length > 0 && (
-                <div className="space-y-2">
+              {/* Description Section */}
+              <div className="space-y-4 mb-8">
+                <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    PDFs Asociados
+                    <FileText className="h-5 w-5" />
+                    Description
                   </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {lead.pdf_urls.map((url, index) => (
-                      <Badge key={index} variant="outline" className="flex items-center gap-1">
-                        <FileText className="h-3 w-3" />
-                        PDF {index + 1}
-                      </Badge>
-                    ))}
-                  </div>
                 </div>
-              )}
+
+                <Card>
+                  <CardContent className="p-4 space-y-3">
+                    {/* Destino */}
+                    <div className="flex items-start gap-3">
+                      <MapPin className="h-4 w-4 mt-0.5 text-blue-600" />
+                      <div className="flex-1">
+                        <strong>Destino:</strong>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            {...register('trip.city')}
+                            placeholder="Ciudad destino..."
+                            className="flex-1"
+                          />
+                          <Select value={watchedType} onValueChange={(value: 'hotel' | 'flight' | 'package') => setValue('trip.type', value)}>
+                            <SelectTrigger className="w-32">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(tripTypeLabels).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* WhatsApp */}
+                    <div className="flex items-start gap-3">
+                      <MessageSquare className="h-4 w-4 mt-0.5 text-green-600" />
+                      <div className="flex-1">
+                        <strong>WhatsApp:</strong>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            {...register('contact.phone')}
+                            placeholder="Número WhatsApp..."
+                            className="flex-1"
+                          />
+                          <Button type="button" variant="link" size="sm" className="text-blue-600 p-0 h-auto">
+                            Share on WhatsApp
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Instagram */}
+                    <div className="flex items-start gap-3">
+                      <Instagram className="h-4 w-4 mt-0.5 text-purple-600" />
+                      <div className="flex-1">
+                        <strong>Instagram:</strong>
+                        <Input
+                          {...register('contact.email')}
+                          placeholder="@usuario o email..."
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Fechas */}
+                    <div className="flex items-start gap-3">
+                      <CalendarDays className="h-4 w-4 mt-0.5 text-orange-600" />
+                      <div className="flex-1">
+                        <strong>Fechas:</strong>
+                        <div className="grid grid-cols-2 gap-2 mt-1">
+                          <Input
+                            type="date"
+                            {...register('trip.dates.checkin')}
+                            placeholder="Check-in"
+                          />
+                          <Input
+                            type="date"
+                            {...register('trip.dates.checkout')}
+                            placeholder="Check-out"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Personas */}
+                    <div className="flex items-start gap-3">
+                      <Users className="h-4 w-4 mt-0.5 text-indigo-600" />
+                      <div className="flex-1">
+                        <strong>Personas:</strong>
+                        <div className="grid grid-cols-2 gap-2 mt-1">
+                          <Input
+                            type="number"
+                            min="1"
+                            {...register('trip.adults', { valueAsNumber: true })}
+                            placeholder="Adultos"
+                          />
+                          <Input
+                            type="number"
+                            min="0"
+                            {...register('trip.children', { valueAsNumber: true })}
+                            placeholder="Niños"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Presupuesto */}
+                    <div className="flex items-start gap-3">
+                      <DollarSign className="h-4 w-4 mt-0.5 text-green-600" />
+                      <div className="flex-1">
+                        <strong>Presupuesto:</strong>
+                        <Input
+                          type="number"
+                          min="0"
+                          {...register('budget', { valueAsNumber: true })}
+                          placeholder="Monto en USD"
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Calificación del Lead */}
+                    <div className="flex items-start gap-3">
+                      <Star className="h-4 w-4 mt-0.5 text-yellow-600" />
+                      <div className="flex-1">
+                        <strong>Calificación del Lead:</strong>
+                        <Select value={watchedStatus} onValueChange={(value: LeadStatus) => setValue('status', value)}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Seleccionar calificación" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="new">🔥 Alto potencial</SelectItem>
+                            <SelectItem value="quoted">⚡ Medio potencial</SelectItem>
+                            <SelectItem value="negotiating">💫 Bajo potencial</SelectItem>
+                            <SelectItem value="won">✅ Ganado</SelectItem>
+                            <SelectItem value="lost">❌ Perdido</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Servicio */}
+                    <div className="flex items-start gap-3">
+                      {React.createElement(tripTypeIcons[watchedType] || Plane, { 
+                        className: "h-4 w-4 mt-0.5 text-blue-600" 
+                      })}
+                      <div className="flex-1">
+                        <strong>Servicio:</strong>
+                        <span className="ml-2">{tripTypeLabels[watchedType]}</span>
+                      </div>
+                    </div>
+
+                    {/* Descripción adicional */}
+                    <div className="pt-2">
+                      <Textarea
+                        {...register('description')}
+                        placeholder="Notas adicionales..."
+                        rows={3}
+                        className="resize-none"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Checklist Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <CheckSquare className="h-5 w-5" />
+                      Checklist
+                    </h3>
+                    <Badge variant="secondary">
+                      {Math.round(progressPercentage)}%
+                    </Badge>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="text-red-600">
+                    Delete
+                  </Button>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div 
+                    className="bg-green-600 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${progressPercentage}%` }}
+                  />
+                </div>
+
+                {/* Add new item */}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Add an item"
+                    value={newChecklistItem}
+                    onChange={(e) => setNewChecklistItem(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addChecklistItem()}
+                  />
+                  <Button type="button" onClick={addChecklistItem} size="sm">
+                    Add
+                  </Button>
+                </div>
+
+                {/* Checklist Items */}
+                <div className="space-y-2">
+                  {checklist.map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 p-3 bg-muted/50 rounded hover:bg-muted/70 transition-colors">
+                      <Checkbox
+                        checked={item.completed}
+                        onCheckedChange={() => toggleChecklistItem(item.id)}
+                      />
+                      <span className={`flex-1 ${item.completed ? 'line-through text-muted-foreground' : ''}`}>
+                        {item.text}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeChecklistItem(item.id)}
+                        className="text-red-600 opacity-0 group-hover:opacity-100 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex justify-end space-x-2 pt-4 border-t">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => onOpenChange(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" className="bg-primary hover:bg-primary/90">
-              {isEditing ? 'Guardar Cambios' : 'Crear Lead'}
-            </Button>
+          {/* Right Sidebar */}
+          <div className="w-80 border-l bg-muted/20 p-6 space-y-6">
+            <h3 className="font-semibold text-lg">Add to card</h3>
+            
+            {/* Section Selection */}
+            {sections.length > 0 && (
+              <div className="space-y-2">
+                <Label>Sección</Label>
+                <Select value={watchedSectionId} onValueChange={(value: string) => setValue('section_id', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar sección" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sections.map((section) => (
+                      <SelectItem key={section.id} value={section.id}>
+                        {section.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Seller Selection */}
+            {sellers.length > 0 && (
+              <div className="space-y-2">
+                <Label>Vendedor Asignado</Label>
+                <Select value={watchedSellerId} onValueChange={(value: string) => setValue('seller_id', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar vendedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sellers.map((seller) => (
+                      <SelectItem key={seller.id} value={seller.id}>
+                        {seller.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Current Budget Display */}
+            {watchedBudget && watchedBudget > 0 && (
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Presupuesto:</span>
+                    <span className="font-semibold text-green-600">
+                      {formatCurrency(watchedBudget)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Show PDFs if editing */}
+            {isEditing && lead && Array.isArray(lead.pdf_urls) && lead.pdf_urls.length > 0 && (
+              <div className="space-y-2">
+                <Label>PDFs Asociados</Label>
+                <div className="space-y-1">
+                  {lead.pdf_urls.map((url, index) => (
+                    <div key={index} className="flex items-center gap-2 p-2 bg-background rounded border">
+                      <FileText className="h-4 w-4 text-red-600" />
+                      <span className="text-sm">PDF {index + 1}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="pt-6 space-y-2">
+              <Button type="submit" className="w-full">
+                {isEditing ? 'Guardar Cambios' : 'Crear Lead'}
+              </Button>
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="w-full"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancelar
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>
