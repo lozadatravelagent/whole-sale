@@ -477,29 +477,6 @@ const Chat = () => {
               {/* Messages */}
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
-                  {/* Emilia is typing indicator */}
-                  {isTyping && (
-                    <div className="flex justify-start">
-                      <div className="max-w-lg flex items-start space-x-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
-                          <Bot className="h-4 w-4 text-accent" />
-                        </div>
-                        <div className="rounded-lg p-3 bg-muted">
-                          <div className="flex items-center space-x-1">
-                            <div className="typing-dots">
-                              <span>Emilia está escribiendo</span>
-                              <div className="dots">
-                                <span>.</span>
-                                <span>.</span>
-                                <span>.</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
                   {messages.map((msg) => (
                     <div
                       key={msg.id}
@@ -534,6 +511,30 @@ const Chat = () => {
                       </div>
                     </div>
                   ))}
+                  
+                  {/* Emilia is typing indicator - appears after messages */}
+                  {isTyping && (
+                    <div className="flex justify-start animate-fade-in">
+                      <div className="max-w-lg flex items-start space-x-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-accent" />
+                        </div>
+                        <div className="rounded-lg p-3 bg-muted">
+                          <div className="flex items-center space-x-1">
+                            <div className="typing-dots">
+                              <span>Emilia está escribiendo</span>
+                              <div className="dots">
+                                <span>.</span>
+                                <span>.</span>
+                                <span>.</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
