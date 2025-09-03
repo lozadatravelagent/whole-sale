@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,29 +13,20 @@ import {
   MapPin, 
   Users, 
   Phone, 
-  Mail, 
-  FileText, 
-  User, 
   DollarSign, 
-  CheckSquare, 
-  Calendar, 
-  Plus, 
-  Trash2,
+  User, 
   Plane,
   Hotel,
   Package,
-  Instagram,
   MessageSquare,
-  Star,
-  Clock,
-  AlertTriangle
+  Trash2,
+  Plus,
+  Calendar
 } from 'lucide-react';
 import { Lead, LeadStatus, Section, Seller, ChecklistItem } from '@/types';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 
 const leadSchema = z.object({
   contact: z.object({
@@ -119,11 +110,9 @@ export function LeadDialog({
     }
   });
 
-  const watchedStatus = watch('status');
   const watchedType = watch('trip.type');
   const watchedSectionId = watch('section_id');
   const watchedSellerId = watch('seller_id');
-  const watchedBudget = watch('budget');
   const watchedDueDate = watch('due_date');
 
   React.useEffect(() => {
@@ -166,59 +155,6 @@ export function LeadDialog({
     }
   }, [lead, isEditing, reset, sections]);
 
-  const statusLabels = {
-    new: 'Nuevo',
-    quoted: 'Cotizado',
-    negotiating: 'Negociando',
-    won: 'Ganado',
-    lost: 'Perdido'
-  };
-
-  const statusColors = {
-    new: 'bg-blue-100 text-blue-800',
-    quoted: 'bg-yellow-100 text-yellow-800', 
-    negotiating: 'bg-orange-100 text-orange-800',
-    won: 'bg-green-100 text-green-800',
-    lost: 'bg-red-100 text-red-800'
-  };
-
-  const tripTypeLabels = {
-    hotel: 'Hotel',
-    flight: 'Vuelos',
-    package: 'Paquete'
-  };
-
-  const tripTypeIcons = {
-    hotel: Hotel,
-    flight: Plane,
-    package: Package
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
-    try {
-      return format(new Date(dateString), 'dd/MM/yyyy', { locale: es });
-    } catch {
-      return dateString;
-    }
-  };
-
-  const formatCurrency = (amount?: number) => {
-    if (!amount) return '$0';
-    return new Intl.NumberFormat('es-ES', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const isOverdue = (dueDate?: string) => {
-    if (!dueDate) return false;
-    const today = new Date().toISOString().split('T')[0];
-    return dueDate < today;
-  };
-
   const addChecklistItem = () => {
     if (newChecklistItem.trim()) {
       const newItem: ChecklistItem = {
@@ -259,246 +195,83 @@ export function LeadDialog({
           {/* Main Content - Left Side */}
           <div className="flex-1 overflow-y-auto">
             <div className="p-6">
-              {/* Header with Title */}
+              {/* Header with Editable Title */}
               <div className="mb-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <User className="h-6 w-6 text-muted-foreground" />
-                  <Input
-                    {...register('contact.name')}
-                    placeholder="Nombre del cliente..."
-                    className="text-2xl font-bold border-none p-0 h-auto bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
-                    style={{ fontSize: '1.5rem', fontWeight: 'bold' }}
-                  />
-                </div>
+                <Input
+                  {...register('contact.name')}
+                  placeholder="Título de la tarjeta..."
+                  className="text-2xl font-bold border-none p-0 h-auto bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 mb-4"
+                  style={{ fontSize: '1.5rem', fontWeight: 'bold' }}
+                />
 
-                {/* Action Buttons */}
+                {/* Action Buttons - Updated according to user specs */}
                 <div className="flex items-center gap-2 mb-4">
-                  <Button type="button" variant="outline" size="sm">
-                    <Plus className="h-4 w-4 mr-1" />
-                    Add
-                  </Button>
-                  <Button type="button" variant="outline" size="sm">
-                    <FileText className="h-4 w-4 mr-1" />
-                    Labels
-                  </Button>
-                  <Button type="button" variant="outline" size="sm">
-                    <CheckSquare className="h-4 w-4 mr-1" />
-                    Checklist
-                  </Button>
-                  <Button type="button" variant="outline" size="sm">
-                    <Users className="h-4 w-4 mr-1" />
-                    Members
-                  </Button>
-                  <Button type="button" variant="outline" size="sm">
-                    <FileText className="h-4 w-4 mr-1" />
-                    Attachment
-                  </Button>
-                </div>
+                  {/* Sección Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm">Sección:</Label>
+                    <Select value={watchedSectionId} onValueChange={(value: string) => setValue('section_id', value)}>
+                      <SelectTrigger className="w-32">
+                        <SelectValue placeholder="Sección" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sections.map((section) => (
+                          <SelectItem key={section.id} value={section.id}>
+                            {section.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                {/* Due Date */}
-                <div className="mb-6">
-                  <Label className="text-sm font-medium text-muted-foreground">Due date</Label>
-                  <div className="flex items-center gap-2 mt-1">
+                  {/* Vendedor */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm">Vendedor:</Label>
+                    <Select value={watchedSellerId} onValueChange={(value: string) => setValue('seller_id', value)}>
+                      <SelectTrigger className="w-32">
+                        <SelectValue placeholder="Vendedor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sellers.map((seller) => (
+                          <SelectItem key={seller.id} value={seller.id}>
+                            {seller.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Due Date */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm">Fecha límite:</Label>
                     <Input
                       type="date"
                       {...register('due_date')}
                       className="w-auto text-sm"
                     />
-                    {watchedDueDate && isOverdue(watchedDueDate) && (
-                      <Badge variant="destructive" className="text-xs">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        Overdue
-                      </Badge>
-                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Description Section */}
+              {/* Description Section - Free text field like Trello */}
               <div className="space-y-4 mb-8">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Description
-                  </h3>
-                </div>
-
-                <Card>
-                  <CardContent className="p-4 space-y-3">
-                    {/* Destino */}
-                    <div className="flex items-start gap-3">
-                      <MapPin className="h-4 w-4 mt-0.5 text-blue-600" />
-                      <div className="flex-1">
-                        <strong>Destino:</strong>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Input
-                            {...register('trip.city')}
-                            placeholder="Ciudad destino..."
-                            className="flex-1"
-                          />
-                          <Select value={watchedType} onValueChange={(value: 'hotel' | 'flight' | 'package') => setValue('trip.type', value)}>
-                            <SelectTrigger className="w-32">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.entries(tripTypeLabels).map(([value, label]) => (
-                                <SelectItem key={value} value={value}>
-                                  {label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* WhatsApp */}
-                    <div className="flex items-start gap-3">
-                      <MessageSquare className="h-4 w-4 mt-0.5 text-green-600" />
-                      <div className="flex-1">
-                        <strong>WhatsApp:</strong>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Input
-                            {...register('contact.phone')}
-                            placeholder="Número WhatsApp..."
-                            className="flex-1"
-                          />
-                          <Button type="button" variant="link" size="sm" className="text-blue-600 p-0 h-auto">
-                            Share on WhatsApp
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Instagram */}
-                    <div className="flex items-start gap-3">
-                      <Instagram className="h-4 w-4 mt-0.5 text-purple-600" />
-                      <div className="flex-1">
-                        <strong>Instagram:</strong>
-                        <Input
-                          {...register('contact.email')}
-                          placeholder="@usuario o email..."
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Fechas */}
-                    <div className="flex items-start gap-3">
-                      <CalendarDays className="h-4 w-4 mt-0.5 text-orange-600" />
-                      <div className="flex-1">
-                        <strong>Fechas:</strong>
-                        <div className="grid grid-cols-2 gap-2 mt-1">
-                          <Input
-                            type="date"
-                            {...register('trip.dates.checkin')}
-                            placeholder="Check-in"
-                          />
-                          <Input
-                            type="date"
-                            {...register('trip.dates.checkout')}
-                            placeholder="Check-out"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Personas */}
-                    <div className="flex items-start gap-3">
-                      <Users className="h-4 w-4 mt-0.5 text-indigo-600" />
-                      <div className="flex-1">
-                        <strong>Personas:</strong>
-                        <div className="grid grid-cols-2 gap-2 mt-1">
-                          <Input
-                            type="number"
-                            min="1"
-                            {...register('trip.adults', { valueAsNumber: true })}
-                            placeholder="Adultos"
-                          />
-                          <Input
-                            type="number"
-                            min="0"
-                            {...register('trip.children', { valueAsNumber: true })}
-                            placeholder="Niños"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Presupuesto */}
-                    <div className="flex items-start gap-3">
-                      <DollarSign className="h-4 w-4 mt-0.5 text-green-600" />
-                      <div className="flex-1">
-                        <strong>Presupuesto:</strong>
-                        <Input
-                          type="number"
-                          min="0"
-                          {...register('budget', { valueAsNumber: true })}
-                          placeholder="Monto en USD"
-                          className="mt-1"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Calificación del Lead */}
-                    <div className="flex items-start gap-3">
-                      <Star className="h-4 w-4 mt-0.5 text-yellow-600" />
-                      <div className="flex-1">
-                        <strong>Calificación del Lead:</strong>
-                        <Select value={watchedStatus} onValueChange={(value: LeadStatus) => setValue('status', value)}>
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Seleccionar calificación" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="new">🔥 Alto potencial</SelectItem>
-                            <SelectItem value="quoted">⚡ Medio potencial</SelectItem>
-                            <SelectItem value="negotiating">💫 Bajo potencial</SelectItem>
-                            <SelectItem value="won">✅ Ganado</SelectItem>
-                            <SelectItem value="lost">❌ Perdido</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {/* Servicio */}
-                    <div className="flex items-start gap-3">
-                      {React.createElement(tripTypeIcons[watchedType] || Plane, { 
-                        className: "h-4 w-4 mt-0.5 text-blue-600" 
-                      })}
-                      <div className="flex-1">
-                        <strong>Servicio:</strong>
-                        <span className="ml-2">{tripTypeLabels[watchedType]}</span>
-                      </div>
-                    </div>
-
-                    {/* Descripción adicional */}
-                    <div className="pt-2">
-                      <Textarea
-                        {...register('description')}
-                        placeholder="Notas adicionales..."
-                        rows={3}
-                        className="resize-none"
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
+                <h3 className="text-lg font-semibold">Descripción</h3>
+                <Textarea
+                  {...register('description')}
+                  placeholder="Agrega una descripción más detallada..."
+                  rows={4}
+                  className="resize-none"
+                />
               </div>
 
               {/* Checklist Section */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                      <CheckSquare className="h-5 w-5" />
-                      Checklist
-                    </h3>
+                    <h3 className="text-lg font-semibold">Lista de tareas</h3>
                     <Badge variant="secondary">
                       {Math.round(progressPercentage)}%
                     </Badge>
                   </div>
-                  <Button type="button" variant="ghost" size="sm" className="text-red-600">
-                    Delete
-                  </Button>
                 </div>
 
                 {/* Progress Bar */}
@@ -512,20 +285,20 @@ export function LeadDialog({
                 {/* Add new item */}
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Add an item"
+                    placeholder="Agregar elemento"
                     value={newChecklistItem}
                     onChange={(e) => setNewChecklistItem(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && addChecklistItem()}
                   />
                   <Button type="button" onClick={addChecklistItem} size="sm">
-                    Add
+                    <Plus className="h-4 w-4" />
                   </Button>
                 </div>
 
                 {/* Checklist Items */}
                 <div className="space-y-2">
                   {checklist.map((item) => (
-                    <div key={item.id} className="flex items-center gap-3 p-3 bg-muted/50 rounded hover:bg-muted/70 transition-colors">
+                    <div key={item.id} className="flex items-center gap-3 p-3 bg-muted/50 rounded hover:bg-muted/70 transition-colors group">
                       <Checkbox
                         checked={item.completed}
                         onCheckedChange={() => toggleChecklistItem(item.id)}
@@ -549,76 +322,123 @@ export function LeadDialog({
             </div>
           </div>
 
-          {/* Right Sidebar */}
+          {/* Right Sidebar - Business Fields */}
           <div className="w-80 border-l bg-muted/20 p-6 space-y-6">
-            <h3 className="font-semibold text-lg">Add to card</h3>
+            <h3 className="font-semibold text-lg">Información del viaje</h3>
             
-            {/* Section Selection */}
-            {sections.length > 0 && (
-              <div className="space-y-2">
-                <Label>Sección</Label>
-                <Select value={watchedSectionId} onValueChange={(value: string) => setValue('section_id', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar sección" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sections.map((section) => (
-                      <SelectItem key={section.id} value={section.id}>
-                        {section.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            {/* Presupuesto */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Presupuesto
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                {...register('budget', { valueAsNumber: true })}
+                placeholder="Monto en USD"
+              />
+            </div>
 
-            {/* Seller Selection */}
-            {sellers.length > 0 && (
-              <div className="space-y-2">
-                <Label>Vendedor Asignado</Label>
-                <Select value={watchedSellerId} onValueChange={(value: string) => setValue('seller_id', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar vendedor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sellers.map((seller) => (
-                      <SelectItem key={seller.id} value={seller.id}>
-                        {seller.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            {/* Destino */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                Destino
+              </Label>
+              <Input
+                {...register('trip.city')}
+                placeholder="Ciudad destino"
+              />
+            </div>
 
-            {/* Current Budget Display */}
-            {watchedBudget && watchedBudget > 0 && (
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Presupuesto:</span>
-                    <span className="font-semibold text-green-600">
-                      {formatCurrency(watchedBudget)}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Show PDFs if editing */}
-            {isEditing && lead && Array.isArray(lead.pdf_urls) && lead.pdf_urls.length > 0 && (
-              <div className="space-y-2">
-                <Label>PDFs Asociados</Label>
-                <div className="space-y-1">
-                  {lead.pdf_urls.map((url, index) => (
-                    <div key={index} className="flex items-center gap-2 p-2 bg-background rounded border">
-                      <FileText className="h-4 w-4 text-red-600" />
-                      <span className="text-sm">PDF {index + 1}</span>
+            {/* Servicio */}
+            <div className="space-y-2">
+              <Label>Servicio</Label>
+              <Select value={watchedType} onValueChange={(value: 'hotel' | 'flight' | 'package') => setValue('trip.type', value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="flight">
+                    <div className="flex items-center gap-2">
+                      <Plane className="h-4 w-4" />
+                      Vuelo
                     </div>
-                  ))}
-                </div>
+                  </SelectItem>
+                  <SelectItem value="hotel">
+                    <div className="flex items-center gap-2">
+                      <Hotel className="h-4 w-4" />
+                      Hotel
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="package">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Paquete
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Fechas - Ida y Vuelta */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Calendar className="h-4 w-4" />
+                Fechas
+              </Label>
+              <div className="space-y-2">
+                <Input
+                  type="date"
+                  {...register('trip.dates.checkin')}
+                  placeholder="Fecha de ida"
+                />
+                <Input
+                  type="date"
+                  {...register('trip.dates.checkout')}
+                  placeholder="Fecha de vuelta"
+                />
               </div>
-            )}
+            </div>
+
+            {/* Personas */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Personas
+              </Label>
+              <Input
+                type="number"
+                min="1"
+                {...register('trip.adults', { valueAsNumber: true })}
+                placeholder="Número de adultos"
+              />
+            </div>
+
+            {/* Niños */}
+            <div className="space-y-2">
+              <Label>Niños</Label>
+              <Input
+                type="number"
+                min="0"
+                {...register('trip.children', { valueAsNumber: true })}
+                placeholder="Número de niños"
+              />
+            </div>
+
+            {/* WhatsApp */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                WhatsApp
+              </Label>
+              <Input
+                type="tel"
+                {...register('contact.phone')}
+                placeholder="Número de WhatsApp"
+              />
+            </div>
 
             {/* Actions */}
             <div className="pt-6 space-y-2">
