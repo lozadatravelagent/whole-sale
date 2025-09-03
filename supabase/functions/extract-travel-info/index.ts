@@ -20,35 +20,43 @@ serve(async (req) => {
 
     console.log(`Extracting travel info from: ${messages}`);
 
-    const systemPrompt = `Eres un experto en extraer información estructurada de conversaciones sobre viajes. Tu tarea es analizar mensajes de chat y extraer información relevante para crear un lead de CRM.
+    const systemPrompt = `Eres un experto extractor de información de viajes. Analiza el texto y extrae TODA la información relevante para crear un lead de CRM completo.
 
-Extrae la siguiente información del texto y devuélvela en formato JSON:
+INSTRUCCIONES CRÍTICAS:
+- Busca fechas en CUALQUIER formato (15 enero, enero 2024, 15/01, etc.)
+- Identifica números de personas (adultos, niños, bebés)
+- Encuentra presupuestos en cualquier moneda o formato
+- Detecta destinos, ciudades, países
+- Determina el tipo de servicio (vuelo, hotel, paquete)
+- Extrae nombres, teléfonos, emails si aparecen
 
+Devuelve SIEMPRE un JSON válido con esta estructura exacta:
 {
-  "destination": "nombre de la ciudad/destino mencionado",
+  "destination": "ciudad/destino mencionado o null",
   "dates": {
-    "checkin": "fecha de entrada en formato YYYY-MM-DD si se menciona",
-    "checkout": "fecha de salida en formato YYYY-MM-DD si se menciona"
+    "checkin": "fecha inicio en formato YYYY-MM-DD o null",
+    "checkout": "fecha fin en formato YYYY-MM-DD o null"
   },
   "travelers": {
-    "adults": número de adultos,
-    "children": número de niños
+    "adults": número de adultos o 1,
+    "children": número de niños o 0
   },
-  "budget": presupuesto mencionado en números,
-  "tripType": "hotel", "flight", o "package" según lo que se infiera,
+  "budget": número del presupuesto o 0,
+  "tripType": "flight", "hotel", o "package",
   "contactInfo": {
-    "name": "nombre si se menciona",
-    "phone": "teléfono si se menciona", 
-    "email": "email si se menciona"
+    "name": null,
+    "phone": null,
+    "email": null
   },
-  "description": "resumen breve de lo que quiere el cliente"
+  "description": "resumen de la consulta"
 }
 
-Si no encuentras información específica, omite ese campo o usa valores por defecto lógicos.
+EJEMPLOS:
+- "Vuelo para 2 adultos y 1 niño a París del 15 enero al 20 enero, presupuesto 3000 USD"
+- "Necesito hotel en Madrid para 4 personas con $2000 dólares"
+- "Viaje familiar a Cancún en marzo con 2500 de presupuesto"
 
-Ejemplos de fechas: "15 de enero" -> "2024-01-15", "marzo 2024" -> buscar fechas razonables en marzo.
-Para presupuesto: busca números seguidos de "USD", "dólares", "$", etc.
-Para personas: "somos 4", "2 adultos", "familia de 5", etc.`;
+SÉ MUY CUIDADOSO: Siempre devuelve JSON válido, nunca texto adicional.`;
 
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openAIApiKey) {
@@ -62,12 +70,12 @@ Para personas: "somos 4", "2 adultos", "familia de 5", etc.`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini-2025-08-07',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Extrae información de este texto: "${messages}"` }
+          { role: 'user', content: `EXTRAE INFORMACIÓN DE: "${messages}"` }
         ],
-        max_tokens: 500,
+        max_completion_tokens: 800,
         temperature: 0.1,
       }),
     });
@@ -83,20 +91,32 @@ Para personas: "somos 4", "2 adultos", "familia de 5", etc.`;
 
     console.log('AI response:', aiResponse);
 
+    // Limpiar la respuesta y extraer solo el JSON
+    let cleanResponse = aiResponse.trim();
+    if (cleanResponse.startsWith('```json')) {
+      cleanResponse = cleanResponse.replace(/```json\n?/, '').replace(/\n?```$/, '');
+    }
+    if (cleanResponse.startsWith('```')) {
+      cleanResponse = cleanResponse.replace(/```\n?/, '').replace(/\n?```$/, '');
+    }
+
     // Intentar parsear la respuesta JSON
     let travelInfo = {};
     try {
-      travelInfo = JSON.parse(aiResponse);
+      travelInfo = JSON.parse(cleanResponse);
+      console.log('Successfully parsed travel info:', travelInfo);
     } catch (parseError) {
-      console.warn('Failed to parse AI response as JSON, using fallback');
-      // Si no se puede parsear, crear un objeto básico
+      console.warn('Failed to parse AI response as JSON:', parseError);
+      console.warn('Raw response was:', cleanResponse);
+      
+      // Fallback: crear objeto básico con información extraíble
       travelInfo = {
         description: messages.length > 200 ? messages.substring(0, 200) + '...' : messages,
-        tripType: 'package'
+        tripType: 'package',
+        travelers: { adults: 1, children: 0 },
+        budget: 0
       };
     }
-
-    console.log('Extracted travel info:', travelInfo);
 
     return new Response(JSON.stringify({ 
       travelInfo
@@ -108,7 +128,12 @@ Para personas: "somos 4", "2 adultos", "familia de 5", etc.`;
     console.error('Error in extract-travel-info function:', error);
     return new Response(JSON.stringify({ 
       error: error.message,
-      travelInfo: {}
+      travelInfo: {
+        description: "Error al extraer información",
+        tripType: 'package',
+        travelers: { adults: 1, children: 0 },
+        budget: 0
+      }
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

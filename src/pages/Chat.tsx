@@ -142,6 +142,22 @@ const Chat = () => {
         meta: {}
       });
 
+      // NUEVO: Crear lead con información extraída después del primer mensaje del usuario
+      if (messages.length === 1) { // Solo el mensaje de bienvenida existe
+        const conversation = conversations.find(c => c.id === selectedConversation);
+        if (conversation) {
+          console.log('Creating lead from first user message');
+          const leadId = await createLeadFromChat(conversation, messages);
+          if (leadId) {
+            console.log('Lead created from chat with ID:', leadId);
+            toast({
+              title: "Lead Creado",
+              description: "Se ha creado automáticamente un lead en el CRM con tu información.",
+            });
+          }
+        }
+      }
+
     } catch (error) {
       console.error('Error sending message:', error);
       setIsTyping(false);
@@ -211,23 +227,12 @@ const Chat = () => {
         meta: {}
       });
 
-      // ¡NUEVO! Crear lead automáticamente en el CRM
-      const leadId = await createLeadFromChat(newConversation, [welcomeMessage]);
-      
-      if (leadId) {
-        console.log('Lead created automatically for chat:', leadId);
-        toast({
-          title: "Nuevo Chat y Lead",
-          description: "Chat creado y lead agregado al CRM automáticamente.",
-        });
-      } else {
-        toast({
-          title: "Nuevo Chat",
-          description: "Chat creado. ¡Pregúntame sobre viajes!",
-        });
-      }
+      toast({
+        title: "Nuevo Chat",
+        description: "Chat creado. ¡Cuéntame sobre tu viaje para crear tu lead automáticamente!",
+      });
     } catch (error) {
-      console.error('Error creating chat and lead:', error);
+      console.error('Error creating chat:', error);
       toast({
         title: "Error",
         description: "No se pudo crear el chat.",
