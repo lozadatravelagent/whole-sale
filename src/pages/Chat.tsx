@@ -11,6 +11,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
+import { createLeadFromChat } from '@/utils/chatToLead';
 import { 
   Send, 
   MessageSquare, 
@@ -196,11 +197,12 @@ const Chat = () => {
 
   const createNewChat = async () => {
     try {
+      // Crear la conversación
       const newConversation = await createConversation();
       setSelectedConversation(newConversation.id);
 
-      // Add welcome message
-      await saveMessage({
+      // Crear mensaje de bienvenida
+      const welcomeMessage = await saveMessage({
         conversation_id: newConversation.id,
         role: 'assistant',
         content: { 
@@ -209,11 +211,23 @@ const Chat = () => {
         meta: {}
       });
 
-      toast({
-        title: "Nuevo Chat",
-        description: "Chat creado. ¡Pregúntame sobre viajes!",
-      });
+      // ¡NUEVO! Crear lead automáticamente en el CRM
+      const leadId = await createLeadFromChat(newConversation, [welcomeMessage]);
+      
+      if (leadId) {
+        console.log('Lead created automatically for chat:', leadId);
+        toast({
+          title: "Nuevo Chat y Lead",
+          description: "Chat creado y lead agregado al CRM automáticamente.",
+        });
+      } else {
+        toast({
+          title: "Nuevo Chat",
+          description: "Chat creado. ¡Pregúntame sobre viajes!",
+        });
+      }
     } catch (error) {
+      console.error('Error creating chat and lead:', error);
       toast({
         title: "Error",
         description: "No se pudo crear el chat.",
