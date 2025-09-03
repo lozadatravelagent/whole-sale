@@ -24,7 +24,8 @@ import {
   Users,
   DollarSign,
   Star,
-  Loader2
+  Loader2,
+  Plus
 } from 'lucide-react';
 import type { Conversation, Message } from '@/types';
 
@@ -33,31 +34,37 @@ const Chat = () => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  const conversations: Conversation[] = [
-    {
-      id: '1',
-      tenant_id: 'tenant1',
-      agency_id: 'agency1',
-      channel: 'wa',
-      external_key: '+54911234567',
-      state: 'active',
-      last_message_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: '2',
-      tenant_id: 'tenant1', 
-      agency_id: 'agency1',
-      channel: 'web',
-      external_key: 'web-user-123',
-      state: 'active',
-      last_message_at: new Date(Date.now() - 900000).toISOString(),
-      created_at: new Date().toISOString(),
-    }
-  ];
+  // Initialize with some default conversations
+  useEffect(() => {
+    const defaultConversations: Conversation[] = [
+      {
+        id: '1',
+        tenant_id: 'tenant1',
+        agency_id: 'agency1',
+        channel: 'wa',
+        external_key: '+54911234567',
+        state: 'active',
+        last_message_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: '2',
+        tenant_id: 'tenant1', 
+        agency_id: 'agency1',
+        channel: 'web',
+        external_key: 'web-user-123',
+        state: 'active',
+        last_message_at: new Date(Date.now() - 900000).toISOString(),
+        created_at: new Date().toISOString(),
+      }
+    ];
+    
+    setConversations(defaultConversations);
+  }, []);
 
   const mockMessages: Message[] = [
     {
@@ -197,14 +204,57 @@ const Chat = () => {
     return channel === 'wa' ? Phone : Globe;
   };
 
+  const createNewChat = () => {
+    const newConversation: Conversation = {
+      id: `chat-${Date.now()}`,
+      tenant_id: 'tenant1',
+      agency_id: 'agency1',
+      channel: 'web',
+      external_key: `travel-chat-${Date.now()}`,
+      state: 'active',
+      last_message_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    };
+
+    setConversations(prev => [newConversation, ...prev]);
+    setSelectedConversation(newConversation.id);
+    setMessages([{
+      id: 'welcome',
+      conversation_id: newConversation.id,
+      role: 'assistant',
+      content: { 
+        text: '¡Hola! Soy tu asistente de viajes. Puedo ayudarte a buscar vuelos y hoteles. Por ejemplo, puedes decirme: "Quiero un vuelo y hotel para 2 personas del 15 al 22 de marzo para Madrid, vuelo directo"' 
+      },
+      meta: {},
+      created_at: new Date().toISOString(),
+    }]);
+
+    toast({
+      title: "Nuevo Chat",
+      description: "Chat creado. ¡Pregúntame sobre viajes!",
+    });
+  };
+
   return (
     <MainLayout userRole="ADMIN">
       <div className="h-screen flex">
         {/* Conversations Sidebar */}
         <div className="w-80 border-r border-border bg-gradient-card">
           <div className="p-4 border-b border-border">
-            <h2 className="text-lg font-semibold">Conversations</h2>
-            <p className="text-sm text-muted-foreground">Active customer chats</p>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h2 className="text-lg font-semibold">Conversaciones</h2>
+                <p className="text-sm text-muted-foreground">Chats de viajes</p>
+              </div>
+              <Button
+                onClick={createNewChat}
+                size="sm"
+                className="bg-primary hover:bg-primary/90"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Nuevo Chat
+              </Button>
+            </div>
           </div>
 
           <ScrollArea className="flex-1">
