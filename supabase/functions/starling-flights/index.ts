@@ -26,6 +26,8 @@ class StarlingAPI {
   ) {}
 
   async getAccessToken(): Promise<string> {
+    console.log('Getting access token from Starling API...');
+    
     const response = await fetch(`${this.baseUrl}/FlightService.json/GetAccessToken`, {
       method: 'POST',
       headers: {
@@ -37,17 +39,30 @@ class StarlingAPI {
       }),
     });
 
+    console.log('GetAccessToken response status:', response.status);
+    console.log('GetAccessToken response headers:', Object.fromEntries(response.headers.entries()));
+
     if (!response.ok) {
-      throw new Error(`Failed to get access token: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('GetAccessToken failed:', response.status, errorText);
+      throw new Error(`Failed to get access token: ${response.statusText} - ${errorText}`);
     }
 
     const text = await response.text();
-    this.token = text.replace(/^["']|["']$/g, '');
+    console.log('GetAccessToken raw response:', text);
+    
+    // Clean the token - remove quotes and whitespace
+    this.token = text.replace(/^["']|["']$/g, '').trim();
+    console.log('Cleaned token:', this.token);
+    
     return this.token;
   }
 
   async searchFlights(params: FlightSearchParams) {
+    console.log('Starting flight search with params:', params);
+    
     if (!this.token) {
+      console.log('No token found, getting access token...');
       await this.getAccessToken();
     }
 
@@ -70,6 +85,7 @@ class StarlingAPI {
 
     // Add return leg if roundtrip
     if (params.returnDate) {
+      console.log('Adding return leg for roundtrip');
       query.Legs.push({
         DepartureAirportCity: params.destination,
         ArrivalAirportCity: params.origin,
@@ -77,7 +93,7 @@ class StarlingAPI {
       });
     }
 
-    console.log('Searching flights with query:', JSON.stringify(query, null, 2));
+    console.log('Flight search query:', JSON.stringify(query, null, 2));
 
     const response = await fetch(`${this.baseUrl}/FlightService.json/GetFlightAvailability`, {
       method: 'POST',
@@ -87,12 +103,28 @@ class StarlingAPI {
       body: JSON.stringify(query),
     });
 
+    console.log('GetFlightAvailability response status:', response.status);
+    console.log('GetFlightAvailability response headers:', Object.fromEntries(response.headers.entries()));
+
     if (!response.ok) {
-      throw new Error(`Flight search failed: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('GetFlightAvailability failed:', response.status, errorText);
+      throw new Error(`Flight search failed: ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('Flight search response:', JSON.stringify(data, null, 2));
+    console.log('Flight search response structure:', {
+      hasToken: !!data.Token,
+      hasFares: !!data.Fares,
+      faresCount: data.Fares?.length || 0,
+      transactionCode: data.TransactionCode,
+      transactionMessage: data.TransactionMessage,
+      keys: Object.keys(data)
+    });
+    
+    if (data.TransactionCode && data.TransactionCode !== '1000') {
+      console.error('API returned error code:', data.TransactionCode, data.TransactionMessage);
+    }
     
     return data;
   }

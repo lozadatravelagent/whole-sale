@@ -139,6 +139,48 @@ Ejemplos de destinos comunes:
   }
 
   async generateRecommendations(searchParams: TravelSearchParams, flightResults: any, hotelResults: any): Promise<{ narrative: string; recommendations: any[] }> {
+    console.log('Generating recommendations with:', {
+      searchType: searchParams.type,
+      hasFlightResults: !!flightResults,
+      hasHotelResults: !!hotelResults,
+      flightSuccess: flightResults?.success,
+      hotelSuccess: hotelResults?.success,
+      flightFares: flightResults?.results?.Fares?.length || 0
+    });
+
+    // Check if we have actual flight data
+    const hasFlights = flightResults?.success && flightResults?.results?.Fares?.length > 0;
+    const hasHotels = hotelResults?.success && hotelResults?.results;
+    
+    if (!hasFlights && !hasHotels) {
+      console.log('No results found from APIs');
+      return {
+        narrative: `## ❌ Sin Resultados Disponibles
+
+**Búsqueda realizada:**
+- 🛫 Origen: ${searchParams.origin || 'No especificado'}
+- 🏨 Destino: ${searchParams.destination}
+- 📅 Fechas: ${searchParams.departureDate} ${searchParams.returnDate ? `- ${searchParams.returnDate}` : ''}
+- 👥 Pasajeros: ${searchParams.adults} adultos${searchParams.children ? ` + ${searchParams.children} niños` : ''}
+
+**Estado de las búsquedas:**
+- Vuelos: ${flightResults?.success ? '✅ API respondió' : '❌ Error en API'}
+- Hoteles: ${hotelResults?.success ? '✅ API respondió' : '❌ Error en API'}
+
+Lamentablemente, no se encontraron vuelos ni hoteles disponibles para estas fechas y destino. Esto puede deberse a:
+
+- Las fechas seleccionadas pueden no tener disponibilidad
+- El destino puede requerir códigos IATA específicos
+- Las APIs pueden estar experimentando problemas temporales
+
+**Sugerencias:**
+- Intenta con fechas diferentes
+- Verifica que los códigos de aeropuerto sean correctos
+- Considera destinos alternativos`,
+        recommendations: []
+      };
+    }
+
     const systemPrompt = `Eres un agente de viajes experto. Devuelve SOLO JSON válido con este esquema:
 {
   "narrative": string, // texto breve en español con formato markdown (titulares y bullets)
@@ -153,7 +195,8 @@ Ejemplos de destinos comunes:
     }
   ]
 }
-Si no hay información suficiente, devuelve recommendations como [].`;
+
+Analiza SOLO los datos reales proporcionados. Si no hay vuelos o hoteles disponibles, crear recomendaciones vacías.`;
 
     const userMessage = `
 Búsqueda: ${JSON.stringify(searchParams)}
@@ -180,10 +223,13 @@ Genera hasta 5 recomendaciones combinadas. NO inventes datos: si algún valor no
 
     const data = await response.json();
     const content = (data.choices?.[0]?.message?.content || '').trim();
+    console.log('OpenAI recommendation response:', content);
+    
     try {
       const parsed = JSON.parse(content);
       return { narrative: parsed.narrative || '', recommendations: parsed.recommendations || [] };
     } catch (e) {
+      console.error('Failed to parse OpenAI JSON response:', e);
       // Fallback: wrap as narrative text
       return { narrative: content, recommendations: [] };
     }
