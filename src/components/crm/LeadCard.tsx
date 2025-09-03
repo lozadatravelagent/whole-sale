@@ -67,8 +67,8 @@ export function LeadCard({ lead, onClick, onDelete, isDragging, seller }: LeadCa
     onDelete?.();
   };
 
-  const completedChecklist = (lead.checklist || []).filter(item => item.completed).length;
-  const totalChecklist = (lead.checklist || []).length;
+  const completedChecklist = Array.isArray(lead.checklist) ? lead.checklist.filter(item => item.completed).length : 0;
+  const totalChecklist = Array.isArray(lead.checklist) ? lead.checklist.length : 0;
   const isTaskOverdue = isOverdue(lead.due_date);
 
   return (
@@ -192,7 +192,7 @@ export function LeadCard({ lead, onClick, onDelete, isDragging, seller }: LeadCa
             )}
 
             {/* Attachments count */}
-            {(lead.attachments && lead.attachments.length > 0) && (
+            {Array.isArray(lead.attachments) && lead.attachments.length > 0 && (
               <div className="flex items-center space-x-1">
                 <Paperclip className="h-3 w-3 text-muted-foreground" />
                 <span className="text-muted-foreground">{lead.attachments.length}</span>

@@ -82,8 +82,8 @@ export async function getLeads(agencyId?: string): Promise<Lead[]> {
       ...lead,
       contact: lead.contact as any,
       trip: lead.trip as any,
-      checklist: (lead.checklist as any) || [],
-      attachments: (lead.attachments as any) || [],
+      checklist: lead.checklist ? (typeof lead.checklist === 'string' ? JSON.parse(lead.checklist) : lead.checklist) : [],
+      attachments: lead.attachments ? (typeof lead.attachments === 'string' ? JSON.parse(lead.attachments) : lead.attachments) : [],
       budget: lead.budget ? Number(lead.budget) : undefined,
     })) as Lead[];
   } catch (error) {
@@ -116,8 +116,8 @@ export async function createLead(input: CreateLeadInput): Promise<Lead | null> {
       ...data,
       contact: data.contact as any,
       trip: data.trip as any,
-      checklist: (data.checklist as any) || [],
-      attachments: (data.attachments as any) || [],
+      checklist: data.checklist ? (typeof data.checklist === 'string' ? JSON.parse(data.checklist) : data.checklist) : [],
+      attachments: data.attachments ? (typeof data.attachments === 'string' ? JSON.parse(data.attachments) : data.attachments) : [],
       budget: data.budget ? Number(data.budget) : undefined,
     } as Lead;
   } catch (error) {
@@ -157,8 +157,8 @@ export async function updateLead(input: UpdateLeadInput): Promise<Lead | null> {
       ...data,
       contact: data.contact as any,
       trip: data.trip as any,
-      checklist: (data.checklist as any) || [],
-      attachments: (data.attachments as any) || [],
+      checklist: data.checklist ? (typeof data.checklist === 'string' ? JSON.parse(data.checklist) : data.checklist) : [],
+      attachments: data.attachments ? (typeof data.attachments === 'string' ? JSON.parse(data.attachments) : data.attachments) : [],
       budget: data.budget ? Number(data.budget) : undefined,
     } as Lead;
   } catch (error) {
