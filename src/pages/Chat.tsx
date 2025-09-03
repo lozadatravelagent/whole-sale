@@ -156,14 +156,14 @@ const Chat = () => {
         role: 'assistant',
         content: { 
           text: data.response,
-          metadata: data.type === 'recommendations' ? {
+          metadata: {
             searchParams: data.searchParams,
-            results: data.results
-          } : null
+            results: data.results,
+            recommendations: data.recommendations || []
+          }
         },
         meta: { 
-          type: data.type,
-          searchParams: data.searchParams 
+          type: data.type
         },
         created_at: new Date().toISOString(),
       };
@@ -347,7 +347,7 @@ const Chat = () => {
                             ? 'bg-primary text-primary-foreground' 
                             : 'bg-muted'
                         }`}>
-                          <p className="text-sm">{msg.content.text}</p>
+                          <div className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content.text}</div>
                           
                            {msg.content.metadata?.searchParams && (
                              <div className="mt-3 p-3 bg-background/20 rounded-lg">
@@ -378,14 +378,50 @@ const Chat = () => {
                              </div>
                            )}
 
-                          {msg.content.pdfUrl && (
-                            <div className="mt-2">
-                              <Button size="sm" variant="outline" className="text-xs">
-                                <FileText className="h-3 w-3 mr-1" />
-                                Download Quote PDF
-                              </Button>
-                            </div>
-                          )}
+                           {msg.content.metadata?.recommendations?.length > 0 && (
+                             <div className="mt-3 space-y-3">
+                               {msg.content.metadata.recommendations.map((rec: any, index: number) => (
+                                 <div key={index} className="bg-background/20 p-3 rounded-lg">
+                                   <div className="flex items-center justify-between">
+                                     <span className="font-medium text-sm">{rec.title}</span>
+                                     {rec.price && (
+                                       <span className="text-sm font-semibold">
+                                         {(rec.currency || 'USD')} {rec.price}
+                                       </span>
+                                     )}
+                                   </div>
+                                   {rec.flightSummary && (
+                                     <div className="mt-1 text-xs flex items-center gap-2">
+                                       <Plane className="h-3 w-3" />
+                                       <span>{rec.flightSummary}</span>
+                                     </div>
+                                   )}
+                                   {rec.hotelSummary && (
+                                     <div className="mt-1 text-xs flex items-center gap-2">
+                                       <Hotel className="h-3 w-3" />
+                                       <span>{rec.hotelSummary}</span>
+                                     </div>
+                                   )}
+                                   {Array.isArray(rec.notes) && rec.notes.length > 0 && (
+                                     <ul className="mt-2 text-xs list-disc pl-4 space-y-1">
+                                       {rec.notes.map((n: string, i: number) => (
+                                         <li key={i}>{n}</li>
+                                       ))}
+                                     </ul>
+                                   )}
+                                 </div>
+                               ))}
+                             </div>
+                           )}
+
+                           {msg.content.pdfUrl && (
+                             <div className="mt-2">
+                               <Button size="sm" variant="outline" className="text-xs">
+                                 <FileText className="h-3 w-3 mr-1" />
+                                 Download Quote PDF
+                               </Button>
+                             </div>
+                           )}
 
                           <p className="text-xs opacity-70 mt-1">
                             <Clock className="inline h-3 w-3 mr-1" />

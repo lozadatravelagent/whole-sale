@@ -41,8 +41,8 @@ class StarlingAPI {
       throw new Error(`Failed to get access token: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    this.token = data.replace(/['"]/g, ''); // Remove quotes
+    const text = await response.text();
+    this.token = text.replace(/^["']|["']$/g, '');
     return this.token;
   }
 
@@ -51,7 +51,7 @@ class StarlingAPI {
       await this.getAccessToken();
     }
 
-    const query = {
+    const query: any = {
       Flights: [
         {
           Origin: params.origin,
@@ -59,12 +59,13 @@ class StarlingAPI {
           DepartureDate: params.departureDate,
         }
       ],
-      Passengers: {
-        Adult: params.adults,
-        Child: params.children || 0,
-        Infant: 0,
-      },
+      Passengers: [
+        { PaxType: 'ADT', Quantity: params.adults },
+        { PaxType: 'CHD', Quantity: params.children || 0 },
+        { PaxType: 'INF', Quantity: 0 },
+      ],
       DirectFlight: params.directFlight || false,
+      Currency: 'USD',
       Token: this.token,
     };
 

@@ -138,28 +138,28 @@ Ejemplos de destinos comunes:
     return await response.json();
   }
 
-  async generateRecommendations(searchParams: TravelSearchParams, flightResults: any, hotelResults: any): Promise<string> {
-    const systemPrompt = `Eres un agente de viajes experto que analiza resultados de búsquedas de vuelos y hoteles para crear recomendaciones personalizadas.
-
-Tu trabajo es:
-1. Analizar los resultados de vuelos y hoteles
-2. Seleccionar las 4-5 mejores opciones combinadas
-3. Presentar las opciones de manera clara y atractiva
-4. Incluir precios, horarios, y características destacadas
-5. Dar recomendaciones personalizadas basadas en valor, comodidad, y experiencia
-
-Responde en español de manera profesional pero amigable.`;
+  async generateRecommendations(searchParams: TravelSearchParams, flightResults: any, hotelResults: any): Promise<{ narrative: string; recommendations: any[] }> {
+    const systemPrompt = `Eres un agente de viajes experto. Devuelve SOLO JSON válido con este esquema:
+{
+  "narrative": string, // texto breve en español con formato markdown (titulares y bullets)
+  "recommendations": [
+    {
+      "title": string,              // nombre comercial de la opción
+      "price": number,              // precio total estimado
+      "currency": "USD",
+      "flightSummary": string,      // ruta, fechas, aerolínea, si es directo
+      "hotelSummary": string,       // hotel, plan, ubicación, rating
+      "notes": string[]             // bullets con ventajas
+    }
+  ]
+}
+Si no hay información suficiente, devuelve recommendations como [].`;
 
     const userMessage = `
-Búsqueda: ${JSON.stringify(searchParams, null, 2)}
-
-Resultados de vuelos:
-${JSON.stringify(flightResults, null, 2)}
-
-Resultados de hoteles:
-${JSON.stringify(hotelResults, null, 2)}
-
-Por favor, analiza estos resultados y dame las 4-5 mejores opciones combinadas con recomendaciones detalladas.`;
+Búsqueda: ${JSON.stringify(searchParams)}
+Resultados de vuelos: ${JSON.stringify(flightResults)}
+Resultados de hoteles: ${JSON.stringify(hotelResults)}
+Genera hasta 5 recomendaciones combinadas. NO inventes datos: si algún valor no está disponible, omítelo.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -173,13 +173,20 @@ Por favor, analiza estos resultados y dame las 4-5 mejores opciones combinadas c
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage }
         ],
-        max_tokens: 2000,
-        temperature: 0.7,
+        max_tokens: 1600,
+        temperature: 0.3,
       }),
     });
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    const content = (data.choices?.[0]?.message?.content || '').trim();
+    try {
+      const parsed = JSON.parse(content);
+      return { narrative: parsed.narrative || '', recommendations: parsed.recommendations || [] };
+    } catch (e) {
+      // Fallback: wrap as narrative text
+      return { narrative: content, recommendations: [] };
+    }
   }
 }
 
@@ -238,11 +245,12 @@ serve(async (req) => {
     console.log('Hotel results:', hotelResults);
 
     // Generate AI recommendations
-    const recommendations = await agent.generateRecommendations(searchParams, flightResults, hotelResults);
+    const rec = await agent.generateRecommendations(searchParams, flightResults, hotelResults);
 
     return new Response(JSON.stringify({
       success: true,
-      response: recommendations,
+      response: rec.narrative,
+      recommendations: rec.recommendations,
       searchParams,
       results: {
         flights: flightResults,
