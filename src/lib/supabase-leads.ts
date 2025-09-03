@@ -92,17 +92,31 @@ export async function getLeads(agencyId?: string): Promise<Lead[]> {
   }
 }
 
-// Create a new lead
+// Create a new lead  
 export async function createLead(input: CreateLeadInput): Promise<Lead | null> {
   try {
+    // Convert empty date strings to null for database compatibility
+    const processedInput = {
+      ...input,
+      due_date: input.due_date && input.due_date.trim() !== '' ? input.due_date : null,
+      // Handle empty date strings in trip dates
+      trip: {
+        ...input.trip,
+        dates: {
+          checkin: input.trip.dates.checkin && input.trip.dates.checkin.trim() !== '' ? input.trip.dates.checkin : null,
+          checkout: input.trip.dates.checkout && input.trip.dates.checkout.trim() !== '' ? input.trip.dates.checkout : null,
+        }
+      }
+    };
+
     const { data, error } = await supabase
       .from('leads')
       .insert({
-        ...input,
-        status: input.status || 'new',
+        ...processedInput,
+        status: processedInput.status || 'new',
         pdf_urls: [],
-        checklist: input.checklist ? JSON.stringify(input.checklist) : JSON.stringify([]),
-        attachments: input.attachments ? JSON.stringify(input.attachments) : JSON.stringify([]),
+        checklist: processedInput.checklist ? JSON.stringify(processedInput.checklist) : JSON.stringify([]),
+        attachments: processedInput.attachments ? JSON.stringify(processedInput.attachments) : JSON.stringify([]),
       })
       .select()
       .single();
@@ -303,5 +317,25 @@ export async function addLeadAttachment(id: string, attachment: Attachment): Pro
   } catch (error) {
     console.error('Error in addLeadAttachment:', error);
     return null;
+  }
+}
+
+// Delete a section
+export async function deleteSection(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('sections')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting section:', error);
+      throw error;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error in deleteSection:', error);
+    return false;
   }
 }

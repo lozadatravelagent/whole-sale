@@ -10,6 +10,7 @@ import {
   getSellers,
   getSections,
   createSection,
+  deleteSection,
   CreateLeadInput, 
   UpdateLeadInput 
 } from '@/lib/supabase-leads';
@@ -191,6 +192,42 @@ export function useLeads() {
     return null;
   };
 
+  // Remove section
+  const removeSection = async (sectionId: string) => {
+    try {
+      // First, move any leads in this section to the first available section
+      const leadsInSection = leadsBySection[sectionId] || [];
+      const remainingSections = sections.filter(s => s.id !== sectionId);
+      
+      if (leadsInSection.length > 0 && remainingSections.length > 0) {
+        const firstSectionId = remainingSections[0].id;
+        
+        // Move all leads to the first remaining section
+        for (const lead of leadsInSection) {
+          await moveLeadToSection(lead.id, firstSectionId);
+        }
+      }
+      
+      // Now delete the section
+      const success = await deleteSection(sectionId);
+      if (success) {
+        setSections(prev => prev.filter(section => section.id !== sectionId));
+        toast({
+          title: "Éxito",
+          description: `Sección eliminada correctamente.${leadsInSection.length > 0 ? ` ${leadsInSection.length} leads movidos a la primera sección.` : ''}`
+        });
+        return true;
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo eliminar la sección."
+      });
+    }
+    return false;
+  };
+
   // Group leads by status (backward compatibility)
   const leadsByStatus = {
     new: leads.filter(lead => lead.status === 'new'),
@@ -244,6 +281,7 @@ export function useLeads() {
     moveLeadToStatus,
     moveLeadToSection,
     addSection,
+    removeSection,
     getOverdueLeads,
     refresh: fetchLeads,
     refreshSections: () => fetchSections('00000000-0000-0000-0000-000000000002'),

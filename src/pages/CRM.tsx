@@ -21,7 +21,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Users, DollarSign } from 'lucide-react';
+import { Plus, Users, DollarSign, X } from 'lucide-react';
 import { LeadCard } from '@/components/crm/LeadCard';
 import { LeadDialog } from '@/components/crm/LeadDialog';
 import { useLeads } from '@/hooks/useLeads';
@@ -94,6 +94,7 @@ function DroppableSection({
   onEdit, 
   onDelete,
   onSave,
+  onDeleteSection,
   totalBudget,
   sellers,
   isOver
@@ -103,6 +104,7 @@ function DroppableSection({
   onEdit: (lead: Lead) => void;
   onDelete: (lead: Lead) => void;
   onSave: (lead: Lead, updates: Partial<Lead>) => void;
+  onDeleteSection: (section: Section) => void;
   totalBudget: number;
   sellers: any[];
   isOver?: boolean;
@@ -140,6 +142,14 @@ function DroppableSection({
               {leads.length}
             </Badge>
           </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDeleteSection(section)}
+            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </div>
         {totalBudget > 0 && (
           <div className="flex items-center gap-1 text-sm text-green-600 font-semibold">
@@ -187,6 +197,7 @@ export default function CRM() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
+  const [sectionToDelete, setSectionToDelete] = useState<Section | null>(null);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
 
@@ -201,6 +212,7 @@ export default function CRM() {
     removeLead, 
     moveLeadToSection, 
     addSection,
+    removeSection,
     leads
   } = useLeads();
   
@@ -342,6 +354,17 @@ export default function CRM() {
     await addSection(DUMMY_AGENCY_ID, `Nueva Sección ${sections.length + 1}`, randomColor);
   };
 
+  const handleDeleteSection = (section: Section) => {
+    setSectionToDelete(section);
+  };
+
+  const confirmDeleteSection = async () => {
+    if (sectionToDelete) {
+      await removeSection(sectionToDelete.id);
+      setSectionToDelete(null);
+    }
+  };
+
   if (loading) {
     return (
       <MainLayout>
@@ -401,6 +424,7 @@ export default function CRM() {
                 onEdit={handleEditLead}
                 onDelete={handleDeleteLead}
                 onSave={handleQuickSave}
+                onDeleteSection={handleDeleteSection}
                 totalBudget={budgetBySection[section.id] || 0}
                 sellers={sellers}
                 isOver={overId === section.id}
@@ -445,7 +469,7 @@ export default function CRM() {
           sellers={sellers}
         />
 
-        {/* Delete Confirmation */}
+        {/* Delete Lead Confirmation */}
         <AlertDialog open={!!leadToDelete} onOpenChange={() => setLeadToDelete(null)}>
           <AlertDialogContent className="bg-background">
             <AlertDialogHeader>
@@ -462,6 +486,33 @@ export default function CRM() {
                 className="bg-destructive hover:bg-destructive/90"
               >
                 Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete Section Confirmation */}
+        <AlertDialog open={!!sectionToDelete} onOpenChange={() => setSectionToDelete(null)}>
+          <AlertDialogContent className="bg-background">
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar Sección?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer. La sección "{sectionToDelete?.name}" 
+                será eliminada permanentemente.
+                {leadsBySection[sectionToDelete?.id || '']?.length > 0 && (
+                  <span className="block mt-2 font-semibold text-amber-600">
+                    Los {leadsBySection[sectionToDelete?.id || '']?.length} leads en esta sección serán movidos a la primera sección disponible.
+                  </span>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmDeleteSection}
+                className="bg-destructive hover:bg-destructive/90"
+              >
+                Eliminar Sección
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
