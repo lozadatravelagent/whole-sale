@@ -121,8 +121,8 @@ export function LeadDialog({
         contact: lead.contact,
         trip: lead.trip,
         status: lead.status,
-        section_id: lead.section_id,
-        seller_id: lead.seller_id,
+        section_id: lead.section_id || '',
+        seller_id: lead.seller_id || '',
         budget: lead.budget,
         description: lead.description || '',
         due_date: lead.due_date || ''
@@ -130,7 +130,7 @@ export function LeadDialog({
       setChecklist(Array.isArray(lead.checklist) ? lead.checklist : []);
     } else {
       // Para nuevo lead, asignar la primera sección por defecto
-      const defaultSectionId = sections.length > 0 ? sections[0].id : undefined;
+      const defaultSectionId = sections.length > 0 ? sections[0].id : '';
       reset({
         contact: { name: '', phone: '', email: '' },
         trip: { 
@@ -142,6 +142,7 @@ export function LeadDialog({
         },
         status: 'new',
         section_id: defaultSectionId,
+        seller_id: '',
         budget: 0,
         description: '',
         due_date: ''

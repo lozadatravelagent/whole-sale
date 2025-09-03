@@ -95,10 +95,12 @@ export async function getLeads(agencyId?: string): Promise<Lead[]> {
 // Create a new lead  
 export async function createLead(input: CreateLeadInput): Promise<Lead | null> {
   try {
-    // Convert empty date strings to null for database compatibility
+    // Convert empty strings to null for UUID fields and dates
     const processedInput = {
       ...input,
       due_date: input.due_date && input.due_date.trim() !== '' ? input.due_date : null,
+      section_id: input.section_id && input.section_id.trim() !== '' ? input.section_id : null,
+      seller_id: input.seller_id && input.seller_id.trim() !== '' ? input.seller_id : null,
       // Handle empty date strings in trip dates
       trip: {
         ...input.trip,
