@@ -113,11 +113,18 @@ const Chat = () => {
 
       console.log('Sending message to travel-chat:', currentMessage);
       
+      // Get conversation info for n8n
+      const conversation = conversations.find(c => c.id === selectedConversation);
+      
       // Call travel chat API
       const { data, error } = await supabase.functions.invoke('travel-chat', {
         body: {
           message: currentMessage,
           conversationId: selectedConversation,
+          userId: user?.id,
+          userName: user?.email || user?.user_metadata?.full_name,
+          leadId: (conversation as any)?.meta?.lead_id || null,
+          agencyId: user?.user_metadata?.agency_id
         }
       });
 
@@ -143,7 +150,6 @@ const Chat = () => {
       });
 
       // NUEVO: Crear o actualizar lead con información extraída después del primer mensaje del usuario
-      const conversation = conversations.find(c => c.id === selectedConversation);
       if (conversation) {
         console.log('Processing lead creation/update from user message');
         
