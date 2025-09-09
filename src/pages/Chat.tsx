@@ -48,7 +48,6 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -75,33 +74,7 @@ const Chat = () => {
     loadConversations();
   }, []);
 
-  // Smart auto-scroll - only scroll when user sends a message or when at bottom
-  useEffect(() => {
-    if (!shouldAutoScroll || messages.length === 0) return;
-
-    const scrollToBottom = () => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    // Check if user is near the bottom of the chat
-    const isNearBottom = () => {
-      const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-content]');
-      if (!scrollArea) return true;
-      
-      const { scrollTop, scrollHeight, clientHeight } = scrollArea;
-      return scrollHeight - scrollTop - clientHeight < 100;
-    };
-
-    // Only auto-scroll if user is already near the bottom or if it's the first message
-    if (messages.length === 1 || isNearBottom()) {
-      scrollToBottom();
-    }
-  }, [messages, shouldAutoScroll]);
-
-  // Reset auto-scroll when conversation changes
-  useEffect(() => {
-    setShouldAutoScroll(true);
-  }, [selectedConversation]);
+  // No auto-scroll - user controls scroll manually
 
   // Control typing indicator based on new messages from n8n workflows
   useEffect(() => {
@@ -141,7 +114,6 @@ const Chat = () => {
     setMessage('');
     setIsLoading(true);
     setIsTyping(true);
-    setShouldAutoScroll(true); // Ensure auto-scroll for user messages
 
     try {
       // Save user message to database
@@ -285,9 +257,6 @@ const Chat = () => {
 
   const createNewChat = async () => {
     try {
-      // Desactivar auto-scroll temporalmente para evitar salto
-      setShouldAutoScroll(false);
-      
       // Crear la conversación
       const newConversation = await createConversation();
       setSelectedConversation(newConversation.id);
@@ -307,11 +276,6 @@ const Chat = () => {
         description: "Chat creado. ¡Cuéntame sobre tu viaje para crear tu lead automáticamente!",
       });
       
-      // Reactivar auto-scroll después de un breve delay para permitir que se cargue el chat
-      setTimeout(() => {
-        setShouldAutoScroll(true);
-      }, 500);
-      
     } catch (error) {
       console.error('Error creating chat:', error);
       toast({
@@ -319,8 +283,6 @@ const Chat = () => {
         description: "No se pudo crear el chat.",
         variant: "destructive",
       });
-      // Asegurar que se reactive el auto-scroll en caso de error
-      setShouldAutoScroll(true);
     }
   };
 
