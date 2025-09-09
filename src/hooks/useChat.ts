@@ -187,7 +187,8 @@ export function useMessages(conversationId: string | null) {
 
       if (error) throw error;
 
-      setMessages(prev => [...prev, data]);
+      // Don't add to local state here - let the real-time subscription handle it
+      // This prevents duplicate messages when we get both the return value and the subscription event
       return data;
     } catch (error) {
       console.error('Error saving message:', error);
@@ -208,9 +209,7 @@ export function useMessages(conversationId: string | null) {
 
       if (error) throw error;
 
-      setMessages(prev => 
-        prev.map(msg => msg.id === messageId ? data : msg)
-      );
+      // Don't update local state here - let the real-time subscription handle it
       return data;
     } catch (error) {
       console.error('Error updating message status:', error);
@@ -218,8 +217,70 @@ export function useMessages(conversationId: string | null) {
     }
   };
 
+  // Load messages initially
   useEffect(() => {
     loadMessages();
+  }, [conversationId]);
+
+  // Set up real-time subscription for new messages
+  useEffect(() => {
+    if (!conversationId) return;
+
+    console.log(`Setting up real-time subscription for conversation: ${conversationId}`);
+
+    const subscription = supabase
+      .channel(`messages:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          console.log('New message received via real-time:', payload.new);
+          const newMessage = payload.new as MessageRow;
+          
+          setMessages(prev => {
+            // Check if message already exists to prevent duplicates
+            const exists = prev.some(msg => msg.id === newMessage.id);
+            if (exists) return prev;
+            
+            // Add new message in chronological order
+            return [...prev, newMessage].sort((a, b) => 
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload) => {
+          console.log('Message updated via real-time:', payload.new);
+          const updatedMessage = payload.new as MessageRow;
+          
+          setMessages(prev => 
+            prev.map(msg => 
+              msg.id === updatedMessage.id ? updatedMessage : msg
+            )
+          );
+        }
+      )
+      .subscribe((status) => {
+        console.log(`Real-time subscription status for ${conversationId}:`, status);
+      });
+
+    return () => {
+      console.log(`Cleaning up real-time subscription for conversation: ${conversationId}`);
+      subscription.unsubscribe();
+    };
   }, [conversationId]);
 
   return {

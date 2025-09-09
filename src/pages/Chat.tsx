@@ -77,6 +77,31 @@ const Chat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Control typing indicator based on new messages from n8n workflows
+  useEffect(() => {
+    if (!selectedConversation || messages.length === 0) return;
+
+    // Get the last message
+    const lastMessage = messages[messages.length - 1];
+    
+    // If the last message is from assistant and was just received, start typing timer
+    if (lastMessage.role === 'assistant') {
+      const messageAge = Date.now() - new Date(lastMessage.created_at).getTime();
+      
+      // If message is less than 2 seconds old, it might be followed by more messages
+      if (messageAge < 2000) {
+        setIsTyping(true);
+        
+        // Set timeout to stop typing indicator
+        const timeout = setTimeout(() => {
+          setIsTyping(false);
+        }, 5000);
+        
+        return () => clearTimeout(timeout);
+      }
+    }
+  }, [messages, selectedConversation]);
+
   const generateChatTitle = (text: string) => {
     // Generate a meaningful title from the first message
     const words = text.split(' ').slice(0, 4).join(' ');
@@ -137,14 +162,16 @@ const Chat = () => {
 
       // Mark message as delivered
       await updateMessageStatus(userMessage.id, 'delivered');
+      
+      // Turn off immediate typing indicator
       setIsTyping(false);
-
-      // Save AI response to database
+      
+      // Save AI response to database - the real-time subscription will handle displaying it
       const assistantMessage = await saveMessage({
         conversation_id: selectedConversation,
         role: 'assistant',
         content: { 
-          text: data?.message || 'Lo siento, no pude procesar tu mensaje.'
+          text: data?.message || 'Perfecto, estoy procesando tu consulta. Te enviaré las opciones disponibles en un momento...'
         },
         meta: {}
       });
@@ -186,7 +213,7 @@ const Chat = () => {
         variant: "destructive",
       });
 
-      // Save error response
+      // Save error response - real-time subscription will handle displaying it
       await saveMessage({
         conversation_id: selectedConversation,
         role: 'assistant',
