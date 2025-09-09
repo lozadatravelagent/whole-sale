@@ -285,6 +285,9 @@ const Chat = () => {
 
   const createNewChat = async () => {
     try {
+      // Desactivar auto-scroll temporalmente para evitar salto
+      setShouldAutoScroll(false);
+      
       // Crear la conversación
       const newConversation = await createConversation();
       setSelectedConversation(newConversation.id);
@@ -303,6 +306,12 @@ const Chat = () => {
         title: "Nuevo Chat",
         description: "Chat creado. ¡Cuéntame sobre tu viaje para crear tu lead automáticamente!",
       });
+      
+      // Reactivar auto-scroll después de un breve delay para permitir que se cargue el chat
+      setTimeout(() => {
+        setShouldAutoScroll(true);
+      }, 500);
+      
     } catch (error) {
       console.error('Error creating chat:', error);
       toast({
@@ -310,6 +319,8 @@ const Chat = () => {
         description: "No se pudo crear el chat.",
         variant: "destructive",
       });
+      // Asegurar que se reactive el auto-scroll en caso de error
+      setShouldAutoScroll(true);
     }
   };
 
