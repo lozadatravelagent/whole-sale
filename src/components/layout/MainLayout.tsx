@@ -2,6 +2,8 @@ import React from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import { 
   LayoutDashboard, 
   MessageSquare, 
@@ -36,10 +38,29 @@ const adminNavigation = [
 export default function MainLayout({ children, userRole }: MainLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
 
-  const handleLogout = () => {
-    // TODO: Implement Supabase logout
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        throw error;
+      }
+      
+      toast({
+        title: "Logout exitoso",
+        description: "Sesión cerrada correctamente.",
+      });
+      
+      navigate('/login', { replace: true });
+    } catch (error) {
+      console.error('Error during logout:', error);
+      toast({
+        title: "Error al cerrar sesión",
+        description: (error as Error)?.message || "Hubo un problema cerrando la sesión.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (

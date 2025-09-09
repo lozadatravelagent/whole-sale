@@ -245,12 +245,18 @@ export function useMessages(conversationId: string | null) {
           setMessages(prev => {
             // Check if message already exists to prevent duplicates
             const exists = prev.some(msg => msg.id === newMessage.id);
-            if (exists) return prev;
+            if (exists) {
+              console.log('Duplicate message prevented:', newMessage.id);
+              return prev;
+            }
             
-            // Add new message in chronological order
-            return [...prev, newMessage].sort((a, b) => 
+            console.log('Adding new message to state:', newMessage.id);
+            // Add new message in chronological order and force re-render
+            const updated = [...prev, newMessage].sort((a, b) => 
               new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             );
+            
+            return updated;
           });
         }
       )
@@ -275,6 +281,11 @@ export function useMessages(conversationId: string | null) {
       )
       .subscribe((status) => {
         console.log(`Real-time subscription status for ${conversationId}:`, status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Real-time subscription ACTIVE for conversation:', conversationId);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('Real-time subscription ERROR for conversation:', conversationId);
+        }
       });
 
     return () => {

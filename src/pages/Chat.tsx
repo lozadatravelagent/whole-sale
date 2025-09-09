@@ -48,7 +48,9 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   // Use our new hooks
@@ -73,9 +75,33 @@ const Chat = () => {
     loadConversations();
   }, []);
 
+  // Smart auto-scroll - only scroll when user sends a message or when at bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (!shouldAutoScroll || messages.length === 0) return;
+
+    const scrollToBottom = () => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    // Check if user is near the bottom of the chat
+    const isNearBottom = () => {
+      const scrollArea = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-content]');
+      if (!scrollArea) return true;
+      
+      const { scrollTop, scrollHeight, clientHeight } = scrollArea;
+      return scrollHeight - scrollTop - clientHeight < 100;
+    };
+
+    // Only auto-scroll if user is already near the bottom or if it's the first message
+    if (messages.length === 1 || isNearBottom()) {
+      scrollToBottom();
+    }
+  }, [messages, shouldAutoScroll]);
+
+  // Reset auto-scroll when conversation changes
+  useEffect(() => {
+    setShouldAutoScroll(true);
+  }, [selectedConversation]);
 
   // Control typing indicator based on new messages from n8n workflows
   useEffect(() => {
@@ -115,6 +141,7 @@ const Chat = () => {
     setMessage('');
     setIsLoading(true);
     setIsTyping(true);
+    setShouldAutoScroll(true); // Ensure auto-scroll for user messages
 
     try {
       // Save user message to database
@@ -521,7 +548,7 @@ const Chat = () => {
               </div>
 
               {/* Messages */}
-              <ScrollArea className="flex-1 p-4">
+              <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
                 <div className="space-y-4">
                   {messages.map((msg) => (
                     <div
