@@ -199,7 +199,10 @@ function preparePdfData(flights: FlightData[]) {
   
   // Return the data directly at root level for PdfMonkey
   const finalData = {
-    selected_flights
+    selected_flights,
+    // Add a simple test variable
+    test_variable: "Hello from API!",
+    flight_count: selected_flights.length
   };
   
   console.log('📦 FINAL PDF DATA STRUCTURE:', Object.keys(finalData));
