@@ -224,12 +224,20 @@ export function useMessages(conversationId: string | null) {
 
   // Set up real-time subscription for new messages
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId) {
+      console.log('No conversationId - skipping real-time setup');
+      return;
+    }
 
-    console.log(`Setting up real-time subscription for conversation: ${conversationId}`);
+    console.log(`🔴 Setting up real-time subscription for conversation: ${conversationId}`);
 
-    const subscription = supabase
-      .channel(`messages:${conversationId}`)
+    const channel = supabase
+      .channel(`messages-${conversationId}`, {
+        config: {
+          broadcast: { self: true },
+          presence: { key: conversationId }
+        }
+      })
       .on(
         'postgres_changes',
         {
@@ -239,23 +247,25 @@ export function useMessages(conversationId: string | null) {
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          console.log('New message received via real-time:', payload.new);
+          console.log('🟢 NEW MESSAGE RECEIVED via real-time:', payload.new);
           const newMessage = payload.new as MessageRow;
           
           setMessages(prev => {
+            console.log('🔵 Current messages count:', prev.length);
             // Check if message already exists to prevent duplicates
             const exists = prev.some(msg => msg.id === newMessage.id);
             if (exists) {
-              console.log('Duplicate message prevented:', newMessage.id);
+              console.log('🟡 Duplicate message prevented:', newMessage.id);
               return prev;
             }
             
-            console.log('Adding new message to state:', newMessage.id);
+            console.log('🟢 Adding new message to state:', newMessage.id, newMessage.content);
             // Add new message in chronological order and force re-render
             const updated = [...prev, newMessage].sort((a, b) => 
               new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             );
             
+            console.log('🔵 Updated messages count:', updated.length);
             return updated;
           });
         }
@@ -269,7 +279,7 @@ export function useMessages(conversationId: string | null) {
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          console.log('Message updated via real-time:', payload.new);
+          console.log('🟡 Message updated via real-time:', payload.new);
           const updatedMessage = payload.new as MessageRow;
           
           setMessages(prev => 
@@ -279,18 +289,23 @@ export function useMessages(conversationId: string | null) {
           );
         }
       )
-      .subscribe((status) => {
-        console.log(`Real-time subscription status for ${conversationId}:`, status);
+      .subscribe((status, err) => {
+        console.log(`🔴 Real-time subscription status for ${conversationId}:`, status);
+        if (err) {
+          console.error('🔴 Real-time subscription ERROR:', err);
+        }
         if (status === 'SUBSCRIBED') {
-          console.log('Real-time subscription ACTIVE for conversation:', conversationId);
+          console.log('✅ Real-time subscription ACTIVE for conversation:', conversationId);
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('Real-time subscription ERROR for conversation:', conversationId);
+          console.error('❌ Real-time subscription ERROR for conversation:', conversationId);
+        } else if (status === 'TIMED_OUT') {
+          console.error('⏰ Real-time subscription TIMED OUT for conversation:', conversationId);
         }
       });
 
     return () => {
-      console.log(`Cleaning up real-time subscription for conversation: ${conversationId}`);
-      subscription.unsubscribe();
+      console.log(`🔴 Cleaning up real-time subscription for conversation: ${conversationId}`);
+      channel.unsubscribe();
     };
   }, [conversationId]);
 

@@ -213,3 +213,57 @@ export interface DashboardMetrics {
   leads_lost: number;
   conversion_rate: number;
 }
+
+// Flight and PDF types
+export interface AirportInfo {
+  city_code: string;
+  city_name: string;
+  time: string;
+}
+
+export interface LayoverInfo {
+  destination_city: string;
+  destination_code: string;
+  waiting_time: string;
+}
+
+export interface FlightLeg {
+  departure: AirportInfo;
+  arrival: AirportInfo;
+  duration: string;
+  flight_type: string;
+  layovers?: LayoverInfo[];
+}
+
+export interface FlightData {
+  id?: string;
+  airline: {
+    code: string;
+    name: string;
+  };
+  price: {
+    amount: number;
+    currency: string;
+  };
+  adults: number;
+  childrens: number;
+  departure_date: string;
+  return_date?: string;
+  legs: FlightLeg[];
+  luggage?: boolean;
+  travel_assistance?: number;
+  transfers?: number;
+}
+
+export interface PdfGenerationRequest {
+  template_id: string;
+  data: {
+    selected_flights: FlightData[];
+  };
+}
+
+export interface PdfMonkeyResponse {
+  success: boolean;
+  document_url?: string;
+  error?: string;
+}

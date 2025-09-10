@@ -12,6 +12,8 @@ import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
 import { createLeadFromChat } from '@/utils/chatToLead';
+import { parseFlightsFromMessage, isFlightMessage } from '@/utils/flightParser';
+import FlightSelector from '@/components/crm/FlightSelector';
 import { 
   Send, 
   MessageSquare, 
@@ -33,7 +35,9 @@ import {
   ChevronDown,
   Archive,
   Check,
-  CheckCheck
+  CheckCheck,
+  Download,
+  FileText
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -300,6 +304,37 @@ const Chat = () => {
     return undefined;
   };
 
+  const handlePdfGenerated = async (pdfUrl: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Save the PDF as a new message
+      await saveMessage({
+        conversation_id: selectedConversation,
+        role: 'assistant',
+        content: { 
+          text: '📄 **Tu cotización de vuelos está lista para descargar:**',
+          pdfUrl
+        },
+        meta: {}
+      });
+
+      toast({
+        title: "PDF Generado",
+        description: "Tu cotización ha sido agregada al chat. Puedes descargarla cuando quieras.",
+      });
+    } catch (error) {
+      console.error('Error saving PDF message:', error);
+    }
+  };
+
+  const getPdfUrl = (msg: MessageRow): string | undefined => {
+    if (typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content) {
+      return (msg.content as any).pdfUrl;
+    }
+    return undefined;
+  };
+
   return (
     <MainLayout userRole="ADMIN">
       <div className="h-screen flex">
@@ -523,47 +558,80 @@ const Chat = () => {
               {/* Messages */}
               <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
                 <div className="space-y-4">
-                  {messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className={`max-w-lg flex items-start space-x-2 ${
-                        msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''
-                      }`}>
-                        <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
-                          {msg.role === 'user' ? (
-                            <User className="h-4 w-4 text-primary" />
-                          ) : (
-                            <Bot className="h-4 w-4 text-accent" />
-                          )}
-                        </div>
-                        <div className={`rounded-lg p-4 ${
-                          msg.role === 'user' 
-                            ? 'bg-primary text-primary-foreground' 
-                            : 'bg-muted'
-                        }`}>
-                          <ReactMarkdown 
-                            remarkPlugins={[remarkGfm]} 
-                            className={`${
-                              msg.role === 'user' 
-                                ? 'prose prose-invert prose-sm max-w-none text-primary-foreground' 
-                                : 'emilia-message prose prose-neutral prose-sm max-w-none'
-                            }`}
-                          >
-                            {getMessageContent(msg)}
-                          </ReactMarkdown>
+                  {messages.map((msg) => {
+                    const messageText = getMessageContent(msg);
+                    const pdfUrl = getPdfUrl(msg);
+                    const hasFlights = msg.role === 'assistant' && isFlightMessage(messageText);
+                    const parsedFlights = hasFlights ? parseFlightsFromMessage(messageText) : [];
 
-                          <p className="text-xs opacity-70 mt-1 flex items-center justify-between">
-                            <span className="flex items-center">
-                              {getMessageStatusIcon(getMessageStatus(msg))}
-                              <span className="ml-1">{formatTime(msg.created_at)}</span>
-                            </span>
-                          </p>
+                    return (
+                      <div key={msg.id}>
+                        <div
+                          className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div className={`max-w-lg flex items-start space-x-2 ${
+                            msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''
+                          }`}>
+                            <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
+                              {msg.role === 'user' ? (
+                                <User className="h-4 w-4 text-primary" />
+                              ) : (
+                                <Bot className="h-4 w-4 text-accent" />
+                              )}
+                            </div>
+                            <div className={`rounded-lg p-4 ${
+                              msg.role === 'user' 
+                                ? 'bg-primary text-primary-foreground' 
+                                : 'bg-muted'
+                            }`}>
+                              <ReactMarkdown 
+                                remarkPlugins={[remarkGfm]} 
+                                className={`${
+                                  msg.role === 'user' 
+                                    ? 'prose prose-invert prose-sm max-w-none text-primary-foreground' 
+                                    : 'emilia-message prose prose-neutral prose-sm max-w-none'
+                                }`}
+                              >
+                                {messageText}
+                              </ReactMarkdown>
+
+                              {/* PDF Download Button */}
+                              {pdfUrl && (
+                                <div className="mt-3 pt-3 border-t border-border/20">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full"
+                                    onClick={() => window.open(pdfUrl, '_blank')}
+                                  >
+                                    <Download className="h-4 w-4 mr-2" />
+                                    Descargar Cotización PDF
+                                  </Button>
+                                </div>
+                              )}
+
+                              <p className="text-xs opacity-70 mt-1 flex items-center justify-between">
+                                <span className="flex items-center">
+                                  {getMessageStatusIcon(getMessageStatus(msg))}
+                                  <span className="ml-1">{formatTime(msg.created_at)}</span>
+                                </span>
+                              </p>
+                            </div>
+                          </div>
                         </div>
+
+                        {/* Flight Selector - Show after assistant messages with flights */}
+                        {hasFlights && parsedFlights.length > 0 && (
+                          <div className="ml-10 mt-2">
+                            <FlightSelector 
+                              flights={parsedFlights}
+                              onPdfGenerated={handlePdfGenerated}
+                            />
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   
                   {/* Emilia is typing indicator - appears after messages */}
                   {isTyping && (
