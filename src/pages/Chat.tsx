@@ -36,8 +36,7 @@ import {
   Archive,
   Check,
   CheckCheck,
-  Download,
-  FileText
+  Download
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -561,8 +560,15 @@ const Chat = () => {
                   {messages.map((msg) => {
                     const messageText = getMessageContent(msg);
                     const pdfUrl = getPdfUrl(msg);
+                    
+                    console.log('💬 Processing message:', msg.id, 'Role:', msg.role);
+                    console.log('💬 Message text preview:', messageText.substring(0, 100));
+                    
                     const hasFlights = msg.role === 'assistant' && isFlightMessage(messageText);
+                    console.log('🔍 Has flights:', hasFlights);
+                    
                     const parsedFlights = hasFlights ? parseFlightsFromMessage(messageText) : [];
+                    console.log('📊 Parsed flights count:', parsedFlights.length);
 
                     return (
                       <div key={msg.id}>

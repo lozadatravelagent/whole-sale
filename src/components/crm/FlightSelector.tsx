@@ -32,6 +32,9 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
+  
+  console.log('🎯 FlightSelector rendered with flights:', flights.length);
+  console.log('🎯 Flights data:', flights);
 
   const handleFlightToggle = (flightId: string) => {
     setSelectedFlights(prev => {
@@ -95,11 +98,25 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
   };
 
   const formatPrice = (amount: number, currency: string) => {
+    if (!amount || !currency) return 'Precio no disponible';
     return `${amount.toLocaleString()} ${currency}`;
   };
 
   const formatDuration = (duration: string) => {
+    if (!duration) return 'N/A';
     return duration.replace('h', 'h ').replace('m', 'min');
+  };
+
+  const safeAirlineName = (flight: FlightData) => {
+    return flight.airline?.name || 'Aerolínea no especificada';
+  };
+
+  const safePrice = (flight: FlightData) => {
+    return flight.price?.amount || 0;
+  };
+
+  const safeCurrency = (flight: FlightData) => {
+    return flight.price?.currency || 'USD';
   };
 
   if (flights.length === 0) {
@@ -138,12 +155,12 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                   />
                   <div>
                     <div className="font-medium text-lg">
-                      Opción {index + 1} - {flight.airline.name}
+                      Opción {index + 1} - {safeAirlineName(flight)}
                     </div>
                     <div className="flex items-center text-sm text-muted-foreground space-x-4 mt-1">
                       <span className="flex items-center">
                         <Users className="h-3 w-3 mr-1" />
-                        {flight.adults} adultos{flight.childrens > 0 ? `, ${flight.childrens} niños` : ''}
+                        {flight.adults || 1} adultos{(flight.childrens || 0) > 0 ? `, ${flight.childrens} niños` : ''}
                       </span>
                       {flight.luggage && (
                         <span className="flex items-center">
@@ -157,7 +174,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                 
                 <div className="text-right">
                   <div className="text-2xl font-bold text-primary">
-                    {formatPrice(flight.price.amount, flight.price.currency)}
+                    {formatPrice(safePrice(flight), safeCurrency(flight))}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     Precio total
