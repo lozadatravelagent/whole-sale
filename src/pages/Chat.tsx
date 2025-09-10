@@ -611,16 +611,29 @@ const Chat = () => {
                                 ? 'bg-primary text-primary-foreground' 
                                 : 'bg-muted'
                             }`}>
-                              <ReactMarkdown 
-                                remarkPlugins={[remarkGfm]} 
-                                className={`${
-                                  msg.role === 'user' 
-                                    ? 'prose prose-invert prose-sm max-w-none text-primary-foreground' 
-                                    : 'emilia-message prose prose-neutral prose-sm max-w-none'
-                                }`}
-                              >
-                                {messageText}
-                              </ReactMarkdown>
+                              {/* Show FlightSelector for assistant messages with flights, otherwise show text */}
+                              {hasFlights && parsedFlights.length > 0 ? (
+                                <div className="space-y-3">
+                                  <div className="text-sm font-medium text-muted-foreground">
+                                    ✈️ Encontré {parsedFlights.length} opciones de vuelos para ti
+                                  </div>
+                                  <FlightSelector 
+                                    flights={parsedFlights}
+                                    onPdfGenerated={handlePdfGenerated}
+                                  />
+                                </div>
+                              ) : (
+                                <ReactMarkdown 
+                                  remarkPlugins={[remarkGfm]} 
+                                  className={`${
+                                    msg.role === 'user' 
+                                      ? 'prose prose-invert prose-sm max-w-none text-primary-foreground' 
+                                      : 'emilia-message prose prose-neutral prose-sm max-w-none'
+                                  }`}
+                                >
+                                  {messageText}
+                                </ReactMarkdown>
+                              )}
 
                               {/* PDF Download Button */}
                               {pdfUrl && (
@@ -647,15 +660,6 @@ const Chat = () => {
                           </div>
                         </div>
 
-                        {/* Flight Selector - Show after assistant messages with flights */}
-                        {hasFlights && parsedFlights.length > 0 && (
-                          <div className="ml-10 mt-2">
-                            <FlightSelector 
-                              flights={parsedFlights}
-                              onPdfGenerated={handlePdfGenerated}
-                            />
-                          </div>
-                        )}
                         
                       </div>
                     );
