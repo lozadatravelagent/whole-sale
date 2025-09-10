@@ -77,7 +77,8 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
 
     // PdfMonkey returns the document ID immediately, but generation is async
     // We need to check the status or construct the download URL
-    const documentUrl = result.download_url || `${PDFMONKEY_API_BASE}/documents/${result.id}/download`;
+    const documentId = result.id || result.document?.id;
+    const documentUrl = result.download_url || `https://api.pdfmonkey.io/api/v1/documents/${documentId}/download`;
 
     return {
       success: true,
