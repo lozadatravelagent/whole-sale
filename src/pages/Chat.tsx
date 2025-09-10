@@ -290,9 +290,30 @@ const Chat = () => {
   };
 
   const getMessageContent = (msg: MessageRow): string => {
-    if (typeof msg.content === 'object' && msg.content && 'text' in msg.content) {
-      return (msg.content as any).text || '';
+    console.log('📝 Getting message content for:', msg.id);
+    console.log('📝 Raw content:', msg.content);
+    console.log('📝 Content type:', typeof msg.content);
+    
+    // Handle if content is a string (JSON serialized)
+    if (typeof msg.content === 'string') {
+      try {
+        const parsed = JSON.parse(msg.content);
+        console.log('📝 Parsed content:', parsed);
+        return parsed.text || '';
+      } catch (e) {
+        console.log('📝 Failed to parse content as JSON, treating as plain text');
+        return msg.content;
+      }
     }
+    
+    // Handle if content is already an object
+    if (typeof msg.content === 'object' && msg.content && 'text' in msg.content) {
+      const text = (msg.content as any).text || '';
+      console.log('📝 Extracted text from object:', text.substring(0, 100));
+      return text;
+    }
+    
+    console.log('📝 No text content found');
     return '';
   };
 
@@ -633,6 +654,27 @@ const Chat = () => {
                               flights={parsedFlights}
                               onPdfGenerated={handlePdfGenerated}
                             />
+                          </div>
+                        )}
+                        
+                        {/* DEBUG: Temporary fallback to show FlightSelector for any message with ✈️ */}
+                        {msg.role === 'assistant' && messageText.includes('✈️') && parsedFlights.length === 0 && (
+                          <div className="ml-10 mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <div className="text-sm text-yellow-800 mb-2">
+                              🐛 <strong>DEBUG:</strong> Mensaje con vuelos detectado pero no parseado correctamente
+                            </div>
+                            <div className="text-xs text-yellow-600 mb-2">
+                              Contenido del mensaje: {messageText.substring(0, 200)}...
+                            </div>
+                            <button 
+                              className="text-xs bg-yellow-200 px-2 py-1 rounded"
+                              onClick={() => {
+                                console.log('Full message text:', messageText);
+                                console.log('Raw message object:', msg);
+                              }}
+                            >
+                              Ver en consola
+                            </button>
                           </div>
                         )}
                       </div>
