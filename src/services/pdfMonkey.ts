@@ -129,20 +129,17 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
 }
 
 function preparePdfData(flights: FlightData[]) {
-  // Transform flight data to match the template structure
+  // Transform flight data to match the template structure exactly
   const selected_flights = flights.map(flight => ({
     airline: {
       code: flight.airline.code,
       name: flight.airline.name
     },
-    price: {
-      amount: flight.price.amount.toFixed(2),
-      currency: flight.price.currency
-    },
+    departure_date: flight.departure_date,
+    return_date: flight.return_date || flight.departure_date,
+    luggage: flight.luggage || false,
     adults: flight.adults,
     childrens: flight.childrens,
-    departure_date: flight.departure_date,
-    return_date: flight.return_date,
     legs: flight.legs.map(leg => ({
       departure: {
         city_code: leg.departure.city_code,
@@ -157,16 +154,21 @@ function preparePdfData(flights: FlightData[]) {
       duration: leg.duration,
       flight_type: leg.flight_type,
       layovers: leg.layovers?.map(layover => ({
+        waiting_time: layover.waiting_time,
         destination_city: layover.destination_city,
-        destination_code: layover.destination_code,
-        waiting_time: layover.waiting_time
+        destination_code: layover.destination_code
       })) || []
     })),
-    luggage: flight.luggage || false,
+    price: {
+      amount: flight.price.amount.toFixed(2),
+      currency: flight.price.currency
+    },
+    // Optional fields for template compatibility
     travel_assistance: flight.travel_assistance || 0,
     transfers: flight.transfers || 0
   }));
 
+  // Return the data directly at root level for PdfMonkey
   return {
     selected_flights
   };
@@ -178,7 +180,7 @@ export async function checkPdfStatus(documentId: string): Promise<{
   error?: string;
 }> {
   try {
-    const response = await fetch(`${PDFMONKEY_API_BASE}/documents/${documentId}`, {
+    const response = await fetch(`${PDFMONKEY_API_BASE}/${documentId}`, {
       headers: {
         'Authorization': `Bearer ${getApiKey()}`
       }
