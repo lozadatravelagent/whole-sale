@@ -1,7 +1,7 @@
 import { FlightData, PdfGenerationRequest, PdfMonkeyResponse } from '@/types';
 
 // PdfMonkey API configuration
-const PDFMONKEY_API_BASE = 'https://api.pdfmonkey.io/api/v1';
+const PDFMONKEY_API_BASE = 'https://api.pdfmonkey.io/api/v1/documents';
 const FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376';
 
 // Get API key from environment variables
