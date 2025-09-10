@@ -1,4 +1,4 @@
-import { FlightData, PdfGenerationRequest, PdfMonkeyResponse } from '@/types';
+import { FlightData, PdfMonkeyResponse } from '@/types';
 
 // PdfMonkey API configuration
 const PDFMONKEY_API_BASE = 'https://api.pdfmonkey.io/api/v1/documents';
@@ -32,15 +32,23 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
     // Prepare data for PdfMonkey template
     const pdfData = preparePdfData(selectedFlights);
 
-    const request: PdfGenerationRequest = {
-      template_id: FLIGHT_TEMPLATE_ID,
-      data: pdfData
+    // Correct PdfMonkey API structure
+    const request = {
+      document: {
+        document_template_id: FLIGHT_TEMPLATE_ID,
+        status: "pending",
+        payload: pdfData,
+        meta: {
+          _filename: `vuelos-cotizacion-${Date.now()}.pdf`,
+          generated_by: "wholesale-connect-ai"
+        }
+      }
     };
 
     console.log('Generating PDF with data:', JSON.stringify(request, null, 2));
 
     // Make API call to PdfMonkey
-    const response = await fetch(`${PDFMONKEY_API_BASE}/documents`, {
+    const response = await fetch(PDFMONKEY_API_BASE, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

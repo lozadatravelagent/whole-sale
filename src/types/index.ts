@@ -256,8 +256,8 @@ export interface FlightData {
 }
 
 export interface PdfGenerationRequest {
-  template_id: string;
-  data: {
+  document_template_id: string;
+  payload: {
     selected_flights: FlightData[];
   };
 }
