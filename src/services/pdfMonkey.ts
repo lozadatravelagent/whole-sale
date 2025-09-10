@@ -76,13 +76,47 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
     console.log('PdfMonkey response:', result);
 
     // PdfMonkey returns the document ID immediately, but generation is async
-    // We need to check the status or construct the download URL
     const documentId = result.id || result.document?.id;
-    const documentUrl = result.download_url || `https://api.pdfmonkey.io/api/v1/documents/${documentId}/download`;
+    
+    if (!documentId) {
+      return {
+        success: false,
+        error: 'No se pudo obtener el ID del documento'
+      };
+    }
 
+    // Wait for the PDF to be ready (max 30 seconds)
+    console.log('Waiting for PDF generation to complete...');
+    let attempts = 0;
+    const maxAttempts = 15; // 30 seconds with 2-second intervals
+    
+    while (attempts < maxAttempts) {
+      const statusResponse = await checkPdfStatus(documentId);
+      console.log(`PDF status check ${attempts + 1}:`, statusResponse);
+      
+      if (statusResponse.status === 'success' && statusResponse.download_url) {
+        return {
+          success: true,
+          document_url: statusResponse.download_url
+        };
+      }
+      
+      if (statusResponse.status === 'failure') {
+        return {
+          success: false,
+          error: statusResponse.error || 'Error generando el PDF'
+        };
+      }
+      
+      // Wait 2 seconds before next check
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      attempts++;
+    }
+
+    // Timeout - return the direct URL anyway
     return {
       success: true,
-      document_url: documentUrl
+      document_url: `https://api.pdfmonkey.io/api/v1/documents/${documentId}/download`
     };
 
   } catch (error) {
