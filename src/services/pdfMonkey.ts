@@ -2,6 +2,7 @@ import { FlightData, PdfMonkeyResponse } from '@/types';
 
 // PdfMonkey API configuration
 const PDFMONKEY_API_BASE = 'https://api.pdfmonkey.io/api/v1/documents';
+const PDFMONKEY_SYNC_BASE = 'https://api.pdfmonkey.io/api/v1/documents/sync';
 const FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376';
 
 // Get API key from environment variables
@@ -75,26 +76,41 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
     const result = await response.json();
     console.log('PdfMonkey response:', result);
 
-    // PdfMonkey returns the document ID immediately, but generation is async
-    const documentId = result.id || result.document?.id;
-    
-    if (!documentId) {
+    // Extract document data from response
+    const document = result.document;
+    if (!document || !document.id) {
       return {
         success: false,
-        error: 'No se pudo obtener el ID del documento'
+        error: 'No se pudo crear el documento en PdfMonkey'
       };
     }
 
-    // Wait for the PDF to be ready (max 30 seconds)
+    const documentId = document.id;
+    console.log('Document created with ID:', documentId);
+
+    // Check if PDF is already ready (sometimes happens immediately)
+    if (document.status === 'success' && document.download_url) {
+      console.log('✅ PDF generated immediately! Download URL:', document.download_url);
+      return {
+        success: true,
+        document_url: document.download_url
+      };
+    }
+
+    // Wait for the PDF to be ready (max 60 seconds)
     console.log('Waiting for PDF generation to complete...');
     let attempts = 0;
-    const maxAttempts = 15; // 30 seconds with 2-second intervals
+    const maxAttempts = 15; // 60 seconds with 4-second intervals
     
     while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 4000));
+      attempts++;
+      
       const statusResponse = await checkPdfStatus(documentId);
-      console.log(`PDF status check ${attempts + 1}:`, statusResponse);
+      console.log(`PDF status check ${attempts}/${maxAttempts}:`, statusResponse);
       
       if (statusResponse.status === 'success' && statusResponse.download_url) {
+        console.log('✅ PDF ready! Download URL:', statusResponse.download_url);
         return {
           success: true,
           document_url: statusResponse.download_url
@@ -102,21 +118,18 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
       }
       
       if (statusResponse.status === 'failure') {
+        console.log('❌ PDF generation failed:', statusResponse.error);
         return {
           success: false,
           error: statusResponse.error || 'Error generando el PDF'
         };
       }
-      
-      // Wait 2 seconds before next check
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      attempts++;
     }
 
-    // Timeout - return the direct URL anyway
+    // Timeout
     return {
-      success: true,
-      document_url: `https://api.pdfmonkey.io/api/v1/documents/${documentId}/download`
+      success: false,
+      error: 'El PDF está tardando más de lo esperado. Intenta de nuevo en unos minutos.'
     };
 
   } catch (error) {
@@ -180,7 +193,8 @@ export async function checkPdfStatus(documentId: string): Promise<{
   error?: string;
 }> {
   try {
-    const response = await fetch(`${PDFMONKEY_API_BASE}/${documentId}`, {
+    // Use document_cards endpoint as shown in documentation
+    const response = await fetch(`https://api.pdfmonkey.io/api/v1/document_cards/${documentId}`, {
       headers: {
         'Authorization': `Bearer ${getApiKey()}`
       }
@@ -194,11 +208,12 @@ export async function checkPdfStatus(documentId: string): Promise<{
     }
 
     const result = await response.json();
+    const documentCard = result.document_card || result;
 
     return {
-      status: result.status,
-      download_url: result.download_url,
-      error: result.error
+      status: documentCard.status,
+      download_url: documentCard.download_url,
+      error: documentCard.failure_cause
     };
 
   } catch (error) {
