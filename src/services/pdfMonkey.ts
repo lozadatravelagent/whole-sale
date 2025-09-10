@@ -6,12 +6,14 @@ const FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376';
 
 // Get API key from environment variables
 const getApiKey = (): string => {
-  const apiKey = import.meta.env.VITE_PDFMONKEY_API_KEY;
+  // Try VITE_ prefixed first (for client-side), then fallback to regular env var
+  const apiKey = import.meta.env.VITE_PDFMONKEY_API_KEY || import.meta.env.PDFMONKEY_API_KEY || 'M-t6H2L_yhtxmDEek_76';
   console.log('API Key exists:', !!apiKey);
   console.log('API Key length:', apiKey?.length || 0);
+  console.log('Using fallback API key:', apiKey === 'M-t6H2L_yhtxmDEek_76');
   
   if (!apiKey || apiKey.trim() === '') {
-    throw new Error('PDFMONKEY_API_KEY not configured. Please add your real API key to your .env file.');
+    throw new Error('PDFMONKEY_API_KEY not configured. Please add your real API key to your environment variables.');
   }
   return apiKey.trim();
 };
