@@ -197,16 +197,28 @@ function preparePdfData(flights: FlightData[]) {
 
   console.log('✅ PREPARED SELECTED FLIGHTS:', selected_flights.length, 'flights');
   
-  // Return the data directly at root level for PdfMonkey
-  const finalData = {
-    selected_flights,
-    // Add a simple test variable
+  // TEMPORARY: Test with minimal data structure like in PdfMonkey docs
+  const testData = {
+    clientName: "Test User",
+    orderDate: "2025-01-15",
     test_variable: "Hello from API!",
-    flight_count: selected_flights.length
+    flight_count: selected_flights.length,
+    selected_flights: [
+      {
+        airline: {
+          code: "AA",
+          name: "Aerolineas Argentinas"  
+        },
+        price: {
+          amount: "1545.10",
+          currency: "USD"
+        }
+      }
+    ]
   };
   
-  console.log('📦 FINAL PDF DATA STRUCTURE:', Object.keys(finalData));
-  return finalData;
+  console.log('🧪 TESTING WITH SIMPLE DATA:', testData);
+  return testData;
 }
 
 export async function checkPdfStatus(documentId: string): Promise<{
