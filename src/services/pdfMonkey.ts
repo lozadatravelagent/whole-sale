@@ -197,28 +197,25 @@ function preparePdfData(flights: FlightData[]) {
 
   console.log('✅ PREPARED SELECTED FLIGHTS:', selected_flights.length, 'flights');
   
-  // TEMPORARY: Test with minimal data structure like in PdfMonkey docs
-  const testData = {
-    clientName: "Test User",
-    orderDate: "2025-01-15",
-    test_variable: "Hello from API!",
-    flight_count: selected_flights.length,
-    selected_flights: [
-      {
-        airline: {
-          code: "AA",
-          name: "Aerolineas Argentinas"  
-        },
-        price: {
-          amount: "1545.10",
-          currency: "USD"
-        }
-      }
-    ]
+  // Since template expects direct access (not in a loop), send first flight's data at root level
+  const firstFlight = selected_flights[0];
+  
+  const flightData = {
+    // Direct flight data for template access
+    airline: firstFlight.airline,
+    price: firstFlight.price,
+    adults: firstFlight.adults,
+    childrens: firstFlight.childrens,
+    departure_date: firstFlight.departure_date,
+    return_date: firstFlight.return_date,
+    luggage: firstFlight.luggage,
+    legs: firstFlight.legs,
+    travel_assistance: firstFlight.travel_assistance,
+    transfers: firstFlight.transfers
   };
   
-  console.log('🧪 TESTING WITH SIMPLE DATA:', testData);
-  return testData;
+  console.log('🎯 SENDING FLIGHT DATA AT ROOT LEVEL:', flightData);
+  return flightData;
 }
 
 export async function checkPdfStatus(documentId: string): Promise<{
