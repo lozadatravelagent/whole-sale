@@ -657,26 +657,6 @@ const Chat = () => {
                           </div>
                         )}
                         
-                        {/* DEBUG: Temporary fallback to show FlightSelector for any message with ✈️ */}
-                        {msg.role === 'assistant' && messageText.includes('✈️') && parsedFlights.length === 0 && (
-                          <div className="ml-10 mt-2 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <div className="text-sm text-yellow-800 mb-2">
-                              🐛 <strong>DEBUG:</strong> Mensaje con vuelos detectado pero no parseado correctamente
-                            </div>
-                            <div className="text-xs text-yellow-600 mb-2">
-                              Contenido del mensaje: {messageText.substring(0, 200)}...
-                            </div>
-                            <button 
-                              className="text-xs bg-yellow-200 px-2 py-1 rounded"
-                              onClick={() => {
-                                console.log('Full message text:', messageText);
-                                console.log('Raw message object:', msg);
-                              }}
-                            >
-                              Ver en consola
-                            </button>
-                          </div>
-                        )}
                       </div>
                     );
                   })}
