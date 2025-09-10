@@ -37,6 +37,9 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
 
     // Prepare data for PdfMonkey template
     const pdfData = preparePdfData(selectedFlights);
+    
+    console.log('🔍 RAW SELECTED FLIGHTS:', JSON.stringify(selectedFlights, null, 2));
+    console.log('🔍 PREPARED PDF DATA:', JSON.stringify(pdfData, null, 2));
 
     // Correct PdfMonkey API structure
     const request = {
@@ -51,7 +54,7 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
       }
     };
 
-    console.log('Generating PDF with data:', JSON.stringify(request, null, 2));
+    console.log('📄 FULL PDF REQUEST:', JSON.stringify(request, null, 2));
 
     // Make API call to PdfMonkey
     const response = await fetch(PDFMONKEY_API_BASE, {
@@ -142,49 +145,65 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
 }
 
 function preparePdfData(flights: FlightData[]) {
+  console.log('🔧 PREPARING PDF DATA - Input flights count:', flights.length);
+  
   // Transform flight data to match the template structure exactly
-  const selected_flights = flights.map(flight => ({
-    airline: {
-      code: flight.airline.code,
-      name: flight.airline.name
-    },
-    departure_date: flight.departure_date,
-    return_date: flight.return_date || flight.departure_date,
-    luggage: flight.luggage || false,
-    adults: flight.adults,
-    childrens: flight.childrens,
-    legs: flight.legs.map(leg => ({
-      departure: {
-        city_code: leg.departure.city_code,
-        city_name: leg.departure.city_name,
-        time: leg.departure.time
+  const selected_flights = flights.map((flight, index) => {
+    console.log(`🔧 Processing flight ${index + 1}:`, {
+      airline: flight.airline,
+      price: flight.price,
+      dates: { departure: flight.departure_date, return: flight.return_date },
+      legs_count: flight.legs?.length || 0
+    });
+    
+    return {
+      airline: {
+        code: flight.airline.code,
+        name: flight.airline.name
       },
-      arrival: {
-        city_code: leg.arrival.city_code,
-        city_name: leg.arrival.city_name,
-        time: leg.arrival.time
+      departure_date: flight.departure_date,
+      return_date: flight.return_date || flight.departure_date,
+      luggage: flight.luggage || false,
+      adults: flight.adults,
+      childrens: flight.childrens,
+      legs: flight.legs.map(leg => ({
+        departure: {
+          city_code: leg.departure.city_code,
+          city_name: leg.departure.city_name,
+          time: leg.departure.time
+        },
+        arrival: {
+          city_code: leg.arrival.city_code,
+          city_name: leg.arrival.city_name,
+          time: leg.arrival.time
+        },
+        duration: leg.duration,
+        flight_type: leg.flight_type,
+        layovers: leg.layovers?.map(layover => ({
+          waiting_time: layover.waiting_time,
+          destination_city: layover.destination_city,
+          destination_code: layover.destination_code
+        })) || []
+      })),
+      price: {
+        amount: flight.price.amount.toFixed(2),
+        currency: flight.price.currency
       },
-      duration: leg.duration,
-      flight_type: leg.flight_type,
-      layovers: leg.layovers?.map(layover => ({
-        waiting_time: layover.waiting_time,
-        destination_city: layover.destination_city,
-        destination_code: layover.destination_code
-      })) || []
-    })),
-    price: {
-      amount: flight.price.amount.toFixed(2),
-      currency: flight.price.currency
-    },
-    // Optional fields for template compatibility
-    travel_assistance: flight.travel_assistance || 0,
-    transfers: flight.transfers || 0
-  }));
+      // Optional fields for template compatibility
+      travel_assistance: flight.travel_assistance || 0,
+      transfers: flight.transfers || 0
+    };
+  });
 
+  console.log('✅ PREPARED SELECTED FLIGHTS:', selected_flights.length, 'flights');
+  
   // Return the data directly at root level for PdfMonkey
-  return {
+  const finalData = {
     selected_flights
   };
+  
+  console.log('📦 FINAL PDF DATA STRUCTURE:', Object.keys(finalData));
+  return finalData;
 }
 
 export async function checkPdfStatus(documentId: string): Promise<{
