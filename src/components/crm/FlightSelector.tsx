@@ -87,9 +87,20 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
       }
     } catch (error) {
       console.error('Error generating PDF:', error);
+      
+      let errorMessage = "No se pudo generar el PDF. Inténtalo de nuevo.";
+      
+      if (error instanceof Error) {
+        if (error.message.includes('PDFMONKEY_API_KEY')) {
+          errorMessage = "Configuración de API incompleta. Contacta al administrador.";
+        } else if (error.message.includes('401')) {
+          errorMessage = "API key inválida. Verifica la configuración.";
+        }
+      }
+      
       toast({
         title: "Error",
-        description: "No se pudo generar el PDF. Inténtalo de nuevo.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -272,7 +283,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
               ) : (
                 <>
                   <FileText className="h-4 w-4 mr-2" />
-                  Generar Cotización PDF ({selectedFlights.length} vuelo{selectedFlights.length > 1 ? 's' : ''})
+                  Generar PDF ({selectedFlights.length} vuelo{selectedFlights.length > 1 ? 's' : ''})
                 </>
               )}
             </Button>

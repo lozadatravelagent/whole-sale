@@ -7,8 +7,8 @@ const FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376';
 // Get API key from environment variables
 const getApiKey = (): string => {
   const apiKey = import.meta.env.VITE_PDFMONKEY_API_KEY;
-  if (!apiKey) {
-    throw new Error('PDFMONKEY_API_KEY not configured. Please add it to your .env file.');
+  if (!apiKey || apiKey === 'M-t6H2L_yhtxmDEek_76') {
+    throw new Error('PDFMONKEY_API_KEY not configured. Please add your real API key to your .env file.');
   }
   return apiKey;
 };
@@ -31,7 +31,7 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
 
     // Prepare data for PdfMonkey template
     const pdfData = preparePdfData(selectedFlights);
-    
+
     const request: PdfGenerationRequest = {
       template_id: FLIGHT_TEMPLATE_ID,
       data: pdfData
@@ -52,7 +52,7 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
     if (!response.ok) {
       const errorText = await response.text();
       console.error('PdfMonkey API error:', response.status, errorText);
-      
+
       return {
         success: false,
         error: `PDF generation failed: ${response.status} ${response.statusText}`
@@ -144,7 +144,7 @@ export async function checkPdfStatus(documentId: string): Promise<{
     }
 
     const result = await response.json();
-    
+
     return {
       status: result.status,
       download_url: result.download_url,
