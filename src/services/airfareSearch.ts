@@ -169,8 +169,30 @@ export async function searchAirFares(params: AirfareSearchParams): Promise<Fligh
     if (isProduction) {
       // Use Supabase Edge Function
       try {
+        console.log('🚀 Starting flight search via Edge Function...');
+        console.log('📥 Original params from chat:', JSON.stringify(params, null, 2));
+        console.log('🔑 VITE_SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY?.substring(0, 20) + '...');
+        console.log('🌐 VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+        console.log('🌐 Final Edge Function URL:', WS_CONFIG.url);
+        
         const originCode = await getCityCodeForFlight(params.origin);
         const destinationCode = await getCityCodeForFlight(params.destination);
+        
+        console.log('🗺️ Resolved city codes - Origin:', originCode, 'Destination:', destinationCode);
+
+        const requestPayload = {
+          action: 'searchFlights',
+          data: {
+            originCode,
+            destinationCode,
+            departureDate: params.departureDate,
+            returnDate: params.returnDate,
+            adults: params.adults,
+            children: params.children
+          }
+        };
+        
+        console.log('📦 Edge Function request payload:', JSON.stringify(requestPayload, null, 2));
 
         const response = await fetch(WS_CONFIG.url, {
           method: 'POST',
@@ -178,39 +200,50 @@ export async function searchAirFares(params: AirfareSearchParams): Promise<Fligh
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
-          body: JSON.stringify({
-            action: 'searchFlights',
-            data: {
-              originCode,
-              destinationCode,
-              departureDate: params.departureDate,
-              returnDate: params.returnDate,
-              adults: params.adults,
-              children: params.children
-            }
-          })
+          body: JSON.stringify(requestPayload)
         });
 
         if (!response.ok) {
-          console.error(`Flights Edge Function HTTP Error: ${response.status} ${response.statusText}`);
+          console.error(`❌ Flights Edge Function HTTP Error: ${response.status} ${response.statusText}`);
+          
+          // Try to read error response body
+          try {
+            const errorBody = await response.text();
+            console.error('❌ Error response body:', errorBody);
+          } catch (e) {
+            console.error('❌ Could not read error response body');
+          }
           return [];
         }
 
         const responseText = await response.text();
-        console.log('Flights Edge Function raw response:', responseText.substring(0, 200));
+        console.log('📥 Flights Edge Function raw response length:', responseText.length);
+        console.log('📥 Flights Edge Function raw response (first 500 chars):', responseText.substring(0, 500));
 
         let result;
         try {
           result = JSON.parse(responseText);
+          console.log('✅ Parsed Edge Function response:', {
+            success: result.success,
+            resultsCount: result.results?.length || 0,
+            provider: result.provider,
+            timestamp: result.timestamp,
+            hasError: !!result.error
+          });
         } catch (parseError) {
-          console.error('Flights Edge Function returned non-JSON response:', responseText.substring(0, 500));
+          console.error('❌ Flights Edge Function returned non-JSON response:', responseText.substring(0, 500));
+          console.error('❌ Parse error:', parseError);
           return [];
         }
 
         if (result.success) {
+          console.log(`✅ Edge Function returned ${result.results?.length || 0} flights`);
+          if (result.results?.length > 0) {
+            console.log('✈️ Sample flight:', JSON.stringify(result.results[0], null, 2));
+          }
           return result.results;
         } else {
-          console.error('Flights Edge Function error:', result.error);
+          console.error('❌ Flights Edge Function error:', result.error);
           return [];
         }
       } catch (error) {
