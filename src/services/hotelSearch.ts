@@ -1,4 +1,4 @@
-import { HotelData, HotelRoom, HotelSearchParams } from '@/types';
+srimport { HotelData, HotelRoom, HotelSearchParams } from '@/types';
 
 // Configuration for LOZADA WebService
 const WS_CONFIG = {
@@ -22,13 +22,13 @@ export async function getCountryList(): Promise<Array<{ code: string, name: stri
   try {
     // Use Edge Function in production, proxy in development
     const isProduction = !import.meta.env.DEV;
-    
+
     let response;
     if (isProduction) {
       // Try Edge Function first, fallback if it fails
       try {
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
-        
+
         console.log('🔑 Using hardcoded SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
         console.log('🌐 Edge Function URL:', WS_CONFIG.url);
 
@@ -256,7 +256,7 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
   try {
     // Use Edge Function in production, proxy in development
     const isProduction = !import.meta.env.DEV;
-    
+
     if (isProduction) {
       // Use Supabase Edge Function
       try {

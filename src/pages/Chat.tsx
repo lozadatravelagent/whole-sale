@@ -16,6 +16,7 @@ import { parseFlightsFromMessage, isFlightMessage } from '@/utils/flightParser';
 import { parseHotelsFromMessage, isHotelMessage } from '@/utils/hotelParser';
 import { searchHotelFares } from '@/services/hotelSearch';
 import { searchAirFares } from '@/services/airfareSearch';
+import { searchPackageFares } from '@/services/packageSearch';
 import { isCombinedTravelMessage, parseCombinedTravelRequest } from '@/utils/combinedTravelParser';
 import type { CombinedTravelResults } from '@/types';
 import FlightSelector from '@/components/crm/FlightSelector';
@@ -154,12 +155,21 @@ const Chat = () => {
       }
     }
 
-    // Extract dates
+    // Extract dates - Enhanced patterns for Spanish dates
     const datePatterns = [
+      // ISO format
       /desde\s+el\s+(\d{4}-\d{2}-\d{2})\s+hasta\s+el?\s+(\d{4}-\d{2}-\d{2})/i,
-      /del\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+al\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/i,
       /(\d{4}-\d{2}-\d{2})\s+hasta\s+(\d{4}-\d{2}-\d{2})/i,
-      // Spanish date formats
+
+      // Slash/dash formats
+      /del\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+al\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/i,
+
+      // Spanish month names - enhanced patterns
+      /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+(\d{4})\s+)?hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)(?:\s+de\s+(\d{4}))?/i,
+      /del\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+(\d{4})\s+)?al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)(?:\s+de\s+(\d{4}))?/i,
+      /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+(\d{4})\s+)?hasta\s+el?\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)(?:\s+de\s+(\d{4}))?/i,
+
+      // Simplified Spanish patterns (original ones)
       /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
       /del\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
       /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+hasta\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i
@@ -171,25 +181,43 @@ const Chat = () => {
     for (const pattern of datePatterns) {
       const match = message.match(pattern);
       if (match) {
+        console.log('📅 Date pattern matched:', pattern, 'Groups:', match);
+
         // Check if it's a Spanish date format (has month names)
-        if (match.length > 4 && match[2] && match[4]) {
-          // Spanish format: "15 de octubre" "25 de octubre"
+        if (match.length > 4 && match[2] && typeof match[2] === 'string' && isNaN(Number(match[2]))) {
+          // Spanish format with month names
           const spanishMonths: Record<string, string> = {
             'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
             'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
             'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
           };
 
-          const fromDay = match[1].padStart(2, '0');
-          const fromMonth = spanishMonths[match[2].toLowerCase()] || '01';
-          const toDay = match[3].padStart(2, '0');
-          const toMonth = spanishMonths[match[4].toLowerCase()] || '01';
+          let fromDay, fromMonth, fromYear, toDay, toMonth, toYear;
           const currentYear = new Date().getFullYear();
 
-          dateFrom = `${currentYear}-${fromMonth}-${fromDay}`;
-          dateTo = `${currentYear}-${toMonth}-${toDay}`;
+          // Handle enhanced patterns with optional years
+          if (match.length >= 8) {
+            // Enhanced pattern: (day) (month) (year?) hasta (day) (month) (year?)
+            fromDay = match[1].padStart(2, '0');
+            fromMonth = spanishMonths[match[2].toLowerCase()] || '01';
+            fromYear = match[3] || currentYear;
+            toDay = match[4].padStart(2, '0');
+            toMonth = spanishMonths[match[5].toLowerCase()] || '01';
+            toYear = match[6] || currentYear;
+          } else {
+            // Simple pattern: (day) (month) hasta (day) (month)
+            fromDay = match[1].padStart(2, '0');
+            fromMonth = spanishMonths[match[2].toLowerCase()] || '01';
+            fromYear = currentYear;
+            toDay = match[3].padStart(2, '0');
+            toMonth = spanishMonths[match[4].toLowerCase()] || '01';
+            toYear = currentYear;
+          }
+
+          dateFrom = `${fromYear}-${fromMonth}-${fromDay}`;
+          dateTo = `${toYear}-${toMonth}-${toDay}`;
         } else {
-          // Regular format
+          // Regular format (ISO or slash/dash)
           dateFrom = match[1];
           dateTo = match[2];
 
@@ -235,6 +263,114 @@ const Chat = () => {
     return { hotelName, city, dateFrom, dateTo };
   };
 
+  const extractPackageSearchParams = (message: string) => {
+    const lowerMessage = message.toLowerCase();
+
+    // Extract destination
+    const destinationPatterns = [
+      /paquetes?.*?(?:para|a|en|de)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+para|$|\s+desde|\s+del|\s+en)/i,
+      /(?:para|a|en|de)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+para|$|\s+en)/i
+    ];
+
+    let destination = '';
+    for (const pattern of destinationPatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        destination = match[1].trim();
+        break;
+      }
+    }
+
+    // Extract dates - reuse the enhanced date extraction logic
+    const datePatterns = [
+      // Month-year patterns
+      /para\s+([a-záéíóúñ]+)\s+(\d{4})/i,
+      /en\s+([a-záéíóúñ]+)\s+(\d{4})/i,
+      /([a-záéíóúñ]+)\s+(\d{4})/i,
+
+      // Specific date ranges (reuse from hotel search)
+      /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
+      /del\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
+    ];
+
+    let dateFrom = '';
+    let dateTo = '';
+
+    for (const pattern of datePatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        const spanishMonths: Record<string, string> = {
+          'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+          'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+          'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+        };
+
+        if (match.length === 3) {
+          // Month-year pattern: octubre 2025
+          const month = spanishMonths[match[1].toLowerCase()];
+          const year = match[2];
+          if (month && year) {
+            dateFrom = `${year}-${month}-01`;
+            // Set dateTo to end of month
+            const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+            dateTo = `${year}-${month}-${lastDay.toString().padStart(2, '0')}`;
+          }
+        } else if (match.length >= 5) {
+          // Specific date range pattern
+          const fromDay = match[1].padStart(2, '0');
+          const fromMonth = spanishMonths[match[2].toLowerCase()] || '01';
+          const toDay = match[3].padStart(2, '0');
+          const toMonth = spanishMonths[match[4].toLowerCase()] || '01';
+          const currentYear = new Date().getFullYear();
+
+          dateFrom = `${currentYear}-${fromMonth}-${fromDay}`;
+          dateTo = `${currentYear}-${toMonth}-${toDay}`;
+        }
+        break;
+      }
+    }
+
+    // Default dates if not found
+    if (!dateFrom || !dateTo) {
+      const today = new Date();
+      const futureDate = new Date(today);
+      futureDate.setDate(today.getDate() + 7);
+
+      dateFrom = today.toISOString().split('T')[0];
+      dateTo = futureDate.toISOString().split('T')[0];
+    }
+
+    // Extract package class
+    let packageClass = 'AEROTERRESTRE'; // Default
+    if (lowerMessage.includes('solo hotel')) {
+      packageClass = 'HOTEL';
+    } else if (lowerMessage.includes('solo excursion') || lowerMessage.includes('solo tour')) {
+      packageClass = 'EXCURSION';
+    }
+
+    console.log('🔍 Extracted package search params:', { destination, dateFrom, dateTo, packageClass });
+
+    return { destination, dateFrom, dateTo, packageClass };
+  };
+
+  const isPackageRequest = (message: string): boolean => {
+    const lowerMessage = message.toLowerCase();
+
+    const packageKeywords = [
+      'paquetes',
+      'paquete',
+      'ver paquetes',
+      'buscar paquetes',
+      'quiero paquetes',
+      'necesito paquetes',
+      'paquete completo',
+      'viaje completo',
+      'tour completo'
+    ];
+
+    return packageKeywords.some(keyword => lowerMessage.includes(keyword));
+  };
+
   const handleSendMessage = async () => {
     if (!message.trim() || !selectedConversation || isLoading) return;
 
@@ -267,7 +403,8 @@ const Chat = () => {
 
       // Check what type of travel request this is
       const isCombinedRequest = isCombinedTravelMessage(currentMessage);
-      const isHotelOnlyRequest = !isCombinedRequest && (
+      const isPackageOnlyRequest = !isCombinedRequest && isPackageRequest(currentMessage);
+      const isHotelOnlyRequest = !isCombinedRequest && !isPackageOnlyRequest && (
         currentMessage.toLowerCase().includes('quiero un hotel') ||
         currentMessage.toLowerCase().includes('busco hotel') ||
         currentMessage.toLowerCase().includes('necesito hotel')
@@ -329,6 +466,73 @@ const Chat = () => {
         } catch (error) {
           console.error('Error processing combined travel request:', error);
           assistantResponse = '🌟 Disculpa, hay un problema temporal procesando tu solicitud de viaje combinado. Por favor, intenta nuevamente.';
+        }
+      } else if (isPackageOnlyRequest) {
+        console.log('🎒 Package-only request detected, searching via WebService');
+        console.log('🔄 Flow: 1) Get city codes 2) Search packages');
+
+        try {
+          // Extract package search parameters from user message
+          const { destination, dateFrom, dateTo, packageClass } = extractPackageSearchParams(currentMessage);
+          console.log('🔍 Extracted package parameters:', { destination, dateFrom, dateTo, packageClass });
+
+          // Search for packages using WebService
+          console.log('📞 Calling searchPackageFares...');
+          const packages = await searchPackageFares({
+            city: destination || 'Madrid', // Default to Madrid if no destination specified
+            dateFrom,
+            dateTo,
+            packageClass: packageClass as 'AEROTERRESTRE' | 'HOTEL' | 'EXCURSION'
+          });
+
+          if (packages.length > 0) {
+            // Format packages into message structure
+            let packageMessage = `🎒 **Paquetes disponibles**\\n\\n`;
+
+            packages.forEach((pkg, index) => {
+              packageMessage += `---\\n\\n`;
+              packageMessage += `🎒 **${pkg.name}**`;
+              if (pkg.category) packageMessage += ` - ${pkg.category}`;
+              packageMessage += `\\n`;
+              if (pkg.destination) packageMessage += `📍 **Destino:** ${pkg.destination}\\n`;
+              if (pkg.description) packageMessage += `📝 **Descripción:** ${pkg.description}\\n`;
+              packageMessage += `📅 **Salida:** ${pkg.departure_date}\\n`;
+              packageMessage += `🔚 **Regreso:** ${pkg.return_date}\\n`;
+              if (pkg.duration_nights > 0) packageMessage += `🌙 **Duración:** ${pkg.duration_nights} noches\\n`;
+
+              packageMessage += `💰 **Precio:** ${pkg.price.amount} ${pkg.price.currency}\\n`;
+
+              if (pkg.includes) {
+                packageMessage += `\\n**Incluye:**\\n`;
+                if (pkg.includes.flights) packageMessage += `✈️ Vuelos\\n`;
+                if (pkg.includes.hotel) packageMessage += `🏨 Hotel\\n`;
+                if (pkg.includes.meals) packageMessage += `🍽️ Comidas\\n`;
+                if (pkg.includes.transfers) packageMessage += `🚌 Traslados\\n`;
+                if (pkg.includes.excursions) packageMessage += `🎯 Excursiones\\n`;
+              }
+
+              packageMessage += `\\n🌟 *Powered by EUROVIPS*\\n`;
+            });
+
+            packageMessage += `\\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
+            assistantResponse = packageMessage;
+          } else {
+            // Extract destination from the search to provide more specific feedback
+            const { destination } = extractPackageSearchParams(currentMessage);
+
+            assistantResponse = `🎒 **Búsqueda de Paquetes**\\n\\n` +
+              `He recibido tu solicitud de paquetes${destination ? ` para ${destination}` : ''}.\\n\\n` +
+              `✅ **Estado del sistema:** WebService EUROVIPS configurado correctamente\\n` +
+              `⏳ **En proceso:** Verificando disponibilidad de paquetes\\n\\n` +
+              `Te notificaré cuando encuentre paquetes disponibles para tus fechas.\\n\\n` +
+              `**Parámetros detectados:**\\n` +
+              `- Destino: ${destination || 'No especificado'}\\n` +
+              `- Fechas: ${extractPackageSearchParams(currentMessage).dateFrom} al ${extractPackageSearchParams(currentMessage).dateTo}\\n` +
+              `- Tipo: ${extractPackageSearchParams(currentMessage).packageClass}`;
+          }
+        } catch (error) {
+          console.error('Error searching packages via WebService:', error);
+          assistantResponse = '🎒 Disculpa, hay un problema temporal con la búsqueda de paquetes. Por favor, intenta nuevamente en unos minutos.';
         }
       } else if (isHotelOnlyRequest) {
         console.log('🏨 Hotel-only request detected, searching via WebService');

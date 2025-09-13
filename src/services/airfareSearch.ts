@@ -104,7 +104,8 @@ async function getCityCodeForFlight(cityName: string): Promise<string> {
     const { getCountryList } = await import('./hotelSearch');
     const countries = await getCountryList();
 
-    if (countries.length === 0) {
+    // Validate that countries is an array and has data
+    if (!Array.isArray(countries) || countries.length === 0) {
       // Fallback to static airport mapping if WebService fails
       const FALLBACK_AIRPORT_CODES: Record<string, string> = {
         'madrid': 'MAD',
@@ -172,13 +173,13 @@ export async function searchAirFares(params: AirfareSearchParams): Promise<Fligh
         console.log('🚀 Starting flight search via Edge Function...');
         console.log('📥 Original params from chat:', JSON.stringify(params, null, 2));
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
-        
+
         console.log('🔑 Using hardcoded SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
         console.log('🌐 Final Edge Function URL:', WS_CONFIG.url);
-        
+
         const originCode = await getCityCodeForFlight(params.origin);
         const destinationCode = await getCityCodeForFlight(params.destination);
-        
+
         console.log('🗺️ Resolved city codes - Origin:', originCode, 'Destination:', destinationCode);
 
         const requestPayload = {
@@ -192,7 +193,7 @@ export async function searchAirFares(params: AirfareSearchParams): Promise<Fligh
             children: params.children
           }
         };
-        
+
         console.log('📦 Edge Function request payload:', JSON.stringify(requestPayload, null, 2));
 
         const response = await fetch(WS_CONFIG.url, {
