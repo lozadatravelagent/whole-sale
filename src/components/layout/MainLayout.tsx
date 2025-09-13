@@ -115,17 +115,6 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
                   </Button>
                   {chatOpen && location.pathname.startsWith('/chat') && (
                     <div className="mt-1 space-y-1">
-                      <Link to={item.href}>
-                        <Button
-                          variant={isActive ? "secondary" : "ghost"}
-                          className={cn(
-                            "w-full justify-start gap-3 h-9 pl-8",
-                            isActive && "bg-primary/10 text-primary"
-                          )}
-                        >
-                          Abrir Chat
-                        </Button>
-                      </Link>
                       <Link to="/chat?new=1">
                         <Button
                           variant="ghost"

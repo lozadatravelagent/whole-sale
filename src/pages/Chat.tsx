@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,6 +62,8 @@ const Chat = () => {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // Limit how many conversations are shown in the sidebar (like ChatGPT)
   const [sidebarLimit, setSidebarLimit] = useState(5);
@@ -86,6 +89,19 @@ const Chat = () => {
   useEffect(() => {
     loadConversations();
   }, []);
+
+  // Handle ?new=1 URL parameter to create new chat automatically
+  useEffect(() => {
+    const shouldCreateNew = searchParams.get('new') === '1';
+    if (shouldCreateNew && conversations.length >= 0) {
+      // Remove the ?new=1 parameter from URL
+      searchParams.delete('new');
+      setSearchParams(searchParams, { replace: true });
+
+      // Create new chat automatically
+      createNewChat();
+    }
+  }, [searchParams, conversations.length]);
 
   // No auto-scroll - user controls scroll manually
 
@@ -741,27 +757,40 @@ const Chat = () => {
 
   const createNewChat = async () => {
     try {
+      console.log('🆕 Creating new chat...');
+
       // Crear la conversación
       const newConversation = await createConversation();
-      setSelectedConversation(newConversation.id);
+      console.log('✅ New conversation created:', newConversation.id);
 
-      // Crear mensaje de bienvenida
+      // Crear mensaje de bienvenida mejorado PRIMERO
       const welcomeMessage = await saveMessage({
         conversation_id: newConversation.id,
         role: 'assistant',
         content: {
-          text: '¡Hola! Soy **Emilia**, tu asistente de viajes. Puedo ayudarte con:\n\n🌍 **Recomendaciones de destinos**\n✈️ **Búsqueda de vuelos**\n🏨 **Búsqueda de hoteles**\n🎒 **Consejos de viaje**\n💰 **Presupuestos de viaje**\n\nPuedes decirme "Quiero un hotel" para buscar alojamiento.\n\n¿En qué puedo ayudarte hoy?'
+          text: '¡Hola! Soy **Emilia**, tu asistente de viajes. Puedo ayudarte con:\n\n🌍 **Recomendaciones de destinos**\n✈️ **Búsqueda de vuelos**\n🏨 **Búsqueda de hoteles**\n🎒 **Búsqueda de paquetes** (nuevo!)\n💰 **Presupuestos de viaje**\n📋 **Cotizaciones en PDF**\n\n**Ejemplos de lo que puedes decirme:**\n- "Quiero un hotel en Madrid desde el 15 de octubre al 31 de octubre"\n- "Quiero ver paquetes disponibles para octubre 2025"\n- "Busco vuelos de Buenos Aires a Barcelona"\n\n¿En qué puedo ayudarte hoy?'
         },
         meta: {}
       });
 
+      console.log('✅ Welcome message created:', welcomeMessage.id);
+
+      // Pequeño delay para asegurar que el mensaje se guardó
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Seleccionar la nueva conversación DESPUÉS de crear el mensaje
+      setSelectedConversation(newConversation.id);
+
+      // Forzar recarga de conversaciones para actualizar la lista
+      await loadConversations();
+
       toast({
-        title: "Nuevo Chat",
-        description: "Chat creado. ¡Cuéntame sobre tu viaje para crear tu lead automáticamente!",
+        title: "Nuevo Chat Creado",
+        description: "¡Listo! Cuéntame sobre tu viaje para crear tu lead automáticamente.",
       });
 
     } catch (error) {
-      console.error('Error creating chat:', error);
+      console.error('❌ Error creating chat:', error);
       toast({
         title: "Error",
         description: "No se pudo crear el chat.",
