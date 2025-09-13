@@ -2,7 +2,7 @@ import { FlightData, FlightLeg, AirportInfo } from '@/types';
 
 // Configuration for LOZADA WebService (same as hotelSearch.ts)
 const WS_CONFIG = {
-  url: import.meta.env.DEV ? '/api/airfare' : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/eurovips-soap`,
+  url: import.meta.env.DEV ? '/api/airfare' : 'https://ujigyazketblwlzcomve.supabase.co/functions/v1/eurovips-soap',
   username: 'LOZADAWS',
   password: '.LOZAWS23.',
   agency: '20350',
@@ -165,14 +165,15 @@ export async function searchAirFares(params: AirfareSearchParams): Promise<Fligh
   try {
     // Use Edge Function in production, proxy in development
     const isProduction = !import.meta.env.DEV;
-    
+
     if (isProduction) {
       // Use Supabase Edge Function
       try {
         console.log('🚀 Starting flight search via Edge Function...');
         console.log('📥 Original params from chat:', JSON.stringify(params, null, 2));
-        console.log('🔑 VITE_SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY?.substring(0, 20) + '...');
-        console.log('🌐 VITE_SUPABASE_URL:', import.meta.env.VITE_SUPABASE_URL);
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
+        
+        console.log('🔑 Using hardcoded SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
         console.log('🌐 Final Edge Function URL:', WS_CONFIG.url);
         
         const originCode = await getCityCodeForFlight(params.origin);
@@ -198,14 +199,14 @@ export async function searchAirFares(params: AirfareSearchParams): Promise<Fligh
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify(requestPayload)
         });
 
         if (!response.ok) {
           console.error(`❌ Flights Edge Function HTTP Error: ${response.status} ${response.statusText}`);
-          
+
           // Try to read error response body
           try {
             const errorBody = await response.text();

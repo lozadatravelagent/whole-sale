@@ -2,7 +2,7 @@ import { HotelData, HotelRoom, HotelSearchParams } from '@/types';
 
 // Configuration for LOZADA WebService
 const WS_CONFIG = {
-  url: import.meta.env.DEV ? '/api/hotel' : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/eurovips-soap`,
+  url: import.meta.env.DEV ? '/api/hotel' : 'https://ujigyazketblwlzcomve.supabase.co/functions/v1/eurovips-soap',
   username: 'LOZADAWS',
   password: '.LOZAWS23.',
   agency: '20350',
@@ -27,14 +27,16 @@ export async function getCountryList(): Promise<Array<{ code: string, name: stri
     if (isProduction) {
       // Try Edge Function first, fallback if it fails
       try {
-        console.log('🔑 Using SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY?.substring(0, 20) + '...');
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
+        
+        console.log('🔑 Using hardcoded SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY.substring(0, 20) + '...');
         console.log('🌐 Edge Function URL:', WS_CONFIG.url);
 
         response = await fetch(WS_CONFIG.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             action: 'getCountryList'
@@ -258,13 +260,14 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
     if (isProduction) {
       // Use Supabase Edge Function
       try {
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
         const cityCode = await getCityCode(params.city || '');
 
         const response = await fetch(WS_CONFIG.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             action: 'searchHotels',

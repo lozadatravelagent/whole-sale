@@ -86,6 +86,11 @@ The project uses a comprehensive design system with:
 - **WhatsApp Business API**: For messaging integration
 - **PDF Generation**: For quote documents
 
+### Deployment
+
+- **Platform**: Railway
+- **Environment Variables**: Configured in Railway dashboard for production deployment
+
 ## Development Guidelines
 
 ### Component Conventions
