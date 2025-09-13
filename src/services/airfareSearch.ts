@@ -2,7 +2,7 @@ import { FlightData, FlightLeg, AirportInfo } from '@/types';
 
 // Configuration for LOZADA WebService (same as hotelSearch.ts)
 const WS_CONFIG = {
-  url: import.meta.env.DEV ? '/api/airfare' : 'https://test.eurovips.itraffic.com.ar/WSBridge_EuroTest/BridgeService.asmx',
+  url: import.meta.env.DEV ? '/api/airfare' : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/eurovips-soap`,
   username: 'LOZADAWS',
   password: '.LOZAWS23.',
   agency: '20350',
@@ -163,41 +163,82 @@ async function getCityCodeForFlight(cityName: string): Promise<string> {
 export async function searchAirFares(params: AirfareSearchParams): Promise<FlightData[]> {
 
   try {
-    // Build SOAP XML request according to EUROVIPS documentation
-    const soapRequest = await buildAirfareSearchRequest(params);
-    console.log('📝 SOAP Request:', soapRequest);
+    // Use Edge Function in production, proxy in development
+    const isProduction = !import.meta.env.DEV;
+    
+    if (isProduction) {
+      // Use Supabase Edge Function
+      const originCode = await getCityCodeForFlight(params.origin);
+      const destinationCode = await getCityCodeForFlight(params.destination);
 
-    const response = await fetch(WS_CONFIG.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': 'searchAirFares',
-        'Accept': 'text/xml, application/xml, application/soap+xml'
-      },
-      body: soapRequest,
-      mode: import.meta.env.DEV ? 'cors' : 'no-cors'
-    });
+      const response = await fetch(WS_CONFIG.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'searchFlights',
+          data: {
+            originCode,
+            destinationCode,
+            departureDate: params.departureDate,
+            returnDate: params.returnDate,
+            adults: params.adults,
+            children: params.children
+          }
+        })
+      });
 
-    if (!response.ok) {
-      // Try to read the error response
-      try {
-        const errorText = await response.text();
-        console.error('📝 Error Response Body:', errorText);
-      } catch (e) {
-        console.error('❌ Could not read error response body');
+      if (!response.ok) {
+        console.error(`HTTP Error: ${response.status} ${response.statusText}`);
+        return [];
       }
 
-      // If WebService is not accessible, return empty array instead of throwing
-      return [];
+      const result = await response.json();
+      if (result.success) {
+        return result.results;
+      } else {
+        console.error('Edge Function Error:', result.error);
+        return [];
+      }
+    } else {
+      // Use direct SOAP request in development (via proxy)
+      const soapRequest = await buildAirfareSearchRequest(params);
+      console.log('📝 SOAP Request:', soapRequest);
+
+      const response = await fetch(WS_CONFIG.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          'SOAPAction': 'searchAirFares',
+          'Accept': 'text/xml, application/xml, application/soap+xml'
+        },
+        body: soapRequest,
+        mode: 'cors'
+      });
+
+      if (!response.ok) {
+        // Try to read the error response
+        try {
+          const errorText = await response.text();
+          console.error('📝 Error Response Body:', errorText);
+        } catch (e) {
+          console.error('❌ Could not read error response body');
+        }
+
+        // If WebService is not accessible, return empty array instead of throwing
+        return [];
+      }
+
+      const xmlResponse = await response.text();
+      console.log('📝 SOAP Response:', xmlResponse.substring(0, 1000));
+
+      // Parse XML response
+      const flights = parseAirfareSearchResponse(xmlResponse, params);
+
+      return flights;
     }
-
-    const xmlResponse = await response.text();
-    console.log('📝 SOAP Response:', xmlResponse.substring(0, 1000));
-
-    // Parse XML response
-    const flights = parseAirfareSearchResponse(xmlResponse, params);
-
-    return flights;
   } catch (error) {
     console.error('❌ Error searching flights:', error);
 

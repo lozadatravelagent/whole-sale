@@ -2,7 +2,7 @@ import { HotelData, HotelRoom, HotelSearchParams } from '@/types';
 
 // Configuration for LOZADA WebService
 const WS_CONFIG = {
-  url: import.meta.env.DEV ? '/api/hotel' : 'https://test.eurovips.itraffic.com.ar/WSBridge_EuroTest/BridgeService.asmx',
+  url: import.meta.env.DEV ? '/api/hotel' : `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/eurovips-soap`,
   username: 'LOZADAWS',
   password: '.LOZAWS23.',
   agency: '20350',
@@ -20,7 +20,39 @@ export async function getCountryList(): Promise<Array<{ code: string, name: stri
   }
 
   try {
-    const soapRequest = `<?xml version="1.0" encoding="utf-8"?>
+    // Use Edge Function in production, proxy in development
+    const isProduction = !import.meta.env.DEV;
+    
+    let response;
+    if (isProduction) {
+      // Use Supabase Edge Function
+      response = await fetch(WS_CONFIG.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'getCountryList'
+        })
+      });
+
+      if (!response.ok) {
+        console.error(`HTTP Error: ${response.status} ${response.statusText}`);
+        return [];
+      }
+
+      const result = await response.json();
+      if (result.success) {
+        countryListCache = result.results;
+        return result.results;
+      } else {
+        console.error('Edge Function Error:', result.error);
+        return [];
+      }
+    } else {
+      // Use direct SOAP request in development (via proxy)
+      const soapRequest = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <soap:Body>
     <xsstring7 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
@@ -36,34 +68,35 @@ export async function getCountryList(): Promise<Array<{ code: string, name: stri
   </soap:Body>
 </soap:Envelope>`;
 
-    console.log('📝 Country List SOAP Request:', soapRequest);
+      console.log('📝 Country List SOAP Request:', soapRequest);
 
-    const response = await fetch(WS_CONFIG.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': 'getCountryList',
-        'Accept': 'text/xml, application/xml, application/soap+xml'
-      },
-      body: soapRequest,
-      mode: import.meta.env.DEV ? 'cors' : 'no-cors'
-    });
+      response = await fetch(WS_CONFIG.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          'SOAPAction': 'getCountryList',
+          'Accept': 'text/xml, application/xml, application/soap+xml'
+        },
+        body: soapRequest,
+        mode: 'cors'
+      });
 
-    if (!response.ok) {
-      console.error(`HTTP Error: ${response.status} ${response.statusText}`);
-      return [];
+      if (!response.ok) {
+        console.error(`HTTP Error: ${response.status} ${response.statusText}`);
+        return [];
+      }
+
+      const xmlResponse = await response.text();
+      console.log('📝 Country List SOAP Response:', xmlResponse.substring(0, 1000));
+
+      // Parse the XML response to extract country codes and names
+      const countries = parseCountryListResponse(xmlResponse);
+
+      // Cache the result
+      countryListCache = countries;
+
+      return countries;
     }
-
-    const xmlResponse = await response.text();
-    console.log('📝 Country List SOAP Response:', xmlResponse.substring(0, 1000));
-
-    // Parse the XML response to extract country codes and names
-    const countries = parseCountryListResponse(xmlResponse);
-
-    // Cache the result
-    countryListCache = countries;
-
-    return countries;
   } catch (error) {
     console.error('❌ Error getting country list:', error);
     return [];
@@ -201,41 +234,81 @@ async function getCityCode(cityName: string): Promise<string> {
 export async function searchHotelFares(params: HotelSearchParams): Promise<HotelData[]> {
 
   try {
-    // Build SOAP XML request according to documentation
-    const soapRequest = await buildHotelSearchRequest(params);
-    console.log('📝 SOAP Request:', soapRequest);
+    // Use Edge Function in production, proxy in development
+    const isProduction = !import.meta.env.DEV;
+    
+    if (isProduction) {
+      // Use Supabase Edge Function
+      const cityCode = await getCityCodeForHotel(params.destination);
 
-    const response = await fetch(WS_CONFIG.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': 'searchHotelFares',
-        'Accept': 'text/xml, application/xml, application/soap+xml'
-      },
-      body: soapRequest,
-      mode: import.meta.env.DEV ? 'cors' : 'no-cors'
-    });
+      const response = await fetch(WS_CONFIG.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          action: 'searchHotels',
+          data: {
+            cityCode,
+            checkinDate: params.checkinDate,
+            checkoutDate: params.checkoutDate,
+            adults: params.adults,
+            children: params.children,
+            rooms: params.rooms
+          }
+        })
+      });
 
-    if (!response.ok) {
-      // Try to read the error response to understand what's happening
-      try {
-        const errorText = await response.text();
-        console.error('📝 Error Response Body:', errorText);
-      } catch (e) {
-        console.error('❌ Could not read error response body');
+      if (!response.ok) {
+        console.error(`HTTP Error: ${response.status} ${response.statusText}`);
+        return [];
       }
 
-      // If WebService is not accessible, return empty array instead of throwing
-      return [];
+      const result = await response.json();
+      if (result.success) {
+        return result.results;
+      } else {
+        console.error('Edge Function Error:', result.error);
+        return [];
+      }
+    } else {
+      // Use direct SOAP request in development (via proxy)
+      const soapRequest = await buildHotelSearchRequest(params);
+      console.log('📝 SOAP Request:', soapRequest);
+
+      const response = await fetch(WS_CONFIG.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          'SOAPAction': 'searchHotelFares',
+          'Accept': 'text/xml, application/xml, application/soap+xml'
+        },
+        body: soapRequest,
+        mode: 'cors'
+      });
+
+      if (!response.ok) {
+        // Try to read the error response to understand what's happening
+        try {
+          const errorText = await response.text();
+          console.error('📝 Error Response Body:', errorText);
+        } catch (e) {
+          console.error('❌ Could not read error response body');
+        }
+
+        // If WebService is not accessible, return empty array instead of throwing
+        return [];
+      }
+
+      const xmlResponse = await response.text();
+      console.log('📝 SOAP Response:', xmlResponse.substring(0, 1000));
+
+      // Parse XML response
+      const hotels = parseHotelSearchResponse(xmlResponse, params);
+
+      return hotels;
     }
-
-    const xmlResponse = await response.text();
-    console.log('📝 SOAP Response:', xmlResponse.substring(0, 1000));
-
-    // Parse XML response
-    const hotels = parseHotelSearchResponse(xmlResponse, params);
-
-    return hotels;
   } catch (error) {
     console.error('❌ Error searching hotels:', error);
 
