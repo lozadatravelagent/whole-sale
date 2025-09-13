@@ -168,38 +168,53 @@ export async function searchAirFares(params: AirfareSearchParams): Promise<Fligh
     
     if (isProduction) {
       // Use Supabase Edge Function
-      const originCode = await getCityCodeForFlight(params.origin);
-      const destinationCode = await getCityCodeForFlight(params.destination);
+      try {
+        const originCode = await getCityCodeForFlight(params.origin);
+        const destinationCode = await getCityCodeForFlight(params.destination);
 
-      const response = await fetch(WS_CONFIG.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          action: 'searchFlights',
-          data: {
-            originCode,
-            destinationCode,
-            departureDate: params.departureDate,
-            returnDate: params.returnDate,
-            adults: params.adults,
-            children: params.children
-          }
-        })
-      });
+        const response = await fetch(WS_CONFIG.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            action: 'searchFlights',
+            data: {
+              originCode,
+              destinationCode,
+              departureDate: params.departureDate,
+              returnDate: params.returnDate,
+              adults: params.adults,
+              children: params.children
+            }
+          })
+        });
 
-      if (!response.ok) {
-        console.error(`HTTP Error: ${response.status} ${response.statusText}`);
-        return [];
-      }
+        if (!response.ok) {
+          console.error(`Flights Edge Function HTTP Error: ${response.status} ${response.statusText}`);
+          return [];
+        }
 
-      const result = await response.json();
-      if (result.success) {
-        return result.results;
-      } else {
-        console.error('Edge Function Error:', result.error);
+        const responseText = await response.text();
+        console.log('Flights Edge Function raw response:', responseText.substring(0, 200));
+
+        let result;
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Flights Edge Function returned non-JSON response:', responseText.substring(0, 500));
+          return [];
+        }
+
+        if (result.success) {
+          return result.results;
+        } else {
+          console.error('Flights Edge Function error:', result.error);
+          return [];
+        }
+      } catch (error) {
+        console.error('Flights search failed:', error);
         return [];
       }
     } else {

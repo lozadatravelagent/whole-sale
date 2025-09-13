@@ -25,29 +25,44 @@ export async function getCountryList(): Promise<Array<{ code: string, name: stri
     
     let response;
     if (isProduction) {
-      // Use Supabase Edge Function
-      response = await fetch(WS_CONFIG.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          action: 'getCountryList'
-        })
-      });
+      // Try Edge Function first, fallback if it fails
+      try {
+        response = await fetch(WS_CONFIG.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            action: 'getCountryList'
+          })
+        });
 
-      if (!response.ok) {
-        console.error(`HTTP Error: ${response.status} ${response.statusText}`);
-        return [];
-      }
+        if (!response.ok) {
+          console.error(`Edge Function HTTP Error: ${response.status} ${response.statusText}`);
+          throw new Error(`Edge Function failed: ${response.status}`);
+        }
 
-      const result = await response.json();
-      if (result.success) {
-        countryListCache = result.results;
-        return result.results;
-      } else {
-        console.error('Edge Function Error:', result.error);
+        const responseText = await response.text();
+        console.log('Edge Function raw response:', responseText.substring(0, 200));
+
+        let result;
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Edge Function returned non-JSON response:', responseText.substring(0, 500));
+          throw new Error('Invalid JSON response from Edge Function');
+        }
+
+        if (result.success) {
+          countryListCache = result.results;
+          return result.results;
+        } else {
+          console.error('Edge Function business error:', result.error);
+          throw new Error(`Edge Function error: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Edge Function failed:', error);
         return [];
       }
     } else {
@@ -239,37 +254,52 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
     
     if (isProduction) {
       // Use Supabase Edge Function
-      const cityCode = await getCityCodeForHotel(params.destination);
+      try {
+        const cityCode = await getCityCode(params.destination);
 
-      const response = await fetch(WS_CONFIG.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          action: 'searchHotels',
-          data: {
-            cityCode,
-            checkinDate: params.checkinDate,
-            checkoutDate: params.checkoutDate,
-            adults: params.adults,
-            children: params.children,
-            rooms: params.rooms
-          }
-        })
-      });
+        const response = await fetch(WS_CONFIG.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            action: 'searchHotels',
+            data: {
+              cityCode,
+              checkinDate: params.checkinDate,
+              checkoutDate: params.checkoutDate,
+              adults: params.adults,
+              children: params.children,
+              rooms: params.rooms
+            }
+          })
+        });
 
-      if (!response.ok) {
-        console.error(`HTTP Error: ${response.status} ${response.statusText}`);
-        return [];
-      }
+        if (!response.ok) {
+          console.error(`Edge Function HTTP Error: ${response.status} ${response.statusText}`);
+          return [];
+        }
 
-      const result = await response.json();
-      if (result.success) {
-        return result.results;
-      } else {
-        console.error('Edge Function Error:', result.error);
+        const responseText = await response.text();
+        console.log('Hotels Edge Function raw response:', responseText.substring(0, 200));
+
+        let result;
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Hotels Edge Function returned non-JSON response:', responseText.substring(0, 500));
+          return [];
+        }
+
+        if (result.success) {
+          return result.results;
+        } else {
+          console.error('Hotels Edge Function error:', result.error);
+          return [];
+        }
+      } catch (error) {
+        console.error('Hotels search failed:', error);
         return [];
       }
     } else {
