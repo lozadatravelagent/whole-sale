@@ -500,8 +500,13 @@ const Chat = () => {
 
           // Search for packages using WebService
           console.log('📞 Calling searchPackageFares...');
+
+          // Si no hay destino específico, usar España como destino amplio para obtener más resultados
+          const searchCity = destination || 'España';
+          console.log(`🌍 Using search destination: ${searchCity}`);
+
           const packages = await searchPackageFares({
-            city: destination || 'Madrid', // Default to Madrid if no destination specified
+            city: searchCity,
             dateFrom,
             dateTo,
             packageClass: packageClass as 'AEROTERRESTRE' | 'HOTEL' | 'EXCURSION'

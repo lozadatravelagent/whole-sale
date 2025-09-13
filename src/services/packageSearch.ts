@@ -30,6 +30,10 @@ export async function searchPackageFares(params: PackageSearchParams): Promise<P
       try {
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
 
+        // Get correct city code from WebService country list or fallback
+        const cityCode = await getCityCode(params.city || '');
+        console.log(`🌍 Converting city "${params.city}" to code: ${cityCode}`);
+
         const response = await fetch(WS_CONFIG.url, {
           method: 'POST',
           headers: {
@@ -39,7 +43,7 @@ export async function searchPackageFares(params: PackageSearchParams): Promise<P
           body: JSON.stringify({
             action: 'searchPackages',
             data: {
-              city: params.city,
+              cityCode: cityCode,  // Usar cityCode en lugar de city
               dateFrom: params.dateFrom,
               dateTo: params.dateTo,
               packageClass: params.class || 'AEROTERRESTRE',
@@ -84,6 +88,106 @@ export async function searchPackageFares(params: PackageSearchParams): Promise<P
   } catch (error) {
     console.error('❌ Error searching packages:', error);
     return [];
+  }
+}
+
+// Cache for country/city codes to avoid repeated API calls
+let countryListCache: Array<{ code: string, name: string }> = [];
+
+async function getCountryList(): Promise<Array<{ code: string, name: string }>> {
+  // Return cached results if available
+  if (countryListCache.length > 0) {
+    console.log('🎯 Using cached country list:', countryListCache.length, 'items');
+    return countryListCache;
+  }
+
+  try {
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
+
+    const response = await fetch(WS_CONFIG.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        action: 'getCountryList',
+        data: null
+      })
+    });
+
+    if (!response.ok) {
+      console.error(`Edge Function HTTP Error: ${response.status} ${response.statusText}`);
+      return [];
+    }
+
+    const result = await response.json();
+    if (result.success) {
+      countryListCache = result.results;
+      return result.results;
+    } else {
+      console.error('Edge Function business error:', result.error);
+      return [];
+    }
+  } catch (error) {
+    console.error('Edge Function failed:', error);
+    return [];
+  }
+}
+
+async function getCityCode(cityName: string): Promise<string> {
+  try {
+    // Get the country list first
+    const countries = await getCountryList();
+
+    if (countries.length === 0) {
+      // Fallback to static mapping if WebService fails
+      const FALLBACK_CITY_CODES: Record<string, string> = {
+        'madrid': 'MAD',
+        'barcelona': 'BCN',
+        'españa': 'MAD', // Default España to Madrid
+        'spain': 'MAD',
+        'viena': 'VIE',
+        'vienna': 'VIE',
+        'paris': 'PAR',
+        'londres': 'LON',
+        'london': 'LON',
+        'roma': 'ROM',
+        'rome': 'ROM'
+      };
+
+      const city = cityName.toLowerCase().trim();
+      return FALLBACK_CITY_CODES[city] || city.substring(0, 3).toUpperCase();
+    }
+
+    // Search for the city in the WebService response
+    const cityLower = cityName.toLowerCase().trim();
+
+    // Try exact match first
+    let foundCountry = countries.find(country =>
+      country.name.toLowerCase() === cityLower
+    );
+
+    // If not found, try partial match
+    if (!foundCountry) {
+      foundCountry = countries.find(country =>
+        country.name.toLowerCase().includes(cityLower) ||
+        cityLower.includes(country.name.toLowerCase())
+      );
+    }
+
+    if (foundCountry) {
+      console.log(`✅ Found city code: ${cityName} -> ${foundCountry.code}`);
+      return foundCountry.code;
+    }
+
+    // Final fallback
+    console.log(`⚠️ No city code found for: ${cityName}, using fallback`);
+    return cityName.substring(0, 3).toUpperCase();
+
+  } catch (error) {
+    console.error('❌ Error getting city code:', error);
+    return cityName.substring(0, 3).toUpperCase();
   }
 }
 
