@@ -267,3 +267,174 @@ export interface PdfMonkeyResponse {
   document_url?: string;
   error?: string;
 }
+
+// Hotel types
+export interface HotelSearchParams {
+  dateFrom: string;
+  dateTo: string;
+  city?: string;
+  hotelName?: string;
+  occupancy?: number;
+}
+
+export interface HotelRoom {
+  type: string;
+  description: string;
+  price_per_night: number;
+  total_price: number;
+  currency: string;
+  availability: number;
+  occupancy_id: string;
+  fare_id_broker?: string;
+}
+
+export interface PackageFare {
+  type: 'SGL' | 'DWL' | 'TPL' | 'CHD' | 'INF' | 'CPL';
+  passengerType: 'ADT' | 'CHD' | 'INF' | 'CNN';
+  availability: number;
+  base: number;
+  taxes: Array<{
+    type: string;
+    amount: number;
+  }>;
+  total: number;
+  currency: string;
+}
+
+export interface PackageCompositionHotel {
+  itemId: string;
+  code: string;
+  name: string;
+  category: string;
+  location: {
+    code: string;
+    name: string;
+  };
+  roomType: {
+    code: string;
+    name: string;
+  };
+  checkin: string;
+  checkout: string;
+  roomsAvailable: number;
+}
+
+export interface PackageCompositionFlight {
+  itemId: string;
+  departure: string;
+  airline: {
+    code: string;
+    iata: string;
+    name: string;
+  };
+  flight: {
+    number: string;
+    category: string;
+    seatAvailable: number;
+  };
+  departureInfo: {
+    time: string;
+    city: { code: string; name: string };
+    airport: { code: string; name: string };
+  };
+  arrivalInfo: {
+    time: string;
+    city: { code: string; name: string };
+    airport: { code: string; name: string };
+  };
+}
+
+export interface PackageOperationDay {
+  date: string;
+  seatAvailable: number;
+  roomsAvailable: number;
+  composition: {
+    hotels: PackageCompositionHotel[];
+    flights: PackageCompositionFlight[];
+  };
+}
+
+export interface PackageData {
+  id: string;
+  unique_id: string;
+  backOfficeCode: string;
+  backOfficeOperatorCode: string;
+  name: string;
+  category: string;
+  destination: string;
+  description?: string;
+  class: 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO';
+  operationItems: string[]; // Days like 'sat', 'sun', etc.
+  lodgedNights: number;
+  lodgedDays: number;
+  policies: {
+    cancellation?: string;
+    lodging?: string;
+    children?: string;
+  };
+  fares: PackageFare[];
+  operationDays: PackageOperationDay[];
+  itinerary?: string;
+  details?: string;
+}
+
+export interface HotelData {
+  id: string;
+  unique_id: string;
+  name: string;
+  category: string;
+  city: string;
+  address: string;
+  phone?: string;
+  website?: string;
+  description?: string;
+  images?: string[];
+  rooms: HotelRoom[];
+  check_in: string;
+  check_out: string;
+  nights: number;
+  policy_cancellation?: string;
+  policy_lodging?: string;
+}
+
+// Combined travel service types
+export interface AirfareSearchParams {
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate?: string;
+  adults?: number;
+  children?: number;
+}
+
+export interface CombinedTravelRequest {
+  flights: AirfareSearchParams;
+  hotels: HotelSearchParams;
+  requestType: 'combined' | 'flights-only' | 'hotels-only';
+}
+
+export interface CombinedTravelResults {
+  flights: FlightData[];
+  hotels: HotelData[];
+  requestType: 'combined' | 'flights-only' | 'hotels-only';
+}
+
+// EUROVIPS WebService types
+export interface EurovipsSearchParams {
+  dateFrom: string;
+  dateTo: string;
+  origin?: string;
+  destination?: string;
+  city?: string;
+  hotelName?: string;
+  adults?: number;
+  children?: number;
+  currency?: string;
+}
+
+export interface EurovipsResult {
+  success: boolean;
+  flights?: FlightData[];
+  hotels?: HotelData[];
+  error?: string;
+}
