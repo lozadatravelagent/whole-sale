@@ -401,14 +401,20 @@ const Chat = () => {
 
       console.log('Sending message to travel-chat:', currentMessage);
 
-      // Check what type of travel request this is
-      const isCombinedRequest = isCombinedTravelMessage(currentMessage);
-      const isPackageOnlyRequest = !isCombinedRequest && isPackageRequest(currentMessage);
+      // Check what type of travel request this is - PRIORITIZE PACKAGES FIRST
+      const isPackageOnlyRequest = isPackageRequest(currentMessage);
+      const isCombinedRequest = !isPackageOnlyRequest && isCombinedTravelMessage(currentMessage);
       const isHotelOnlyRequest = !isCombinedRequest && !isPackageOnlyRequest && (
         currentMessage.toLowerCase().includes('quiero un hotel') ||
         currentMessage.toLowerCase().includes('busco hotel') ||
         currentMessage.toLowerCase().includes('necesito hotel')
       );
+
+      // Debug logging
+      console.log('🔍 Message classification for:', currentMessage);
+      console.log('🔍 isPackageOnlyRequest (FIRST):', isPackageOnlyRequest);
+      console.log('🔍 isCombinedRequest:', isCombinedRequest);
+      console.log('🔍 isHotelOnlyRequest:', isHotelOnlyRequest);
 
       let assistantResponse;
       let combinedDataToAttach: CombinedTravelResults | null = null;

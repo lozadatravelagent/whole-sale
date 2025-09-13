@@ -1,4 +1,4 @@
-srimport { HotelData, HotelRoom, HotelSearchParams } from '@/types';
+import { HotelData, HotelRoom, HotelSearchParams } from '@/types';
 
 // Configuration for LOZADA WebService
 const WS_CONFIG = {
