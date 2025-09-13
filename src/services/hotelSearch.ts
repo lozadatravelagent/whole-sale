@@ -27,6 +27,9 @@ export async function getCountryList(): Promise<Array<{ code: string, name: stri
     if (isProduction) {
       // Try Edge Function first, fallback if it fails
       try {
+        console.log('🔑 Using SUPABASE_ANON_KEY:', import.meta.env.VITE_SUPABASE_ANON_KEY?.substring(0, 20) + '...');
+        console.log('🌐 Edge Function URL:', WS_CONFIG.url);
+
         response = await fetch(WS_CONFIG.url, {
           method: 'POST',
           headers: {
@@ -255,7 +258,7 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
     if (isProduction) {
       // Use Supabase Edge Function
       try {
-        const cityCode = await getCityCode(params.destination);
+        const cityCode = await getCityCode(params.city || '');
 
         const response = await fetch(WS_CONFIG.url, {
           method: 'POST',
@@ -267,11 +270,11 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
             action: 'searchHotels',
             data: {
               cityCode,
-              checkinDate: params.checkinDate,
-              checkoutDate: params.checkoutDate,
-              adults: params.adults,
-              children: params.children,
-              rooms: params.rooms
+              checkinDate: params.dateFrom,
+              checkoutDate: params.dateTo,
+              adults: 2,
+              children: 0,
+              rooms: 1
             }
           })
         });

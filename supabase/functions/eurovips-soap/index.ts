@@ -432,7 +432,18 @@ serve(async (req) => {
       throw new Error('Only POST method is allowed');
     }
 
-    const { action, data }: SOAPRequestParams = await req.json();
+    // Log the request for debugging
+    console.log('🚀 Edge Function called!');
+    console.log('📥 Request method:', req.method);
+    console.log('📋 Request headers:', Object.fromEntries(req.headers.entries()));
+    
+    const authHeader = req.headers.get('authorization');
+    console.log('🔑 Auth header:', authHeader?.substring(0, 50) + '...');
+    
+    const body = await req.json();
+    console.log('📦 Request body:', body);
+
+    const { action, data }: SOAPRequestParams = body;
     const client = new EurovipsSOAPClient();
 
     let results;
