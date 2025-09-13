@@ -2,7 +2,7 @@ import { PackageData } from '@/types';
 
 // Configuration for LOZADA WebService (same as hotelSearch.ts)
 const WS_CONFIG = {
-  url: import.meta.env.DEV ? '/api/package' : 'https://test.eurovips.itraffic.com.ar/WSBridge_EuroTest/BridgeService.asmx',
+  url: import.meta.env.DEV ? '/api/package' : 'https://ujigyazketblwlzcomve.supabase.co/functions/v1/eurovips-soap',
   username: 'LOZADAWS',
   password: '.LOZAWS23.',
   agency: '20350',
@@ -22,56 +22,67 @@ export async function searchPackageFares(params: PackageSearchParams): Promise<P
   console.log('📦 Searching packages with params:', params);
 
   try {
-    // Build SOAP XML request according to documentation
-    const soapRequest = await buildPackageSearchRequest(params);
-    console.log('📝 SOAP Request:', soapRequest);
+    // Use Edge Function in production, proxy in development
+    const isProduction = !import.meta.env.DEV;
 
-    const response = await fetch(WS_CONFIG.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': 'searchPackageFares',
-        'Accept': 'text/xml, application/xml, application/soap+xml'
-      },
-      body: soapRequest,
-      mode: import.meta.env.DEV ? 'cors' : 'no-cors'
-    });
-
-    if (!response.ok) {
-      console.error(`HTTP Error: ${response.status} ${response.statusText}`);
-      
-      // Try to read the error response to understand what's happening
+    if (isProduction) {
+      // Use Supabase Edge Function
       try {
-        const errorText = await response.text();
-        console.error('📝 Error Response Body:', errorText);
-      } catch (e) {
-        console.error('❌ Could not read error response body');
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
+
+        const response = await fetch(WS_CONFIG.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            action: 'searchPackages',
+            data: {
+              city: params.city,
+              dateFrom: params.dateFrom,
+              dateTo: params.dateTo,
+              packageClass: params.class || 'AEROTERRESTRE',
+              adults: params.adults || 1,
+              children: params.children || 0
+            }
+          })
+        });
+
+        if (!response.ok) {
+          console.error(`Edge Function HTTP Error: ${response.status} ${response.statusText}`);
+          return [];
+        }
+
+        const responseText = await response.text();
+        console.log('Package Edge Function raw response:', responseText.substring(0, 200));
+
+        let result;
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('Edge Function returned non-JSON response:', responseText.substring(0, 500));
+          throw new Error('Invalid JSON response from Edge Function');
+        }
+
+        if (result.success) {
+          return result.results;
+        } else {
+          console.error('Edge Function business error:', result.error);
+          return [];
+        }
+      } catch (error) {
+        console.error('Edge Function failed:', error);
+        return [];
       }
-      
-      // If WebService is not accessible, return empty array instead of throwing
-      console.log('📦 WebService not accessible, returning empty results');
+    } else {
+      // Development mode: Use proxy or return empty array for now
+      console.log('📦 Development mode: Package search not implemented via proxy yet');
       return [];
     }
 
-    const xmlResponse = await response.text();
-    console.log('📝 SOAP Response:', xmlResponse.substring(0, 1000));
-
-    // Parse XML response
-    const packages = parsePackageSearchResponse(xmlResponse, params);
-    console.log('📦 Parsed packages:', packages.length);
-    
-    return packages;
   } catch (error) {
     console.error('❌ Error searching packages:', error);
-    
-    // Check if it's a CORS error or network error
-    if (error instanceof Error) {
-      if (error.message.includes('CORS') || error.message.includes('fetch')) {
-        console.log('📦 CORS or network error, WebService may not be accessible from browser');
-      }
-    }
-    
-    // Return empty array instead of throwing to avoid breaking the chat
     return [];
   }
 }
