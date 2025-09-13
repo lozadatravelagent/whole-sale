@@ -8,6 +8,8 @@ This is a React-based wholesale travel CRM application called "WholeSale Connect
 
 ## Development Commands
 
+#DON'T MAKE MOCK DATA
+
 - `npm run dev` - Start development server (runs on port 8080)
 - `npm run build` - Build for production
 - `npm run build:dev` - Build for development mode
@@ -25,6 +27,7 @@ This is a React-based wholesale travel CRM application called "WholeSale Connect
 - **Routing**: React Router v6
 - **Database**: Supabase (PostgreSQL with real-time subscriptions)
 - **Authentication**: Supabase Auth
+- NO hardcoded data ni mock data
 
 ### Project Structure
 
@@ -107,3 +110,80 @@ The project uses a comprehensive design system with:
 
 ### Testing
 - No specific test framework is configured - determine testing approach by examining the codebase if adding tests
+
+## EUROVIPS WebService Integration
+
+### Servicios Combinados - Flujos de Trabajo
+
+#### 1. Flujo Principal: Búsqueda → Presupuesto → Reserva
+Secuencia básica del proceso completo de reserva:
+
+```
+Búsqueda de tarifas → Creación de presupuesto → Conversión a reserva
+
+searchHotelFares/searchAirFares/searchPackageFares/searchServiceFares
+↓
+makeBudget (usando FareId obtenido)
+↓
+convertToBooking
+```
+
+#### 2. Servicios de Datos Estáticos (combinables con cualquier flujo)
+Estos servicios se ejecutan **antes** de las búsquedas para validar parámetros:
+
+- **getCountryList** - Para obtener códigos de ciudades válidos
+- **getAirlineList** - Para obtener códigos de aerolíneas válidos
+
+Se usan como validación previa para asegurar que las búsquedas usen códigos correctos.
+
+#### 3. Servicios de Consulta de Tarifas Individuales
+Se ejecutan **después** de las búsquedas para obtener detalles específicos:
+
+- **getHotelFare** - Detalles de una tarifa de hotel específica
+- **getPackageFare** - Detalles de un paquete específico  
+- **getServiceFare** - Detalles de un servicio específico
+- **getAirFare** - Detalles de una tarifa aérea específica
+
+#### 4. Servicios de Gestión de Reservas
+Se utilizan **después** de convertToBooking para gestionar la reserva:
+
+```
+getBookingList → getBooking (consultar reservas)
+addBookingPassenger/modBookingPassenger/delBookingPassenger
+addBookingTransportInfo/modBookingTransportInfo/delBookingTransportInfo
+addBookingComment/ackBookingComment
+```
+
+#### 5. Servicios de Gestión de Presupuestos
+Para gestionar presupuestos existentes o crear con eventos especiales:
+
+```
+getBudgetList → getBudget (consultar presupuestos existentes)
+addEvent → makeBudget (para crear presupuestos con eventos especiales)
+```
+
+### Flujo Completo Típico Implementado:
+
+```
+1. getCountryList (obtener códigos válidos)
+2. searchHotelFares (buscar hoteles disponibles)
+3. getHotelFare (detalles de tarifa seleccionada) [OPCIONAL]
+4. makeBudget (crear presupuesto) [FUTURO]
+5. convertToBooking (convertir a reserva) [FUTURO]
+6. addBookingPassenger (agregar pasajeros) [FUTURO]
+7. getBooking (consultar reserva final) [FUTURO]
+```
+
+### Estado Actual de Implementación:
+
+#### ✅ Implementado y Funcionando:
+- **getCountryList** - Obtiene códigos de ciudades válidos con caché
+- **searchHotelFares** - Busca hoteles con códigos validados
+
+#### 🔄 Por Implementar:
+- **makeBudget** - Crear presupuestos desde resultados de búsqueda
+- **convertToBooking** - Convertir presupuestos en reservas
+- **getHotelFare** - Detalles específicos de tarifas seleccionadas
+- **Gestión de pasajeros y comentarios en reservas**
+
+Los servicios están diseñados para trabajar en conjunto siguiendo el flujo lógico: **búsqueda → presupuestación → reserva → gestión**.

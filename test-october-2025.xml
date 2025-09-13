@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soap:Body>
+    <searchHotelFares xmlns="http://tempuri.org/">
+      <searchHotelFaresRQ1>
+        <cityLocation code="BUE"/>
+        <dateFrom>2025-10-01</dateFrom>
+        <dateTo>2025-10-07</dateTo>
+        <name>Hotel Melia</name>
+        <pos>
+          <id>LOZADAWS</id>
+          <clave>.LOZAWS23.</clave>
+        </pos>
+        <rq>20350</rq>
+        <currency>USD</currency>
+        <OtherBroker>true</OtherBroker>
+        <FareTypeSelectionList xmlns="http://www.softur.com.ar/wsbridge/budget.xsd">
+          <FareTypeSelection OccupancyId="1">1</FareTypeSelection>
+          <Ocuppancy OccupancyId="1">
+            <Occupants type="ADT"/>
+            <Occupants type="ADT"/>
+          </Ocuppancy>
+        </FareTypeSelectionList>
+      </searchHotelFaresRQ1>
+    </searchHotelFares>
+  </soap:Body>
+</soap:Envelope>

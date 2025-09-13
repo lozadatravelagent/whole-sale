@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soap:Body>
+    <getCountryList xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
+      <xsstring7>
+        <pos>
+          <id>LOZADAWS</id>
+          <clave>.LOZAWS23.</clave>
+        </pos>
+      </xsstring7>
+    </getCountryList>
+  </soap:Body>
+</soap:Envelope>

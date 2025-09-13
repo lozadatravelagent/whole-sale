@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soap:Body>
+    <searchHotelFares xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
+      <searchHotelFaresRQ1>
+        <cityLocation code="BUE"/>
+        <dateFrom>2025-03-15</dateFrom>
+        <dateTo>2025-03-18</dateTo>
+        <name></name>
+        <pos>
+          <id>LOZADAWS</id>
+          <clave>.LOZAWS23.</clave>
+        </pos>
+        <currency>USD</currency>
+      </searchHotelFaresRQ1>
+    </searchHotelFares>
+  </soap:Body>
+</soap:Envelope>
