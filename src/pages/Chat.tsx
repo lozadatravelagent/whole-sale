@@ -232,6 +232,7 @@ const Chat = () => {
       const match = message.match(pattern);
       if (match) {
         console.log('📅 Date pattern matched:', pattern, 'Groups:', match);
+        console.log('📅 Match details - length:', match.length, 'values:', match.slice(1));
 
         if (match.length === 3) {
           // Month-year pattern: "octubre 2025"
@@ -272,7 +273,9 @@ const Chat = () => {
             const fromDay = match[1].padStart(2, '0');
             const toDay = match[2].padStart(2, '0');
             const month = spanishMonths[match[3].toLowerCase()] || '12';
-            const year = currentYear;
+            // Si estamos en septiembre y el mes es diciembre, usar el próximo año
+            const year = (currentYear === 2025 && match[3].toLowerCase() === 'diciembre') ? 2025 :
+              (new Date().getMonth() >= 8 && match[3].toLowerCase() === 'diciembre') ? currentYear + 1 : currentYear;
 
             dateFrom = `${year}-${month}-${fromDay}`;
             dateTo = `${year}-${month}-${toDay}`;
@@ -340,6 +343,7 @@ const Chat = () => {
       dateTo = adjustedReturn.toISOString().split('T')[0];
     }
 
+    console.log('📅 FINAL DATES - dateFrom:', dateFrom, 'dateTo:', dateTo);
     return { dateFrom, dateTo };
   };
 
@@ -456,6 +460,7 @@ const Chat = () => {
     }
 
     console.log('🔍 Extracted package search params:', { destination, dateFrom, dateTo, packageClass });
+    console.log('🔍 Date validation - dateFrom:', dateFrom, 'dateTo:', dateTo);
 
     return { destination, dateFrom, dateTo, packageClass };
   };

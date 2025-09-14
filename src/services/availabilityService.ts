@@ -125,11 +125,11 @@ async function getCountryList(params: {
 
         const result = await response.json();
 
-        if (result.success && result.results) {
+        if (result.success && Array.isArray(result.results)) {
             console.log(`📊 COUNTRY LIST - Found ${result.results.length} destinations with availability`);
             return result.results;
         } else {
-            console.warn('⚠️ No results from getCountryList');
+            console.warn('⚠️ No results from getCountryList:', result);
             return [];
         }
 
