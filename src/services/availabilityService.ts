@@ -1,4 +1,9 @@
-import { WS_CONFIG, SUPABASE_ANON_KEY } from './config';
+// Configuration constants
+const WS_CONFIG = {
+    url: 'https://ujigyazketblwlzcomve.supabase.co/functions/v1/eurovips-soap'
+};
+
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
 
 export interface AvailabilityCheckParams {
     destination: string;
@@ -11,10 +16,6 @@ export interface AvailabilityCheckParams {
 export interface CountryInfo {
     code: string;
     name: string;
-    cities: Array<{
-        code: string;
-        name: string;
-    }>;
 }
 
 export interface AlternativeDestination {
@@ -40,18 +41,12 @@ export async function checkDestinationAvailability(params: AvailabilityCheckPara
         // Buscar el destino en la lista de disponibles
         const destinationLower = params.destination.toLowerCase();
 
-        const hasAvailability = availableDestinations.some(country => {
-            // Verificar por nombre de país
-            if (country.name.toLowerCase().includes(destinationLower) ||
-                destinationLower.includes(country.name.toLowerCase())) {
-                return true;
-            }
-
-            // Verificar por nombre de ciudad
-            return country.cities.some(city =>
-                city.name.toLowerCase().includes(destinationLower) ||
-                destinationLower.includes(city.name.toLowerCase())
-            );
+        const hasAvailability = availableDestinations.some(item => {
+            // Verificar por nombre o código
+            return item.name.toLowerCase().includes(destinationLower) ||
+                item.code.toLowerCase().includes(destinationLower) ||
+                destinationLower.includes(item.name.toLowerCase()) ||
+                destinationLower.includes(item.code.toLowerCase());
         });
 
         console.log(`✅ AVAILABILITY RESULT - ${params.destination}: ${hasAvailability ? 'AVAILABLE' : 'NOT AVAILABLE'}`);
@@ -78,14 +73,15 @@ export async function getAlternativeDestinations(params: AvailabilityCheckParams
         });
 
         // Convertir a formato más amigable
-        const alternatives: AlternativeDestination[] = availableDestinations.map(country => ({
-            country: country.name,
-            cities: country.cities.map(city => city.name),
-            availableServices: [params.serviceType]
-        }));
+        const alternatives: AlternativeDestination[] = availableDestinations
+            .slice(0, 10) // Limitar a los primeros 10
+            .map(item => ({
+                country: item.name,
+                cities: [item.code], // Usar el código como "ciudad"
+                availableServices: [params.serviceType]
+            }));
 
-        // Limitar a los primeros 10 destinos más populares
-        const limitedAlternatives = alternatives.slice(0, 10);
+        const limitedAlternatives = alternatives;
 
         console.log(`✅ ALTERNATIVES FOUND - ${limitedAlternatives.length} destination(s) available`);
         return limitedAlternatives;
@@ -154,13 +150,13 @@ export function formatAlternativeDestinations(alternatives: AlternativeDestinati
     const topDestinations = alternatives.slice(0, 5);
     const destinationNames = topDestinations.map(dest => {
         if (dest.cities.length > 0) {
-            // Mostrar país y primera ciudad
-            return `${dest.country} (${dest.cities[0]})`;
+            // Mostrar destino y código
+            return `• ${dest.country} (${dest.cities[0]})`;
         }
-        return dest.country;
+        return `• ${dest.country}`;
     });
 
-    return `Destinos alternativos disponibles: ${destinationNames.join(', ')}`;
+    return destinationNames.join('\n');
 }
 
 /**
