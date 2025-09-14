@@ -796,11 +796,12 @@ const Chat = () => {
           console.error('❌ EUROVIPS WebService error:', eurovipsError);
         }
 
-        // 2. Get N8N response as complement
+        // 2. Get N8N response as complement with 240 second timeout
         console.log('2️⃣ Getting N8N complement...');
 
         try {
-          const { data, error } = await supabase.functions.invoke('travel-chat', {
+          // Use Promise.race to implement 240 second timeout
+          const n8nPromise = supabase.functions.invoke('travel-chat', {
             body: {
               message: currentMessage,
               conversationId: selectedConversation,
@@ -811,6 +812,12 @@ const Chat = () => {
             }
           });
 
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('N8N timeout after 240 seconds')), 240000)
+          );
+
+          const { data, error } = await Promise.race([n8nPromise, timeoutPromise]);
+
           if (error) {
             console.error('N8N error:', error);
             n8nResponse = 'Error obteniendo información complementaria de N8N.';
@@ -819,8 +826,13 @@ const Chat = () => {
             console.log('✅ N8N response received');
           }
         } catch (n8nError) {
-          console.error('❌ N8N error:', n8nError);
-          n8nResponse = 'Información complementaria no disponible temporalmente.';
+          if (n8nError.message?.includes('timeout')) {
+            console.error('❌ N8N timeout after 240 seconds:', n8nError);
+            n8nResponse = 'Información complementaria tardando más de lo esperado. Procesamiento continuará en segundo plano.';
+          } else {
+            console.error('❌ N8N error:', n8nError);
+            n8nResponse = 'Información complementaria no disponible temporalmente.';
+          }
         }
 
         // 3. Stream results progressively - EUROVIPS first
@@ -890,18 +902,38 @@ const Chat = () => {
           console.log('🔄 Starting N8N request asynchronously...');
           setTimeout(async () => {
             try {
-              console.log('📞 N8N request starting...');
+              console.log('📞 N8N async request starting...');
               const n8nStartTime = Date.now();
 
-              let finalN8nResponse = n8nResponse;
-              if (!finalN8nResponse || finalN8nResponse.includes('Error') || finalN8nResponse.includes('no disponible')) {
-                finalN8nResponse = 'Información complementaria procesada correctamente.';
+              // Use the same N8N call with 240 second timeout for streaming
+              const n8nAsyncPromise = supabase.functions.invoke('travel-chat', {
+                body: {
+                  message: currentMessage,
+                  conversationId: selectedConversation,
+                  userId: user?.id,
+                  userName: user?.email || user?.user_metadata?.full_name,
+                  leadId: (conversation as any)?.meta?.lead_id || null,
+                  agencyId: user?.user_metadata?.agency_id
+                }
+              });
+
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('N8N async timeout after 240 seconds')), 240000)
+              );
+
+              const { data, error } = await Promise.race([n8nAsyncPromise, timeoutPromise]);
+
+              let finalN8nResponse;
+              if (error || !data?.message) {
+                finalN8nResponse = 'Información complementaria procesada con limitaciones técnicas.';
+              } else {
+                finalN8nResponse = data.message;
               }
 
               const n8nDuration = Date.now() - n8nStartTime;
-              console.log(`✅ N8N completed in ${n8nDuration}ms`);
+              console.log(`✅ N8N async completed in ${n8nDuration}ms`);
 
-              const n8nComplementResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${finalN8nResponse}\n\n🌟 *Fuente: N8N Workflow* *(${n8nDuration}ms)*\n\n---\n\n✨ **Resumen:** ${totalEurovipsResults} resultados EUROVIPS + información N8N`;
+              const n8nComplementResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${finalN8nResponse}\n\n🌟 *Fuente: N8N Workflow* *(${Math.round(n8nDuration/1000)}s)*\n\n---\n\n✨ **Resumen:** ${totalEurovipsResults} resultados EUROVIPS + información N8N`;
 
               // Append N8N results as a new message
               await saveMessage({
@@ -914,13 +946,18 @@ const Chat = () => {
             } catch (n8nError) {
               console.error('❌ N8N streaming error:', n8nError);
 
+              let errorMessage;
+              if (n8nError.message?.includes('timeout')) {
+                errorMessage = `⏱️ **N8N Timeout**\n\nLa información complementaria está tardando más de 4 minutos. El procesamiento continuará en segundo plano.\n\n🌟 *Los resultados EUROVIPS arriba son completos y actuales.*`;
+              } else {
+                errorMessage = `⚠️ **N8N Information**\n\nLa información complementaria no está disponible temporalmente.\n\n🌟 *Los resultados EUROVIPS arriba son completos y actuales.*`;
+              }
+
               // Show N8N error as separate message
               await saveMessage({
                 conversation_id: selectedConversation,
                 role: 'assistant',
-                content: {
-                  text: `\n\n---\n\n⚠️ **N8N Information**\n\nLa información complementaria no está disponible temporalmente.\n\n🌟 *Los resultados EUROVIPS arriba son completos y actuales.*`
-                },
+                content: { text: `\n\n---\n\n${errorMessage}` },
                 meta: { source: 'N8N', streaming: true, error: true }
               });
             }
