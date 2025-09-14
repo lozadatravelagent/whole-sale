@@ -125,11 +125,32 @@ async function getCountryList(params: {
 
         const result = await response.json();
 
-        if (result.success && Array.isArray(result.results)) {
-            console.log(`📊 COUNTRY LIST - Found ${result.results.length} destinations with availability`);
-            return result.results;
+        console.log('🔍 DEBUG - Full result structure:', JSON.stringify(result, null, 2));
+        console.log('🔍 DEBUG - result.results type:', typeof result.results);
+        console.log('🔍 DEBUG - result.results is array:', Array.isArray(result.results));
+        
+        if (result.success && result.results) {
+            // Check if results is an array or object
+            if (Array.isArray(result.results)) {
+                console.log(`📊 COUNTRY LIST - Found ${result.results.length} destinations with availability`);
+                return result.results;
+            } else if (typeof result.results === 'object') {
+                console.log('📊 COUNTRY LIST - Results is an object, attempting to extract array');
+                // Try to extract array from object structure
+                const parsed = result.results.parsed || result.results;
+                if (Array.isArray(parsed)) {
+                    console.log(`📊 COUNTRY LIST - Found ${parsed.length} destinations in parsed array`);
+                    return parsed;
+                } else {
+                    console.warn('⚠️ Results object does not contain array:', result.results);
+                    return [];
+                }
+            } else {
+                console.warn('⚠️ Results is neither array nor object:', typeof result.results);
+                return [];
+            }
         } else {
-            console.warn('⚠️ No results from getCountryList:', result);
+            console.warn('⚠️ No results from getCountryList - success:', result.success, 'results:', !!result.results);
             return [];
         }
 

@@ -270,15 +270,19 @@ const Chat = () => {
             dateTo = `${currentYear}-${toMonth}-${toDay}`;
           } else if (match.length === 4 && !isNaN(Number(match[2]))) {
             // Pattern: "del 15 al 25 de diciembre" - match[1]=15, match[2]=25, match[3]=diciembre
+            console.log('📅 ENTERING DATE RANGE BLOCK - match:', match);
             const fromDay = match[1].padStart(2, '0');
             const toDay = match[2].padStart(2, '0');
             const month = spanishMonths[match[3].toLowerCase()] || '12';
+            console.log('📅 Date components - fromDay:', fromDay, 'toDay:', toDay, 'month:', month);
             // Si estamos en septiembre y el mes es diciembre, usar el próximo año
             const year = (currentYear === 2025 && match[3].toLowerCase() === 'diciembre') ? 2025 :
               (new Date().getMonth() >= 8 && match[3].toLowerCase() === 'diciembre') ? currentYear + 1 : currentYear;
+            console.log('📅 Year calculation - currentYear:', currentYear, 'calculated year:', year);
 
             dateFrom = `${year}-${month}-${fromDay}`;
             dateTo = `${year}-${month}-${toDay}`;
+            console.log('📅 FINAL CONSTRUCTED DATES - dateFrom:', dateFrom, 'dateTo:', dateTo);
           } else if (match.length === 4) {
             // Single date with year: 15 de octubre de 2025
             const day = match[1].padStart(2, '0');
