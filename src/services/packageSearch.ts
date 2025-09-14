@@ -158,11 +158,11 @@ async function getCountryList(): Promise<Array<{ code: string, name: string }>> 
     }
 
     const result = await response.json();
-    if (result.success) {
+    if (result.success && Array.isArray(result.results)) {
       countryListCache = result.results;
       return result.results;
     } else {
-      console.error('Edge Function business error:', result.error);
+      console.error('Edge Function business error or invalid results:', result.error || 'results is not an array');
       return [];
     }
   } catch (error) {

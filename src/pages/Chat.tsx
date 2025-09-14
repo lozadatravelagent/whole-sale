@@ -203,7 +203,8 @@ const Chat = () => {
       /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
       /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+al?\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
 
-      // Spanish month names without years
+      // Spanish month names without years - RANGE patterns first
+      /del\s+(\d{1,2})\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
       /del\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
       /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
       /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+al?\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
@@ -266,6 +267,15 @@ const Chat = () => {
 
             dateFrom = `${currentYear}-${fromMonth}-${fromDay}`;
             dateTo = `${currentYear}-${toMonth}-${toDay}`;
+          } else if (match.length === 4 && !isNaN(Number(match[2]))) {
+            // Pattern: "del 15 al 25 de diciembre" - match[1]=15, match[2]=25, match[3]=diciembre
+            const fromDay = match[1].padStart(2, '0');
+            const toDay = match[2].padStart(2, '0');
+            const month = spanishMonths[match[3].toLowerCase()] || '12';
+            const year = currentYear;
+
+            dateFrom = `${year}-${month}-${fromDay}`;
+            dateTo = `${year}-${month}-${toDay}`;
           } else if (match.length === 4) {
             // Single date with year: 15 de octubre de 2025
             const day = match[1].padStart(2, '0');
