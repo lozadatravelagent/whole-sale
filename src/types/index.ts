@@ -274,6 +274,8 @@ export interface HotelSearchParams {
   dateTo: string;
   city?: string;
   hotelName?: string;
+  adults?: number;
+  children?: number;
   occupancy?: number;
 }
 
@@ -432,9 +434,28 @@ export interface EurovipsSearchParams {
   currency?: string;
 }
 
+// Service types (transfers, excursions, etc.)
+export interface ServiceData {
+  id: string;
+  unique_id: string;
+  name: string;
+  type: '1' | '2' | '3'; // 1=Transfer, 2=Excursion, 3=Other
+  category: string;
+  city: string;
+  description?: string;
+  price_per_person: number;
+  currency: string;
+  availability: number;
+  date_from: string;
+  date_to?: string;
+  duration?: string;
+  policy_cancellation?: string;
+}
+
 export interface EurovipsResult {
   success: boolean;
   flights?: FlightData[];
   hotels?: HotelData[];
+  services?: ServiceData[];
   error?: string;
 }

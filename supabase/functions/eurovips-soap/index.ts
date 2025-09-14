@@ -68,6 +68,19 @@ class EurovipsSOAPClient {
     return this.parseAirlineListResponse(xmlResponse);
   }
   async searchHotels(params) {
+    // Build occupancy based on adults/children
+    const adults = params.adults || 1;  // Default to 1 adult
+    const children = params.children || 0;
+
+    // Create occupants XML
+    let occupantsXml = '';
+    for (let i = 0; i < adults; i++) {
+      occupantsXml += '      <Occupants type="ADT" />\n';
+    }
+    for (let i = 0; i < children; i++) {
+      occupantsXml += '      <Occupants type="CHD" />\n';
+    }
+
     const soapBody = `
     <searchHotelFaresRQ1 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
       <cityLocation code="${params.cityCode}" xmlns="" />
@@ -79,6 +92,12 @@ class EurovipsSOAPClient {
         <clave>${this.password}</clave>
       </pos>
       <currency xmlns="">${this.currency}</currency>
+      <OtherBroker xmlns="">true</OtherBroker>
+      <FareTypeSelectionList xmlns="http://www.softur.com.ar/wsbridge/budget.xsd">
+        <FareTypeSelection OccupancyId="1">1</FareTypeSelection>
+        <Ocuppancy OccupancyId="1">
+${occupantsXml}        </Ocuppancy>
+      </FareTypeSelectionList>
     </searchHotelFaresRQ1>`;
     const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchHotelFares');
     return this.parseHotelSearchResponse(xmlResponse, params);
@@ -117,6 +136,23 @@ class EurovipsSOAPClient {
     </searchPackageFaresRQ1>`;
     const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchPackageFares');
     return this.parsePackageSearchResponse(xmlResponse, params);
+  }
+  async searchServices(params) {
+    const soapBody = `
+    <searchServiceFaresRQ1 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
+      <cityLocation code="${params.cityCode}" xmlns="" />
+      <dateFrom xmlns="">${params.dateFrom}</dateFrom>
+      <dateTo xmlns="">${params.dateTo || params.dateFrom}</dateTo>
+      <name xmlns="" />
+      <type xmlns="">${params.serviceType || '1'}</type>
+      <pos xmlns="">
+        <id>${this.username}</id>
+        <clave>${this.password}</clave>
+      </pos>
+      <currency xmlns="">${this.currency}</currency>
+    </searchServiceFaresRQ1>`;
+    const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchServiceFares');
+    return this.parseServiceSearchResponse(xmlResponse, params);
   }
   parseCountryListResponse(xmlResponse) {
     try {
@@ -231,7 +267,17 @@ class EurovipsSOAPClient {
         return [];
       }
       const flights = [];
-      const flightElements = xmlDoc.querySelectorAll('ArrayOfAirFare1 AirFares, AirFares');
+
+      // Try multiple selectors to handle different XML structures
+      let flightElements = xmlDoc.querySelectorAll('ArrayOfAirFare1 > AirFares');
+
+      // Fallback to original selectors for backward compatibility
+      if (flightElements.length === 0) {
+        flightElements = xmlDoc.querySelectorAll('ArrayOfAirFare1 AirFares, AirFares');
+      }
+
+      console.log(`🔍 Found ${flightElements.length} flight elements`);
+
       flightElements.forEach((flightEl, index) => {
         try {
           const flight = this.parseFlightElement(flightEl, params, index);
@@ -258,19 +304,57 @@ class EurovipsSOAPClient {
       if (totalPrice <= 0) {
         return null;
       }
+      // Calculate nights
+      const checkIn = new Date(params.checkinDate);
+      const checkOut = new Date(params.checkoutDate);
+      const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
+
+      // Parse room information (if available)
+      const rooms = [];
+      const roomElements = hotelEl.querySelectorAll('Room, Rooms Room');
+      if (roomElements.length > 0) {
+        roomElements.forEach(roomEl => {
+          const roomType = roomEl.getAttribute('type') || this.getTextContent(roomEl, 'Type') || 'Standard';
+          const base = parseFloat(this.getTextContent(roomEl, 'Base') || '0');
+          const tax = parseFloat(this.getTextContent(roomEl, 'Tax') || '0');
+          const roomTotal = base + tax;
+
+          if (roomTotal > 0) {
+            rooms.push({
+              type: roomType,
+              description: roomType,
+              total_price: roomTotal,
+              currency: currency,
+              availability: 3 // Default availability
+            });
+          }
+        });
+      } else {
+        // Fallback: create single room from total price
+        rooms.push({
+          type: 'Standard',
+          description: 'Standard Room',
+          total_price: totalPrice,
+          currency: currency,
+          availability: 3
+        });
+      }
+
       return {
         id: `hotel_${uniqueId}`,
         name: hotelName,
+        category: this.getTextContent(hotelEl, 'Category, HotelCategory') || 'Standard',
+        city: this.getTextContent(hotelEl, 'City, Location') || params.cityCode || '',
         address: address,
-        checkin_date: params.checkinDate,
-        checkout_date: params.checkoutDate,
-        price: {
-          amount: totalPrice,
-          currency: currency
-        },
+        phone: this.getTextContent(hotelEl, 'Phone, Telephone') || '',
+        check_in: params.checkinDate,   // ✅ Nombre correcto
+        check_out: params.checkoutDate, // ✅ Nombre correcto
+        nights: nights,
+        rooms: rooms,                   // ✅ Array de habitaciones
+        policy_cancellation: this.getTextContent(hotelEl, 'CancellationPolicy') || '',
+        policy_lodging: this.getTextContent(hotelEl, 'LodgingPolicy') || '',
         adults: params.adults || 1,
         children: params.children || 0,
-        rooms: params.rooms || 1,
         provider: 'EUROVIPS'
       };
     } catch (error) {
@@ -281,19 +365,58 @@ class EurovipsSOAPClient {
   parseFlightElement(flightEl, params, index) {
     try {
       const uniqueId = flightEl.getAttribute('UniqueId') || `flight_${Date.now()}_${index}`;
-      const airlineCode = this.getTextContent(flightEl, 'AirlineCode') || 'XX';
-      const airlineName = this.getTextContent(flightEl, 'AirlineName') || 'Unknown Airline';
-      const totalPrice = parseFloat(this.getTextContent(flightEl, 'TotalFare, TotalPrice') || '0');
-      const currency = this.getTextContent(flightEl, 'Currency') || this.currency;
+
+      // Handle both XML structures for airline info
+      let airlineCode = this.getTextContent(flightEl, 'AirlineCode') || '';
+      let airlineName = this.getTextContent(flightEl, 'AirlineName') || '';
+
+      // EUROVIPS structure: MarketingAirline with code attribute
+      if (!airlineCode || !airlineName) {
+        const marketingAirlineEl = flightEl.querySelector('MarketingAirline');
+        if (marketingAirlineEl) {
+          airlineCode = marketingAirlineEl.getAttribute('code') || airlineCode || 'XX';
+          airlineName = marketingAirlineEl.textContent?.trim() || airlineName || 'Unknown Airline';
+        }
+      }
+
+      // Default fallbacks
+      airlineCode = airlineCode || 'XX';
+      airlineName = airlineName || 'Unknown Airline';
+
+      // Handle different price structures
+      let totalPrice = parseFloat(this.getTextContent(flightEl, 'TotalFare, TotalPrice') || '0');
+      let currency = this.getTextContent(flightEl, 'Currency') || this.currency;
+
+      // EUROVIPS structure: calculate from FareList
+      if (totalPrice <= 0) {
+        const fareListEl = flightEl.querySelector('FareList');
+        if (fareListEl) {
+          currency = fareListEl.getAttribute('currency') || currency;
+          // Get ADT (Adult) fare as main price
+          const adultFareEl = fareListEl.querySelector('Fare[type="ADT"]');
+          if (adultFareEl) {
+            const base = parseFloat(this.getTextContent(adultFareEl, 'Base') || '0');
+            const taxElements = adultFareEl.querySelectorAll('Tax');
+            let totalTaxes = 0;
+            taxElements.forEach(taxEl => {
+              totalTaxes += parseFloat(taxEl.textContent?.trim() || '0');
+            });
+            totalPrice = base + totalTaxes;
+          }
+        }
+      }
+
       if (totalPrice <= 0) {
         return null;
       }
+
       const legs = [];
-      // Outbound flight
+      // Try to parse flight legs with new structure
       const outboundLeg = this.parseFlightLeg(flightEl, 'outbound', params.originCode, params.destinationCode, params.departureDate);
       if (outboundLeg) {
         legs.push(outboundLeg);
       }
+
       // Return flight if dates are provided
       if (params.returnDate) {
         const returnLeg = this.parseFlightLeg(flightEl, 'return', params.destinationCode, params.originCode, params.returnDate);
@@ -301,9 +424,40 @@ class EurovipsSOAPClient {
           legs.push(returnLeg);
         }
       }
+
+      // If no legs were parsed with legacy method, create basic leg from airport info
+      if (legs.length === 0) {
+        const departureAirport = flightEl.querySelector('DepartureAirport');
+        const arrivalAirport = flightEl.querySelector('ArrivalAirport');
+
+        if (departureAirport && arrivalAirport) {
+          const depCode = departureAirport.getAttribute('code') || params.originCode || '';
+          const depName = departureAirport.textContent?.trim() || depCode;
+          const arrCode = arrivalAirport.getAttribute('code') || params.destinationCode || '';
+          const arrName = arrivalAirport.textContent?.trim() || arrCode;
+
+          legs.push({
+            departure: {
+              city_code: depCode,
+              city_name: depName,
+              time: '00:00' // Default time since not provided
+            },
+            arrival: {
+              city_code: arrCode,
+              city_name: arrName,
+              time: '00:00' // Default time since not provided
+            },
+            duration: '0h 0m', // Default duration
+            flight_type: 'outbound',
+            layovers: []
+          });
+        }
+      }
+
       if (legs.length === 0) {
         return null;
       }
+
       return {
         id: `flight_${uniqueId}`,
         airline: {
@@ -365,7 +519,21 @@ class EurovipsSOAPClient {
       }
 
       const packages = [];
-      const packageElements = xmlDoc.querySelectorAll('ArrayOfPackageFare1 PackageFares, PackageFares');
+
+      // Try multiple selectors to handle different XML structures
+      let packageElements = xmlDoc.querySelectorAll('ArrayOfPackageFare1 PackageFares');
+
+      // If not found, try direct PackageFares selector
+      if (packageElements.length === 0) {
+        packageElements = xmlDoc.querySelectorAll('PackageFares');
+      }
+
+      // If still not found, try alternative structure
+      if (packageElements.length === 0) {
+        packageElements = xmlDoc.querySelectorAll('ArrayOfPackageFare1 > PackageFares');
+      }
+
+      console.log(`🔍 Found ${packageElements.length} package elements using selector`);
 
       packageElements.forEach((packageEl, index) => {
         try {
@@ -383,6 +551,152 @@ class EurovipsSOAPClient {
       console.error('❌ Error parsing package search response:', error);
       return [];
     }
+  }
+  parseServiceSearchResponse(xmlResponse, params) {
+    try {
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
+      const parseError = xmlDoc.querySelector('parsererror');
+      if (parseError) {
+        console.error('XML Parse Error:', parseError.textContent);
+        return [];
+      }
+
+      const services = [];
+
+      // Try multiple selectors to handle different XML structures
+      let serviceElements = xmlDoc.querySelectorAll('ArrayOfServiceFare1 ServiceFares');
+
+      // If not found, try direct ServiceFares selector
+      if (serviceElements.length === 0) {
+        serviceElements = xmlDoc.querySelectorAll('ServiceFares');
+      }
+
+      console.log(`🔍 Found ${serviceElements.length} service elements`);
+
+      serviceElements.forEach((serviceEl, index) => {
+        try {
+          const serviceData = this.parseServiceElement(serviceEl, params, index);
+          if (serviceData) {
+            services.push(serviceData);
+          }
+        } catch (error) {
+          console.error('❌ Error parsing service element:', error);
+        }
+      });
+
+      return services;
+    } catch (error) {
+      console.error('❌ Error parsing service search response:', error);
+      return [];
+    }
+  }
+  parseServiceElement(serviceEl, params, index) {
+    try {
+      const uniqueId = serviceEl.getAttribute('UniqueId') || `service_${Date.now()}_${index}`;
+      const backOfficeCode = serviceEl.getAttribute('BackOfficeCode') || '';
+      const backOfficeOperatorCode = serviceEl.getAttribute('BackOfficeOperatorCode') || '';
+
+      const name = this.getTextContent(serviceEl, 'Name') || 'Servicio sin nombre';
+      const category = this.getTextContent(serviceEl, 'Category') || 'REGULAR';
+      const categoryDescription = this.getTextContent(serviceEl, 'CategoryDescription') || '';
+
+      // Location
+      const locationEl = serviceEl.querySelector('Location');
+      const location = locationEl ? {
+        code: locationEl.getAttribute('code') || '',
+        name: locationEl.textContent?.trim() || ''
+      } : { code: params.cityCode || '', name: '' };
+
+      const fareType = this.getTextContent(serviceEl, 'FareType') || 'OW';
+      const rateType = this.getTextContent(serviceEl, 'RateType') || '';
+      const observations = this.getTextContent(serviceEl, 'Observations') || '';
+
+      // Parse fares
+      const fares = this.parseServiceFares(serviceEl);
+
+      if (fares.length === 0) {
+        console.warn(`⚠️ Service ${name} has no valid fares`);
+        return null;
+      }
+
+      // Get main price (first available fare)
+      const mainFare = fares.find(f => f.total > 0) || fares[0];
+
+      const serviceData = {
+        id: `service_${uniqueId}`,
+        unique_id: uniqueId,
+        backOfficeCode,
+        backOfficeOperatorCode,
+        name,
+        category,
+        categoryDescription,
+        location,
+        fareType,
+        rateType,
+        date: params.dateFrom,
+        price: {
+          amount: mainFare.total,
+          currency: mainFare.currency
+        },
+        fares,
+        observations,
+        provider: 'EUROVIPS'
+      };
+
+      console.log('✅ Parsed service:', serviceData.name, `- ${fares.length} fare type(s)`);
+      return serviceData;
+    } catch (error) {
+      console.error('❌ Error parsing service element:', error);
+      return null;
+    }
+  }
+  parseServiceFares(serviceEl) {
+    const fares = [];
+    const fareListEl = serviceEl.querySelector('FareList');
+
+    if (!fareListEl) return fares;
+
+    const currency = fareListEl.getAttribute('currency') || 'USD';
+    const fareElements = fareListEl.querySelectorAll('Fare');
+
+    fareElements.forEach(fareEl => {
+      const type = fareEl.getAttribute('type') || '';
+      const passengerType = fareEl.getAttribute('PassengerType') || 'ADT';
+      const availability = parseInt(fareEl.getAttribute('Availability') || '0');
+
+      const base = parseFloat(this.getTextContent(fareEl, 'Base') || '0');
+
+      // Parse taxes
+      const taxes = [];
+      const taxElements = fareEl.querySelectorAll('Tax');
+      let totalTaxes = 0;
+
+      taxElements.forEach(taxEl => {
+        const taxType = taxEl.getAttribute('type') || '';
+        const taxAmount = parseFloat(taxEl.textContent?.trim() || '0');
+
+        taxes.push({ type: taxType, amount: taxAmount });
+        totalTaxes += taxAmount;
+      });
+
+      const total = base + totalTaxes;
+
+      if (base >= 0) { // Include even free services (base = 0)
+        fares.push({
+          type,
+          passengerType,
+          availability,
+          base,
+          taxes,
+          total,
+          currency,
+          description: type // Use fare type as description
+        });
+      }
+    });
+
+    return fares;
   }
   parsePackageElement(packageEl, params, index) {
     try {
@@ -511,6 +825,10 @@ serve(async (req) => {
       case 'searchPackages':
         if (!data) throw new Error('Package search data is required');
         results = await client.searchPackages(data);
+        break;
+      case 'searchServices':
+        if (!data) throw new Error('Service search data is required');
+        results = await client.searchServices(data);
         break;
       default:
         throw new Error(`Unknown action: ${action}`);

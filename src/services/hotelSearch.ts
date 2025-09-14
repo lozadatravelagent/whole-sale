@@ -275,8 +275,8 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
               cityCode,
               checkinDate: params.dateFrom,
               checkoutDate: params.dateTo,
-              adults: 2,
-              children: 0,
+              adults: params.adults || 1,  // Default to 1 adult
+              children: params.children || 0,
               rooms: 1
             }
           })
