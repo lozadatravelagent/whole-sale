@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
 import { createLeadFromChat } from '@/utils/chatToLead';
+import { checkDestinationAvailability, getAlternativeDestinations, formatAlternativeDestinations } from '@/services/availabilityService';
 import { parseFlightsFromMessage, isFlightMessage } from '@/utils/flightParser';
 import { parseHotelsFromMessage, isHotelMessage } from '@/utils/hotelParser';
 import { searchHotelFares } from '@/services/hotelSearch';
@@ -578,61 +579,125 @@ const Chat = () => {
           const { destination, dateFrom, dateTo, packageClass } = extractPackageSearchParams(currentMessage);
           console.log('🔍 Extracted package parameters:', { destination, dateFrom, dateTo, packageClass });
 
-          // Search for packages using WebService
-          console.log('📞 Calling searchPackageFares...');
-
           // Si no hay destino específico, usar España como destino amplio para obtener más resultados
           const searchCity = destination || 'España';
-          console.log(`🌍 Using search destination: ${searchCity}`);
 
-          const packages = await searchPackageFares({
-            city: searchCity,
-            dateFrom,
-            dateTo,
-            class: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO'
-          });
-
-          if (packages.length > 0) {
-            // Format packages into message structure
-            let packageMessage = `🎒 **Paquetes disponibles**\\n\\n`;
-
-            packages.forEach((pkg, index) => {
-              packageMessage += `---\\n\\n`;
-              packageMessage += `🎒 **${pkg.name}**`;
-              if (pkg.category) packageMessage += ` - ${pkg.category}`;
-              packageMessage += `\\n`;
-              if (pkg.destination) packageMessage += `📍 **Destino:** ${pkg.destination}\\n`;
-              if (pkg.description) packageMessage += `📝 **Descripción:** ${pkg.description}\\n`;
-              packageMessage += `🌙 **Noches:** ${pkg.lodgedNights}\\n`;
-              packageMessage += `📅 **Días:** ${pkg.lodgedDays}\\n`;
-              packageMessage += `🎆 **Clase:** ${pkg.class}\\n`;
-
-              if (pkg.fares && pkg.fares.length > 0) {
-                packageMessage += `💰 **Precio desde:** $${pkg.fares[0].total?.toLocaleString()} ${pkg.fares[0].currency}\\n`;
-              }
-
-              if (pkg.details) {
-                packageMessage += `\\n**Detalles:** ${pkg.details}\\n`;
-              }
-
-              packageMessage += `\\n🌟 *Powered by EUROVIPS*\\n`;
+          // 🚀 NUEVA FUNCIONALIDAD: Verificar disponibilidad antes de buscar
+          if (destination && dateFrom && dateTo) {
+            console.log('🔍 Checking destination availability...');
+            const hasAvailability = await checkDestinationAvailability({
+              destination: searchCity,
+              dateFrom,
+              dateTo,
+              serviceType: 'PAQUETE',
+              serviceSubtype: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'CIRCUITO'
             });
 
-            packageMessage += `\\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
-            assistantResponse = packageMessage;
-          } else {
-            // Extract destination from the search to provide more specific feedback
-            const { destination } = extractPackageSearchParams(currentMessage);
+            if (!hasAvailability) {
+              console.log('❌ No availability found, searching alternatives...');
+              const alternatives = await getAlternativeDestinations({
+                destination: searchCity,
+                dateFrom,
+                dateTo,
+                serviceType: 'PAQUETE',
+                serviceSubtype: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'CIRCUITO'
+              });
 
-            assistantResponse = `🎒 **Búsqueda de Paquetes**\\n\\n` +
-              `He recibido tu solicitud de paquetes${destination ? ` para ${destination}` : ''}.\\n\\n` +
-              `✅ **Estado del sistema:** WebService EUROVIPS configurado correctamente\\n` +
-              `⏳ **En proceso:** Verificando disponibilidad de paquetes\\n\\n` +
-              `Te notificaré cuando encuentre paquetes disponibles para tus fechas.\\n\\n` +
-              `**Parámetros detectados:**\\n` +
-              `- Destino: ${destination || 'No especificado'}\\n` +
-              `- Fechas: ${extractPackageSearchParams(currentMessage).dateFrom} al ${extractPackageSearchParams(currentMessage).dateTo}\\n` +
-              `- Tipo: ${extractPackageSearchParams(currentMessage).packageClass}`;
+              const alternativesText = formatAlternativeDestinations(alternatives);
+              assistantResponse = `😔 Lo siento, no encontré paquetes disponibles para **${searchCity}** del ${dateFrom} al ${dateTo}.\\n\\n💡 **Sugerencias:**\\n${alternativesText}\\n\\n¿Te gustaría que busque en alguno de estos destinos alternativos?`;
+
+              // Saltar la búsqueda y ir directamente a mostrar alternativas
+            } else {
+              // Solo buscar si hay disponibilidad confirmada
+              console.log('📞 Calling searchPackageFares...');
+              console.log(`🌍 Using search destination: ${searchCity}`);
+
+              const packages = await searchPackageFares({
+                city: searchCity,
+                dateFrom,
+                dateTo,
+                class: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO'
+              });
+
+              if (packages.length > 0) {
+                // Format packages into message structure
+                let packageMessage = `🎒 **Paquetes disponibles**\\n\\n`;
+
+                packages.forEach((pkg, index) => {
+                  packageMessage += `---\\n\\n`;
+                  packageMessage += `🎒 **${pkg.name}**`;
+                  if (pkg.category) packageMessage += ` - ${pkg.category}`;
+                  packageMessage += `\\n`;
+                  if (pkg.destination) packageMessage += `📍 **Destino:** ${pkg.destination}\\n`;
+                  if (pkg.description) packageMessage += `📝 **Descripción:** ${pkg.description}\\n`;
+                  packageMessage += `🌙 **Noches:** ${pkg.lodgedNights}\\n`;
+                  packageMessage += `📅 **Días:** ${pkg.lodgedDays}\\n`;
+                  packageMessage += `🎆 **Clase:** ${pkg.class}\\n`;
+
+                  if (pkg.fares && pkg.fares.length > 0) {
+                    packageMessage += `💰 **Precio desde:** $${pkg.fares[0].total?.toLocaleString()} ${pkg.fares[0].currency}\\n`;
+                  }
+
+                  if (pkg.details) {
+                    packageMessage += `\\n**Detalles:** ${pkg.details}\\n`;
+                  }
+
+                  packageMessage += `\\n🌟 *Powered by EUROVIPS*\\n`;
+                });
+
+                packageMessage += `\\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
+                assistantResponse = packageMessage;
+              } else {
+                // No packages found even with availability check
+                assistantResponse = `🎒 **Búsqueda de Paquetes**\\n\\nNo se encontraron paquetes disponibles para ${searchCity} en las fechas solicitadas.`;
+              }
+            }
+          } else {
+            // Si no hay parámetros completos, usar búsqueda estándar
+            console.log('📞 Calling searchPackageFares (standard search)...');
+            const packages = await searchPackageFares({
+              city: searchCity,
+              dateFrom,
+              dateTo,
+              class: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO'
+            });
+
+            if (packages.length > 0) {
+              let packageMessage = `🎒 **Paquetes disponibles**\\n\\n`;
+              packages.forEach((pkg, index) => {
+                packageMessage += `---\\n\\n`;
+                packageMessage += `🎒 **${pkg.name}**`;
+                if (pkg.category) packageMessage += ` - ${pkg.category}`;
+                packageMessage += `\\n`;
+                if (pkg.destination) packageMessage += `📍 **Destino:** ${pkg.destination}\\n`;
+                if (pkg.description) packageMessage += `📝 **Descripción:** ${pkg.description}\\n`;
+                packageMessage += `🌙 **Noches:** ${pkg.lodgedNights}\\n`;
+                packageMessage += `📅 **Días:** ${pkg.lodgedDays}\\n`;
+                packageMessage += `🎆 **Clase:** ${pkg.class}\\n`;
+                if (pkg.fares && pkg.fares.length > 0) {
+                  packageMessage += `💰 **Precio desde:** $${pkg.fares[0].total?.toLocaleString()} ${pkg.fares[0].currency}\\n`;
+                }
+                if (pkg.details) {
+                  packageMessage += `\\n**Detalles:** ${pkg.details}\\n`;
+                }
+                packageMessage += `\\n🌟 *Powered by EUROVIPS*\\n`;
+              });
+              packageMessage += `\\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
+              assistantResponse = packageMessage;
+            } else {
+              // Extract destination from the search to provide more specific feedback
+              const { destination } = extractPackageSearchParams(currentMessage);
+
+              assistantResponse = `🎒 **Búsqueda de Paquetes**\\n\\n` +
+                `He recibido tu solicitud de paquetes${destination ? ` para ${destination}` : ''}.\\n\\n` +
+                `✅ **Estado del sistema:** WebService EUROVIPS configurado correctamente\\n` +
+                `⏳ **En proceso:** Verificando disponibilidad de paquetes\\n\\n` +
+                `Te notificaré cuando encuentre paquetes disponibles para tus fechas.\\n\\n` +
+                `**Parámetros detectados:**\\n` +
+                `- Destino: ${destination || 'No especificado'}\\n` +
+                `- Fechas: ${extractPackageSearchParams(currentMessage).dateFrom} al ${extractPackageSearchParams(currentMessage).dateTo}\\n` +
+                `- Tipo: ${extractPackageSearchParams(currentMessage).packageClass}`;
+            }
           }
         } catch (error) {
           console.error('Error searching packages via WebService:', error);
@@ -647,73 +712,143 @@ const Chat = () => {
           const { hotelName, city, dateFrom, dateTo, adults } = extractHotelSearchParams(currentMessage);
           console.log('🔍 Extracted parameters:', { hotelName, city, dateFrom, dateTo, adults });
 
-          // Search for hotels using WebService (this will automatically call getCountryList first)
-          console.log('📞 Calling searchHotelFares...');
-          const hotels = await searchHotelFares({
-            dateFrom,
-            dateTo,
-            city,
-            adults: adults || 1,
-            hotelName: hotelName || undefined
-          });
-
-          if (hotels.length > 0) {
-            // Format hotels into message structure
-            let hotelMessage = `🏨 **Hoteles disponibles**\n\n`;
-
-            hotels.forEach((hotel, index) => {
-              hotelMessage += `---\n\n`;
-              hotelMessage += `🏨 **${hotel.name}**`;
-              if (hotel.category) hotelMessage += ` - ${hotel.category}`;
-              hotelMessage += `\n`;
-              if (hotel.city) hotelMessage += `📍 **Ubicación:** ${hotel.city}\n`;
-              if (hotel.address) hotelMessage += `📧 **Dirección:** ${hotel.address}\n`;
-              if (hotel.phone) hotelMessage += `📞 **Teléfono:** ${hotel.phone}\n`;
-              hotelMessage += `🛏️ **Check-in:** ${hotel.check_in}\n`;
-              hotelMessage += `🚪 **Check-out:** ${hotel.check_out}\n`;
-
-              if (hotel.rooms.length > 0) {
-                hotelMessage += `\n**Habitaciones disponibles:**\n\n`;
-                hotel.rooms.forEach(room => {
-                  hotelMessage += `🛏️ **Habitación:** ${room.type}\n`;
-                  if (room.description !== room.type) {
-                    hotelMessage += `📝 **Descripción:** ${room.description}\n`;
-                  }
-                  hotelMessage += `💰 **Precio:** ${room.total_price} ${room.currency}`;
-                  if (hotel.nights > 1) hotelMessage += ` (${hotel.nights} noches)`;
-                  hotelMessage += `\n`;
-
-                  const availabilityText = room.availability >= 3 ? 'Disponible' :
-                    room.availability >= 2 ? 'Consultar' : 'No disponible';
-                  const availabilityEmoji = room.availability >= 3 ? '✅' :
-                    room.availability >= 2 ? '⚠️' : '❌';
-                  hotelMessage += `${availabilityEmoji} **Disponibilidad:** ${availabilityText}\n\n`;
-                });
-              }
-
-              if (hotel.policy_cancellation) {
-                hotelMessage += `📋 **Política de Cancelación:** ${hotel.policy_cancellation}\n`;
-              }
-              if (hotel.policy_lodging) {
-                hotelMessage += `🏨 **Políticas:** ${hotel.policy_lodging}\n`;
-              }
-              hotelMessage += `\n`;
+          // 🚀 NUEVA FUNCIONALIDAD: Verificar disponibilidad antes de buscar
+          if (city && dateFrom && dateTo) {
+            console.log('🔍 Checking hotel availability...');
+            const hasAvailability = await checkDestinationAvailability({
+              destination: city,
+              dateFrom,
+              dateTo,
+              serviceType: 'HOTEL'
             });
 
-            hotelMessage += `\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
-            assistantResponse = hotelMessage;
-          } else {
-            // Extract city from the search to provide more specific feedback
-            const { city } = extractHotelSearchParams(currentMessage);
+            if (!hasAvailability) {
+              console.log('❌ No hotel availability found, searching alternatives...');
+              const alternatives = await getAlternativeDestinations({
+                destination: city,
+                dateFrom,
+                dateTo,
+                serviceType: 'HOTEL'
+              });
 
-            assistantResponse = `🏨 **Búsqueda de Hoteles**\n\n` +
-              `He recibido tu solicitud de hotel${city ? ` para ${city}` : ''}.\n\n` +
-              `✅ **Estado del sistema:** WebService configurado correctamente\n` +
-              `⏳ **En proceso:** Esperando códigos de destino válidos de EUROVIPS\n\n` +
-              `Te notificaremos cuando el servicio de búsqueda esté completamente operativo.\n\n` +
-              `**Parámetros detectados:**\n` +
-              `- Destino: ${city || 'No especificado'}\n` +
-              `- Fechas: ${extractHotelSearchParams(currentMessage).dateFrom} al ${extractHotelSearchParams(currentMessage).dateTo}`;
+              const alternativesText = formatAlternativeDestinations(alternatives);
+              assistantResponse = `😔 Lo siento, no encontré hoteles disponibles en **${city}** del ${dateFrom} al ${dateTo}.\\n\\n💡 **Destinos alternativos con hoteles:**\\n${alternativesText}\\n\\n¿Te gustaría que busque hoteles en alguno de estos destinos?`;
+            } else {
+              // Solo buscar si hay disponibilidad confirmada
+              console.log('📞 Calling searchHotelFares...');
+              const hotels = await searchHotelFares({
+                dateFrom,
+                dateTo,
+                city,
+                adults: adults || 1,
+                hotelName: hotelName || undefined
+              });
+
+              if (hotels.length > 0) {
+                // Format hotels into message structure
+                let hotelMessage = `🏨 **Hoteles disponibles**\n\n`;
+
+                hotels.forEach((hotel, index) => {
+                  hotelMessage += `---\n\n`;
+                  hotelMessage += `🏨 **${hotel.name}**`;
+                  if (hotel.category) hotelMessage += ` - ${hotel.category}`;
+                  hotelMessage += `\n`;
+                  if (hotel.city) hotelMessage += `📍 **Ubicación:** ${hotel.city}\n`;
+                  if (hotel.address) hotelMessage += `📧 **Dirección:** ${hotel.address}\n`;
+                  if (hotel.phone) hotelMessage += `📞 **Teléfono:** ${hotel.phone}\n`;
+                  hotelMessage += `🛏️ **Check-in:** ${hotel.check_in}\n`;
+                  hotelMessage += `🚪 **Check-out:** ${hotel.check_out}\n`;
+
+                  if (hotel.rooms.length > 0) {
+                    hotelMessage += `\n**Habitaciones disponibles:**\n\n`;
+                    hotel.rooms.forEach(room => {
+                      hotelMessage += `🛏️ **Habitación:** ${room.type}\n`;
+                      if (room.description !== room.type) {
+                        hotelMessage += `📝 **Descripción:** ${room.description}\n`;
+                      }
+                      hotelMessage += `💰 **Precio:** ${room.total_price} ${room.currency}`;
+                      if (hotel.nights > 1) hotelMessage += ` (${hotel.nights} noches)`;
+                      hotelMessage += `\n`;
+
+                      const availabilityText = room.availability >= 3 ? 'Disponible' :
+                        room.availability >= 2 ? 'Consultar' : 'No disponible';
+                      const availabilityEmoji = room.availability >= 3 ? '✅' :
+                        room.availability >= 2 ? '⚠️' : '❌';
+                      hotelMessage += `${availabilityEmoji} **Disponibilidad:** ${availabilityText}\n\n`;
+                    });
+                  }
+
+                  if (hotel.policy_cancellation) {
+                    hotelMessage += `📋 **Política de Cancelación:** ${hotel.policy_cancellation}\n`;
+                  }
+                  if (hotel.policy_lodging) {
+                    hotelMessage += `🏨 **Políticas:** ${hotel.policy_lodging}\n`;
+                  }
+                  hotelMessage += `\n`;
+                });
+
+                hotelMessage += `\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
+                assistantResponse = hotelMessage;
+              } else {
+                // No hotels found even with availability check
+                assistantResponse = `🏨 **Búsqueda de Hoteles**\\n\\nNo se encontraron hoteles disponibles en ${city} para las fechas solicitadas.`;
+              }
+            }
+          } else {
+            // Si no hay parámetros completos, usar búsqueda estándar
+            console.log('📞 Calling searchHotelFares (standard search)...');
+            const hotels = await searchHotelFares({
+              dateFrom,
+              dateTo,
+              city,
+              adults: adults || 1,
+              hotelName: hotelName || undefined
+            });
+
+            if (hotels.length > 0) {
+              let hotelMessage = `🏨 **Hoteles disponibles**\n\n`;
+              hotels.forEach((hotel, index) => {
+                hotelMessage += `---\n\n`;
+                hotelMessage += `🏨 **${hotel.name}**\n`;
+                if (hotel.category) hotelMessage += `⭐ **Categoría:** ${hotel.category}\n`;
+                if (hotel.address) hotelMessage += `📍 **Dirección:** ${hotel.address}\n`;
+                if (hotel.phone) hotelMessage += `📞 **Teléfono:** ${hotel.phone}\n`;
+                hotelMessage += `📅 **Check-in:** ${hotel.check_in} | **Check-out:** ${hotel.check_out}\n`;
+                hotelMessage += `🌙 **Noches:** ${hotel.nights}\n`;
+                if (hotel.rooms && hotel.rooms.length > 0) {
+                  hotelMessage += `\n🛏️ **Habitaciones disponibles:**\n`;
+                  hotel.rooms.forEach((room, roomIndex) => {
+                    hotelMessage += `• **${room.type}:** $${room.total_price?.toLocaleString()} ${room.currency}\n`;
+                    const availabilityText = room.availability >= 5 ? 'Alta' :
+                      room.availability >= 2 ? 'Media' : 'Limitada';
+                    const availabilityEmoji = room.availability >= 5 ? '✅' :
+                      room.availability >= 2 ? '⚠️' : '❌';
+                    hotelMessage += `${availabilityEmoji} **Disponibilidad:** ${availabilityText}\n\n`;
+                  });
+                }
+                if (hotel.policy_cancellation) {
+                  hotelMessage += `📋 **Política de Cancelación:** ${hotel.policy_cancellation}\n`;
+                }
+                if (hotel.policy_lodging) {
+                  hotelMessage += `🏨 **Políticas:** ${hotel.policy_lodging}\n`;
+                }
+                hotelMessage += `\n`;
+              });
+              hotelMessage += `\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
+              assistantResponse = hotelMessage;
+            } else {
+              // Extract city from the search to provide more specific feedback
+              const { city } = extractHotelSearchParams(currentMessage);
+
+              assistantResponse = `🏨 **Búsqueda de Hoteles**\n\n` +
+                `He recibido tu solicitud de hotel${city ? ` para ${city}` : ''}.\n\n` +
+                `✅ **Estado del sistema:** WebService configurado correctamente\n` +
+                `⏳ **En proceso:** Esperando códigos de destino válidos de EUROVIPS\n\n` +
+                `Te notificaremos cuando el servicio de búsqueda esté completamente operativo.\n\n` +
+                `**Parámetros detectados:**\n` +
+                `- Destino: ${city || 'No especificado'}\n` +
+                `- Fechas: ${extractHotelSearchParams(currentMessage).dateFrom} al ${extractHotelSearchParams(currentMessage).dateTo}`;
+            }
           }
         } catch (error) {
           console.error('Error searching hotels via WebService:', error);
