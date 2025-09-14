@@ -98,6 +98,32 @@ function parseAirlineListResponse(xmlResponse: string): Array<{ code: string, na
   }
 }
 
+function validateAndFormatDate(dateStr: string): string {
+  if (!dateStr) {
+    console.warn('⚠️ Empty date provided, using default');
+    return new Date().toISOString().split('T')[0];
+  }
+
+  // Check if already in YYYY-MM-DD format
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (isoDateRegex.test(dateStr)) {
+    return dateStr;
+  }
+
+  // Try to parse and convert other formats
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      console.warn(`⚠️ Invalid date: ${dateStr}, using default`);
+      return new Date().toISOString().split('T')[0];
+    }
+    return date.toISOString().split('T')[0];
+  } catch (error) {
+    console.error('❌ Date parsing error:', error);
+    return new Date().toISOString().split('T')[0];
+  }
+}
+
 async function getCityCodeForFlight(cityName: string): Promise<string> {
   try {
     // Import the getCountryList function from hotelSearch to reuse the same city codes
@@ -108,11 +134,54 @@ async function getCityCodeForFlight(cityName: string): Promise<string> {
     if (!Array.isArray(countries) || countries.length === 0) {
       // Fallback to static airport mapping if WebService fails
       const FALLBACK_AIRPORT_CODES: Record<string, string> = {
+        // Spain
         'madrid': 'MAD',
         'barcelona': 'BCN',
+        'valencia': 'VLC',
+        'sevilla': 'SVQ',
+        'bilbao': 'BIO',
+        'malaga': 'AGP',
+        // Argentina
         'buenos aires': 'EZE',
         'buenos aires aeropuerto': 'EZE',
         'ezeiza': 'EZE',
+        'cordoba': 'COR',
+        'mendoza': 'MDZ',
+        'bariloche': 'BRC',
+        'ushuaia': 'USH',
+        // Brazil
+        'sao paulo': 'GRU',
+        'sÃ£o paulo': 'GRU',
+        'rio de janeiro': 'GIG',
+        'brasilia': 'BSB',
+        'salvador': 'SSA',
+        'recife': 'REC',
+        'fortaleza': 'FOR',
+        'belo horizonte': 'CNF',
+        'porto alegre': 'POA',
+        // Mexico
+        'ciudad de mexico': 'MEX',
+        'mexico city': 'MEX',
+        'cancun': 'CUN',
+        'guadalajara': 'GDL',
+        'monterrey': 'MTY',
+        'puerto vallarta': 'PVR',
+        'acapulco': 'ACA',
+        'tijuana': 'TIJ',
+        // Chile
+        'santiago': 'SCL',
+        'valparaiso': 'SCL',
+        // Peru
+        'lima': 'LIM',
+        'cusco': 'CUZ',
+        'arequipa': 'AQP',
+        // Colombia
+        'bogota': 'BOG',
+        'medellin': 'MDE',
+        'cartagena': 'CTG',
+        'cali': 'CLO',
+        'barranquilla': 'BAQ',
+        // Europe
         'paris': 'CDG',
         'londres': 'LHR',
         'london': 'LHR',
@@ -120,12 +189,25 @@ async function getCityCodeForFlight(cityName: string): Promise<string> {
         'rome': 'FCO',
         'amsterdam': 'AMS',
         'berlin': 'BER',
+        'frankfurt': 'FRA',
+        'munich': 'MUC',
+        'zurich': 'ZUR',
+        'viena': 'VIE',
+        'vienna': 'VIE',
+        'milan': 'MXP',
+        'lisboa': 'LIS',
+        'lisbon': 'LIS',
+        // USA
         'nueva york': 'JFK',
         'new york': 'JFK',
         'miami': 'MIA',
-        'brasilia': 'BSB',
-        'sao paulo': 'GRU',
-        'rio de janeiro': 'GIG'
+        'los angeles': 'LAX',
+        'chicago': 'ORD',
+        'las vegas': 'LAS',
+        'orlando': 'MCO',
+        'boston': 'BOS',
+        'san francisco': 'SFO',
+        'washington': 'DCA'
       };
 
       const city = cityName.toLowerCase().trim();
@@ -182,15 +264,21 @@ export async function searchAirFares(params: AirfareSearchParams): Promise<Fligh
 
         console.log('🗺️ Resolved city codes - Origin:', originCode, 'Destination:', destinationCode);
 
+        // Validate and format dates
+        const departureDate = validateAndFormatDate(params.departureDate);
+        const returnDate = params.returnDate ? validateAndFormatDate(params.returnDate) : undefined;
+
+        console.log(`✈️ REQUEST - Origin: ${params.origin} -> ${originCode}, Destination: ${params.destination} -> ${destinationCode}, Dates: ${departureDate} to ${returnDate || 'One-way'}, Adults: ${params.adults || 1}, Children: ${params.children || 0}`);
+
         const requestPayload = {
           action: 'searchFlights',
           data: {
             originCode,
             destinationCode,
-            departureDate: params.departureDate,
-            returnDate: params.returnDate,
-            adults: params.adults,
-            children: params.children
+            departureDate,
+            returnDate,
+            adults: params.adults || 1,
+            children: params.children || 0
           }
         };
 
@@ -239,7 +327,7 @@ export async function searchAirFares(params: AirfareSearchParams): Promise<Fligh
         }
 
         if (result.success) {
-          console.log(`✅ Edge Function returned ${result.results?.length || 0} flights`);
+          console.log(`✈️ RESPONSE - Found ${result.results?.length || 0} flights`);
           if (result.results?.length > 0) {
             console.log('✈️ Sample flight:', JSON.stringify(result.results[0], null, 2));
           }
@@ -505,7 +593,7 @@ export async function testAirfareWebService(): Promise<boolean> {
     };
 
     const flights = await searchAirFares(testParams);
-    console.log('✅ WebService test successful, returned:', flights.length, 'flights');
+    console.log(`✈️ RESPONSE - Found ${flights.length} flights`);
     return true;
   } catch (error) {
     console.error('❌ WebService test failed:', error);

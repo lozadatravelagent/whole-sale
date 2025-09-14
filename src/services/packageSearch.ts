@@ -1,4 +1,4 @@
-import { PackageData } from '@/types';
+import { PackageData, PackageFare, PackageOperationDay, PackageCompositionHotel, PackageCompositionFlight } from '@/types';
 
 // Configuration for LOZADA WebService (same as hotelSearch.ts)
 const WS_CONFIG = {
@@ -34,23 +34,33 @@ export async function searchPackageFares(params: PackageSearchParams): Promise<P
         const cityCode = await getCityCode(params.city || '');
         console.log(`🌍 Converting city "${params.city}" to code: ${cityCode}`);
 
+        // Validate and format dates
+        const dateFrom = validateAndFormatDate(params.dateFrom);
+        const dateTo = validateAndFormatDate(params.dateTo);
+
+        console.log(`🎒 REQUEST - City: ${params.city} -> ${cityCode}, Dates: ${dateFrom} to ${dateTo}, Class: ${params.class || 'AEROTERRESTRE'}, Adults: ${params.adults || 1}, Children: ${params.children || 0}`);
+
+        const requestData = {
+          action: 'searchPackages',
+          data: {
+            cityCode,
+            dateFrom,
+            dateTo,
+            packageClass: params.class || 'AEROTERRESTRE',
+            adults: params.adults || 1,
+            children: params.children || 0
+          }
+        };
+
+        console.log('🚀 Package search request:', JSON.stringify(requestData, null, 2));
+
         const response = await fetch(WS_CONFIG.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           },
-          body: JSON.stringify({
-            action: 'searchPackages',
-            data: {
-              cityCode: cityCode,  // Usar cityCode en lugar de city
-              dateFrom: params.dateFrom,
-              dateTo: params.dateTo,
-              packageClass: params.class || 'AEROTERRESTRE',
-              adults: params.adults || 1,
-              children: params.children || 0
-            }
-          })
+          body: JSON.stringify(requestData)
         });
 
         if (!response.ok) {
@@ -93,6 +103,32 @@ export async function searchPackageFares(params: PackageSearchParams): Promise<P
 
 // Cache for country/city codes to avoid repeated API calls
 let countryListCache: Array<{ code: string, name: string }> = [];
+
+function validateAndFormatDate(dateStr: string): string {
+  if (!dateStr) {
+    console.warn('⚠️ Empty date provided, using default');
+    return new Date().toISOString().split('T')[0];
+  }
+
+  // Check if already in YYYY-MM-DD format
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (isoDateRegex.test(dateStr)) {
+    return dateStr;
+  }
+
+  // Try to parse and convert other formats
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      console.warn(`⚠️ Invalid date: ${dateStr}, using default`);
+      return new Date().toISOString().split('T')[0];
+    }
+    return date.toISOString().split('T')[0];
+  } catch (error) {
+    console.error('❌ Date parsing error:', error);
+    return new Date().toISOString().split('T')[0];
+  }
+}
 
 async function getCountryList(): Promise<Array<{ code: string, name: string }>> {
   // Return cached results if available
@@ -145,6 +181,9 @@ async function getCityCode(cityName: string): Promise<string> {
       const FALLBACK_CITY_CODES: Record<string, string> = {
         'madrid': 'MAD',
         'barcelona': 'BCN',
+        'buenos aires': 'EZE',
+        'buenos aires aeropuerto': 'EZE',
+        'ezeiza': 'EZE',
         'españa': 'MAD', // Default España to Madrid
         'spain': 'MAD',
         'viena': 'VIE',
@@ -153,7 +192,13 @@ async function getCityCode(cityName: string): Promise<string> {
         'londres': 'LON',
         'london': 'LON',
         'roma': 'ROM',
-        'rome': 'ROM'
+        'rome': 'ROM',
+        'amsterdam': 'AMS',
+        'berlin': 'BER',
+        'sao paulo': 'GRU',
+        'são paulo': 'GRU',
+        'rio de janeiro': 'GIG',
+        'brasilia': 'BSB'
       };
 
       const city = cityName.toLowerCase().trim();
@@ -193,15 +238,15 @@ async function getCityCode(cityName: string): Promise<string> {
 
 async function buildPackageSearchRequest(params: PackageSearchParams): Promise<string> {
   const { city, dateFrom, dateTo, class: packageClass = 'AEROTERRESTRE', adults = 1, children = 0 } = params;
-  
+
   // Get correct city code from WebService country list or fallback
   const { getCountryList } = await import('./hotelSearch');
   const countries = await getCountryList();
-  
+
   // Find city code
   let cityCode = city.substring(0, 3).toUpperCase(); // Default fallback
   if (countries.length > 0) {
-    const foundCity = countries.find(country => 
+    const foundCity = countries.find(country =>
       country.name.toLowerCase().includes(city.toLowerCase()) ||
       city.toLowerCase().includes(country.name.toLowerCase())
     );
@@ -209,7 +254,7 @@ async function buildPackageSearchRequest(params: PackageSearchParams): Promise<s
       cityCode = foundCity.code;
     }
   }
-  
+
   // Build request with working format discovered from documentation
   return `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
@@ -233,12 +278,12 @@ async function buildPackageSearchRequest(params: PackageSearchParams): Promise<s
 
 function parsePackageSearchResponse(xmlResponse: string, params: PackageSearchParams): PackageData[] {
   console.log('🔄 Parsing package search response...');
-  
+
   try {
     // Create a simple XML parser using DOMParser
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
-    
+
     // Check for parsing errors
     const parseError = xmlDoc.querySelector('parsererror');
     if (parseError) {
@@ -247,19 +292,19 @@ function parsePackageSearchResponse(xmlResponse: string, params: PackageSearchPa
     }
 
     const packages: PackageData[] = [];
-    
+
     // Check for result code first
     const resultElement = xmlDoc.querySelector('resultado');
     if (resultElement) {
       const codigo = getTextContent(resultElement, 'codigo');
       const texto = getTextContent(resultElement, 'texto');
-      
+
       // codigo = "0" means communication success, but check texto for business errors
       if (codigo !== '0') {
         console.warn('⚠️ WebService communication error - código:', codigo, 'texto:', texto);
         return [];
       }
-      
+
       // If texto has content, it's usually an error message
       if (texto && (texto.includes('Error de consumer') || texto.includes('No existe Código Homólogo'))) {
         console.warn('⚠️ WebService business error:', texto);
@@ -270,9 +315,9 @@ function parsePackageSearchResponse(xmlResponse: string, params: PackageSearchPa
     // Look for package elements in response 
     // Response structure: ArrayOfPackageFare1 -> PackageFares
     const packageElements = xmlDoc.querySelectorAll('ArrayOfPackageFare1 PackageFares, PackageFares');
-    
+
     console.log(`📦 Found ${packageElements.length} PackageFares elements`);
-    
+
     packageElements.forEach((packageEl, index) => {
       try {
         const packageData = parsePackageElement(packageEl, params, index);
@@ -298,18 +343,18 @@ function parsePackageElement(packageEl: Element, params: PackageSearchParams, in
     const backOfficeCode = packageEl.getAttribute('BackOfficeCode') || '';
     const backOfficeOperatorCode = packageEl.getAttribute('BackOfficeOperatorCode') || '';
     const packageClass = packageEl.getAttribute('Class') as 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO' || 'AEROTERRESTRE';
-    
+
     const name = getTextContent(packageEl, 'Name') || 'Paquete sin nombre';
     const category = getTextContent(packageEl, 'Category') || '';
-    
+
     // Location has code attribute and city name as text content
     const locationEl = packageEl.querySelector('Location');
     const destination = locationEl ? locationEl.textContent?.trim() || params.city || '' : params.city || '';
-    
+
     const description = getTextContent(packageEl, 'Description') || '';
     const itinerary = getTextContent(packageEl, 'Itinerary') || '';
     const details = getTextContent(packageEl, 'Details') || '';
-    
+
     // Parse operation items (days of week)
     const operationItems: string[] = [];
     const operationItemElements = packageEl.querySelectorAll('OperationItems OperationDay');
@@ -317,21 +362,21 @@ function parsePackageElement(packageEl: Element, params: PackageSearchParams, in
       const day = item.textContent?.trim();
       if (day) operationItems.push(day);
     });
-    
+
     // Parse lodged nights and days
     const lodgedNights = parseInt(getTextContent(packageEl, 'LodgedNights') || '0');
     const lodgedDays = parseInt(getTextContent(packageEl, 'LodgedDays') || '0');
-    
+
     // Parse policies
     const policies = {
       cancellation: getTextContent(packageEl, 'CancelationPolicy') || undefined,
       lodging: getTextContent(packageEl, 'LodgingPolicy') || undefined,
       children: parseChildPolicy(packageEl)
     };
-    
+
     // Parse fares
     const fares = parseFares(packageEl);
-    
+
     if (fares.length === 0) {
       console.warn(`⚠️ Package ${name} has no valid fares`);
       return null;
@@ -372,24 +417,24 @@ function parsePackageElement(packageEl: Element, params: PackageSearchParams, in
 function parseChildPolicy(packageEl: Element): string | undefined {
   const childPolicyEl = packageEl.querySelector('ChildPolicy');
   if (!childPolicyEl) return undefined;
-  
+
   const policies: string[] = [];
   const roomElements = childPolicyEl.querySelectorAll('Room');
-  
+
   roomElements.forEach(roomEl => {
     const roomType = roomEl.getAttribute('Type') || '';
     const maxChildren = roomEl.getAttribute('MaxNumChild') || '';
-    
+
     const childElements = roomEl.querySelectorAll('Child');
     childElements.forEach(childEl => {
       const ageFrom = childEl.getAttribute('AgeFrom') || '';
       const ageTo = childEl.getAttribute('AgeTo') || '';
       const fareType = childEl.getAttribute('FareType') || '';
-      
+
       policies.push(`${roomType}: Niños ${ageFrom}-${ageTo} años (máx. ${maxChildren}) - Tarifa: ${fareType}`);
     });
   });
-  
+
   return policies.length > 0 ? policies.join('; ') : undefined;
 }
 
@@ -397,34 +442,34 @@ function parseChildPolicy(packageEl: Element): string | undefined {
 function parseFares(packageEl: Element): PackageFare[] {
   const fares: PackageFare[] = [];
   const fareListEl = packageEl.querySelector('FareList');
-  
+
   if (!fareListEl) return fares;
-  
+
   const currency = fareListEl.getAttribute('currency') || 'USD';
   const fareElements = fareListEl.querySelectorAll('Fare');
-  
+
   fareElements.forEach(fareEl => {
     const type = fareEl.getAttribute('type') as 'SGL' | 'DWL' | 'TPL' | 'CHD' | 'INF' | 'CPL' || 'DWL';
     const passengerType = fareEl.getAttribute('PassengerType') as 'ADT' | 'CHD' | 'INF' | 'CNN' || 'ADT';
     const availability = parseInt(fareEl.getAttribute('Availability') || '0');
-    
+
     const base = parseFloat(getTextContent(fareEl, 'Base') || '0');
-    
+
     // Parse all taxes
-    const taxes: Array<{type: string, amount: number}> = [];
+    const taxes: Array<{ type: string, amount: number }> = [];
     const taxElements = fareEl.querySelectorAll('Tax');
     let totalTaxes = 0;
-    
+
     taxElements.forEach(taxEl => {
       const taxType = taxEl.getAttribute('type') || '';
       const taxAmount = parseFloat(taxEl.textContent?.trim() || '0');
-      
+
       taxes.push({ type: taxType, amount: taxAmount });
       totalTaxes += taxAmount;
     });
-    
+
     const total = base + totalTaxes;
-    
+
     if (total > 0) {
       fares.push({
         type,
@@ -437,7 +482,7 @@ function parseFares(packageEl: Element): PackageFare[] {
       });
     }
   });
-  
+
   return fares;
 }
 
@@ -445,17 +490,17 @@ function parseFares(packageEl: Element): PackageFare[] {
 function parseOperationDays(packageEl: Element): PackageOperationDay[] {
   const operationDays: PackageOperationDay[] = [];
   const operationDayElements = packageEl.querySelectorAll('OperationDays OperationDay');
-  
+
   operationDayElements.forEach(dayEl => {
     const date = dayEl.getAttribute('Date') || '';
     const seatAvailable = parseInt(dayEl.getAttribute('SeatAvailable') || '0');
     const roomsAvailable = parseInt(dayEl.getAttribute('RoomsAvailable') || '0');
-    
+
     // Parse composition
     const compositionEl = dayEl.querySelector('Composition');
     const hotels: PackageCompositionHotel[] = [];
     const flights: PackageCompositionFlight[] = [];
-    
+
     if (compositionEl) {
       // Parse hotels
       const hotelElements = compositionEl.querySelectorAll('Hotel');
@@ -479,7 +524,7 @@ function parseOperationDays(packageEl: Element): PackageOperationDay[] {
         };
         hotels.push(hotel);
       });
-      
+
       // Parse flights
       const flightElements = compositionEl.querySelectorAll('Air');
       flightElements.forEach(flightEl => {
@@ -487,7 +532,7 @@ function parseOperationDays(packageEl: Element): PackageOperationDay[] {
         const arrivalEl = flightEl.querySelector('Arrival');
         const airlineEl = flightEl.querySelector('Airline');
         const flightInfoEl = flightEl.querySelector('Flight');
-        
+
         if (departureEl && arrivalEl && airlineEl && flightInfoEl) {
           const flight: PackageCompositionFlight = {
             itemId: flightEl.getAttribute('ItemId') || '',
@@ -529,7 +574,7 @@ function parseOperationDays(packageEl: Element): PackageOperationDay[] {
         }
       });
     }
-    
+
     operationDays.push({
       date,
       seatAvailable,
@@ -540,20 +585,20 @@ function parseOperationDays(packageEl: Element): PackageOperationDay[] {
       }
     });
   });
-  
+
   return operationDays;
 }
 
 function getTextContent(element: Element, selectors: string): string {
   const selectorList = selectors.split(', ');
-  
+
   for (const selector of selectorList) {
     const found = element.querySelector(selector);
     if (found && found.textContent?.trim()) {
       return found.textContent.trim();
     }
   }
-  
+
   return '';
 }
 
@@ -573,7 +618,7 @@ function calculateNights(checkIn: string, checkOut: string): number {
 // Test function to verify WebService connectivity
 export async function testPackageWebService(): Promise<boolean> {
   console.log('🧪 Testing package WebService connectivity...');
-  
+
   try {
     const testParams: PackageSearchParams = {
       city: 'Puerto Madryn',
@@ -582,7 +627,7 @@ export async function testPackageWebService(): Promise<boolean> {
       class: 'AEROTERRESTRE',
       adults: 1
     };
-    
+
     const packages = await searchPackageFares(testParams);
     console.log('✅ WebService test successful, returned:', packages.length, 'packages');
     return true;

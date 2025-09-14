@@ -31,21 +31,31 @@ export async function searchServiceFares(params: ServiceSearchParams): Promise<S
         const cityCode = await getCityCode(params.city || '');
         console.log(`🌍 Converting city "${params.city}" to code: ${cityCode}`);
 
+        // Validate and format dates
+        const dateFrom = validateAndFormatDate(params.dateFrom);
+        const dateTo = validateAndFormatDate(params.dateTo || params.dateFrom);
+
+        console.log(`🚌 REQUEST - City: ${params.city} -> ${cityCode}, Dates: ${dateFrom} to ${dateTo}, Service Type: ${params.serviceType || '1'}`);
+
+        const requestData = {
+          action: 'searchServices',
+          data: {
+            cityCode,
+            dateFrom,
+            dateTo,
+            serviceType: params.serviceType || '1'
+          }
+        };
+
+        console.log('🚀 Service search request:', JSON.stringify(requestData, null, 2));
+
         const response = await fetch(WS_CONFIG.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           },
-          body: JSON.stringify({
-            action: 'searchServices',
-            data: {
-              cityCode: cityCode,
-              dateFrom: params.dateFrom,
-              dateTo: params.dateTo || params.dateFrom,
-              serviceType: params.serviceType || '1'
-            }
-          })
+          body: JSON.stringify(requestData)
         });
 
         if (!response.ok) {
@@ -88,6 +98,32 @@ export async function searchServiceFares(params: ServiceSearchParams): Promise<S
 
 // Cache for country/city codes to avoid repeated API calls
 let countryListCache: Array<{ code: string, name: string }> = [];
+
+function validateAndFormatDate(dateStr: string): string {
+  if (!dateStr) {
+    console.warn('⚠️ Empty date provided, using default');
+    return new Date().toISOString().split('T')[0];
+  }
+
+  // Check if already in YYYY-MM-DD format
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (isoDateRegex.test(dateStr)) {
+    return dateStr;
+  }
+
+  // Try to parse and convert other formats
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      console.warn(`⚠️ Invalid date: ${dateStr}, using default`);
+      return new Date().toISOString().split('T')[0];
+    }
+    return date.toISOString().split('T')[0];
+  } catch (error) {
+    console.error('❌ Date parsing error:', error);
+    return new Date().toISOString().split('T')[0];
+  }
+}
 
 async function getCountryList(): Promise<Array<{ code: string, name: string }>> {
   // Return cached results if available
@@ -140,12 +176,16 @@ async function getCityCode(cityName: string): Promise<string> {
       const FALLBACK_CITY_CODES: Record<string, string> = {
         'buzios': 'BZS',
         'búzios': 'BZS',
-        'rio de janeiro': 'RIO',
-        'rio': 'RIO',
+        'rio de janeiro': 'GIG',
+        'rio': 'GIG',
         'madrid': 'MAD',
         'barcelona': 'BCN',
-        'sao paulo': 'SAO',
-        'são paulo': 'SAO'
+        'buenos aires': 'EZE',
+        'buenos aires aeropuerto': 'EZE',
+        'ezeiza': 'EZE',
+        'sao paulo': 'GRU',
+        'são paulo': 'GRU',
+        'brasilia': 'BSB'
       };
 
       const city = cityName.toLowerCase().trim();

@@ -195,14 +195,21 @@ const Chat = () => {
 
       // Slash/dash formats
       /del\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+al\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/i,
+      /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+al?\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/i,
 
-      // Spanish month names with years
+      // Spanish month names with years - more flexible patterns
       /del\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
       /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
+      /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+al?\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
 
       // Spanish month names without years
       /del\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
       /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
+      /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+al?\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
+
+      // Single date patterns (for one-way or single day)
+      /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
+      /(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
 
       // Month-year patterns (for packages)
       /en\s+([a-záéíóúñ]+)\s+(\d{4})/i,
@@ -234,7 +241,7 @@ const Chat = () => {
             const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
             dateTo = `${year}-${month}-${lastDay.toString().padStart(2, '0')}`;
           }
-        } else if (match.length >= 5 && match[2] && isNaN(Number(match[2]))) {
+        } else if (match.length >= 4 && match[2] && isNaN(Number(match[2]))) {
           // Spanish format with month names
           const currentYear = new Date().getFullYear();
 
@@ -249,7 +256,7 @@ const Chat = () => {
 
             dateFrom = `${fromYear}-${fromMonth}-${fromDay}`;
             dateTo = `${toYear}-${toMonth}-${toDay}`;
-          } else {
+          } else if (match.length === 5) {
             // Without years: del 1 de octubre al 15 de octubre
             const fromDay = match[1].padStart(2, '0');
             const fromMonth = spanishMonths[match[2].toLowerCase()] || '01';
@@ -258,6 +265,27 @@ const Chat = () => {
 
             dateFrom = `${currentYear}-${fromMonth}-${fromDay}`;
             dateTo = `${currentYear}-${toMonth}-${toDay}`;
+          } else if (match.length === 4) {
+            // Single date with year: 15 de octubre de 2025
+            const day = match[1].padStart(2, '0');
+            const month = spanishMonths[match[2].toLowerCase()] || '01';
+            const year = match[3] || currentYear;
+
+            dateFrom = `${year}-${month}-${day}`;
+            // Set return date 7 days later for single dates
+            const fromDate = new Date(dateFrom);
+            fromDate.setDate(fromDate.getDate() + 7);
+            dateTo = fromDate.toISOString().split('T')[0];
+          } else if (match.length === 3) {
+            // Single date without year: 15 de octubre
+            const day = match[1].padStart(2, '0');
+            const month = spanishMonths[match[2].toLowerCase()] || '01';
+
+            dateFrom = `${currentYear}-${month}-${day}`;
+            // Set return date 7 days later
+            const fromDate = new Date(dateFrom);
+            fromDate.setDate(fromDate.getDate() + 7);
+            dateTo = fromDate.toISOString().split('T')[0];
           }
         } else {
           // Regular format (ISO or slash/dash)
@@ -265,7 +293,7 @@ const Chat = () => {
           dateTo = match[2];
 
           // Convert date formats if needed
-          if (dateFrom.includes('/') || dateFrom.includes('-')) {
+          if (dateFrom && dateTo && (dateFrom.includes('/') || dateFrom.includes('-'))) {
             const fromParts = dateFrom.split(/[\/\-]/);
             const toParts = dateTo.split(/[\/\-]/);
 
@@ -561,7 +589,7 @@ const Chat = () => {
             city: searchCity,
             dateFrom,
             dateTo,
-            packageClass: packageClass as 'AEROTERRESTRE' | 'HOTEL' | 'EXCURSION'
+            class: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO'
           });
 
           if (packages.length > 0) {
@@ -575,19 +603,16 @@ const Chat = () => {
               packageMessage += `\\n`;
               if (pkg.destination) packageMessage += `📍 **Destino:** ${pkg.destination}\\n`;
               if (pkg.description) packageMessage += `📝 **Descripción:** ${pkg.description}\\n`;
-              packageMessage += `📅 **Salida:** ${pkg.departure_date}\\n`;
-              packageMessage += `🔚 **Regreso:** ${pkg.return_date}\\n`;
-              if (pkg.duration_nights > 0) packageMessage += `🌙 **Duración:** ${pkg.duration_nights} noches\\n`;
+              packageMessage += `🌙 **Noches:** ${pkg.lodgedNights}\\n`;
+              packageMessage += `📅 **Días:** ${pkg.lodgedDays}\\n`;
+              packageMessage += `🎆 **Clase:** ${pkg.class}\\n`;
 
-              packageMessage += `💰 **Precio:** ${pkg.price.amount} ${pkg.price.currency}\\n`;
+              if (pkg.fares && pkg.fares.length > 0) {
+                packageMessage += `💰 **Precio desde:** $${pkg.fares[0].total?.toLocaleString()} ${pkg.fares[0].currency}\\n`;
+              }
 
-              if (pkg.includes) {
-                packageMessage += `\\n**Incluye:**\\n`;
-                if (pkg.includes.flights) packageMessage += `✈️ Vuelos\\n`;
-                if (pkg.includes.hotel) packageMessage += `🏨 Hotel\\n`;
-                if (pkg.includes.meals) packageMessage += `🍽️ Comidas\\n`;
-                if (pkg.includes.transfers) packageMessage += `🚌 Traslados\\n`;
-                if (pkg.includes.excursions) packageMessage += `🎯 Excursiones\\n`;
+              if (pkg.details) {
+                packageMessage += `\\n**Detalles:** ${pkg.details}\\n`;
               }
 
               packageMessage += `\\n🌟 *Powered by EUROVIPS*\\n`;
@@ -763,7 +788,7 @@ const Chat = () => {
                 city: destination || 'España',
                 dateFrom,
                 dateTo,
-                packageClass: packageClass as 'AEROTERRESTRE' | 'HOTEL' | 'EXCURSION'
+                class: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO'
               });
               console.log(`✅ EUROVIPS packages: ${eurovipsResults.packages.length}`);
             } catch (error) {
@@ -816,13 +841,13 @@ const Chat = () => {
             setTimeout(() => reject(new Error('N8N timeout after 240 seconds')), 240000)
           );
 
-          const { data, error } = await Promise.race([n8nPromise, timeoutPromise]);
+          const result = await Promise.race([n8nPromise, timeoutPromise]);
 
-          if (error) {
-            console.error('N8N error:', error);
+          if ((result as any)?.error) {
+            console.error('N8N error:', (result as any).error);
             n8nResponse = 'Error obteniendo información complementaria de N8N.';
           } else {
-            n8nResponse = data?.message || 'Información complementaria procesada.';
+            n8nResponse = (result as any)?.data?.message || 'Información complementaria procesada.';
             console.log('✅ N8N response received');
           }
         } catch (n8nError) {
@@ -839,9 +864,9 @@ const Chat = () => {
         console.log('3️⃣ Streaming EUROVIPS results...');
 
         const totalEurovipsResults = eurovipsResults.flights.length +
-                                   eurovipsResults.hotels.length +
-                                   eurovipsResults.packages.length +
-                                   eurovipsResults.services.length;
+          eurovipsResults.hotels.length +
+          eurovipsResults.packages.length +
+          eurovipsResults.services.length;
 
         if (totalEurovipsResults > 0) {
           // Show EUROVIPS results immediately
@@ -921,19 +946,19 @@ const Chat = () => {
                 setTimeout(() => reject(new Error('N8N async timeout after 240 seconds')), 240000)
               );
 
-              const { data, error } = await Promise.race([n8nAsyncPromise, timeoutPromise]);
+              const result = await Promise.race([n8nAsyncPromise, timeoutPromise]);
 
               let finalN8nResponse;
-              if (error || !data?.message) {
+              if ((result as any)?.error || !(result as any)?.data?.message) {
                 finalN8nResponse = 'Información complementaria procesada con limitaciones técnicas.';
               } else {
-                finalN8nResponse = data.message;
+                finalN8nResponse = (result as any).data.message;
               }
 
               const n8nDuration = Date.now() - n8nStartTime;
               console.log(`✅ N8N async completed in ${n8nDuration}ms`);
 
-              const n8nComplementResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${finalN8nResponse}\n\n🌟 *Fuente: N8N Workflow* *(${Math.round(n8nDuration/1000)}s)*\n\n---\n\n✨ **Resumen:** ${totalEurovipsResults} resultados EUROVIPS + información N8N`;
+              const n8nComplementResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${finalN8nResponse}\n\n🌟 *Fuente: N8N Workflow* *(${Math.round(n8nDuration / 1000)}s)*\n\n---\n\n✨ **Resumen:** ${totalEurovipsResults} resultados EUROVIPS + información N8N`;
 
               // Append N8N results as a new message
               await saveMessage({
@@ -1127,30 +1152,21 @@ const Chat = () => {
   };
 
   const getMessageContent = (msg: MessageRow): string => {
-    console.log('📝 Getting message content for:', msg.id);
-    console.log('📝 Raw content:', msg.content);
-    console.log('📝 Content type:', typeof msg.content);
-
     // Handle if content is a string (JSON serialized)
     if (typeof msg.content === 'string') {
       try {
         const parsed = JSON.parse(msg.content);
-        console.log('📝 Parsed content:', parsed);
         return parsed.text || '';
       } catch (e) {
-        console.log('📝 Failed to parse content as JSON, treating as plain text');
         return msg.content;
       }
     }
 
     // Handle if content is already an object
     if (typeof msg.content === 'object' && msg.content && 'text' in msg.content) {
-      const text = (msg.content as any).text || '';
-      console.log('📝 Extracted text from object:', text.substring(0, 100));
-      return text;
+      return (msg.content as any).text || '';
     }
 
-    console.log('📝 No text content found');
     return '';
   };
 
@@ -1530,20 +1546,10 @@ const Chat = () => {
                     const messageText = getMessageContent(msg);
                     const pdfUrl = getPdfUrl(msg);
 
-                    console.log('💬 Processing message:', msg.id, 'Role:', msg.role);
-                    console.log('💬 Message text preview:', messageText.substring(0, 100));
-
                     const hasFlights = msg.role === 'assistant' && isFlightMessage(messageText);
-                    console.log('🔍 Has flights:', hasFlights);
-
                     const parsedFlights = hasFlights ? parseFlightsFromMessage(messageText) : [];
-                    console.log('📊 Parsed flights count:', parsedFlights.length);
-
                     const hasHotels = msg.role === 'assistant' && isHotelMessage(messageText);
-                    console.log('🔍 Has hotels:', hasHotels);
-
                     const parsedHotels = hasHotels ? parseHotelsFromMessage(messageText) : [];
-                    console.log('📊 Parsed hotels count:', parsedHotels.length);
 
                     // Check for combined travel messages (flights + hotels via EUROVIPS)
                     const hasCombinedTravel = msg.role === 'assistant' && (
@@ -1552,7 +1558,6 @@ const Chat = () => {
                       messageText.includes('EUROVIPS WebService') ||
                       (messageText.includes('Vuelos Disponibles') && messageText.includes('Hoteles Disponibles'))
                     );
-                    console.log('🔍 Has combined travel:', hasCombinedTravel);
 
                     // Parse combined travel data if available
                     let combinedTravelData = null;

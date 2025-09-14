@@ -18,7 +18,7 @@ class EurovipsSOAPClient {
     ${soapBody}
   </soap:Body>
 </soap:Envelope>`;
-    console.log(`📝 SOAP Request for ${soapAction}:`, soapEnvelope);
+    console.log(`📝 SOAP REQUEST [${soapAction}]:`, soapEnvelope.length, 'chars');
     const response = await fetch(this.baseUrl, {
       method: 'POST',
       headers: {
@@ -34,7 +34,7 @@ class EurovipsSOAPClient {
       throw new Error(`SOAP request failed: ${response.status} ${response.statusText}`);
     }
     const xmlResponse = await response.text();
-    console.log(`📥 SOAP Response for ${soapAction}:`, xmlResponse.substring(0, 1000));
+    console.log(`📥 SOAP RESPONSE [${soapAction}]:`, xmlResponse.length, 'chars');
     return xmlResponse;
   }
   async getCountryList() {
@@ -156,7 +156,6 @@ ${occupantsXml}        </Ocuppancy>
   }
   parseCountryListResponse(xmlResponse) {
     try {
-      console.log('📥 Full XML Response for getCountryList:', xmlResponse);
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
       const parseError = xmlDoc.querySelector('parsererror');
@@ -164,7 +163,6 @@ ${occupantsXml}        </Ocuppancy>
         console.error('XML Parse Error:', parseError.textContent);
         return [];
       }
-      console.log('📋 All elements in XML:', Array.from(xmlDoc.getElementsByTagName('*')).map((el) => el.localName));
       const results = [];
       const countryInfoElements = Array.from(xmlDoc.getElementsByTagName('*')).filter((el) => el.localName === 'CountryInfos');
       console.log(`🔍 Found ${countryInfoElements.length} CountryInfos elements`);
@@ -796,14 +794,8 @@ serve(async (req) => {
     if (req.method !== 'POST') {
       throw new Error('Only POST method is allowed');
     }
-    // Log the request for debugging
-    console.log('🚀 Edge Function called!');
-    console.log('📥 Request method:', req.method);
-    console.log('📋 Request headers:', Object.fromEntries(req.headers.entries()));
-    const authHeader = req.headers.get('authorization');
-    console.log('🔑 Auth header:', authHeader?.substring(0, 50) + '...');
     const body = await req.json();
-    console.log('📦 Request body:', body);
+    console.log('📦 EUROVIPS REQUEST:', body.action, body.data ? Object.keys(body.data) : 'no-data');
     const { action, data } = body;
     const client = new EurovipsSOAPClient();
     let results;

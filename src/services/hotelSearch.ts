@@ -189,6 +189,32 @@ function parseCountryListResponse(xmlResponse: string): Array<{ code: string, na
   }
 }
 
+function validateAndFormatDate(dateStr: string): string {
+  if (!dateStr) {
+    console.warn('⚠️ Empty date provided, using default');
+    return new Date().toISOString().split('T')[0];
+  }
+
+  // Check if already in YYYY-MM-DD format
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (isoDateRegex.test(dateStr)) {
+    return dateStr;
+  }
+
+  // Try to parse and convert other formats
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      console.warn(`⚠️ Invalid date: ${dateStr}, using default`);
+      return new Date().toISOString().split('T')[0];
+    }
+    return date.toISOString().split('T')[0];
+  } catch (error) {
+    console.error('❌ Date parsing error:', error);
+    return new Date().toISOString().split('T')[0];
+  }
+}
+
 async function getCityCode(cityName: string): Promise<string> {
   try {
     // Get the country list first
@@ -199,6 +225,9 @@ async function getCityCode(cityName: string): Promise<string> {
       const FALLBACK_CITY_CODES: Record<string, string> = {
         'madrid': 'MAD',
         'barcelona': 'BCN',
+        'buenos aires': 'BUE',
+        'buenos aires aeropuerto': 'EZE',
+        'ezeiza': 'EZE',
         'viena': 'VIE',
         'vienna': 'VIE',
         'bruselas': 'BRU',
@@ -213,7 +242,11 @@ async function getCityCode(cityName: string): Promise<string> {
         'praga': 'PRG',
         'prague': 'PRG',
         'estambul': 'IST',
-        'istanbul': 'IST'
+        'istanbul': 'IST',
+        'sao paulo': 'GRU',
+        'são paulo': 'GRU',
+        'rio de janeiro': 'GIG',
+        'brasilia': 'BSB'
       };
 
       const city = cityName.toLowerCase().trim();
@@ -242,8 +275,9 @@ async function getCityCode(cityName: string): Promise<string> {
     }
 
     // If still not found, use first 3 letters as fallback
-    console.log(`⚠️ City not found in WebService, using fallback: ${cityName} -> ${cityName.substring(0, 3).toUpperCase()}`);
-    return cityName.substring(0, 3).toUpperCase();
+    const fallbackCode = cityName.substring(0, 3).toUpperCase();
+    console.log(`⚠️ City not found in WebService, using fallback: ${cityName} -> ${fallbackCode}`);
+    return fallbackCode;
 
   } catch (error) {
     console.error('❌ Error getting city code:', error);
@@ -263,23 +297,33 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
         const cityCode = await getCityCode(params.city || '');
 
+        // Validate and format dates
+        const checkinDate = validateAndFormatDate(params.dateFrom);
+        const checkoutDate = validateAndFormatDate(params.dateTo);
+
+        console.log(`🏨 REQUEST - City: ${params.city} -> ${cityCode}, Dates: ${checkinDate} to ${checkoutDate}, Adults: ${params.adults || 1}, Children: ${params.children || 0}`);
+
+        const requestData = {
+          action: 'searchHotels',
+          data: {
+            cityCode,
+            checkinDate,
+            checkoutDate,
+            adults: params.adults || 1,
+            children: params.children || 0,
+            rooms: 1
+          }
+        };
+
+        console.log('🚀 Hotel search request:', JSON.stringify(requestData, null, 2));
+
         const response = await fetch(WS_CONFIG.url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
           },
-          body: JSON.stringify({
-            action: 'searchHotels',
-            data: {
-              cityCode,
-              checkinDate: params.dateFrom,
-              checkoutDate: params.dateTo,
-              adults: params.adults || 1,  // Default to 1 adult
-              children: params.children || 0,
-              rooms: 1
-            }
-          })
+          body: JSON.stringify(requestData)
         });
 
         if (!response.ok) {
@@ -414,7 +458,7 @@ export async function testHotelWebService(): Promise<boolean> {
     };
 
     const hotels = await searchHotelFares(testParams);
-    console.log('✅ WebService test successful, returned:', hotels.length, 'hotels');
+    console.log(`🏨 RESPONSE - Found ${hotels.length} hotels`);
     return true;
   } catch (error) {
     console.error('❌ WebService test failed:', error);
