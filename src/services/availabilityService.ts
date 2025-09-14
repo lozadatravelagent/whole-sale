@@ -128,7 +128,7 @@ async function getCountryList(params: {
         console.log('🔍 DEBUG - Full result structure:', JSON.stringify(result, null, 2));
         console.log('🔍 DEBUG - result.results type:', typeof result.results);
         console.log('🔍 DEBUG - result.results is array:', Array.isArray(result.results));
-        
+
         if (result.success && result.results) {
             // Check if results is an array or object
             if (Array.isArray(result.results)) {
@@ -137,12 +137,31 @@ async function getCountryList(params: {
             } else if (typeof result.results === 'object') {
                 console.log('📊 COUNTRY LIST - Results is an object, attempting to extract array');
                 // Try to extract array from object structure
+                console.log('🔍 DEBUG - Checking result.results.parsed:', !!result.results.parsed);
+                console.log('🔍 DEBUG - result.results keys:', Object.keys(result.results));
+
                 const parsed = result.results.parsed || result.results;
                 if (Array.isArray(parsed)) {
                     console.log(`📊 COUNTRY LIST - Found ${parsed.length} destinations in parsed array`);
                     return parsed;
                 } else {
-                    console.warn('⚠️ Results object does not contain array:', result.results);
+                    console.warn('⚠️ Results object does not contain array. Trying to access parsed property...');
+                    // Try different possible locations for the parsed data
+                    const possibleArrays = [
+                        result.results.parsed,
+                        result.results.data,
+                        result.results.countries,
+                        result.results.items
+                    ];
+
+                    for (const arr of possibleArrays) {
+                        if (Array.isArray(arr)) {
+                            console.log(`📊 COUNTRY LIST - Found ${arr.length} destinations in alternative location`);
+                            return arr;
+                        }
+                    }
+
+                    console.warn('⚠️ No array found in results object:', Object.keys(result.results));
                     return [];
                 }
             } else {
