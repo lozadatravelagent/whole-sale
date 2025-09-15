@@ -21,7 +21,7 @@ import { searchAirFares } from '@/services/airfareSearch';
 import { searchPackageFares } from '@/services/packageSearch';
 import { searchServiceFares } from '@/services/serviceSearch';
 import { isCombinedTravelMessage, parseCombinedTravelRequest } from '@/utils/combinedTravelParser';
-import type { CombinedTravelResults } from '@/types';
+import type { CombinedTravelResults, HotelData } from '@/types';
 import FlightSelector from '@/components/crm/FlightSelector';
 import HotelSelector from '@/components/crm/HotelSelector';
 import CombinedTravelSelector from '@/components/crm/CombinedTravelSelector';
@@ -890,13 +890,19 @@ const Chat = () => {
 
           eurovipsResponse += `⏳ *Buscando información complementaria en N8N...*`;
 
-          // Save EUROVIPS results immediately
+          // Save EUROVIPS results immediately with structured data
           console.log('💾 Saving EUROVIPS hotel results immediately...');
           const eurovipsMessage = await saveMessage({
             conversation_id: selectedConversation,
             role: 'assistant',
             content: { text: eurovipsResponse },
-            meta: { source: 'EUROVIPS', streaming: true }
+            meta: {
+              source: 'EUROVIPS',
+              streaming: true,
+              eurovipsData: {
+                hotels: eurovipsResults.hotels
+              }
+            }
           });
 
           // Start N8N request asynchronously and append when ready
@@ -1167,13 +1173,22 @@ const Chat = () => {
 
           eurovipsResponse += `⏳ *Buscando información complementaria en N8N...*`;
 
-          // Save EUROVIPS results immediately
+          // Save EUROVIPS results immediately with structured data
           console.log('💾 Saving EUROVIPS results immediately...');
           const eurovipsMessage = await saveMessage({
             conversation_id: selectedConversation,
             role: 'assistant',
             content: { text: eurovipsResponse },
-            meta: { source: 'EUROVIPS', streaming: true }
+            meta: {
+              source: 'EUROVIPS',
+              streaming: true,
+              eurovipsData: {
+                flights: eurovipsResults.flights,
+                hotels: eurovipsResults.hotels,
+                packages: eurovipsResults.packages,
+                services: eurovipsResults.services
+              }
+            }
           });
 
           // Start N8N request asynchronously and append when ready
@@ -1802,7 +1817,21 @@ const Chat = () => {
                     const hasFlights = msg.role === 'assistant' && isFlightMessage(messageText);
                     const parsedFlights = hasFlights ? parseFlightsFromMessage(messageText) : [];
                     const hasHotels = msg.role === 'assistant' && isHotelMessage(messageText);
-                    const parsedHotels = hasHotels ? parseHotelsFromMessage(messageText) : [];
+
+                    // Use structured data from EUROVIPS if available, otherwise parse from text
+                    let parsedHotels: HotelData[] = [];
+                    if (hasHotels) {
+                      if (msg.meta && typeof msg.meta === 'object' && 'eurovipsData' in msg.meta && msg.meta.eurovipsData) {
+                        const eurovipsData = msg.meta.eurovipsData as any;
+                        if (eurovipsData.hotels && Array.isArray(eurovipsData.hotels)) {
+                          parsedHotels = eurovipsData.hotels;
+                          console.log('✅ Using structured hotel data from EUROVIPS:', parsedHotels.length, 'hotels');
+                        }
+                      } else {
+                        parsedHotels = parseHotelsFromMessage(messageText);
+                        console.log('✅ Using parsed hotel data from text:', parsedHotels.length, 'hotels');
+                      }
+                    }
 
                     // Check for combined travel messages (flights + hotels via EUROVIPS)
                     const hasCombinedTravel = msg.role === 'assistant' && (

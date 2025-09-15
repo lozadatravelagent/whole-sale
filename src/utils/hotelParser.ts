@@ -2,47 +2,64 @@ import { HotelData, HotelRoom } from '@/types';
 
 export function parseHotelsFromMessage(messageText: string): HotelData[] {
   const hotels: HotelData[] = [];
+  console.log('🔍 PARSING MESSAGE:', messageText.substring(0, 500));
 
-  // Split by hotel options using --- as primary separator
-  let hotelBlocks = messageText.split(/---+/).filter(block => block.trim().length > 0);
+  // Try different splitting strategies for different formats
+  let hotelBlocks: string[] = [];
 
-  // Remove the header block if it doesn't contain hotel details
-  hotelBlocks = hotelBlocks.filter(block => {
-    return block.includes('Precio:') && (block.includes('🏨') || block.includes('Hotel'));
-  });
-
-
+  // First try: Split by numbered hotel entries (EUROVIPS format)
+  const numberedHotels = messageText.split(/\d+\.\s*🏨/).filter(block => block.trim().length > 0);
+  if (numberedHotels.length > 1) {
+    // Skip the first element (header) and add back the hotel emoji to each block
+    hotelBlocks = numberedHotels.slice(1).map(block => '🏨' + block);
+    console.log('✅ Found numbered hotel format, blocks:', hotelBlocks.length);
+  } else {
+    // Fallback: Split by --- separators (original format)
+    hotelBlocks = messageText.split(/---+/).filter(block => block.trim().length > 0);
+    // Remove the header block if it doesn't contain hotel details
+    hotelBlocks = hotelBlocks.filter(block => {
+      return block.includes('Precio:') && (block.includes('🏨') || block.includes('Hotel'));
+    });
+    console.log('✅ Using fallback format, blocks:', hotelBlocks.length);
+  }
 
   for (let i = 0; i < hotelBlocks.length; i++) {
     const block = hotelBlocks[i];
+    console.log(`🔍 Processing hotel block ${i + 1}:`, block.substring(0, 200));
     try {
       const hotel = parseHotelBlock(block);
       if (hotel) {
+        console.log('✅ Successfully parsed hotel:', hotel.name);
         hotels.push(hotel);
       } else {
-
+        console.warn('❌ Failed to parse hotel block:', block.substring(0, 100));
       }
     } catch (error) {
-
+      console.error('❌ Error parsing hotel block:', error, block.substring(0, 100));
     }
   }
 
+  console.log(`✅ Total hotels parsed: ${hotels.length}`);
   return hotels;
 }
 
 function parseHotelBlock(block: string): HotelData | null {
+  console.log('🔍 PARSING HOTEL BLOCK:', block.substring(0, 300));
 
   // Extract hotel name - look for pattern after 🏨 or Hotel
-  const hotelNameMatch = block.match(/🏨\s*[^-]*-\s*([^\n*]+?)(?:\s*\*+|\s*🏨|$)/) ||
+  const hotelNameMatch = block.match(/🏨\s*\*\*([^*]+)\*\*/) ||  // EUROVIPS: 🏨 **HOTEL NAME**
+    block.match(/🏨\s*([^\n]+?)(?:\s*📍|\s*⭐|\s*💰|\s*\n|$)/) ||  // EUROVIPS: 🏨 HOTEL NAME (until next emoji or newline)
     block.match(/Hotel:\s*([^\n]+)/i) ||
     block.match(/\*\*([^*]+Hotel[^*]*)\*\*/);
 
   if (!hotelNameMatch) {
+    console.warn('❌ No hotel name found in block:', block.substring(0, 100));
     return null;
   }
 
   // Clean up hotel name - remove markdown formatting
   const hotelName = hotelNameMatch[1].replace(/\*+/g, '').trim();
+  console.log('✅ Parsed hotel name:', hotelName);
 
 
   // Extract location/city
@@ -58,13 +75,16 @@ function parseHotelBlock(block: string): HotelData | null {
   const category = categoryMatch ? categoryMatch[1].trim() : '';
 
   // Extract check-in and check-out dates
-  const checkInMatch = block.match(/🛏️\s*Check-in:\s*([^\n]+)/iu) ||
+  const checkInMatch = block.match(/📅\s*Check-in:\s*([^\n]+)/iu) ||  // EUROVIPS format
+    block.match(/🛏️\s*Check-in:\s*([^\n]+)/iu) ||
     block.match(/Entrada:\s*([^\n🛏️]+)/iu);
-  const checkOutMatch = block.match(/🚪\s*Check-out:\s*([^\n]+)/iu) ||
+  const checkOutMatch = block.match(/📅\s*Check-out:\s*([^\n]+)/iu) ||  // EUROVIPS format
+    block.match(/🚪\s*Check-out:\s*([^\n]+)/iu) ||
     block.match(/Salida:\s*([^\n🚪]+)/iu);
 
   const checkIn = checkInMatch ? checkInMatch[1].trim() : '';
   const checkOut = checkOutMatch ? checkOutMatch[1].trim() : '';
+  console.log('✅ Parsed dates:', { checkIn, checkOut });
 
   // Extract address if available
   const addressMatch = block.match(/📧\s*Dirección:\s*([^\n]+)/i) ||
@@ -118,6 +138,7 @@ function parseHotelBlock(block: string): HotelData | null {
 
 function parseHotelRooms(block: string): HotelRoom[] {
   const rooms: HotelRoom[] = [];
+  console.log('🔍 PARSING ROOMS FROM BLOCK:', block.substring(0, 200));
 
   // Look for room sections - they might be separated by room types or prices
   const roomPatterns = [
@@ -129,9 +150,11 @@ function parseHotelRooms(block: string): HotelRoom[] {
   let foundRooms = false;
 
   for (const pattern of roomPatterns) {
+    console.log('🔍 Testing room pattern:', pattern);
     let match;
     while ((match = pattern.exec(block)) !== null) {
       foundRooms = true;
+      console.log('✅ Found room pattern match:', match);
 
       let roomType, priceStr, currency;
 
@@ -146,14 +169,15 @@ function parseHotelRooms(block: string): HotelRoom[] {
         roomType = match[3] || 'Habitación Estándar';
       }
 
-      const price = parseFloat(priceStr.replace('.', '').replace(',', '.'));
+      const price = parseFloat(priceStr.replace(/\./g, '').replace(',', '.'));
+      console.log('✅ Parsed room:', { roomType, price, currency });
 
       if (price > 0) {
         const room: HotelRoom = {
           type: roomType.trim(),
           description: roomType.trim(),
           price_per_night: price,
-          total_price: price, // Assuming this is total price, could be per night
+          total_price: price, // Assuming this is total price from EUROVIPS
           currency: currency.toUpperCase(),
           availability: 3, // Default availability
           occupancy_id: (rooms.length + 1).toString()
@@ -166,12 +190,15 @@ function parseHotelRooms(block: string): HotelRoom[] {
     if (foundRooms) break; // If we found rooms with one pattern, don't try others
   }
 
-  // If no specific room patterns found, try to extract general price info
+  // If no specific room patterns found, try to extract general price info (EUROVIPS format)
   if (rooms.length === 0) {
+    console.log('🔍 No room patterns found, trying general price extraction');
     const generalPriceMatch = block.match(/💰\s*Precio:\s*([\d,.]+)\s*(\w+)/i);
     if (generalPriceMatch) {
-      const price = parseFloat(generalPriceMatch[1].replace('.', '').replace(',', '.'));
-      const currency = generalPriceMatch[2].toUpperCase();
+      console.log('✅ Found general price:', generalPriceMatch);
+      const priceStr = generalPriceMatch[1];
+      const currency = generalPriceMatch[2];
+      const price = parseFloat(priceStr.replace(/\./g, '').replace(',', '.'));
 
       if (price > 0) {
         const room: HotelRoom = {
@@ -179,16 +206,20 @@ function parseHotelRooms(block: string): HotelRoom[] {
           description: 'Habitación Estándar',
           price_per_night: price,
           total_price: price,
-          currency: currency,
+          currency: currency.toUpperCase(),
           availability: 3,
           occupancy_id: '1'
         };
 
+        console.log('✅ Created room from general price:', room);
         rooms.push(room);
       }
+    } else {
+      console.warn('❌ No price information found in block');
     }
   }
 
+  console.log(`✅ Total rooms parsed: ${rooms.length}`);
   return rooms;
 }
 
