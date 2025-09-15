@@ -346,7 +346,12 @@ ${occupantsXml}        </Ocuppancy>
       const hotelName = this.getTextContent(hotelEl, 'Name') || this.getTextContent(hotelEl, 'HotelName') || 'Unknown Hotel';
       const address = this.getTextContent(hotelEl, 'HotelAddress') || this.getTextContent(hotelEl, 'Address') || '';
 
-      // Try to get total price from FareList instead of direct TotalFare
+      // Calculate nights first
+      const checkIn = new Date(params.checkinDate);
+      const checkOut = new Date(params.checkoutDate);
+      const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
+
+      // Get total price from FareList - Use the first Fare's Base + Tax (total for entire stay)
       let totalPrice = 0;
       const fareListEl = hotelEl.querySelector('FareList');
       if (fareListEl) {
@@ -354,7 +359,8 @@ ${occupantsXml}        </Ocuppancy>
         if (fareEl) {
           const base = parseFloat(this.getTextContent(fareEl, 'Base') || '0');
           const tax = parseFloat(this.getTextContent(fareEl, 'Tax') || '0');
-          totalPrice = base + tax;
+          totalPrice = base + tax; // This is already the total for the entire stay
+          console.log(`🔍 Hotel "${hotelName}" - Base: ${base}, Tax: ${tax}, Total for ${nights} nights: ${totalPrice}`);
         }
       }
 
@@ -364,11 +370,6 @@ ${occupantsXml}        </Ocuppancy>
 
       // Get currency from FareList or use default
       const currency = fareListEl?.getAttribute('currency') || this.currency;
-
-      // Calculate nights
-      const checkIn = new Date(params.checkinDate);
-      const checkOut = new Date(params.checkoutDate);
-      const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
 
       // Parse room information from FareList
       const rooms: Array<any> = [];

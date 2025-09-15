@@ -858,27 +858,30 @@ const Chat = () => {
 
           eurovipsResponse += `🏨 **${eurovipsResults.hotels.length} Hoteles**\n\n`;
           eurovipsResults.hotels.forEach((hotel, index) => {
-            eurovipsResponse += `**${index + 1}. ${hotel.name}** - ${hotel.city}\n`;
+            // Find lowest price for main display
+            const minPrice = hotel.rooms.length > 0 ? Math.min(...hotel.rooms.map(room => room.total_price)) : 0;
+            const minPriceCurrency = hotel.rooms.find(room => room.total_price === minPrice)?.currency || 'USD';
+
+            eurovipsResponse += `${index + 1}. 🏨 **${hotel.name}**\n`;
 
             if (hotel.address) {
-              eurovipsResponse += `📍 ${hotel.address}\n`;
+              eurovipsResponse += `📍 Ubicación: ${hotel.address}\n`;
             }
 
-            if (hotel.rooms.length > 0) {
-              // Find lowest price
-              const minPrice = Math.min(...hotel.rooms.map(room => room.total_price));
-              const minPriceCurrency = hotel.rooms.find(room => room.total_price === minPrice)?.currency || 'USD';
-              eurovipsResponse += `💰 Desde **${minPrice} ${minPriceCurrency}** por ${hotel.nights} noches\n`;
+            if (hotel.category) {
+              eurovipsResponse += `⭐ Categoría: ${hotel.category}\n`;
+            }
 
-              // Show room types and availability
-              eurovipsResponse += `🏠 **Habitaciones disponibles:**\n`;
-              hotel.rooms.forEach(room => {
-                eurovipsResponse += `  • ${room.description} - ${room.total_price} ${room.currency}`;
-                if (room.availability > 0) {
-                  eurovipsResponse += ` *(${room.availability} disponibles)*`;
-                }
-                eurovipsResponse += `\n`;
-              });
+            if (minPrice > 0) {
+              eurovipsResponse += `💰 Precio: ${minPrice.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${minPriceCurrency}\n`;
+            }
+
+            eurovipsResponse += `\n📅 Check-in: ${hotel.check_in}\n`;
+            eurovipsResponse += `📅 Check-out: ${hotel.check_out}\n`;
+
+            // Show availability summary
+            if (hotel.rooms.length > 1) {
+              eurovipsResponse += `\n🏠 **${hotel.rooms.length} tipos de habitación disponibles**\n`;
             }
 
             eurovipsResponse += `🌟 *Fuente: EUROVIPS*\n\n`;
