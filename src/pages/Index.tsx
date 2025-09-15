@@ -11,7 +11,7 @@ const Index = () => {
     // TODO: Check if user is authenticated with Supabase
     // For now, redirect to login
     const isAuthenticated = false; // Replace with actual auth check
-    
+
     if (isAuthenticated) {
       navigate('/dashboard');
     }
@@ -32,22 +32,22 @@ const Index = () => {
                 <Plane className="h-8 w-8 text-white" />
               </div>
             </div>
-            
+
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-6">
-              <span className="bg-gradient-hero bg-clip-text text-transparent">
+              <span className="bg-clip-text text-transparent">
                 VBOOK
               </span>
               <br />
               Travel SaaS Platform
             </h1>
-            
+
             <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-              Streamline your travel agency operations with AI-powered chat, CRM, 
+              Streamline your travel agency operations with AI-powered chat, CRM,
               and multi-provider integrations. Built for wholesalers and agencies.
             </p>
-            
+
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button 
+              <Button
                 onClick={handleGetStarted}
                 size="lg"
                 className="bg-gradient-hero hover:opacity-90 shadow-primary text-lg px-8"
@@ -69,7 +69,7 @@ const Index = () => {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4">Everything you need to manage travel</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              From WhatsApp conversations to CRM and provider integrations, 
+              From WhatsApp conversations to CRM and provider integrations,
               VBOOK handles it all in one unified platform.
             </p>
           </div>
@@ -142,7 +142,7 @@ const Index = () => {
           <p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
             Join leading travel agencies already using VBOOK to streamline operations and increase bookings.
           </p>
-          <Button 
+          <Button
             onClick={handleGetStarted}
             size="lg"
             className="bg-gradient-hero hover:opacity-90 shadow-primary text-lg px-8"
