@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.45/deno-dom-wasm.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -45,9 +46,11 @@ class EurovipsSOAPClient {
     const {
       dateFrom = today.toISOString().split('T')[0],
       dateTo = threeMonthsLater.toISOString().split('T')[0],
-      activeFareType = 'HOTEL',
-      activeFareSubtype = 'TERRESTRE'
+      activeFareType = 'HOTEL'
     } = params;
+
+    // ✅ FIJO: Siempre usar TERRESTRE (AEROTERRESTRE no funciona)
+    const activeFareSubtype = 'TERRESTRE';
 
     console.log('🔍 getCountryList called with params:', { dateFrom, dateTo, activeFareType, activeFareSubtype });
 
@@ -63,7 +66,8 @@ class EurovipsSOAPClient {
       <activeFareSubtype xmlns="">${activeFareSubtype}</activeFareSubtype>
     </xsstring7>`;
     const xmlResponse = await this.makeSOAPRequest(soapBody, 'getCountryList');
-    console.log('🔍 Raw XML Response:', xmlResponse);
+    console.log('🔍 Raw XML Response length:', xmlResponse.length);
+    console.log('🔍 XML Sample (first 500 chars):', xmlResponse.substring(0, 500));
     return {
       rawResponse: xmlResponse,
       parsed: this.parseCountryListResponse(xmlResponse)
@@ -252,12 +256,7 @@ ${occupantsXml}        </Ocuppancy>
   parseAirlineListResponse(xmlResponse) {
     try {
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
-      const parseError = xmlDoc.querySelector('parsererror');
-      if (parseError) {
-        console.error('XML Parse Error:', parseError.textContent);
-        return [];
-      }
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
       const airlines: Array<{ code: string, name: string }> = [];
       const airlineElements = xmlDoc.querySelectorAll('Airline, airline, AirlineInfo, airlineinfo');
       airlineElements.forEach((airlineEl) => {
@@ -279,14 +278,12 @@ ${occupantsXml}        </Ocuppancy>
   parseHotelSearchResponse(xmlResponse, params) {
     try {
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
-      const parseError = xmlDoc.querySelector('parsererror');
-      if (parseError) {
-        console.error('XML Parse Error:', parseError.textContent);
-        return [];
-      }
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
       const hotels: Array<any> = [];
-      const hotelElements = xmlDoc.querySelectorAll('HotelFares, ArrayOfHotelFare1 HotelFares');
+      const hotelElements = xmlDoc.querySelectorAll('HotelFares');
+
+      console.log(`🔍 Found ${hotelElements.length} hotel elements`);
+
       hotelElements.forEach((hotelEl, index) => {
         try {
           const hotel = this.parseHotelElement(hotelEl, params, index);
@@ -297,6 +294,14 @@ ${occupantsXml}        </Ocuppancy>
           console.error('❌ Error parsing hotel element:', error);
         }
       });
+      // Sort hotels by price (lowest first)
+      hotels.sort((a, b) => {
+        const priceA = Math.min(...a.rooms.map(room => room.total_price));
+        const priceB = Math.min(...b.rooms.map(room => room.total_price));
+        return priceA - priceB;
+      });
+
+      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels`);
       return hotels;
     } catch (error) {
       console.error('❌ Error parsing hotel search response:', error);
@@ -306,12 +311,7 @@ ${occupantsXml}        </Ocuppancy>
   parseFlightSearchResponse(xmlResponse, params) {
     try {
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
-      const parseError = xmlDoc.querySelector('parsererror');
-      if (parseError) {
-        console.error('XML Parse Error:', parseError.textContent);
-        return [];
-      }
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
       const flights: Array<any> = [];
 
       // Try multiple selectors to handle different XML structures
@@ -343,46 +343,65 @@ ${occupantsXml}        </Ocuppancy>
   parseHotelElement(hotelEl, params, index) {
     try {
       const uniqueId = hotelEl.getAttribute('UniqueId') || `hotel_${Date.now()}_${index}`;
-      const hotelName = this.getTextContent(hotelEl, 'HotelName, PropertyName') || 'Unknown Hotel';
-      const address = this.getTextContent(hotelEl, 'Address, HotelAddress') || '';
-      const totalPrice = parseFloat(this.getTextContent(hotelEl, 'TotalFare, TotalPrice') || '0');
-      const currency = this.getTextContent(hotelEl, 'Currency') || this.currency;
+      const hotelName = this.getTextContent(hotelEl, 'Name') || this.getTextContent(hotelEl, 'HotelName') || 'Unknown Hotel';
+      const address = this.getTextContent(hotelEl, 'HotelAddress') || this.getTextContent(hotelEl, 'Address') || '';
+
+      // Try to get total price from FareList instead of direct TotalFare
+      let totalPrice = 0;
+      const fareListEl = hotelEl.querySelector('FareList');
+      if (fareListEl) {
+        const fareEl = fareListEl.querySelector('Fare');
+        if (fareEl) {
+          const base = parseFloat(this.getTextContent(fareEl, 'Base') || '0');
+          const tax = parseFloat(this.getTextContent(fareEl, 'Tax') || '0');
+          totalPrice = base + tax;
+        }
+      }
+
       if (totalPrice <= 0) {
         return null;
       }
+
+      // Get currency from FareList or use default
+      const currency = fareListEl?.getAttribute('currency') || this.currency;
+
       // Calculate nights
       const checkIn = new Date(params.checkinDate);
       const checkOut = new Date(params.checkoutDate);
       const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
 
-      // Parse room information (if available)
+      // Parse room information from FareList
       const rooms: Array<any> = [];
-      const roomElements = hotelEl.querySelectorAll('Room, Rooms Room');
-      if (roomElements.length > 0) {
-        roomElements.forEach(roomEl => {
-          const roomType = roomEl.getAttribute('type') || this.getTextContent(roomEl, 'Type') || 'Standard';
-          const base = parseFloat(this.getTextContent(roomEl, 'Base') || '0');
-          const tax = parseFloat(this.getTextContent(roomEl, 'Tax') || '0');
+      if (fareListEl) {
+        const fareElements = fareListEl.querySelectorAll('Fare');
+        fareElements.forEach(fareEl => {
+          const fareType = fareEl.getAttribute('type') || 'Standard';
+          const availability = parseInt(fareEl.getAttribute('Availability') || '0');
+          const base = parseFloat(this.getTextContent(fareEl, 'Base') || '0');
+          const tax = parseFloat(this.getTextContent(fareEl, 'Tax') || '0');
           const roomTotal = base + tax;
+          const description = this.getTextContent(fareEl, 'Description') || fareType;
 
           if (roomTotal > 0) {
             rooms.push({
-              type: roomType,
-              description: roomType,
+              type: fareType,
+              description: description,
               total_price: roomTotal,
               currency: currency,
-              availability: 3 // Default availability
+              availability: availability // ✅ Disponibilidad real del WebService
             });
           }
         });
-      } else {
-        // Fallback: create single room from total price
+      }
+
+      // Fallback if no rooms found
+      if (rooms.length === 0) {
         rooms.push({
           type: 'Standard',
           description: 'Standard Room',
           total_price: totalPrice,
           currency: currency,
-          availability: 3
+          availability: 0 // Unknown availability
         });
       }
 
@@ -557,12 +576,7 @@ ${occupantsXml}        </Ocuppancy>
   parsePackageSearchResponse(xmlResponse, params) {
     try {
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
-      const parseError = xmlDoc.querySelector('parsererror');
-      if (parseError) {
-        console.error('XML Parse Error:', parseError.textContent);
-        return [];
-      }
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
 
       const packages: Array<any> = [];
 
@@ -601,12 +615,7 @@ ${occupantsXml}        </Ocuppancy>
   parseServiceSearchResponse(xmlResponse, params) {
     try {
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
-      const parseError = xmlDoc.querySelector('parsererror');
-      if (parseError) {
-        console.error('XML Parse Error:', parseError.textContent);
-        return [];
-      }
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
 
       const services: Array<any> = [];
 

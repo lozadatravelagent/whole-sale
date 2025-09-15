@@ -858,10 +858,29 @@ const Chat = () => {
 
           eurovipsResponse += `🏨 **${eurovipsResults.hotels.length} Hoteles**\n\n`;
           eurovipsResults.hotels.forEach((hotel, index) => {
-            eurovipsResponse += `**${hotel.name}** - ${hotel.city}\n`;
-            if (hotel.rooms.length > 0) {
-              eurovipsResponse += `💰 Desde ${hotel.rooms[0].total_price} ${hotel.rooms[0].currency}\n`;
+            eurovipsResponse += `**${index + 1}. ${hotel.name}** - ${hotel.city}\n`;
+
+            if (hotel.address) {
+              eurovipsResponse += `📍 ${hotel.address}\n`;
             }
+
+            if (hotel.rooms.length > 0) {
+              // Find lowest price
+              const minPrice = Math.min(...hotel.rooms.map(room => room.total_price));
+              const minPriceCurrency = hotel.rooms.find(room => room.total_price === minPrice)?.currency || 'USD';
+              eurovipsResponse += `💰 Desde **${minPrice} ${minPriceCurrency}** por ${hotel.nights} noches\n`;
+
+              // Show room types and availability
+              eurovipsResponse += `🏠 **Habitaciones disponibles:**\n`;
+              hotel.rooms.forEach(room => {
+                eurovipsResponse += `  • ${room.description} - ${room.total_price} ${room.currency}`;
+                if (room.availability > 0) {
+                  eurovipsResponse += ` *(${room.availability} disponibles)*`;
+                }
+                eurovipsResponse += `\n`;
+              });
+            }
+
             eurovipsResponse += `🌟 *Fuente: EUROVIPS*\n\n`;
           });
 
