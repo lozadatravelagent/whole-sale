@@ -135,6 +135,17 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
     return "No disponible";
   };
 
+  const renderStars = (category: string) => {
+    // Extract number of stars from category (1EST, 2EST, etc.)
+    const starsMatch = category.match(/(\d+)EST/);
+    if (!starsMatch) return category; // Return original if not in expected format
+
+    const starCount = parseInt(starsMatch[1]);
+    if (starCount < 1 || starCount > 5) return category; // Return original if invalid
+
+    return '⭐'.repeat(starCount);
+  };
+
   const safeHotelName = (hotel: HotelData) => {
     return hotel.name || 'Hotel sin nombre';
   };
@@ -187,7 +198,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                         <span>Opción {index + 1} - {safeHotelName(hotel)}</span>
                         {hotel.category && (
                           <Badge variant="outline" className="text-xs">
-                            {hotel.category}
+                            {renderStars(hotel.category)}
                           </Badge>
                         )}
                       </div>
@@ -307,21 +318,6 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                   </div>
                 )}
 
-                {/* Policies */}
-                {(hotel.policy_cancellation || hotel.policy_lodging) && (
-                  <div className="mt-3 pt-3 border-t border-border/50 space-y-1">
-                    {hotel.policy_cancellation && (
-                      <div className="text-xs text-muted-foreground">
-                        📋 <strong>Cancelación:</strong> {hotel.policy_cancellation}
-                      </div>
-                    )}
-                    {hotel.policy_lodging && (
-                      <div className="text-xs text-muted-foreground">
-                        🏨 <strong>Políticas:</strong> {hotel.policy_lodging}
-                      </div>
-                    )}
-                  </div>
-                )}
               </CardContent>
             </Card>
           );
