@@ -805,6 +805,7 @@ const Chat = () => {
               hotelName: hotelName || undefined
             });
             console.log(`✅ EUROVIPS hotels: ${eurovipsResults.hotels.length}`);
+            console.log('🔍 EUROVIPS hotel data sample:', JSON.stringify(eurovipsResults.hotels[0], null, 2));
           }
         } catch (eurovipsError) {
           console.error('❌ EUROVIPS hotel search error:', eurovipsError);

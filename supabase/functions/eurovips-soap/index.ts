@@ -302,6 +302,7 @@ ${occupantsXml}        </Ocuppancy>
       });
 
       console.log(`✅ Returning ${hotels.length} EUROVIPS hotels`);
+      console.log('🔍 First hotel sample:', JSON.stringify(hotels[0], null, 2));
       return hotels;
     } catch (error) {
       console.error('❌ Error parsing hotel search response:', error);
@@ -375,21 +376,27 @@ ${occupantsXml}        </Ocuppancy>
       const rooms: Array<any> = [];
       if (fareListEl) {
         const fareElements = fareListEl.querySelectorAll('Fare');
-        fareElements.forEach(fareEl => {
+        fareElements.forEach((fareEl, index) => {
           const fareType = fareEl.getAttribute('type') || 'Standard';
           const availability = parseInt(fareEl.getAttribute('Availability') || '0');
           const base = parseFloat(this.getTextContent(fareEl, 'Base') || '0');
           const tax = parseFloat(this.getTextContent(fareEl, 'Tax') || '0');
-          const roomTotal = base + tax;
+          const roomTotal = base + tax; // Total for entire stay
           const description = this.getTextContent(fareEl, 'Description') || fareType;
 
           if (roomTotal > 0) {
+            // Calculate price per night
+            const pricePerNight = nights > 0 ? roomTotal / nights : roomTotal;
+
             rooms.push({
               type: fareType,
               description: description,
-              total_price: roomTotal,
+              price_per_night: pricePerNight,  // ✅ Required by frontend
+              total_price: roomTotal,          // ✅ Total for entire stay
               currency: currency,
-              availability: availability // ✅ Disponibilidad real del WebService
+              availability: availability,
+              occupancy_id: (index + 1).toString(), // ✅ Required by frontend
+              fare_id_broker: fareEl.getAttribute('FareIdBroker') || undefined
             });
           }
         });
@@ -397,26 +404,34 @@ ${occupantsXml}        </Ocuppancy>
 
       // Fallback if no rooms found
       if (rooms.length === 0) {
+        const pricePerNight = nights > 0 ? totalPrice / nights : totalPrice;
         rooms.push({
           type: 'Standard',
           description: 'Standard Room',
+          price_per_night: pricePerNight,
           total_price: totalPrice,
           currency: currency,
-          availability: 0 // Unknown availability
+          availability: 0,
+          occupancy_id: '1',
+          fare_id_broker: undefined
         });
       }
 
       return {
         id: `hotel_${uniqueId}`,
+        unique_id: uniqueId,
         name: hotelName,
         category: this.getTextContent(hotelEl, 'Category, HotelCategory') || 'Standard',
         city: this.getTextContent(hotelEl, 'City, Location') || params.cityCode || '',
         address: address,
         phone: this.getTextContent(hotelEl, 'Phone, Telephone') || '',
-        check_in: params.checkinDate,   // ✅ Nombre correcto
-        check_out: params.checkoutDate, // ✅ Nombre correcto
+        website: this.getTextContent(hotelEl, 'Website') || undefined,
+        description: this.getTextContent(hotelEl, 'Description') || undefined,
+        images: [], // Could extract from Pictures elements
+        check_in: params.checkinDate,
+        check_out: params.checkoutDate,
         nights: nights,
-        rooms: rooms,                   // ✅ Array de habitaciones
+        rooms: rooms,
         policy_cancellation: this.getTextContent(hotelEl, 'CancellationPolicy') || '',
         policy_lodging: this.getTextContent(hotelEl, 'LodgingPolicy') || '',
         adults: params.adults || 1,
