@@ -139,34 +139,39 @@ const Chat = () => {
   };
 
   const extractFlightSearchParams = (message: string) => {
-    // Extract origin city
+    console.log('🔍 Starting flight parameter extraction for:', message);
+
+    // Extract origin city - improved patterns to capture full city names
     const originPatterns = [
-      /(?:desde|de)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)\s+(?:a|para|hacia)/i,
-      /vuelo\s+desde\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)\s+(?:a|para|hacia)/i,
-      /salir\s+(?:desde\s+|de\s+)?([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)\s+(?:a|para|hacia)/i
+      /(?:vuelo\s+)?(?:desde|de)\s+([a-záéíóúñ\s]+?)\s+(?:a|para|hacia)\s+/i,
+      /vuelo\s+desde\s+([a-záéíóúñ\s]+?)\s+(?:a|para|hacia)\s+/i,
+      /salir\s+(?:desde\s+|de\s+)?([a-záéíóúñ\s]+?)\s+(?:a|para|hacia)\s+/i,
+      /(?:desde|de)\s+([a-záéíóúñ\s]+?)\s+(?:a|para|hacia)\s+/i
     ];
 
     let origin = '';
     for (const pattern of originPatterns) {
       const match = message.match(pattern);
       if (match) {
-        origin = match[1].trim();
+        origin = match[1].trim().replace(/\s+/g, ' ');
+        console.log('✅ Origin found:', origin);
         break;
       }
     }
 
-    // Extract destination city
+    // Extract destination city - improved patterns to avoid capturing extra words
     const destinationPatterns = [
-      /(?:a|para|hacia)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+del|\s+desde|\s+el|\s+,|$)/i,
-      /vuelo\s+(?:a|para|hacia)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+del|\s+desde|\s+el|\s+,|$)/i,
-      /quiero\s+(?:ir\s+)?(?:a|para)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+del|\s+desde|\s+el|\s+,|$)/i
+      /(?:a|para|hacia)\s+([a-záéíóúñ\s]+?)\s+(?:saliendo|del|desde|el|con|,|$)/i,
+      /vuelo\s+(?:a|para|hacia)\s+([a-záéíóúñ\s]+?)\s+(?:saliendo|del|desde|el|con|,|$)/i,
+      /quiero\s+(?:ir\s+)?(?:a|para)\s+([a-záéíóúñ\s]+?)\s+(?:saliendo|del|desde|el|con|,|$)/i
     ];
 
     let destination = '';
     for (const pattern of destinationPatterns) {
       const match = message.match(pattern);
       if (match) {
-        destination = match[1].trim();
+        destination = match[1].trim().replace(/\s+/g, ' ');
+        console.log('✅ Destination found:', destination);
         break;
       }
     }
@@ -174,6 +179,14 @@ const Chat = () => {
     // Extract dates and people using universal functions
     const { dateFrom, dateTo } = extractDatesFromMessage(message);
     const { adults, children } = extractPeopleFromMessage(message);
+
+    // Clean up city names and ensure proper capitalization
+    if (origin) {
+      origin = origin.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+    }
+    if (destination) {
+      destination = destination.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+    }
 
     console.log('🔍 Extracted flight search params:', { origin, destination, dateFrom, dateTo, adults, children });
 
@@ -202,6 +215,8 @@ const Chat = () => {
       /del\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
       /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
       /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+al?\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
+      // Single date patterns (departure only)
+      /saliendo\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+con\s+vuelta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
 
       // Spanish month names without years - RANGE patterns first
       /del\s+(\d{1,2})\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
@@ -408,13 +423,17 @@ const Chat = () => {
       /(?:para|a|en|de)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+para|$|\s+en)/i
     ];
 
+    console.log(`🔍 LOCATION EXTRACTION - type: ${type}, message: "${message}"`);
     for (const pattern of locationPatterns) {
       const match = message.match(pattern);
+      console.log(`🔍 Testing pattern: ${pattern} - Match:`, match);
       if (match) {
+        console.log(`✅ LOCATION FOUND: "${match[1].trim()}"`);
         return match[1].trim();
       }
     }
 
+    console.log(`❌ NO LOCATION FOUND for type: ${type}`);
     return '';
   };
 
@@ -724,8 +743,18 @@ const Chat = () => {
           assistantResponse = '🎒 Disculpa, hay un problema temporal con la búsqueda de paquetes. Por favor, intenta nuevamente en unos minutos.';
         }
       } else if (isHotelOnlyRequest) {
-        console.log('🏨 Hotel-only request detected, searching via WebService');
-        console.log('🔄 Flow: 1) Get country codes 2) Search hotels');
+        console.log('🏨 Hotel-only request detected, using DUAL service approach');
+        console.log('🔄 Flow: 1) EUROVIPS hotels 2) N8N complement');
+
+        // Use DUAL service approach: EUROVIPS WebService FIRST, then N8N as complement
+        let eurovipsResults = {
+          hotels: [] as any[]
+        };
+
+        let n8nResponse = '';
+
+        // 1. Try EUROVIPS WebService first for structured hotel data
+        console.log('1️⃣ Attempting EUROVIPS hotel search...');
 
         try {
           // Extract hotel search parameters from user message
@@ -756,123 +785,169 @@ const Chat = () => {
             } else {
               // Solo buscar si hay disponibilidad confirmada
               console.log('📞 Calling searchHotelFares...');
-              const hotels = await searchHotelFares({
+              eurovipsResults.hotels = await searchHotelFares({
                 dateFrom,
                 dateTo,
                 city,
                 adults: adults || 1,
                 hotelName: hotelName || undefined
               });
-
-              if (hotels.length > 0) {
-                // Format hotels into message structure
-                let hotelMessage = `🏨 **Hoteles disponibles**\n\n`;
-
-                hotels.forEach((hotel, index) => {
-                  hotelMessage += `---\n\n`;
-                  hotelMessage += `🏨 **${hotel.name}**`;
-                  if (hotel.category) hotelMessage += ` - ${hotel.category}`;
-                  hotelMessage += `\n`;
-                  if (hotel.city) hotelMessage += `📍 **Ubicación:** ${hotel.city}\n`;
-                  if (hotel.address) hotelMessage += `📧 **Dirección:** ${hotel.address}\n`;
-                  if (hotel.phone) hotelMessage += `📞 **Teléfono:** ${hotel.phone}\n`;
-                  hotelMessage += `🛏️ **Check-in:** ${hotel.check_in}\n`;
-                  hotelMessage += `🚪 **Check-out:** ${hotel.check_out}\n`;
-
-                  if (hotel.rooms.length > 0) {
-                    hotelMessage += `\n**Habitaciones disponibles:**\n\n`;
-                    hotel.rooms.forEach(room => {
-                      hotelMessage += `🛏️ **Habitación:** ${room.type}\n`;
-                      if (room.description !== room.type) {
-                        hotelMessage += `📝 **Descripción:** ${room.description}\n`;
-                      }
-                      hotelMessage += `💰 **Precio:** ${room.total_price} ${room.currency}`;
-                      if (hotel.nights > 1) hotelMessage += ` (${hotel.nights} noches)`;
-                      hotelMessage += `\n`;
-
-                      const availabilityText = room.availability >= 3 ? 'Disponible' :
-                        room.availability >= 2 ? 'Consultar' : 'No disponible';
-                      const availabilityEmoji = room.availability >= 3 ? '✅' :
-                        room.availability >= 2 ? '⚠️' : '❌';
-                      hotelMessage += `${availabilityEmoji} **Disponibilidad:** ${availabilityText}\n\n`;
-                    });
-                  }
-
-                  if (hotel.policy_cancellation) {
-                    hotelMessage += `📋 **Política de Cancelación:** ${hotel.policy_cancellation}\n`;
-                  }
-                  if (hotel.policy_lodging) {
-                    hotelMessage += `🏨 **Políticas:** ${hotel.policy_lodging}\n`;
-                  }
-                  hotelMessage += `\n`;
-                });
-
-                hotelMessage += `\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
-                assistantResponse = hotelMessage;
-              } else {
-                // No hotels found even with availability check
-                assistantResponse = `🏨 **Búsqueda de Hoteles**\\n\\nNo se encontraron hoteles disponibles en ${city} para las fechas solicitadas.`;
-              }
+              console.log(`✅ EUROVIPS hotels: ${eurovipsResults.hotels.length}`);
             }
           } else {
             // Si no hay parámetros completos, usar búsqueda estándar
             console.log('📞 Calling searchHotelFares (standard search)...');
-            const hotels = await searchHotelFares({
+            eurovipsResults.hotels = await searchHotelFares({
               dateFrom,
               dateTo,
               city,
               adults: adults || 1,
               hotelName: hotelName || undefined
             });
-
-            if (hotels.length > 0) {
-              let hotelMessage = `🏨 **Hoteles disponibles**\n\n`;
-              hotels.forEach((hotel, index) => {
-                hotelMessage += `---\n\n`;
-                hotelMessage += `🏨 **${hotel.name}**\n`;
-                if (hotel.category) hotelMessage += `⭐ **Categoría:** ${hotel.category}\n`;
-                if (hotel.address) hotelMessage += `📍 **Dirección:** ${hotel.address}\n`;
-                if (hotel.phone) hotelMessage += `📞 **Teléfono:** ${hotel.phone}\n`;
-                hotelMessage += `📅 **Check-in:** ${hotel.check_in} | **Check-out:** ${hotel.check_out}\n`;
-                hotelMessage += `🌙 **Noches:** ${hotel.nights}\n`;
-                if (hotel.rooms && hotel.rooms.length > 0) {
-                  hotelMessage += `\n🛏️ **Habitaciones disponibles:**\n`;
-                  hotel.rooms.forEach((room, roomIndex) => {
-                    hotelMessage += `• **${room.type}:** $${room.total_price?.toLocaleString()} ${room.currency}\n`;
-                    const availabilityText = room.availability >= 5 ? 'Alta' :
-                      room.availability >= 2 ? 'Media' : 'Limitada';
-                    const availabilityEmoji = room.availability >= 5 ? '✅' :
-                      room.availability >= 2 ? '⚠️' : '❌';
-                    hotelMessage += `${availabilityEmoji} **Disponibilidad:** ${availabilityText}\n\n`;
-                  });
-                }
-                if (hotel.policy_cancellation) {
-                  hotelMessage += `📋 **Política de Cancelación:** ${hotel.policy_cancellation}\n`;
-                }
-                if (hotel.policy_lodging) {
-                  hotelMessage += `🏨 **Políticas:** ${hotel.policy_lodging}\n`;
-                }
-                hotelMessage += `\n`;
-              });
-              hotelMessage += `\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
-              assistantResponse = hotelMessage;
-            } else {
-              // Extract city from the search to provide more specific feedback
-              const { city } = extractHotelSearchParams(currentMessage);
-
-              assistantResponse = `🏨 **Búsqueda de Hoteles**\n\n` +
-                `He recibido tu solicitud de hotel${city ? ` para ${city}` : ''}.\n\n` +
-                `✅ **Estado del sistema:** WebService configurado correctamente\n` +
-                `⏳ **En proceso:** Esperando códigos de destino válidos de EUROVIPS\n\n` +
-                `Te notificaremos cuando el servicio de búsqueda esté completamente operativo.\n\n` +
-                `**Parámetros detectados:**\n` +
-                `- Destino: ${city || 'No especificado'}\n` +
-                `- Fechas: ${extractHotelSearchParams(currentMessage).dateFrom} al ${extractHotelSearchParams(currentMessage).dateTo}`;
-            }
+            console.log(`✅ EUROVIPS hotels: ${eurovipsResults.hotels.length}`);
           }
-        } catch (error) {
-          console.error('Error searching hotels via WebService:', error);
-          assistantResponse = '🏨 Disculpa, hay un problema temporal con la búsqueda de hoteles. Por favor, intenta nuevamente en unos minutos.';
+        } catch (eurovipsError) {
+          console.error('❌ EUROVIPS hotel search error:', eurovipsError);
+        }
+
+        // 2. Get N8N response as complement with 240 second timeout
+        console.log('2️⃣ Getting N8N complement for hotels...');
+
+        try {
+          // Use Promise.race to implement 240 second timeout
+          const n8nPromise = supabase.functions.invoke('travel-chat', {
+            body: {
+              message: currentMessage,
+              conversationId: selectedConversation,
+              userId: user?.id,
+              userName: user?.email || user?.user_metadata?.full_name,
+              leadId: (conversation as any)?.meta?.lead_id || null,
+              agencyId: user?.user_metadata?.agency_id
+            }
+          });
+
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('N8N timeout after 240 seconds')), 240000)
+          );
+
+          const result = await Promise.race([n8nPromise, timeoutPromise]);
+
+          if ((result as any)?.error) {
+            console.error('N8N error:', (result as any).error);
+            n8nResponse = 'Error obteniendo información complementaria de N8N.';
+          } else {
+            n8nResponse = (result as any)?.data?.message || 'Información complementaria procesada.';
+            console.log('✅ N8N response received');
+          }
+        } catch (n8nError) {
+          if (n8nError.message?.includes('timeout')) {
+            console.error('❌ N8N timeout after 240 seconds:', n8nError);
+            n8nResponse = 'Información complementaria tardando más de lo esperado. Procesamiento continuará en segundo plano.';
+          } else {
+            console.error('❌ N8N error:', n8nError);
+            n8nResponse = 'Información complementaria no disponible temporalmente.';
+          }
+        }
+
+        // 3. Stream results progressively - EUROVIPS first
+        console.log('3️⃣ Streaming hotel results...');
+
+        if (eurovipsResults.hotels.length > 0) {
+          // Show EUROVIPS results immediately
+          let eurovipsResponse = '🚀 **Resultados EUROVIPS** *(Disponibles ahora)*\n\n';
+
+          eurovipsResponse += `🏨 **${eurovipsResults.hotels.length} Hoteles**\n\n`;
+          eurovipsResults.hotels.forEach((hotel, index) => {
+            eurovipsResponse += `**${hotel.name}** - ${hotel.city}\n`;
+            if (hotel.rooms.length > 0) {
+              eurovipsResponse += `💰 Desde ${hotel.rooms[0].total_price} ${hotel.rooms[0].currency}\n`;
+            }
+            eurovipsResponse += `🌟 *Fuente: EUROVIPS*\n\n`;
+          });
+
+          eurovipsResponse += `⏳ *Buscando información complementaria en N8N...*`;
+
+          // Save EUROVIPS results immediately
+          console.log('💾 Saving EUROVIPS hotel results immediately...');
+          const eurovipsMessage = await saveMessage({
+            conversation_id: selectedConversation,
+            role: 'assistant',
+            content: { text: eurovipsResponse },
+            meta: { source: 'EUROVIPS', streaming: true }
+          });
+
+          // Start N8N request asynchronously and append when ready
+          console.log('🔄 Starting N8N hotel request asynchronously...');
+          setTimeout(async () => {
+            try {
+              console.log('📞 N8N async hotel request starting...');
+              const n8nStartTime = Date.now();
+
+              // Use the same N8N call with 240 second timeout for streaming
+              const n8nAsyncPromise = supabase.functions.invoke('travel-chat', {
+                body: {
+                  message: currentMessage,
+                  conversationId: selectedConversation,
+                  userId: user?.id,
+                  userName: user?.email || user?.user_metadata?.full_name,
+                  leadId: (conversation as any)?.meta?.lead_id || null,
+                  agencyId: user?.user_metadata?.agency_id
+                }
+              });
+
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('N8N async timeout after 240 seconds')), 240000)
+              );
+
+              const result = await Promise.race([n8nAsyncPromise, timeoutPromise]);
+
+              let finalN8nResponse;
+              if ((result as any)?.error || !(result as any)?.data?.message) {
+                finalN8nResponse = 'Información complementaria procesada con limitaciones técnicas.';
+              } else {
+                finalN8nResponse = (result as any).data.message;
+              }
+
+              const n8nDuration = Date.now() - n8nStartTime;
+              console.log(`✅ N8N async hotel completed in ${n8nDuration}ms`);
+
+              const n8nComplementResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${finalN8nResponse}\n\n🌟 *Fuente: N8N Workflow* *(${Math.round(n8nDuration / 1000)}s)*\n\n---\n\n✨ **Resumen:** ${eurovipsResults.hotels.length} hoteles EUROVIPS + información N8N`;
+
+              // Append N8N results as a new message
+              await saveMessage({
+                conversation_id: selectedConversation,
+                role: 'assistant',
+                content: { text: n8nComplementResponse },
+                meta: { source: 'N8N', streaming: true, parentMessageId: eurovipsMessage.id }
+              });
+
+            } catch (n8nError) {
+              console.error('❌ N8N streaming error:', n8nError);
+
+              let errorMessage;
+              if (n8nError.message?.includes('timeout')) {
+                errorMessage = `⏱️ **N8N Timeout**\n\nLa información complementaria está tardando más de 4 minutos. El procesamiento continuará en segundo plano.\n\n🌟 *Los resultados EUROVIPS arriba son completos y actuales.*`;
+              } else {
+                errorMessage = `⚠️ **N8N Information**\n\nLa información complementaria no está disponible temporalmente.\n\n🌟 *Los resultados EUROVIPS arriba son completos y actuales.*`;
+              }
+
+              // Show N8N error as separate message
+              await saveMessage({
+                conversation_id: selectedConversation,
+                role: 'assistant',
+                content: { text: `\n\n---\n\n${errorMessage}` },
+                meta: { source: 'N8N', streaming: true, error: true }
+              });
+            }
+          }, 100); // Small delay to ensure EUROVIPS message is saved first
+
+          // Don't set assistantResponse - messages are saved separately
+          assistantResponse = null;
+
+        } else {
+          // No EUROVIPS results - show N8N only
+          console.log('📋 No EUROVIPS hotel results, showing N8N response...');
+          assistantResponse = `📋 **Respuesta N8N**\n\n${n8nResponse}\n\n🌟 *Fuente: N8N Workflow*\n\nℹ️ *No se encontraron resultados estructurados en EUROVIPS para esta consulta.*`;
         }
       } else {
         // Use DUAL service approach: EUROVIPS WebService FIRST, then N8N as complement

@@ -30,13 +30,13 @@ export async function searchPackageFares(params: PackageSearchParams): Promise<P
       try {
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
 
-        // Get correct city code from WebService country list or fallback
-        const cityCode = await getCityCode(params.city || '');
-        console.log(`🌍 Converting city "${params.city}" to code: ${cityCode}`);
-
-        // Validate and format dates
+        // Validate and format dates first
         const dateFrom = validateAndFormatDate(params.dateFrom);
         const dateTo = validateAndFormatDate(params.dateTo);
+
+        // Get correct city code from WebService country list or fallback
+        const cityCode = await getCityCode(params.city || '', dateFrom, dateTo);
+        console.log(`🌍 Converting city "${params.city}" to code: ${cityCode}`);
 
         console.log(`🎒 REQUEST - City: ${params.city} -> ${cityCode}, Dates: ${dateFrom} to ${dateTo}, Class: ${params.class || 'AEROTERRESTRE'}, Adults: ${params.adults || 1}, Children: ${params.children || 0}`);
 
@@ -130,7 +130,7 @@ function validateAndFormatDate(dateStr: string): string {
   }
 }
 
-async function getCountryList(): Promise<Array<{ code: string, name: string }>> {
+async function getCountryList(params = {}): Promise<Array<{ code: string, name: string }>> {
   // Return cached results if available
   if (countryListCache.length > 0) {
     console.log('🎯 Using cached country list:', countryListCache.length, 'items');
@@ -148,7 +148,7 @@ async function getCountryList(): Promise<Array<{ code: string, name: string }>> 
       },
       body: JSON.stringify({
         action: 'getCountryList',
-        data: null
+        data: params
       })
     });
 
@@ -171,10 +171,15 @@ async function getCountryList(): Promise<Array<{ code: string, name: string }>> 
   }
 }
 
-async function getCityCode(cityName: string): Promise<string> {
+async function getCityCode(cityName: string, dateFrom?: string, dateTo?: string): Promise<string> {
   try {
-    // Get the country list first
-    const countries = await getCountryList();
+    // Get the country list first with user-provided dates
+    const countries = await getCountryList({
+      dateFrom,
+      dateTo,
+      activeFareType: 'HOTEL',
+      activeFareSubtype: 'TERRESTRE'
+    });
 
     if (countries.length === 0) {
       // Fallback to static mapping if WebService fails

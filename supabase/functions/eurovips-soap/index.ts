@@ -37,17 +37,30 @@ class EurovipsSOAPClient {
     console.log(`📥 SOAP RESPONSE [${soapAction}]:`, xmlResponse.length, 'chars');
     return xmlResponse;
   }
-  async getCountryList() {
+  async getCountryList(params: any = {}) {
+    // Use dynamic dates: user-provided dates or intelligent fallback
+    const today = new Date();
+    const threeMonthsLater = new Date(today.getTime() + (90 * 24 * 60 * 60 * 1000));
+
+    const {
+      dateFrom = today.toISOString().split('T')[0],
+      dateTo = threeMonthsLater.toISOString().split('T')[0],
+      activeFareType = 'HOTEL',
+      activeFareSubtype = 'TERRESTRE'
+    } = params;
+
+    console.log('🔍 getCountryList called with params:', { dateFrom, dateTo, activeFareType, activeFareSubtype });
+
     const soapBody = `
     <xsstring7 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
       <pos xmlns="">
         <id>${this.username}</id>
         <clave>${this.password}</clave>
       </pos>
-      <dateFrom xmlns="">2025-10-01</dateFrom>
-      <dateTo xmlns="">2025-12-31</dateTo>
-      <activeFareType xmlns="">HOTEL</activeFareType>
-      <activeFareSubtype xmlns="">TERRESTRE</activeFareSubtype>
+      <dateFrom xmlns="">${dateFrom}</dateFrom>
+      <dateTo xmlns="">${dateTo}</dateTo>
+      <activeFareType xmlns="">${activeFareType}</activeFareType>
+      <activeFareSubtype xmlns="">${activeFareSubtype}</activeFareSubtype>
     </xsstring7>`;
     const xmlResponse = await this.makeSOAPRequest(soapBody, 'getCountryList');
     console.log('🔍 Raw XML Response:', xmlResponse);
@@ -86,7 +99,7 @@ class EurovipsSOAPClient {
       <cityLocation code="${params.cityCode}" xmlns="" />
       <dateFrom xmlns="">${params.checkinDate}</dateFrom>
       <dateTo xmlns="">${params.checkoutDate}</dateTo>
-      <name xmlns="" />
+      <name xmlns="">${params.hotelName || ''}</name>
       <pos xmlns="">
         <id>${this.username}</id>
         <clave>${this.password}</clave>
@@ -156,48 +169,83 @@ ${occupantsXml}        </Ocuppancy>
   }
   parseCountryListResponse(xmlResponse) {
     try {
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
-      const parseError = xmlDoc.querySelector('parsererror');
-      if (parseError) {
-        console.error('XML Parse Error:', parseError.textContent);
-        return [];
+      console.log('🔍 PARSING XML - Starting parseCountryListResponse');
+      console.log('🔍 XML Response length:', xmlResponse.length);
+
+      // Find España first to test our regex
+      const espanaTest = xmlResponse.includes('ESPAÑA');
+      console.log('🔍 Does XML contain ESPAÑA?', espanaTest);
+
+      if (espanaTest) {
+        console.log('🔍 España context:', xmlResponse.substring(xmlResponse.indexOf('ESPAÑA') - 100, xmlResponse.indexOf('ESPAÑA') + 100));
       }
-      const results = [];
-      const countryInfoElements = Array.from(xmlDoc.getElementsByTagName('*')).filter((el) => el.localName === 'CountryInfos');
-      console.log(`🔍 Found ${countryInfoElements.length} CountryInfos elements`);
-      countryInfoElements.forEach((countryInfoEl) => {
-        const countryCodeEl = Array.from(countryInfoEl.getElementsByTagName('*')).find((e) => e.parentElement === countryInfoEl && e.localName === 'Code');
-        const countryNameEl = Array.from(countryInfoEl.getElementsByTagName('*')).find((e) => e.parentElement === countryInfoEl && e.localName === 'Name');
-        const countryCode = countryCodeEl?.textContent?.trim();
-        const countryName = countryNameEl?.textContent?.trim();
-        if (countryCode && countryName) {
-          results.push({
-            code: countryCode,
-            name: countryName
-          });
+
+      // Simplified pattern - find any Code/Name pairs regardless of context
+      // We'll filter countries vs cities in post-processing
+      const codeNamePattern = /<Code[^>]*>([A-Z]{2,3})<\/Code>[\s\S]*?<Name[^>]*>([^<]+)<\/Name>/g;
+      const matches = [...xmlResponse.matchAll(codeNamePattern)];
+
+      console.log(`🔍 Found ${matches.length} CountryInfos with Code/Name pairs`);
+
+      const results: Array<{ code: string, name: string }> = [];
+      const seenCodes = new Set();
+
+      // Create a map to track context - countries appear before cities in CountryInfos blocks
+      const contextMap = new Map();
+
+      // First pass: identify all matches and their positions
+      for (const match of matches) {
+        const code = match[1].trim();
+        const name = match[2].trim();
+        const position = match.index || 0;
+
+        // Check if this appears within a CountryInfos block
+        const beforeMatch = xmlResponse.substring(Math.max(0, position - 500), position);
+        const isInCountryBlock = beforeMatch.includes('<CountryInfos');
+        const isAfterCountryCode = beforeMatch.match(/<Code[^>]*>([A-Z]{2,3})<\/Code>/g);
+
+        contextMap.set(code, {
+          name,
+          position,
+          isInCountryBlock,
+          isAfterCountryCode: !!isAfterCountryCode,
+          codeLength: code.length
+        });
+      }
+
+      // Second pass: filter for likely countries
+      for (const [code, info] of contextMap) {
+        // Countries are typically:
+        // - 2-3 characters
+        // - No numbers
+        // - First Code in a CountryInfos block (not after another country code)
+        // - Not obvious city patterns like XXX with 3 chars + numbers
+
+        const isLikelyCountry = (
+          info.codeLength <= 3 &&
+          !/\d/.test(code) &&
+          !seenCodes.has(code) &&
+          // Additional heuristics
+          (info.codeLength === 2 || // 2-letter codes are almost always countries
+            (info.codeLength === 3 && info.isInCountryBlock)) // 3-letter in country block
+        );
+
+        if (isLikelyCountry) {
+          console.log(`🔍 Found country: ${code} - ${info.name}`);
+          results.push({ code, name: info.name });
+          seenCodes.add(code);
         }
-        // Process cities within this country
-        const cityListEl = Array.from(countryInfoEl.getElementsByTagName('*')).find((e) => e.parentElement === countryInfoEl && e.localName === 'CityList');
-        if (cityListEl) {
-          const cityElements = Array.from(cityListEl.getElementsByTagName('*')).filter((e) => e.localName === 'City');
-          cityElements.forEach((cityEl) => {
-            const cityCodeEl = Array.from(cityEl.getElementsByTagName('*')).find((e) => e.parentElement === cityEl && e.localName === 'Code');
-            const cityNameEl = Array.from(cityEl.getElementsByTagName('*')).find((e) => e.parentElement === cityEl && e.localName === 'Name');
-            const cityCode = cityCodeEl?.textContent?.trim();
-            const cityName = cityNameEl?.textContent?.trim();
-            if (cityCode && cityName) {
-              results.push({
-                code: cityCode,
-                name: cityName
-              });
-            }
-          });
-        }
-      });
+      }
+
+      console.log(`🔍 PARSED ${results.length} countries from real XML`);
+      console.log('🔍 First 10 countries:', results.slice(0, 10));
+      console.log('🔍 España found:', results.find(r => r.name.includes('ESPAÑA') || r.code === 'ES'));
+
       return results;
+
     } catch (error) {
       console.error('❌ Error parsing country list response:', error);
+      console.error('❌ XML sample (first 1000 chars):', xmlResponse.substring(0, 1000));
       return [];
     }
   }
@@ -210,7 +258,7 @@ ${occupantsXml}        </Ocuppancy>
         console.error('XML Parse Error:', parseError.textContent);
         return [];
       }
-      const airlines = [];
+      const airlines: Array<{ code: string, name: string }> = [];
       const airlineElements = xmlDoc.querySelectorAll('Airline, airline, AirlineInfo, airlineinfo');
       airlineElements.forEach((airlineEl) => {
         const code = airlineEl.getAttribute('code') || airlineEl.getAttribute('Code') || '';
@@ -237,7 +285,7 @@ ${occupantsXml}        </Ocuppancy>
         console.error('XML Parse Error:', parseError.textContent);
         return [];
       }
-      const hotels = [];
+      const hotels: Array<any> = [];
       const hotelElements = xmlDoc.querySelectorAll('HotelFares, ArrayOfHotelFare1 HotelFares');
       hotelElements.forEach((hotelEl, index) => {
         try {
@@ -264,7 +312,7 @@ ${occupantsXml}        </Ocuppancy>
         console.error('XML Parse Error:', parseError.textContent);
         return [];
       }
-      const flights = [];
+      const flights: Array<any> = [];
 
       // Try multiple selectors to handle different XML structures
       let flightElements = xmlDoc.querySelectorAll('ArrayOfAirFare1 > AirFares');
@@ -308,7 +356,7 @@ ${occupantsXml}        </Ocuppancy>
       const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
 
       // Parse room information (if available)
-      const rooms = [];
+      const rooms: Array<any> = [];
       const roomElements = hotelEl.querySelectorAll('Room, Rooms Room');
       if (roomElements.length > 0) {
         roomElements.forEach(roomEl => {
@@ -408,7 +456,7 @@ ${occupantsXml}        </Ocuppancy>
         return null;
       }
 
-      const legs = [];
+      const legs: Array<any> = [];
       // Try to parse flight legs with new structure
       const outboundLeg = this.parseFlightLeg(flightEl, 'outbound', params.originCode, params.destinationCode, params.departureDate);
       if (outboundLeg) {
@@ -516,7 +564,7 @@ ${occupantsXml}        </Ocuppancy>
         return [];
       }
 
-      const packages = [];
+      const packages: Array<any> = [];
 
       // Try multiple selectors to handle different XML structures
       let packageElements = xmlDoc.querySelectorAll('ArrayOfPackageFare1 PackageFares');
@@ -560,7 +608,7 @@ ${occupantsXml}        </Ocuppancy>
         return [];
       }
 
-      const services = [];
+      const services: Array<any> = [];
 
       // Try multiple selectors to handle different XML structures
       let serviceElements = xmlDoc.querySelectorAll('ArrayOfServiceFare1 ServiceFares');
@@ -650,7 +698,7 @@ ${occupantsXml}        </Ocuppancy>
     }
   }
   parseServiceFares(serviceEl) {
-    const fares = [];
+    const fares: Array<any> = [];
     const fareListEl = serviceEl.querySelector('FareList');
 
     if (!fareListEl) return fares;
@@ -666,7 +714,7 @@ ${occupantsXml}        </Ocuppancy>
       const base = parseFloat(this.getTextContent(fareEl, 'Base') || '0');
 
       // Parse taxes
-      const taxes = [];
+      const taxes: Array<any> = [];
       const taxElements = fareEl.querySelectorAll('Tax');
       let totalTaxes = 0;
 
@@ -730,7 +778,7 @@ ${occupantsXml}        </Ocuppancy>
       }
 
       // Parse included services
-      const includedServices = [];
+      const includedServices: Array<any> = [];
       if (description) {
         includedServices.push(description);
       }
@@ -801,7 +849,7 @@ serve(async (req) => {
     let results;
     switch (action) {
       case 'getCountryList':
-        results = await client.getCountryList();
+        results = await client.getCountryList(data);
         break;
       case 'getAirlineList':
         results = await client.getAirlineList();

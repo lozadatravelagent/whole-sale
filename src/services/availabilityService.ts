@@ -102,21 +102,25 @@ async function getCountryList(params: {
     activeFareSubtype?: string;
 }): Promise<CountryInfo[]> {
     try {
+        const requestBody = {
+            action: 'getCountryList',
+            data: {
+                dateFrom: params.dateFrom,
+                dateTo: params.dateTo,
+                activeFareType: params.activeFareType,
+                activeFareSubtype: params.activeFareSubtype || 'AEROTERRESTRE'
+            }
+        };
+
+        console.log('🚀 SENDING REQUEST TO EDGE FUNCTION:', JSON.stringify(requestBody, null, 2));
+
         const response = await fetch(WS_CONFIG.url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
             },
-            body: JSON.stringify({
-                action: 'getCountryList',
-                data: {
-                    dateFrom: params.dateFrom,
-                    dateTo: params.dateTo,
-                    activeFareType: params.activeFareType,
-                    activeFareSubtype: params.activeFareSubtype || 'AEROTERRESTRE'
-                }
-            })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -141,8 +145,12 @@ async function getCountryList(params: {
                 console.log('🔍 DEBUG - result.results keys:', Object.keys(result.results));
 
                 const parsed = result.results.parsed || result.results;
+                console.log('🔍 DEBUG - parsed variable:', Array.isArray(parsed), parsed ? parsed.length || 'not array' : 'null/undefined');
                 if (Array.isArray(parsed)) {
                     console.log(`📊 COUNTRY LIST - Found ${parsed.length} destinations in parsed array`);
+                    if (parsed.length > 0) {
+                        console.log('🔍 DEBUG - First few items:', parsed.slice(0, 3));
+                    }
                     return parsed;
                 } else {
                     console.warn('⚠️ Results object does not contain array. Trying to access parsed property...');
