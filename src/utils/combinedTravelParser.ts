@@ -176,36 +176,74 @@ function extractFlightParams(message: string): AirfareSearchParams {
     if (valid.length > 0) destination = valid[valid.length - 1];
   }
 
-  // Extract departure date
+  // Extract departure date - including month + duration patterns
   const departureDatePatterns = [
     /saliendo\s+(?:el\s+)?(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4})/i,
     /saliendo\s+(?:el\s+)?(\d{4}-\d{2}-\d{2})/i,
     /departure[:\s]+(\d{4}-\d{2}-\d{2})/i,
-    /(\d{1,2}[\\/\\-]\d{1,2}[\\/\\-]\d{4})/i
+    /(\d{1,2}[\\/\\-]\d{1,2}[\\/\\-]\d{4})/i,
+    // Month + duration patterns for travel dates
+    /en\s+([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
+    /([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
+    /durante\s+(\d+)\s+noches?\s+en\s+([a-záéíóúñ]+)/i
   ];
 
   let departureDate = '';
+  let returnDate = '';
+
   for (const pattern of departureDatePatterns) {
     const match = message.match(pattern);
     if (match) {
-      departureDate = normalizeDateString(match[1]);
-      break;
+      if (match[2] && /noches?/i.test(match[0])) {
+        // Month + duration pattern: "abril durante 8 noches"
+        const monthName = match[1].toLowerCase();
+        const nights = parseInt(match[2]);
+
+        const spanishMonths: Record<string, string> = {
+          'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+          'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+          'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+        };
+
+        const monthNumber = spanishMonths[monthName];
+        if (monthNumber) {
+          // Use first day of the month for current year
+          const currentYear = new Date().getFullYear();
+          const nextYear = currentYear + 1;
+
+          // If month has passed this year, use next year
+          const currentMonth = new Date().getMonth() + 1;
+          const targetYear = parseInt(monthNumber) <= currentMonth ? nextYear : currentYear;
+
+          departureDate = `${targetYear}-${monthNumber}-01`;
+
+          // Calculate return date
+          const depDate = new Date(departureDate);
+          depDate.setDate(depDate.getDate() + nights);
+          returnDate = depDate.toISOString().split('T')[0];
+        }
+        break;
+      } else {
+        departureDate = normalizeDateString(match[1]);
+        break;
+      }
     }
   }
 
-  // Extract return date
-  const returnDatePatterns = [
-    /(?:con\s+)?(?:vuelta|regreso|return)\s+(?:el\s+)?(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4})/i,
-    /(?:con\s+)?(?:vuelta|regreso|return)\s+(?:el\s+)?(\d{4}-\d{2}-\d{2})/i,
-    /return[:\s]+(\d{4}-\d{2}-\d{2})/i
-  ];
+  // Extract return date only if not already set by duration pattern
+  if (!returnDate) {
+    const returnDatePatterns = [
+      /(?:con\s+)?(?:vuelta|regreso|return)\s+(?:el\s+)?(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4})/i,
+      /(?:con\s+)?(?:vuelta|regreso|return)\s+(?:el\s+)?(\d{4}-\d{2}-\d{2})/i,
+      /return[:\s]+(\d{4}-\d{2}-\d{2})/i
+    ];
 
-  let returnDate = '';
-  for (const pattern of returnDatePatterns) {
-    const match = message.match(pattern);
-    if (match) {
-      returnDate = normalizeDateString(match[1]);
-      break;
+    for (const pattern of returnDatePatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        returnDate = normalizeDateString(match[1]);
+        break;
+      }
     }
   }
 
@@ -341,14 +379,55 @@ function extractHotelParams(message: string): HotelSearchParams {
 
   // If no hotel dates specified, try to infer from flight dates in the same message
   if (!dateFrom || !dateTo) {
-    const flightDeparture = message.match(/saliendo\s+(?:el\s+)?(\d{4}-\d{2}-\d{2})/i);
-    const flightReturn = message.match(/(?:vuelta|regreso)\s+(?:el\s+)?(\d{4}-\d{2}-\d{2})/i);
+    // Try to extract month + duration patterns first
+    const durationPatterns = [
+      /en\s+([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
+      /([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
+      /durante\s+(\d+)\s+noches?\s+en\s+([a-záéíóúñ]+)/i
+    ];
 
-    if (flightDeparture) {
-      dateFrom = normalizeDateString(flightDeparture[1]);
+    let foundDuration = false;
+    for (const pattern of durationPatterns) {
+      const match = message.match(pattern);
+      if (match && match[2]) {
+        const monthName = match[1].toLowerCase();
+        const nights = parseInt(match[2]);
+
+        const spanishMonths: Record<string, string> = {
+          'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+          'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+          'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+        };
+
+        const monthNumber = spanishMonths[monthName];
+        if (monthNumber) {
+          const currentYear = new Date().getFullYear();
+          const nextYear = currentYear + 1;
+          const currentMonth = new Date().getMonth() + 1;
+          const targetYear = parseInt(monthNumber) <= currentMonth ? nextYear : currentYear;
+
+          dateFrom = `${targetYear}-${monthNumber}-01`;
+
+          const depDate = new Date(dateFrom);
+          depDate.setDate(depDate.getDate() + nights);
+          dateTo = depDate.toISOString().split('T')[0];
+          foundDuration = true;
+          break;
+        }
+      }
     }
-    if (flightReturn) {
-      dateTo = normalizeDateString(flightReturn[1]);
+
+    // If duration pattern not found, try standard date patterns
+    if (!foundDuration) {
+      const flightDeparture = message.match(/saliendo\s+(?:el\s+)?(\d{4}-\d{2}-\d{2})/i);
+      const flightReturn = message.match(/(?:vuelta|regreso)\s+(?:el\s+)?(\d{4}-\d{2}-\d{2})/i);
+
+      if (flightDeparture) {
+        dateFrom = normalizeDateString(flightDeparture[1]);
+      }
+      if (flightReturn) {
+        dateTo = normalizeDateString(flightReturn[1]);
+      }
     }
   }
 

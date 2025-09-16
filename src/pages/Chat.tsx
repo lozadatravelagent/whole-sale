@@ -654,105 +654,83 @@ const Chat = () => {
               }
             }
 
-            // Check if EUROVIPS found meaningful results
-            const hasEurovipsResults = results.flights.length > 0 || results.hotels.length > 0;
+            // 🚀 PARALLEL DUAL-SERVICE APPROACH: Call both EUROVIPS and N8N simultaneously
+            console.log('🚀 Calling both EUROVIPS and N8N services in parallel...');
 
-            if (hasEurovipsResults) {
-              // EUROVIPS has results - show them immediately, then N8N as complement
-              console.log('✅ EUROVIPS found results, showing them first...');
+            const [eurovipsResults, n8nResult] = await Promise.allSettled([
+              // EUROVIPS results are already obtained above
+              Promise.resolve(results),
+              // N8N service call
+              supabase.functions.invoke('travel-chat', {
+                body: {
+                  message: currentMessage,
+                  conversationId: selectedConversation,
+                  userId: user?.id,
+                  userName: user?.email || 'Anonymous User',
+                  agencyId: conversation?.agency_id
+                }
+              })
+            ]);
+
+            // Process results
+            const hasEurovipsResults = eurovipsResults.status === 'fulfilled' &&
+              (eurovipsResults.value.flights.length > 0 || eurovipsResults.value.hotels.length > 0);
+
+            const hasN8nResults = n8nResult.status === 'fulfilled' &&
+              n8nResult.value.data && !n8nResult.value.error &&
+              n8nResult.value.data.message && n8nResult.value.data.message.trim();
+
+            const n8nMessage = hasN8nResults ? n8nResult.value.data.message.trim() : '';
+
+            console.log(`📊 Results summary: EUROVIPS=${hasEurovipsResults} (${results.flights.length} vuelos, ${results.hotels.length} hoteles), N8N=${hasN8nResults}`);
+
+            // 🎯 INTELLIGENT RESULT MERGING
+            if (hasEurovipsResults && hasN8nResults) {
+              // Both have results - show combined
+              console.log('✨ Both services found results - showing combined response');
               assistantResponse = formatCombinedTravelResponse(results, travelRequest);
               combinedDataToAttach = results;
 
-              // Add N8N as complement
-              console.log('🔄 Adding N8N as complement to EUROVIPS results...');
-              try {
-                const n8nResponse = await fetch('/api/travel-chat', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    message: currentMessage,
-                    conversationId: selectedConversation,
-                    userId: user?.id,
-                    userName: user?.email || 'Anonymous User',
-                    agencyId: conversation?.agency_id
-                  })
+              // Add N8N information as complement
+              setTimeout(async () => {
+                const combinedResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${n8nMessage}\n\n🌟 *Fuente: N8N Workflow*\n\n---\n\n✨ **Resumen Completo:** EUROVIPS (${results.flights.length} vuelos, ${results.hotels.length} hoteles) + N8N (información adicional)`;
+
+                await saveMessage({
+                  conversation_id: selectedConversation,
+                  role: 'assistant',
+                  content: { text: combinedResponse },
+                  meta: { source: 'N8N', streaming: true, parentType: 'combined' }
                 });
+              }, 1500);
 
-                if (n8nResponse.ok) {
-                  const n8nData = await n8nResponse.json();
-                  const n8nMessage = n8nData.message || '';
+            } else if (hasEurovipsResults && !hasN8nResults) {
+              // Only EUROVIPS has results
+              console.log('✅ EUROVIPS found results, N8N had no results - showing EUROVIPS only');
+              assistantResponse = formatCombinedTravelResponse(results, travelRequest);
+              combinedDataToAttach = results;
 
-                  if (n8nMessage.trim()) {
-                    setTimeout(async () => {
-                      const n8nComplementResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${n8nMessage}\n\n🌟 *Fuente: N8N Workflow*\n\n---\n\n✨ **Resumen Completo:** EUROVIPS (${results.flights.length} vuelos, ${results.hotels.length} hoteles) + N8N (información adicional)`;
+            } else if (!hasEurovipsResults && hasN8nResults) {
+              // Only N8N has results
+              console.log('✅ N8N found results, EUROVIPS had no results - showing N8N only');
+              assistantResponse = `📋 **Resultados de Viaje Combinado**\n\n${n8nMessage}\n\n🌟 *Fuente: N8N Workflow*\n\nℹ️ *No se encontraron resultados estructurados en EUROVIPS para esta búsqueda específica.*`;
 
-                      await saveMessage({
-                        conversation_id: selectedConversation,
-                        role: 'assistant',
-                        content: { text: n8nComplementResponse },
-                        meta: { source: 'N8N', streaming: true, parentType: 'combined' }
-                      });
-                    }, 2000);
-                  }
-                }
-              } catch (n8nError) {
-                console.error('❌ N8N complement call failed:', n8nError);
-              }
             } else {
-              // EUROVIPS found NO results - try N8N as primary response
-              console.log('⚠️ EUROVIPS found no results, trying N8N as primary...');
+              // Neither service has results
+              console.log('❌ Both EUROVIPS and N8N found no results');
+              assistantResponse = formatCombinedTravelResponse(results, travelRequest);
+              combinedDataToAttach = results;
 
-              try {
-                const n8nResponse = await fetch('/api/travel-chat', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    message: currentMessage,
-                    conversationId: selectedConversation,
-                    userId: user?.id,
-                    userName: user?.email || 'Anonymous User',
-                    agencyId: conversation?.agency_id
-                  })
+              // Add info about both services being tried
+              setTimeout(async () => {
+                const noResultsResponse = `\n\n---\n\n🔧 **Estado de Búsqueda**\n\nSe consultaron múltiples fuentes:\n- ✅ WebService EUROVIPS: Sin resultados para fechas/destinos especificados\n- ✅ Sistema N8N: Sin información adicional disponible\n\n⚡ *Recomendación: Intenta con fechas diferentes o destinos alternativos.*`;
+
+                await saveMessage({
+                  conversation_id: selectedConversation,
+                  role: 'assistant',
+                  content: { text: noResultsResponse },
+                  meta: { source: 'BOTH', streaming: true, parentType: 'status' }
                 });
-
-                if (n8nResponse.ok) {
-                  const n8nData = await n8nResponse.json();
-                  const n8nMessage = n8nData.message || '';
-
-                  if (n8nMessage.trim()) {
-                    // N8N has content - use it as PRIMARY response
-                    console.log('✅ N8N found results, using as primary response');
-                    assistantResponse = `📋 **Resultados de Viaje Combinado**\n\n${n8nMessage}\n\n🌟 *Fuente: N8N Workflow*\n\nℹ️ *No se encontraron resultados estructurados en EUROVIPS para esta búsqueda específica.*`;
-
-                    // Add note about EUROVIPS attempt
-                    setTimeout(async () => {
-                      const eurovipsNoteResponse = `\n\n---\n\n🔧 **Estado EUROVIPS**\n\nSe consultó el WebService EUROVIPS pero no se encontraron resultados para las fechas y destinos especificados. Los datos mostrados arriba provienen del sistema N8N que tiene acceso a fuentes alternativas.\n\n⚡ *Recomendación: Intenta con fechas diferentes o destinos alternativos.*`;
-
-                      await saveMessage({
-                        conversation_id: selectedConversation,
-                        role: 'assistant',
-                        content: { text: eurovipsNoteResponse },
-                        meta: { source: 'EUROVIPS', streaming: true, parentType: 'status' }
-                      });
-                    }, 1000);
-                  } else {
-                    // Both EUROVIPS and N8N failed
-                    console.log('❌ Both EUROVIPS and N8N found no results');
-                    assistantResponse = formatCombinedTravelResponse(results, travelRequest);
-                    combinedDataToAttach = results;
-                  }
-                } else {
-                  // N8N API failed
-                  console.log('❌ N8N API failed, showing EUROVIPS empty results');
-                  assistantResponse = formatCombinedTravelResponse(results, travelRequest);
-                  combinedDataToAttach = results;
-                }
-              } catch (n8nError) {
-                console.error('❌ N8N primary call failed:', n8nError);
-                // Fallback to EUROVIPS empty results
-                assistantResponse = formatCombinedTravelResponse(results, travelRequest);
-                combinedDataToAttach = results;
-              }
+              }, 1000);
             }
           }
         } catch (error) {
