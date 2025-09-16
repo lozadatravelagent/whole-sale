@@ -144,10 +144,58 @@ function extractFlightParams(message: string): AirfareSearchParams {
 
   // Try direct format: "vuelo Buenos Aires Punta Cana"
   if (!origin || !destination) {
-    const directPattern = message.match(/(?:vuelo|flight)\s+([a-záéíóúñ\s]+?)\s+([a-záéíóúñ\s]+?)(?=\s+(?:del|el|desde|en|departure|return|con|y|,|\.|$))/i);
-    if (directPattern) {
-      origin = origin || directPattern[1].trim();
-      destination = destination || directPattern[2].trim();
+    // Extract the city portion between "vuelo" and date indicators
+    const cityPortion = message.match(/(?:vuelo|flight)\s+(.*?)(?=\s+(?:del|el|desde|en|departure|return|con|y|,|\.|$))/i);
+    if (cityPortion) {
+      const cities = cityPortion[1].trim();
+
+      // Known multi-word destinations to handle correctly
+      const knownDestinations = [
+        'Punta Cana', 'Puerto Plata', 'Santo Domingo', 'Los Cabos', 'Puerto Vallarta',
+        'Las Vegas', 'Los Angeles', 'New York', 'San Carlos de Bariloche'
+      ];
+
+      // Try to find a known destination in the string
+      let foundOrigin = '';
+      let foundDestination = '';
+
+      for (const dest of knownDestinations) {
+        const destIndex = cities.toLowerCase().indexOf(dest.toLowerCase());
+        if (destIndex !== -1) {
+          foundDestination = cities.substring(destIndex, destIndex + dest.length);
+          foundOrigin = cities.substring(0, destIndex).trim();
+          break;
+        }
+      }
+
+      // If no known destination found, try to split by looking for capital letters pattern
+      if (!foundOrigin || !foundDestination) {
+        // Split on pattern where we have "Word Word" pattern indicating city boundary
+        const cityParts = cities.split(/\s+/);
+        if (cityParts.length >= 2) {
+          // For "Buenos Aires Punta Cana", try to find the split point
+          let splitIndex = Math.floor(cityParts.length / 2);
+
+          // Look for common destination patterns
+          for (let i = 1; i < cityParts.length; i++) {
+            if (cityParts[i].match(/^[A-Z][a-z]/)) { // Capital letter starting word
+              const possibleDest = cityParts.slice(i).join(' ');
+              if (possibleDest.toLowerCase().includes('cana') ||
+                  possibleDest.toLowerCase().includes('plata') ||
+                  possibleDest.toLowerCase().includes('domingo')) {
+                splitIndex = i;
+                break;
+              }
+            }
+          }
+
+          foundOrigin = cityParts.slice(0, splitIndex).join(' ');
+          foundDestination = cityParts.slice(splitIndex).join(' ');
+        }
+      }
+
+      origin = origin || foundOrigin;
+      destination = destination || foundDestination;
     }
   }
 

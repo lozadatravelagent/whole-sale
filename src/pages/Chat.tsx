@@ -636,15 +636,13 @@ const Chat = () => {
               try {
                 const starlingResponse = await supabase.functions.invoke('starling-flights', {
                   body: {
-                    action: 'searchFlights',
-                    data: {
-                      Passengers: [{ Count: travelRequest.flights.adults || 1, Type: 'ADT' }],
-                      Legs: [{
-                        DepartureAirportCity: travelRequest.flights.origin,
-                        ArrivalAirportCity: travelRequest.flights.destination,
-                        FlightDate: travelRequest.flights.departureDate
-                      }],
-                      Airlines: null
+                    searchParams: {
+                      origin: travelRequest.flights.origin,
+                      destination: travelRequest.flights.destination,
+                      departureDate: travelRequest.flights.departureDate,
+                      returnDate: travelRequest.flights.returnDate,
+                      adults: travelRequest.flights.adults || 1,
+                      children: travelRequest.flights.children || 0
                     }
                   }
                 });
@@ -654,20 +652,20 @@ const Chat = () => {
                 }
 
                 // Transform Starling results to our expected format
-                const starlingFlights = starlingResponse.data?.data?.Recommendations || [];
-                const flights = starlingFlights.map((rec: any) => ({
-                  id: rec.ID,
+                const starlingFlights = starlingResponse.data?.results?.Fares || [];
+                const flights = starlingFlights.map((fare: any) => ({
+                  id: fare.Token || Math.random().toString(36),
                   airline: {
-                    code: rec.Segments?.[0]?.AirlineCode || 'N/A',
-                    name: rec.Segments?.[0]?.AirlineName || 'Unknown Airline'
+                    code: fare.Legs?.[0]?.Segments?.[0]?.Airline || 'N/A',
+                    name: fare.Legs?.[0]?.Segments?.[0]?.AirlineName || 'Unknown Airline'
                   },
-                  origin: rec.Segments?.[0]?.DepartureAirportCode || travelRequest.flights.origin,
-                  destination: rec.Segments?.[rec.Segments?.length - 1]?.ArrivalAirportCode || travelRequest.flights.destination,
-                  departureTime: rec.Segments?.[0]?.DepartureDateTime || '',
-                  arrivalTime: rec.Segments?.[rec.Segments?.length - 1]?.ArrivalDateTime || '',
+                  origin: fare.Legs?.[0]?.Segments?.[0]?.DepartureAirport || travelRequest.flights.origin,
+                  destination: fare.Legs?.[0]?.Segments?.[fare.Legs?.[0]?.Segments?.length - 1]?.ArrivalAirport || travelRequest.flights.destination,
+                  departureTime: fare.Legs?.[0]?.Segments?.[0]?.DepartureDate || '',
+                  arrivalTime: fare.Legs?.[0]?.Segments?.[fare.Legs?.[0]?.Segments?.length - 1]?.ArrivalDate || '',
                   price: {
-                    amount: rec.PriceBreakdown?.TotalPrice || 0,
-                    currency: rec.PriceBreakdown?.Currency || 'USD'
+                    amount: fare.TotalFare || 0,
+                    currency: fare.Currency || 'USD'
                   },
                   provider: 'STARLING'
                 }));
@@ -1113,15 +1111,13 @@ const Chat = () => {
 
               const starlingResponse = await supabase.functions.invoke('starling-flights', {
                 body: {
-                  action: 'searchFlights',
-                  data: {
-                    Passengers: [{ Count: adults || 1, Type: 'ADT' }],
-                    Legs: [{
-                      DepartureAirportCity: origin,
-                      ArrivalAirportCity: destination,
-                      FlightDate: dateFrom
-                    }],
-                    Airlines: null
+                  searchParams: {
+                    origin: origin,
+                    destination: destination,
+                    departureDate: dateFrom,
+                    returnDate: dateTo,
+                    adults: adults || 1,
+                    children: children || 0
                   }
                 }
               });
@@ -1131,20 +1127,20 @@ const Chat = () => {
               }
 
               // Transform Starling results to our expected format
-              const starlingFlights = starlingResponse.data?.data?.Recommendations || [];
-              eurovipsResults.flights = starlingFlights.map((rec: any) => ({
-                id: rec.ID,
+              const starlingFlights = starlingResponse.data?.results?.Fares || [];
+              eurovipsResults.flights = starlingFlights.map((fare: any) => ({
+                id: fare.Token || Math.random().toString(36),
                 airline: {
-                  code: rec.Segments?.[0]?.AirlineCode || 'N/A',
-                  name: rec.Segments?.[0]?.AirlineName || 'Unknown Airline'
+                  code: fare.Legs?.[0]?.Segments?.[0]?.Airline || 'N/A',
+                  name: fare.Legs?.[0]?.Segments?.[0]?.AirlineName || 'Unknown Airline'
                 },
-                origin: rec.Segments?.[0]?.DepartureAirportCode || origin,
-                destination: rec.Segments?.[rec.Segments?.length - 1]?.ArrivalAirportCode || destination,
-                departureTime: rec.Segments?.[0]?.DepartureDateTime || '',
-                arrivalTime: rec.Segments?.[rec.Segments?.length - 1]?.ArrivalDateTime || '',
+                origin: fare.Legs?.[0]?.Segments?.[0]?.DepartureAirport || origin,
+                destination: fare.Legs?.[0]?.Segments?.[fare.Legs?.[0]?.Segments?.length - 1]?.ArrivalAirport || destination,
+                departureTime: fare.Legs?.[0]?.Segments?.[0]?.DepartureDate || '',
+                arrivalTime: fare.Legs?.[0]?.Segments?.[fare.Legs?.[0]?.Segments?.length - 1]?.ArrivalDate || '',
                 price: {
-                  amount: rec.PriceBreakdown?.TotalPrice || 0,
-                  currency: rec.PriceBreakdown?.Currency || 'USD'
+                  amount: fare.TotalFare || 0,
+                  currency: fare.Currency || 'USD'
                 },
                 provider: 'STARLING'
               }));
