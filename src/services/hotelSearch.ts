@@ -343,7 +343,6 @@ async function getCityCode(cityName: string): Promise<string> {
         'singapur': 'SIN',
         'singapore': 'SIN',
         'dubai': 'DXB',
-        'londres': 'LON',
         'sydney': 'SYD',
         'melbourne': 'MEL',
         'cairo': 'CAI',

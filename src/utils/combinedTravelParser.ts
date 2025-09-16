@@ -1,6 +1,7 @@
 import { AirfareSearchParams } from '@/services/airfareSearch';
 import { HotelSearchParams } from '@/types';
 import { FlightData, HotelData } from '@/types';
+import { getAirportCode, getHotelCode, logCityConversion } from '@/services/cityCodeService';
 
 export interface CombinedTravelRequest {
   flights: AirfareSearchParams;
@@ -141,6 +142,15 @@ function extractFlightParams(message: string): AirfareSearchParams {
     }
   }
 
+  // Try direct format: "vuelo Buenos Aires Punta Cana"
+  if (!origin || !destination) {
+    const directPattern = message.match(/(?:vuelo|flight)\s+([a-záéíóúñ\s]+?)\s+([a-záéíóúñ\s]+?)(?=\s+(?:del|el|desde|en|departure|return|con|y|,|\.|$))/i);
+    if (directPattern) {
+      origin = origin || directPattern[1].trim();
+      destination = destination || directPattern[2].trim();
+    }
+  }
+
   // As a last resort, reuse broader patterns but guard against capturing "y vuelta"
   if (!origin) {
     const originPatterns = [
@@ -169,6 +179,27 @@ function extractFlightParams(message: string): AirfareSearchParams {
   if (origin && !/^\w{3}$/.test(origin)) origin = cleanupLocation(origin);
   if (destination && !/^\w{3}$/.test(destination)) destination = cleanupLocation(destination);
 
+  // Convert city names to IATA codes using the centralized service
+  if (origin && !/^[A-Z]{3}$/.test(origin)) {
+    const airportCode = getAirportCode(origin);
+    if (airportCode) {
+      logCityConversion(origin, 'flight');
+      origin = airportCode;
+    } else {
+      console.error(`❌ No IATA code found for origin: ${origin}`);
+    }
+  }
+
+  if (destination && !/^[A-Z]{3}$/.test(destination)) {
+    const airportCode = getAirportCode(destination);
+    if (airportCode) {
+      logCityConversion(destination, 'flight');
+      destination = airportCode;
+    } else {
+      console.error(`❌ No IATA code found for destination: ${destination}`);
+    }
+  }
+
   // Guard against accidental capture like "y vuelta"
   if (/\b(vuelta|ida)\b/i.test(destination)) {
     const destMatches = Array.from(message.matchAll(/\s+(?:a|to|hacia|para)\s+([a-záéíóúñ\s]+?)(?=\s+(?:saliendo|el|desde|departure|return|con|y|,|\.|$))/gi));
@@ -182,6 +213,9 @@ function extractFlightParams(message: string): AirfareSearchParams {
     /saliendo\s+(?:el\s+)?(\d{4}-\d{2}-\d{2})/i,
     /departure[:\s]+(\d{4}-\d{2}-\d{2})/i,
     /(\d{1,2}[\\/\\-]\d{1,2}[\\/\\-]\d{4})/i,
+    // "del X de Y" patterns
+    /del\s+(\d{1,2}\s+de\s+[a-záéíóú]+(?:\s+de\s+\d{4})?)/i,
+    /el\s+(\d{1,2}\s+de\s+[a-záéíóú]+(?:\s+de\s+\d{4})?)/i,
     // Month + duration patterns for travel dates
     /en\s+([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
     /([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
@@ -224,7 +258,7 @@ function extractFlightParams(message: string): AirfareSearchParams {
         }
         break;
       } else {
-        departureDate = normalizeDateString(match[1]);
+        departureDate = normalizeDateString(match[1], message);
         break;
       }
     }
@@ -235,13 +269,15 @@ function extractFlightParams(message: string): AirfareSearchParams {
     const returnDatePatterns = [
       /(?:con\s+)?(?:vuelta|regreso|return)\s+(?:el\s+)?(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4})/i,
       /(?:con\s+)?(?:vuelta|regreso|return)\s+(?:el\s+)?(\d{4}-\d{2}-\d{2})/i,
+      // "al X de Y" patterns
+      /al\s+(\d{1,2}\s+de\s+[a-záéíóú]+(?:\s+de\s+\d{4})?)/i,
       /return[:\s]+(\d{4}-\d{2}-\d{2})/i
     ];
 
     for (const pattern of returnDatePatterns) {
       const match = message.match(pattern);
       if (match) {
-        returnDate = normalizeDateString(match[1]);
+        returnDate = normalizeDateString(match[1], message);
         break;
       }
     }
@@ -277,6 +313,43 @@ function extractFlightParams(message: string): AirfareSearchParams {
   };
 }
 
+function normalizeDateString(dateStr: string, originalMessage?: string): string {
+  // Convert Spanish date format "1 de noviembre de 2025" or "1 de noviembre" to YYYY-MM-DD
+  const spanishMonths: Record<string, string> = {
+    'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+    'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+    'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+  };
+
+  const match = dateStr.match(/(\d{1,2})\s+de\s+([a-záéíóú]+)(?:\s+de\s+(\d{4}))?/i);
+  if (match) {
+    const day = match[1].padStart(2, '0');
+    const monthName = match[2].toLowerCase();
+    let year = match[3];
+
+    // If no year in the date, try to find it in the original message
+    if (!year && originalMessage) {
+      const yearMatch = originalMessage.match(/\b(20\d{2})\b/);
+      year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+    } else if (!year) {
+      year = new Date().getFullYear().toString();
+    }
+
+    const monthNumber = spanishMonths[monthName];
+    if (monthNumber) {
+      return `${year}-${monthNumber}-${day}`;
+    }
+  }
+
+  // If already in YYYY-MM-DD format, return as is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr;
+  }
+
+  // Fallback: return original string
+  return dateStr;
+}
+
 function extractHotelParams(message: string): HotelSearchParams {
   // Extract hotel name
   const hotelNamePatterns = [
@@ -308,6 +381,18 @@ function extractHotelParams(message: string): HotelSearchParams {
     if (match) {
       city = match[1].trim();
       break;
+    }
+  }
+
+  // Convert city name to hotel code using the centralized service
+  if (city && !/^[A-Z]{3}$/.test(city)) {
+    const hotelCode = getHotelCode(city);
+    if (hotelCode) {
+      logCityConversion(city, 'hotel');
+      city = hotelCode;
+    } else {
+      console.warn(`⚠️ No hotel code found for city: ${city}, using original name`);
+      // Keep original name as fallback for hotel searches
     }
   }
 
@@ -460,51 +545,6 @@ function extractHotelParams(message: string): HotelSearchParams {
   };
 }
 
-function normalizeDateString(dateStr: string): string {
-  // Convert various date formats to YYYY-MM-DD
-
-  // Handle Spanish date format: "1 de julio de 2026"
-  const spanishMonths: Record<string, string> = {
-    'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
-    'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
-    'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
-  };
-
-  const spanishDateMatch = dateStr.match(/(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de\s+(\d{4})/i);
-  if (spanishDateMatch) {
-    const day = spanishDateMatch[1].padStart(2, '0');
-    const month = spanishMonths[spanishDateMatch[2].toLowerCase()] || '01';
-    const year = spanishDateMatch[3];
-    return `${year}-${month}-${day}`;
-  }
-
-  // Handle DD/MM/YYYY or DD-MM-YYYY
-  const ddmmyyyyMatch = dateStr.match(/(\d{1,2})[\\/\\-](\d{1,2})[\\/\\-](\d{4})/);
-  if (ddmmyyyyMatch) {
-    const day = ddmmyyyyMatch[1].padStart(2, '0');
-    const month = ddmmyyyyMatch[2].padStart(2, '0');
-    const year = ddmmyyyyMatch[3];
-    return `${year}-${month}-${day}`;
-  }
-
-  // Already in YYYY-MM-DD format
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return dateStr;
-  }
-
-  // Fallback: try to parse and convert
-  try {
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
-    }
-  } catch (error) {
-    console.warn('⚠️ Could not parse date:', dateStr);
-  }
-
-  // Final fallback: return today
-  return new Date().toISOString().split('T')[0];
-}
 
 /**
  * Generate example prompts for testing combined travel requests
