@@ -257,8 +257,11 @@ function extractHotelParams(message: string): HotelSearchParams {
 
   // Extract city for hotel (can be same as flight destination)
   const cityPatterns = [
-    /(?:hotel\s+)?(?:en|in)\s+([a-záéíóúñ\s]+?)(?:\s+(?:desde|del|para|saliendo|departure)|$)/i,
-    /(?:alojamiento|hospedaje)\s+(?:en|in)?\s*([a-záéíóúñ\s]+?)(?:\s|$)/i
+    // Specific pattern for "hoteles en [ciudad] para la misma fecha"
+    /hoteles?\s+en\s+([a-záéíóúñ\s]+?)\s+para\s+la\s+misma\s+fecha/i,
+    // General hotel city patterns - more careful with "para"
+    /(?:hotel\s+)?(?:en|in)\s+([a-záéíóúñ\s]+?)(?:\s+(?:desde|del|para\s+(?!la\s+misma)|saliendo|departure)|$)/i,
+    /(?:alojamiento|hospedaje)\s+(?:en|in)?\s*([a-záéíóúñ\s]+?)(?:\s+para\s+(?!la\s+misma)|$)/i
   ];
 
   let city = '';
