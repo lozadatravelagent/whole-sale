@@ -228,6 +228,11 @@ const Chat = () => {
       /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
       /(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
 
+      // Month with duration patterns (for travel with nights)
+      /en\s+([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
+      /([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
+      /durante\s+(\d+)\s+noches?\s+en\s+([a-záéíóúñ]+)/i,
+
       // Month-year patterns (for packages)
       /en\s+([a-záéíóúñ]+)\s+(\d{4})/i,
       /para\s+([a-záéíóúñ]+)\s+(\d{4})/i,
@@ -250,14 +255,62 @@ const Chat = () => {
         console.log('📅 Match details - length:', match.length, 'values:', match.slice(1));
 
         if (match.length === 3) {
-          // Month-year pattern: "octubre 2025"
-          const month = spanishMonths[match[1].toLowerCase()];
-          const year = match[2];
-          if (month && year) {
+          const currentYear = new Date().getFullYear();
+          const nextYear = currentYear + 1;
+
+          // Check if this is a month-duration pattern
+          const monthWithDurationPatterns = [
+            /en\s+([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
+            /([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
+            /durante\s+(\d+)\s+noches?\s+en\s+([a-záéíóúñ]+)/i
+          ];
+
+          let isMonthDurationPattern = false;
+          for (const pattern of monthWithDurationPatterns) {
+            if (pattern.test(message)) {
+              isMonthDurationPattern = true;
+              break;
+            }
+          }
+
+          if (isMonthDurationPattern) {
+            // Month with duration: "en abril durante 8 noches" or "durante 8 noches en abril"
+            console.log('📅 ENTERING MONTH-DURATION BLOCK - match:', match);
+            let month, nights;
+
+            // Determine order based on pattern
+            if (/durante\s+(\d+)\s+noches?\s+en\s+([a-záéíóúñ]+)/i.test(message)) {
+              // "durante 8 noches en abril" - nights first, then month
+              nights = parseInt(match[1]);
+              month = spanishMonths[match[2].toLowerCase()] || '04'; // Default to April
+            } else {
+              // "en abril durante 8 noches" or "abril durante 8 noches" - month first, then nights
+              month = spanishMonths[match[1].toLowerCase()] || '04';
+              nights = parseInt(match[2]);
+            }
+
+            console.log('📅 Month-duration parsed - month:', month, 'nights:', nights);
+
+            // Start on first day of month
+            const year = (parseInt(month) < new Date().getMonth() + 1) ? nextYear : currentYear;
             dateFrom = `${year}-${month}-01`;
-            // Set dateTo to end of month
-            const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-            dateTo = `${year}-${month}-${lastDay.toString().padStart(2, '0')}`;
+
+            // Calculate end date based on nights
+            const fromDate = new Date(dateFrom);
+            fromDate.setDate(fromDate.getDate() + nights);
+            dateTo = fromDate.toISOString().split('T')[0];
+
+            console.log('📅 Month-duration result - dateFrom:', dateFrom, 'dateTo:', dateTo);
+          } else {
+            // Month-year pattern: "octubre 2025"
+            const month = spanishMonths[match[1].toLowerCase()];
+            const year = match[2];
+            if (month && year) {
+              dateFrom = `${year}-${month}-01`;
+              // Set dateTo to end of month
+              const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+              dateTo = `${year}-${month}-${lastDay.toString().padStart(2, '0')}`;
+            }
           }
         } else if (match.length === 4 && !isNaN(Number(match[2]))) {
           // Pattern: "del 15 al 25 de diciembre" - match[1]=15, match[2]=25, match[3]=diciembre
