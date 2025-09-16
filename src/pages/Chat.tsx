@@ -17,7 +17,7 @@ import { checkDestinationAvailability, getAlternativeDestinations, formatAlterna
 import { parseFlightsFromMessage, isFlightMessage } from '@/utils/flightParser';
 import { parseHotelsFromMessage, isHotelMessage } from '@/utils/hotelParser';
 import { searchHotelFares } from '@/services/hotelSearch';
-import { searchAirFares } from '@/services/airfareSearch';
+// Removed: import { searchAirFares } from '@/services/airfareSearch'; - Now using Starling API
 import { searchPackageFares } from '@/services/packageSearch';
 import { searchServiceFares } from '@/services/serviceSearch';
 import { isCombinedTravelMessage, parseCombinedTravelRequest } from '@/utils/combinedTravelParser';
@@ -630,15 +630,51 @@ const Chat = () => {
               requestType: travelRequest.requestType
             };
 
-            // Search flights if requested (via EUROVIPS, not Starling)
+            // Search flights if requested (via STARLING API)
             if (travelRequest.requestType === 'combined' || travelRequest.requestType === 'flights-only') {
-              console.log('✈️ Searching flights via EUROVIPS WebService...');
+              console.log('✈️ Searching flights via Starling API...');
               try {
-                const flights = await searchAirFares(travelRequest.flights);
+                const starlingResponse = await supabase.functions.invoke('starling-flights', {
+                  body: {
+                    action: 'searchFlights',
+                    data: {
+                      Passengers: [{ Count: travelRequest.flights.adults || 1, Type: 'ADT' }],
+                      Legs: [{
+                        DepartureAirportCity: travelRequest.flights.origin,
+                        ArrivalAirportCity: travelRequest.flights.destination,
+                        FlightDate: travelRequest.flights.departureDate
+                      }],
+                      Airlines: null
+                    }
+                  }
+                });
+
+                if (starlingResponse.error) {
+                  throw new Error(starlingResponse.error.message || 'Starling API error');
+                }
+
+                // Transform Starling results to our expected format
+                const starlingFlights = starlingResponse.data?.data?.Recommendations || [];
+                const flights = starlingFlights.map((rec: any) => ({
+                  id: rec.ID,
+                  airline: {
+                    code: rec.Segments?.[0]?.AirlineCode || 'N/A',
+                    name: rec.Segments?.[0]?.AirlineName || 'Unknown Airline'
+                  },
+                  origin: rec.Segments?.[0]?.DepartureAirportCode || travelRequest.flights.origin,
+                  destination: rec.Segments?.[rec.Segments?.length - 1]?.ArrivalAirportCode || travelRequest.flights.destination,
+                  departureTime: rec.Segments?.[0]?.DepartureDateTime || '',
+                  arrivalTime: rec.Segments?.[rec.Segments?.length - 1]?.ArrivalDateTime || '',
+                  price: {
+                    amount: rec.PriceBreakdown?.TotalPrice || 0,
+                    currency: rec.PriceBreakdown?.Currency || 'USD'
+                  },
+                  provider: 'STARLING'
+                }));
                 results.flights = flights;
-                console.log(`✅ Found ${flights.length} flights via EUROVIPS`);
+                console.log(`✅ Found ${flights.length} flights via Starling API`);
               } catch (flightError) {
-                console.error('❌ Error searching flights via EUROVIPS:', flightError);
+                console.error('❌ Error searching flights via Starling API:', flightError);
               }
             }
 
@@ -654,83 +690,23 @@ const Chat = () => {
               }
             }
 
-            // 🚀 PARALLEL DUAL-SERVICE APPROACH: Call both EUROVIPS and N8N simultaneously
-            console.log('🚀 Calling both EUROVIPS and N8N services in parallel...');
+            // 🚀 NEW DUAL-PROVIDER APPROACH: Starling for flights + EUROVIPS for hotels
+            console.log('🚀 Processing results from dual providers...');
 
-            const [eurovipsResults, n8nResult] = await Promise.allSettled([
-              // EUROVIPS results are already obtained above
-              Promise.resolve(results),
-              // N8N service call
-              supabase.functions.invoke('travel-chat', {
-                body: {
-                  message: currentMessage,
-                  conversationId: selectedConversation,
-                  userId: user?.id,
-                  userName: user?.email || 'Anonymous User',
-                  agencyId: conversation?.agency_id
-                }
-              })
-            ]);
+            const hasFlightResults = results.flights.length > 0;
+            const hasHotelResults = results.hotels.length > 0;
 
-            // Process results
-            const hasEurovipsResults = eurovipsResults.status === 'fulfilled' &&
-              (eurovipsResults.value.flights.length > 0 || eurovipsResults.value.hotels.length > 0);
+            console.log(`📊 Results summary: Starling flights=${hasFlightResults} (${results.flights.length}), EUROVIPS hotels=${hasHotelResults} (${results.hotels.length})`);
 
-            const hasN8nResults = n8nResult.status === 'fulfilled' &&
-              n8nResult.value.data && !n8nResult.value.error &&
-              n8nResult.value.data.message && n8nResult.value.data.message.trim();
-
-            const n8nMessage = hasN8nResults ? n8nResult.value.data.message.trim() : '';
-
-            console.log(`📊 Results summary: EUROVIPS=${hasEurovipsResults} (${results.flights.length} vuelos, ${results.hotels.length} hoteles), N8N=${hasN8nResults}`);
-
-            // 🎯 INTELLIGENT RESULT MERGING
-            if (hasEurovipsResults && hasN8nResults) {
-              // Both have results - show combined
-              console.log('✨ Both services found results - showing combined response');
+            // Process and display results from dual providers
+            if (hasFlightResults || hasHotelResults) {
+              console.log('✨ Found results from dual providers - showing combined response');
               assistantResponse = formatCombinedTravelResponse(results, travelRequest);
               combinedDataToAttach = results;
-
-              // Add N8N information as complement
-              setTimeout(async () => {
-                const combinedResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${n8nMessage}\n\n🌟 *Fuente: N8N Workflow*\n\n---\n\n✨ **Resumen Completo:** EUROVIPS (${results.flights.length} vuelos, ${results.hotels.length} hoteles) + N8N (información adicional)`;
-
-                await saveMessage({
-                  conversation_id: selectedConversation,
-                  role: 'assistant',
-                  content: { text: combinedResponse },
-                  meta: { source: 'N8N', streaming: true, parentType: 'combined' }
-                });
-              }, 1500);
-
-            } else if (hasEurovipsResults && !hasN8nResults) {
-              // Only EUROVIPS has results
-              console.log('✅ EUROVIPS found results, N8N had no results - showing EUROVIPS only');
-              assistantResponse = formatCombinedTravelResponse(results, travelRequest);
-              combinedDataToAttach = results;
-
-            } else if (!hasEurovipsResults && hasN8nResults) {
-              // Only N8N has results
-              console.log('✅ N8N found results, EUROVIPS had no results - showing N8N only');
-              assistantResponse = `📋 **Resultados de Viaje Combinado**\n\n${n8nMessage}\n\n🌟 *Fuente: N8N Workflow*\n\nℹ️ *No se encontraron resultados estructurados en EUROVIPS para esta búsqueda específica.*`;
-
             } else {
-              // Neither service has results
-              console.log('❌ Both EUROVIPS and N8N found no results');
+              console.log('❌ No results found from either provider');
               assistantResponse = formatCombinedTravelResponse(results, travelRequest);
               combinedDataToAttach = results;
-
-              // Add info about both services being tried
-              setTimeout(async () => {
-                const noResultsResponse = `\n\n---\n\n🔧 **Estado de Búsqueda**\n\nSe consultaron múltiples fuentes:\n- ✅ WebService EUROVIPS: Sin resultados para fechas/destinos especificados\n- ✅ Sistema N8N: Sin información adicional disponible\n\n⚡ *Recomendación: Intenta con fechas diferentes o destinos alternativos.*`;
-
-                await saveMessage({
-                  conversation_id: selectedConversation,
-                  role: 'assistant',
-                  content: { text: noResultsResponse },
-                  meta: { source: 'BOTH', streaming: true, parentType: 'status' }
-                });
-              }, 1000);
             }
           }
         } catch (error) {
@@ -1129,23 +1105,52 @@ const Chat = () => {
           const isPackageQuery = currentMessage.toLowerCase().includes('paquete');
           const isServiceQuery = currentMessage.toLowerCase().includes('transfer') || currentMessage.toLowerCase().includes('excursion');
 
-          // Search flights via EUROVIPS
+          // Search flights via STARLING API
           if (isFlightQuery) {
             try {
               const { origin, destination, dateFrom, dateTo, adults, children } = extractFlightSearchParams(currentMessage);
-              const flightParams = {
-                origin,
-                destination,
-                departureDate: dateFrom,
-                returnDate: dateTo !== dateFrom ? dateTo : undefined, // Only set return if different from departure
-                adults,
-                children
-              };
-              console.log('✈️ Searching flights via EUROVIPS...', flightParams);
-              eurovipsResults.flights = await searchAirFares(flightParams);
-              console.log(`✅ EUROVIPS flights: ${eurovipsResults.flights.length}`);
+              console.log('✈️ Searching flights via Starling API...', { origin, destination, dateFrom, adults });
+
+              const starlingResponse = await supabase.functions.invoke('starling-flights', {
+                body: {
+                  action: 'searchFlights',
+                  data: {
+                    Passengers: [{ Count: adults || 1, Type: 'ADT' }],
+                    Legs: [{
+                      DepartureAirportCity: origin,
+                      ArrivalAirportCity: destination,
+                      FlightDate: dateFrom
+                    }],
+                    Airlines: null
+                  }
+                }
+              });
+
+              if (starlingResponse.error) {
+                throw new Error(starlingResponse.error.message || 'Starling API error');
+              }
+
+              // Transform Starling results to our expected format
+              const starlingFlights = starlingResponse.data?.data?.Recommendations || [];
+              eurovipsResults.flights = starlingFlights.map((rec: any) => ({
+                id: rec.ID,
+                airline: {
+                  code: rec.Segments?.[0]?.AirlineCode || 'N/A',
+                  name: rec.Segments?.[0]?.AirlineName || 'Unknown Airline'
+                },
+                origin: rec.Segments?.[0]?.DepartureAirportCode || origin,
+                destination: rec.Segments?.[rec.Segments?.length - 1]?.ArrivalAirportCode || destination,
+                departureTime: rec.Segments?.[0]?.DepartureDateTime || '',
+                arrivalTime: rec.Segments?.[rec.Segments?.length - 1]?.ArrivalDateTime || '',
+                price: {
+                  amount: rec.PriceBreakdown?.TotalPrice || 0,
+                  currency: rec.PriceBreakdown?.Currency || 'USD'
+                },
+                provider: 'STARLING'
+              }));
+              console.log(`✅ Starling flights: ${eurovipsResults.flights.length}`);
             } catch (error) {
-              console.error('❌ EUROVIPS flights error:', error);
+              console.error('❌ Starling flights error:', error);
             }
           }
 
