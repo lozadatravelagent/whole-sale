@@ -817,13 +817,13 @@ const Chat = () => {
 
   // Typing indicator effect
   useEffect(() => {
-    if (isTyping && messages.length > 0) {
+    if (isTyping) {
       const timer = setTimeout(() => {
         setIsTyping(false);
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [isTyping, messages.length, selectedConversation]);
+  }, [isTyping]);
 
   // Removed auto-scroll behavior to prevent input jumping
 
@@ -844,7 +844,7 @@ const Chat = () => {
   // Show inspiration text for new conversations - DISABLED
   useEffect(() => {
     setShowInspirationText(false);
-  }, [selectedConversation, messages.length]);
+  }, [selectedConversation]);
 
   // Add CSS animations to head
   useEffect(() => {
@@ -2355,7 +2355,7 @@ const Chat = () => {
             <>
               <ChatHeader />
 
-              <div className="flex-1 p-4 overflow-y-auto relative">
+              <div className="flex-1 p-4 overflow-hidden relative">
                 <div className="space-y-4">
                   {/* Inspiration text overlay for new conversations */}
                   <InspirationText />
