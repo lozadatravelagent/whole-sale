@@ -29,6 +29,18 @@ export interface ExtractedTravelInfo {
   description?: string;
 }
 
+// Mapea requestType de ai-message-parser a tripType esperado
+function mapRequestTypeToTripType(requestType: string): string {
+  switch (requestType) {
+    case 'flights': return 'flight';
+    case 'hotels': return 'hotel';
+    case 'packages': return 'package';
+    case 'services': return 'service';
+    case 'combined': return 'package'; // Combined se trata como package
+    default: return 'package';
+  }
+}
+
 // Función para extraer información de viaje de los mensajes usando AI
 export async function extractTravelInfoFromMessages(messages: MessageRow[]): Promise<ExtractedTravelInfo> {
   if (messages.length === 0) return {};
@@ -55,8 +67,16 @@ export async function extractTravelInfoFromMessages(messages: MessageRow[]): Pro
   try {
     // Intentar mejorar con AI
     console.log('🤖 Attempting AI extraction...');
-    const { data, error } = await supabase.functions.invoke('extract-travel-info', {
-      body: { messages: userMessages }
+    const { data, error } = await supabase.functions.invoke('ai-message-parser', {
+      body: {
+        message: userMessages.map(msg => {
+          if (typeof msg.content === 'string') return msg.content;
+          if (typeof msg.content === 'object' && msg.content?.text) return msg.content.text;
+          return '';
+        }).join(' '),
+        language: 'es',
+        currentDate: new Date().toISOString().split('T')[0]
+      }
     });
 
     console.log('🤖 AI extraction response:', { data, error });
@@ -66,23 +86,40 @@ export async function extractTravelInfoFromMessages(messages: MessageRow[]): Pro
       return basicInfo;
     }
 
-    const aiInfo = data?.travelInfo || {};
-    
+    const aiParsed = data?.parsed || {};
+
+    // Mapear respuesta de ai-message-parser al formato esperado
+    const aiInfo = {
+      destination: aiParsed.flights?.destination || aiParsed.hotels?.city || '',
+      dates: {
+        checkin: aiParsed.flights?.departureDate || aiParsed.hotels?.checkinDate || '',
+        checkout: aiParsed.flights?.returnDate || aiParsed.hotels?.checkoutDate || ''
+      },
+      travelers: {
+        adults: aiParsed.flights?.adults || aiParsed.hotels?.adults || 1,
+        children: aiParsed.flights?.children || aiParsed.hotels?.children || basicInfo.travelers?.children || 0
+      },
+      budget: basicInfo.budget || 0,
+      tripType: mapRequestTypeToTripType(aiParsed.requestType) || basicInfo.tripType || 'package',
+      contactInfo: basicInfo.contactInfo || {},
+      description: basicInfo.description || `Consulta: ${userMessages.map(m => m.content?.text || m.content || '').join(' ')}`
+    };
+
     // Combinar información: AI primero, básica como respaldo
     const combinedInfo = {
       destination: aiInfo.destination || basicInfo.destination,
       dates: {
-        checkin: aiInfo.dates?.checkin || basicInfo.dates?.checkin || '',
-        checkout: aiInfo.dates?.checkout || basicInfo.dates?.checkout || ''
+        checkin: aiInfo.dates.checkin || basicInfo.dates?.checkin || '',
+        checkout: aiInfo.dates.checkout || basicInfo.dates?.checkout || ''
       },
       travelers: {
-        adults: aiInfo.travelers?.adults || basicInfo.travelers?.adults || 1,
-        children: aiInfo.travelers?.children || basicInfo.travelers?.children || 0
+        adults: aiInfo.travelers.adults || basicInfo.travelers?.adults || 1,
+        children: aiInfo.travelers.children || basicInfo.travelers?.children || 0
       },
       budget: aiInfo.budget || basicInfo.budget || 0,
       tripType: aiInfo.tripType || basicInfo.tripType || 'package',
       contactInfo: aiInfo.contactInfo || basicInfo.contactInfo || {},
-      description: aiInfo.description || basicInfo.description || `Consulta: ${userMessages}`
+      description: aiInfo.description || basicInfo.description || `Consulta: ${userMessages.map(m => m.content?.text || m.content || '').join(' ')}`
     };
 
     console.log('✅ Final combined extraction result:', combinedInfo);
