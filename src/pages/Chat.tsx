@@ -177,8 +177,13 @@ interface LocalHotelData {
   city: string;
   nights: number;
   rooms: Array<{
+    type?: string;
+    description?: string;
+    price_per_night?: number;
     total_price: number;
     currency: string;
+    availability?: number;
+    occupancy_id?: string;
   }>;
 }
 
@@ -1273,16 +1278,20 @@ const Chat = () => {
         city: hotel.city,
         address: '',
         rooms: hotel.rooms.map(room => ({
-          type: 'Standard',
-          description: 'Habitación estándar',
-          price_per_night: room.total_price / hotel.nights,
+          type: room.type || 'Standard',
+          description: room.description || 'Habitación estándar',
+          price_per_night: room.price_per_night || (room.total_price / hotel.nights),
           total_price: room.total_price,
           currency: room.currency,
-          availability: 1,
-          occupancy_id: Math.random().toString(36)
+          availability: room.availability >= 0 ? Math.max(room.availability, 3) : 5, // Ensure at least "Consultar" status
+          occupancy_id: room.occupancy_id || Math.random().toString(36)
         })),
-        check_in: new Date().toISOString().split('T')[0],
-        check_out: new Date(Date.now() + 86400000 * hotel.nights).toISOString().split('T')[0],
+        check_in: localData.flights.length > 0 && localData.flights[0].departure_date
+          ? localData.flights[0].departure_date
+          : new Date().toISOString().split('T')[0],
+        check_out: localData.flights.length > 0 && localData.flights[0].return_date
+          ? localData.flights[0].return_date
+          : new Date(Date.now() + 86400000 * hotel.nights).toISOString().split('T')[0],
         nights: hotel.nights
       })),
       requestType: localData.requestType
