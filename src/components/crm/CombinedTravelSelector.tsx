@@ -405,7 +405,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                                 {room.description !== room.type && (
                                   <p className="text-xs text-muted-foreground truncate">{room.description}</p>
                                 )}
-                                
+
                                 <div className="flex items-center justify-between">
                                   <div className="text-lg font-bold text-primary">
                                     {formatPrice(room.total_price, room.currency)}
