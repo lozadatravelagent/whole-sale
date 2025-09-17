@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { FlightData, HotelData, CombinedTravelResults } from '@/types';
-import { generateFlightPdf } from '@/services/pdfMonkey';
+import { generateFlightPdf, generateCombinedTravelPdf } from '@/services/pdfMonkey';
 import {
   Plane,
   Hotel,
@@ -115,13 +115,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   };
 
   const handleGeneratePdf = async () => {
-    // For now, we'll generate PDF only for flights (existing functionality)
-    // TODO: Extend pdfMonkey service to support combined travel packages
-
-    if (selectedFlights.length === 0) {
+    // Validate selections
+    if (selectedFlights.length === 0 && selectedHotels.length === 0) {
       toast({
         title: "Selección requerida",
-        description: "Selecciona al menos un vuelo para generar el PDF.",
+        description: "Selecciona al menos un vuelo o un hotel para generar el PDF.",
         variant: "destructive",
       });
       return;
@@ -130,21 +128,49 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     setIsGenerating(true);
 
     try {
+      // Get selected data
       const selectedFlightData = combinedData.flights.filter(flight =>
         selectedFlights.includes(flight.id!)
       );
 
-      console.log('📄 Generating PDF for selected flights:', selectedFlightData);
+      const selectedHotelData = combinedData.hotels.filter(hotel =>
+        selectedHotels.includes(hotel.id)
+      );
 
-      const pdfUrl = await generateFlightPdf(selectedFlightData);
+      console.log('📄 Generating PDF for:', {
+        flights: selectedFlightData.length,
+        hotels: selectedHotelData.length
+      });
+
+      let pdfUrl;
+
+      // Determine which PDF type to generate
+      if (selectedFlightData.length > 0 && selectedHotelData.length > 0) {
+        // Combined travel PDF (flights + hotels)
+        console.log('🌟 Generating COMBINED travel PDF');
+        pdfUrl = await generateCombinedTravelPdf(selectedFlightData, selectedHotelData);
+      } else if (selectedFlightData.length > 0) {
+        // Flight-only PDF (existing functionality)
+        console.log('✈️ Generating FLIGHT-only PDF');
+        pdfUrl = await generateFlightPdf(selectedFlightData);
+      } else if (selectedHotelData.length > 0) {
+        // Hotel-only PDF (use combined template with empty flights)
+        console.log('🏨 Generating HOTEL-only PDF');
+        pdfUrl = await generateCombinedTravelPdf([], selectedHotelData);
+      }
+
       if (pdfUrl?.document_url && onPdfGenerated) {
         onPdfGenerated(pdfUrl.document_url);
       }
 
-      toast({
-        title: "PDF Generado",
-        description: "Tu cotización de viaje está lista para descargar.",
-      });
+      if (pdfUrl?.success) {
+        toast({
+          title: "PDF Generado",
+          description: `Tu cotización de ${selectedFlightData.length > 0 && selectedHotelData.length > 0 ? 'viaje combinado' : selectedFlightData.length > 0 ? 'vuelos' : 'hoteles'} está lista para descargar.`,
+        });
+      } else {
+        throw new Error(pdfUrl?.error || 'Error desconocido');
+      }
 
     } catch (error) {
       console.error('Error generating PDF:', error);
@@ -432,7 +458,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               </div>
               <Button
                 onClick={handleGeneratePdf}
-                disabled={selectedFlights.length === 0 || isGenerating}
+                disabled={(selectedFlights.length === 0 && selectedHotels.length === 0) || isGenerating}
                 className="flex items-center space-x-2"
               >
                 {isGenerating ? (
