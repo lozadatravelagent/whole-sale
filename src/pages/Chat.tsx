@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -13,15 +13,9 @@ import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
 import { createLeadFromChat } from '@/utils/chatToLead';
-import { checkDestinationAvailability, getAlternativeDestinations, formatAlternativeDestinations } from '@/services/availabilityService';
-import { parseFlightsFromMessage, isFlightMessage } from '@/utils/flightParser';
-import { parseHotelsFromMessage, isHotelMessage } from '@/utils/hotelParser';
-import { searchHotelFares } from '@/services/hotelSearch';
-// Removed: import { searchAirFares } from '@/services/airfareSearch'; - Now using Starling API
-import { searchPackageFares } from '@/services/packageSearch';
-import { searchServiceFares } from '@/services/serviceSearch';
-import { isCombinedTravelMessage, parseCombinedTravelRequest } from '@/utils/combinedTravelParser';
-import type { CombinedTravelResults, HotelData } from '@/types';
+import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling } from '@/services/aiMessageParser';
+import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { CombinedTravelResults } from '@/types';
 import FlightSelector from '@/components/crm/FlightSelector';
 import HotelSelector from '@/components/crm/HotelSelector';
 import CombinedTravelSelector from '@/components/crm/CombinedTravelSelector';
@@ -56,21 +50,125 @@ import type { Database } from '@/integrations/supabase/types';
 type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 type MessageRow = Database['public']['Tables']['messages']['Row'];
 
+// City code service for EUROVIPS integration
+const getCityCode = async (cityName: string): Promise<string> => {
+  try {
+    const response = await supabase.functions.invoke('eurovips-soap', {
+      body: { action: 'getCountryList', data: {} }
+    });
+
+    const countries = response.data.results?.parsed || [];
+    const city = countries.find((c: { name: string; code: string }) =>
+      c.name.toLowerCase().includes(cityName.toLowerCase())
+    );
+
+    return city?.code || cityName;
+  } catch (error) {
+    console.error('Error getting city code:', error);
+    return cityName;
+  }
+};
+
+// Starling results transformer
+interface StarlingFare {
+  Token?: string;
+  TotalFare?: number;
+  Currency?: string;
+  Legs?: Array<{
+    Segments?: Array<{
+      Airline?: string;
+      AirlineName?: string;
+      DepartureDate?: string;
+    }>;
+  }>;
+}
+
+interface StarlingData {
+  results?: {
+    Fares?: StarlingFare[];
+  };
+}
+
+interface FlightData {
+  id: string;
+  airline: { code: string; name: string };
+  price: { amount: number; currency: string };
+  adults: number;
+  childrens: number;
+  departure_date: string;
+  return_date?: string;
+  legs: Array<{
+    segments: Array<{
+      airline: string;
+      departure_date: string;
+      arrival_date: string;
+      origin: string;
+      destination: string;
+    }>;
+  }>;
+  luggage?: boolean;
+  provider: string;
+}
+
+interface LocalHotelData {
+  name: string;
+  city: string;
+  nights: number;
+  rooms: Array<{
+    total_price: number;
+    currency: string;
+  }>;
+}
+
+interface LocalCombinedTravelResults {
+  flights: FlightData[];
+  hotels: LocalHotelData[];
+  requestType: 'combined' | 'flights-only' | 'hotels-only';
+}
+
+const transformStarlingResults = (starlingData: StarlingData, parsedRequest?: ParsedTravelRequest): FlightData[] => {
+  const fares = starlingData?.results?.Fares || [];
+  return fares.map((fare: StarlingFare) => ({
+    id: fare.Token || Math.random().toString(36),
+    airline: {
+      code: fare.Legs?.[0]?.Segments?.[0]?.Airline || 'N/A',
+      name: fare.Legs?.[0]?.Segments?.[0]?.AirlineName || 'Unknown'
+    },
+    price: {
+      amount: fare.TotalFare || 0,
+      currency: fare.Currency || 'USD'
+    },
+    adults: parsedRequest?.flights?.adults || 1,
+    childrens: parsedRequest?.flights?.children || 0,
+    departure_date: fare.Legs?.[0]?.Segments?.[0]?.DepartureDate || '',
+    return_date: fare.Legs?.[1]?.Segments?.[0]?.DepartureDate,
+    legs: (fare.Legs || []).map(leg => ({
+      segments: (leg.Segments || []).map(segment => ({
+        airline: segment.Airline || '',
+        departure_date: segment.DepartureDate || '',
+        arrival_date: segment.DepartureDate || '', // Using same date as fallback
+        origin: parsedRequest?.flights?.origin || '',
+        destination: parsedRequest?.flights?.destination || ''
+      }))
+    })),
+    luggage: false,
+    provider: 'STARLING'
+  }));
+};
+
 const Chat = () => {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
+  const [sidebarLimit, setSidebarLimit] = useState(5);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  // Limit how many conversations are shown in the sidebar (like ChatGPT)
-  const [sidebarLimit, setSidebarLimit] = useState(5);
-
-  // Use our new hooks
+  // Use our hooks
   const { user } = useAuth();
   const {
     conversations,
@@ -87,477 +185,99 @@ const Chat = () => {
     updateMessageStatus
   } = useMessages(selectedConversation);
 
+  // Create new chat function (defined before useEffects that use it)
+  const createNewChat = useCallback(async (initialTitle?: string) => {
+    if (!user) return;
+
+    try {
+      // Generate a dynamic title based on time or use provided title
+      const currentTime = new Date();
+      const defaultTitle = `Chat ${currentTime.toLocaleDateString('es-ES')} ${currentTime.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+
+      const newConversation = await createConversation({
+        user_id: user.id,
+        status: 'active',
+        channel: 'web',
+        meta: {
+          created_by: user.id,
+          created_from: 'chat_interface',
+          timestamp: currentTime.toISOString(),
+          user_email: user.email,
+          session_id: `session_${Date.now()}`,
+          display_title: initialTitle || defaultTitle
+        }
+      });
+
+      if (newConversation) {
+        setSelectedConversation(newConversation.id);
+        await updateConversationState(newConversation.id, 'active');
+
+        // Show success toast
+        toast({
+          title: "Nueva Conversación",
+          description: "Se ha creado una nueva conversación exitosamente",
+        });
+      }
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo crear la conversación. Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    }
+  }, [user, createConversation, updateConversationState, toast]);
+
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
-  }, []);
+  }, [loadConversations]);
 
   // Handle ?new=1 URL parameter to create new chat automatically
   useEffect(() => {
     const shouldCreateNew = searchParams.get('new') === '1';
     if (shouldCreateNew && conversations.length >= 0) {
-      // Remove the ?new=1 parameter from URL
       searchParams.delete('new');
       setSearchParams(searchParams, { replace: true });
-
-      // Create new chat automatically
       createNewChat();
     }
-  }, [searchParams, conversations.length]);
+  }, [searchParams, conversations.length, setSearchParams, createNewChat]);
 
-  // No auto-scroll - user controls scroll manually
-
-  // Control typing indicator based on new messages from n8n workflows
+  // Typing indicator effect
   useEffect(() => {
-    if (!selectedConversation || messages.length === 0) return;
-
-    // Get the last message
-    const lastMessage = messages[messages.length - 1];
-
-    // If the last message is from assistant and was just received, start typing timer
-    if (lastMessage.role === 'assistant') {
-      const messageAge = Date.now() - new Date(lastMessage.created_at).getTime();
-
-      // If message is less than 2 seconds old, it might be followed by more messages
-      if (messageAge < 2000) {
-        setIsTyping(true);
-
-        // Set timeout to stop typing indicator
-        const timeout = setTimeout(() => {
-          setIsTyping(false);
-        }, 5000);
-
-        return () => clearTimeout(timeout);
-      }
+    if (isTyping && messages.length > 0) {
+      const timer = setTimeout(() => {
+        setIsTyping(false);
+      }, 2000);
+      return () => clearTimeout(timer);
     }
-  }, [messages, selectedConversation]);
+  }, [isTyping, messages.length, selectedConversation]);
 
-  const generateChatTitle = (text: string) => {
-    // Generate a meaningful title from the first message
-    const words = text.split(' ').slice(0, 4).join(' ');
-    return words.length > 30 ? words.substring(0, 30) + '...' : words;
-  };
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
 
-  const extractFlightSearchParams = (message: string) => {
-    console.log('🔍 Starting flight parameter extraction for:', message);
-
-    // Extract origin city - improved patterns to capture full city names
-    const originPatterns = [
-      /(?:vuelo\s+)?(?:desde|de)\s+([a-záéíóúñ\s]+?)\s+(?:a|para|hacia)\s+/i,
-      /vuelo\s+desde\s+([a-záéíóúñ\s]+?)\s+(?:a|para|hacia)\s+/i,
-      /salir\s+(?:desde\s+|de\s+)?([a-záéíóúñ\s]+?)\s+(?:a|para|hacia)\s+/i,
-      /(?:desde|de)\s+([a-záéíóúñ\s]+?)\s+(?:a|para|hacia)\s+/i
-    ];
-
-    let origin = '';
-    for (const pattern of originPatterns) {
-      const match = message.match(pattern);
-      if (match) {
-        origin = match[1].trim().replace(/\s+/g, ' ');
-        console.log('✅ Origin found:', origin);
-        break;
-      }
-    }
-
-    // Extract destination city - improved patterns to avoid capturing extra words
-    const destinationPatterns = [
-      /(?:a|para|hacia)\s+([a-záéíóúñ\s]+?)\s+(?:saliendo|del|desde|el|con|,|$)/i,
-      /vuelo\s+(?:a|para|hacia)\s+([a-záéíóúñ\s]+?)\s+(?:saliendo|del|desde|el|con|,|$)/i,
-      /quiero\s+(?:ir\s+)?(?:a|para)\s+([a-záéíóúñ\s]+?)\s+(?:saliendo|del|desde|el|con|,|$)/i
-    ];
-
-    let destination = '';
-    for (const pattern of destinationPatterns) {
-      const match = message.match(pattern);
-      if (match) {
-        destination = match[1].trim().replace(/\s+/g, ' ');
-        console.log('✅ Destination found:', destination);
-        break;
-      }
-    }
-
-    // Extract dates and people using universal functions
-    const { dateFrom, dateTo } = extractDatesFromMessage(message);
-    const { adults, children } = extractPeopleFromMessage(message);
-
-    // Clean up city names and ensure proper capitalization
-    if (origin) {
-      origin = origin.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
-    }
-    if (destination) {
-      destination = destination.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
-    }
-
-    console.log('🔍 Extracted flight search params:', { origin, destination, dateFrom, dateTo, adults, children });
-
-    return {
-      origin: origin || 'Buenos Aires', // Fallback
-      destination: destination || 'Madrid', // Fallback
-      dateFrom,
-      dateTo,
-      adults,
-      children
-    };
-  };
-
-  const extractDatesFromMessage = (message: string) => {
-    // Enhanced date patterns for Spanish dates
-    const datePatterns = [
-      // ISO format
-      /desde\s+el\s+(\d{4}-\d{2}-\d{2})\s+hasta\s+el?\s+(\d{4}-\d{2}-\d{2})/i,
-      /(\d{4}-\d{2}-\d{2})\s+hasta\s+(\d{4}-\d{2}-\d{2})/i,
-
-      // Slash/dash formats
-      /del\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+al\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/i,
-      /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\s+al?\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/i,
-
-      // Spanish month names with years - more flexible patterns
-      /del\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
-      /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
-      /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+al?\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
-      // Single date patterns (departure only)
-      /saliendo\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})\s+con\s+vuelta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
-
-      // Spanish month names without years - RANGE patterns first
-      /del\s+(\d{1,2})\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
-      /del\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+al\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
-      /desde\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+hasta\s+el\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
-      /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+al?\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
-
-      // Single date patterns (for one-way or single day)
-      /(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+(?:de\s+)?(\d{4})/i,
-      /(\d{1,2})\s+de\s+([a-záéíóúñ]+)/i,
-
-      // Month with duration patterns (for travel with nights)
-      /en\s+([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
-      /([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
-      /durante\s+(\d+)\s+noches?\s+en\s+([a-záéíóúñ]+)/i,
-
-      // Month-year patterns (for packages)
-      /en\s+([a-záéíóúñ]+)\s+(\d{4})/i,
-      /para\s+([a-záéíóúñ]+)\s+(\d{4})/i,
-      /([a-záéíóúñ]+)\s+(\d{4})/i
-    ];
-
-    let dateFrom = '';
-    let dateTo = '';
-
-    const spanishMonths: Record<string, string> = {
-      'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
-      'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
-      'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
-    };
-
-    for (const pattern of datePatterns) {
-      const match = message.match(pattern);
-      if (match) {
-        console.log('📅 Date pattern matched:', pattern, 'Groups:', match);
-        console.log('📅 Match details - length:', match.length, 'values:', match.slice(1));
-
-        if (match.length === 3) {
-          const currentYear = new Date().getFullYear();
-          const nextYear = currentYear + 1;
-
-          // Check if this is a month-duration pattern
-          const monthWithDurationPatterns = [
-            /en\s+([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
-            /([a-záéíóúñ]+)\s+durante\s+(\d+)\s+noches?/i,
-            /durante\s+(\d+)\s+noches?\s+en\s+([a-záéíóúñ]+)/i
-          ];
-
-          let isMonthDurationPattern = false;
-          for (const pattern of monthWithDurationPatterns) {
-            if (pattern.test(message)) {
-              isMonthDurationPattern = true;
-              break;
-            }
-          }
-
-          if (isMonthDurationPattern) {
-            // Month with duration: "en abril durante 8 noches" or "durante 8 noches en abril"
-            console.log('📅 ENTERING MONTH-DURATION BLOCK - match:', match);
-            let month, nights;
-
-            // Determine order based on pattern
-            if (/durante\s+(\d+)\s+noches?\s+en\s+([a-záéíóúñ]+)/i.test(message)) {
-              // "durante 8 noches en abril" - nights first, then month
-              nights = parseInt(match[1]);
-              month = spanishMonths[match[2].toLowerCase()] || '04'; // Default to April
-            } else {
-              // "en abril durante 8 noches" or "abril durante 8 noches" - month first, then nights
-              month = spanishMonths[match[1].toLowerCase()] || '04';
-              nights = parseInt(match[2]);
-            }
-
-            console.log('📅 Month-duration parsed - month:', month, 'nights:', nights);
-
-            // Start on first day of month
-            const year = (parseInt(month) < new Date().getMonth() + 1) ? nextYear : currentYear;
-            dateFrom = `${year}-${month}-01`;
-
-            // Calculate end date based on nights
-            const fromDate = new Date(dateFrom);
-            fromDate.setDate(fromDate.getDate() + nights);
-            dateTo = fromDate.toISOString().split('T')[0];
-
-            console.log('📅 Month-duration result - dateFrom:', dateFrom, 'dateTo:', dateTo);
-          } else {
-            // Month-year pattern: "octubre 2025"
-            const month = spanishMonths[match[1].toLowerCase()];
-            const year = match[2];
-            if (month && year) {
-              dateFrom = `${year}-${month}-01`;
-              // Set dateTo to end of month
-              const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-              dateTo = `${year}-${month}-${lastDay.toString().padStart(2, '0')}`;
-            }
-          }
-        } else if (match.length === 4 && !isNaN(Number(match[2]))) {
-          // Pattern: "del 15 al 25 de diciembre" - match[1]=15, match[2]=25, match[3]=diciembre
-          console.log('📅 ENTERING DATE RANGE BLOCK - match:', match);
-          const currentYear = new Date().getFullYear();
-          const fromDay = match[1].padStart(2, '0');
-          const toDay = match[2].padStart(2, '0');
-          const month = spanishMonths[match[3].toLowerCase()] || '12';
-          console.log('📅 Date components - fromDay:', fromDay, 'toDay:', toDay, 'month:', month);
-          // Si estamos en septiembre y el mes es diciembre, usar el próximo año
-          const year = (currentYear === 2025 && match[3].toLowerCase() === 'diciembre') ? 2025 :
-            (new Date().getMonth() >= 8 && match[3].toLowerCase() === 'diciembre') ? currentYear + 1 : currentYear;
-          console.log('📅 Year calculation - currentYear:', currentYear, 'calculated year:', year);
-
-          dateFrom = `${year}-${month}-${fromDay}`;
-          dateTo = `${year}-${month}-${toDay}`;
-          console.log('📅 FINAL CONSTRUCTED DATES - dateFrom:', dateFrom, 'dateTo:', dateTo);
-        } else if (match.length >= 4 && match[2] && isNaN(Number(match[2]))) {
-          // Spanish format with month names
-          const currentYear = new Date().getFullYear();
-
-          if (match.length >= 7) {
-            // With years: del 1 de octubre de 2025 al 15 de octubre de 2025
-            const fromDay = match[1].padStart(2, '0');
-            const fromMonth = spanishMonths[match[2].toLowerCase()] || '01';
-            const fromYear = match[3] || currentYear;
-            const toDay = match[4].padStart(2, '0');
-            const toMonth = spanishMonths[match[5].toLowerCase()] || '01';
-            const toYear = match[6] || currentYear;
-
-            dateFrom = `${fromYear}-${fromMonth}-${fromDay}`;
-            dateTo = `${toYear}-${toMonth}-${toDay}`;
-          } else if (match.length === 5) {
-            // Without years: del 1 de octubre al 15 de octubre
-            const fromDay = match[1].padStart(2, '0');
-            const fromMonth = spanishMonths[match[2].toLowerCase()] || '01';
-            const toDay = match[3].padStart(2, '0');
-            const toMonth = spanishMonths[match[4].toLowerCase()] || '01';
-
-            dateFrom = `${currentYear}-${fromMonth}-${fromDay}`;
-            dateTo = `${currentYear}-${toMonth}-${toDay}`;
-          } else if (match.length === 4) {
-            // Single date with year: 15 de octubre de 2025
-            const day = match[1].padStart(2, '0');
-            const month = spanishMonths[match[2].toLowerCase()] || '01';
-            const year = match[3] || currentYear;
-
-            dateFrom = `${year}-${month}-${day}`;
-            // Set return date 7 days later for single dates
-            const fromDate = new Date(dateFrom);
-            fromDate.setDate(fromDate.getDate() + 7);
-            dateTo = fromDate.toISOString().split('T')[0];
-          } else if (match.length === 3) {
-            // Single date without year: 15 de octubre
-            const day = match[1].padStart(2, '0');
-            const month = spanishMonths[match[2].toLowerCase()] || '01';
-
-            dateFrom = `${currentYear}-${month}-${day}`;
-            // Set return date 7 days later
-            const fromDate = new Date(dateFrom);
-            fromDate.setDate(fromDate.getDate() + 7);
-            dateTo = fromDate.toISOString().split('T')[0];
-          }
-        } else {
-          // Regular format (ISO or slash/dash)
-          dateFrom = match[1];
-          dateTo = match[2];
-
-          // Convert date formats if needed
-          if (dateFrom && dateTo && (dateFrom.includes('/') || dateFrom.includes('-'))) {
-            const fromParts = dateFrom.split(/[\/\-]/);
-            const toParts = dateTo.split(/[\/\-]/);
-
-            // If format is dd/mm/yyyy, convert to yyyy-mm-dd
-            if (fromParts.length === 3 && fromParts[2].length === 4) {
-              dateFrom = `${fromParts[2]}-${fromParts[1].padStart(2, '0')}-${fromParts[0].padStart(2, '0')}`;
-              dateTo = `${toParts[2]}-${toParts[1].padStart(2, '0')}-${toParts[0].padStart(2, '0')}`;
-            }
-          }
-        }
-        break;
-      }
-    }
-
-    // Default dates if not found
-    if (!dateFrom || !dateTo) {
-      const today = new Date();
-      const futureDate = new Date(today);
-      futureDate.setDate(today.getDate() + 7); // Default 7 days from now
-
-      dateFrom = today.toISOString().split('T')[0];
-      dateTo = futureDate.toISOString().split('T')[0];
-    }
-
-    // Ensure dateTo is at least 1 day after dateFrom
-    const fromDate = new Date(dateFrom);
-    const toDate = new Date(dateTo);
-
-    if (toDate <= fromDate) {
-      console.log('🔧 Adjusting return date to be at least 1 day after departure');
-      const adjustedReturn = new Date(fromDate);
-      adjustedReturn.setDate(fromDate.getDate() + 1);
-      dateTo = adjustedReturn.toISOString().split('T')[0];
-    }
-
-    console.log('📅 FINAL DATES - dateFrom:', dateFrom, 'dateTo:', dateTo);
-    return { dateFrom, dateTo };
-  };
-
-  const extractPeopleFromMessage = (message: string) => {
-    const peoplePatterns = [
-      /para\s+(\d+)\s+personas?/i,                    // "para 4 personas"
-      /para\s+(\d+)\s+adultos?/i,                     // "para 3 adultos"
-      /(\d+)\s+personas?/i,                           // "4 personas"
-      /(\d+)\s+adultos?/i,                            // "2 adultos"
-      /somos\s+(\d+)/i,                               // "somos 3"
-      /grupo\s+de\s+(\d+)/i                           // "grupo de 5"
-    ];
-
-    let adults = 1; // Default to 1 adult
-    for (const pattern of peoplePatterns) {
-      const match = message.match(pattern);
-      if (match) {
-        const numberOfPeople = parseInt(match[1]);
-        if (numberOfPeople > 0 && numberOfPeople <= 10) { // Reasonable limit
-          adults = numberOfPeople;
-          break;
-        }
-      }
-    }
-
-    // Extract children (basic patterns)
-    const childrenPatterns = [
-      /(\d+)\s+niños?/i,
-      /(\d+)\s+menores?/i,
-      /con\s+(\d+)\s+niños?/i
-    ];
-
-    let children = 0;
-    for (const pattern of childrenPatterns) {
-      const match = message.match(pattern);
-      if (match) {
-        const numberOfChildren = parseInt(match[1]);
-        if (numberOfChildren > 0 && numberOfChildren <= 5) {
-          children = numberOfChildren;
-          break;
-        }
-      }
-    }
-
-    return { adults, children };
-  };
-
-  const extractLocationFromMessage = (message: string, type: 'city' | 'destination') => {
-    const locationPatterns = type === 'city' ? [
-      /en\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+desde|\s+del|\s+para|\s+,|$)/i,
-      /ciudad[:\s]+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*)/i,
-      /hotel.*en\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+del|\s+desde|$)/i,
-      /paquete.*en\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+del|\s+desde|$)/i
-    ] : [
-      /(?:para|a|hacia)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+del|\s+desde|\s+el|\s+,|$)/i,
-      /paquetes?.*(?:para|a|en|de)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+para|$|\s+desde|\s+del|\s+en)/i,
-      /(?:para|a|en|de)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+para|$|\s+en)/i
-    ];
-
-    console.log(`🔍 LOCATION EXTRACTION - type: ${type}, message: "${message}"`);
-    for (const pattern of locationPatterns) {
-      const match = message.match(pattern);
-      console.log(`🔍 Testing pattern: ${pattern} - Match:`, match);
-      if (match) {
-        console.log(`✅ LOCATION FOUND: "${match[1].trim()}"`);
-        return match[1].trim();
-      }
-    }
-
-    console.log(`❌ NO LOCATION FOUND for type: ${type}`);
-    return '';
-  };
-
-  const extractHotelSearchParams = (message: string) => {
-    // Extract hotel name
-    const hotelNameMatches = [
-      /necesito\s+el\s+(hotel\s+[a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+desde|\s+del|\s+para|$)/i,
-      /busco\s+(?:el\s+)?(hotel\s+[a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+desde|\s+del|\s+para|$)/i,
-      /quiero\s+(?:el\s+)?(hotel\s+[a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+desde|\s+del|\s+para|$)/i,
-      /(hotel\s+[a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)*?)(?:\s+desde|\s+del|\s+para|$)/i
-    ];
-
-    let hotelName = '';
-    for (const pattern of hotelNameMatches) {
-      const match = message.match(pattern);
-      if (match) {
-        hotelName = match[1].trim();
-        break;
-      }
-    }
-
-    // Extract city using universal function
-    const city = extractLocationFromMessage(message, 'city') || 'Madrid'; // Fallback
-
-    // Extract dates and people using universal functions
-    const { dateFrom, dateTo } = extractDatesFromMessage(message);
-    const { adults, children } = extractPeopleFromMessage(message);
-
-    console.log('🔍 Extracted hotel search params:', { hotelName, city, dateFrom, dateTo, adults });
-
-    return { hotelName, city, dateFrom, dateTo, adults, children };
-  };
-
-  const extractPackageSearchParams = (message: string) => {
-    // Extract destination using universal function
-    const destination = extractLocationFromMessage(message, 'destination') || 'España';
-
-    // Extract dates using universal function
-    const { dateFrom, dateTo } = extractDatesFromMessage(message);
-
-    // Extract package class
-    const lowerMessage = message.toLowerCase();
-    let packageClass = 'AEROTERRESTRE'; // Default
-    if (lowerMessage.includes('solo hotel')) {
-      packageClass = 'HOTEL';
-    } else if (lowerMessage.includes('solo excursion') || lowerMessage.includes('solo tour')) {
-      packageClass = 'EXCURSION';
-    }
-
-    console.log('🔍 Extracted package search params:', { destination, dateFrom, dateTo, packageClass });
-    console.log('🔍 Date validation - dateFrom:', dateFrom, 'dateTo:', dateTo);
-
-    return { destination, dateFrom, dateTo, packageClass };
-  };
-
-  const isPackageRequest = (message: string): boolean => {
+  const generateChatTitle = (message: string): string => {
     const lowerMessage = message.toLowerCase();
 
-    const packageKeywords = [
-      'paquetes',
-      'paquete',
-      'ver paquetes',
-      'buscar paquetes',
-      'quiero paquetes',
-      'necesito paquetes',
-      'paquete completo',
-      'viaje completo',
-      'tour completo'
-    ];
-
-    return packageKeywords.some(keyword => lowerMessage.includes(keyword));
+    // Generate intelligent titles based on message content
+    if (lowerMessage.includes('vuelo') && lowerMessage.includes('hotel')) {
+      return '🌟 Viaje Completo';
+    } else if (lowerMessage.includes('vuelo')) {
+      return '✈️ Búsqueda de Vuelos';
+    } else if (lowerMessage.includes('hotel')) {
+      return '🏨 Búsqueda de Hoteles';
+    } else if (lowerMessage.includes('paquete')) {
+      return '🎒 Búsqueda de Paquetes';
+    } else if (lowerMessage.includes('transfer') || lowerMessage.includes('excursion')) {
+      return '🚌 Servicios de Viaje';
+    } else {
+      // Fallback to first words if no travel keywords detected
+      const words = message.split(' ').slice(0, 6).join(' ');
+      const truncated = words.length > 30 ? words.substring(0, 30) + '...' : words;
+      return `💬 ${truncated}`;
+    }
   };
 
   const handleSendMessage = async () => {
@@ -569,7 +289,7 @@ const Chat = () => {
     setIsTyping(true);
 
     try {
-      // Save user message to database
+      // 1. Save user message
       const userMessage = await saveMessage({
         conversation_id: selectedConversation,
         role: 'user',
@@ -577,1500 +297,719 @@ const Chat = () => {
         meta: { status: 'sending' }
       });
 
-      // Update message status to sent
-      setTimeout(async () => {
-        await updateMessageStatus(userMessage.id, 'sent');
-      }, 500);
+      await updateMessageStatus(userMessage.id, 'sent');
 
-      // Update conversation title if it's the first message
+      // 2. Update conversation title if first message
       if (messages.length === 0) {
         const title = generateChatTitle(currentMessage);
-        await updateConversationTitle(selectedConversation, title);
+        try {
+          await updateConversationTitle(selectedConversation, title);
+          console.log(`✅ Conversation title updated to: "${title}"`);
+        } catch (titleError) {
+          console.error('Error updating conversation title:', titleError);
+          // Don't fail the whole process if title update fails
+        }
       }
 
-      console.log('Sending message to travel-chat:', currentMessage);
+      // 3. Use AI Parser to classify request
+      let parsedRequest: ParsedTravelRequest;
+      try {
+        parsedRequest = await parseMessageWithAI(currentMessage);
+        console.log('✅ AI parsing result:', parsedRequest);
+      } catch (aiError) {
+        console.error('❌ AI parsing failed, using fallback');
+        parsedRequest = getFallbackParsing(currentMessage);
+      }
 
-      // Check what type of travel request this is - PRIORITIZE PACKAGES FIRST
-      const isPackageOnlyRequest = isPackageRequest(currentMessage);
-      const isCombinedRequest = !isPackageOnlyRequest && isCombinedTravelMessage(currentMessage);
-      const isHotelOnlyRequest = !isCombinedRequest && !isPackageOnlyRequest && (
-        currentMessage.toLowerCase().includes('quiero un hotel') ||
-        currentMessage.toLowerCase().includes('busco hotel') ||
-        currentMessage.toLowerCase().includes('necesito hotel')
-      );
+      // 4. Execute searches based on type (WITHOUT N8N)
+      let assistantResponse = '';
+      let structuredData = null;
 
-      // Debug logging
-      console.log('🔍 Message classification for:', currentMessage);
-      console.log('🔍 isPackageOnlyRequest (FIRST):', isPackageOnlyRequest);
-      console.log('🔍 isCombinedRequest:', isCombinedRequest);
-      console.log('🔍 isHotelOnlyRequest:', isHotelOnlyRequest);
+      switch (parsedRequest.requestType) {
+        case 'flights': {
+          const flightResult = await handleFlightSearch(parsedRequest);
+          assistantResponse = flightResult.response;
+          structuredData = flightResult.data;
+          break;
+        }
+        case 'hotels': {
+          const hotelResult = await handleHotelSearch(parsedRequest);
+          assistantResponse = hotelResult.response;
+          structuredData = hotelResult.data;
+          break;
+        }
+        case 'packages': {
+          const packageResult = await handlePackageSearch(parsedRequest);
+          assistantResponse = packageResult.response;
+          structuredData = packageResult.data;
+          break;
+        }
+        case 'services': {
+          const serviceResult = await handleServiceSearch(parsedRequest);
+          assistantResponse = serviceResult.response;
+          break;
+        }
+        case 'combined': {
+          const combinedResult = await handleCombinedSearch(parsedRequest);
+          assistantResponse = combinedResult.response;
+          structuredData = combinedResult.data;
+          break;
+        }
+        default:
+          assistantResponse = await handleGeneralQuery(parsedRequest);
+      }
 
-      let assistantResponse;
-      let combinedDataToAttach: CombinedTravelResults | null = null;
+      // 5. Save response with structured data
+      const assistantMessage = await saveMessage({
+        conversation_id: selectedConversation,
+        role: 'assistant',
+        content: { text: assistantResponse },
+        meta: structuredData ? {
+          source: 'AI_PARSER + EUROVIPS',
+          ...structuredData
+        } : {}
+      });
 
-      // Get conversation info (needed for all requests)
+      // 6. Lead generation (MAINTAIN EXACT)
       const conversation = conversations.find(c => c.id === selectedConversation);
-
-      if (isCombinedRequest) {
-        console.log('🌟 Combined travel request detected (flights + hotels via EUROVIPS)');
-        console.log('🔄 Flow: 1) Parse request 2) Search flights 3) Search hotels');
-
-        try {
-          // Parse the combined travel request
-          const travelRequest = parseCombinedTravelRequest(currentMessage);
-          console.log('🔍 Parsed travel request:', travelRequest);
-
-          if (!travelRequest) {
-            assistantResponse = '🌟 **Viaje Combinado**\n\nNo pude entender completamente tu solicitud de viaje. Por favor, incluye:\n\n✈️ **Vuelos:** origen, destino y fechas\n🏨 **Hotels:** ciudad y fechas\n\n**Ejemplo:** "Quiero un viaje de Buenos Aires a Madrid saliendo el 1 de Julio con vuelta el 10 de Julio y necesito hotel"';
-          } else {
-            // Execute searches based on request type
-            const results: CombinedTravelResults = {
-              flights: [],
-              hotels: [],
-              requestType: travelRequest.requestType
-            };
-
-            // Search flights if requested (via STARLING API)
-            if (travelRequest.requestType === 'combined' || travelRequest.requestType === 'flights-only') {
-              console.log('✈️ Searching flights via Starling API...');
-              try {
-                const starlingResponse = await supabase.functions.invoke('starling-flights', {
-                  body: {
-                    searchParams: {
-                      origin: travelRequest.flights.origin,
-                      destination: travelRequest.flights.destination,
-                      departureDate: travelRequest.flights.departureDate,
-                      returnDate: travelRequest.flights.returnDate,
-                      adults: travelRequest.flights.adults || 1,
-                      children: travelRequest.flights.children || 0
-                    }
-                  }
-                });
-
-                if (starlingResponse.error) {
-                  throw new Error(starlingResponse.error.message || 'Starling API error');
-                }
-
-                // Transform Starling results to our expected format
-                const starlingFlights = starlingResponse.data?.results?.Fares || [];
-                const flights = starlingFlights.map((fare: any) => ({
-                  id: fare.Token || Math.random().toString(36),
-                  airline: {
-                    code: fare.Legs?.[0]?.Segments?.[0]?.Airline || 'N/A',
-                    name: fare.Legs?.[0]?.Segments?.[0]?.AirlineName || 'Unknown Airline'
-                  },
-                  origin: fare.Legs?.[0]?.Segments?.[0]?.DepartureAirport || travelRequest.flights.origin,
-                  destination: fare.Legs?.[0]?.Segments?.[fare.Legs?.[0]?.Segments?.length - 1]?.ArrivalAirport || travelRequest.flights.destination,
-                  departureTime: fare.Legs?.[0]?.Segments?.[0]?.DepartureDate || '',
-                  arrivalTime: fare.Legs?.[0]?.Segments?.[fare.Legs?.[0]?.Segments?.length - 1]?.ArrivalDate || '',
-                  price: {
-                    amount: fare.TotalFare || 0,
-                    currency: fare.Currency || 'USD'
-                  },
-                  provider: 'STARLING'
-                }));
-                results.flights = flights;
-                console.log(`✅ Found ${flights.length} flights via Starling API`);
-              } catch (flightError) {
-                console.error('❌ Error searching flights via Starling API:', flightError);
-              }
-            }
-
-            // Search hotels if requested
-            if (travelRequest.requestType === 'combined' || travelRequest.requestType === 'hotels-only') {
-              console.log('🏨 Searching hotels via EUROVIPS WebService...');
-              try {
-                const hotels = await searchHotelFares(travelRequest.hotels);
-                results.hotels = hotels;
-                console.log(`✅ Found ${hotels.length} hotels via EUROVIPS`);
-              } catch (hotelError) {
-                console.error('❌ Error searching hotels via EUROVIPS:', hotelError);
-              }
-            }
-
-            // 🚀 NEW DUAL-PROVIDER APPROACH: Starling for flights + EUROVIPS for hotels
-            console.log('🚀 Processing results from dual providers...');
-
-            const hasFlightResults = results.flights.length > 0;
-            const hasHotelResults = results.hotels.length > 0;
-
-            console.log(`📊 Results summary: Starling flights=${hasFlightResults} (${results.flights.length}), EUROVIPS hotels=${hasHotelResults} (${results.hotels.length})`);
-
-            // Process and display results from dual providers
-            if (hasFlightResults || hasHotelResults) {
-              console.log('✨ Found results from dual providers - showing combined response');
-              assistantResponse = formatCombinedTravelResponse(results, travelRequest);
-              combinedDataToAttach = results;
-            } else {
-              console.log('❌ No results found from either provider');
-              assistantResponse = formatCombinedTravelResponse(results, travelRequest);
-              combinedDataToAttach = results;
-            }
-          }
-        } catch (error) {
-          console.error('Error processing combined travel request:', error);
-          assistantResponse = '🌟 Disculpa, hay un problema temporal procesando tu solicitud de viaje combinado. Por favor, intenta nuevamente.';
-        }
-      } else if (isPackageOnlyRequest) {
-        console.log('🎒 Package-only request detected, searching via WebService');
-        console.log('🔄 Flow: 1) Get city codes 2) Search packages');
-
-        try {
-          // Extract package search parameters from user message
-          const { destination, dateFrom, dateTo, packageClass } = extractPackageSearchParams(currentMessage);
-          console.log('🔍 Extracted package parameters:', { destination, dateFrom, dateTo, packageClass });
-
-          // Si no hay destino específico, usar España como destino amplio para obtener más resultados
-          const searchCity = destination || 'España';
-
-          // 🚀 NUEVA FUNCIONALIDAD: Verificar disponibilidad antes de buscar
-          if (destination && dateFrom && dateTo) {
-            console.log('🔍 Checking destination availability...');
-            const hasAvailability = await checkDestinationAvailability({
-              destination: searchCity,
-              dateFrom,
-              dateTo,
-              serviceType: 'PAQUETE',
-              serviceSubtype: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'CIRCUITO'
-            });
-
-            if (!hasAvailability) {
-              console.log('❌ No availability found, searching alternatives...');
-              const alternatives = await getAlternativeDestinations({
-                destination: searchCity,
-                dateFrom,
-                dateTo,
-                serviceType: 'PAQUETE',
-                serviceSubtype: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'CIRCUITO'
-              });
-
-              const alternativesText = formatAlternativeDestinations(alternatives);
-              assistantResponse = `😔 Lo siento, no encontré paquetes disponibles para **${searchCity}** del ${dateFrom} al ${dateTo}.\\n\\n💡 **Sugerencias:**\\n${alternativesText}\\n\\n¿Te gustaría que busque en alguno de estos destinos alternativos?`;
-
-              // Saltar la búsqueda y ir directamente a mostrar alternativas
-            } else {
-              // Solo buscar si hay disponibilidad confirmada
-              console.log('📞 Calling searchPackageFares...');
-              console.log(`🌍 Using search destination: ${searchCity}`);
-
-              const packages = await searchPackageFares({
-                city: searchCity,
-                dateFrom,
-                dateTo,
-                class: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO'
-              });
-
-              if (packages.length > 0) {
-                // Format packages into message structure
-                let packageMessage = `🎒 **Paquetes disponibles**\\n\\n`;
-
-                packages.forEach((pkg, index) => {
-                  packageMessage += `---\\n\\n`;
-                  packageMessage += `🎒 **${pkg.name}**`;
-                  if (pkg.category) packageMessage += ` - ${pkg.category}`;
-                  packageMessage += `\\n`;
-                  if (pkg.destination) packageMessage += `📍 **Destino:** ${pkg.destination}\\n`;
-                  if (pkg.description) packageMessage += `📝 **Descripción:** ${pkg.description}\\n`;
-                  packageMessage += `🌙 **Noches:** ${pkg.lodgedNights}\\n`;
-                  packageMessage += `📅 **Días:** ${pkg.lodgedDays}\\n`;
-                  packageMessage += `🎆 **Clase:** ${pkg.class}\\n`;
-
-                  if (pkg.fares && pkg.fares.length > 0) {
-                    packageMessage += `💰 **Precio desde:** $${pkg.fares[0].total?.toLocaleString()} ${pkg.fares[0].currency}\\n`;
-                  }
-
-                  if (pkg.details) {
-                    packageMessage += `\\n**Detalles:** ${pkg.details}\\n`;
-                  }
-
-                  packageMessage += `\\n🌟 *Powered by EUROVIPS*\\n`;
-                });
-
-                packageMessage += `\\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
-                assistantResponse = packageMessage;
-              } else {
-                // No packages found even with availability check
-                assistantResponse = `🎒 **Búsqueda de Paquetes**\\n\\nNo se encontraron paquetes disponibles para ${searchCity} en las fechas solicitadas.`;
-              }
-            }
-          } else {
-            // Si no hay parámetros completos, usar búsqueda estándar
-            console.log('📞 Calling searchPackageFares (standard search)...');
-            const packages = await searchPackageFares({
-              city: searchCity,
-              dateFrom,
-              dateTo,
-              class: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO'
-            });
-
-            if (packages.length > 0) {
-              let packageMessage = `🎒 **Paquetes disponibles**\\n\\n`;
-              packages.forEach((pkg, index) => {
-                packageMessage += `---\\n\\n`;
-                packageMessage += `🎒 **${pkg.name}**`;
-                if (pkg.category) packageMessage += ` - ${pkg.category}`;
-                packageMessage += `\\n`;
-                if (pkg.destination) packageMessage += `📍 **Destino:** ${pkg.destination}\\n`;
-                if (pkg.description) packageMessage += `📝 **Descripción:** ${pkg.description}\\n`;
-                packageMessage += `🌙 **Noches:** ${pkg.lodgedNights}\\n`;
-                packageMessage += `📅 **Días:** ${pkg.lodgedDays}\\n`;
-                packageMessage += `🎆 **Clase:** ${pkg.class}\\n`;
-                if (pkg.fares && pkg.fares.length > 0) {
-                  packageMessage += `💰 **Precio desde:** $${pkg.fares[0].total?.toLocaleString()} ${pkg.fares[0].currency}\\n`;
-                }
-                if (pkg.details) {
-                  packageMessage += `\\n**Detalles:** ${pkg.details}\\n`;
-                }
-                packageMessage += `\\n🌟 *Powered by EUROVIPS*\\n`;
-              });
-              packageMessage += `\\nSelecciona las opciones que más te gusten para generar tu cotización en PDF.`;
-              assistantResponse = packageMessage;
-            } else {
-              // Extract destination from the search to provide more specific feedback
-              const { destination } = extractPackageSearchParams(currentMessage);
-
-              assistantResponse = `🎒 **Búsqueda de Paquetes**\\n\\n` +
-                `He recibido tu solicitud de paquetes${destination ? ` para ${destination}` : ''}.\\n\\n` +
-                `✅ **Estado del sistema:** WebService EUROVIPS configurado correctamente\\n` +
-                `⏳ **En proceso:** Verificando disponibilidad de paquetes\\n\\n` +
-                `Te notificaré cuando encuentre paquetes disponibles para tus fechas.\\n\\n` +
-                `**Parámetros detectados:**\\n` +
-                `- Destino: ${destination || 'No especificado'}\\n` +
-                `- Fechas: ${extractPackageSearchParams(currentMessage).dateFrom} al ${extractPackageSearchParams(currentMessage).dateTo}\\n` +
-                `- Tipo: ${extractPackageSearchParams(currentMessage).packageClass}`;
-            }
-          }
-        } catch (error) {
-          console.error('Error searching packages via WebService:', error);
-          assistantResponse = '🎒 Disculpa, hay un problema temporal con la búsqueda de paquetes. Por favor, intenta nuevamente en unos minutos.';
-        }
-      } else if (isHotelOnlyRequest) {
-        console.log('🏨 Hotel-only request detected, using DUAL service approach');
-        console.log('🔄 Flow: 1) EUROVIPS hotels 2) N8N complement');
-
-        // Use DUAL service approach: EUROVIPS WebService FIRST, then N8N as complement
-        let eurovipsResults = {
-          hotels: [] as any[]
-        };
-
-        let n8nResponse = '';
-
-        // 1. Try EUROVIPS WebService first for structured hotel data
-        console.log('1️⃣ Attempting EUROVIPS hotel search...');
-
-        try {
-          // Extract hotel search parameters from user message
-          const { hotelName, city, dateFrom, dateTo, adults } = extractHotelSearchParams(currentMessage);
-          console.log('🔍 Extracted parameters:', { hotelName, city, dateFrom, dateTo, adults });
-
-          // 🚀 NUEVA FUNCIONALIDAD: Verificar disponibilidad antes de buscar
-          if (city && dateFrom && dateTo) {
-            console.log('🔍 Checking hotel availability...');
-            const hasAvailability = await checkDestinationAvailability({
-              destination: city,
-              dateFrom,
-              dateTo,
-              serviceType: 'HOTEL'
-            });
-
-            if (!hasAvailability) {
-              console.log('❌ No hotel availability found, searching alternatives...');
-              const alternatives = await getAlternativeDestinations({
-                destination: city,
-                dateFrom,
-                dateTo,
-                serviceType: 'HOTEL'
-              });
-
-              const alternativesText = formatAlternativeDestinations(alternatives);
-              assistantResponse = `😔 Lo siento, no encontré hoteles disponibles en **${city}** del ${dateFrom} al ${dateTo}.\\n\\n💡 **Destinos alternativos con hoteles:**\\n${alternativesText}\\n\\n¿Te gustaría que busque hoteles en alguno de estos destinos?`;
-            } else {
-              // Solo buscar si hay disponibilidad confirmada
-              console.log('📞 Calling searchHotelFares...');
-              eurovipsResults.hotels = await searchHotelFares({
-                dateFrom,
-                dateTo,
-                city,
-                adults: adults || 1,
-                hotelName: hotelName || undefined
-              });
-              console.log(`✅ EUROVIPS hotels: ${eurovipsResults.hotels.length}`);
-            }
-          } else {
-            // Si no hay parámetros completos, usar búsqueda estándar
-            console.log('📞 Calling searchHotelFares (standard search)...');
-            eurovipsResults.hotels = await searchHotelFares({
-              dateFrom,
-              dateTo,
-              city,
-              adults: adults || 1,
-              hotelName: hotelName || undefined
-            });
-            console.log(`✅ EUROVIPS hotels: ${eurovipsResults.hotels.length}`);
-            console.log('🔍 EUROVIPS hotel data sample:', JSON.stringify(eurovipsResults.hotels[0], null, 2));
-          }
-        } catch (eurovipsError) {
-          console.error('❌ EUROVIPS hotel search error:', eurovipsError);
-        }
-
-        // 2. Get N8N response as complement with 240 second timeout
-        console.log('2️⃣ Getting N8N complement for hotels...');
-
-        try {
-          // Use Promise.race to implement 240 second timeout
-          const n8nPromise = supabase.functions.invoke('travel-chat', {
-            body: {
-              message: currentMessage,
-              conversationId: selectedConversation,
-              userId: user?.id,
-              userName: user?.email || user?.user_metadata?.full_name,
-              leadId: (conversation as any)?.meta?.lead_id || null,
-              agencyId: user?.user_metadata?.agency_id
-            }
-          });
-
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('N8N timeout after 240 seconds')), 240000)
-          );
-
-          const result = await Promise.race([n8nPromise, timeoutPromise]);
-
-          if ((result as any)?.error) {
-            console.error('N8N error:', (result as any).error);
-            n8nResponse = 'Error obteniendo información complementaria de N8N.';
-          } else {
-            n8nResponse = (result as any)?.data?.message || 'Información complementaria procesada.';
-            console.log('✅ N8N response received');
-          }
-        } catch (n8nError) {
-          if (n8nError.message?.includes('timeout')) {
-            console.error('❌ N8N timeout after 240 seconds:', n8nError);
-            n8nResponse = 'Información complementaria tardando más de lo esperado. Procesamiento continuará en segundo plano.';
-          } else {
-            console.error('❌ N8N error:', n8nError);
-            n8nResponse = 'Información complementaria no disponible temporalmente.';
-          }
-        }
-
-        // 3. Stream results progressively - EUROVIPS first
-        console.log('3️⃣ Streaming hotel results...');
-
-        if (eurovipsResults.hotels.length > 0) {
-          // Show EUROVIPS results immediately
-          let eurovipsResponse = '🚀 **Resultados EUROVIPS** *(Disponibles ahora)*\n\n';
-
-          eurovipsResponse += `🏨 **${eurovipsResults.hotels.length} Hoteles**\n\n`;
-          eurovipsResults.hotels.forEach((hotel, index) => {
-            // Find lowest price for main display
-            const minPrice = hotel.rooms.length > 0 ? Math.min(...hotel.rooms.map(room => room.total_price)) : 0;
-            const minPriceCurrency = hotel.rooms.find(room => room.total_price === minPrice)?.currency || 'USD';
-
-            eurovipsResponse += `${index + 1}. 🏨 **${hotel.name}**\n`;
-
-            if (hotel.address) {
-              eurovipsResponse += `📍 Ubicación: ${hotel.address}\n`;
-            }
-
-            if (hotel.category) {
-              eurovipsResponse += `⭐ Categoría: ${hotel.category}\n`;
-            }
-
-            if (minPrice > 0) {
-              eurovipsResponse += `💰 Precio: ${minPrice.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${minPriceCurrency}\n`;
-            }
-
-            eurovipsResponse += `\n📅 Check-in: ${hotel.check_in}\n`;
-            eurovipsResponse += `📅 Check-out: ${hotel.check_out}\n`;
-
-            // Show availability summary
-            if (hotel.rooms.length > 1) {
-              eurovipsResponse += `\n🏠 **${hotel.rooms.length} tipos de habitación disponibles**\n`;
-            }
-
-            eurovipsResponse += `🌟 *Fuente: EUROVIPS*\n\n`;
-          });
-
-          eurovipsResponse += `⏳ *Buscando información complementaria en N8N...*`;
-
-          // Save EUROVIPS results immediately with structured data
-          console.log('💾 Saving EUROVIPS hotel results immediately...');
-          const eurovipsMessage = await saveMessage({
-            conversation_id: selectedConversation,
-            role: 'assistant',
-            content: { text: eurovipsResponse },
-            meta: {
-              source: 'EUROVIPS',
-              streaming: true,
-              eurovipsData: {
-                hotels: eurovipsResults.hotels
-              }
-            }
-          });
-
-          // Start N8N request asynchronously and append when ready
-          console.log('🔄 Starting N8N hotel request asynchronously...');
-          setTimeout(async () => {
-            try {
-              console.log('📞 N8N async hotel request starting...');
-              const n8nStartTime = Date.now();
-
-              // Use the same N8N call with 240 second timeout for streaming
-              const n8nAsyncPromise = supabase.functions.invoke('travel-chat', {
-                body: {
-                  message: currentMessage,
-                  conversationId: selectedConversation,
-                  userId: user?.id,
-                  userName: user?.email || user?.user_metadata?.full_name,
-                  leadId: (conversation as any)?.meta?.lead_id || null,
-                  agencyId: user?.user_metadata?.agency_id
-                }
-              });
-
-              const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('N8N async timeout after 240 seconds')), 240000)
-              );
-
-              const result = await Promise.race([n8nAsyncPromise, timeoutPromise]);
-
-              let finalN8nResponse;
-              if ((result as any)?.error || !(result as any)?.data?.message) {
-                finalN8nResponse = 'Información complementaria procesada con limitaciones técnicas.';
-              } else {
-                finalN8nResponse = (result as any).data.message;
-              }
-
-              const n8nDuration = Date.now() - n8nStartTime;
-              console.log(`✅ N8N async hotel completed in ${n8nDuration}ms`);
-
-              const n8nComplementResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${finalN8nResponse}\n\n🌟 *Fuente: N8N Workflow* *(${Math.round(n8nDuration / 1000)}s)*\n\n---\n\n✨ **Resumen:** ${eurovipsResults.hotels.length} hoteles EUROVIPS + información N8N`;
-
-              // Append N8N results as a new message
-              await saveMessage({
-                conversation_id: selectedConversation,
-                role: 'assistant',
-                content: { text: n8nComplementResponse },
-                meta: { source: 'N8N', streaming: true, parentMessageId: eurovipsMessage.id }
-              });
-
-            } catch (n8nError) {
-              console.error('❌ N8N streaming error:', n8nError);
-
-              let errorMessage;
-              if (n8nError.message?.includes('timeout')) {
-                errorMessage = `⏱️ **N8N Timeout**\n\nLa información complementaria está tardando más de 4 minutos. El procesamiento continuará en segundo plano.\n\n🌟 *Los resultados EUROVIPS arriba son completos y actuales.*`;
-              } else {
-                errorMessage = `⚠️ **N8N Information**\n\nLa información complementaria no está disponible temporalmente.\n\n🌟 *Los resultados EUROVIPS arriba son completos y actuales.*`;
-              }
-
-              // Show N8N error as separate message
-              await saveMessage({
-                conversation_id: selectedConversation,
-                role: 'assistant',
-                content: { text: `\n\n---\n\n${errorMessage}` },
-                meta: { source: 'N8N', streaming: true, error: true }
-              });
-            }
-          }, 100); // Small delay to ensure EUROVIPS message is saved first
-
-          // Don't set assistantResponse - messages are saved separately
-          assistantResponse = null;
-
-        } else {
-          // No EUROVIPS results - show N8N only
-          console.log('📋 No EUROVIPS hotel results, showing N8N response...');
-          assistantResponse = `📋 **Respuesta N8N**\n\n${n8nResponse}\n\n🌟 *Fuente: N8N Workflow*\n\nℹ️ *No se encontraron resultados estructurados en EUROVIPS para esta consulta.*`;
-        }
-      } else {
-        // Use DUAL service approach: EUROVIPS WebService FIRST, then N8N as complement
-        console.log('🔄 Dual service approach: EUROVIPS + N8N');
-
-        let eurovipsResults = {
-          flights: [] as any[],
-          hotels: [] as any[],
-          packages: [] as any[],
-          services: [] as any[]
-        };
-
-        let n8nResponse = '';
-
-        // 1. Try EUROVIPS WebService first for structured data
-        console.log('1️⃣ Attempting EUROVIPS searches...');
-
-        try {
-          // Detect search types from message
-          const isFlightQuery = currentMessage.toLowerCase().includes('vuelo') || currentMessage.toLowerCase().includes('volar');
-          const isHotelQuery = currentMessage.toLowerCase().includes('hotel');
-          const isPackageQuery = currentMessage.toLowerCase().includes('paquete');
-          const isServiceQuery = currentMessage.toLowerCase().includes('transfer') || currentMessage.toLowerCase().includes('excursion');
-
-          // Search flights via STARLING API
-          if (isFlightQuery) {
-            try {
-              const { origin, destination, dateFrom, dateTo, adults, children } = extractFlightSearchParams(currentMessage);
-              console.log('✈️ Searching flights via Starling API...', { origin, destination, dateFrom, adults });
-
-              const starlingResponse = await supabase.functions.invoke('starling-flights', {
-                body: {
-                  searchParams: {
-                    origin: origin,
-                    destination: destination,
-                    departureDate: dateFrom,
-                    returnDate: dateTo,
-                    adults: adults || 1,
-                    children: children || 0
-                  }
-                }
-              });
-
-              if (starlingResponse.error) {
-                throw new Error(starlingResponse.error.message || 'Starling API error');
-              }
-
-              // Transform Starling results to our expected format
-              const starlingFlights = starlingResponse.data?.results?.Fares || [];
-              eurovipsResults.flights = starlingFlights.map((fare: any) => ({
-                id: fare.Token || Math.random().toString(36),
-                airline: {
-                  code: fare.Legs?.[0]?.Segments?.[0]?.Airline || 'N/A',
-                  name: fare.Legs?.[0]?.Segments?.[0]?.AirlineName || 'Unknown Airline'
-                },
-                origin: fare.Legs?.[0]?.Segments?.[0]?.DepartureAirport || origin,
-                destination: fare.Legs?.[0]?.Segments?.[fare.Legs?.[0]?.Segments?.length - 1]?.ArrivalAirport || destination,
-                departureTime: fare.Legs?.[0]?.Segments?.[0]?.DepartureDate || '',
-                arrivalTime: fare.Legs?.[0]?.Segments?.[fare.Legs?.[0]?.Segments?.length - 1]?.ArrivalDate || '',
-                price: {
-                  amount: fare.TotalFare || 0,
-                  currency: fare.Currency || 'USD'
-                },
-                provider: 'STARLING'
-              }));
-              console.log(`✅ Starling flights: ${eurovipsResults.flights.length}`);
-            } catch (error) {
-              console.error('❌ Starling flights error:', error);
-            }
-          }
-
-          // Search hotels via EUROVIPS
-          if (isHotelQuery) {
-            try {
-              const { city, dateFrom, dateTo, adults } = extractHotelSearchParams(currentMessage);
-              console.log('🏨 Searching hotels via EUROVIPS...');
-              eurovipsResults.hotels = await searchHotelFares({
-                dateFrom,
-                dateTo,
-                city,
-                adults
-              });
-              console.log(`✅ EUROVIPS hotels: ${eurovipsResults.hotels.length}`);
-            } catch (error) {
-              console.error('❌ EUROVIPS hotels error:', error);
-            }
-          }
-
-          // Search packages via EUROVIPS
-          if (isPackageQuery) {
-            try {
-              const { destination, dateFrom, dateTo, packageClass } = extractPackageSearchParams(currentMessage);
-              console.log('🎒 Searching packages via EUROVIPS...');
-              eurovipsResults.packages = await searchPackageFares({
-                city: destination || 'España',
-                dateFrom,
-                dateTo,
-                class: packageClass as 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO'
-              });
-              console.log(`✅ EUROVIPS packages: ${eurovipsResults.packages.length}`);
-            } catch (error) {
-              console.error('❌ EUROVIPS packages error:', error);
-            }
-          }
-
-          // Search services via EUROVIPS
-          if (isServiceQuery) {
-            try {
-              console.log('🚌 Searching services via EUROVIPS...');
-              // Extract location and dates using universal functions
-              const city = extractLocationFromMessage(currentMessage, 'city') || 'Buzios'; // Default
-              const { dateFrom } = extractDatesFromMessage(currentMessage);
-
-              const serviceParams = {
-                city,
-                dateFrom,
-                serviceType: '1' as '1' | '2' | '3' // Transfer (default)
-              };
-              console.log('🚌 Service search params:', serviceParams);
-              eurovipsResults.services = await searchServiceFares(serviceParams);
-              console.log(`✅ EUROVIPS services: ${eurovipsResults.services.length}`);
-            } catch (error) {
-              console.error('❌ EUROVIPS services error:', error);
-            }
-          }
-
-        } catch (eurovipsError) {
-          console.error('❌ EUROVIPS WebService error:', eurovipsError);
-        }
-
-        // 2. Get N8N response as complement with 240 second timeout
-        console.log('2️⃣ Getting N8N complement...');
-
-        try {
-          // Use Promise.race to implement 240 second timeout
-          const n8nPromise = supabase.functions.invoke('travel-chat', {
-            body: {
-              message: currentMessage,
-              conversationId: selectedConversation,
-              userId: user?.id,
-              userName: user?.email || user?.user_metadata?.full_name,
-              leadId: (conversation as any)?.meta?.lead_id || null,
-              agencyId: user?.user_metadata?.agency_id
-            }
-          });
-
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('N8N timeout after 240 seconds')), 240000)
-          );
-
-          const result = await Promise.race([n8nPromise, timeoutPromise]);
-
-          if ((result as any)?.error) {
-            console.error('N8N error:', (result as any).error);
-            n8nResponse = 'Error obteniendo información complementaria de N8N.';
-          } else {
-            n8nResponse = (result as any)?.data?.message || 'Información complementaria procesada.';
-            console.log('✅ N8N response received');
-          }
-        } catch (n8nError) {
-          if (n8nError.message?.includes('timeout')) {
-            console.error('❌ N8N timeout after 240 seconds:', n8nError);
-            n8nResponse = 'Información complementaria tardando más de lo esperado. Procesamiento continuará en segundo plano.';
-          } else {
-            console.error('❌ N8N error:', n8nError);
-            n8nResponse = 'Información complementaria no disponible temporalmente.';
-          }
-        }
-
-        // 3. Stream results progressively - EUROVIPS first
-        console.log('3️⃣ Streaming EUROVIPS results...');
-
-        const totalEurovipsResults = eurovipsResults.flights.length +
-          eurovipsResults.hotels.length +
-          eurovipsResults.packages.length +
-          eurovipsResults.services.length;
-
-        if (totalEurovipsResults > 0) {
-          // Show EUROVIPS results immediately
-          let eurovipsResponse = '🚀 **Resultados EUROVIPS** *(Disponibles ahora)*\n\n';
-
-          if (eurovipsResults.flights.length > 0) {
-            eurovipsResponse += `✈️ **${eurovipsResults.flights.length} Vuelos**\n\n`;
-            eurovipsResults.flights.forEach((flight, index) => {
-              eurovipsResponse += `**Vuelo ${index + 1}** - ${flight.airline.name}\n`;
-              eurovipsResponse += `💰 ${flight.price.amount} ${flight.price.currency}\n`;
-              eurovipsResponse += `🌟 *Fuente: EUROVIPS*\n\n`;
-            });
-          }
-
-          if (eurovipsResults.hotels.length > 0) {
-            eurovipsResponse += `🏨 **${eurovipsResults.hotels.length} Hoteles**\n\n`;
-            eurovipsResults.hotels.forEach((hotel, index) => {
-              eurovipsResponse += `**${hotel.name}** - ${hotel.city}\n`;
-              if (hotel.rooms.length > 0) {
-                eurovipsResponse += `💰 Desde ${hotel.rooms[0].total_price} ${hotel.rooms[0].currency}\n`;
-              }
-              eurovipsResponse += `🌟 *Fuente: EUROVIPS*\n\n`;
-            });
-          }
-
-          if (eurovipsResults.packages.length > 0) {
-            eurovipsResponse += `🎒 **${eurovipsResults.packages.length} Paquetes**\n\n`;
-            eurovipsResults.packages.forEach((pkg, index) => {
-              eurovipsResponse += `**${pkg.name}**\n`;
-              eurovipsResponse += `📍 ${pkg.destination}\n`;
-              eurovipsResponse += `💰 ${pkg.price.amount} ${pkg.price.currency}\n`;
-              eurovipsResponse += `🌟 *Fuente: EUROVIPS*\n\n`;
-            });
-          }
-
-          if (eurovipsResults.services.length > 0) {
-            eurovipsResponse += `🚌 **${eurovipsResults.services.length} Servicios**\n\n`;
-            eurovipsResults.services.forEach((service, index) => {
-              eurovipsResponse += `**${service.name}**\n`;
-              eurovipsResponse += `📍 ${service.location?.name || service.city}\n`;
-              eurovipsResponse += `💰 ${service.price_per_person} ${service.currency}\n`;
-              eurovipsResponse += `🌟 *Fuente: EUROVIPS*\n\n`;
-            });
-          }
-
-          eurovipsResponse += `⏳ *Buscando información complementaria en N8N...*`;
-
-          // Save EUROVIPS results immediately with structured data
-          console.log('💾 Saving EUROVIPS results immediately...');
-          const eurovipsMessage = await saveMessage({
-            conversation_id: selectedConversation,
-            role: 'assistant',
-            content: { text: eurovipsResponse },
-            meta: {
-              source: 'EUROVIPS',
-              streaming: true,
-              eurovipsData: {
-                flights: eurovipsResults.flights,
-                hotels: eurovipsResults.hotels,
-                packages: eurovipsResults.packages,
-                services: eurovipsResults.services
-              }
-            }
-          });
-
-          // Start N8N request asynchronously and append when ready
-          console.log('🔄 Starting N8N request asynchronously...');
-          setTimeout(async () => {
-            try {
-              console.log('📞 N8N async request starting...');
-              const n8nStartTime = Date.now();
-
-              // Use the same N8N call with 240 second timeout for streaming
-              const n8nAsyncPromise = supabase.functions.invoke('travel-chat', {
-                body: {
-                  message: currentMessage,
-                  conversationId: selectedConversation,
-                  userId: user?.id,
-                  userName: user?.email || user?.user_metadata?.full_name,
-                  leadId: (conversation as any)?.meta?.lead_id || null,
-                  agencyId: user?.user_metadata?.agency_id
-                }
-              });
-
-              const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('N8N async timeout after 240 seconds')), 240000)
-              );
-
-              const result = await Promise.race([n8nAsyncPromise, timeoutPromise]);
-
-              let finalN8nResponse;
-              if ((result as any)?.error || !(result as any)?.data?.message) {
-                finalN8nResponse = 'Información complementaria procesada con limitaciones técnicas.';
-              } else {
-                finalN8nResponse = (result as any).data.message;
-              }
-
-              const n8nDuration = Date.now() - n8nStartTime;
-              console.log(`✅ N8N async completed in ${n8nDuration}ms`);
-
-              const n8nComplementResponse = `\n\n---\n\n📋 **Información Complementaria N8N**\n\n${finalN8nResponse}\n\n🌟 *Fuente: N8N Workflow* *(${Math.round(n8nDuration / 1000)}s)*\n\n---\n\n✨ **Resumen:** ${totalEurovipsResults} resultados EUROVIPS + información N8N`;
-
-              // Append N8N results as a new message
-              await saveMessage({
-                conversation_id: selectedConversation,
-                role: 'assistant',
-                content: { text: n8nComplementResponse },
-                meta: { source: 'N8N', streaming: true, parentMessageId: eurovipsMessage.id }
-              });
-
-            } catch (n8nError) {
-              console.error('❌ N8N streaming error:', n8nError);
-
-              let errorMessage;
-              if (n8nError.message?.includes('timeout')) {
-                errorMessage = `⏱️ **N8N Timeout**\n\nLa información complementaria está tardando más de 4 minutos. El procesamiento continuará en segundo plano.\n\n🌟 *Los resultados EUROVIPS arriba son completos y actuales.*`;
-              } else {
-                errorMessage = `⚠️ **N8N Information**\n\nLa información complementaria no está disponible temporalmente.\n\n🌟 *Los resultados EUROVIPS arriba son completos y actuales.*`;
-              }
-
-              // Show N8N error as separate message
-              await saveMessage({
-                conversation_id: selectedConversation,
-                role: 'assistant',
-                content: { text: `\n\n---\n\n${errorMessage}` },
-                meta: { source: 'N8N', streaming: true, error: true }
-              });
-            }
-          }, 100); // Small delay to ensure EUROVIPS message is saved first
-
-          // Don't set assistantResponse - messages are saved separately
-          assistantResponse = null;
-
-        } else {
-          // No EUROVIPS results - show N8N only
-          console.log('📋 No EUROVIPS results, showing N8N response...');
-          assistantResponse = `📋 **Respuesta N8N**\n\n${n8nResponse}\n\n🌟 *Fuente: N8N Workflow*\n\nℹ️ *No se encontraron resultados estructurados en EUROVIPS para esta consulta.*`;
-        }
-      }
-
-      // Mark message as delivered
-      await updateMessageStatus(userMessage.id, 'delivered');
-
-      // Turn off immediate typing indicator
-      setIsTyping(false);
-
-      // Save AI response to database only if not streaming (assistantResponse not null)
-      let assistantMessage = null;
-      if (assistantResponse !== null) {
-        assistantMessage = await saveMessage({
-          conversation_id: selectedConversation,
-          role: 'assistant',
-          content: {
-            text: assistantResponse
-          },
-          meta: combinedDataToAttach ? { combinedData: combinedDataToAttach } : {}
-        });
-      } else {
-        // For streaming responses, create a placeholder for lead generation
-        assistantMessage = {
-          id: 'streaming-placeholder',
-          role: 'assistant' as const,
-          content: { text: 'Streaming response in progress' },
-          conversation_id: selectedConversation,
-          created_at: new Date().toISOString(),
-          meta: {}
-        };
-      }
-
-      // NUEVO: Crear o actualizar lead con información extraída después del primer mensaje del usuario
       if (conversation) {
-        console.log('Processing lead creation/update from user message');
-
-        // Obtener todos los mensajes actuales incluyendo el que acabamos de guardar
-        const allMessages = [...messages,
-        {
-          id: 'temp-user',
-          role: 'user' as const,
-          content: { text: currentMessage },
-          conversation_id: selectedConversation,
-          created_at: new Date().toISOString(),
-          meta: {}
-        } as MessageRow,
-          assistantMessage
-        ];
-
+        const allMessages = [...messages, userMessage, assistantMessage];
         const leadId = await createLeadFromChat(conversation, allMessages);
         if (leadId) {
-          console.log('Lead created/updated from chat with ID:', leadId);
           toast({
             title: "Lead Actualizado",
-            description: "Se ha creado/actualizado automáticamente tu lead en el CRM con la información del chat.",
+            description: "Se ha creado/actualizado automáticamente tu lead en el CRM.",
           });
         }
       }
 
     } catch (error) {
       console.error('Error sending message:', error);
-      setIsTyping(false);
-
       toast({
         title: "Error",
         description: "No se pudo enviar el mensaje. Inténtalo de nuevo.",
         variant: "destructive",
       });
-
-      // Save error response - real-time subscription will handle displaying it
-      await saveMessage({
-        conversation_id: selectedConversation,
-        role: 'assistant',
-        content: { text: 'Lo siento, hubo un error procesando tu mensaje. ¿Puedes intentarlo de nuevo?' },
-        meta: {}
-      });
     } finally {
       setIsLoading(false);
+      setIsTyping(false);
     }
   };
 
-  const getMessageStatusIcon = (status?: string) => {
+  // Handler functions WITHOUT N8N
+  const handleFlightSearch = async (parsed: ParsedTravelRequest) => {
+    try {
+      const starlingParams = formatForStarling(parsed);
+      const response = await supabase.functions.invoke('starling-flights', {
+        body: starlingParams
+      });
+
+      if (response.error) throw new Error(response.error.message);
+
+      const flights = transformStarlingResults(response.data, parsed);
+
+      return {
+        response: formatFlightResponse(flights, parsed),
+        data: {
+          combinedData: {
+            flights,
+            hotels: [],
+            requestType: 'flights-only' as const
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        response: '❌ Error buscando vuelos. Intenta con fechas y destinos específicos.',
+        data: null
+      };
+    }
+  };
+
+  const handleHotelSearch = async (parsed: ParsedTravelRequest) => {
+    try {
+      const eurovipsParams = formatForEurovips(parsed);
+
+      // Get city code first
+      const cityCode = await getCityCode(eurovipsParams.hotelParams.cityCode);
+
+      const response = await supabase.functions.invoke('eurovips-soap', {
+        body: {
+          action: 'searchHotels',
+          data: {
+            ...eurovipsParams.hotelParams,
+            cityCode: cityCode
+          }
+        }
+      });
+
+      if (response.error) throw new Error(response.error.message);
+
+      const hotels = response.data.results || [];
+
+      return {
+        response: formatHotelResponse(hotels, parsed),
+        data: {
+          eurovipsData: { hotels },
+          combinedData: {
+            flights: [],
+            hotels,
+            requestType: 'hotels-only' as const
+          }
+        }
+      };
+    } catch (error) {
+      return {
+        response: '❌ Error buscando hoteles. Verifica la ciudad y fechas.',
+        data: null
+      };
+    }
+  };
+
+  const handlePackageSearch = async (parsed: ParsedTravelRequest) => {
+    try {
+      const eurovipsParams = formatForEurovips(parsed);
+      const cityCode = await getCityCode(eurovipsParams.packageParams.cityCode);
+
+      const response = await supabase.functions.invoke('eurovips-soap', {
+        body: {
+          action: 'searchPackages',
+          data: {
+            ...eurovipsParams.packageParams,
+            cityCode: cityCode
+          }
+        }
+      });
+
+      const packages = response.data.results || [];
+
+      return {
+        response: formatPackageResponse(packages, parsed),
+        data: null
+      };
+    } catch (error) {
+      return {
+        response: '❌ Error buscando paquetes. Intenta con un destino específico.',
+        data: null
+      };
+    }
+  };
+
+  const handleServiceSearch = async (parsed: ParsedTravelRequest) => {
+    try {
+      const eurovipsParams = formatForEurovips(parsed);
+      const cityCode = await getCityCode(eurovipsParams.serviceParams.cityCode);
+
+      const response = await supabase.functions.invoke('eurovips-soap', {
+        body: {
+          action: 'searchServices',
+          data: {
+            ...eurovipsParams.serviceParams,
+            cityCode: cityCode
+          }
+        }
+      });
+
+      const services = response.data.results || [];
+
+      return {
+        response: formatServiceResponse(services, parsed),
+        data: null
+      };
+    } catch (error) {
+      return {
+        response: '❌ Error buscando servicios. Verifica la ciudad y fechas.',
+        data: null
+      };
+    }
+  };
+
+  const handleCombinedSearch = async (parsed: ParsedTravelRequest) => {
+    try {
+      // Parallel searches
+      const [flightResult, hotelResult] = await Promise.all([
+        handleFlightSearch(parsed),
+        handleHotelSearch(parsed)
+      ]);
+
+      const combinedData = {
+        flights: flightResult.data?.combinedData?.flights || [],
+        hotels: hotelResult.data?.combinedData?.hotels || [],
+        requestType: 'combined' as const
+      };
+
+      return {
+        response: formatCombinedResponse(combinedData, parsed),
+        data: { combinedData }
+      };
+    } catch (error) {
+      return {
+        response: '❌ Error en búsqueda combinada. Intenta por separado.',
+        data: null
+      };
+    }
+  };
+
+  const handleGeneralQuery = async (parsed: ParsedTravelRequest) => {
+    // General response without N8N
+    return '¡Hola! Soy Emilia, tu asistente de viajes. Puedo ayudarte con:\n\n' +
+           '✈️ **Búsqueda de vuelos**\n' +
+           '🏨 **Búsqueda de hoteles**\n' +
+           '🎒 **Búsqueda de paquetes**\n' +
+           '🚌 **Servicios y transfers**\n\n' +
+           'Dime qué necesitas con fechas y destinos específicos.';
+  };
+
+  // Response formatters - using the main FlightData interface
+  const formatFlightResponse = (flights: FlightData[], parsed: ParsedTravelRequest) => {
+    if (flights.length === 0) {
+      return '✈️ **Búsqueda de Vuelos**\n\nNo encontré vuelos disponibles para esas fechas y destino. Intenta con fechas alternativas.';
+    }
+
+    let response = `✈️ **${flights.length} Vuelos Disponibles**\n\n`;
+
+    flights.slice(0, 5).forEach((flight, index) => {
+      response += `---\n\n`;
+      response += `✈️ **Opción ${index + 1}** - ${flight.airline.name}\n`;
+      response += `💰 **Precio:** ${flight.price.amount} ${flight.price.currency}\n`;
+      response += `🛫 **Salida:** ${flight.departure_date}\n`;
+      response += `🛬 **Regreso:** ${flight.return_date || 'Solo ida'}\n\n`;
+    });
+
+    response += '\n📋 Selecciona las opciones que prefieras para generar tu cotización.';
+    return response;
+  };
+
+  interface LocalHotelData {
+    name: string;
+    city: string;
+    nights: number;
+    rooms: Array<{
+      total_price: number;
+      currency: string;
+    }>;
+  }
+
+  const formatHotelResponse = (hotels: LocalHotelData[], parsed: ParsedTravelRequest) => {
+    if (hotels.length === 0) {
+      return '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.';
+    }
+
+    let response = `🏨 **${hotels.length} Hoteles Disponibles**\n\n`;
+
+    hotels.slice(0, 5).forEach((hotel, index) => {
+      const minPrice = Math.min(...hotel.rooms.map((r) => r.total_price));
+      response += `---\n\n`;
+      response += `🏨 **${hotel.name}**\n`;
+      response += `📍 ${hotel.city}\n`;
+      response += `💰 Desde ${minPrice} ${hotel.rooms[0].currency}\n`;
+      response += `🌙 ${hotel.nights} noches\n\n`;
+    });
+
+    response += '\n📋 Selecciona los hoteles que prefieras para tu cotización.';
+    return response;
+  };
+
+  interface LocalPackageData {
+    name: string;
+    destination: string;
+    price: number;
+    currency: string;
+    duration: number;
+  }
+
+  const formatPackageResponse = (packages: LocalPackageData[], parsed: ParsedTravelRequest) => {
+    if (packages.length === 0) {
+      return '🎒 **Búsqueda de Paquetes**\n\nNo encontré paquetes disponibles. Intenta con otro destino o fechas.';
+    }
+
+    let response = `🎒 **${packages.length} Paquetes Disponibles**\n\n`;
+
+    packages.slice(0, 5).forEach((pkg, index) => {
+      response += `---\n\n`;
+      response += `🎒 **${pkg.name}**\n`;
+      response += `📍 ${pkg.destination}\n`;
+      response += `💰 **Precio:** ${pkg.price} ${pkg.currency}\n`;
+      response += `📅 **Duración:** ${pkg.duration} días\n\n`;
+    });
+
+    response += '\n📋 Selecciona los paquetes que prefieras para tu cotización.';
+    return response;
+  };
+
+  interface LocalServiceData {
+    name: string;
+    city: string;
+    price: number;
+    currency: string;
+    duration: string;
+  }
+
+  const formatServiceResponse = (services: LocalServiceData[], parsed: ParsedTravelRequest) => {
+    if (services.length === 0) {
+      return '🚌 **Búsqueda de Servicios**\n\nNo encontré servicios disponibles. Verifica la ciudad y fechas.';
+    }
+
+    let response = `🚌 **${services.length} Servicios Disponibles**\n\n`;
+
+    services.slice(0, 5).forEach((service, index) => {
+      response += `---\n\n`;
+      response += `🚌 **${service.name}**\n`;
+      response += `📍 ${service.city}\n`;
+      response += `💰 **Precio:** ${service.price} ${service.currency}\n`;
+      response += `⏰ **Duración:** ${service.duration}\n\n`;
+    });
+
+    response += '\n📋 Selecciona los servicios que prefieras para tu cotización.';
+    return response;
+  };
+
+  const formatCombinedResponse = (combinedData: LocalCombinedTravelResults, parsed: ParsedTravelRequest) => {
+    let response = '🌟 **Búsqueda Combinada Completada**\n\n';
+
+    if (combinedData.flights.length > 0) {
+      response += `✈️ **${combinedData.flights.length} vuelos encontrados**\n`;
+    }
+
+    if (combinedData.hotels.length > 0) {
+      response += `🏨 **${combinedData.hotels.length} hoteles encontrados**\n`;
+    }
+
+    response += '\n📋 Usa los selectores interactivos para crear tu cotización personalizada.';
+    return response;
+  };
+
+  // Message display helpers
+  const getMessageContent = (msg: MessageRow): string => {
+    if (typeof msg.content === 'string') return msg.content;
+    if (typeof msg.content === 'object' && msg.content && 'text' in msg.content) {
+      return (msg.content as { text?: string }).text || '';
+    }
+    return '';
+  };
+
+  const getMessageStatus = (msg: MessageRow): string => {
+    if (typeof msg.meta === 'object' && msg.meta && 'status' in msg.meta) {
+      return (msg.meta as { status?: string }).status || 'sent';
+    }
+    return 'sent';
+  };
+
+  const getMessageStatusIcon = (status: string) => {
     switch (status) {
       case 'sending':
-        return <Loader2 className="inline h-3 w-3 animate-spin" />;
+        return <Clock className="h-3 w-3" />;
       case 'sent':
-        return <Check className="inline h-3 w-3" />;
+        return <Check className="h-3 w-3" />;
       case 'delivered':
-        return <CheckCheck className="inline h-3 w-3" />;
-      case 'failed':
-        return <Clock className="inline h-3 w-3 text-destructive" />;
+        return <CheckCheck className="h-3 w-3" />;
       default:
-        return <Clock className="inline h-3 w-3" />;
+        return <Check className="h-3 w-3" />;
     }
   };
 
-  const formatTime = (timestamp: string) => {
-    return new Date(timestamp).toLocaleTimeString([], {
+  const formatTime = (timestamp: string): string => {
+    return new Date(timestamp).toLocaleTimeString('es-ES', {
       hour: '2-digit',
       minute: '2-digit'
     });
   };
 
-  const getChannelIcon = (channel: string) => {
-    return channel === 'wa' ? Phone : Globe;
+  const handlePdfGenerated = (pdfUrl: string) => {
+    toast({
+      title: "PDF Generado",
+      description: "Tu cotización se ha generado exitosamente.",
+    });
   };
 
-  const getChatNumber = (convId: string) => {
-    const index = conversations.findIndex(c => c.id === convId);
-    return conversations.length - index;
+  // Convert local combined data to global type for component compatibility
+  const convertToGlobalCombinedData = (localData: LocalCombinedTravelResults): CombinedTravelResults => {
+    return {
+      flights: localData.flights.map(flight => ({
+        id: flight.id,
+        airline: flight.airline,
+        price: flight.price,
+        adults: flight.adults,
+        childrens: flight.childrens,
+        departure_date: flight.departure_date,
+        return_date: flight.return_date,
+        legs: flight.legs.map(leg => ({
+          departure: {
+            city_code: leg.segments[0]?.origin || '',
+            city_name: leg.segments[0]?.origin || '',
+            time: leg.segments[0]?.departure_date || ''
+          },
+          arrival: {
+            city_code: leg.segments[0]?.destination || '',
+            city_name: leg.segments[0]?.destination || '',
+            time: leg.segments[0]?.arrival_date || ''
+          },
+          duration: '2h 30m', // Default duration
+          flight_type: 'direct'
+        })),
+        luggage: flight.luggage || false
+      })),
+      hotels: localData.hotels.map(hotel => ({
+        id: Math.random().toString(36),
+        unique_id: Math.random().toString(36),
+        name: hotel.name,
+        category: '',
+        city: hotel.city,
+        address: '',
+        rooms: hotel.rooms.map(room => ({
+          type: 'Standard',
+          description: 'Habitación estándar',
+          price_per_night: room.total_price / hotel.nights,
+          total_price: room.total_price,
+          currency: room.currency,
+          availability: 1,
+          occupancy_id: Math.random().toString(36)
+        })),
+        check_in: new Date().toISOString().split('T')[0],
+        check_out: new Date(Date.now() + 86400000 * hotel.nights).toISOString().split('T')[0],
+        nights: hotel.nights
+      })),
+      requestType: localData.requestType
+    };
   };
 
-  const createNewChat = async () => {
-    try {
-      console.log('🆕 Creating new chat...');
-
-      // Crear la conversación
-      const newConversation = await createConversation();
-      console.log('✅ New conversation created:', newConversation.id);
-
-      // Crear mensaje de bienvenida mejorado PRIMERO
-      const welcomeMessage = await saveMessage({
-        conversation_id: newConversation.id,
-        role: 'assistant',
-        content: {
-          text: '¡Hola! Soy **Emilia**, tu asistente de viajes. Puedo ayudarte con:\n\n🌍 **Recomendaciones de destinos**\n✈️ **Búsqueda de vuelos**\n🏨 **Búsqueda de hoteles**\n🎒 **Búsqueda de paquetes** (nuevo!)\n💰 **Presupuestos de viaje**\n📋 **Cotizaciones en PDF**\n\n**Ejemplos de lo que puedes decirme:**\n- "Quiero un hotel en Madrid desde el 15 de octubre al 31 de octubre"\n- "Quiero ver paquetes disponibles para octubre 2025"\n- "Busco vuelos de Buenos Aires a Barcelona"\n\n¿En qué puedo ayudarte hoy?'
-        },
-        meta: {}
-      });
-
-      console.log('✅ Welcome message created:', welcomeMessage.id);
-
-      // Pequeño delay para asegurar que el mensaje se guardó
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Seleccionar la nueva conversación DESPUÉS de crear el mensaje
-      setSelectedConversation(newConversation.id);
-
-      // Forzar recarga de conversaciones para actualizar la lista
-      await loadConversations();
-
-      toast({
-        title: "Nuevo Chat Creado",
-        description: "¡Listo! Cuéntame sobre tu viaje para crear tu lead automáticamente.",
-      });
-
-    } catch (error) {
-      console.error('❌ Error creating chat:', error);
-      toast({
-        title: "Error",
-        description: "No se pudo crear el chat.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const getMessageContent = (msg: MessageRow): string => {
-    // Handle if content is a string (JSON serialized)
-    if (typeof msg.content === 'string') {
-      try {
-        const parsed = JSON.parse(msg.content);
-        return parsed.text || '';
-      } catch (e) {
-        return msg.content;
-      }
-    }
-
-    // Handle if content is already an object
-    if (typeof msg.content === 'object' && msg.content && 'text' in msg.content) {
-      return (msg.content as any).text || '';
-    }
-
-    return '';
-  };
-
-  const getMessageStatus = (msg: MessageRow): string | undefined => {
-    if (typeof msg.meta === 'object' && msg.meta && 'status' in msg.meta) {
-      return (msg.meta as any).status;
-    }
-    return undefined;
-  };
-
-  const formatCombinedTravelResponse = (results: CombinedTravelResults, request: any): string => {
-    console.log('🎨 Formatting combined travel response:', results);
-
-    let response = '';
-
-    // Header
-    if (results.requestType === 'combined') {
-      response += '🌟 **Viaje Combinado - EUROVIPS WebService**\n\n';
-      response += 'He encontrado opciones para tu viaje completo:\n\n';
-    } else if (results.requestType === 'flights-only') {
-      response += '✈️ **Vuelos - EUROVIPS WebService**\n\n';
-      response += 'He encontrado opciones de vuelos para ti:\n\n';
-    } else {
-      response += '🏨 **Hoteles - EUROVIPS WebService**\n\n';
-      response += 'He encontrado opciones de hoteles para ti:\n\n';
-    }
-
-    // Flight Results
-    if (results.flights && results.flights.length > 0) {
-      response += `✈️ **${results.flights.length} Vuelos Disponibles**\n\n`;
-
-      results.flights.forEach((flight, index) => {
-        response += `---\n\n`;
-        response += `✈️ **Opción ${index + 1}** - ${flight.airline.name}\n`;
-        response += `💰 **Precio:** ${flight.price.amount} ${flight.price.currency}\n`;
-
-        flight.legs.forEach((leg, legIndex) => {
-          if (leg.flight_type === 'outbound') {
-            response += `\n🛫 **Ida** (${flight.departure_date})\n`;
-          } else {
-            response += `\n🛬 **Regreso** (${flight.return_date})\n`;
-          }
-          response += `**Origen:** ${leg.departure.city_name} (${leg.departure.city_code})\n`;
-          response += `**Salida:** ${leg.departure.time}\n`;
-          response += `**Destino:** ${leg.arrival.city_name} (${leg.arrival.city_code})\n`;
-          response += `**Llegada:** ${leg.arrival.time}\n`;
-          response += `**Duración:** ${leg.duration}\n`;
-        });
-
-        response += `\n👥 **Pasajeros:** ${flight.adults} adulto${flight.adults > 1 ? 's' : ''}`;
-        if (flight.childrens > 0) {
-          response += `, ${flight.childrens} niño${flight.childrens > 1 ? 's' : ''}`;
-        }
-        response += '\n\n';
-      });
-    } else if (results.requestType === 'combined' || results.requestType === 'flights-only') {
-      response += '✈️ **Vuelos**\n';
-      response += '⏳ No se encontraron vuelos disponibles para las fechas solicitadas.\n';
-      response += '🔄 Los servicios de vuelos están siendo configurados en el WebService EUROVIPS.\n\n';
-    }
-
-    // Hotel Results  
-    if (results.hotels && results.hotels.length > 0) {
-      response += `🏨 **${results.hotels.length} Hoteles Disponibles**\n\n`;
-
-      results.hotels.forEach((hotel, index) => {
-        response += `---\n\n`;
-        response += `🏨 **${hotel.name}**`;
-        if (hotel.category) response += ` - ${hotel.category}`;
-        response += `\n`;
-        if (hotel.city) response += `📍 **Ubicación:** ${hotel.city}\n`;
-        if (hotel.address) response += `📧 **Dirección:** ${hotel.address}\n`;
-        response += `🛏️ **Check-in:** ${hotel.check_in}\n`;
-        response += `🚪 **Check-out:** ${hotel.check_out}\n`;
-
-        if (hotel.rooms.length > 0) {
-          response += `\n**Habitaciones disponibles:**\n\n`;
-          hotel.rooms.forEach(room => {
-            response += `🛏️ **Habitación:** ${room.type}\n`;
-            response += `💰 **Precio:** ${room.total_price} ${room.currency}`;
-            if (hotel.nights > 1) response += ` (${hotel.nights} noches)`;
-            response += `\n`;
-
-            const availabilityText = room.availability >= 3 ? 'Disponible' :
-              room.availability >= 2 ? 'Consultar' : 'No disponible';
-            const availabilityEmoji = room.availability >= 3 ? '✅' :
-              room.availability >= 2 ? '⚠️' : '❌';
-            response += `${availabilityEmoji} **Disponibilidad:** ${availabilityText}\n\n`;
-          });
-        }
-        response += `\n`;
-      });
-    } else if (results.requestType === 'combined' || results.requestType === 'hotels-only') {
-      response += '🏨 **Hoteles**\n';
-      response += '⏳ No se encontraron hoteles disponibles para las fechas solicitadas.\n';
-      response += '🔄 Verificando códigos de destino en el WebService EUROVIPS.\n\n';
-    }
-
-    // Footer
-    if ((results.flights && results.flights.length > 0) || (results.hotels && results.hotels.length > 0)) {
-      response += `\n📋 **Siguiente Paso**\n`;
-      response += `Selecciona las opciones que más te gusten para generar tu cotización en PDF.\n`;
-      response += `🌟 *Powered by EUROVIPS WebService*`;
-    } else {
-      response += `\n🔧 **Estado del Sistema**\n`;
-      response += `✅ WebService EUROVIPS configurado correctamente\n`;
-      response += `⏳ Servicios de búsqueda en proceso de optimización\n\n`;
-      response += `Te notificaremos cuando el servicio esté completamente operativo.`;
-    }
-
-    return response;
-  };
-
-  const handlePdfGenerated = async (pdfUrl: string) => {
-    if (!selectedConversation) return;
-
-    try {
-      // Save the PDF as a new message
-      await saveMessage({
-        conversation_id: selectedConversation,
-        role: 'assistant',
-        content: {
-          text: '📄 **Tu cotización de vuelos está lista para descargar:**',
-          pdfUrl
-        },
-        meta: {}
-      });
-
-      toast({
-        title: "PDF Generado",
-        description: "Tu cotización ha sido agregada al chat. Puedes descargarla cuando quieras.",
-      });
-    } catch (error) {
-      console.error('Error saving PDF message:', error);
-    }
-  };
-
-  const getPdfUrl = (msg: MessageRow): string | undefined => {
-    if (typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content) {
-      return (msg.content as any).pdfUrl;
-    }
-    return undefined;
-  };
-
-  const sidebarExtra = (
-    <div className="h-full flex flex-col">
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <h2 className="text-lg font-semibold"></h2>
-            <p className="text-sm text-muted-foreground">Chats</p>
-          </div>
-          {/* Botón Nuevo Chat movido al dropdown del menú lateral */}
+  // Typing indicator component
+  const TypingIndicator = () => (
+    <div className="flex justify-start">
+      <div className="max-w-lg flex items-start space-x-2">
+        <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
+          <Bot className="h-4 w-4 text-accent" />
         </div>
+        <div className="rounded-lg p-4 bg-muted">
+          <div className="flex space-x-1">
+            <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
-        {/* Tabs for Active/Closed */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="active" className="text-xs">
-              Chats Activos
-            </TabsTrigger>
-            <TabsTrigger value="closed" className="text-xs">
-              <Archive className="h-3 w-3 mr-1" />
-              Archivados
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+  // Message input component
+  const MessageInput = ({ value, onChange, onSend, disabled }: {
+    value: string;
+    onChange: (value: string) => void;
+    onSend: () => void;
+    disabled: boolean;
+  }) => (
+    <div className="border-t bg-background p-4">
+      <div className="flex space-x-2">
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Escribe tu mensaje..."
+          disabled={disabled}
+          onKeyPress={(e) => e.key === 'Enter' && onSend()}
+          className="flex-1"
+        />
+        <Button
+          onClick={onSend}
+          className="px-3"
+          disabled={disabled}
+        >
+          {disabled ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Chat header component
+  const ChatHeader = () => (
+    <div className="border-b bg-background p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <Bot className="h-8 w-8 text-accent" />
+          <div>
+            <h2 className="font-semibold">Emilia - Asistente de Viajes</h2>
+            <p className="text-sm text-muted-foreground">
+              {isTyping ? 'Escribiendo...' : 'En línea'}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Empty state component
+  const EmptyState = ({ onCreateChat }: { onCreateChat: () => void }) => (
+    <div className="flex-1 flex items-center justify-center bg-muted/20">
+      <div className="text-center">
+        <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+        <h3 className="text-lg font-semibold mb-2">Ninguna conversación seleccionada</h3>
+        <p className="text-muted-foreground mb-4">Elige una conversación del sidebar o crea una nueva para comenzar.</p>
+        <Button onClick={onCreateChat} className="bg-primary hover:bg-primary/90">
+          <Plus className="h-4 w-4 mr-2" />
+          Crear Nuevo Chat
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Sidebar extra content (conversations list)
+  const sidebarExtra = (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Conversaciones</h3>
+        <Button onClick={(e) => createNewChat()} size="sm" variant="outline">
+          <Plus className="h-4 w-4" />
+        </Button>
       </div>
 
-      <ScrollArea className="flex-1 overflow-y-auto">
-        <Tabs value={activeTab} className="h-full">
-          <TabsContent value="active" className="m-0 h-full">
-            <div className="p-2 space-y-2">
-              {[...conversations]
-                .filter(conv => conv.state === 'active')
-                .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
-                .slice(0, sidebarLimit)
-                .map((conv) => {
-                  const ChannelIcon = getChannelIcon(conv.channel);
-                  const isSelected = selectedConversation === conv.id;
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="active">Activas</TabsTrigger>
+          <TabsTrigger value="archived">Archivadas</TabsTrigger>
+        </TabsList>
 
-                  return (
-                    <Card
-                      key={conv.id}
-                      className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/10 border-primary/20' : 'hover:bg-muted/50'}`}
-                      onClick={() => setSelectedConversation(conv.id)}
-                    >
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center space-x-2">
-                            <ChannelIcon className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium text-sm truncate">
-                              {conv.external_key}
-                            </span>
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <ChevronDown className="h-3 w-3" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updateConversationState(conv.id, 'closed');
-                                }}
-                              >
-                                <Archive className="h-3 w-3 mr-2" />
-                                Archivar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+        <TabsContent value="active" className="space-y-2">
+          <ScrollArea className="h-[400px]">
+            {conversations
+              .filter(conv => conv.state === 'active')
+              .slice(0, sidebarLimit)
+              .map((conversation) => (
+                <Card
+                  key={conversation.id}
+                  className={`mb-2 cursor-pointer transition-colors ${
+                    selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setSelectedConversation(conversation.id)}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-sm truncate">
+                          {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
+                        </h4>
+                        <div className="flex items-center mt-1 text-xs text-muted-foreground">
+                          {conversation.channel === 'wa' ? (
+                            <Phone className="h-3 w-3 mr-1" />
+                          ) : (
+                            <Globe className="h-3 w-3 mr-1" />
+                          )}
+                          <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">
-                            Último mensaje
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatTime(conv.last_message_at)}
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              {conversations.filter(conv => conv.state === 'active').length === 0 && (
-                <div className="text-center text-muted-foreground text-sm py-8">
-                  No hay chats activos.
-                  <br />
-                  Crea uno nuevo para comenzar.
-                </div>
-              )}
-              {conversations.filter(conv => conv.state === 'active').length > sidebarLimit && (
-                <div className="pt-2 flex justify-center">
-                  <Button variant="link" className="px-0" onClick={() => setSidebarLimit(prev => prev + 10)}>
-                    Mostrar más chats
-                  </Button>
-                </div>
-              )}
-            </div>
-          </TabsContent>
+                      </div>
+                      <Badge variant="secondary" className="ml-2">
+                        {conversation.channel}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+          </ScrollArea>
 
-          <TabsContent value="closed" className="m-0 h-full">
-            <div className="p-2 space-y-2">
-              {[...conversations]
-                .filter(conv => conv.state === 'closed')
-                .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
-                .slice(0, sidebarLimit)
-                .map((conv) => {
-                  const ChannelIcon = getChannelIcon(conv.channel);
-                  const isSelected = selectedConversation === conv.id;
+          {conversations.filter(conv => conv.state === 'active').length > sidebarLimit && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSidebarLimit(prev => prev + 5)}
+              className="w-full"
+            >
+              <ChevronDown className="h-4 w-4 mr-2" />
+              Mostrar más ({conversations.filter(conv => conv.state === 'active').length - sidebarLimit} restantes)
+            </Button>
+          )}
+        </TabsContent>
 
-                  return (
-                    <Card
-                      key={conv.id}
-                      className={`cursor-pointer transition-colors ${isSelected ? 'bg-primary/10 border-primary/20' : 'hover:bg-muted/50'}`}
-                      onClick={() => setSelectedConversation(conv.id)}
-                    >
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center space-x-2">
-                            <ChannelIcon className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium text-sm truncate">
-                              {conv.external_key}
-                            </span>
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <ChevronDown className="h-3 w-3" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updateConversationState(conv.id, 'active');
-                                }}
-                              >
-                                <MessageSquare className="h-3 w-3 mr-2" />
-                                Activar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+        <TabsContent value="archived" className="space-y-2">
+          <ScrollArea className="h-[400px]">
+            {conversations
+              .filter(conv => conv.state === 'closed')
+              .slice(0, sidebarLimit)
+              .map((conversation) => (
+                <Card
+                  key={conversation.id}
+                  className={`mb-2 cursor-pointer transition-colors ${
+                    selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setSelectedConversation(conversation.id)}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-sm truncate">
+                          {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
+                        </h4>
+                        <div className="flex items-center mt-1 text-xs text-muted-foreground">
+                          <Archive className="h-3 w-3 mr-1" />
+                          <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">
-                            Último mensaje
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatTime(conv.last_message_at)}
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              {conversations.filter(conv => conv.state === 'closed').length === 0 && (
-                <div className="text-center text-muted-foreground text-sm py-8">
-                  No hay chats archivados.
-                </div>
-              )}
-              {conversations.filter(conv => conv.state === 'closed').length > sidebarLimit && (
-                <div className="pt-2 flex justify-center">
-                  <Button variant="link" className="px-0" onClick={() => setSidebarLimit(prev => prev + 10)}>
-                    Mostrar más chats
-                  </Button>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
-      </ScrollArea>
+                      </div>
+                      <Badge variant="outline" className="ml-2">
+                        archivada
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+          </ScrollArea>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 
   return (
     <MainLayout userRole="ADMIN" sidebarExtra={sidebarExtra}>
       <div className="min-h-screen flex">
-
-        {/* Chat Area */}
         <div className="flex-1 flex flex-col">
           {selectedConversation ? (
             <>
-              {/* Chat Header */}
-              <div className="p-4 border-b border-border bg-card">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <MessageSquare className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold">Emilia</h3>
-                      <p className="text-sm text-muted-foreground">
-                        chat-{getChatNumber(selectedConversation)}
-                      </p>
-                    </div>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        {conversations.find(c => c.id === selectedConversation)?.state === 'active' ? 'Active' : 'Archived'}
-                        <ChevronDown className="h-3 w-3 ml-2" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => updateConversationState(selectedConversation!, 'active')}
-                      >
-                        Active
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => updateConversationState(selectedConversation!, 'closed')}
-                      >
-                        Archived
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
+              <ChatHeader />
 
-              {/* Messages (scrollable history) */}
               <div className="flex-1 p-4 overflow-y-auto">
                 <div className="space-y-4">
                   {messages.map((msg) => {
                     const messageText = getMessageContent(msg);
-                    const pdfUrl = getPdfUrl(msg);
 
-                    const hasFlights = msg.role === 'assistant' && isFlightMessage(messageText);
-                    const parsedFlights = hasFlights ? parseFlightsFromMessage(messageText) : [];
-                    const hasHotels = msg.role === 'assistant' && isHotelMessage(messageText);
-
-                    // Use structured data from EUROVIPS if available, otherwise parse from text
-                    let parsedHotels: HotelData[] = [];
-                    if (hasHotels) {
-                      if (msg.meta && typeof msg.meta === 'object' && 'eurovipsData' in msg.meta && msg.meta.eurovipsData) {
-                        const eurovipsData = msg.meta.eurovipsData as any;
-                        if (eurovipsData.hotels && Array.isArray(eurovipsData.hotels)) {
-                          parsedHotels = eurovipsData.hotels;
-                          console.log('✅ Using structured hotel data from EUROVIPS:', parsedHotels.length, 'hotels');
-                        }
-                      } else {
-                        parsedHotels = parseHotelsFromMessage(messageText);
-                        console.log('✅ Using parsed hotel data from text:', parsedHotels.length, 'hotels');
-                      }
-                    }
-
-                    // Check for combined travel messages (flights + hotels via EUROVIPS)
+                    // Check for combined travel data (MAINTAIN EXACT LOGIC)
                     const hasCombinedTravel = msg.role === 'assistant' && (
-                      (typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta) ||
-                      messageText.includes('🌟 **Viaje Combinado') ||
-                      messageText.includes('EUROVIPS WebService') ||
-                      (messageText.includes('Vuelos Disponibles') && messageText.includes('Hoteles Disponibles'))
+                      (typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta)
                     );
 
-                    // Parse combined travel data if available
                     let combinedTravelData = null;
-                    if (hasCombinedTravel) {
-
-                      // Prefer structured combinedData attached in content
-                      if (typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta) {
-                        combinedTravelData = (msg.meta as any).combinedData as CombinedTravelResults;
-                        console.log('📊 Combined travel data (attached):', combinedTravelData);
-                      } else {
-                        // Fallback: parse from text
-                        const combinedFlights = hasFlights ? parseFlightsFromMessage(messageText) : [];
-                        const combinedHotels = hasHotels ? parseHotelsFromMessage(messageText) : [];
-                        combinedTravelData = {
-                          flights: combinedFlights,
-                          hotels: combinedHotels,
-                          requestType: combinedFlights.length > 0 && combinedHotels.length > 0 ? 'combined' :
-                            combinedFlights.length > 0 ? 'flights-only' : 'hotels-only'
-                        };
-                        console.log('📊 Combined travel data (parsed):', combinedTravelData);
-                      }
+                    if (hasCombinedTravel && typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta) {
+                      combinedTravelData = (msg.meta as unknown as { combinedData: LocalCombinedTravelResults }).combinedData;
                     }
 
                     return (
                       <div key={msg.id}>
-                        <div
-                          className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div className={`max-w-lg flex items-start space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''
-                            }`}>
+                        <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-lg flex items-start space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
                             <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
-                              {msg.role === 'user' ? (
-                                <User className="h-4 w-4 text-primary" />
-                              ) : (
-                                <Bot className="h-4 w-4 text-accent" />
-                              )}
+                              {msg.role === 'user' ? <User className="h-4 w-4 text-primary" /> : <Bot className="h-4 w-4 text-accent" />}
                             </div>
-                            <div className={`rounded-lg p-4 ${msg.role === 'user'
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted'
-                              }`}>
-                              {/* Show CombinedTravelSelector for combined travel messages */}
+                            <div className={`rounded-lg p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+
+                              {/* Interactive selectors (MAINTAIN EXACT) */}
                               {hasCombinedTravel && combinedTravelData ? (
                                 <div className="space-y-3">
                                   <div className="text-sm font-medium text-muted-foreground">
                                     🌟 {combinedTravelData.requestType === 'combined' ?
                                       `Viaje completo: ${combinedTravelData.flights.length} vuelos y ${combinedTravelData.hotels.length} hoteles` :
                                       combinedTravelData.requestType === 'flights-only' ?
-                                        `${combinedTravelData.flights.length} opciones de vuelos vía EUROVIPS` :
-                                        `${combinedTravelData.hotels.length} opciones de hoteles vía EUROVIPS`
+                                        `${combinedTravelData.flights.length} opciones de vuelos` :
+                                        `${combinedTravelData.hotels.length} opciones de hoteles`
                                     }
                                   </div>
                                   <CombinedTravelSelector
-                                    combinedData={combinedTravelData}
-                                    onPdfGenerated={handlePdfGenerated}
-                                  />
-                                </div>
-                              ) : hasFlights && parsedFlights.length > 0 ? (
-                                <div className="space-y-3">
-                                  <div className="text-sm font-medium text-muted-foreground">
-                                    ✈️ Encontré {parsedFlights.length} opciones de vuelos para ti
-                                  </div>
-                                  <FlightSelector
-                                    flights={parsedFlights}
-                                    onPdfGenerated={handlePdfGenerated}
-                                  />
-                                </div>
-                              ) : hasHotels && parsedHotels.length > 0 ? (
-                                <div className="space-y-3">
-                                  <div className="text-sm font-medium text-muted-foreground">
-                                    🏨 Encontré {parsedHotels.length} opciones de hoteles para ti
-                                  </div>
-                                  <HotelSelector
-                                    hotels={parsedHotels}
+                                    combinedData={convertToGlobalCombinedData(combinedTravelData)}
                                     onPdfGenerated={handlePdfGenerated}
                                   />
                                 </div>
                               ) : (
-                                <ReactMarkdown
-                                  remarkPlugins={[remarkGfm]}
-                                  className={`${msg.role === 'user'
-                                    ? 'prose prose-invert prose-sm max-w-none text-primary-foreground'
-                                    : 'emilia-message prose prose-neutral prose-sm max-w-none'
-                                    }`}
-                                >
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                   {messageText}
                                 </ReactMarkdown>
-                              )}
-
-                              {/* PDF Download Button */}
-                              {pdfUrl && (
-                                <div className="mt-3 pt-3 border-t border-border/20">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full"
-                                    onClick={() => window.open(pdfUrl, '_blank')}
-                                  >
-                                    <Download className="h-4 w-4 mr-2" />
-                                    Descargar Cotización PDF
-                                  </Button>
-                                </div>
                               )}
 
                               <p className="text-xs opacity-70 mt-1 flex items-center justify-between">
@@ -2082,77 +1021,24 @@ const Chat = () => {
                             </div>
                           </div>
                         </div>
-
-
                       </div>
                     );
                   })}
 
-                  {/* Emilia is typing indicator - appears after messages */}
-                  {isTyping && (
-                    <div className="flex justify-start animate-fade-in">
-                      <div className="max-w-lg flex items-start space-x-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
-                          <Bot className="h-4 w-4 text-accent" />
-                        </div>
-                        <div className="rounded-lg p-3 bg-muted">
-                          <div className="flex items-center space-x-1">
-                            <div className="typing-dots">
-                              <span>Emilia está escribiendo</span>
-                              <div className="dots">
-                                <span>.</span>
-                                <span>.</span>
-                                <span>.</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
+                  {isTyping && <TypingIndicator />}
                   <div ref={messagesEndRef} />
                 </div>
               </div>
 
-              <Separator />
-
-              {/* Message Input */}
-              <div className="p-4">
-                <div className="flex space-x-2">
-                  <Input
-                    placeholder="Type your message..."
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                    className="flex-1"
-                  />
-                  <Button
-                    onClick={handleSendMessage}
-                    className="px-3"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
+              <MessageInput
+                value={message}
+                onChange={setMessage}
+                onSend={handleSendMessage}
+                disabled={isLoading}
+              />
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center bg-muted/20">
-              <div className="text-center">
-                <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Ninguna conversación seleccionada</h3>
-                <p className="text-muted-foreground mb-4">Elige una conversación del sidebar o crea una nueva para comenzar.</p>
-                <Button onClick={createNewChat} className="bg-primary hover:bg-primary/90">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Crear Nuevo Chat
-                </Button>
-              </div>
-            </div>
+            <EmptyState onCreateChat={createNewChat} />
           )}
         </div>
       </div>

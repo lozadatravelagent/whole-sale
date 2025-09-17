@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -58,18 +58,26 @@ export function useConversations() {
     }
   };
 
-  const createConversation = async () => {
+  const createConversation = async (params?: {
+    title?: string;
+    user_id?: string;
+    status?: 'active' | 'closed';
+    channel?: 'web' | 'whatsapp';
+    meta?: Record<string, unknown>;
+  }) => {
     try {
       const mockAgencyId = '00000000-0000-0000-0000-000000000001';
       const mockTenantId = '00000000-0000-0000-0000-000000000001';
-      
+
       const newConversation = {
         external_key: `chat-${Date.now()}`,
-        channel: 'web' as const,
-        state: 'active' as const,
+        channel: (params?.channel || 'web') as const,
+        state: (params?.status || 'active') as const,
         agency_id: mockAgencyId,
         tenant_id: mockTenantId,
-        last_message_at: new Date().toISOString()
+        // title is not part of the database schema, removed
+        last_message_at: new Date().toISOString(),
+        ...(params?.meta && { meta: params.meta })
       };
 
       const { data, error } = await supabase
@@ -145,7 +153,7 @@ export function useMessages(conversationId: string | null) {
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const loadMessages = async () => {
+  const loadMessages = useCallback(async () => {
     if (!conversationId) {
       setMessages([]);
       return;
@@ -167,13 +175,13 @@ export function useMessages(conversationId: string | null) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [conversationId]);
 
   const saveMessage = async (message: {
     conversation_id: string;
     role: 'user' | 'assistant' | 'system';
-    content: { text?: string; cards?: any[]; pdfUrl?: string; metadata?: any; };
-    meta?: { status?: string; [key: string]: any; };
+    content: { text?: string; cards?: unknown[]; pdfUrl?: string; metadata?: Record<string, unknown>; };
+    meta?: { status?: string; [key: string]: unknown; };
   }) => {
     try {
       const { data, error } = await supabase
@@ -196,7 +204,7 @@ export function useMessages(conversationId: string | null) {
     }
   };
 
-  const updateMessageStatus = async (messageId: string, status: string) => {
+  const updateMessageStatus = async (messageId: string, status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed') => {
     try {
       const { data, error } = await supabase
         .from('messages')
@@ -220,7 +228,7 @@ export function useMessages(conversationId: string | null) {
   // Load messages initially
   useEffect(() => {
     loadMessages();
-  }, [conversationId]);
+  }, [conversationId, loadMessages]);
 
   // Set up real-time subscription for new messages
   useEffect(() => {

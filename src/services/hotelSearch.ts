@@ -60,8 +60,11 @@ export async function getCountryList(): Promise<Array<{ code: string, name: stri
         }
 
         if (result.success) {
-          countryListCache = result.results;
-          return result.results;
+          // result.results is an object with rawResponse and parsedData, we need the parsedData array
+          const countries = result.results?.parsedData || [];
+          console.log('📊 Parsed countries from Edge Function:', countries.length);
+          countryListCache = countries;
+          return countries;
         } else {
           console.error('Edge Function business error:', result.error);
           throw new Error(`Edge Function error: ${result.error}`);
@@ -265,6 +268,11 @@ async function getCityCode(cityName: string): Promise<string> {
         'merida': 'MID',
         'oaxaca': 'OAX',
         'veracruz': 'VER',
+
+        // República Dominicana
+        'punta cana': 'PUJ',
+        'santo domingo': 'SDQ',
+        'puerto plata': 'POP',
 
         // Europa
         'viena': 'VIE',

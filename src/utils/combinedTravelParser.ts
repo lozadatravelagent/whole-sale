@@ -588,7 +588,7 @@ function extractHotelParams(message: string): HotelSearchParams {
   return {
     dateFrom,
     dateTo,
-    city: city || 'Madrid', // Default to same as flight destination or fallback
+    city: city || '', // Don't use hardcoded default, let the service handle empty city
     hotelName: hotelName || undefined
   };
 }
