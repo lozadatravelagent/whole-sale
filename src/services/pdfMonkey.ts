@@ -307,6 +307,12 @@ async function generatePdfDocument(request: any): Promise<PdfMonkeyResponse> {
   };
 }
 
+// Helper function to safely convert price to clean string
+function cleanPriceString(price: number | string): string {
+  const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+  return isNaN(numPrice) ? '0' : numPrice.toString();
+}
+
 // Function to prepare combined travel data (flights + hotels) for the specific template
 function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
   console.log('🔧 PREPARING COMBINED PDF DATA FOR TEMPLATE');
@@ -346,7 +352,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
         flight_type: leg.flight_type
       })),
       price: {
-        amount: flight.price.amount.toFixed(2),
+        amount: cleanPriceString(flight.price.amount), // String limpio para el template
         currency: flight.price.currency
       }
     };
@@ -376,14 +382,14 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
       name: hotel.name,
       location: hotel.city,
       stars: hotel.category || "4", // Default to 4 stars if no category
-      price: cheapestRoom.total_price.toFixed(2),
+      price: cleanPriceString(cheapestRoom.total_price), // String limpio para el template
       currency: cheapestRoom.currency,
       room_type: cheapestRoom.type,
       description: cheapestRoom.description,
       // Add alternatives if available
       alternatives: otherRooms.map(room => ({
         name: `${hotel.name} - ${room.type}`,
-        price: room.total_price.toFixed(2),
+        price: cleanPriceString(room.total_price), // String limpio para el template
         currency: room.currency,
         room_type: room.type,
         description: room.description
@@ -398,10 +404,10 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
   const checkin = firstHotel?.check_in || firstFlight?.departure_date || new Date().toISOString().split('T')[0];
   const checkout = firstHotel?.check_out || firstFlight?.return_date || new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0];
 
-  // Calculate duration in nights
+  // Calculate duration in nights (usar Math.floor para evitar redondeos incorrectos)
   const checkinDate = new Date(checkin);
   const checkoutDate = new Date(checkout);
-  const nights = Math.ceil((checkoutDate.getTime() - checkinDate.getTime()) / (1000 * 60 * 60 * 24));
+  const nights = Math.floor((checkoutDate.getTime() - checkinDate.getTime()) / (1000 * 60 * 60 * 24));
 
   // Get passenger info from first flight
   const adults = firstFlight?.adults || 1;
@@ -454,6 +460,40 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
     adults: template_data.adults,
     childrens: template_data.childrens,
     nights: template_data.nights
+  });
+
+  // Debug pricing para verificar cálculos
+  if (template_data.selected_flights.length > 0) {
+    console.log('🔍 FLIGHT PRICE DEBUG:', {
+      original_amount: flights[0]?.price?.amount,
+      original_type: typeof flights[0]?.price?.amount,
+      mapped_amount: template_data.selected_flights[0]?.price?.amount,
+      mapped_type: typeof template_data.selected_flights[0]?.price?.amount,
+      currency: template_data.selected_flights[0]?.price?.currency
+    });
+  }
+
+  if (template_data.best_hotels.length > 0) {
+    const hotel = template_data.best_hotels[0];
+    console.log('🔍 HOTEL PRICE DEBUG:', {
+      hotel_name: hotel.name,
+      main_price: hotel.price,
+      main_price_type: typeof hotel.price,
+      currency: hotel.currency,
+      alternatives_count: hotel.alternatives?.length || 0,
+      alternatives_prices: hotel.alternatives?.map(alt => `${alt.price} ${alt.currency}`) || []
+    });
+  }
+
+  // Debug template data structure
+  console.log('🔍 TEMPLATE STRUCTURE DEBUG:', {
+    has_selected_flights: !!template_data.selected_flights,
+    has_best_hotels: !!template_data.best_hotels,
+    checkin: template_data.checkin,
+    checkout: template_data.checkout,
+    nights: template_data.nights,
+    adults: template_data.adults,
+    childrens: template_data.childrens
   });
 
   return template_data;
