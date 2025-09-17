@@ -1582,7 +1582,7 @@ const Chat = () => {
                     return (
                       <div key={msg.id}>
                         <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-lg flex items-start space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                          <div className={`${hasCombinedTravel ? 'max-w-4xl' : 'max-w-lg'} flex items-start space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
                             <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
                               {msg.role === 'user' ? <User className="h-4 w-4 text-primary" /> : <Bot className="h-4 w-4 text-accent" />}
                             </div>

@@ -204,7 +204,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4 w-full">
       {/* Header with service info */}
       <Card>
         <CardHeader className="pb-2 px-4 py-3">
@@ -251,8 +251,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
               return (
                 <Card key={flight.id} className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
-                  <CardContent className="p-3">
-                    <div className="flex items-center justify-between mb-2">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
                         <Checkbox
                           checked={isSelected}
@@ -283,39 +283,35 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
                     <Separator className="my-2" />
 
-                    {/* Flight legs */}
-                    <div className="space-y-2">
+                    {/* Flight legs - More horizontal layout */}
+                    <div className="grid gap-3 sm:grid-cols-1 lg:grid-cols-2">
                       {flight.legs.map((leg, legIndex) => (
-                        <div key={legIndex} className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                              <Badge variant={leg.flight_type === 'outbound' ? 'default' : 'secondary'} className="text-xs">
-                                {leg.flight_type === 'outbound' ? '🛫 Ida' : '🛬 Regreso'}
-                              </Badge>
-                              <div className="flex items-center space-x-1 text-xs text-muted-foreground">
-                                <Clock className="h-3 w-3" />
-                                <span>{leg.duration}</span>
-                              </div>
+                        <div key={legIndex} className="p-3 bg-muted/30 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <Badge variant={leg.flight_type === 'outbound' ? 'default' : 'secondary'} className="text-xs">
+                              {leg.flight_type === 'outbound' ? '🛫 Ida' : '🛬 Regreso'}
+                            </Badge>
+                            <div className="flex items-center space-x-1 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              <span>{leg.duration}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <div className="text-center flex-1">
+                              <div className="font-medium text-sm">{leg.departure.city_code}</div>
+                              <div className="text-xs text-muted-foreground truncate">{leg.departure.city_name}</div>
+                              <div className="text-sm font-medium text-primary">{formatTime(leg.departure.time)}</div>
                             </div>
 
-                            <div className="flex items-center justify-between">
-                              <div className="text-center">
-                                <div className="font-medium">{leg.departure.city_code}</div>
-                                <div className="text-xs text-muted-foreground">{leg.departure.city_name}</div>
-                                <div className="text-sm font-medium text-primary">{formatTime(leg.departure.time)}</div>
-                              </div>
+                            <div className="flex items-center px-3">
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            </div>
 
-                              <div className="flex items-center px-4">
-                                <div className="h-px bg-border flex-1"></div>
-                                <ChevronRight className="h-4 w-4 mx-2 text-muted-foreground" />
-                                <div className="h-px bg-border flex-1"></div>
-                              </div>
-
-                              <div className="text-center">
-                                <div className="font-medium">{leg.arrival.city_code}</div>
-                                <div className="text-xs text-muted-foreground">{leg.arrival.city_name}</div>
-                                <div className="text-sm font-medium text-primary">{formatTime(leg.arrival.time)}</div>
-                              </div>
+                            <div className="text-center flex-1">
+                              <div className="font-medium text-sm">{leg.arrival.city_code}</div>
+                              <div className="text-xs text-muted-foreground truncate">{leg.arrival.city_name}</div>
+                              <div className="text-sm font-medium text-primary">{formatTime(leg.arrival.time)}</div>
                             </div>
                           </div>
                         </div>
@@ -346,7 +342,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
               return (
                 <Card key={hotel.id} className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
-                  <CardContent className="p-3">
+                  <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center space-x-3">
                         <Checkbox
@@ -388,42 +384,42 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
                     <Separator className="my-3" />
 
-                    {/* Hotel rooms */}
+                    {/* Hotel rooms - More compact layout */}
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium">Habitaciones disponibles:</h4>
-                      {hotel.rooms.map((room, roomIndex) => {
-                        const availabilityStatus = getAvailabilityStatus(room.availability);
-                        const AvailabilityIcon = availabilityStatus.icon;
-                        const isRoomSelected = selectedRooms[hotel.id] === room.occupancy_id;
+                      <div className="grid gap-2 sm:grid-cols-1 lg:grid-cols-2">
+                        {hotel.rooms.map((room, roomIndex) => {
+                          const availabilityStatus = getAvailabilityStatus(room.availability);
+                          const AvailabilityIcon = availabilityStatus.icon;
+                          const isRoomSelected = selectedRooms[hotel.id] === room.occupancy_id;
 
-                        return (
-                          <div key={roomIndex} className={`p-3 border rounded-lg cursor-pointer transition-all ${isRoomSelected ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
-                            } ${!isSelected ? 'opacity-50 pointer-events-none' : ''}`}
-                            onClick={() => isSelected && handleRoomSelect(hotel.id, room.occupancy_id)}>
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-2 mb-1">
+                          return (
+                            <div key={roomIndex} className={`p-3 border rounded-lg cursor-pointer transition-all ${isRoomSelected ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
+                              } ${!isSelected ? 'opacity-50 pointer-events-none' : ''}`}
+                              onClick={() => isSelected && handleRoomSelect(hotel.id, room.occupancy_id)}>
+                              <div className="space-y-2">
+                                <div className="flex items-center space-x-2">
                                   <Bed className="h-4 w-4" />
-                                  <span className="font-medium text-sm">{room.type}</span>
+                                  <span className="font-medium text-sm truncate">{room.type}</span>
                                 </div>
                                 {room.description !== room.type && (
-                                  <p className="text-xs text-muted-foreground">{room.description}</p>
+                                  <p className="text-xs text-muted-foreground truncate">{room.description}</p>
                                 )}
-                              </div>
-
-                              <div className="text-right space-y-1">
-                                <div className="text-lg font-bold text-primary">
-                                  {formatPrice(room.total_price, room.currency)}
-                                </div>
-                                <div className="flex items-center space-x-1">
-                                  <div className={`w-2 h-2 rounded-full ${availabilityStatus.color}`}></div>
-                                  <span className="text-xs">{availabilityStatus.text}</span>
+                                
+                                <div className="flex items-center justify-between">
+                                  <div className="text-lg font-bold text-primary">
+                                    {formatPrice(room.total_price, room.currency)}
+                                  </div>
+                                  <div className="flex items-center space-x-1">
+                                    <div className={`w-2 h-2 rounded-full ${availabilityStatus.color}`}></div>
+                                    <span className="text-xs">{availabilityStatus.text}</span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
