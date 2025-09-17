@@ -1,4 +1,4 @@
-import { FlightData, HotelData, PdfMonkeyResponse } from '@/types';
+import { FlightData, HotelData, HotelDataWithSelectedRoom, PdfMonkeyResponse } from '@/types';
 
 // PdfMonkey API configuration
 const PDFMONKEY_API_BASE = 'https://api.pdfmonkey.io/api/v1/documents';
@@ -23,7 +23,7 @@ const getApiKey = (): string => {
 // New function for combined travel PDF (flights + hotels)
 export async function generateCombinedTravelPdf(
   selectedFlights: FlightData[],
-  selectedHotels: HotelData[]
+  selectedHotels: HotelData[] | HotelDataWithSelectedRoom[]
 ): Promise<PdfMonkeyResponse> {
   try {
     if (selectedFlights.length === 0 && selectedHotels.length === 0) {
@@ -320,7 +320,7 @@ function formatPriceForTemplate(price: number | string): string {
 }
 
 // Function to prepare combined travel data (flights + hotels) for the specific template
-function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
+function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | HotelDataWithSelectedRoom[]) {
   console.log('🔧 PREPARING COMBINED PDF DATA FOR TEMPLATE');
   console.log('📊 Input:', { flights: flights.length, hotels: hotels.length });
 
@@ -370,25 +370,28 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
       name: hotel.name,
       city: hotel.city,
       nights: hotel.nights,
-      rooms_count: hotel.rooms?.length || 0
+      rooms_count: hotel.rooms?.length || 0,
+      has_selected_room: !!(hotel as HotelDataWithSelectedRoom).selectedRoom
     });
 
-    // Find the cheapest room for main recommendation
-    const cheapestRoom = hotel.rooms.reduce((cheapest, room) =>
+    // Use the selected room if available, otherwise find the cheapest room
+    const hotelWithRoom = hotel as HotelDataWithSelectedRoom;
+    const roomToUse = hotelWithRoom.selectedRoom || hotel.rooms.reduce((cheapest, room) =>
       room.total_price < cheapest.total_price ? room : cheapest
     );
 
-    console.log(`🏨 Hotel ${hotel.name} cheapest room:`, {
-      type: cheapestRoom.type,
-      price: cheapestRoom.total_price,
-      currency: cheapestRoom.currency
+    console.log(`🏨 Hotel ${hotel.name} room for PDF:`, {
+      type: roomToUse.type,
+      price: roomToUse.total_price,
+      currency: roomToUse.currency,
+      source: hotelWithRoom.selectedRoom ? 'SELECTED_BY_USER' : 'CHEAPEST_FALLBACK'
     });
 
     return {
       name: hotel.name,
       stars: hotel.category || "5", // Default to 5 stars like the example
       location: hotel.address || `${hotel.city}, República Dominicana`, // Full address format
-      price: formatPriceForTemplate(cheapestRoom.total_price), // Formato europeo
+      price: formatPriceForTemplate(roomToUse.total_price), // Formato europeo
       link: `https://wholesale-connect.com/hotel/${hotel.id}` // Placeholder link
     };
   });
@@ -419,12 +422,20 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
     totalFlightPrice += flightPrice || 0;
   });
 
-  // Sum all hotel prices
+  // Sum all hotel prices (using selected rooms)
   hotels.forEach(hotel => {
-    const cheapestRoom = hotel.rooms.reduce((cheapest, room) =>
+    const hotelWithRoom = hotel as HotelDataWithSelectedRoom;
+    const roomToUse = hotelWithRoom.selectedRoom || hotel.rooms.reduce((cheapest, room) =>
       room.total_price < cheapest.total_price ? room : cheapest
     );
-    totalHotelPrice += cheapestRoom.total_price || 0;
+
+    console.log(`💰 Adding hotel ${hotel.name} price:`, {
+      room_type: roomToUse.type,
+      room_price: roomToUse.total_price,
+      source: hotelWithRoom.selectedRoom ? 'SELECTED_BY_USER' : 'CHEAPEST_FALLBACK'
+    });
+
+    totalHotelPrice += roomToUse.total_price || 0;
   });
 
   const totalPrice = totalFlightPrice + totalHotelPrice;

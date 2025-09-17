@@ -399,6 +399,11 @@ export interface HotelData {
   policy_lodging?: string;
 }
 
+// Extended hotel data with selected room for PDF generation
+export interface HotelDataWithSelectedRoom extends HotelData {
+  selectedRoom: HotelRoom;
+}
+
 // Combined travel service types
 export interface AirfareSearchParams {
   origin: string;

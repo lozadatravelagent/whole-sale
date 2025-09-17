@@ -260,19 +260,30 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
       let pdfUrl;
 
+      // Prepare hotel data with selected rooms
+      const selectedHotelDataWithRooms = selectedHotelData.map(hotel => {
+        const selectedRoomId = selectedRooms[hotel.id];
+        const selectedRoom = hotel.rooms.find(room => room.occupancy_id === selectedRoomId);
+
+        return {
+          ...hotel,
+          selectedRoom: selectedRoom || hotel.rooms[0] // fallback to first room if none selected
+        };
+      });
+
       // Determine which PDF type to generate
-      if (selectedFlightData.length > 0 && selectedHotelData.length > 0) {
+      if (selectedFlightData.length > 0 && selectedHotelDataWithRooms.length > 0) {
         // Combined travel PDF (flights + hotels)
         console.log('🌟 Generating COMBINED travel PDF');
-        pdfUrl = await generateCombinedTravelPdf(selectedFlightData, selectedHotelData);
+        pdfUrl = await generateCombinedTravelPdf(selectedFlightData, selectedHotelDataWithRooms);
       } else if (selectedFlightData.length > 0) {
         // Flight-only PDF (existing functionality)
         console.log('✈️ Generating FLIGHT-only PDF');
         pdfUrl = await generateFlightPdf(selectedFlightData);
-      } else if (selectedHotelData.length > 0) {
+      } else if (selectedHotelDataWithRooms.length > 0) {
         // Hotel-only PDF (use combined template with empty flights)
         console.log('🏨 Generating HOTEL-only PDF');
-        pdfUrl = await generateCombinedTravelPdf([], selectedHotelData);
+        pdfUrl = await generateCombinedTravelPdf([], selectedHotelDataWithRooms);
       }
 
       if (pdfUrl?.document_url && onPdfGenerated) {
