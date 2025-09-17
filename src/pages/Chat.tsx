@@ -828,10 +828,11 @@ const Chat = () => {
 
   // Auto-scroll to bottom only when new messages arrive
   const prevMessageCountRef = useRef(0);
+  const isUserTypingRef = useRef(false);
 
   useEffect(() => {
-    // Only scroll when there are actually new messages added
-    if (messages.length > prevMessageCountRef.current && messages.length > 0) {
+    // Only scroll when there are actually new messages added AND user is not actively typing
+    if (messages.length > prevMessageCountRef.current && messages.length > 0 && !isUserTypingRef.current) {
       // Small delay to ensure message is rendered
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -839,6 +840,15 @@ const Chat = () => {
     }
     prevMessageCountRef.current = messages.length;
   }, [messages.length]);
+
+  // Track when user is typing to prevent auto-scroll
+  useEffect(() => {
+    if (message.length > 0) {
+      isUserTypingRef.current = true;
+    } else {
+      isUserTypingRef.current = false;
+    }
+  }, [message]);
 
   // Reset loading state when conversation changes
   useEffect(() => {
@@ -1888,7 +1898,9 @@ const Chat = () => {
             style={{
               background: 'linear-gradient(45deg, #3b82f6, #8b5cf6, #ec4899, #06b6d4)',
               backgroundSize: '300% 300%',
-              animation: 'gradientShift 3s ease-in-out infinite, fadeInOut 3s ease-in-out infinite'
+              animation: 'gradientShift 3s ease-in-out infinite, fadeInOut 3s ease-in-out infinite',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
             }}
           >
             {inspirationPhrases[currentPhrase]}

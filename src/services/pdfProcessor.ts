@@ -267,20 +267,24 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
 function extractPriceFromMessage(message: string): number | null {
     // Look for patterns like: $1200, 1200 USD, 1200 dólares, etc.
     const pricePatterns = [
-        /\$\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/g,
-        /(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|usd|dólares?|dolares?)/gi,
-        /precio.*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
-        /total.*?(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi
+        /\$\s*(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/g,
+        /(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|usd|dólares?|dolares?)/gi,
+        /precio.*?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi,
+        /total.*?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi,
+        /cambia.*?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi,
+        /por\s+(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi
     ];
 
+    // First try to find numbers with context (more specific patterns)
     for (const pattern of pricePatterns) {
         const matches = message.match(pattern);
         if (matches) {
             for (const match of matches) {
-                const numberMatch = match.match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/);
+                const numberMatch = match.match(/(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/);
                 if (numberMatch) {
                     const price = parseFloat(numberMatch[1].replace(/,/g, ''));
-                    if (price > 0 && price < 50000) { // Reasonable price range
+                    if (price > 0 && price < 100000) { // Reasonable price range
+                        console.log('💰 [PRICE EXTRACTION] Found price with context:', price, 'from match:', match);
                         return price;
                     }
                 }
@@ -288,6 +292,24 @@ function extractPriceFromMessage(message: string): number | null {
         }
     }
 
+    // If no contextual match, look for standalone numbers (but be more careful)
+    const standaloneNumbers = message.match(/\b(\d{3,6})\b/g);
+    if (standaloneNumbers) {
+        // Filter out common non-price numbers
+        const filteredNumbers = standaloneNumbers.filter(num => {
+            const value = parseInt(num);
+            return value >= 100 && value <= 50000; // Reasonable price range
+        });
+
+        if (filteredNumbers.length > 0) {
+            // Take the largest number found (most likely to be the price)
+            const maxPrice = Math.max(...filteredNumbers.map(n => parseInt(n)));
+            console.log('💰 [PRICE EXTRACTION] Found standalone number:', maxPrice);
+            return maxPrice;
+        }
+    }
+
+    console.log('💰 [PRICE EXTRACTION] No price found in message:', message);
     return null;
 }
 
