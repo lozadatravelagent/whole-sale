@@ -842,16 +842,11 @@ const Chat = () => {
   }, [messages.length]);
 
   // Track when user is typing to prevent auto-scroll
-  // Use a more stable approach that doesn't trigger on every keystroke
-  const handleMessageChange = useCallback((newMessage: string) => {
+  const handleMessageChange = (newMessage: string) => {
     setMessage(newMessage);
-    // Only update typing state when message goes from empty to non-empty or vice versa
-    if (newMessage.length > 0 && message.length === 0) {
-      isUserTypingRef.current = true;
-    } else if (newMessage.length === 0 && message.length > 0) {
-      isUserTypingRef.current = false;
-    }
-  }, [message]);
+    // Update typing state based on message length
+    isUserTypingRef.current = newMessage.length > 0;
+  };
 
   // Reset loading state when conversation changes
   useEffect(() => {
@@ -862,13 +857,9 @@ const Chat = () => {
     }
   }, [selectedConversation]);
 
-  // Show inspiration text for new conversations
+  // Show inspiration text for new conversations - DISABLED
   useEffect(() => {
-    if (selectedConversation && messages.length === 0) {
-      setShowInspirationText(true);
-    } else {
-      setShowInspirationText(false);
-    }
+    setShowInspirationText(false);
   }, [selectedConversation, messages.length]);
 
   // Add CSS animations to head

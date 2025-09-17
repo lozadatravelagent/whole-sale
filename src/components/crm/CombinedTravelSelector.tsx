@@ -80,22 +80,22 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
         const legIcon = leg.flight_type === 'outbound' ? <Plane className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />;
 
         return (
-          <div key={legIndex} className="border border-gray-700 rounded-lg p-3 bg-gradient-to-r from-gray-800 to-gray-900">
+          <div key={legIndex} className="border border-black rounded-lg p-3 bg-black">
             <div className="flex items-center space-x-2 mb-3">
-              {React.cloneElement(legIcon, { className: "h-4 w-4 text-blue-800" })}
-              <span className="font-semibold text-sm text-blue-800">{legType}</span>
+              {React.cloneElement(legIcon, { className: "h-4 w-4 text-white" })}
+              <span className="font-semibold text-sm text-white">{legType}</span>
             </div>
 
             {/* Simplified display for current FlightLeg structure */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between bg-gray-700 rounded-lg p-3 border border-gray-600">
+              <div className="flex items-center justify-between bg-gray-900 rounded-lg p-3 border border-gray-800">
                 <div className="flex items-center space-x-3">
                   <div className="bg-gray-800 p-2 rounded-full">
-                    <Navigation className="h-4 w-4 text-gray-600" />
+                    <Navigation className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <div className="font-medium text-sm text-gray-100">Vuelo {legType}</div>
-                    <div className="text-xs text-gray-400">
+                    <div className="font-medium text-sm text-white">Vuelo {legType}</div>
+                    <div className="text-xs text-gray-300">
                       {leg.duration}
                     </div>
                   </div>
@@ -104,21 +104,21 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
 
               <div className="flex items-center justify-between px-3">
                 <div className="text-center">
-                  <div className="font-bold text-lg text-gray-800">{leg.departure.city_code}</div>
-                  <div className="text-sm font-medium text-gray-200">{leg.departure.time}</div>
-                  <div className="text-xs text-gray-400">{leg.departure.city_name}</div>
+                  <div className="font-bold text-lg text-white">{leg.departure.city_code}</div>
+                  <div className="text-sm font-medium text-white">{leg.departure.time}</div>
+                  <div className="text-xs text-gray-300">{leg.departure.city_name}</div>
                 </div>
 
                 <div className="flex-1 flex items-center justify-center">
                   <div className="h-0.5 bg-gradient-to-r from-gray-600 to-gray-700 flex-1"></div>
-                  <Plane className="h-5 w-5 mx-2 text-gray-600" />
+                  <Plane className="h-5 w-5 mx-2 text-white" />
                   <div className="h-0.5 bg-gradient-to-r from-gray-600 to-gray-700 flex-1"></div>
                 </div>
 
                 <div className="text-center">
-                  <div className="font-bold text-lg text-gray-800">{leg.arrival.city_code}</div>
-                  <div className="text-sm font-medium text-gray-200">{leg.arrival.time}</div>
-                  <div className="text-xs text-gray-400">{leg.arrival.city_name}</div>
+                  <div className="font-bold text-lg text-white">{leg.arrival.city_code}</div>
+                  <div className="text-sm font-medium text-white">{leg.arrival.time}</div>
+                  <div className="text-xs text-gray-300">{leg.arrival.city_name}</div>
                 </div>
               </div>
 
@@ -506,8 +506,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       {((combinedData.flights && combinedData.flights.length > 0) || (combinedData.hotels && combinedData.hotels.length > 0)) && (
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-6">
+              <div className="flex-1">
                 <h3 className="font-medium">Generar Cotización</h3>
                 <p className="text-sm text-muted-foreground">
                   {selectedFlights.length > 0 && `${selectedFlights.length} vuelo(s)`}
