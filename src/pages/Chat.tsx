@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -721,6 +721,7 @@ const Chat = () => {
   const [lastPdfAnalysis, setLastPdfAnalysis] = useState<any>(null);
   const [showInspirationText, setShowInspirationText] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarLimit, setSidebarLimit] = useState(5);
@@ -827,10 +828,10 @@ const Chat = () => {
 
   // Removed auto-scroll behavior to prevent input jumping
 
-  // Handle message input changes
-  const handleMessageChange = (newMessage: string) => {
+  // Handle message input changes - memoized to prevent re-renders
+  const handleMessageChange = useCallback((newMessage: string) => {
     setMessage(newMessage);
-  };
+  }, []);
 
   // Reset loading state when conversation changes
   useEffect(() => {
@@ -840,6 +841,17 @@ const Chat = () => {
       setIsTyping(false);
     }
   }, [selectedConversation]);
+
+  // Maintain focus on input after re-renders
+  useEffect(() => {
+    if (messageInputRef.current && document.activeElement !== messageInputRef.current) {
+      // Only refocus if the user was previously typing
+      const wasTyping = message.length > 0;
+      if (wasTyping) {
+        messageInputRef.current.focus();
+      }
+    }
+  }, [messages.length, message.length]);
 
   // Show inspiration text for new conversations - DISABLED
   useEffect(() => {
@@ -923,7 +935,7 @@ const Chat = () => {
     }
   };
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = useCallback(async () => {
     console.log('🚀 [MESSAGE FLOW] Starting handleSendMessage process');
     console.log('📝 Message content:', message);
     console.log('💬 Selected conversation:', selectedConversation);
@@ -1234,7 +1246,7 @@ const Chat = () => {
       setIsLoading(false);
       setIsTyping(false);
     }
-  };
+  }, [message, selectedConversation, isLoading, messages.length, conversations, updateMessageStatus, updateConversationTitle, addMessageViaSupabase, toast]);
 
   // Handler functions WITHOUT N8N
   const handleFlightSearch = async (parsed: ParsedTravelRequest) => {
@@ -2070,6 +2082,92 @@ const Chat = () => {
     }
   };
 
+  // Memoized message component to prevent unnecessary re-renders
+  const MessageItem = React.memo(({ msg }: { msg: MessageRow }) => {
+    const messageText = getMessageContent(msg);
+
+    // Check for PDF content
+    const hasPdf = typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content;
+    const pdfUrl = hasPdf ? (msg.content as { pdfUrl?: string }).pdfUrl : null;
+
+    // Check for combined travel data
+    const hasCombinedTravel = msg.role === 'assistant' && (
+      (typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta)
+    );
+
+    let combinedTravelData = null;
+    if (hasCombinedTravel && typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta) {
+      combinedTravelData = (msg.meta as unknown as { combinedData: LocalCombinedTravelResults }).combinedData;
+    }
+
+    // Memoize the conversion to prevent recalculation on every render
+    const memoizedCombinedData = useMemo(() => {
+      return combinedTravelData ? convertToGlobalCombinedData(combinedTravelData) : null;
+    }, [combinedTravelData]);
+
+    return (
+      <div key={msg.id}>
+        <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div className={`${hasCombinedTravel ? 'max-w-4xl' : 'max-w-lg'} flex items-start space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+            <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
+              {msg.role === 'user' ? <User className="h-4 w-4 text-primary" /> : <Bot className="h-4 w-4 text-accent" />}
+            </div>
+            <div className={`rounded-lg p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+
+              {/* Interactive selectors */}
+              {hasCombinedTravel && combinedTravelData ? (
+                <div className="space-y-3">
+                  <CombinedTravelSelector
+                    combinedData={memoizedCombinedData!}
+                    onPdfGenerated={handlePdfGenerated}
+                  />
+                </div>
+              ) : (
+                <>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {messageText}
+                  </ReactMarkdown>
+
+                  {/* PDF Download Button */}
+                  {hasPdf && pdfUrl && (
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center space-x-2">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-blue-900">
+                            Cotización de Viaje
+                          </p>
+                          <p className="text-xs text-blue-700">
+                            PDF con todos los detalles de tu viaje
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => window.open(pdfUrl, '_blank')}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          <Download className="h-4 w-4 mr-1" />
+                          Descargar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              <p className="text-xs opacity-70 mt-1 flex items-center justify-between">
+                <span className="flex items-center">
+                  {getMessageStatusIcon(getMessageStatus(msg))}
+                  <span className="ml-1">{formatTime(msg.created_at)}</span>
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  });
+
   // Convert local combined data to global type for component compatibility
   const convertToGlobalCombinedData = (localData: LocalCombinedTravelResults): CombinedTravelResults => {
     return {
@@ -2135,8 +2233,8 @@ const Chat = () => {
     };
   };
 
-  // Typing indicator component
-  const TypingIndicator = () => (
+  // Typing indicator component - memoized to prevent re-renders
+  const TypingIndicator = React.memo(() => (
     <div className="flex justify-start">
       <div className="max-w-lg flex items-start space-x-2">
         <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
@@ -2151,10 +2249,10 @@ const Chat = () => {
         </div>
       </div>
     </div>
-  );
+  ));
 
-  // Message input component
-  const MessageInput = ({ value, onChange, onSend, disabled }: {
+  // Message input component - memoized to prevent unnecessary re-renders
+  const MessageInput = React.memo(({ value, onChange, onSend, disabled }: {
     value: string;
     onChange: (value: string) => void;
     onSend: () => void;
@@ -2163,6 +2261,7 @@ const Chat = () => {
     <div className="border-t bg-background p-4">
       <div className="flex space-x-2">
         <Input
+          ref={messageInputRef}
           id="chat-message-input"
           name="message"
           value={value}
@@ -2212,10 +2311,10 @@ const Chat = () => {
         </Button>
       </div>
     </div>
-  );
+  ));
 
-  // Chat header component
-  const ChatHeader = () => (
+  // Chat header component - memoized to prevent re-renders
+  const ChatHeader = React.memo(() => (
     <div className="border-b bg-background p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -2229,10 +2328,10 @@ const Chat = () => {
         </div>
       </div>
     </div>
-  );
+  ));
 
-  // Empty state component
-  const EmptyState = ({ onCreateChat }: { onCreateChat: () => void }) => (
+  // Empty state component - memoized to prevent re-renders
+  const EmptyState = React.memo(({ onCreateChat }: { onCreateChat: () => void }) => (
     <div className="flex-1 flex items-center justify-center bg-muted/20">
       <div className="text-center">
         <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -2244,7 +2343,7 @@ const Chat = () => {
         </Button>
       </div>
     </div>
-  );
+  ));
 
   // Sidebar extra content (conversations list)
   const sidebarExtra = (
@@ -2360,88 +2459,9 @@ const Chat = () => {
                   {/* Inspiration text overlay for new conversations */}
                   <InspirationText />
 
-                  {messages.map((msg) => {
-                    const messageText = getMessageContent(msg);
-
-                    // Check for PDF content
-                    const hasPdf = typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content;
-                    const pdfUrl = hasPdf ? (msg.content as { pdfUrl?: string }).pdfUrl : null;
-
-                    // Check for combined travel data (MAINTAIN EXACT LOGIC)
-                    const hasCombinedTravel = msg.role === 'assistant' && (
-                      (typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta)
-                    );
-
-                    let combinedTravelData = null;
-                    if (hasCombinedTravel && typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta) {
-                      combinedTravelData = (msg.meta as unknown as { combinedData: LocalCombinedTravelResults }).combinedData;
-                    }
-
-                    // Convert data directly (without useMemo inside map)
-                    const memoizedCombinedData = combinedTravelData ? convertToGlobalCombinedData(combinedTravelData) : null;
-
-                    return (
-                      <div key={msg.id}>
-                        <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`${hasCombinedTravel ? 'max-w-4xl' : 'max-w-lg'} flex items-start space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                            <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
-                              {msg.role === 'user' ? <User className="h-4 w-4 text-primary" /> : <Bot className="h-4 w-4 text-accent" />}
-                            </div>
-                            <div className={`rounded-lg p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-
-                              {/* Interactive selectors (MAINTAIN EXACT) */}
-                              {hasCombinedTravel && combinedTravelData ? (
-                                <div className="space-y-3">
-                                  <CombinedTravelSelector
-                                    combinedData={memoizedCombinedData!}
-                                    onPdfGenerated={handlePdfGenerated}
-                                  />
-                                </div>
-                              ) : (
-                                <>
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                    {messageText}
-                                  </ReactMarkdown>
-
-                                  {/* PDF Download Button */}
-                                  {hasPdf && pdfUrl && (
-                                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                      <div className="flex items-center space-x-2">
-                                        <FileText className="h-5 w-5 text-blue-600" />
-                                        <div className="flex-1">
-                                          <p className="text-sm font-medium text-blue-900">
-                                            Cotización de Viaje
-                                          </p>
-                                          <p className="text-xs text-blue-700">
-                                            PDF con todos los detalles de tu viaje
-                                          </p>
-                                        </div>
-                                        <Button
-                                          size="sm"
-                                          onClick={() => window.open(pdfUrl, '_blank')}
-                                          className="bg-blue-600 hover:bg-blue-700"
-                                        >
-                                          <Download className="h-4 w-4 mr-1" />
-                                          Descargar
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-
-                              <p className="text-xs opacity-70 mt-1 flex items-center justify-between">
-                                <span className="flex items-center">
-                                  {getMessageStatusIcon(getMessageStatus(msg))}
-                                  <span className="ml-1">{formatTime(msg.created_at)}</span>
-                                </span>
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {messages.map((msg) => (
+                    <MessageItem key={msg.id} msg={msg} />
+                  ))}
 
                   {isTyping && <TypingIndicator />}
                 </div>
