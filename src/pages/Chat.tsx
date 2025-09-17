@@ -1020,12 +1020,15 @@ const Chat = () => {
     <div className="border-t bg-background p-4">
       <div className="flex space-x-2">
         <Input
+          id="chat-message-input"
+          name="message"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Escribe tu mensaje..."
           disabled={disabled}
           onKeyDown={(e) => e.key === 'Enter' && onSend()}
           className="flex-1"
+          autoComplete="off"
         />
         <Button
           onClick={onSend}
