@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -35,21 +35,32 @@ interface CombinedTravelSelectorProps {
   onPdfGenerated?: (pdfUrl: string) => void;
 }
 
-const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({ 
-  combinedData, 
-  onPdfGenerated 
+const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
+  combinedData,
+  onPdfGenerated
 }) => {
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [selectedHotels, setSelectedHotels] = useState<string[]>([]);
   const [selectedRooms, setSelectedRooms] = useState<Record<string, string>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState(
-    combinedData.requestType === 'combined' ? 'flights' : 
+    combinedData.requestType === 'combined' ? 'flights' :
     combinedData.requestType === 'flights-only' ? 'flights' : 'hotels'
   );
   const { toast } = useToast();
-  
-  console.log('🌟 CombinedTravelSelector rendered with data:', combinedData);
+  const hasLoggedData = useRef(false);
+
+  // Log data only once when component mounts or data changes significantly
+  useEffect(() => {
+    if (!hasLoggedData.current) {
+      console.log('🌟 CombinedTravelSelector initialized with data:', {
+        requestType: combinedData.requestType,
+        flightsCount: combinedData.flights?.length || 0,
+        hotelsCount: combinedData.hotels?.length || 0
+      });
+      hasLoggedData.current = true;
+    }
+  }, [combinedData.requestType, combinedData.flights?.length, combinedData.hotels?.length]);
 
   const handleFlightToggle = (flightId: string) => {
     setSelectedFlights(prev => {

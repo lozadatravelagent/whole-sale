@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -181,23 +181,30 @@ const Chat = () => {
   const {
     messages,
     loading: messagesLoading,
-    saveMessage,
     updateMessageStatus
   } = useMessages(selectedConversation);
 
   // Create new chat function (defined before useEffects that use it)
   const createNewChat = useCallback(async (initialTitle?: string) => {
-    if (!user) return;
+    console.log('🚀 [CHAT FLOW] Step 1: Starting createNewChat process');
+    console.log('👤 User:', user?.id, user?.email);
+
+    if (!user) {
+      console.warn('❌ [CHAT FLOW] No user found, aborting chat creation');
+      return;
+    }
 
     try {
       // Generate a dynamic title based on time or use provided title
       const currentTime = new Date();
       const defaultTitle = `Chat ${currentTime.toLocaleDateString('es-ES')} ${currentTime.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
 
-      const newConversation = await createConversation({
-        user_id: user.id,
-        status: 'active',
+      console.log('📝 [CHAT FLOW] Step 2: Preparing conversation data');
+      console.log('🏷️ Title:', initialTitle || defaultTitle);
+
+      const conversationData = {
         channel: 'web',
+        status: 'active',
         meta: {
           created_by: user.id,
           created_from: 'chat_interface',
@@ -206,20 +213,34 @@ const Chat = () => {
           session_id: `session_${Date.now()}`,
           display_title: initialTitle || defaultTitle
         }
-      });
+      };
+
+      console.log('📤 [CHAT FLOW] Step 3: About to call createConversation (Supabase INSERT)');
+      console.log('📋 Data to insert:', conversationData);
+
+      const newConversation = await createConversation(conversationData);
+
+      console.log('✅ [CHAT FLOW] Step 4: Conversation created successfully');
+      console.log('💾 New conversation:', newConversation);
 
       if (newConversation) {
+        console.log('🎯 [CHAT FLOW] Step 5: Setting selected conversation');
         setSelectedConversation(newConversation.id);
+
+        console.log('📤 [CHAT FLOW] Step 6: About to update conversation state (Supabase UPDATE)');
         await updateConversationState(newConversation.id, 'active');
+        console.log('✅ [CHAT FLOW] Step 7: Conversation state updated successfully');
 
         // Show success toast
+        console.log('🎉 [CHAT FLOW] Step 8: Showing success notification');
         toast({
           title: "Nueva Conversación",
           description: "Se ha creado una nueva conversación exitosamente",
         });
+        console.log('✅ [CHAT FLOW] Chat creation process completed successfully');
       }
     } catch (error) {
-      console.error('Error creating conversation:', error);
+      console.error('❌ [CHAT FLOW] Error in createNewChat process:', error);
       toast({
         title: "Error",
         description: "No se pudo crear la conversación. Inténtalo de nuevo.",
@@ -280,87 +301,176 @@ const Chat = () => {
     }
   };
 
+  // Use Supabase add-message function instead of direct saveMessage
+  const addMessageViaSupabase = async (messageData: {
+    conversation_id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: { text?: string; cards?: unknown[]; pdfUrl?: string; metadata?: Record<string, unknown>; };
+    meta?: { status?: string; [key: string]: unknown; };
+  }) => {
+    console.log('📤 [SUPABASE FUNCTION] About to call add-message function');
+    console.log('📋 Message data:', messageData);
+
+    try {
+      const response = await supabase.functions.invoke('add-message', {
+        body: {
+          conversationId: messageData.conversation_id,
+          role: messageData.role,
+          content: messageData.content,
+          meta: messageData.meta
+        }
+      });
+
+      if (response.error) {
+        console.error('❌ [SUPABASE FUNCTION] add-message error:', response.error);
+        throw response.error;
+      }
+
+      console.log('✅ [SUPABASE FUNCTION] add-message success:', response.data);
+      return response.data.message;
+    } catch (error) {
+      console.error('❌ [SUPABASE FUNCTION] add-message failed:', error);
+      throw error;
+    }
+  };
+
   const handleSendMessage = async () => {
-    if (!message.trim() || !selectedConversation || isLoading) return;
+    console.log('🚀 [MESSAGE FLOW] Starting handleSendMessage process');
+    console.log('📝 Message content:', message);
+    console.log('💬 Selected conversation:', selectedConversation);
+    console.log('⏳ Is loading:', isLoading);
+
+    if (!message.trim() || !selectedConversation || isLoading) {
+      console.warn('❌ [MESSAGE FLOW] Validation failed - aborting send');
+      return;
+    }
 
     const currentMessage = message;
     setMessage('');
     setIsLoading(true);
     setIsTyping(true);
 
+    console.log('✅ [MESSAGE FLOW] Step 1: Message validation passed');
+    console.log('📨 Processing message:', currentMessage);
+
     try {
       // 1. Save user message
-      const userMessage = await saveMessage({
+      console.log('📤 [MESSAGE FLOW] Step 2: About to save user message (Supabase INSERT)');
+
+      const userMessageData = {
         conversation_id: selectedConversation,
         role: 'user',
         content: { text: currentMessage },
         meta: { status: 'sending' }
-      });
+      };
+      console.log('📋 User message data:', userMessageData);
 
+      const userMessage = await addMessageViaSupabase(userMessageData);
+
+      console.log('✅ [MESSAGE FLOW] Step 3: User message saved successfully');
+      console.log('💾 User message result:', userMessage);
+
+      console.log('📤 [MESSAGE FLOW] Step 4: About to update message status (Supabase UPDATE)');
       await updateMessageStatus(userMessage.id, 'sent');
+      console.log('✅ [MESSAGE FLOW] Step 5: Message status updated to "sent"');
 
       // 2. Update conversation title if first message
       if (messages.length === 0) {
+        console.log('🏷️ [MESSAGE FLOW] Step 6: First message - updating conversation title');
         const title = generateChatTitle(currentMessage);
+        console.log('📝 Generated title:', title);
+
         try {
+          console.log('📤 [MESSAGE FLOW] About to update conversation title (Supabase UPDATE)');
           await updateConversationTitle(selectedConversation, title);
-          console.log(`✅ Conversation title updated to: "${title}"`);
+          console.log(`✅ [MESSAGE FLOW] Step 7: Conversation title updated to: "${title}"`);
         } catch (titleError) {
-          console.error('Error updating conversation title:', titleError);
+          console.error('❌ [MESSAGE FLOW] Error updating conversation title:', titleError);
           // Don't fail the whole process if title update fails
         }
       }
 
       // 3. Use AI Parser to classify request
+      console.log('🤖 [MESSAGE FLOW] Step 8: Starting AI parsing process');
       let parsedRequest: ParsedTravelRequest;
+
       try {
+        console.log('📤 [MESSAGE FLOW] About to call AI message parser (Supabase Edge Function)');
+        console.log('🧠 Message to parse:', currentMessage);
+
         parsedRequest = await parseMessageWithAI(currentMessage);
-        console.log('✅ AI parsing result:', parsedRequest);
+
+        console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
+        console.log('🎯 AI parsing result:', parsedRequest);
       } catch (aiError) {
-        console.error('❌ AI parsing failed, using fallback');
+        console.error('❌ [MESSAGE FLOW] AI parsing failed, using fallback');
+        console.log('🔄 [MESSAGE FLOW] Step 9b: Using fallback parsing');
+
         parsedRequest = getFallbackParsing(currentMessage);
+        console.log('📋 Fallback parsing result:', parsedRequest);
       }
 
       // 4. Execute searches based on type (WITHOUT N8N)
+      console.log('🔍 [MESSAGE FLOW] Step 10: Starting search process');
+      console.log('📊 Request type detected:', parsedRequest.requestType);
+
       let assistantResponse = '';
       let structuredData = null;
 
       switch (parsedRequest.requestType) {
         case 'flights': {
+          console.log('✈️ [MESSAGE FLOW] Step 11a: Processing flight search');
           const flightResult = await handleFlightSearch(parsedRequest);
           assistantResponse = flightResult.response;
           structuredData = flightResult.data;
+          console.log('✅ [MESSAGE FLOW] Flight search completed');
           break;
         }
         case 'hotels': {
+          console.log('🏨 [MESSAGE FLOW] Step 11b: Processing hotel search');
           const hotelResult = await handleHotelSearch(parsedRequest);
           assistantResponse = hotelResult.response;
           structuredData = hotelResult.data;
+          console.log('✅ [MESSAGE FLOW] Hotel search completed');
           break;
         }
         case 'packages': {
+          console.log('🎒 [MESSAGE FLOW] Step 11c: Processing package search');
           const packageResult = await handlePackageSearch(parsedRequest);
           assistantResponse = packageResult.response;
           structuredData = packageResult.data;
+          console.log('✅ [MESSAGE FLOW] Package search completed');
           break;
         }
         case 'services': {
+          console.log('🚌 [MESSAGE FLOW] Step 11d: Processing service search');
           const serviceResult = await handleServiceSearch(parsedRequest);
           assistantResponse = serviceResult.response;
+          console.log('✅ [MESSAGE FLOW] Service search completed');
           break;
         }
         case 'combined': {
+          console.log('🌟 [MESSAGE FLOW] Step 11e: Processing combined search');
           const combinedResult = await handleCombinedSearch(parsedRequest);
           assistantResponse = combinedResult.response;
           structuredData = combinedResult.data;
+          console.log('✅ [MESSAGE FLOW] Combined search completed');
           break;
         }
         default:
+          console.log('💬 [MESSAGE FLOW] Step 11f: Processing general query');
           assistantResponse = await handleGeneralQuery(parsedRequest);
+          console.log('✅ [MESSAGE FLOW] General query completed');
       }
 
+      console.log('📝 [MESSAGE FLOW] Step 12: Generated assistant response');
+      console.log('💬 Response preview:', assistantResponse.substring(0, 100) + '...');
+      console.log('📊 Structured data:', structuredData);
+
       // 5. Save response with structured data
-      const assistantMessage = await saveMessage({
+      console.log('📤 [MESSAGE FLOW] Step 13: About to save assistant message (Supabase INSERT)');
+
+      const assistantMessageData = {
         conversation_id: selectedConversation,
         role: 'assistant',
         content: { text: assistantResponse },
@@ -368,14 +478,29 @@ const Chat = () => {
           source: 'AI_PARSER + EUROVIPS',
           ...structuredData
         } : {}
-      });
+      };
+      console.log('📋 Assistant message data:', assistantMessageData);
+
+      const assistantMessage = await addMessageViaSupabase(assistantMessageData);
+
+      console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
+      console.log('💾 Assistant message result:', assistantMessage);
 
       // 6. Lead generation (MAINTAIN EXACT)
+      console.log('📋 [MESSAGE FLOW] Step 15: Starting lead generation process');
       const conversation = conversations.find(c => c.id === selectedConversation);
+
       if (conversation) {
+        console.log('📤 [MESSAGE FLOW] About to create/update lead (CRM Integration)');
         const allMessages = [...messages, userMessage, assistantMessage];
+        console.log('📊 Messages for lead generation:', allMessages.length);
+
         const leadId = await createLeadFromChat(conversation, allMessages);
+
         if (leadId) {
+          console.log('✅ [MESSAGE FLOW] Step 16: Lead created/updated successfully');
+          console.log('🆔 Lead ID:', leadId);
+
           toast({
             title: "Lead Actualizado",
             description: "Se ha creado/actualizado automáticamente tu lead en el CRM.",
@@ -383,14 +508,17 @@ const Chat = () => {
         }
       }
 
+      console.log('🎉 [MESSAGE FLOW] Message processing completed successfully');
+
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ [MESSAGE FLOW] Error in handleSendMessage process:', error);
       toast({
         title: "Error",
         description: "No se pudo enviar el mensaje. Inténtalo de nuevo.",
         variant: "destructive",
       });
     } finally {
+      console.log('🏁 [MESSAGE FLOW] Cleaning up - setting loading states to false');
       setIsLoading(false);
       setIsTyping(false);
     }
@@ -398,18 +526,39 @@ const Chat = () => {
 
   // Handler functions WITHOUT N8N
   const handleFlightSearch = async (parsed: ParsedTravelRequest) => {
+    console.log('✈️ [FLIGHT SEARCH] Starting flight search process');
+    console.log('📋 Parsed request:', parsed);
+
     try {
+      console.log('🔄 [FLIGHT SEARCH] Step 1: Formatting parameters for Starling API');
       const starlingParams = formatForStarling(parsed);
+      console.log('📊 Starling parameters:', starlingParams);
+
+      console.log('📤 [FLIGHT SEARCH] Step 2: About to call Starling API (Supabase Edge Function)');
       const response = await supabase.functions.invoke('starling-flights', {
         body: starlingParams
       });
 
-      if (response.error) throw new Error(response.error.message);
+      console.log('✅ [FLIGHT SEARCH] Step 3: Starling API response received');
+      console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
 
+      if (response.error) {
+        console.error('❌ [FLIGHT SEARCH] Starling API error:', response.error);
+        throw new Error(response.error.message);
+      }
+
+      console.log('📊 [FLIGHT SEARCH] Raw response data:', response.data);
+
+      console.log('🔄 [FLIGHT SEARCH] Step 4: Transforming Starling results');
       const flights = transformStarlingResults(response.data, parsed);
+      console.log('✅ [FLIGHT SEARCH] Step 5: Flight data transformed successfully');
+      console.log('✈️ Flights found:', flights.length);
 
-      return {
-        response: formatFlightResponse(flights, parsed),
+      console.log('📝 [FLIGHT SEARCH] Step 6: Formatting response text');
+      const formattedResponse = formatFlightResponse(flights, parsed);
+
+      const result = {
+        response: formattedResponse,
         data: {
           combinedData: {
             flights,
@@ -418,7 +567,13 @@ const Chat = () => {
           }
         }
       };
+
+      console.log('🎉 [FLIGHT SEARCH] Flight search completed successfully');
+      console.log('📋 Final result:', result);
+
+      return result;
     } catch (error) {
+      console.error('❌ [FLIGHT SEARCH] Error in flight search process:', error);
       return {
         response: '❌ Error buscando vuelos. Intenta con fechas y destinos específicos.',
         data: null
@@ -427,28 +582,55 @@ const Chat = () => {
   };
 
   const handleHotelSearch = async (parsed: ParsedTravelRequest) => {
+    console.log('🏨 [HOTEL SEARCH] Starting hotel search process');
+    console.log('📋 Parsed request:', parsed);
+
     try {
+      console.log('🔄 [HOTEL SEARCH] Step 1: Formatting parameters for EUROVIPS API');
       const eurovipsParams = formatForEurovips(parsed);
+      console.log('📊 EUROVIPS parameters:', eurovipsParams);
 
       // Get city code first
+      console.log('📍 [HOTEL SEARCH] Step 2: Getting city code for location');
+      console.log('🔍 Looking up city:', eurovipsParams.hotelParams.cityCode);
+
       const cityCode = await getCityCode(eurovipsParams.hotelParams.cityCode);
+      console.log('✅ [HOTEL SEARCH] City code resolved:', cityCode);
+
+      const requestBody = {
+        action: 'searchHotels',
+        data: {
+          ...eurovipsParams.hotelParams,
+          cityCode: cityCode
+        }
+      };
+
+      console.log('📤 [HOTEL SEARCH] Step 3: About to call EUROVIPS API (Supabase Edge Function)');
+      console.log('📋 Request body:', requestBody);
 
       const response = await supabase.functions.invoke('eurovips-soap', {
-        body: {
-          action: 'searchHotels',
-          data: {
-            ...eurovipsParams.hotelParams,
-            cityCode: cityCode
-          }
-        }
+        body: requestBody
       });
 
-      if (response.error) throw new Error(response.error.message);
+      console.log('✅ [HOTEL SEARCH] Step 4: EUROVIPS API response received');
+      console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
+
+      if (response.error) {
+        console.error('❌ [HOTEL SEARCH] EUROVIPS API error:', response.error);
+        throw new Error(response.error.message);
+      }
+
+      console.log('📊 [HOTEL SEARCH] Raw response data:', response.data);
 
       const hotels = response.data.results || [];
+      console.log('✅ [HOTEL SEARCH] Step 5: Hotel data extracted');
+      console.log('🏨 Hotels found:', hotels.length);
 
-      return {
-        response: formatHotelResponse(hotels, parsed),
+      console.log('📝 [HOTEL SEARCH] Step 6: Formatting response text');
+      const formattedResponse = formatHotelResponse(hotels, parsed);
+
+      const result = {
+        response: formattedResponse,
         data: {
           eurovipsData: { hotels },
           combinedData: {
@@ -458,7 +640,13 @@ const Chat = () => {
           }
         }
       };
+
+      console.log('🎉 [HOTEL SEARCH] Hotel search completed successfully');
+      console.log('📋 Final result:', result);
+
+      return result;
     } catch (error) {
+      console.error('❌ [HOTEL SEARCH] Error in hotel search process:', error);
       return {
         response: '❌ Error buscando hoteles. Verifica la ciudad y fechas.',
         data: null
@@ -525,24 +713,48 @@ const Chat = () => {
   };
 
   const handleCombinedSearch = async (parsed: ParsedTravelRequest) => {
+    console.log('🌟 [COMBINED SEARCH] Starting combined search process');
+    console.log('📋 Parsed request:', parsed);
+
     try {
+      console.log('🚀 [COMBINED SEARCH] Step 1: Starting parallel searches');
+      console.log('⚡ Running flight and hotel searches simultaneously');
+
       // Parallel searches
       const [flightResult, hotelResult] = await Promise.all([
         handleFlightSearch(parsed),
         handleHotelSearch(parsed)
       ]);
 
+      console.log('✅ [COMBINED SEARCH] Step 2: Parallel searches completed');
+      console.log('✈️ Flight search result:', flightResult ? 'SUCCESS' : 'FAILED');
+      console.log('🏨 Hotel search result:', hotelResult ? 'SUCCESS' : 'FAILED');
+
+      console.log('🔄 [COMBINED SEARCH] Step 3: Combining search results');
       const combinedData = {
         flights: flightResult.data?.combinedData?.flights || [],
         hotels: hotelResult.data?.combinedData?.hotels || [],
         requestType: 'combined' as const
       };
 
-      return {
-        response: formatCombinedResponse(combinedData, parsed),
+      console.log('📊 [COMBINED SEARCH] Combined data summary:');
+      console.log('✈️ Flights found:', combinedData.flights.length);
+      console.log('🏨 Hotels found:', combinedData.hotels.length);
+
+      console.log('📝 [COMBINED SEARCH] Step 4: Formatting combined response');
+      const formattedResponse = formatCombinedResponse(combinedData, parsed);
+
+      const result = {
+        response: formattedResponse,
         data: { combinedData }
       };
+
+      console.log('🎉 [COMBINED SEARCH] Combined search completed successfully');
+      console.log('📋 Final combined result:', result);
+
+      return result;
     } catch (error) {
+      console.error('❌ [COMBINED SEARCH] Error in combined search process:', error);
       return {
         response: '❌ Error en búsqueda combinada. Intenta por separado.',
         data: null
@@ -981,6 +1193,11 @@ const Chat = () => {
                       combinedTravelData = (msg.meta as unknown as { combinedData: LocalCombinedTravelResults }).combinedData;
                     }
 
+                    // Memoize the conversion to prevent unnecessary re-renders
+                    const memoizedCombinedData = useMemo(() => {
+                      return combinedTravelData ? convertToGlobalCombinedData(combinedTravelData) : null;
+                    }, [combinedTravelData]);
+
                     return (
                       <div key={msg.id}>
                         <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -1002,7 +1219,7 @@ const Chat = () => {
                                     }
                                   </div>
                                   <CombinedTravelSelector
-                                    combinedData={convertToGlobalCombinedData(combinedTravelData)}
+                                    combinedData={memoizedCombinedData!}
                                     onPdfGenerated={handlePdfGenerated}
                                   />
                                 </div>

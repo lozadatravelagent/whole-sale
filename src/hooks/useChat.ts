@@ -65,6 +65,9 @@ export function useConversations() {
     channel?: 'web' | 'whatsapp';
     meta?: Record<string, unknown>;
   }) => {
+    console.log('💾 [SUPABASE] Starting createConversation');
+    console.log('📋 Parameters received:', params);
+
     try {
       const mockAgencyId = '00000000-0000-0000-0000-000000000001';
       const mockTenantId = '00000000-0000-0000-0000-000000000001';
@@ -80,18 +83,32 @@ export function useConversations() {
         ...(params?.meta && { meta: params.meta })
       };
 
+      console.log('📤 [SUPABASE] About to INSERT into conversations table');
+      console.log('📋 Data to insert:', newConversation);
+
       const { data, error } = await supabase
         .from('conversations')
         .insert(newConversation)
         .select()
         .single();
 
-      if (error) throw error;
+      console.log('📨 [SUPABASE] INSERT response received');
+      console.log('✅ Success:', !error);
+      console.log('❌ Error:', error);
+      console.log('💾 Data:', data);
 
+      if (error) {
+        console.error('❌ [SUPABASE] Database error in createConversation:', error);
+        throw error;
+      }
+
+      console.log('🔄 [SUPABASE] Updating local conversations state');
       setConversations(prev => [data, ...prev]);
+
+      console.log('✅ [SUPABASE] createConversation completed successfully');
       return data;
     } catch (error) {
-      console.error('Error creating conversation:', error);
+      console.error('❌ [SUPABASE] Error in createConversation process:', error);
       throw error;
     }
   };
@@ -183,23 +200,44 @@ export function useMessages(conversationId: string | null) {
     content: { text?: string; cards?: unknown[]; pdfUrl?: string; metadata?: Record<string, unknown>; };
     meta?: { status?: string; [key: string]: unknown; };
   }) => {
+    console.log('💾 [SUPABASE] Starting saveMessage');
+    console.log('📋 Message to save:', message);
+    console.log('👤 Role:', message.role);
+    console.log('💬 Content preview:', typeof message.content === 'object' ? JSON.stringify(message.content).substring(0, 100) + '...' : message.content);
+
     try {
+      const messageData = {
+        ...message,
+        created_at: new Date().toISOString()
+      };
+
+      console.log('📤 [SUPABASE] About to INSERT into messages table');
+      console.log('📋 Data to insert:', messageData);
+
       const { data, error } = await supabase
         .from('messages')
-        .insert({
-          ...message,
-          created_at: new Date().toISOString()
-        })
+        .insert(messageData)
         .select()
         .single();
 
-      if (error) throw error;
+      console.log('📨 [SUPABASE] INSERT response received');
+      console.log('✅ Success:', !error);
+      console.log('❌ Error:', error);
+
+      if (error) {
+        console.error('❌ [SUPABASE] Database error in saveMessage:', error);
+        throw error;
+      }
+
+      console.log('💾 [SUPABASE] Message saved with ID:', data.id);
+      console.log('🔄 [SUPABASE] Letting real-time subscription handle state update');
 
       // Don't add to local state here - let the real-time subscription handle it
       // This prevents duplicate messages when we get both the return value and the subscription event
+      console.log('✅ [SUPABASE] saveMessage completed successfully');
       return data;
     } catch (error) {
-      console.error('Error saving message:', error);
+      console.error('❌ [SUPABASE] Error in saveMessage process:', error);
       throw error;
     }
   };
