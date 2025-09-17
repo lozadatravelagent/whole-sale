@@ -121,8 +121,8 @@ interface FlightData {
     over: number;
   };
   legs: Array<{
-    legNumber?: number;
-    options?: Array<{
+    legNumber: number;
+    options: Array<{
       optionId: string;
       duration: number;
       segments: Array<{
@@ -157,14 +157,6 @@ interface FlightData {
         brandName: string;
         features: any;
       }>;
-    }>;
-    // Backward compatibility for existing structure
-    segments?: Array<{
-      airline: string;
-      departure_date: string;
-      arrival_date: string;
-      origin: string;
-      destination: string;
     }>;
   }>;
   taxes?: Array<{
@@ -524,7 +516,7 @@ const Chat = () => {
     conversation_id: string;
     role: 'user' | 'assistant' | 'system';
     content: { text?: string; cards?: unknown[]; pdfUrl?: string; metadata?: Record<string, unknown>; };
-    meta?: { status?: string; [key: string]: unknown; };
+    meta?: { status?: string;[key: string]: unknown; };
   }) => {
     console.log('📤 [SUPABASE FUNCTION] About to call add-message function');
     console.log('📋 Message data:', messageData);
@@ -1000,11 +992,11 @@ const Chat = () => {
   const handleGeneralQuery = async (parsed: ParsedTravelRequest) => {
     // General response without N8N
     return '¡Hola! Soy Emilia, tu asistente de viajes. Puedo ayudarte con:\n\n' +
-           '✈️ **Búsqueda de vuelos**\n' +
-           '🏨 **Búsqueda de hoteles**\n' +
-           '🎒 **Búsqueda de paquetes**\n' +
-           '🚌 **Servicios y transfers**\n\n' +
-           'Dime qué necesitas con fechas y destinos específicos.';
+      '✈️ **Búsqueda de vuelos**\n' +
+      '🏨 **Búsqueda de hoteles**\n' +
+      '🎒 **Búsqueda de paquetes**\n' +
+      '🚌 **Servicios y transfers**\n\n' +
+      'Dime qué necesitas con fechas y destinos específicos.';
   };
 
   // Response formatters - using the main FlightData interface
@@ -1182,7 +1174,8 @@ const Chat = () => {
         return_date: flight.return_date,
         legs: flight.legs.map(leg => {
           // Get first segment from first option in the new TVC structure
-          const firstSegment = leg.options?.[0]?.segments?.[0];
+          const firstOption = leg.options?.[0];
+          const firstSegment = firstOption?.segments?.[0];
           return {
             departure: {
               city_code: firstSegment?.departure?.airportCode || '',
@@ -1194,8 +1187,8 @@ const Chat = () => {
               city_name: firstSegment?.arrival?.airportCode || '',
               time: firstSegment?.arrival?.time || ''
             },
-            duration: leg.options?.[0]?.duration ? formatDuration(leg.options[0].duration) : '0h 0m',
-            flight_type: (leg.options?.[0]?.segments?.length || 0) > 1 ? 'connecting' : 'direct'
+            duration: firstOption?.duration ? formatDuration(firstOption.duration) : '0h 0m',
+            flight_type: (firstOption?.segments?.length || 0) > 1 ? 'connecting' : 'direct'
           };
         }),
         luggage: flight.luggage || false
@@ -1333,9 +1326,8 @@ const Chat = () => {
               .map((conversation) => (
                 <Card
                   key={conversation.id}
-                  className={`mb-2 cursor-pointer transition-colors ${
-                    selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
-                  }`}
+                  className={`mb-2 cursor-pointer transition-colors ${selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
+                    }`}
                   onClick={() => setSelectedConversation(conversation.id)}
                 >
                   <CardContent className="p-3">
@@ -1383,9 +1375,8 @@ const Chat = () => {
               .map((conversation) => (
                 <Card
                   key={conversation.id}
-                  className={`mb-2 cursor-pointer transition-colors ${
-                    selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
-                  }`}
+                  className={`mb-2 cursor-pointer transition-colors ${selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
+                    }`}
                   onClick={() => setSelectedConversation(conversation.id)}
                 >
                   <CardContent className="p-3">
