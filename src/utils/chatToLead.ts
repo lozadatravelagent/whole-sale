@@ -394,7 +394,11 @@ export async function updateLeadWithPdfData(
   hotelData: HotelData[]
 ): Promise<string | null> {
   try {
-    console.log('🔍 Searching for lead with conversation_id:', conversationId);
+    console.log('🔍 [LEAD UPDATE] Starting lead update process');
+    console.log('📋 [LEAD UPDATE] Conversation ID:', conversationId);
+    console.log('📄 [LEAD UPDATE] PDF URL:', pdfUrl);
+    console.log('✈️ [LEAD UPDATE] Flights count:', flightData.length);
+    console.log('🏨 [LEAD UPDATE] Hotels count:', hotelData.length);
 
     // Buscar el lead asociado con esta conversación
     const { data: leads, error: searchError } = await supabase
@@ -405,17 +409,28 @@ export async function updateLeadWithPdfData(
       .limit(1);
 
     if (searchError) {
-      console.error('Error searching for lead:', searchError);
+      console.error('❌ [LEAD UPDATE] Error searching for lead:', searchError);
       return null;
     }
 
+    console.log('🔍 [LEAD UPDATE] Search results:', {
+      leads_found: leads?.length || 0,
+      leads_data: leads
+    });
+
     if (!leads || leads.length === 0) {
-      console.warn('No lead found for conversation:', conversationId);
+      console.warn('⚠️ [LEAD UPDATE] No lead found for conversation:', conversationId);
+      console.log('💡 [LEAD UPDATE] This might be normal if no lead was created yet from this chat');
       return null;
     }
 
     const lead = leads[0];
-    console.log('✅ Found lead to update:', lead.id);
+    console.log('✅ [LEAD UPDATE] Found lead to update:', {
+      lead_id: lead.id,
+      current_status: lead.status,
+      current_budget: lead.budget,
+      conversation_id: lead.conversation_id
+    });
 
     // Extraer información de los datos de vuelos y hoteles
     const firstFlight = flightData[0];
@@ -536,15 +551,83 @@ export async function updateLeadWithPdfData(
     const updatedLead = await updateLead(updateData);
 
     if (updatedLead) {
-      console.log('✅ Lead updated successfully with PDF data');
+      console.log('✅ [LEAD UPDATE] Lead updated successfully with PDF data');
+      console.log('📋 [LEAD UPDATE] Updated lead details:', {
+        lead_id: updatedLead.id,
+        new_status: updatedLead.status,
+        new_budget: updatedLead.budget,
+        attachments_count: updatedLead.attachments?.length || 0,
+        checklist_items: updatedLead.checklist?.length || 0
+      });
       return updatedLead.id;
     } else {
-      console.error('❌ Failed to update lead with PDF data');
+      console.error('❌ [LEAD UPDATE] Failed to update lead with PDF data');
       return null;
     }
 
   } catch (error) {
-    console.error('❌ Error updating lead with PDF data:', error);
+    console.error('❌ [LEAD UPDATE] Error updating lead with PDF data:', error);
     return null;
+  }
+}
+
+// Función de diagnóstico para verificar leads en el CRM
+export async function diagnoseCRMIntegration(conversationId?: string): Promise<void> {
+  try {
+    console.log('🔍 [CRM DIAGNOSIS] Starting CRM integration diagnosis...');
+
+    // 1. Verificar leads totales
+    const { data: allLeads, error: allLeadsError } = await supabase
+      .from('leads')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (allLeadsError) {
+      console.error('❌ [CRM DIAGNOSIS] Error fetching all leads:', allLeadsError);
+      return;
+    }
+
+    console.log('📊 [CRM DIAGNOSIS] Total leads in database:', allLeads?.length || 0);
+
+    // 2. Verificar leads con conversation_id
+    const leadsWithConversation = allLeads?.filter(lead => lead.conversation_id) || [];
+    console.log('💬 [CRM DIAGNOSIS] Leads with conversation_id:', leadsWithConversation.length);
+
+    // 3. Verificar leads del chat actual (si se proporciona conversationId)
+    if (conversationId) {
+      const conversationLeads = allLeads?.filter(lead => lead.conversation_id === conversationId) || [];
+      console.log('🎯 [CRM DIAGNOSIS] Leads for current conversation:', conversationLeads.length);
+
+      if (conversationLeads.length > 0) {
+        console.log('📋 [CRM DIAGNOSIS] Current conversation leads:', conversationLeads.map(lead => ({
+          id: lead.id,
+          status: lead.status,
+          budget: lead.budget,
+          created_at: lead.created_at,
+          has_attachments: lead.attachments && JSON.parse(lead.attachments as string).length > 0
+        })));
+      }
+    }
+
+    // 4. Verificar leads recientes (últimas 24 horas)
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const recentLeads = allLeads?.filter(lead => lead.created_at > yesterday) || [];
+    console.log('🕐 [CRM DIAGNOSIS] Recent leads (last 24h):', recentLeads.length);
+
+    // 5. Verificar leads con PDFs
+    const leadsWithPDFs = allLeads?.filter(lead => {
+      try {
+        const attachments = JSON.parse(lead.attachments as string);
+        return Array.isArray(attachments) && attachments.length > 0;
+      } catch {
+        return false;
+      }
+    }) || [];
+    console.log('📄 [CRM DIAGNOSIS] Leads with PDF attachments:', leadsWithPDFs.length);
+
+    console.log('✅ [CRM DIAGNOSIS] Diagnosis complete');
+
+  } catch (error) {
+    console.error('❌ [CRM DIAGNOSIS] Error during diagnosis:', error);
   }
 }

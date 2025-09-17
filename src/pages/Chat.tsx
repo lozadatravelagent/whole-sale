@@ -11,7 +11,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
-import { createLeadFromChat, updateLeadWithPdfData } from '@/utils/chatToLead';
+import { createLeadFromChat, updateLeadWithPdfData, diagnoseCRMIntegration } from '@/utils/chatToLead';
 import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
@@ -1259,6 +1259,10 @@ const Chat = () => {
           messageType: 'pdf_delivery'
         }
       });
+
+      // Run CRM diagnosis before updating
+      console.log('🔍 Running CRM diagnosis...');
+      await diagnoseCRMIntegration(selectedConversation);
 
       // Update lead with PDF data
       console.log('📋 Updating lead with PDF data...');
