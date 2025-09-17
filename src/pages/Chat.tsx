@@ -842,10 +842,13 @@ const Chat = () => {
   }, [messages.length]);
 
   // Track when user is typing to prevent auto-scroll
-  useEffect(() => {
-    if (message.length > 0) {
+  // Use a more stable approach that doesn't trigger on every keystroke
+  const handleMessageChange = useCallback((newMessage: string) => {
+    setMessage(newMessage);
+    // Only update typing state when message goes from empty to non-empty or vice versa
+    if (newMessage.length > 0 && message.length === 0) {
       isUserTypingRef.current = true;
-    } else {
+    } else if (newMessage.length === 0 && message.length > 0) {
       isUserTypingRef.current = false;
     }
   }, [message]);
@@ -1854,40 +1857,9 @@ const Chat = () => {
     return priceKeywords.some(keyword => lowerMessage.includes(keyword));
   };
 
-  // Inspiration phrases for new conversations
-  const inspirationPhrases = [
-    "Quiero un vuelo a Cancún durante 8 noches...",
-    "Busco un hotel en Punta Cana para febrero...",
-    "Necesito un paquete completo a Madrid...",
-    "¿Tienes vuelos baratos a París?",
-    "Quiero viajar a Roma en primavera...",
-    "Busco hoteles de lujo en Miami...",
-    "Necesito un vuelo directo a Londres...",
-    "¿Cuánto cuesta ir a Tokio?",
-    "Quiero un viaje romántico a Venecia...",
-    "Busco ofertas para Nueva York...",
-    "Necesito traslados al aeropuerto...",
-    "¿Tienes paquetes familiares a Disney?",
-    "Quiero un hotel frente al mar...",
-    "Busco vuelos con escala en Miami...",
-    "Necesito seguro de viaje incluido..."
-  ];
 
   // Component for inspiration text
   const InspirationText = () => {
-    const [currentPhrase, setCurrentPhrase] = useState(0);
-    const [isVisible, setIsVisible] = useState(true);
-
-    useEffect(() => {
-      if (!showInspirationText) return;
-
-      const interval = setInterval(() => {
-        setCurrentPhrase((prev) => (prev + 1) % inspirationPhrases.length);
-      }, 3000); // Change every 3 seconds
-
-      return () => clearInterval(interval);
-    }, [showInspirationText]);
-
     if (!showInspirationText) return null;
 
     return (
@@ -1896,14 +1868,14 @@ const Chat = () => {
           <div
             className="text-2xl font-light text-transparent bg-clip-text"
             style={{
-              background: 'linear-gradient(45deg, #3b82f6, #8b5cf6, #ec4899, #06b6d4)',
+              background: 'linear-gradient(45deg, #1e3a8a, #1e40af, #1d4ed8, #2563eb)',
               backgroundSize: '300% 300%',
               animation: 'gradientShift 3s ease-in-out infinite, fadeInOut 3s ease-in-out infinite',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent'
             }}
           >
-            {inspirationPhrases[currentPhrase]}
+            ¿En qué puedo ayudarte hoy?
           </div>
           <div className="mt-4 text-sm text-gray-500 font-light">
             Escribe tu solicitud de viaje...
@@ -2503,7 +2475,7 @@ const Chat = () => {
 
               <MessageInput
                 value={message}
-                onChange={setMessage}
+                onChange={handleMessageChange}
                 onSend={handleSendMessage}
                 disabled={isLoading}
               />

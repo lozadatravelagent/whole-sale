@@ -82,16 +82,16 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
         return (
           <div key={legIndex} className="border border-gray-700 rounded-lg p-3 bg-gradient-to-r from-gray-800 to-gray-900">
             <div className="flex items-center space-x-2 mb-3">
-              {React.cloneElement(legIcon, { className: "h-4 w-4 text-blue-400" })}
-              <span className="font-semibold text-sm text-blue-400">{legType}</span>
+              {React.cloneElement(legIcon, { className: "h-4 w-4 text-blue-800" })}
+              <span className="font-semibold text-sm text-blue-800">{legType}</span>
             </div>
 
             {/* Simplified display for current FlightLeg structure */}
             <div className="space-y-2">
               <div className="flex items-center justify-between bg-gray-700 rounded-lg p-3 border border-gray-600">
                 <div className="flex items-center space-x-3">
-                  <div className="bg-blue-900 p-2 rounded-full">
-                    <Navigation className="h-4 w-4 text-blue-300" />
+                  <div className="bg-gray-800 p-2 rounded-full">
+                    <Navigation className="h-4 w-4 text-gray-600" />
                   </div>
                   <div>
                     <div className="font-medium text-sm text-gray-100">Vuelo {legType}</div>
@@ -104,19 +104,19 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
 
               <div className="flex items-center justify-between px-3">
                 <div className="text-center">
-                  <div className="font-bold text-lg text-blue-300">{leg.departure.city_code}</div>
+                  <div className="font-bold text-lg text-gray-800">{leg.departure.city_code}</div>
                   <div className="text-sm font-medium text-gray-200">{leg.departure.time}</div>
                   <div className="text-xs text-gray-400">{leg.departure.city_name}</div>
                 </div>
 
                 <div className="flex-1 flex items-center justify-center">
-                  <div className="h-0.5 bg-gradient-to-r from-blue-500 to-indigo-500 flex-1"></div>
-                  <Plane className="h-5 w-5 mx-2 text-blue-400" />
-                  <div className="h-0.5 bg-gradient-to-r from-blue-500 to-indigo-500 flex-1"></div>
+                  <div className="h-0.5 bg-gradient-to-r from-gray-600 to-gray-700 flex-1"></div>
+                  <Plane className="h-5 w-5 mx-2 text-gray-600" />
+                  <div className="h-0.5 bg-gradient-to-r from-gray-600 to-gray-700 flex-1"></div>
                 </div>
 
                 <div className="text-center">
-                  <div className="font-bold text-lg text-blue-300">{leg.arrival.city_code}</div>
+                  <div className="font-bold text-lg text-gray-800">{leg.arrival.city_code}</div>
                   <div className="text-sm font-medium text-gray-200">{leg.arrival.time}</div>
                   <div className="text-xs text-gray-400">{leg.arrival.city_name}</div>
                 </div>

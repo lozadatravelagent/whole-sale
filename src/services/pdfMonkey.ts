@@ -409,6 +409,36 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
   const adults = firstFlight?.adults || 1;
   const childrens = firstFlight?.childrens || 0;
 
+  // Calculate total price (flights + hotels)
+  let totalFlightPrice = 0;
+  let totalHotelPrice = 0;
+
+  // Sum all flight prices
+  flights.forEach(flight => {
+    const flightPrice = typeof flight.price.amount === 'string' ? parseFloat(flight.price.amount) : flight.price.amount;
+    totalFlightPrice += flightPrice || 0;
+  });
+
+  // Sum all hotel prices
+  hotels.forEach(hotel => {
+    const cheapestRoom = hotel.rooms.reduce((cheapest, room) =>
+      room.total_price < cheapest.total_price ? room : cheapest
+    );
+    totalHotelPrice += cheapestRoom.total_price || 0;
+  });
+
+  const totalPrice = totalFlightPrice + totalHotelPrice;
+  const currency = firstFlight?.price?.currency || 'USD';
+
+  console.log('💰 PRICE CALCULATION:', {
+    totalFlightPrice,
+    totalHotelPrice,
+    totalPrice,
+    currency,
+    flights_count: flights.length,
+    hotels_count: hotels.length
+  });
+
   // Template-specific data structure (OBJETO DIRECTO, no array)
   const template_data = {
     // Core flight data (as expected by template)
@@ -423,6 +453,12 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
     adults,
     childrens,
 
+    // Total pricing
+    total_price: formatPriceForTemplate(totalPrice),
+    total_currency: currency,
+    flight_price: formatPriceForTemplate(totalFlightPrice),
+    hotel_price: formatPriceForTemplate(totalHotelPrice),
+
     // Optional services (can be added later)
     travel_assistance: 0, // Can be set if needed
     transfers: 0         // Can be set if needed
@@ -435,7 +471,11 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
     checkin: template_data.checkin,
     checkout: template_data.checkout,
     adults: template_data.adults,
-    childrens: template_data.childrens
+    childrens: template_data.childrens,
+    total_price: template_data.total_price,
+    total_currency: template_data.total_currency,
+    flight_price: template_data.flight_price,
+    hotel_price: template_data.hotel_price
   });
 
   // Debug pricing para verificar cálculos
