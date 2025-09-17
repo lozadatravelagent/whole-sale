@@ -261,14 +261,42 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
 export function formatForStarling(parsed: ParsedTravelRequest) {
     if (!parsed.flights) return null;
 
-    return {
-        searchParams: {
-            origin: parsed.flights.origin,
-            destination: parsed.flights.destination,
-            departureDate: parsed.flights.departureDate,
-            returnDate: parsed.flights.returnDate,
-            adults: parsed.flights.adults || 1,
-            children: parsed.flights.children || 0
+    // Create passenger array for TVC API format
+    const passengers = [];
+    if ((parsed.flights.adults || 1) > 0) {
+        passengers.push({
+            Count: parsed.flights.adults || 1,
+            Type: 'ADT'
+        });
+    }
+    if ((parsed.flights.children || 0) > 0) {
+        passengers.push({
+            Count: parsed.flights.children,
+            Type: 'CHD'
+        });
+    }
+
+    // Create legs array for TVC API format
+    const legs = [
+        {
+            DepartureAirportCity: parsed.flights.origin,
+            ArrivalAirportCity: parsed.flights.destination,
+            FlightDate: parsed.flights.departureDate
         }
+    ];
+
+    // Add return leg if this is a round trip
+    if (parsed.flights.returnDate) {
+        legs.push({
+            DepartureAirportCity: parsed.flights.destination,
+            ArrivalAirportCity: parsed.flights.origin,
+            FlightDate: parsed.flights.returnDate
+        });
+    }
+
+    return {
+        Passengers: passengers,
+        Legs: legs,
+        Airlines: null
     };
 }

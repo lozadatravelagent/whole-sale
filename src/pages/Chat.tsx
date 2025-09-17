@@ -126,34 +126,43 @@ interface LocalCombinedTravelResults {
   requestType: 'combined' | 'flights-only' | 'hotels-only';
 }
 
-const transformStarlingResults = (starlingData: StarlingData, parsedRequest?: ParsedTravelRequest): FlightData[] => {
-  const fares = starlingData?.results?.Fares || [];
-  return fares.map((fare: StarlingFare) => ({
-    id: fare.Token || Math.random().toString(36),
-    airline: {
-      code: fare.Legs?.[0]?.Segments?.[0]?.Airline || 'N/A',
-      name: fare.Legs?.[0]?.Segments?.[0]?.AirlineName || 'Unknown'
-    },
-    price: {
-      amount: fare.TotalFare || 0,
-      currency: fare.Currency || 'USD'
-    },
-    adults: parsedRequest?.flights?.adults || 1,
-    childrens: parsedRequest?.flights?.children || 0,
-    departure_date: fare.Legs?.[0]?.Segments?.[0]?.DepartureDate || '',
-    return_date: fare.Legs?.[1]?.Segments?.[0]?.DepartureDate,
-    legs: (fare.Legs || []).map(leg => ({
-      segments: (leg.Segments || []).map(segment => ({
-        airline: segment.Airline || '',
-        departure_date: segment.DepartureDate || '',
-        arrival_date: segment.DepartureDate || '', // Using same date as fallback
-        origin: parsedRequest?.flights?.origin || '',
-        destination: parsedRequest?.flights?.destination || ''
-      }))
-    })),
-    luggage: false,
-    provider: 'STARLING'
-  }));
+const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequest): FlightData[] => {
+  console.log('🔄 Transforming TVC API results:', tvcData);
+
+  // TVC API returns recommendations in different structure
+  const recommendations = tvcData?.Recommendations || [];
+
+  return recommendations.map((recommendation: any, index: number) => {
+    const firstFlight = recommendation.Flights?.[0] || {};
+    const pricing = recommendation.Pricing || {};
+
+    return {
+      id: recommendation.Id || `tvc-${index}`,
+      airline: {
+        code: firstFlight.CarrierCode || 'N/A',
+        name: firstFlight.CarrierName || 'Unknown'
+      },
+      price: {
+        amount: pricing.TotalPrice || 0,
+        currency: pricing.Currency || 'USD'
+      },
+      adults: parsedRequest?.flights?.adults || 1,
+      childrens: parsedRequest?.flights?.children || 0,
+      departure_date: firstFlight.DepartureDateTime || '',
+      return_date: recommendation.Flights?.[1]?.DepartureDateTime,
+      legs: (recommendation.Flights || []).map((flight: any) => ({
+        segments: [{
+          airline: flight.CarrierCode || '',
+          departure_date: flight.DepartureDateTime || '',
+          arrival_date: flight.ArrivalDateTime || '',
+          origin: flight.DepartureAirport || parsedRequest?.flights?.origin || '',
+          destination: flight.ArrivalAirport || parsedRequest?.flights?.destination || ''
+        }]
+      })),
+      luggage: false,
+      provider: 'TVC'
+    };
+  });
 };
 
 const Chat = () => {
@@ -552,7 +561,10 @@ const Chat = () => {
 
       console.log('📤 [FLIGHT SEARCH] Step 2: About to call Starling API (Supabase Edge Function)');
       const response = await supabase.functions.invoke('starling-flights', {
-        body: starlingParams
+        body: {
+          action: 'searchFlights',
+          data: starlingParams
+        }
       });
 
       console.log('✅ [FLIGHT SEARCH] Step 3: Starling API response received');
@@ -566,7 +578,8 @@ const Chat = () => {
       console.log('📊 [FLIGHT SEARCH] Raw response data:', response.data);
 
       console.log('🔄 [FLIGHT SEARCH] Step 4: Transforming Starling results');
-      const flights = transformStarlingResults(response.data, parsed);
+      const flightData = response.data?.data || response.data;
+      const flights = transformStarlingResults(flightData, parsed);
       console.log('✅ [FLIGHT SEARCH] Step 5: Flight data transformed successfully');
       console.log('✈️ Flights found:', flights.length);
 

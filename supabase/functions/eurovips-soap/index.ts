@@ -38,22 +38,19 @@ class EurovipsSOAPClient {
     console.log(`📥 SOAP RESPONSE [${soapAction}]:`, xmlResponse.length, 'chars');
     return xmlResponse;
   }
-  async getCountryList(params: any = {}) {
+  async getCountryList(params = {}) {
     // Use dynamic dates: user-provided dates or intelligent fallback
     const today = new Date();
-    const threeMonthsLater = new Date(today.getTime() + (90 * 24 * 60 * 60 * 1000));
-
-    const {
-      dateFrom = today.toISOString().split('T')[0],
-      dateTo = threeMonthsLater.toISOString().split('T')[0],
-      activeFareType = 'HOTEL'
-    } = params;
-
+    const threeMonthsLater = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000);
+    const { dateFrom = today.toISOString().split('T')[0], dateTo = threeMonthsLater.toISOString().split('T')[0], activeFareType = 'HOTEL' } = params;
     // ✅ FIJO: Siempre usar TERRESTRE (AEROTERRESTRE no funciona)
     const activeFareSubtype = 'TERRESTRE';
-
-    console.log('🔍 getCountryList called with params:', { dateFrom, dateTo, activeFareType, activeFareSubtype });
-
+    console.log('🔍 getCountryList called with params:', {
+      dateFrom,
+      dateTo,
+      activeFareType,
+      activeFareSubtype
+    });
     const soapBody = `
     <xsstring7 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
       <pos xmlns="">
@@ -86,9 +83,8 @@ class EurovipsSOAPClient {
   }
   async searchHotels(params) {
     // Build occupancy based on adults/children
-    const adults = params.adults || 1;  // Default to 1 adult
+    const adults = params.adults || 1; // Default to 1 adult
     const children = params.children || 0;
-
     // Create occupants XML
     let occupantsXml = '';
     for (let i = 0; i < adults; i++) {
@@ -97,7 +93,6 @@ class EurovipsSOAPClient {
     for (let i = 0; i < children; i++) {
       occupantsXml += '      <Occupants type="CHD" />\n';
     }
-
     const soapBody = `
     <searchHotelFaresRQ1 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
       <cityLocation code="${params.cityCode}" xmlns="" />
@@ -175,39 +170,32 @@ ${occupantsXml}        </Ocuppancy>
     try {
       console.log('🔍 PARSING XML - Starting parseCountryListResponse');
       console.log('🔍 XML Response length:', xmlResponse.length);
-
       // Find España first to test our regex
       const espanaTest = xmlResponse.includes('ESPAÑA');
       console.log('🔍 Does XML contain ESPAÑA?', espanaTest);
-
       if (espanaTest) {
         console.log('🔍 España context:', xmlResponse.substring(xmlResponse.indexOf('ESPAÑA') - 100, xmlResponse.indexOf('ESPAÑA') + 100));
       }
-
       // Simplified pattern - find any Code/Name pairs regardless of context
       // We'll filter countries vs cities in post-processing
       const codeNamePattern = /<Code[^>]*>([A-Z]{2,3})<\/Code>[\s\S]*?<Name[^>]*>([^<]+)<\/Name>/g;
-      const matches = [...xmlResponse.matchAll(codeNamePattern)];
-
+      const matches = [
+        ...xmlResponse.matchAll(codeNamePattern)
+      ];
       console.log(`🔍 Found ${matches.length} CountryInfos with Code/Name pairs`);
-
-      const results: Array<{ code: string, name: string }> = [];
+      const results = [];
       const seenCodes = new Set();
-
       // Create a map to track context - countries appear before cities in CountryInfos blocks
       const contextMap = new Map();
-
       // First pass: identify all matches and their positions
       for (const match of matches) {
         const code = match[1].trim();
         const name = match[2].trim();
         const position = match.index || 0;
-
         // Check if this appears within a CountryInfos block
         const beforeMatch = xmlResponse.substring(Math.max(0, position - 500), position);
         const isInCountryBlock = beforeMatch.includes('<CountryInfos');
         const isAfterCountryCode = beforeMatch.match(/<Code[^>]*>([A-Z]{2,3})<\/Code>/g);
-
         contextMap.set(code, {
           name,
           position,
@@ -216,7 +204,6 @@ ${occupantsXml}        </Ocuppancy>
           codeLength: code.length
         });
       }
-
       // Second pass: filter for likely countries
       for (const [code, info] of contextMap) {
         // Countries are typically:
@@ -224,29 +211,23 @@ ${occupantsXml}        </Ocuppancy>
         // - No numbers
         // - First Code in a CountryInfos block (not after another country code)
         // - Not obvious city patterns like XXX with 3 chars + numbers
-
-        const isLikelyCountry = (
-          info.codeLength <= 3 &&
-          !/\d/.test(code) &&
-          !seenCodes.has(code) &&
-          // Additional heuristics
+        const isLikelyCountry = info.codeLength <= 3 && !/\d/.test(code) && !seenCodes.has(code) && // Additional heuristics
           (info.codeLength === 2 || // 2-letter codes are almost always countries
-            (info.codeLength === 3 && info.isInCountryBlock)) // 3-letter in country block
-        );
-
+            info.codeLength === 3 && info.isInCountryBlock) // 3-letter in country block
+          ;
         if (isLikelyCountry) {
           console.log(`🔍 Found country: ${code} - ${info.name}`);
-          results.push({ code, name: info.name });
+          results.push({
+            code,
+            name: info.name
+          });
           seenCodes.add(code);
         }
       }
-
       console.log(`🔍 PARSED ${results.length} countries from real XML`);
       console.log('🔍 First 10 countries:', results.slice(0, 10));
-      console.log('🔍 España found:', results.find(r => r.name.includes('ESPAÑA') || r.code === 'ES'));
-
+      console.log('🔍 España found:', results.find((r) => r.name.includes('ESPAÑA') || r.code === 'ES'));
       return results;
-
     } catch (error) {
       console.error('❌ Error parsing country list response:', error);
       console.error('❌ XML sample (first 1000 chars):', xmlResponse.substring(0, 1000));
@@ -257,7 +238,7 @@ ${occupantsXml}        </Ocuppancy>
     try {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
-      const airlines: Array<{ code: string, name: string }> = [];
+      const airlines = [];
       const airlineElements = xmlDoc.querySelectorAll('Airline, airline, AirlineInfo, airlineinfo');
       airlineElements.forEach((airlineEl) => {
         const code = airlineEl.getAttribute('code') || airlineEl.getAttribute('Code') || '';
@@ -279,11 +260,9 @@ ${occupantsXml}        </Ocuppancy>
     try {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
-      const hotels: Array<any> = [];
+      const hotels = [];
       const hotelElements = xmlDoc.querySelectorAll('HotelFares');
-
       console.log(`🔍 Found ${hotelElements.length} hotel elements`);
-
       hotelElements.forEach((hotelEl, index) => {
         try {
           const hotel = this.parseHotelElement(hotelEl, params, index);
@@ -296,11 +275,10 @@ ${occupantsXml}        </Ocuppancy>
       });
       // Sort hotels by price (lowest first)
       hotels.sort((a, b) => {
-        const priceA = Math.min(...a.rooms.map(room => room.total_price));
-        const priceB = Math.min(...b.rooms.map(room => room.total_price));
+        const priceA = Math.min(...a.rooms.map((room) => room.total_price));
+        const priceB = Math.min(...b.rooms.map((room) => room.total_price));
         return priceA - priceB;
       });
-
       console.log(`✅ Returning ${hotels.length} EUROVIPS hotels`);
       console.log('🔍 First hotel sample:', JSON.stringify(hotels[0], null, 2));
       return hotels;
@@ -313,18 +291,14 @@ ${occupantsXml}        </Ocuppancy>
     try {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
-      const flights: Array<any> = [];
-
+      const flights = [];
       // Try multiple selectors to handle different XML structures
       let flightElements = xmlDoc.querySelectorAll('ArrayOfAirFare1 > AirFares');
-
       // Fallback to original selectors for backward compatibility
       if (flightElements.length === 0) {
         flightElements = xmlDoc.querySelectorAll('ArrayOfAirFare1 AirFares, AirFares');
       }
-
       console.log(`🔍 Found ${flightElements.length} flight elements`);
-
       flightElements.forEach((flightEl, index) => {
         try {
           const flight = this.parseFlightElement(flightEl, params, index);
@@ -346,12 +320,10 @@ ${occupantsXml}        </Ocuppancy>
       const uniqueId = hotelEl.getAttribute('UniqueId') || `hotel_${Date.now()}_${index}`;
       const hotelName = this.getTextContent(hotelEl, 'Name') || this.getTextContent(hotelEl, 'HotelName') || 'Unknown Hotel';
       const address = this.getTextContent(hotelEl, 'HotelAddress') || this.getTextContent(hotelEl, 'Address') || '';
-
       // Calculate nights first
       const checkIn = new Date(params.checkinDate);
       const checkOut = new Date(params.checkoutDate);
       const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
-
       // Get total price from FareList - Use the first Fare's Base + Tax (total for entire stay)
       let totalPrice = 0;
       const fareListEl = hotelEl.querySelector('FareList');
@@ -364,16 +336,13 @@ ${occupantsXml}        </Ocuppancy>
           console.log(`🔍 Hotel "${hotelName}" - Base: ${base}, Tax: ${tax}, Total for ${nights} nights: ${totalPrice}`);
         }
       }
-
       if (totalPrice <= 0) {
         return null;
       }
-
       // Get currency from FareList or use default
       const currency = fareListEl?.getAttribute('currency') || this.currency;
-
       // Parse room information from FareList
-      const rooms: Array<any> = [];
+      const rooms = [];
       if (fareListEl) {
         const fareElements = fareListEl.querySelectorAll('Fare');
         fareElements.forEach((fareEl, index) => {
@@ -383,25 +352,22 @@ ${occupantsXml}        </Ocuppancy>
           const tax = parseFloat(this.getTextContent(fareEl, 'Tax') || '0');
           const roomTotal = base + tax; // Total for entire stay
           const description = this.getTextContent(fareEl, 'Description') || fareType;
-
           if (roomTotal > 0) {
             // Calculate price per night
             const pricePerNight = nights > 0 ? roomTotal / nights : roomTotal;
-
             rooms.push({
               type: fareType,
               description: description,
-              price_per_night: pricePerNight,  // ✅ Required by frontend
-              total_price: roomTotal,          // ✅ Total for entire stay
+              price_per_night: pricePerNight,
+              total_price: roomTotal,
               currency: currency,
               availability: availability,
-              occupancy_id: (index + 1).toString(), // ✅ Required by frontend
+              occupancy_id: (index + 1).toString(),
               fare_id_broker: fareEl.getAttribute('FareIdBroker') || undefined
             });
           }
         });
       }
-
       // Fallback if no rooms found
       if (rooms.length === 0) {
         const pricePerNight = nights > 0 ? totalPrice / nights : totalPrice;
@@ -416,7 +382,6 @@ ${occupantsXml}        </Ocuppancy>
           fare_id_broker: undefined
         });
       }
-
       return {
         id: `hotel_${uniqueId}`,
         unique_id: uniqueId,
@@ -427,7 +392,7 @@ ${occupantsXml}        </Ocuppancy>
         phone: this.getTextContent(hotelEl, 'Phone, Telephone') || '',
         website: this.getTextContent(hotelEl, 'Website') || undefined,
         description: this.getTextContent(hotelEl, 'Description') || undefined,
-        images: [], // Could extract from Pictures elements
+        images: [],
         check_in: params.checkinDate,
         check_out: params.checkoutDate,
         nights: nights,
@@ -446,11 +411,9 @@ ${occupantsXml}        </Ocuppancy>
   parseFlightElement(flightEl, params, index) {
     try {
       const uniqueId = flightEl.getAttribute('UniqueId') || `flight_${Date.now()}_${index}`;
-
       // Handle both XML structures for airline info
       let airlineCode = this.getTextContent(flightEl, 'AirlineCode') || '';
       let airlineName = this.getTextContent(flightEl, 'AirlineName') || '';
-
       // EUROVIPS structure: MarketingAirline with code attribute
       if (!airlineCode || !airlineName) {
         const marketingAirlineEl = flightEl.querySelector('MarketingAirline');
@@ -459,15 +422,12 @@ ${occupantsXml}        </Ocuppancy>
           airlineName = marketingAirlineEl.textContent?.trim() || airlineName || 'Unknown Airline';
         }
       }
-
       // Default fallbacks
       airlineCode = airlineCode || 'XX';
       airlineName = airlineName || 'Unknown Airline';
-
       // Handle different price structures
       let totalPrice = parseFloat(this.getTextContent(flightEl, 'TotalFare, TotalPrice') || '0');
       let currency = this.getTextContent(flightEl, 'Currency') || this.currency;
-
       // EUROVIPS structure: calculate from FareList
       if (totalPrice <= 0) {
         const fareListEl = flightEl.querySelector('FareList');
@@ -479,25 +439,22 @@ ${occupantsXml}        </Ocuppancy>
             const base = parseFloat(this.getTextContent(adultFareEl, 'Base') || '0');
             const taxElements = adultFareEl.querySelectorAll('Tax');
             let totalTaxes = 0;
-            taxElements.forEach(taxEl => {
+            taxElements.forEach((taxEl) => {
               totalTaxes += parseFloat(taxEl.textContent?.trim() || '0');
             });
             totalPrice = base + totalTaxes;
           }
         }
       }
-
       if (totalPrice <= 0) {
         return null;
       }
-
-      const legs: Array<any> = [];
+      const legs = [];
       // Try to parse flight legs with new structure
       const outboundLeg = this.parseFlightLeg(flightEl, 'outbound', params.originCode, params.destinationCode, params.departureDate);
       if (outboundLeg) {
         legs.push(outboundLeg);
       }
-
       // Return flight if dates are provided
       if (params.returnDate) {
         const returnLeg = this.parseFlightLeg(flightEl, 'return', params.destinationCode, params.originCode, params.returnDate);
@@ -505,18 +462,15 @@ ${occupantsXml}        </Ocuppancy>
           legs.push(returnLeg);
         }
       }
-
       // If no legs were parsed with legacy method, create basic leg from airport info
       if (legs.length === 0) {
         const departureAirport = flightEl.querySelector('DepartureAirport');
         const arrivalAirport = flightEl.querySelector('ArrivalAirport');
-
         if (departureAirport && arrivalAirport) {
           const depCode = departureAirport.getAttribute('code') || params.originCode || '';
           const depName = departureAirport.textContent?.trim() || depCode;
           const arrCode = arrivalAirport.getAttribute('code') || params.destinationCode || '';
           const arrName = arrivalAirport.textContent?.trim() || arrCode;
-
           legs.push({
             departure: {
               city_code: depCode,
@@ -528,17 +482,15 @@ ${occupantsXml}        </Ocuppancy>
               city_name: arrName,
               time: '00:00' // Default time since not provided
             },
-            duration: '0h 0m', // Default duration
+            duration: '0h 0m',
             flight_type: 'outbound',
             layovers: []
           });
         }
       }
-
       if (legs.length === 0) {
         return null;
       }
-
       return {
         id: `flight_${uniqueId}`,
         airline: {
@@ -593,24 +545,18 @@ ${occupantsXml}        </Ocuppancy>
     try {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
-
-      const packages: Array<any> = [];
-
+      const packages = [];
       // Try multiple selectors to handle different XML structures
       let packageElements = xmlDoc.querySelectorAll('ArrayOfPackageFare1 PackageFares');
-
       // If not found, try direct PackageFares selector
       if (packageElements.length === 0) {
         packageElements = xmlDoc.querySelectorAll('PackageFares');
       }
-
       // If still not found, try alternative structure
       if (packageElements.length === 0) {
         packageElements = xmlDoc.querySelectorAll('ArrayOfPackageFare1 > PackageFares');
       }
-
       console.log(`🔍 Found ${packageElements.length} package elements using selector`);
-
       packageElements.forEach((packageEl, index) => {
         try {
           const packageData = this.parsePackageElement(packageEl, params, index);
@@ -621,7 +567,6 @@ ${occupantsXml}        </Ocuppancy>
           console.error('❌ Error parsing package element:', error);
         }
       });
-
       return packages;
     } catch (error) {
       console.error('❌ Error parsing package search response:', error);
@@ -632,19 +577,14 @@ ${occupantsXml}        </Ocuppancy>
     try {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
-
-      const services: Array<any> = [];
-
+      const services = [];
       // Try multiple selectors to handle different XML structures
       let serviceElements = xmlDoc.querySelectorAll('ArrayOfServiceFare1 ServiceFares');
-
       // If not found, try direct ServiceFares selector
       if (serviceElements.length === 0) {
         serviceElements = xmlDoc.querySelectorAll('ServiceFares');
       }
-
       console.log(`🔍 Found ${serviceElements.length} service elements`);
-
       serviceElements.forEach((serviceEl, index) => {
         try {
           const serviceData = this.parseServiceElement(serviceEl, params, index);
@@ -655,7 +595,6 @@ ${occupantsXml}        </Ocuppancy>
           console.error('❌ Error parsing service element:', error);
         }
       });
-
       return services;
     } catch (error) {
       console.error('❌ Error parsing service search response:', error);
@@ -667,33 +606,29 @@ ${occupantsXml}        </Ocuppancy>
       const uniqueId = serviceEl.getAttribute('UniqueId') || `service_${Date.now()}_${index}`;
       const backOfficeCode = serviceEl.getAttribute('BackOfficeCode') || '';
       const backOfficeOperatorCode = serviceEl.getAttribute('BackOfficeOperatorCode') || '';
-
       const name = this.getTextContent(serviceEl, 'Name') || 'Servicio sin nombre';
       const category = this.getTextContent(serviceEl, 'Category') || 'REGULAR';
       const categoryDescription = this.getTextContent(serviceEl, 'CategoryDescription') || '';
-
       // Location
       const locationEl = serviceEl.querySelector('Location');
       const location = locationEl ? {
         code: locationEl.getAttribute('code') || '',
         name: locationEl.textContent?.trim() || ''
-      } : { code: params.cityCode || '', name: '' };
-
+      } : {
+        code: params.cityCode || '',
+        name: ''
+      };
       const fareType = this.getTextContent(serviceEl, 'FareType') || 'OW';
       const rateType = this.getTextContent(serviceEl, 'RateType') || '';
       const observations = this.getTextContent(serviceEl, 'Observations') || '';
-
       // Parse fares
       const fares = this.parseServiceFares(serviceEl);
-
       if (fares.length === 0) {
         console.warn(`⚠️ Service ${name} has no valid fares`);
         return null;
       }
-
       // Get main price (first available fare)
-      const mainFare = fares.find(f => f.total > 0) || fares[0];
-
+      const mainFare = fares.find((f) => f.total > 0) || fares[0];
       const serviceData = {
         id: `service_${uniqueId}`,
         unique_id: uniqueId,
@@ -714,7 +649,6 @@ ${occupantsXml}        </Ocuppancy>
         observations,
         provider: 'EUROVIPS'
       };
-
       console.log('✅ Parsed service:', serviceData.name, `- ${fares.length} fare type(s)`);
       return serviceData;
     } catch (error) {
@@ -723,37 +657,31 @@ ${occupantsXml}        </Ocuppancy>
     }
   }
   parseServiceFares(serviceEl) {
-    const fares: Array<any> = [];
+    const fares = [];
     const fareListEl = serviceEl.querySelector('FareList');
-
     if (!fareListEl) return fares;
-
     const currency = fareListEl.getAttribute('currency') || 'USD';
     const fareElements = fareListEl.querySelectorAll('Fare');
-
-    fareElements.forEach(fareEl => {
+    fareElements.forEach((fareEl) => {
       const type = fareEl.getAttribute('type') || '';
       const passengerType = fareEl.getAttribute('PassengerType') || 'ADT';
       const availability = parseInt(fareEl.getAttribute('Availability') || '0');
-
       const base = parseFloat(this.getTextContent(fareEl, 'Base') || '0');
-
       // Parse taxes
-      const taxes: Array<any> = [];
+      const taxes = [];
       const taxElements = fareEl.querySelectorAll('Tax');
       let totalTaxes = 0;
-
-      taxElements.forEach(taxEl => {
+      taxElements.forEach((taxEl) => {
         const taxType = taxEl.getAttribute('type') || '';
         const taxAmount = parseFloat(taxEl.textContent?.trim() || '0');
-
-        taxes.push({ type: taxType, amount: taxAmount });
+        taxes.push({
+          type: taxType,
+          amount: taxAmount
+        });
         totalTaxes += taxAmount;
       });
-
       const total = base + totalTaxes;
-
-      if (base >= 0) { // Include even free services (base = 0)
+      if (base >= 0) {
         fares.push({
           type,
           passengerType,
@@ -766,7 +694,6 @@ ${occupantsXml}        </Ocuppancy>
         });
       }
     });
-
     return fares;
   }
   parsePackageElement(packageEl, params, index) {
@@ -776,19 +703,15 @@ ${occupantsXml}        </Ocuppancy>
       const category = this.getTextContent(packageEl, 'Category') || 'REGULAR';
       const location = this.getTextContent(packageEl, 'Location') || '';
       const description = this.getTextContent(packageEl, 'Description') || '';
-
       // Get duration
       const lodgedNights = parseInt(this.getTextContent(packageEl, 'LodgedNights') || '0');
       const lodgedDays = parseInt(this.getTextContent(packageEl, 'LodgedDays') || '0');
-
       // Parse pricing information
       const fareListEl = packageEl.querySelector('FareList');
       let totalPrice = 0;
       let currency = this.currency;
-
       if (fareListEl) {
         currency = fareListEl.getAttribute('currency') || this.currency;
-
         // Get adult fare (DWL = double, SGL = single)
         const adultFareEl = fareListEl.querySelector('Fare[type="DWL"], Fare[type="SGL"]');
         if (adultFareEl) {
@@ -797,26 +720,17 @@ ${occupantsXml}        </Ocuppancy>
           totalPrice = base + tax;
         }
       }
-
       if (totalPrice <= 0) {
         return null;
       }
-
       // Parse included services
-      const includedServices: Array<any> = [];
+      const includedServices = [];
       if (description) {
         includedServices.push(description);
       }
-
       // Check for flight and hotel information
-      const hasFlights = description.toLowerCase().includes('bue/') ||
-        description.toLowerCase().includes('vuelo') ||
-        category.toUpperCase().includes('AEROTERRESTRE');
-
-      const hasHotel = description.toLowerCase().includes('hotel') ||
-        lodgedNights > 0 ||
-        category.toUpperCase().includes('HOTEL');
-
+      const hasFlights = description.toLowerCase().includes('bue/') || description.toLowerCase().includes('vuelo') || category.toUpperCase().includes('AEROTERRESTRE');
+      const hasHotel = description.toLowerCase().includes('hotel') || lodgedNights > 0 || category.toUpperCase().includes('HOTEL');
       return {
         id: `package_${uniqueId}`,
         name: packageName,
