@@ -78,9 +78,8 @@ export function useConversations() {
         state: (params?.status || 'active') as const,
         agency_id: mockAgencyId,
         tenant_id: mockTenantId,
-        // title is not part of the database schema, removed
-        last_message_at: new Date().toISOString(),
-        ...(params?.meta && { meta: params.meta })
+        last_message_at: new Date().toISOString()
+        // Note: meta field doesn't exist in database schema, removed
       };
 
       console.log('📤 [SUPABASE] About to INSERT into conversations table');

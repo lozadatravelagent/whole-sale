@@ -203,16 +203,10 @@ const Chat = () => {
       console.log('🏷️ Title:', initialTitle || defaultTitle);
 
       const conversationData = {
-        channel: 'web',
-        status: 'active',
-        meta: {
-          created_by: user.id,
-          created_from: 'chat_interface',
-          timestamp: currentTime.toISOString(),
-          user_email: user.email,
-          session_id: `session_${Date.now()}`,
-          display_title: initialTitle || defaultTitle
-        }
+        channel: 'web' as const,
+        status: 'active' as const
+        // Note: removed meta field as it doesn't exist in database schema
+        // User info can be tracked via messages or separate user tracking
       };
 
       console.log('📤 [CHAT FLOW] Step 3: About to call createConversation (Supabase INSERT)');
