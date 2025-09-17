@@ -246,7 +246,7 @@ const Chat = () => {
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
-  }, [loadConversations]);
+  }, [loadConversations]); // Now stable with useCallback
 
   // Handle ?new=1 URL parameter to create new chat automatically
   useEffect(() => {
@@ -272,6 +272,15 @@ const Chat = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
+
+  // Reset loading state when conversation changes
+  useEffect(() => {
+    if (selectedConversation) {
+      console.log('🔄 [CHAT] Conversation selected, resetting loading state');
+      setIsLoading(false);
+      setIsTyping(false);
+    }
+  }, [selectedConversation]);
 
   const generateChatTitle = (message: string): string => {
     const lowerMessage = message.toLowerCase();
@@ -359,7 +368,12 @@ const Chat = () => {
       };
       console.log('📋 User message data:', userMessageData);
 
-      const userMessage = await addMessageViaSupabase(userMessageData);
+      const userMessage = await addMessageViaSupabase({
+        conversation_id: selectedConversation,
+        role: 'user' as const,
+        content: { text: currentMessage },
+        meta: { status: 'sending' }
+      });
 
       console.log('✅ [MESSAGE FLOW] Step 3: User message saved successfully');
       console.log('💾 User message result:', userMessage);
@@ -475,7 +489,15 @@ const Chat = () => {
       };
       console.log('📋 Assistant message data:', assistantMessageData);
 
-      const assistantMessage = await addMessageViaSupabase(assistantMessageData);
+      const assistantMessage = await addMessageViaSupabase({
+        conversation_id: selectedConversation,
+        role: 'assistant' as const,
+        content: { text: assistantResponse },
+        meta: structuredData ? {
+          source: 'AI_PARSER + EUROVIPS',
+          ...structuredData
+        } : {}
+      });
 
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
       console.log('💾 Assistant message result:', assistantMessage);

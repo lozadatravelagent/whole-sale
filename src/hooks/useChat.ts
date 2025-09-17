@@ -33,8 +33,16 @@ export function useAuth() {
 export function useConversations() {
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async (isRetry = false) => {
+    // Prevent infinite retries
+    if (isRetry && retryCount >= maxRetries) {
+      console.warn('⚠️ Max retries reached for loadConversations, stopping');
+      return;
+    }
+
     setLoading(true);
     try {
       // For now, create a mock agency_id and tenant_id since we don't have full user management
@@ -51,12 +59,27 @@ export function useConversations() {
       if (error) throw error;
 
       setConversations(data || []);
+      setRetryCount(0); // Reset retry count on success
     } catch (error) {
       console.error('Error loading conversations:', error);
+
+      // Only retry for network errors, not for authentication or other errors
+      const isNetworkError = error.message?.includes('Failed to fetch') ||
+                            error.message?.includes('ERR_CONNECTION_CLOSED') ||
+                            error.message?.includes('ERR_NETWORK');
+
+      if (isNetworkError && retryCount < maxRetries) {
+        console.log(`⏳ Retrying loadConversations (${retryCount + 1}/${maxRetries}) in 2 seconds...`);
+        setRetryCount(prev => prev + 1);
+        setTimeout(() => loadConversations(true), 2000);
+      } else {
+        console.error('❌ loadConversations failed permanently, stopping retries');
+        setRetryCount(0);
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [retryCount, maxRetries]);
 
   const createConversation = async (params?: {
     title?: string;
