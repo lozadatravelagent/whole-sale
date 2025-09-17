@@ -377,6 +377,35 @@ const formatDuration = (minutes: number): string => {
   return `${hours}h ${mins}m`;
 };
 
+// Helper function to get city name from airport code
+const getCityNameFromCode = (airportCode: string): string => {
+  const airportMapping: Record<string, string> = {
+    'EZE': 'Buenos Aires',
+    'BUE': 'Buenos Aires',
+    'MAD': 'Madrid',
+    'BCN': 'Barcelona',
+    'PUJ': 'Punta Cana',
+    'BOG': 'Bogotá',
+    'LIM': 'Lima',
+    'SCL': 'Santiago',
+    'CUN': 'Cancún',
+    'MIA': 'Miami',
+    'JFK': 'Nueva York',
+    'CDG': 'París',
+    'LHR': 'Londres',
+    'FCO': 'Roma',
+    'AMS': 'Amsterdam',
+    'FRA': 'Frankfurt',
+    'ZUR': 'Zurich',
+    'GRU': 'São Paulo',
+    'RIO': 'Río de Janeiro',
+    'MVD': 'Montevideo',
+    'ASU': 'Asunción'
+  };
+
+  return airportMapping[airportCode] || airportCode;
+};
+
 const Chat = () => {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -1210,23 +1239,28 @@ const Chat = () => {
         childrens: flight.childrens,
         departure_date: flight.departure_date,
         return_date: flight.return_date,
-        legs: flight.legs.map(leg => {
+        legs: flight.legs.map((leg, legIndex) => {
           // Get first segment from first option in the new TVC structure
           const firstOption = leg.options?.[0];
           const firstSegment = firstOption?.segments?.[0];
+          const lastSegment = firstOption?.segments?.[firstOption?.segments?.length - 1] || firstSegment;
+
+          const departureCode = firstSegment?.departure?.airportCode || '';
+          const arrivalCode = lastSegment?.arrival?.airportCode || '';
+
           return {
             departure: {
-              city_code: firstSegment?.departure?.airportCode || '',
-              city_name: firstSegment?.departure?.airportCode || '',
+              city_code: departureCode,
+              city_name: getCityNameFromCode(departureCode),
               time: firstSegment?.departure?.time || ''
             },
             arrival: {
-              city_code: firstSegment?.arrival?.airportCode || '',
-              city_name: firstSegment?.arrival?.airportCode || '',
-              time: firstSegment?.arrival?.time || ''
+              city_code: arrivalCode,
+              city_name: getCityNameFromCode(arrivalCode),
+              time: lastSegment?.arrival?.time || ''
             },
             duration: firstOption?.duration ? formatDuration(firstOption.duration) : '0h 0m',
-            flight_type: (firstOption?.segments?.length || 0) > 1 ? 'connecting' : 'direct'
+            flight_type: legIndex === 0 ? 'outbound' : 'return'
           };
         }),
         luggage: flight.luggage || false
