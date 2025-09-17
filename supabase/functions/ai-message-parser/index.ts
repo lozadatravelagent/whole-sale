@@ -74,8 +74,13 @@ Your task is to analyze travel messages and extract structured information for:
 - combined: flights + hotels together
 
 Rules:
-1. Use IATA codes for airports when possible (MAD for Madrid, BCN for Barcelona, BUE for Buenos Aires, etc.)
-2. Convert Spanish city names to standard formats (Barcelona, Madrid, Buenos Aires, etc.)
+1. Use IATA codes for airports when possible:
+   - Madrid → MAD, Barcelona → BCN
+   - Buenos Aires city → BUE, Ezeiza airport → EZE
+   - Punta Cana → PUJ, Cancún → CUN, Miami → MIA
+   - Paris → CDG, Londres → LHR, Roma → FCO
+   - Nueva York → JFK
+2. Convert Spanish city names and airports to correct IATA codes
 3. For dates, use YYYY-MM-DD format
 4. If no specific dates mentioned, use reasonable defaults (1 week from current date)
 5. Default adults to 1 if not specified
@@ -90,8 +95,21 @@ Output: {
   "requestType": "flights",
   "flights": {
     "origin": "BUE",
-    "destination": "MAD", 
+    "destination": "MAD",
     "departureDate": "2025-10-15",
+    "adults": 1,
+    "children": 0
+  },
+  "confidence": 0.9
+}
+
+Input: "Vuelo desde Ezeiza a Punta Cana el 20 de diciembre"
+Output: {
+  "requestType": "flights",
+  "flights": {
+    "origin": "EZE",
+    "destination": "PUJ",
+    "departureDate": "2025-12-20",
     "adults": 1,
     "children": 0
   },

@@ -110,40 +110,179 @@ interface LocalCombinedTravelResults {
 const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequest): FlightData[] => {
   console.log('🔄 Transforming TVC API results:', tvcData);
 
-  // TVC API returns recommendations in different structure
-  const recommendations = tvcData?.Recommendations || [];
+  // TVC API returns fares in Fares array, not Recommendations
+  const fares = tvcData?.Fares || [];
+  console.log(`📊 Processing ${fares.length} fares from TVC API`);
 
-  return recommendations.map((recommendation: any, index: number) => {
-    const firstFlight = recommendation.Flights?.[0] || {};
-    const pricing = recommendation.Pricing || {};
+  const transformedFlights = fares.slice(0, 50).map((fare: any, index: number) => {
+    // TVC Fare structure: Fares -> Legs -> Options -> Segments
+    console.log(`🔍 Processing fare ${index + 1}:`, {
+      fareId: fare.FareID,
+      totalAmount: fare.TotalAmount,
+      netAmount: fare.ExtendedFareInfo?.NetTotalAmount,
+      legsCount: fare.Legs?.length || 0,
+      validatingCarrier: fare.ValidatingCarrier,
+      lastTicketingDate: fare.LastTicketingDate
+    });
+
+    const legs = fare.Legs || [];
+    const firstLeg = legs[0] || {};
+    // Get first option from first leg
+    const firstOption = firstLeg.Options?.[0] || {};
+    const firstSegment = firstOption.Segments?.[0] || {};
+    const lastSegment = firstOption.Segments?.[firstOption.Segments?.length - 1] || firstSegment;
+
+    console.log(`📊 Fare ${index + 1} structure:`, {
+      legs: legs.length,
+      firstLegOptions: firstLeg.Options?.length || 0,
+      firstOptionSegments: firstOption.Segments?.length || 0,
+      totalDuration: firstOption.OptionDuration,
+      brandName: firstSegment.BrandName,
+      cabinClass: firstSegment.CabinClass
+    });
+
+    // For return date, check if there's a second leg
+    let returnDate = null;
+    if (legs.length > 1) {
+      const secondLeg = legs[1];
+      const secondOption = secondLeg.Options?.[0] || {};
+      const secondSegment = secondOption.Segments?.[0] || {};
+      returnDate = secondSegment.Departure?.Date || null;
+    }
+
+    // Calculate total stops count
+    const totalStops = legs.reduce((total, leg) => {
+      return total + (leg.Options || []).reduce((legTotal: number, option: any) => {
+        return legTotal + (option.Segments || []).reduce((segTotal: number, segment: any) => {
+          return segTotal + (segment.Stops?.length || 0);
+        }, 0);
+      }, 0);
+    }, 0);
+
+    // Get baggage info from first segment
+    const baggageInfo = firstSegment.Baggage || '';
+    const hasFreeBaggage = baggageInfo.includes('PC') || baggageInfo.includes('KG');
 
     return {
-      id: recommendation.Id || `tvc-${index}`,
+      id: fare.FareID || `tvc-fare-${index}`,
       airline: {
-        code: firstFlight.CarrierCode || 'N/A',
-        name: firstFlight.CarrierName || 'Unknown'
+        code: firstSegment.Airline || 'N/A',
+        name: firstSegment.AirlineName || firstSegment.Airline || 'Unknown'
       },
       price: {
-        amount: pricing.TotalPrice || 0,
-        currency: pricing.Currency || 'USD'
+        amount: fare.TotalAmount || 0,
+        currency: fare.Currency || 'USD',
+        netAmount: fare.ExtendedFareInfo?.NetTotalAmount || 0,
+        fareAmount: fare.ExtendedFareInfo?.NetFareAmount || 0,
+        taxAmount: fare.ExtendedFareInfo?.NetTaxAmount || 0,
+        baseCurrency: tvcData.BaseCurrency || 'USD',
+        localAmount: fare.IataTotalAmount || 0,
+        localCurrency: fare.IataCurrency || fare.Currency || 'USD'
       },
       adults: parsedRequest?.flights?.adults || 1,
       childrens: parsedRequest?.flights?.children || 0,
-      departure_date: firstFlight.DepartureDateTime || '',
-      return_date: recommendation.Flights?.[1]?.DepartureDateTime,
-      legs: (recommendation.Flights || []).map((flight: any) => ({
-        segments: [{
-          airline: flight.CarrierCode || '',
-          departure_date: flight.DepartureDateTime || '',
-          arrival_date: flight.ArrivalDateTime || '',
-          origin: flight.DepartureAirport || parsedRequest?.flights?.origin || '',
-          destination: flight.ArrivalAirport || parsedRequest?.flights?.destination || ''
-        }]
+      departure_date: firstSegment.Departure?.Date || '',
+      departure_time: firstSegment.Departure?.Time || '',
+      arrival_date: lastSegment.Arrival?.Date || '',
+      arrival_time: lastSegment.Arrival?.Time || '',
+      return_date: returnDate,
+      duration: {
+        total: firstOption.OptionDuration || 0,
+        formatted: formatDuration(firstOption.OptionDuration || 0)
+      },
+      stops: {
+        count: totalStops,
+        direct: totalStops === 0
+      },
+      baggage: {
+        included: hasFreeBaggage,
+        details: baggageInfo,
+        carryOn: firstSegment.CarryOnBagInfo || 'Standard'
+      },
+      cabin: {
+        class: firstSegment.CabinClass || 'Y',
+        brandName: firstSegment.BrandName || 'Economy'
+      },
+      booking: {
+        validatingCarrier: fare.ValidatingCarrier || '',
+        lastTicketingDate: fare.LastTicketingDate || '',
+        fareType: fare.FareType || '',
+        fareSupplier: fare.FareSupplier || '',
+        cancelPolicy: fare.CancelPolicy || '',
+        maxInstallments: fare.MaxInstallments || 0
+      },
+      commission: {
+        percentage: fare.Commission?.Percentage || 0,
+        amount: fare.ExtendedFareInfo?.Commission?.Amount || 0,
+        over: fare.Commission?.Over || 0
+      },
+      legs: legs.map((leg: any, legIndex: number) => ({
+        legNumber: leg.LegNumber || legIndex + 1,
+        options: (leg.Options || []).map((option: any) => ({
+          optionId: option.FlightOptionID || '',
+          duration: option.OptionDuration || 0,
+          segments: (option.Segments || []).map((segment: any) => ({
+            segmentNumber: segment.SegmentNumber || 0,
+            airline: segment.Airline || '',
+            operatingAirline: segment.OperatingAirline || segment.Airline || '',
+            flightNumber: segment.FlightNumber || '',
+            bookingClass: segment.BookingClass || '',
+            cabinClass: segment.CabinClass || '',
+            departure: {
+              airportCode: segment.Departure?.AirportCode || '',
+              date: segment.Departure?.Date || '',
+              time: segment.Departure?.Time || ''
+            },
+            arrival: {
+              airportCode: segment.Arrival?.AirportCode || '',
+              date: segment.Arrival?.Date || '',
+              time: segment.Arrival?.Time || ''
+            },
+            stops: (segment.Stops || []).map((stop: any) => ({
+              airportCode: stop.AirportCode || '',
+              date: stop.Date || '',
+              time: stop.Time || '',
+              duration: stop.Duration || ''
+            })),
+            duration: segment.Duration || 0,
+            equipment: segment.Equipment || '',
+            status: segment.Status || '',
+            baggage: segment.Baggage || '',
+            carryOnBagInfo: segment.CarryOnBagInfo || '',
+            fareBasis: segment.FareBasis || '',
+            brandName: segment.BrandName || '',
+            features: segment.Features || null
+          }))
+        }))
       })),
-      luggage: false,
-      provider: 'TVC'
+      taxes: (fare.TaxDetail || []).map((tax: any) => ({
+        code: tax.Code || '',
+        amount: tax.Amount || 0,
+        currency: tax.Currency || 'USD'
+      })),
+      luggage: hasFreeBaggage,
+      provider: 'TVC',
+      contentOwner: fare.ContentOwner || '',
+      ownContent: fare.OwnContent || false,
+      transactionId: tvcData.TransactionID || '',
+      fareMessages: fare.FareMessages || null
     };
   });
+
+  console.log(`✅ Transformation complete. Generated ${transformedFlights.length} flight objects`);
+  return transformedFlights;
+};
+
+// Helper function to format duration from minutes to readable format
+const formatDuration = (minutes: number): string => {
+  if (!minutes || minutes <= 0) return '0h 0m';
+
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+
+  if (hours === 0) return `${mins}m`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}m`;
 };
 
 const Chat = () => {
