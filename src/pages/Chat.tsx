@@ -2215,8 +2215,8 @@ const Chat = () => {
         rooms: hotel.rooms.map(room => ({
           type: room.type || 'Standard',
           description: room.description || 'Habitación estándar',
-          price_per_night: room.price_per_night || (room.total_price / hotel.nights),
-          total_price: room.total_price,
+          price_per_night: room.price_per_night, // Use the price_per_night from EUROVIPS directly
+          total_price: room.total_price, // Use the total_price from EUROVIPS directly
           currency: room.currency,
           availability: room.availability >= 0 ? Math.max(room.availability, 3) : 5, // Ensure at least "Consultar" status
           occupancy_id: room.occupancy_id || Math.random().toString(36)
