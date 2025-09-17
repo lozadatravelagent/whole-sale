@@ -825,10 +825,19 @@ const Chat = () => {
     }
   }, [isTyping, messages.length, selectedConversation]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom only when new messages arrive
+  const prevMessageCountRef = useRef(0);
+  
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+    // Only scroll when there are actually new messages added
+    if (messages.length > prevMessageCountRef.current && messages.length > 0) {
+      // Small delay to ensure message is rendered
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [messages.length]);
 
   // Reset loading state when conversation changes
   useEffect(() => {

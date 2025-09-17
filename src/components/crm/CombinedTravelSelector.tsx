@@ -80,22 +80,22 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
         const legIcon = leg.flight_type === 'outbound' ? <Plane className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />;
 
         return (
-          <div key={legIndex} className="border rounded-lg p-3 bg-gradient-to-r from-blue-50 to-indigo-50">
+          <div key={legIndex} className="border border-gray-700 rounded-lg p-3 bg-gradient-to-r from-gray-800 to-gray-900">
             <div className="flex items-center space-x-2 mb-3">
-              {legIcon}
-              <span className="font-semibold text-sm text-blue-900">{legType}</span>
+              {React.cloneElement(legIcon, { className: "h-4 w-4 text-blue-400" })}
+              <span className="font-semibold text-sm text-blue-400">{legType}</span>
             </div>
 
             {/* Simplified display for current FlightLeg structure */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-blue-200">
+              <div className="flex items-center justify-between bg-gray-700 rounded-lg p-3 border border-gray-600">
                 <div className="flex items-center space-x-3">
-                  <div className="bg-blue-100 p-2 rounded-full">
-                    <Navigation className="h-4 w-4 text-blue-600" />
+                  <div className="bg-blue-900 p-2 rounded-full">
+                    <Navigation className="h-4 w-4 text-blue-300" />
                   </div>
                   <div>
-                    <div className="font-medium text-sm">Vuelo {legType}</div>
-                    <div className="text-xs text-gray-600">
+                    <div className="font-medium text-sm text-gray-100">Vuelo {legType}</div>
+                    <div className="text-xs text-gray-400">
                       {leg.duration}
                     </div>
                   </div>
@@ -104,21 +104,21 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
 
               <div className="flex items-center justify-between px-3">
                 <div className="text-center">
-                  <div className="font-bold text-lg text-blue-700">{leg.departure.city_code}</div>
-                  <div className="text-sm font-medium">{leg.departure.time}</div>
-                  <div className="text-xs text-gray-500">{leg.departure.city_name}</div>
+                  <div className="font-bold text-lg text-blue-300">{leg.departure.city_code}</div>
+                  <div className="text-sm font-medium text-gray-200">{leg.departure.time}</div>
+                  <div className="text-xs text-gray-400">{leg.departure.city_name}</div>
                 </div>
 
                 <div className="flex-1 flex items-center justify-center">
-                  <div className="h-0.5 bg-gradient-to-r from-blue-400 to-indigo-400 flex-1"></div>
-                  <Plane className="h-5 w-5 mx-2 text-blue-500" />
-                  <div className="h-0.5 bg-gradient-to-r from-blue-400 to-indigo-400 flex-1"></div>
+                  <div className="h-0.5 bg-gradient-to-r from-blue-500 to-indigo-500 flex-1"></div>
+                  <Plane className="h-5 w-5 mx-2 text-blue-400" />
+                  <div className="h-0.5 bg-gradient-to-r from-blue-500 to-indigo-500 flex-1"></div>
                 </div>
 
                 <div className="text-center">
-                  <div className="font-bold text-lg text-blue-700">{leg.arrival.city_code}</div>
-                  <div className="text-sm font-medium">{leg.arrival.time}</div>
-                  <div className="text-xs text-gray-500">{leg.arrival.city_name}</div>
+                  <div className="font-bold text-lg text-blue-300">{leg.arrival.city_code}</div>
+                  <div className="text-sm font-medium text-gray-200">{leg.arrival.time}</div>
+                  <div className="text-xs text-gray-400">{leg.arrival.city_name}</div>
                 </div>
               </div>
 
@@ -127,16 +127,16 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                 <div className="space-y-2">
                   {leg.layovers.map((layover, layoverIndex) => (
                     <div key={layoverIndex} className="flex justify-center">
-                      <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-2 min-w-[200px]">
+                      <div className="bg-amber-900 border border-amber-700 rounded-lg p-2 min-w-[200px]">
                         <div className="text-center">
                           <div className="flex items-center justify-center space-x-1 mb-1">
-                            <Timer className="h-3 w-3 text-yellow-600" />
-                            <span className="text-xs font-medium text-yellow-800">CONEXIÓN</span>
+                            <Timer className="h-3 w-3 text-amber-400" />
+                            <span className="text-xs font-medium text-amber-200">CONEXIÓN</span>
                           </div>
-                          <div className="text-sm font-bold text-yellow-900">
+                          <div className="text-sm font-bold text-amber-100">
                             {layover.destination_code} - {layover.waiting_time}
                           </div>
-                          <div className="text-xs text-yellow-700">Cambio de terminal/puerta</div>
+                          <div className="text-xs text-amber-300">Cambio de terminal/puerta</div>
                         </div>
                       </div>
                     </div>
