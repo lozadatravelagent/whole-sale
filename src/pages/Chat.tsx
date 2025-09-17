@@ -310,7 +310,12 @@ const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequ
       firstOptionSegments: firstOption.Segments?.length || 0,
       totalDuration: firstOption.OptionDuration,
       brandName: firstSegment.BrandName,
-      cabinClass: firstSegment.CabinClass
+      cabinClass: firstSegment.CabinClass,
+      segmentDetails: (firstOption.Segments || []).map((seg: any) => ({
+        flight: `${seg.Airline}${seg.FlightNumber}`,
+        route: `${seg.Departure?.AirportCode} → ${seg.Arrival?.AirportCode}`,
+        technicalStops: seg.Stops?.length || 0
+      }))
     });
 
     // For return date, check if there's a second leg
@@ -322,14 +327,37 @@ const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequ
       returnDate = secondSegment.Departure?.Date || null;
     }
 
-    // Calculate total stops count
-    const totalStops = legs.reduce((total, leg) => {
+    // Calculate total connections (stops) count
+    // In TVC: Stops = Technical stops within a segment, Connections = Multiple segments in a leg
+    const totalTechnicalStops = legs.reduce((total, leg) => {
       return total + (leg.Options || []).reduce((legTotal: number, option: any) => {
         return legTotal + (option.Segments || []).reduce((segTotal: number, segment: any) => {
-          return segTotal + (segment.Stops?.length || 0);
+          return segTotal + (segment.Stops?.length || 0); // Technical stops within segment
         }, 0);
       }, 0);
     }, 0);
+
+    // Calculate connections (segment changes)
+    const totalConnections = legs.reduce((total, leg) => {
+      return total + (leg.Options || []).reduce((legTotal: number, option: any) => {
+        const segments = option.Segments || [];
+        return legTotal + Math.max(0, segments.length - 1); // Connections = segments - 1
+      }, 0);
+    }, 0);
+
+    // Total stops = technical stops + connections
+    const totalStops = totalTechnicalStops + totalConnections;
+
+    console.log(`🛑 Stops analysis for Fare ${index + 1}:`, {
+      technicalStops: totalTechnicalStops,
+      connections: totalConnections,
+      totalStops: totalStops,
+      isDirect: totalStops === 0,
+      explanation: totalStops === 0 ? 'Vuelo directo' :
+        totalConnections > 0 ? `${totalConnections} conexión(es)` +
+          (totalTechnicalStops > 0 ? ` + ${totalTechnicalStops} escala(s) técnica(s)` : '') :
+          `${totalTechnicalStops} escala(s) técnica(s)`
+    });
 
     // Get baggage info from first segment
     const baggageInfo = firstSegment.Baggage || '';
@@ -1338,7 +1366,7 @@ const Chat = () => {
 
       // Duración y escalas
       response += `⏱️ **Duración:** ${flight.duration?.formatted || 'N/A'}\n`;
-      response += `🛑 **Escalas:** ${flight.stops?.direct ? 'Vuelo directo' : `${flight.stops?.count || 0} escala(s)`}\n`;
+      response += `🛑 **Tipo:** ${flight.stops?.direct ? 'Vuelo directo' : `Con ${flight.stops?.count || 0} conexión(es)`}\n`;
 
       // Información de equipaje
       response += `🧳 **Equipaje:** ${flight.baggage?.included ? 'Incluido' : 'No incluido'} - ${flight.baggage?.details || 'N/A'}\n`;
