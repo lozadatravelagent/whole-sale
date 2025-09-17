@@ -195,7 +195,8 @@ const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequ
   const fares = tvcData?.Fares || [];
   console.log(`📊 Processing ${fares.length} fares from TVC API`);
 
-  const transformedFlights = fares.slice(0, 50).map((fare: any, index: number) => {
+  // First transform all flights, then sort by price and limit to 5
+  const allTransformedFlights = fares.map((fare: any, index: number) => {
     // TVC Fare structure: Fares -> Legs -> Options -> Segments
     console.log(`🔍 Processing fare ${index + 1}:`, {
       fareId: fare.FareID,
@@ -350,7 +351,17 @@ const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequ
     };
   });
 
-  console.log(`✅ Transformation complete. Generated ${transformedFlights.length} flight objects`);
+  // Sort by price (lowest first) and limit to 5 best options
+  const transformedFlights = allTransformedFlights
+    .sort((a, b) => (a.price.amount || 0) - (b.price.amount || 0))
+    .slice(0, 5);
+
+  console.log(`✅ Transformation complete. Generated ${allTransformedFlights.length} flight objects`);
+  console.log(`💰 Sorted by price and limited to ${transformedFlights.length} cheapest flights`);
+  if (transformedFlights.length > 0) {
+    console.log(`💸 Price range: ${transformedFlights[0].price.amount} - ${transformedFlights[transformedFlights.length - 1].price.amount} ${transformedFlights[0].price.currency}`);
+  }
+
   return transformedFlights;
 };
 
@@ -849,9 +860,24 @@ const Chat = () => {
 
       console.log('📊 [HOTEL SEARCH] Raw response data:', response.data);
 
-      const hotels = response.data.results || [];
-      console.log('✅ [HOTEL SEARCH] Step 5: Hotel data extracted');
-      console.log('🏨 Hotels found:', hotels.length);
+      const allHotels = response.data.results || [];
+
+      // Sort hotels by lowest price (minimum room price) and limit to 5
+      const hotels = allHotels
+        .sort((a: LocalHotelData, b: LocalHotelData) => {
+          const minPriceA = Math.min(...a.rooms.map(r => r.total_price));
+          const minPriceB = Math.min(...b.rooms.map(r => r.total_price));
+          return minPriceA - minPriceB;
+        })
+        .slice(0, 5);
+
+      console.log('✅ [HOTEL SEARCH] Step 5: Hotel data extracted and sorted by price');
+      console.log('🏨 Hotels found:', allHotels.length, '| Sorted and limited to:', hotels.length);
+      if (hotels.length > 0) {
+        const cheapestPrice = Math.min(...hotels[0].rooms.map(r => r.total_price));
+        const mostExpensivePrice = Math.min(...hotels[hotels.length - 1].rooms.map(r => r.total_price));
+        console.log(`💸 Hotel price range: ${cheapestPrice} - ${mostExpensivePrice} ${hotels[0].rooms[0].currency}`);
+      }
 
       console.log('📝 [HOTEL SEARCH] Step 6: Formatting response text');
       const formattedResponse = formatHotelResponse(hotels);
@@ -896,7 +922,11 @@ const Chat = () => {
         }
       });
 
-      const packages = response.data.results || [];
+      const allPackages = response.data.results || [];
+      // Sort packages by price (lowest first) and limit to 5
+      const packages = allPackages
+        .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
+        .slice(0, 5);
 
       return {
         response: formatPackageResponse(packages),
@@ -925,7 +955,11 @@ const Chat = () => {
         }
       });
 
-      const services = response.data.results || [];
+      const allServices = response.data.results || [];
+      // Sort services by price (lowest first) and limit to 5
+      const services = allServices
+        .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
+        .slice(0, 5);
 
       return {
         response: formatServiceResponse(services),
@@ -1005,7 +1039,8 @@ const Chat = () => {
       return '✈️ **Búsqueda de Vuelos**\n\nNo encontré vuelos disponibles para esas fechas y destino. Intenta con fechas alternativas.';
     }
 
-    let response = `✈️ **${flights.length} Vuelos Disponibles**\n\n`;
+    const displayCount = Math.min(flights.length, 5);
+    let response = `✈️ **${displayCount} Vuelos Disponibles** ${flights.length > 5 ? `(los ${displayCount} más económicos de ${flights.length})` : '(ordenados por precio)'}\n\n`;
 
     flights.slice(0, 5).forEach((flight, index) => {
       response += `---\n\n`;
@@ -1034,7 +1069,8 @@ const Chat = () => {
       return '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.';
     }
 
-    let response = `🏨 **${hotels.length} Hoteles Disponibles**\n\n`;
+    const displayCount = Math.min(hotels.length, 5);
+    let response = `🏨 **${displayCount} Hoteles Disponibles** ${hotels.length > 5 ? `(los ${displayCount} más económicos de ${hotels.length})` : '(ordenados por precio)'}\n\n`;
 
     hotels.slice(0, 5).forEach((hotel, index) => {
       const minPrice = Math.min(...hotel.rooms.map((r) => r.total_price));
@@ -1107,11 +1143,13 @@ const Chat = () => {
     let response = '🌟 **Búsqueda Combinada Completada**\n\n';
 
     if (combinedData.flights.length > 0) {
-      response += `✈️ **${combinedData.flights.length} vuelos encontrados**\n`;
+      const flightCount = Math.min(combinedData.flights.length, 5);
+      response += `✈️ **${flightCount} vuelos disponibles** (ordenados por precio más bajo)\n`;
     }
 
     if (combinedData.hotels.length > 0) {
-      response += `🏨 **${combinedData.hotels.length} hoteles encontrados**\n`;
+      const hotelCount = Math.min(combinedData.hotels.length, 5);
+      response += `🏨 **${hotelCount} hoteles disponibles** (ordenados por precio más bajo)\n`;
     }
 
     response += '\n📋 Usa los selectores interactivos para crear tu cotización personalizada.';

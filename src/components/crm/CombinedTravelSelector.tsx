@@ -8,14 +8,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { FlightData, HotelData, CombinedTravelResults } from '@/types';
 import { generateFlightPdf } from '@/services/pdfMonkey';
-import { 
-  Plane, 
+import {
+  Plane,
   Hotel,
-  Clock, 
-  MapPin, 
+  Clock,
+  MapPin,
   Calendar,
-  DollarSign, 
-  FileText, 
+  DollarSign,
+  FileText,
   Loader2,
   Download,
   ChevronRight,
@@ -45,7 +45,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState(
     combinedData.requestType === 'combined' ? 'flights' :
-    combinedData.requestType === 'flights-only' ? 'flights' : 'hotels'
+      combinedData.requestType === 'flights-only' ? 'flights' : 'hotels'
   );
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
@@ -67,7 +67,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       if (prev.includes(flightId)) {
         return prev.filter(id => id !== flightId);
       }
-      
+
       // Limit to maximum 2 flights
       if (prev.length >= 2) {
         toast({
@@ -77,7 +77,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         });
         return prev;
       }
-      
+
       return [...prev, flightId];
     });
   };
@@ -92,7 +92,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         setSelectedRooms(newRooms);
         return newSelected;
       }
-      
+
       // Limit to maximum 2 hotels
       if (prev.length >= 2) {
         toast({
@@ -102,7 +102,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         });
         return prev;
       }
-      
+
       return [...prev, hotelId];
     });
   };
@@ -117,7 +117,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const handleGeneratePdf = async () => {
     // For now, we'll generate PDF only for flights (existing functionality)
     // TODO: Extend pdfMonkey service to support combined travel packages
-    
+
     if (selectedFlights.length === 0) {
       toast({
         title: "Selección requerida",
@@ -130,23 +130,22 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     setIsGenerating(true);
 
     try {
-      const selectedFlightData = combinedData.flights.filter(flight => 
+      const selectedFlightData = combinedData.flights.filter(flight =>
         selectedFlights.includes(flight.id!)
       );
-      
+
       console.log('📄 Generating PDF for selected flights:', selectedFlightData);
-      
+
       const pdfUrl = await generateFlightPdf(selectedFlightData);
-      
-      if (pdfUrl && onPdfGenerated) {
-        onPdfGenerated(pdfUrl);
+      if (pdfUrl?.document_url && onPdfGenerated) {
+        onPdfGenerated(pdfUrl.document_url);
       }
-      
+
       toast({
         title: "PDF Generado",
         description: "Tu cotización de viaje está lista para descargar.",
       });
-      
+
     } catch (error) {
       console.error('Error generating PDF:', error);
       toast({
@@ -179,30 +178,30 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Header with service info */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center space-x-2 text-lg">
-            <Package className="h-5 w-5 text-primary" />
+        <CardHeader className="pb-2 px-4 py-3">
+          <CardTitle className="flex items-center space-x-2 text-base">
+            <Package className="h-4 w-4 text-primary" />
             <span>
               {combinedData.requestType === 'combined' ? 'Viaje Combinado' :
-               combinedData.requestType === 'flights-only' ? 'Vuelos' : 'Hoteles'} - EUROVIPS
+                combinedData.requestType === 'flights-only' ? 'Vuelos' : 'Hoteles'}
             </span>
           </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            {combinedData.requestType === 'combined' ? 
+          <p className="text-xs text-muted-foreground">
+            {combinedData.requestType === 'combined' ?
               `${combinedData.flights.length} vuelos y ${combinedData.hotels.length} hoteles disponibles` :
-              combinedData.requestType === 'flights-only' ? 
-              `${combinedData.flights.length} opciones de vuelos` :
-              `${combinedData.hotels.length} opciones de hoteles`
+              combinedData.requestType === 'flights-only' ?
+                `${combinedData.flights.length} opciones de vuelos` :
+                `${combinedData.hotels.length} opciones de hoteles`
             }
           </p>
         </CardHeader>
       </Card>
 
       {/* Tabs for flights and hotels */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
         <TabsList className="grid w-full grid-cols-2">
           {(combinedData.requestType === 'combined' || combinedData.requestType === 'flights-only') && (
             <TabsTrigger value="flights" className="flex items-center space-x-2">
@@ -220,14 +219,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
         {/* Flights Tab */}
         {(combinedData.requestType === 'combined' || combinedData.requestType === 'flights-only') && (
-          <TabsContent value="flights" className="space-y-3">
+          <TabsContent value="flights" className="space-y-2">
             {combinedData.flights.map((flight, index) => {
               const isSelected = selectedFlights.includes(flight.id!);
-              
+
               return (
                 <Card key={flight.id} className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
+                  <CardContent className="p-3">
+                    <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-3">
                         <Checkbox
                           checked={isSelected}
@@ -235,11 +234,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                         />
                         <div>
                           <div className="flex items-center space-x-2">
-                            <Plane className="h-4 w-4 text-primary" />
-                            <span className="font-medium">{flight.airline.name}</span>
-                            <Badge variant="secondary" className="text-xs">{flight.airline.code}</Badge>
+                            <Plane className="h-3 w-3 text-primary" />
+                            <span className="font-medium text-sm">{flight.airline.name}</span>
+                            <Badge variant="secondary" className="text-xs px-1 py-0">{flight.airline.code}</Badge>
                           </div>
-                          <div className="flex items-center space-x-4 mt-1 text-sm text-muted-foreground">
+                          <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
                             <div className="flex items-center space-x-1">
                               <Users className="h-3 w-3" />
                               <span>{flight.adults} adult{flight.adults > 1 ? 'os' : 'o'}</span>
@@ -249,19 +248,19 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-xl font-bold text-primary">
+                        <div className="text-lg font-bold text-primary">
                           {formatPrice(flight.price.amount, flight.price.currency)}
                         </div>
                         <div className="text-xs text-muted-foreground">por persona</div>
                       </div>
                     </div>
 
-                    <Separator className="my-3" />
+                    <Separator className="my-2" />
 
                     {/* Flight legs */}
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       {flight.legs.map((leg, legIndex) => (
-                        <div key={legIndex} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                        <div key={legIndex} className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
                           <div className="flex-1">
                             <div className="flex items-center justify-between mb-2">
                               <Badge variant={leg.flight_type === 'outbound' ? 'default' : 'secondary'} className="text-xs">
@@ -272,20 +271,20 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                                 <span>{leg.duration}</span>
                               </div>
                             </div>
-                            
+
                             <div className="flex items-center justify-between">
                               <div className="text-center">
                                 <div className="font-medium">{leg.departure.city_code}</div>
                                 <div className="text-xs text-muted-foreground">{leg.departure.city_name}</div>
                                 <div className="text-sm font-medium text-primary">{formatTime(leg.departure.time)}</div>
                               </div>
-                              
+
                               <div className="flex items-center px-4">
                                 <div className="h-px bg-border flex-1"></div>
                                 <ChevronRight className="h-4 w-4 mx-2 text-muted-foreground" />
                                 <div className="h-px bg-border flex-1"></div>
                               </div>
-                              
+
                               <div className="text-center">
                                 <div className="font-medium">{leg.arrival.city_code}</div>
                                 <div className="text-xs text-muted-foreground">{leg.arrival.city_name}</div>
@@ -300,7 +299,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                 </Card>
               );
             })}
-            
+
             {combinedData.flights.length === 0 && (
               <Card>
                 <CardContent className="p-6 text-center">
@@ -315,14 +314,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
         {/* Hotels Tab */}
         {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
-          <TabsContent value="hotels" className="space-y-3">
+          <TabsContent value="hotels" className="space-y-2">
             {combinedData.hotels.map((hotel) => {
               const isSelected = selectedHotels.includes(hotel.id);
-              
+
               return (
                 <Card key={hotel.id} className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center space-x-3">
                         <Checkbox
                           checked={isSelected}
@@ -330,16 +329,16 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                         />
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-1">
-                            <Hotel className="h-4 w-4 text-primary" />
-                            <span className="font-medium">{hotel.name}</span>
+                            <Hotel className="h-3 w-3 text-primary" />
+                            <span className="font-medium text-sm">{hotel.name}</span>
                             {hotel.category && (
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="outline" className="text-xs px-1 py-0">
                                 {hotel.category}
                               </Badge>
                             )}
                           </div>
-                          
-                          <div className="space-y-1 text-sm text-muted-foreground">
+
+                          <div className="space-y-0.5 text-xs text-muted-foreground">
                             {hotel.city && (
                               <div className="flex items-center space-x-1">
                                 <MapPin className="h-3 w-3" />
@@ -370,12 +369,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                         const availabilityStatus = getAvailabilityStatus(room.availability);
                         const AvailabilityIcon = availabilityStatus.icon;
                         const isRoomSelected = selectedRooms[hotel.id] === room.occupancy_id;
-                        
+
                         return (
-                          <div key={roomIndex} className={`p-3 border rounded-lg cursor-pointer transition-all ${
-                            isRoomSelected ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
-                          } ${!isSelected ? 'opacity-50 pointer-events-none' : ''}`}
-                          onClick={() => isSelected && handleRoomSelect(hotel.id, room.occupancy_id)}>
+                          <div key={roomIndex} className={`p-3 border rounded-lg cursor-pointer transition-all ${isRoomSelected ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
+                            } ${!isSelected ? 'opacity-50 pointer-events-none' : ''}`}
+                            onClick={() => isSelected && handleRoomSelect(hotel.id, room.occupancy_id)}>
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
                                 <div className="flex items-center space-x-2 mb-1">
@@ -386,7 +384,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                                   <p className="text-xs text-muted-foreground">{room.description}</p>
                                 )}
                               </div>
-                              
+
                               <div className="text-right space-y-1">
                                 <div className="text-lg font-bold text-primary">
                                   {formatPrice(room.total_price, room.currency)}
@@ -405,7 +403,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                 </Card>
               );
             })}
-            
+
             {combinedData.hotels.length === 0 && (
               <Card>
                 <CardContent className="p-6 text-center">
@@ -432,8 +430,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                   {selectedHotels.length > 0 && `${selectedHotels.length} hotel(es)`} seleccionado(s)
                 </p>
               </div>
-              <Button 
-                onClick={handleGeneratePdf} 
+              <Button
+                onClick={handleGeneratePdf}
                 disabled={selectedFlights.length === 0 || isGenerating}
                 className="flex items-center space-x-2"
               >
