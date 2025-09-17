@@ -265,6 +265,24 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         const selectedRoomId = selectedRooms[hotel.id];
         const selectedRoom = hotel.rooms.find(room => room.occupancy_id === selectedRoomId);
 
+        console.log(`🏨 Preparing hotel ${hotel.name} for PDF:`, {
+          hotel_id: hotel.id,
+          hotel_nights: hotel.nights,
+          selected_room_id: selectedRoomId,
+          selected_room: selectedRoom ? {
+            type: selectedRoom.type,
+            price_per_night: selectedRoom.price_per_night,
+            total_price: selectedRoom.total_price,
+            currency: selectedRoom.currency
+          } : 'NO_ROOM_SELECTED',
+          fallback_room: hotel.rooms[0] ? {
+            type: hotel.rooms[0].type,
+            price_per_night: hotel.rooms[0].price_per_night,
+            total_price: hotel.rooms[0].total_price,
+            currency: hotel.rooms[0].currency
+          } : 'NO_ROOMS_AVAILABLE'
+        });
+
         return {
           ...hotel,
           selectedRoom: selectedRoom || hotel.rooms[0] // fallback to first room if none selected

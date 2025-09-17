@@ -382,13 +382,22 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
     console.log(`🏨 Hotel ${hotel.name} room for PDF:`, {
       type: roomToUse.type,
-      price: roomToUse.total_price,
+      price_per_night: roomToUse.price_per_night,
+      total_price: roomToUse.total_price,
       currency: roomToUse.currency,
       source: hotelWithRoom.selectedRoom ? 'SELECTED_BY_USER' : 'CHEAPEST_FALLBACK'
     });
 
     // Calculate total price for all nights - total_price is already for all nights
     const priceForAllNights = roomToUse.total_price;
+
+    console.log(`💰 Hotel ${hotel.name} FINAL CALCULATION:`, {
+      hotel_nights: hotel.nights,
+      room_price_per_night: roomToUse.price_per_night,
+      room_total_price: roomToUse.total_price,
+      calculated_price_for_all_nights: priceForAllNights,
+      formatted_price_for_template: formatPriceForTemplate(priceForAllNights)
+    });
 
     return {
       name: hotel.name,
