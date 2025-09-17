@@ -1,12 +1,11 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -16,38 +15,25 @@ import { createLeadFromChat } from '@/utils/chatToLead';
 import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { CombinedTravelResults } from '@/types';
-import FlightSelector from '@/components/crm/FlightSelector';
-import HotelSelector from '@/components/crm/HotelSelector';
 import CombinedTravelSelector from '@/components/crm/CombinedTravelSelector';
 import {
   Send,
   MessageSquare,
   Phone,
   Globe,
-  FileText,
   Clock,
   User,
   Bot,
-  Plane,
-  Hotel,
-  MapPin,
-  Calendar,
-  Users,
-  DollarSign,
-  Star,
   Loader2,
   Plus,
   ChevronDown,
   Archive,
   Check,
-  CheckCheck,
-  Download
+  CheckCheck
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { Database } from '@/integrations/supabase/types';
 
-type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 type MessageRow = Database['public']['Tables']['messages']['Row'];
 
 // City code service for EUROVIPS integration
@@ -83,11 +69,6 @@ interface StarlingFare {
   }>;
 }
 
-interface StarlingData {
-  results?: {
-    Fares?: StarlingFare[];
-  };
-}
 
 interface FlightData {
   id: string;
@@ -175,13 +156,11 @@ const Chat = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   // Use our hooks
   const { user } = useAuth();
   const {
     conversations,
-    loading: conversationsLoading,
     loadConversations,
     createConversation,
     updateConversationState,
@@ -189,7 +168,6 @@ const Chat = () => {
   } = useConversations();
   const {
     messages,
-    loading: messagesLoading,
     updateMessageStatus
   } = useMessages(selectedConversation);
 
@@ -584,7 +562,7 @@ const Chat = () => {
       console.log('✈️ Flights found:', flights.length);
 
       console.log('📝 [FLIGHT SEARCH] Step 6: Formatting response text');
-      const formattedResponse = formatFlightResponse(flights, parsed);
+      const formattedResponse = formatFlightResponse(flights);
 
       const result = {
         response: formattedResponse,
@@ -656,7 +634,7 @@ const Chat = () => {
       console.log('🏨 Hotels found:', hotels.length);
 
       console.log('📝 [HOTEL SEARCH] Step 6: Formatting response text');
-      const formattedResponse = formatHotelResponse(hotels, parsed);
+      const formattedResponse = formatHotelResponse(hotels);
 
       const result = {
         response: formattedResponse,
@@ -701,7 +679,7 @@ const Chat = () => {
       const packages = response.data.results || [];
 
       return {
-        response: formatPackageResponse(packages, parsed),
+        response: formatPackageResponse(packages),
         data: null
       };
     } catch (error) {
@@ -730,7 +708,7 @@ const Chat = () => {
       const services = response.data.results || [];
 
       return {
-        response: formatServiceResponse(services, parsed),
+        response: formatServiceResponse(services),
         data: null
       };
     } catch (error) {
@@ -771,7 +749,7 @@ const Chat = () => {
       console.log('🏨 Hotels found:', combinedData.hotels.length);
 
       console.log('📝 [COMBINED SEARCH] Step 4: Formatting combined response');
-      const formattedResponse = formatCombinedResponse(combinedData, parsed);
+      const formattedResponse = formatCombinedResponse(combinedData);
 
       const result = {
         response: formattedResponse,
@@ -802,7 +780,7 @@ const Chat = () => {
   };
 
   // Response formatters - using the main FlightData interface
-  const formatFlightResponse = (flights: FlightData[], parsed: ParsedTravelRequest) => {
+  const formatFlightResponse = (flights: FlightData[]) => {
     if (flights.length === 0) {
       return '✈️ **Búsqueda de Vuelos**\n\nNo encontré vuelos disponibles para esas fechas y destino. Intenta con fechas alternativas.';
     }
@@ -831,7 +809,7 @@ const Chat = () => {
     }>;
   }
 
-  const formatHotelResponse = (hotels: LocalHotelData[], parsed: ParsedTravelRequest) => {
+  const formatHotelResponse = (hotels: LocalHotelData[]) => {
     if (hotels.length === 0) {
       return '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.';
     }
@@ -859,14 +837,14 @@ const Chat = () => {
     duration: number;
   }
 
-  const formatPackageResponse = (packages: LocalPackageData[], parsed: ParsedTravelRequest) => {
+  const formatPackageResponse = (packages: LocalPackageData[]) => {
     if (packages.length === 0) {
       return '🎒 **Búsqueda de Paquetes**\n\nNo encontré paquetes disponibles. Intenta con otro destino o fechas.';
     }
 
     let response = `🎒 **${packages.length} Paquetes Disponibles**\n\n`;
 
-    packages.slice(0, 5).forEach((pkg, index) => {
+    packages.slice(0, 5).forEach((pkg) => {
       response += `---\n\n`;
       response += `🎒 **${pkg.name}**\n`;
       response += `📍 ${pkg.destination}\n`;
@@ -886,14 +864,14 @@ const Chat = () => {
     duration: string;
   }
 
-  const formatServiceResponse = (services: LocalServiceData[], parsed: ParsedTravelRequest) => {
+  const formatServiceResponse = (services: LocalServiceData[]) => {
     if (services.length === 0) {
       return '🚌 **Búsqueda de Servicios**\n\nNo encontré servicios disponibles. Verifica la ciudad y fechas.';
     }
 
     let response = `🚌 **${services.length} Servicios Disponibles**\n\n`;
 
-    services.slice(0, 5).forEach((service, index) => {
+    services.slice(0, 5).forEach((service) => {
       response += `---\n\n`;
       response += `🚌 **${service.name}**\n`;
       response += `📍 ${service.city}\n`;
@@ -905,7 +883,7 @@ const Chat = () => {
     return response;
   };
 
-  const formatCombinedResponse = (combinedData: LocalCombinedTravelResults, parsed: ParsedTravelRequest) => {
+  const formatCombinedResponse = (combinedData: LocalCombinedTravelResults) => {
     let response = '🌟 **Búsqueda Combinada Completada**\n\n';
 
     if (combinedData.flights.length > 0) {
@@ -956,7 +934,7 @@ const Chat = () => {
     });
   };
 
-  const handlePdfGenerated = (pdfUrl: string) => {
+  const handlePdfGenerated = () => {
     toast({
       title: "PDF Generado",
       description: "Tu cotización se ha generado exitosamente.",
@@ -1046,7 +1024,7 @@ const Chat = () => {
           onChange={(e) => onChange(e.target.value)}
           placeholder="Escribe tu mensaje..."
           disabled={disabled}
-          onKeyPress={(e) => e.key === 'Enter' && onSend()}
+          onKeyDown={(e) => e.key === 'Enter' && onSend()}
           className="flex-1"
         />
         <Button
@@ -1101,7 +1079,7 @@ const Chat = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Conversaciones</h3>
-        <Button onClick={(e) => createNewChat()} size="sm" variant="outline">
+        <Button onClick={() => createNewChat()} size="sm" variant="outline">
           <Plus className="h-4 w-4" />
         </Button>
       </div>
