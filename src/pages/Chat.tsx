@@ -724,7 +724,6 @@ const Chat = () => {
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarLimit, setSidebarLimit] = useState(5);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -826,26 +825,11 @@ const Chat = () => {
     }
   }, [isTyping, messages.length, selectedConversation]);
 
-  // Auto-scroll to bottom only when new messages arrive
-  const prevMessageCountRef = useRef(0);
-  const isUserTypingRef = useRef(false);
+  // Removed auto-scroll behavior to prevent input jumping
 
-  useEffect(() => {
-    // Only scroll when there are actually new messages added AND user is not actively typing
-    if (messages.length > prevMessageCountRef.current && messages.length > 0 && !isUserTypingRef.current) {
-      // Small delay to ensure message is rendered
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
-    }
-    prevMessageCountRef.current = messages.length;
-  }, [messages.length]);
-
-  // Track when user is typing to prevent auto-scroll
+  // Handle message input changes
   const handleMessageChange = (newMessage: string) => {
     setMessage(newMessage);
-    // Update typing state based on message length
-    isUserTypingRef.current = newMessage.length > 0;
   };
 
   // Reset loading state when conversation changes
@@ -2460,7 +2444,6 @@ const Chat = () => {
                   })}
 
                   {isTyping && <TypingIndicator />}
-                  <div ref={messagesEndRef} />
                 </div>
               </div>
 
