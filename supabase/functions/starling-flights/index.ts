@@ -14,6 +14,9 @@ class StarlingTvcApi {
   // Authentication
   async getAccessToken() {
     console.log('🔑 Getting TVC access token...');
+    console.log('📤 Auth URL:', `${this.config.baseUrl}/api/1.6/FlightService.json/GetAccessToken`);
+    console.log('📋 Auth Params:', { username: this.config.username, password: '***' });
+
     try {
       const response = await fetch(`${this.config.baseUrl}/api/1.6/FlightService.json/GetAccessToken`, {
         method: 'POST',
@@ -30,16 +33,30 @@ class StarlingTvcApi {
         throw new Error(`TVC Auth failed: ${response.status} ${response.statusText}`);
       }
       const data = await response.json();
-      if (!data.Token) {
+      console.log('🔍 TVC Auth Response:', JSON.stringify(data, null, 2));
+
+      // TVC API returns token as a string directly, not in an object
+      let token;
+      if (typeof data === 'string') {
+        token = data;
+        console.log('✅ Token received as string:', token);
+      } else if (data.Token) {
+        token = data.Token;
+        console.log('✅ Token received as object property:', token);
+      } else {
+        console.error('❌ No token found in response');
+        console.error('📋 Response type:', typeof data);
+        console.error('📋 Available fields:', typeof data === 'object' ? Object.keys(data) : 'N/A');
         throw new Error('No token received from TVC API');
       }
+
       // Store token with expiration (assume 1 hour)
       this.currentToken = {
-        token: data.Token,
+        token: token,
         expiresAt: new Date(Date.now() + 60 * 60 * 1000)
       };
-      console.log('✅ TVC token obtained successfully');
-      return data.Token;
+      console.log('✅ TVC token obtained successfully:', token);
+      return token;
     } catch (error) {
       console.error('❌ TVC Authentication failed:', error);
       throw error;
@@ -313,6 +330,7 @@ serve(async (req) => {
       throw new Error('TVC credentials not configured in Supabase secrets');
     }
     console.log(`🔧 TVC Config: ${TVC_BASE_URL}, User: ${TVC_USERNAME}`);
+    console.log(`🔐 Password configured: ${TVC_PASSWORD ? 'YES' : 'NO'}`);
     // Create TVC API instance
     const tvcApi = new StarlingTvcApi({
       baseUrl: TVC_BASE_URL,
