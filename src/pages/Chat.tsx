@@ -630,6 +630,86 @@ const getTaxDescription = (taxCode: string): string => {
   return taxDescriptions[taxCode] || `Tasa ${taxCode}`;
 };
 
+// Helper function to calculate connection time between segments
+const calculateConnectionTime = (segment1: any, segment2: any): string => {
+  if (!segment1?.Arrival?.Date || !segment1?.Arrival?.Time ||
+    !segment2?.Departure?.Date || !segment2?.Departure?.Time) {
+    return 'N/A';
+  }
+
+  try {
+    const arrival = new Date(`${segment1.Arrival.Date}T${segment1.Arrival.Time}`);
+    const departure = new Date(`${segment2.Departure.Date}T${segment2.Departure.Time}`);
+
+    const diffMs = departure.getTime() - arrival.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+    if (diffMinutes < 0) return 'N/A';
+
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+
+    if (hours === 0) return `${minutes}m`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  } catch (error) {
+    console.warn('Error calculating connection time:', error);
+    return 'N/A';
+  }
+};
+
+// Helper function to generate visual flight itinerary
+const generateFlightItinerary = (flight: FlightData): string => {
+  let itinerary = '';
+
+  flight.legs.forEach((leg, legIndex) => {
+    const legType = legIndex === 0 ? 'IDA' : 'REGRESO';
+    itinerary += `\n🛫 **${legType}:**\n`;
+
+    leg.options.forEach((option, optionIndex) => {
+      const segments = option.segments || [];
+
+      if (segments.length === 0) {
+        itinerary += '   ❌ Sin información de segmentos\n';
+        return;
+      }
+
+      if (segments.length === 1) {
+        // Vuelo directo
+        const segment = segments[0];
+        itinerary += `   ✈️ **Vuelo Directo:** ${segment.airline}${segment.flightNumber}\n`;
+        itinerary += `   📍 ${segment.departure.airportCode} ${segment.departure.time} → ${segment.arrival.airportCode} ${segment.arrival.time}\n`;
+        itinerary += `   ⏱️ Duración: ${formatDuration(segment.duration)}\n`;
+        itinerary += `   💺 Clase: ${segment.cabinClass} (${segment.brandName})\n`;
+        itinerary += `   ✈️ Equipo: ${segment.equipment}\n`;
+      } else {
+        // Vuelo con conexiones
+        itinerary += `   🔄 **Vuelo con ${segments.length - 1} Conexión(es):**\n\n`;
+
+        segments.forEach((segment, segIndex) => {
+          itinerary += `   **Segmento ${segIndex + 1}:** ${segment.airline}${segment.flightNumber}\n`;
+          itinerary += `   📍 ${segment.departure.airportCode} ${segment.departure.time} → ${segment.arrival.airportCode} ${segment.arrival.time}\n`;
+          itinerary += `   ⏱️ ${formatDuration(segment.duration)} | 💺 ${segment.cabinClass} | ✈️ ${segment.equipment}\n`;
+
+          // Mostrar conexión si no es el último segmento
+          if (segIndex < segments.length - 1) {
+            const nextSegment = segments[segIndex + 1];
+            const connectionTime = calculateConnectionTime(segment, nextSegment);
+            const connectionAirport = segment.arrival.airportCode;
+            const connectionCity = getCityNameFromCode(connectionAirport);
+
+            itinerary += `\n   🔄 **Conexión en ${connectionCity} (${connectionAirport}):**\n`;
+            itinerary += `   ⏰ Tiempo de conexión: ${connectionTime}\n`;
+            itinerary += `   🚶 Cambio de terminal/puerta\n\n`;
+          }
+        });
+      }
+    });
+  });
+
+  return itinerary;
+};
+
 const Chat = () => {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -1383,8 +1463,12 @@ const Chat = () => {
         response += `📅 **Válido hasta:** ${ticketingDate}\n`;
       }
 
+      // Itinerario detallado visual
+      const itinerary = generateFlightItinerary(flight);
+      response += itinerary;
+
       // FareID para referencia
-      response += `🆔 **ID de Tarifa:** ${flight.id}\n\n`;
+      response += `\n🆔 **ID de Tarifa:** ${flight.id}\n\n`;
     });
 
     response += '\n📋 Selecciona las opciones que prefieras para generar tu cotización.';
@@ -1990,14 +2074,6 @@ const Chat = () => {
                               {/* Interactive selectors (MAINTAIN EXACT) */}
                               {hasCombinedTravel && combinedTravelData ? (
                                 <div className="space-y-3">
-                                  <div className="text-sm font-medium text-muted-foreground">
-                                    🌟 {combinedTravelData.requestType === 'combined' ?
-                                      `Viaje completo: ${combinedTravelData.flights.length} vuelos y ${combinedTravelData.hotels.length} hoteles` :
-                                      combinedTravelData.requestType === 'flights-only' ?
-                                        `${combinedTravelData.flights.length} opciones de vuelos` :
-                                        `${combinedTravelData.hotels.length} opciones de hoteles`
-                                    }
-                                  </div>
                                   <CombinedTravelSelector
                                     combinedData={memoizedCombinedData!}
                                     onPdfGenerated={handlePdfGenerated}

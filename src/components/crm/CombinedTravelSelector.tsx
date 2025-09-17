@@ -27,13 +27,129 @@ import {
   Bed,
   CheckCircle,
   AlertCircle,
-  Package
+  Package,
+  ArrowRight,
+  RotateCcw,
+  Timer,
+  Navigation
 } from 'lucide-react';
 
 interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
   onPdfGenerated?: (pdfUrl: string, selectedFlights: FlightData[], selectedHotels: HotelData[]) => Promise<void>;
 }
+
+// Helper function to calculate connection time
+const calculateConnectionTime = (segment1: any, segment2: any): string => {
+  if (!segment1?.arrival?.time || !segment2?.departure?.time) {
+    return 'N/A';
+  }
+
+  try {
+    // Parse times assuming same day for simplicity
+    const [arr1Hours, arr1Minutes] = segment1.arrival.time.split(':').map(Number);
+    const [dep2Hours, dep2Minutes] = segment2.departure.time.split(':').map(Number);
+
+    const arrivalMinutes = arr1Hours * 60 + arr1Minutes;
+    const departureMinutes = dep2Hours * 60 + dep2Minutes;
+
+    let diffMinutes = departureMinutes - arrivalMinutes;
+
+    // Handle next day departure
+    if (diffMinutes < 0) {
+      diffMinutes += 24 * 60;
+    }
+
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+
+    if (hours === 0) return `${minutes}m`;
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  } catch (error) {
+    return 'N/A';
+  }
+};
+
+// Component to display flight itinerary with visual connections
+const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
+  return (
+    <div className="space-y-3">
+      {flight.legs.map((leg, legIndex) => {
+        const legType = leg.flight_type === 'outbound' ? 'IDA' : 'REGRESO';
+        const legIcon = leg.flight_type === 'outbound' ? <Plane className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />;
+
+        return (
+          <div key={legIndex} className="border rounded-lg p-3 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <div className="flex items-center space-x-2 mb-3">
+              {legIcon}
+              <span className="font-semibold text-sm text-blue-900">{legType}</span>
+            </div>
+
+            {/* Simplified display for current FlightLeg structure */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-blue-200">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-blue-100 p-2 rounded-full">
+                    <Navigation className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-sm">Vuelo {legType}</div>
+                    <div className="text-xs text-gray-600">
+                      {leg.duration}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between px-3">
+                <div className="text-center">
+                  <div className="font-bold text-lg text-blue-700">{leg.departure.city_code}</div>
+                  <div className="text-sm font-medium">{leg.departure.time}</div>
+                  <div className="text-xs text-gray-500">{leg.departure.city_name}</div>
+                </div>
+
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="h-0.5 bg-gradient-to-r from-blue-400 to-indigo-400 flex-1"></div>
+                  <Plane className="h-5 w-5 mx-2 text-blue-500" />
+                  <div className="h-0.5 bg-gradient-to-r from-blue-400 to-indigo-400 flex-1"></div>
+                </div>
+
+                <div className="text-center">
+                  <div className="font-bold text-lg text-blue-700">{leg.arrival.city_code}</div>
+                  <div className="text-sm font-medium">{leg.arrival.time}</div>
+                  <div className="text-xs text-gray-500">{leg.arrival.city_name}</div>
+                </div>
+              </div>
+
+              {/* Show layovers if present */}
+              {leg.layovers && leg.layovers.length > 0 && (
+                <div className="space-y-2">
+                  {leg.layovers.map((layover, layoverIndex) => (
+                    <div key={layoverIndex} className="flex justify-center">
+                      <div className="bg-yellow-100 border border-yellow-300 rounded-lg p-2 min-w-[200px]">
+                        <div className="text-center">
+                          <div className="flex items-center justify-center space-x-1 mb-1">
+                            <Timer className="h-3 w-3 text-yellow-600" />
+                            <span className="text-xs font-medium text-yellow-800">CONEXIÓN</span>
+                          </div>
+                          <div className="text-sm font-bold text-yellow-900">
+                            {layover.destination_code} - {layover.waiting_time}
+                          </div>
+                          <div className="text-xs text-yellow-700">Cambio de terminal/puerta</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   combinedData,
@@ -205,27 +321,6 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
   return (
     <div className="space-y-4 w-full">
-      {/* Header with service info */}
-      <Card>
-        <CardHeader className="pb-2 px-4 py-3">
-          <CardTitle className="flex items-center space-x-2 text-base">
-            <Package className="h-4 w-4 text-primary" />
-            <span>
-              {combinedData.requestType === 'combined' ? 'Viaje Combinado' :
-                combinedData.requestType === 'flights-only' ? 'Vuelos' : 'Hoteles'}
-            </span>
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            {combinedData.requestType === 'combined' ?
-              `${combinedData.flights.length} vuelos y ${combinedData.hotels.length} hoteles disponibles` :
-              combinedData.requestType === 'flights-only' ?
-                `${combinedData.flights.length} opciones de vuelos` :
-                `${combinedData.hotels.length} opciones de hoteles`
-            }
-          </p>
-        </CardHeader>
-      </Card>
-
       {/* Tabs for flights and hotels */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
         <TabsList className="grid w-full grid-cols-2">
@@ -283,40 +378,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
                     <Separator className="my-2" />
 
-                    {/* Flight legs - More horizontal layout */}
-                    <div className="grid gap-3 sm:grid-cols-1 lg:grid-cols-2">
-                      {flight.legs.map((leg, legIndex) => (
-                        <div key={legIndex} className="p-3 bg-muted/30 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <Badge variant={leg.flight_type === 'outbound' ? 'default' : 'secondary'} className="text-xs">
-                              {leg.flight_type === 'outbound' ? '🛫 Ida' : '🛬 Regreso'}
-                            </Badge>
-                            <div className="flex items-center space-x-1 text-xs text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              <span>{leg.duration}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="text-center flex-1">
-                              <div className="font-medium text-sm">{leg.departure.city_code}</div>
-                              <div className="text-xs text-muted-foreground truncate">{leg.departure.city_name}</div>
-                              <div className="text-sm font-medium text-primary">{formatTime(leg.departure.time)}</div>
-                            </div>
-
-                            <div className="flex items-center px-3">
-                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                            </div>
-
-                            <div className="text-center flex-1">
-                              <div className="font-medium text-sm">{leg.arrival.city_code}</div>
-                              <div className="text-xs text-muted-foreground truncate">{leg.arrival.city_name}</div>
-                              <div className="text-sm font-medium text-primary">{formatTime(leg.arrival.time)}</div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    {/* Visual Flight Itinerary with Connections */}
+                    <FlightItinerary flight={flight} />
                   </CardContent>
                 </Card>
               );
