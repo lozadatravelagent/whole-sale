@@ -409,8 +409,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
   const adults = firstFlight?.adults || 1;
   const childrens = firstFlight?.childrens || 0;
 
-  // Template-specific data structure (DEBE SER ARRAY como en el ejemplo)
-  const template_data = [{
+  // Template-specific data structure (OBJETO DIRECTO, no array)
+  const template_data = {
     // Core flight data (as expected by template)
     selected_flights,
 
@@ -426,34 +426,31 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
     // Optional services (can be added later)
     travel_assistance: 0, // Can be set if needed
     transfers: 0         // Can be set if needed
-  }];
-
-  const dataItem = template_data[0]; // Get first (and only) item from array
+  };
 
   console.log('✅ PREPARED TEMPLATE DATA:', {
     is_array: Array.isArray(template_data),
-    array_length: template_data.length,
-    selected_flights: dataItem.selected_flights.length,
-    best_hotels: dataItem.best_hotels.length,
-    checkin: dataItem.checkin,
-    checkout: dataItem.checkout,
-    adults: dataItem.adults,
-    childrens: dataItem.childrens
+    selected_flights: template_data.selected_flights.length,
+    best_hotels: template_data.best_hotels.length,
+    checkin: template_data.checkin,
+    checkout: template_data.checkout,
+    adults: template_data.adults,
+    childrens: template_data.childrens
   });
 
   // Debug pricing para verificar cálculos
-  if (dataItem.selected_flights.length > 0) {
+  if (template_data.selected_flights.length > 0) {
     console.log('🔍 FLIGHT PRICE DEBUG:', {
       original_amount: flights[0]?.price?.amount,
       original_type: typeof flights[0]?.price?.amount,
-      mapped_amount: dataItem.selected_flights[0]?.price?.amount,
-      mapped_type: typeof dataItem.selected_flights[0]?.price?.amount,
-      currency: dataItem.selected_flights[0]?.price?.currency
+      mapped_amount: template_data.selected_flights[0]?.price?.amount,
+      mapped_type: typeof template_data.selected_flights[0]?.price?.amount,
+      currency: template_data.selected_flights[0]?.price?.currency
     });
   }
 
-  if (dataItem.best_hotels.length > 0) {
-    const hotel = dataItem.best_hotels[0];
+  if (template_data.best_hotels.length > 0) {
+    const hotel = template_data.best_hotels[0];
     console.log('🔍 HOTEL PRICE DEBUG:', {
       hotel_name: hotel.name,
       main_price: hotel.price,
@@ -466,15 +463,15 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[]) {
 
   // Debug template data structure
   console.log('🔍 TEMPLATE STRUCTURE DEBUG:', {
-    structure: 'ARRAY_FORMAT',
-    has_selected_flights: !!dataItem.selected_flights,
-    has_best_hotels: !!dataItem.best_hotels,
-    checkin: dataItem.checkin,
-    checkout: dataItem.checkout,
-    adults: dataItem.adults,
-    childrens: dataItem.childrens,
-    travel_assistance: dataItem.travel_assistance,
-    transfers: dataItem.transfers
+    structure: 'OBJECT_FORMAT',
+    has_selected_flights: !!template_data.selected_flights,
+    has_best_hotels: !!template_data.best_hotels,
+    checkin: template_data.checkin,
+    checkout: template_data.checkout,
+    adults: template_data.adults,
+    childrens: template_data.childrens,
+    travel_assistance: template_data.travel_assistance,
+    transfers: template_data.transfers
   });
 
   return template_data;
