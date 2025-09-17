@@ -719,6 +719,7 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const [lastPdfAnalysis, setLastPdfAnalysis] = useState<any>(null);
+  const [showInspirationText, setShowInspirationText] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
@@ -827,7 +828,7 @@ const Chat = () => {
 
   // Auto-scroll to bottom only when new messages arrive
   const prevMessageCountRef = useRef(0);
-  
+
   useEffect(() => {
     // Only scroll when there are actually new messages added
     if (messages.length > prevMessageCountRef.current && messages.length > 0) {
@@ -847,6 +848,37 @@ const Chat = () => {
       setIsTyping(false);
     }
   }, [selectedConversation]);
+
+  // Show inspiration text for new conversations
+  useEffect(() => {
+    if (selectedConversation && messages.length === 0) {
+      setShowInspirationText(true);
+    } else {
+      setShowInspirationText(false);
+    }
+  }, [selectedConversation, messages.length]);
+
+  // Add CSS animations to head
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+      
+      @keyframes fadeInOut {
+        0%, 100% { opacity: 0.7; }
+        50% { opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
   const generateChatTitle = (message: string): string => {
     const lowerMessage = message.toLowerCase();
@@ -1812,6 +1844,63 @@ const Chat = () => {
     return priceKeywords.some(keyword => lowerMessage.includes(keyword));
   };
 
+  // Inspiration phrases for new conversations
+  const inspirationPhrases = [
+    "Quiero un vuelo a Cancún durante 8 noches...",
+    "Busco un hotel en Punta Cana para febrero...",
+    "Necesito un paquete completo a Madrid...",
+    "¿Tienes vuelos baratos a París?",
+    "Quiero viajar a Roma en primavera...",
+    "Busco hoteles de lujo en Miami...",
+    "Necesito un vuelo directo a Londres...",
+    "¿Cuánto cuesta ir a Tokio?",
+    "Quiero un viaje romántico a Venecia...",
+    "Busco ofertas para Nueva York...",
+    "Necesito traslados al aeropuerto...",
+    "¿Tienes paquetes familiares a Disney?",
+    "Quiero un hotel frente al mar...",
+    "Busco vuelos con escala en Miami...",
+    "Necesito seguro de viaje incluido..."
+  ];
+
+  // Component for inspiration text
+  const InspirationText = () => {
+    const [currentPhrase, setCurrentPhrase] = useState(0);
+    const [isVisible, setIsVisible] = useState(true);
+
+    useEffect(() => {
+      if (!showInspirationText) return;
+
+      const interval = setInterval(() => {
+        setCurrentPhrase((prev) => (prev + 1) % inspirationPhrases.length);
+      }, 3000); // Change every 3 seconds
+
+      return () => clearInterval(interval);
+    }, [showInspirationText]);
+
+    if (!showInspirationText) return null;
+
+    return (
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+        <div className="text-center max-w-md px-6">
+          <div
+            className="text-2xl font-light text-transparent bg-clip-text"
+            style={{
+              background: 'linear-gradient(45deg, #3b82f6, #8b5cf6, #ec4899, #06b6d4)',
+              backgroundSize: '300% 300%',
+              animation: 'gradientShift 3s ease-in-out infinite, fadeInOut 3s ease-in-out infinite'
+            }}
+          >
+            {inspirationPhrases[currentPhrase]}
+          </div>
+          <div className="mt-4 text-sm text-gray-500 font-light">
+            Escribe tu solicitud de viaje...
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Handle PDF upload
   const handlePdfUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -2307,8 +2396,11 @@ const Chat = () => {
             <>
               <ChatHeader />
 
-              <div className="flex-1 p-4 overflow-y-auto">
+              <div className="flex-1 p-4 overflow-y-auto relative">
                 <div className="space-y-4">
+                  {/* Inspiration text overlay for new conversations */}
+                  <InspirationText />
+
                   {messages.map((msg) => {
                     const messageText = getMessageContent(msg);
 
