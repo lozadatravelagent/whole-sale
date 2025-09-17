@@ -9,6 +9,13 @@ export interface ParsedTravelRequest {
         returnDate?: string;
         adults: number;
         children: number;
+        // Nuevos campos requeridos
+        luggage?: 'carry_on' | 'checked' | 'both' | 'none'; // con o sin valija/equipaje
+        departureTimePreference?: string; // horario de salida preferido
+        arrivalTimePreference?: string; // horario de llegada preferido  
+        stops?: 'direct' | 'one_stop' | 'two_stops' | 'any'; // vuelo directo o con escalas
+        layoverDuration?: string; // tiempo de escala preferido
+        preferredAirline?: string; // aerolínea preferida
     };
     hotels?: {
         city: string;
@@ -34,6 +41,123 @@ export interface ParsedTravelRequest {
     };
     confidence: number; // 0-1 score of parsing confidence
     originalMessage: string;
+    missingRequiredFields?: string[]; // Campos requeridos que faltan
+    needsMoreInfo?: boolean; // Si necesita más información del usuario
+}
+
+// Interfaz para campos requeridos de vuelos
+export interface RequiredFlightFields {
+    origin: boolean;
+    destination: boolean;
+    departureDate: boolean;
+    adults: boolean;
+    luggage: boolean;
+    stops: boolean;
+}
+
+// Función para validar campos requeridos de vuelos
+export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flights']): {
+    isValid: boolean;
+    missingFields: string[];
+    missingFieldsSpanish: string[];
+} {
+    if (!flights) {
+        return {
+            isValid: false,
+            missingFields: ['origin', 'destination', 'departureDate', 'adults', 'luggage', 'stops'],
+            missingFieldsSpanish: ['origen', 'destino', 'fecha de salida', 'cantidad de pasajeros', 'equipaje', 'tipo de vuelo (directo o con escalas)']
+        };
+    }
+
+    const missingFields: string[] = [];
+    const missingFieldsSpanish: string[] = [];
+
+    // Validar campos requeridos
+    if (!flights.origin) {
+        missingFields.push('origin');
+        missingFieldsSpanish.push('origen');
+    }
+    if (!flights.destination) {
+        missingFields.push('destination');
+        missingFieldsSpanish.push('destino');
+    }
+    if (!flights.departureDate) {
+        missingFields.push('departureDate');
+        missingFieldsSpanish.push('fecha de salida');
+    }
+    if (!flights.adults || flights.adults < 1) {
+        missingFields.push('adults');
+        missingFieldsSpanish.push('cantidad de pasajeros');
+    }
+    if (!flights.luggage) {
+        missingFields.push('luggage');
+        missingFieldsSpanish.push('equipaje (con o sin valija)');
+    }
+    if (!flights.stops) {
+        missingFields.push('stops');
+        missingFieldsSpanish.push('tipo de vuelo (directo o con escalas)');
+    }
+
+    return {
+        isValid: missingFields.length === 0,
+        missingFields,
+        missingFieldsSpanish
+    };
+}
+
+// Función para generar mensaje solicitando información faltante
+export function generateMissingInfoMessage(missingFieldsSpanish: string[], requestType: string): string {
+    const baseMessage = requestType === 'flights'
+        ? 'Para buscar los mejores vuelos, necesito que me proporciones la siguiente información:'
+        : 'Para buscar las mejores opciones de viaje, necesito que me proporciones la siguiente información:';
+
+    const fieldsList = missingFieldsSpanish.map((field, index) =>
+        `${index + 1}. **${field.charAt(0).toUpperCase() + field.slice(1)}**`
+    ).join('\n');
+
+    const examples = generateFieldExamples(missingFieldsSpanish);
+
+    return `${baseMessage}
+
+${fieldsList}
+
+${examples}
+
+Por favor, proporciona esta información para que pueda hacer una búsqueda más precisa. 😊`;
+}
+
+// Función para generar ejemplos de los campos faltantes
+function generateFieldExamples(missingFieldsSpanish: string[]): string {
+    const examples: string[] = [];
+
+    missingFieldsSpanish.forEach(field => {
+        switch (field) {
+            case 'origen':
+                examples.push('📍 **Origen:** Por ejemplo: "Buenos Aires", "Madrid", "Ezeiza"');
+                break;
+            case 'destino':
+                examples.push('🎯 **Destino:** Por ejemplo: "Punta Cana", "Barcelona", "Miami"');
+                break;
+            case 'fecha de salida':
+                examples.push('📅 **Fecha de salida:** Por ejemplo: "15 de diciembre", "2025-12-15"');
+                break;
+            case 'cantidad de pasajeros':
+                examples.push('👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 adulto y 2 niños"');
+                break;
+            case 'equipaje (con o sin valija)':
+                examples.push('🧳 **Equipaje:** Por ejemplo: "con valija", "solo equipaje de mano", "sin equipaje"');
+                break;
+            case 'tipo de vuelo (directo o con escalas)':
+                examples.push('✈️ **Tipo de vuelo:** Por ejemplo: "vuelo directo", "con una escala", "cualquier vuelo"');
+                break;
+        }
+    });
+
+    if (examples.length > 0) {
+        return '**Ejemplos:**\n' + examples.join('\n');
+    }
+
+    return '';
 }
 
 /**

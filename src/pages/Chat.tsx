@@ -12,7 +12,7 @@ import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
 import { createLeadFromChat, updateLeadWithPdfData, diagnoseCRMIntegration } from '@/utils/chatToLead';
-import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling } from '@/services/aiMessageParser';
+import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling, validateFlightRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import CombinedTravelSelector from '@/components/crm/CombinedTravelSelector';
@@ -84,6 +84,14 @@ interface FlightData {
     baseCurrency?: string;
     localAmount?: number;
     localCurrency?: string;
+    serviceAmount?: number;
+    commissionAmount?: number;
+    breakdown?: {
+      fareAmount: number;
+      taxAmount: number;
+      serviceAmount: number;
+      commissionAmount: number;
+    };
   };
   adults: number;
   childrens: number;
@@ -104,6 +112,9 @@ interface FlightData {
     included: boolean;
     details: string;
     carryOn: string;
+    carryOnQuantity?: string;
+    carryOnWeight?: string;
+    carryOnDimensions?: string;
   };
   cabin?: {
     class: string;
@@ -114,13 +125,74 @@ interface FlightData {
     lastTicketingDate: string;
     fareType: string;
     fareSupplier: string;
+    fareSupplierCode: string;
     cancelPolicy: string;
     maxInstallments: number;
+    allowedFOPs: string[];
+    iataCountry: string;
+    iataCurrency: string;
+    iataAmount: number;
   };
   commission?: {
     percentage: number;
     amount: number;
     over: number;
+    overCalculation?: string;
+    passengerTypes?: string[];
+  };
+  // NUEVA INFORMACIÓN DETALLADA DE PASAJEROS
+  passengerFares?: Array<{
+    fareAmount: number;
+    taxAmount: number;
+    commissionAmount: number;
+    totalAmount: number;
+    passengerType: string; // ADT, CHD, INF
+    passengerSubType?: string;
+    count: number;
+    taxDetails: Array<{
+      code: string;
+      amount: number;
+      currency: string;
+      description?: string;
+    }>;
+  }>;
+  // INFORMACIÓN EXTENDIDA DE TARIFA
+  extendedFareInfo?: {
+    ruleId?: string;
+    netFareAmount: number;
+    netTaxAmount: number;
+    netTotalAmount: number;
+    netTotalAmountWithFee: number;
+    additionalTaxes?: any;
+    fee: {
+      amount: number;
+      paxDetail: Array<{
+        ptc: string; // Passenger Type Code
+        amountPerPax: number;
+      }>;
+    };
+    commission: {
+      amount: number;
+      paxDetail: Array<{
+        ptc: string;
+        amountPerPax: number;
+      }>;
+    };
+    over: {
+      amount: number;
+      paxDetail: Array<{
+        ptc: string;
+        amountPerPax: number;
+      }>;
+    };
+  };
+  // POLÍTICAS Y REGLAS DE COMISIÓN
+  commissionPolicyInfo?: {
+    ruleId: string;
+    allowedFOPs: string[];
+    commissionPct: number;
+    overPct: number;
+    overCalculation?: string;
   };
   legs: Array<{
     legNumber: number;
@@ -131,6 +203,7 @@ interface FlightData {
         segmentNumber: number;
         airline: string;
         operatingAirline: string;
+        operatingAirlineName?: string;
         flightNumber: string;
         bookingClass: string;
         cabinClass: string;
@@ -154,10 +227,16 @@ interface FlightData {
         equipment: string;
         status: string;
         baggage: string;
-        carryOnBagInfo: string;
+        carryOnBagInfo: {
+          quantity?: string;
+          weight?: string;
+          dimensions?: string;
+        };
         fareBasis: string;
         brandName: string;
         features: any;
+        airRecLoc?: string;
+        availStatus?: string;
       }>;
     }>;
   }>;
@@ -165,6 +244,7 @@ interface FlightData {
     code: string;
     amount: number;
     currency: string;
+    description?: string;
   }>;
   luggage?: boolean;
   provider: string;
@@ -172,6 +252,9 @@ interface FlightData {
   ownContent?: boolean;
   transactionId?: string;
   fareMessages?: any;
+  fareCode?: string;
+  fareFeatures?: any;
+  fareCategory?: string;
 }
 
 interface LocalHotelData {
@@ -262,11 +345,19 @@ const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequ
         amount: fare.TotalAmount || 0,
         currency: fare.Currency || 'USD',
         netAmount: fare.ExtendedFareInfo?.NetTotalAmount || 0,
-        fareAmount: fare.ExtendedFareInfo?.NetFareAmount || 0,
-        taxAmount: fare.ExtendedFareInfo?.NetTaxAmount || 0,
+        fareAmount: fare.ExtendedFareInfo?.NetFareAmount || fare.FareAmount || 0,
+        taxAmount: fare.ExtendedFareInfo?.NetTaxAmount || fare.TaxAmount || 0,
         baseCurrency: tvcData.BaseCurrency || 'USD',
         localAmount: fare.IataTotalAmount || 0,
-        localCurrency: fare.IataCurrency || fare.Currency || 'USD'
+        localCurrency: fare.IataCurrency || fare.Currency || 'USD',
+        serviceAmount: fare.ServiceAmount || 0,
+        commissionAmount: fare.CommissionAmount || 0,
+        breakdown: {
+          fareAmount: fare.FareAmount || 0,
+          taxAmount: fare.TaxAmount || 0,
+          serviceAmount: fare.ServiceAmount || 0,
+          commissionAmount: fare.CommissionAmount || 0
+        }
       },
       adults: parsedRequest?.flights?.adults || 1,
       childrens: parsedRequest?.flights?.children || 0,
@@ -286,7 +377,10 @@ const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequ
       baggage: {
         included: hasFreeBaggage,
         details: baggageInfo,
-        carryOn: firstSegment.CarryOnBagInfo || 'Standard'
+        carryOn: firstSegment.CarryOnBagInfo?.Quantity || 'Standard',
+        carryOnQuantity: firstSegment.CarryOnBagInfo?.Quantity || '1',
+        carryOnWeight: firstSegment.CarryOnBagInfo?.Weight || null,
+        carryOnDimensions: firstSegment.CarryOnBagInfo?.Dimensions || null
       },
       cabin: {
         class: firstSegment.CabinClass || 'Y',
@@ -297,14 +391,75 @@ const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequ
         lastTicketingDate: fare.LastTicketingDate || '',
         fareType: fare.FareType || '',
         fareSupplier: fare.FareSupplier || '',
+        fareSupplierCode: fare.FareSupplierCode || '',
         cancelPolicy: fare.CancelPolicy || '',
-        maxInstallments: fare.MaxInstallments || 0
+        maxInstallments: fare.MaxInstallments || 0,
+        allowedFOPs: fare.AllowedFOPs || [],
+        iataCountry: fare.IataCountry || '',
+        iataCurrency: fare.IataCurrency || '',
+        iataAmount: fare.IataTotalAmount || 0
       },
       commission: {
         percentage: fare.Commission?.Percentage || 0,
-        amount: fare.ExtendedFareInfo?.Commission?.Amount || 0,
-        over: fare.Commission?.Over || 0
+        amount: fare.ExtendedFareInfo?.Commission?.Amount || fare.CommissionAmount || 0,
+        over: fare.Commission?.Over || 0,
+        overCalculation: fare.Commission?.OverCalculation || null,
+        passengerTypes: fare.Commission?.PassengerTypes || null
       },
+      // MAPEO COMPLETO DE INFORMACIÓN DE PASAJEROS
+      passengerFares: (fare.PaxFares || []).map((paxFare: any) => ({
+        fareAmount: paxFare.PaxFareAmount || 0,
+        taxAmount: paxFare.PaxTaxAmount || 0,
+        commissionAmount: paxFare.PaxCommissionAmount || 0,
+        totalAmount: paxFare.PaxTotalAmount || 0,
+        passengerType: paxFare.PaxType || 'ADT',
+        passengerSubType: paxFare.PaxSubType || null,
+        count: paxFare.Count || 1,
+        taxDetails: (paxFare.PaxTaxDetail || []).map((taxDetail: any) => ({
+          code: taxDetail.Code || '',
+          amount: taxDetail.Amount || 0,
+          currency: taxDetail.Currency || 'USD',
+          description: getTaxDescription(taxDetail.Code)
+        }))
+      })),
+      // INFORMACIÓN EXTENDIDA DE TARIFA COMPLETA
+      extendedFareInfo: fare.ExtendedFareInfo ? {
+        ruleId: fare.ExtendedFareInfo.RuleId || null,
+        netFareAmount: fare.ExtendedFareInfo.NetFareAmount || 0,
+        netTaxAmount: fare.ExtendedFareInfo.NetTaxAmount || 0,
+        netTotalAmount: fare.ExtendedFareInfo.NetTotalAmount || 0,
+        netTotalAmountWithFee: fare.ExtendedFareInfo.NetTotalAmountWithFee || 0,
+        additionalTaxes: fare.ExtendedFareInfo.AdditionalTaxes || null,
+        fee: {
+          amount: fare.ExtendedFareInfo.Fee?.Amount || 0,
+          paxDetail: (fare.ExtendedFareInfo.Fee?.PaxDetail || []).map((pax: any) => ({
+            ptc: pax.PTC || 'ADT',
+            amountPerPax: pax.AmountPerPax || 0
+          }))
+        },
+        commission: {
+          amount: fare.ExtendedFareInfo.Commission?.Amount || 0,
+          paxDetail: (fare.ExtendedFareInfo.Commission?.PaxDetail || []).map((pax: any) => ({
+            ptc: pax.PTC || 'ADT',
+            amountPerPax: pax.AmountPerPax || 0
+          }))
+        },
+        over: {
+          amount: fare.ExtendedFareInfo.Over?.Amount || 0,
+          paxDetail: (fare.ExtendedFareInfo.Over?.PaxDetail || []).map((pax: any) => ({
+            ptc: pax.PTC || 'ADT',
+            amountPerPax: pax.AmountPerPax || 0
+          }))
+        }
+      } : undefined,
+      // POLÍTICAS DE COMISIÓN COMPLETAS
+      commissionPolicyInfo: fare.CommPolicyInfo ? {
+        ruleId: fare.CommPolicyInfo.RuleId || '',
+        allowedFOPs: fare.CommPolicyInfo.AllowedFOPs || [],
+        commissionPct: fare.CommPolicyInfo.CommissionPct || 0,
+        overPct: fare.CommPolicyInfo.OverPct || 0,
+        overCalculation: fare.CommPolicyInfo.OverCalculation || null
+      } : undefined,
       legs: legs.map((leg: any, legIndex: number) => ({
         legNumber: leg.LegNumber || legIndex + 1,
         options: (leg.Options || []).map((option: any) => ({
@@ -314,6 +469,7 @@ const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequ
             segmentNumber: segment.SegmentNumber || 0,
             airline: segment.Airline || '',
             operatingAirline: segment.OperatingAirline || segment.Airline || '',
+            operatingAirlineName: segment.OperatingAirlineName || null,
             flightNumber: segment.FlightNumber || '',
             bookingClass: segment.BookingClass || '',
             cabinClass: segment.CabinClass || '',
@@ -337,24 +493,34 @@ const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequ
             equipment: segment.Equipment || '',
             status: segment.Status || '',
             baggage: segment.Baggage || '',
-            carryOnBagInfo: segment.CarryOnBagInfo || '',
+            carryOnBagInfo: {
+              quantity: segment.CarryOnBagInfo?.Quantity || '1',
+              weight: segment.CarryOnBagInfo?.Weight || null,
+              dimensions: segment.CarryOnBagInfo?.Dimensions || null
+            },
             fareBasis: segment.FareBasis || '',
             brandName: segment.BrandName || '',
-            features: segment.Features || null
+            features: segment.Features || null,
+            airRecLoc: segment.AirRecLoc || null,
+            availStatus: segment.AvailStatus || null
           }))
         }))
       })),
       taxes: (fare.TaxDetail || []).map((tax: any) => ({
         code: tax.Code || '',
         amount: tax.Amount || 0,
-        currency: tax.Currency || 'USD'
+        currency: tax.Currency || 'USD',
+        description: getTaxDescription(tax.Code)
       })),
       luggage: hasFreeBaggage,
       provider: 'TVC',
       contentOwner: fare.ContentOwner || '',
       ownContent: fare.OwnContent || false,
       transactionId: tvcData.TransactionID || '',
-      fareMessages: fare.FareMessages || null
+      fareMessages: fare.FareMessages || null,
+      fareCode: fare.FareCode || null,
+      fareFeatures: fare.FareFeatures || null,
+      fareCategory: fare.FareCategory || null
     };
   });
 
@@ -411,6 +577,29 @@ const getCityNameFromCode = (airportCode: string): string => {
   };
 
   return airportMapping[airportCode] || airportCode;
+};
+
+// Helper function to get tax description from tax code
+const getTaxDescription = (taxCode: string): string => {
+  const taxDescriptions: Record<string, string> = {
+    'AR': 'Tasa de Salida Argentina',
+    'Q1': 'Tasa de Combustible',
+    'QO': 'Tasa de Operación',
+    'TQ': 'Tasa de Terminal',
+    'XY': 'Tasa de Inmigración',
+    'YC': 'Tasa de Seguridad',
+    'S7': 'Tasa de Servicio',
+    'XR': 'Tasa de Inspección',
+    'XA': 'Tasa de Aduanas',
+    'XF': 'Tasa de Facilidades',
+    'UX': 'Tasa de Uso',
+    'L8': 'Tasa Local',
+    'VB': 'Tasa Variable',
+    'AY': 'Tasa de Aeropuerto',
+    'TY': 'Tasa de Turismo'
+  };
+
+  return taxDescriptions[taxCode] || `Tasa ${taxCode}`;
 };
 
 const Chat = () => {
@@ -672,16 +861,61 @@ const Chat = () => {
         console.log('📋 Fallback parsing result:', parsedRequest);
       }
 
-      // 4. Execute searches based on type (WITHOUT N8N)
-      console.log('🔍 [MESSAGE FLOW] Step 10: Starting search process');
+      // 4. Validate required fields for flights/combined requests
+      console.log('🔍 [MESSAGE FLOW] Step 10: Validating required fields');
       console.log('📊 Request type detected:', parsedRequest.requestType);
+
+      // Validate flight fields if request involves flights
+      if (parsedRequest.requestType === 'flights' || parsedRequest.requestType === 'combined') {
+        console.log('✈️ [VALIDATION] Validating flight required fields');
+        const validation = validateFlightRequiredFields(parsedRequest.flights);
+
+        console.log('📋 [VALIDATION] Validation result:', {
+          isValid: validation.isValid,
+          missingFields: validation.missingFields,
+          missingFieldsSpanish: validation.missingFieldsSpanish
+        });
+
+        if (!validation.isValid) {
+          console.log('⚠️ [VALIDATION] Missing required fields, requesting more info');
+
+          // Generate message asking for missing information
+          const missingInfoMessage = generateMissingInfoMessage(
+            validation.missingFieldsSpanish,
+            parsedRequest.requestType
+          );
+
+          console.log('💬 [VALIDATION] Generated missing info message');
+
+          // Add assistant message with missing info request
+          const assistantMessage = await addMessageViaSupabase({
+            conversation_id: selectedConversation,
+            role: 'assistant' as const,
+            content: { text: missingInfoMessage },
+            meta: {
+              status: 'sent',
+              messageType: 'missing_info_request',
+              missingFields: validation.missingFields,
+              originalRequest: parsedRequest
+            }
+          });
+
+          console.log('✅ [VALIDATION] Missing info message sent, stopping process');
+          return; // Stop processing here, wait for user response
+        }
+
+        console.log('✅ [VALIDATION] All required fields present, proceeding with search');
+      }
+
+      // 5. Execute searches based on type (WITHOUT N8N)
+      console.log('🔍 [MESSAGE FLOW] Step 11: Starting search process');
 
       let assistantResponse = '';
       let structuredData = null;
 
       switch (parsedRequest.requestType) {
         case 'flights': {
-          console.log('✈️ [MESSAGE FLOW] Step 11a: Processing flight search');
+          console.log('✈️ [MESSAGE FLOW] Step 12a: Processing flight search');
           const flightResult = await handleFlightSearch(parsedRequest);
           assistantResponse = flightResult.response;
           structuredData = flightResult.data;
@@ -689,7 +923,7 @@ const Chat = () => {
           break;
         }
         case 'hotels': {
-          console.log('🏨 [MESSAGE FLOW] Step 11b: Processing hotel search');
+          console.log('🏨 [MESSAGE FLOW] Step 12b: Processing hotel search');
           const hotelResult = await handleHotelSearch(parsedRequest);
           assistantResponse = hotelResult.response;
           structuredData = hotelResult.data;
@@ -1080,14 +1314,151 @@ const Chat = () => {
 
     flights.slice(0, 5).forEach((flight, index) => {
       response += `---\n\n`;
-      response += `✈️ **Opción ${index + 1}** - ${flight.airline.name}\n`;
-      response += `💰 **Precio:** ${flight.price.amount} ${flight.price.currency}\n`;
-      response += `🛫 **Salida:** ${flight.departure_date}\n`;
-      response += `🛬 **Regreso:** ${flight.return_date || 'Solo ida'}\n\n`;
+      response += `✈️ **Opción ${index + 1}** - ${flight.airline.name} (${flight.airline.code})\n`;
+
+      // Información de precio detallada
+      response += `💰 **Precio Total:** ${flight.price.amount} ${flight.price.currency}\n`;
+      if (flight.price.breakdown) {
+        response += `   • Tarifa Base: ${flight.price.breakdown.fareAmount} ${flight.price.currency}\n`;
+        response += `   • Tasas: ${flight.price.breakdown.taxAmount} ${flight.price.currency}\n`;
+        if (flight.price.breakdown.serviceAmount > 0) {
+          response += `   • Servicios: ${flight.price.breakdown.serviceAmount} ${flight.price.currency}\n`;
+        }
+        if (flight.price.breakdown.commissionAmount > 0) {
+          response += `   • Comisión: ${flight.price.breakdown.commissionAmount} ${flight.price.currency}\n`;
+        }
+      }
+
+      // Información de fechas y horarios
+      response += `🛫 **Salida:** ${flight.departure_date} ${flight.departure_time || ''}\n`;
+      response += `🛬 **Llegada:** ${flight.arrival_date} ${flight.arrival_time || ''}\n`;
+      if (flight.return_date) {
+        response += `🔄 **Regreso:** ${flight.return_date}\n`;
+      }
+
+      // Duración y escalas
+      response += `⏱️ **Duración:** ${flight.duration?.formatted || 'N/A'}\n`;
+      response += `🛑 **Escalas:** ${flight.stops?.direct ? 'Vuelo directo' : `${flight.stops?.count || 0} escala(s)`}\n`;
+
+      // Información de equipaje
+      response += `🧳 **Equipaje:** ${flight.baggage?.included ? 'Incluido' : 'No incluido'} - ${flight.baggage?.details || 'N/A'}\n`;
+      if (flight.baggage?.carryOnQuantity) {
+        response += `   • Equipaje de mano: ${flight.baggage.carryOnQuantity} pieza(s)\n`;
+      }
+
+      // Clase de cabina
+      response += `💺 **Clase:** ${flight.cabin?.brandName || flight.cabin?.class || 'Economy'}\n`;
+
+      // Información de reserva
+      if (flight.booking?.lastTicketingDate) {
+        const ticketingDate = new Date(flight.booking.lastTicketingDate).toLocaleDateString('es-ES');
+        response += `📅 **Válido hasta:** ${ticketingDate}\n`;
+      }
+
+      // FareID para referencia
+      response += `🆔 **ID de Tarifa:** ${flight.id}\n\n`;
     });
 
     response += '\n📋 Selecciona las opciones que prefieras para generar tu cotización.';
     return response;
+  };
+
+  // Nueva función para mostrar información detallada de un vuelo específico
+  const getDetailedFlightInfo = (flight: FlightData): string => {
+    let info = `🔍 **Información Detallada del Vuelo ${flight.id}**\n\n`;
+
+    // Información básica
+    info += `✈️ **Aerolínea:** ${flight.airline.name} (${flight.airline.code})\n`;
+    info += `🆔 **FareID:** ${flight.id}\n`;
+    info += `🏷️ **Proveedor:** ${flight.provider}\n\n`;
+
+    // Desglose de precios completo
+    info += `💰 **Desglose de Precios:**\n`;
+    info += `   • Precio Total: ${flight.price.amount} ${flight.price.currency}\n`;
+    info += `   • Precio Neto: ${flight.price.netAmount || 0} ${flight.price.currency}\n`;
+    info += `   • Tarifa Base: ${flight.price.fareAmount || 0} ${flight.price.currency}\n`;
+    info += `   • Tasas Totales: ${flight.price.taxAmount || 0} ${flight.price.currency}\n`;
+    if (flight.price.localAmount && flight.price.localCurrency !== flight.price.currency) {
+      info += `   • Precio Local: ${flight.price.localAmount} ${flight.price.localCurrency}\n`;
+    }
+
+    // Información de pasajeros
+    if (flight.passengerFares && flight.passengerFares.length > 0) {
+      info += `\n👥 **Desglose por Pasajero:**\n`;
+      flight.passengerFares.forEach(paxFare => {
+        const paxType = paxFare.passengerType === 'ADT' ? 'Adulto' :
+          paxFare.passengerType === 'CHD' ? 'Niño' : 'Infante';
+        info += `   • ${paxType} (${paxFare.count}): ${paxFare.totalAmount} ${flight.price.currency}\n`;
+        info += `     - Tarifa: ${paxFare.fareAmount} ${flight.price.currency}\n`;
+        info += `     - Tasas: ${paxFare.taxAmount} ${flight.price.currency}\n`;
+      });
+    }
+
+    // Información de tasas detallada
+    if (flight.taxes && flight.taxes.length > 0) {
+      info += `\n💳 **Detalle de Tasas:**\n`;
+      flight.taxes.forEach(tax => {
+        info += `   • ${tax.code}: ${tax.amount} ${tax.currency} (${tax.description})\n`;
+      });
+    }
+
+    // Información de equipaje detallada
+    info += `\n🧳 **Equipaje:**\n`;
+    info += `   • Incluido: ${flight.baggage?.included ? 'Sí' : 'No'}\n`;
+    info += `   • Detalles: ${flight.baggage?.details || 'N/A'}\n`;
+    if (flight.baggage?.carryOnQuantity) {
+      info += `   • Equipaje de mano: ${flight.baggage.carryOnQuantity} pieza(s)\n`;
+      if (flight.baggage.carryOnWeight) {
+        info += `   • Peso máximo: ${flight.baggage.carryOnWeight}\n`;
+      }
+      if (flight.baggage.carryOnDimensions) {
+        info += `   • Dimensiones: ${flight.baggage.carryOnDimensions}\n`;
+      }
+    }
+
+    // Información de reserva detallada
+    info += `\n📋 **Información de Reserva:**\n`;
+    info += `   • Aerolínea Validadora: ${flight.booking?.validatingCarrier || 'N/A'}\n`;
+    info += `   • Tipo de Tarifa: ${flight.booking?.fareType || 'N/A'}\n`;
+    info += `   • Proveedor: ${flight.booking?.fareSupplier || 'N/A'}\n`;
+    info += `   • Política de Cancelación: ${flight.booking?.cancelPolicy || 'N/A'}\n`;
+    if (flight.booking?.maxInstallments && flight.booking.maxInstallments > 0) {
+      info += `   • Cuotas Máximas: ${flight.booking.maxInstallments}\n`;
+    }
+    if (flight.booking?.lastTicketingDate) {
+      const ticketingDate = new Date(flight.booking.lastTicketingDate).toLocaleDateString('es-ES');
+      info += `   • Válido hasta: ${ticketingDate}\n`;
+    }
+
+    // Información de comisión
+    if (flight.commission && flight.commission.percentage > 0) {
+      info += `\n💼 **Comisión:**\n`;
+      info += `   • Porcentaje: ${flight.commission.percentage}%\n`;
+      info += `   • Monto: ${flight.commission.amount} ${flight.price.currency}\n`;
+      if (flight.commission.over > 0) {
+        info += `   • Over: ${flight.commission.over} ${flight.price.currency}\n`;
+      }
+    }
+
+    // Información detallada de segmentos
+    info += `\n🛫 **Itinerario Detallado:**\n`;
+    flight.legs.forEach((leg, legIndex) => {
+      info += `\n**Tramo ${leg.legNumber}:**\n`;
+      leg.options.forEach((option, optionIndex) => {
+        info += `  Opción ${optionIndex + 1} (${formatDuration(option.duration)}):\n`;
+        option.segments.forEach((segment, segIndex) => {
+          info += `    Segmento ${segment.segmentNumber}: ${segment.airline}${segment.flightNumber}\n`;
+          info += `    ${segment.departure.airportCode} ${segment.departure.time} → ${segment.arrival.airportCode} ${segment.arrival.time}\n`;
+          info += `    Clase: ${segment.cabinClass} (${segment.brandName || 'N/A'})\n`;
+          info += `    Equipo: ${segment.equipment || 'N/A'}\n`;
+          if (segment.stops.length > 0) {
+            info += `    Escalas: ${segment.stops.length}\n`;
+          }
+        });
+      });
+    });
+
+    return info;
   };
 
   interface LocalHotelData {

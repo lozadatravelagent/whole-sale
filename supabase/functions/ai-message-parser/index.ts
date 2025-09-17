@@ -15,6 +15,13 @@ interface ParsedTravelRequest {
         returnDate?: string;
         adults: number;
         children: number;
+        // Nuevos campos requeridos y opcionales
+        luggage?: 'carry_on' | 'checked' | 'both' | 'none';
+        departureTimePreference?: string;
+        arrivalTimePreference?: string;
+        stops?: 'direct' | 'one_stop' | 'two_stops' | 'any';
+        layoverDuration?: string;
+        preferredAirline?: string;
     };
     hotels?: {
         city: string;
@@ -67,7 +74,7 @@ IMPORTANT: Always respond with valid JSON only. No additional text or explanatio
 Current date: ${currentDate}
 
 Your task is to analyze travel messages and extract structured information for:
-- flights: origin, destination, dates, passengers
+- flights: origin, destination, dates, passengers, luggage, flight preferences
 - hotels: city, dates, hotel name (if specified), passengers  
 - packages: destination, dates, package type, passengers
 - services: city, dates, service type (transfer/excursion)
@@ -88,6 +95,13 @@ Rules:
 7. Service types: "1" (transfer), "2" (excursion), "3" (other)
 8. Confidence: 0-1 score based on how clear the request is
 
+FLIGHT SPECIFIC RULES:
+9. Luggage options: "carry_on" (equipaje de mano), "checked" (valija/equipaje facturado), "both" (ambos), "none" (sin equipaje)
+10. Departure/arrival time preferences: Use 24-hour format like "morning" (06:00-12:00), "afternoon" (12:00-18:00), "evening" (18:00-24:00), or specific times like "08:00"
+11. Stops: "direct" (directo), "one_stop" (una escala), "two_stops" (dos escalas), "any" (cualquier vuelo)
+12. Layover duration: Use format like "2h", "3h 30m" for preferred connection times
+13. Preferred airline: Use airline names like "Aerolíneas Argentinas", "Iberia", "LATAM", etc.
+
 Examples:
 
 Input: "Quiero un vuelo de Buenos Aires a Madrid el 15 de octubre"
@@ -100,7 +114,24 @@ Output: {
     "adults": 1,
     "children": 0
   },
-  "confidence": 0.9
+  "confidence": 0.7
+}
+
+Input: "Vuelo directo desde Ezeiza a Punta Cana el 20 de diciembre para 2 personas con equipaje facturado, prefiero salir por la mañana con Aerolíneas Argentinas"
+Output: {
+  "requestType": "flights",
+  "flights": {
+    "origin": "EZE",
+    "destination": "PUJ",
+    "departureDate": "2025-12-20",
+    "adults": 2,
+    "children": 0,
+    "luggage": "checked",
+    "departureTimePreference": "morning",
+    "stops": "direct",
+    "preferredAirline": "Aerolíneas Argentinas"
+  },
+  "confidence": 0.95
 }
 
 Input: "Vuelo desde Ezeiza a Punta Cana el 20 de diciembre"
@@ -113,7 +144,7 @@ Output: {
     "adults": 1,
     "children": 0
   },
-  "confidence": 0.9
+  "confidence": 0.6
 }
 
 Input: "Necesito hotel en Barcelona del 1 al 5 de diciembre para 2 personas"
