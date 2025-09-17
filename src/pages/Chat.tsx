@@ -73,13 +73,93 @@ interface StarlingFare {
 interface FlightData {
   id: string;
   airline: { code: string; name: string };
-  price: { amount: number; currency: string };
+  price: {
+    amount: number;
+    currency: string;
+    netAmount?: number;
+    fareAmount?: number;
+    taxAmount?: number;
+    baseCurrency?: string;
+    localAmount?: number;
+    localCurrency?: string;
+  };
   adults: number;
   childrens: number;
   departure_date: string;
+  departure_time?: string;
+  arrival_date?: string;
+  arrival_time?: string;
   return_date?: string;
+  duration?: {
+    total: number;
+    formatted: string;
+  };
+  stops?: {
+    count: number;
+    direct: boolean;
+  };
+  baggage?: {
+    included: boolean;
+    details: string;
+    carryOn: string;
+  };
+  cabin?: {
+    class: string;
+    brandName: string;
+  };
+  booking?: {
+    validatingCarrier: string;
+    lastTicketingDate: string;
+    fareType: string;
+    fareSupplier: string;
+    cancelPolicy: string;
+    maxInstallments: number;
+  };
+  commission?: {
+    percentage: number;
+    amount: number;
+    over: number;
+  };
   legs: Array<{
-    segments: Array<{
+    legNumber?: number;
+    options?: Array<{
+      optionId: string;
+      duration: number;
+      segments: Array<{
+        segmentNumber: number;
+        airline: string;
+        operatingAirline: string;
+        flightNumber: string;
+        bookingClass: string;
+        cabinClass: string;
+        departure: {
+          airportCode: string;
+          date: string;
+          time: string;
+        };
+        arrival: {
+          airportCode: string;
+          date: string;
+          time: string;
+        };
+        stops: Array<{
+          airportCode: string;
+          date: string;
+          time: string;
+          duration: string;
+        }>;
+        duration: number;
+        equipment: string;
+        status: string;
+        baggage: string;
+        carryOnBagInfo: string;
+        fareBasis: string;
+        brandName: string;
+        features: any;
+      }>;
+    }>;
+    // Backward compatibility for existing structure
+    segments?: Array<{
       airline: string;
       departure_date: string;
       arrival_date: string;
@@ -87,8 +167,17 @@ interface FlightData {
       destination: string;
     }>;
   }>;
+  taxes?: Array<{
+    code: string;
+    amount: number;
+    currency: string;
+  }>;
   luggage?: boolean;
   provider: string;
+  contentOwner?: string;
+  ownContent?: boolean;
+  transactionId?: string;
+  fareMessages?: any;
 }
 
 interface LocalHotelData {
@@ -1091,20 +1180,24 @@ const Chat = () => {
         childrens: flight.childrens,
         departure_date: flight.departure_date,
         return_date: flight.return_date,
-        legs: flight.legs.map(leg => ({
-          departure: {
-            city_code: leg.segments[0]?.origin || '',
-            city_name: leg.segments[0]?.origin || '',
-            time: leg.segments[0]?.departure_date || ''
-          },
-          arrival: {
-            city_code: leg.segments[0]?.destination || '',
-            city_name: leg.segments[0]?.destination || '',
-            time: leg.segments[0]?.arrival_date || ''
-          },
-          duration: '2h 30m', // Default duration
-          flight_type: 'direct'
-        })),
+        legs: flight.legs.map(leg => {
+          // Get first segment from first option in the new TVC structure
+          const firstSegment = leg.options?.[0]?.segments?.[0];
+          return {
+            departure: {
+              city_code: firstSegment?.departure?.airportCode || '',
+              city_name: firstSegment?.departure?.airportCode || '',
+              time: firstSegment?.departure?.time || ''
+            },
+            arrival: {
+              city_code: firstSegment?.arrival?.airportCode || '',
+              city_name: firstSegment?.arrival?.airportCode || '',
+              time: firstSegment?.arrival?.time || ''
+            },
+            duration: leg.options?.[0]?.duration ? formatDuration(leg.options[0].duration) : '0h 0m',
+            flight_type: (leg.options?.[0]?.segments?.length || 0) > 1 ? 'connecting' : 'direct'
+          };
+        }),
         luggage: flight.luggage || false
       })),
       hotels: localData.hotels.map(hotel => ({
