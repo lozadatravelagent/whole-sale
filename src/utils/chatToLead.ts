@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
-import { createLead, getSections, getLeads } from '@/lib/supabase-leads';
+import { createLead, getSections, getLeads, updateLead } from '@/lib/supabase-leads';
 import type { Database } from '@/integrations/supabase/types';
+import type { FlightData, HotelData } from '@/types';
 
 type MessageRow = Database['public']['Tables']['messages']['Row'];
 type ConversationRow = Database['public']['Tables']['conversations']['Row'];
@@ -30,12 +31,12 @@ export interface ExtractedTravelInfo {
 }
 
 // Mapea requestType de ai-message-parser a tripType esperado
-function mapRequestTypeToTripType(requestType: string): string {
+function mapRequestTypeToTripType(requestType: string): 'hotel' | 'flight' | 'package' {
   switch (requestType) {
     case 'flights': return 'flight';
     case 'hotels': return 'hotel';
     case 'packages': return 'package';
-    case 'services': return 'service';
+    case 'services': return 'package'; // Services se trata como package
     case 'combined': return 'package'; // Combined se trata como package
     default: return 'package';
   }
@@ -46,7 +47,7 @@ export async function extractTravelInfoFromMessages(messages: MessageRow[]): Pro
   if (messages.length === 0) return {};
 
   // Combinar todos los mensajes del usuario para análisis
-  const userMessages = messages
+  const userMessages = Array.isArray(messages) ? messages
     .filter(msg => msg.role === 'user')
     .map(msg => {
       if (typeof msg.content === 'object' && msg.content && 'text' in msg.content) {
@@ -54,7 +55,7 @@ export async function extractTravelInfoFromMessages(messages: MessageRow[]): Pro
       }
       return '';
     })
-    .join(' ');
+    .join(' ') : '';
 
   if (!userMessages.trim()) return {};
 
@@ -69,11 +70,7 @@ export async function extractTravelInfoFromMessages(messages: MessageRow[]): Pro
     console.log('🤖 Attempting AI extraction...');
     const { data, error } = await supabase.functions.invoke('ai-message-parser', {
       body: {
-        message: userMessages.map(msg => {
-          if (typeof msg.content === 'string') return msg.content;
-          if (typeof msg.content === 'object' && msg.content?.text) return msg.content.text;
-          return '';
-        }).join(' '),
+        message: userMessages,
         language: 'es',
         currentDate: new Date().toISOString().split('T')[0]
       }
@@ -102,7 +99,7 @@ export async function extractTravelInfoFromMessages(messages: MessageRow[]): Pro
       budget: basicInfo.budget || 0,
       tripType: mapRequestTypeToTripType(aiParsed.requestType) || basicInfo.tripType || 'package',
       contactInfo: basicInfo.contactInfo || {},
-      description: basicInfo.description || `Consulta: ${userMessages.map(m => m.content?.text || m.content || '').join(' ')}`
+      description: basicInfo.description || `Consulta: ${userMessages}`
     };
 
     // Combinar información: AI primero, básica como respaldo
@@ -119,7 +116,7 @@ export async function extractTravelInfoFromMessages(messages: MessageRow[]): Pro
       budget: aiInfo.budget || basicInfo.budget || 0,
       tripType: aiInfo.tripType || basicInfo.tripType || 'package',
       contactInfo: aiInfo.contactInfo || basicInfo.contactInfo || {},
-      description: aiInfo.description || basicInfo.description || `Consulta: ${userMessages.map(m => m.content?.text || m.content || '').join(' ')}`
+      description: aiInfo.description || basicInfo.description || `Consulta: ${userMessages}`
     };
 
     console.log('✅ Final combined extraction result:', combinedInfo);
@@ -134,12 +131,12 @@ export async function extractTravelInfoFromMessages(messages: MessageRow[]): Pro
 function extractBasicInfo(text: string): ExtractedTravelInfo {
   const info: ExtractedTravelInfo = {};
   const lowerText = text.toLowerCase();
-  
+
   console.log('Extracting basic info from:', text);
-  
+
   // Extraer destinos (lista ampliada)
   const destinations = [
-    'parís', 'londres', 'tokyo', 'nueva york', 'roma', 'barcelona', 'ámsterdam', 
+    'parís', 'londres', 'tokyo', 'nueva york', 'roma', 'barcelona', 'ámsterdam',
     'berlín', 'dubai', 'tailandia', 'méxico', 'argentina', 'brasil', 'perú',
     'cancún', 'playa del carmen', 'buenos aires', 'machu picchu', 'cusco',
     'miami', 'los angeles', 'san francisco', 'las vegas', 'orlando',
@@ -147,11 +144,11 @@ function extractBasicInfo(text: string): ExtractedTravelInfo {
     'río de janeiro', 'são paulo', 'santiago', 'bogotá', 'lima',
     'nueva delhi', 'mumbai', 'bangkok', 'singapur', 'hong kong'
   ];
-  
-  const foundDestination = destinations.find(dest => 
+
+  const foundDestination = destinations.find(dest =>
     lowerText.includes(dest)
   );
-  
+
   if (foundDestination) {
     // Capitalizar correctamente
     info.destination = foundDestination.charAt(0).toUpperCase() + foundDestination.slice(1);
@@ -239,11 +236,11 @@ function extractBasicInfo(text: string): ExtractedTravelInfo {
     const dayMonthPattern = new RegExp(`(\\d{1,2})\\s*de\\s*${month}`, 'i');
     const monthDayPattern = new RegExp(`${month}\\s*(\\d{1,2})`, 'i');
     const monthOnlyPattern = new RegExp(`${month}`, 'i');
-    
+
     const dayMonthMatch = text.match(dayMonthPattern);
     const monthDayMatch = text.match(monthDayPattern);
     const monthOnlyMatch = text.match(monthOnlyPattern);
-    
+
     if (dayMonthMatch) {
       const day = dayMonthMatch[1].padStart(2, '0');
       info.dates = { checkin: `2024-${monthNum}-${day}`, checkout: '' };
@@ -267,8 +264,8 @@ function extractBasicInfo(text: string): ExtractedTravelInfo {
     details.push(`Viajeros: ${travelers}${kids}`);
   }
   if (info.tripType) details.push(`Tipo: ${info.tripType === 'flight' ? 'Vuelo' : info.tripType === 'hotel' ? 'Hotel' : 'Paquete'}`);
-  
-  info.description = details.length > 0 
+
+  info.description = details.length > 0
     ? `Consulta automática: ${details.join(' | ')}\n\nTexto original: ${text}`
     : `Consulta de viaje: ${text}`;
 
@@ -278,19 +275,19 @@ function extractBasicInfo(text: string): ExtractedTravelInfo {
 
 // Función para crear un lead desde una conversación
 export async function createLeadFromChat(
-  conversation: ConversationRow, 
+  conversation: ConversationRow,
   messages: MessageRow[] = []
 ): Promise<string | null> {
   try {
     console.log('=== CREATING LEAD FROM CHAT ===');
     console.log('Conversation:', conversation.external_key);
     console.log('Messages count:', messages.length);
-    
+
     // Obtener información de la conversación
     const travelInfo = await extractTravelInfoFromMessages(messages);
-    
+
     console.log('Extracted travel info:', travelInfo);
-    
+
     // Obtener la primera sección (Nuevos) para asignar el lead
     const sections = await getSections(DUMMY_AGENCY_ID);
     const firstSectionId = sections.length > 0 ? sections[0].id : undefined;
@@ -299,12 +296,12 @@ export async function createLeadFromChat(
 
     // Generar nombre del contacto secuencial
     const allLeads = await getLeads();
-    const chatLeads = allLeads.filter(lead => 
+    const chatLeads = allLeads.filter(lead =>
       lead.contact.name.startsWith('Chat-')
     );
     const nextChatNumber = chatLeads.length + 1;
     const contactName = travelInfo.contactInfo?.name || `Chat-${nextChatNumber}`;
-    
+
     // Asegurar valores por defecto
     const safeInfo = {
       destination: travelInfo.destination || 'Por definir',
@@ -318,7 +315,7 @@ export async function createLeadFromChat(
     };
 
     console.log('Safe info for lead creation:', safeInfo);
-    
+
     // Crear el lead
     const leadData = {
       contact: {
@@ -354,7 +351,7 @@ export async function createLeadFromChat(
     console.log('Creating lead with data:', leadData);
 
     const newLead = await createLead(leadData);
-    
+
     if (newLead) {
       console.log('✅ Lead created successfully:', newLead.id);
       return newLead.id;
@@ -362,7 +359,7 @@ export async function createLeadFromChat(
       console.error('❌ Failed to create lead');
       return null;
     }
-    
+
   } catch (error) {
     console.error('❌ Error creating lead from chat:', error);
     return null;
@@ -371,20 +368,183 @@ export async function createLeadFromChat(
 
 // Función para actualizar un lead existente con nueva información del chat
 export async function updateLeadFromChatMessages(
-  leadId: string, 
+  leadId: string,
   messages: MessageRow[]
 ): Promise<boolean> {
   try {
     const travelInfo = await extractTravelInfoFromMessages(messages);
-    
+
     // Aquí podrías implementar lógica para actualizar el lead existente
     // con nueva información extraída de los mensajes más recientes
-    
+
     console.log('Would update lead', leadId, 'with info:', travelInfo);
-    
+
     return true;
   } catch (error) {
     console.error('Error updating lead from chat messages:', error);
     return false;
+  }
+}
+
+// Función para actualizar el lead con los datos del PDF generado
+export async function updateLeadWithPdfData(
+  conversationId: string,
+  pdfUrl: string,
+  flightData: FlightData[],
+  hotelData: HotelData[]
+): Promise<string | null> {
+  try {
+    console.log('🔍 Searching for lead with conversation_id:', conversationId);
+
+    // Buscar el lead asociado con esta conversación
+    const { data: leads, error: searchError } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (searchError) {
+      console.error('Error searching for lead:', searchError);
+      return null;
+    }
+
+    if (!leads || leads.length === 0) {
+      console.warn('No lead found for conversation:', conversationId);
+      return null;
+    }
+
+    const lead = leads[0];
+    console.log('✅ Found lead to update:', lead.id);
+
+    // Extraer información de los datos de vuelos y hoteles
+    const firstFlight = flightData[0];
+    const firstHotel = hotelData[0];
+
+    // Determinar el tipo de viaje
+    let tripType: 'hotel' | 'flight' | 'package' = 'package';
+    if (flightData.length > 0 && hotelData.length === 0) {
+      tripType = 'flight';
+    } else if (flightData.length === 0 && hotelData.length > 0) {
+      tripType = 'hotel';
+    }
+
+    // Parse trip data safely
+    let tripData: any = {};
+    try {
+      tripData = typeof lead.trip === 'string' ? JSON.parse(lead.trip) : (lead.trip || {});
+    } catch (error) {
+      console.warn('Error parsing trip data:', error);
+      tripData = {};
+    }
+
+    // Calcular fechas
+    const checkin = firstHotel?.check_in || firstFlight?.departure_date || tripData.dates?.checkin || '';
+    const checkout = firstHotel?.check_out || firstFlight?.return_date || tripData.dates?.checkout || '';
+
+    // Calcular ciudad de destino
+    let destination = tripData.city || 'Por definir';
+    if (firstFlight) {
+      // Usar ciudad de llegada del primer vuelo
+      const arrivalCity = firstFlight.legs?.[0]?.arrival?.city_name;
+      if (arrivalCity) {
+        destination = arrivalCity;
+      }
+    } else if (firstHotel) {
+      destination = firstHotel.city;
+    }
+
+    // Calcular presupuesto total
+    let totalBudget = 0;
+    flightData.forEach(flight => {
+      totalBudget += flight.price?.amount || 0;
+    });
+    hotelData.forEach(hotel => {
+      const cheapestRoom = hotel.rooms?.reduce((cheapest, room) =>
+        room.total_price < cheapest.total_price ? room : cheapest
+      );
+      if (cheapestRoom) {
+        totalBudget += cheapestRoom.total_price;
+      }
+    });
+
+    // Crear descripción detallada
+    const flightSummary = flightData.length > 0
+      ? `✈️ ${flightData.length} vuelo(s) - ${firstFlight?.airline?.name || 'N/A'} - $${flightData[0]?.price?.amount || 0} ${flightData[0]?.price?.currency || 'USD'}`
+      : '';
+
+    const hotelSummary = hotelData.length > 0
+      ? `🏨 ${hotelData.length} hotel(es) - ${firstHotel?.name || 'N/A'} - ${firstHotel?.nights || 0} noches`
+      : '';
+
+    const description = `PDF generado - Cotización de viaje combinado\n${flightSummary}\n${hotelSummary}\nPresupuesto total: $${totalBudget.toFixed(2)} USD\nPDF: ${pdfUrl}`;
+
+    // Obtener attachments actuales
+    const currentAttachments = (lead.attachments as any) || [];
+
+    // Agregar el PDF como attachment
+    const pdfAttachment = {
+      id: Date.now().toString(),
+      name: `Cotización Viaje - ${new Date().toLocaleDateString('es-ES')}.pdf`,
+      url: pdfUrl,
+      type: 'pdf',
+      size: 0, // No conocemos el tamaño
+      uploaded_at: new Date().toISOString()
+    };
+
+    const updatedAttachments = [...currentAttachments, pdfAttachment];
+
+    // Actualizar checklist
+    const currentChecklist = (lead.checklist as any) || [];
+    const updatedChecklist = [
+      ...currentChecklist,
+      {
+        id: Date.now().toString(),
+        text: 'PDF de cotización generado',
+        completed: true
+      }
+    ];
+
+    // Preparar datos para actualización
+    const updateData = {
+      id: lead.id,
+      trip: {
+        type: tripType,
+        city: destination,
+        dates: {
+          checkin,
+          checkout
+        },
+        adults: firstFlight?.adults || tripData.adults || 1,
+        children: firstFlight?.childrens || tripData.children || 0
+      },
+      budget: totalBudget > 0 ? totalBudget : lead.budget,
+      description: description,
+      attachments: updatedAttachments,
+      checklist: updatedChecklist,
+      status: 'quoted' as const // Cambiar estado a "cotizado"
+    };
+
+    console.log('📝 Updating lead with PDF data:', {
+      leadId: lead.id,
+      tripType,
+      destination,
+      totalBudget,
+      attachmentsCount: updatedAttachments.length
+    });
+
+    const updatedLead = await updateLead(updateData);
+
+    if (updatedLead) {
+      console.log('✅ Lead updated successfully with PDF data');
+      return updatedLead.id;
+    } else {
+      console.error('❌ Failed to update lead with PDF data');
+      return null;
+    }
+
+  } catch (error) {
+    console.error('❌ Error updating lead with PDF data:', error);
+    return null;
   }
 }

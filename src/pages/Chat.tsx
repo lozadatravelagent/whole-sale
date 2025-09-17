@@ -11,10 +11,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
-import { createLeadFromChat } from '@/utils/chatToLead';
+import { createLeadFromChat, updateLeadWithPdfData } from '@/utils/chatToLead';
 import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
-import type { CombinedTravelResults } from '@/types';
+import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import CombinedTravelSelector from '@/components/crm/CombinedTravelSelector';
 import {
   Send,
@@ -29,7 +29,9 @@ import {
   ChevronDown,
   Archive,
   Check,
-  CheckCheck
+  CheckCheck,
+  FileText,
+  Download
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Database } from '@/integrations/supabase/types';
@@ -1226,11 +1228,70 @@ const Chat = () => {
     });
   };
 
-  const handlePdfGenerated = () => {
-    toast({
-      title: "PDF Generado",
-      description: "Tu cotización se ha generado exitosamente.",
-    });
+  const handlePdfGenerated = async (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => {
+    console.log('📄 PDF generated, adding to chat and updating lead:', pdfUrl);
+    console.log('🛫 Selected flights:', selectedFlights.length);
+    console.log('🏨 Selected hotels:', selectedHotels.length);
+
+    if (!selectedConversation) {
+      console.warn('❌ No conversation selected, cannot add PDF message');
+      return;
+    }
+
+    try {
+      // Add PDF message from Emilia (assistant)
+      await addMessageViaSupabase({
+        conversation_id: selectedConversation,
+        role: 'assistant' as const,
+        content: {
+          text: '¡He generado tu cotización de viaje! 📄✈️🏨\n\nPuedes descargar el PDF con todos los detalles de tu viaje combinado.',
+          pdfUrl: pdfUrl,
+          metadata: {
+            type: 'pdf_generated',
+            source: 'combined_travel_pdf',
+            timestamp: new Date().toISOString(),
+            selectedFlights: selectedFlights.length,
+            selectedHotels: selectedHotels.length
+          }
+        },
+        meta: {
+          status: 'sent',
+          messageType: 'pdf_delivery'
+        }
+      });
+
+      // Update lead with PDF data
+      console.log('📋 Updating lead with PDF data...');
+      const leadId = await updateLeadWithPdfData(
+        selectedConversation,
+        pdfUrl,
+        selectedFlights,
+        selectedHotels
+      );
+
+      if (leadId) {
+        console.log('✅ Lead updated successfully with PDF data, Lead ID:', leadId);
+        toast({
+          title: "PDF Generado y Lead Actualizado",
+          description: "Tu cotización se ha generado y el lead se ha actualizado en el CRM.",
+        });
+      } else {
+        console.warn('⚠️ PDF generated but lead update failed');
+        toast({
+          title: "PDF Generado",
+          description: "Tu cotización se ha generado y agregado al chat.",
+        });
+      }
+
+      console.log('✅ PDF message added to chat successfully');
+
+    } catch (error) {
+      console.error('❌ Error adding PDF message to chat or updating lead:', error);
+      toast({
+        title: "PDF Generado",
+        description: "Tu cotización se ha generado exitosamente.",
+      });
+    }
   };
 
   // Convert local combined data to global type for component compatibility
@@ -1497,6 +1558,10 @@ const Chat = () => {
                   {messages.map((msg) => {
                     const messageText = getMessageContent(msg);
 
+                    // Check for PDF content
+                    const hasPdf = typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content;
+                    const pdfUrl = hasPdf ? (msg.content as { pdfUrl?: string }).pdfUrl : null;
+
                     // Check for combined travel data (MAINTAIN EXACT LOGIC)
                     const hasCombinedTravel = msg.role === 'assistant' && (
                       (typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta)
@@ -1536,9 +1601,36 @@ const Chat = () => {
                                   />
                                 </div>
                               ) : (
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                  {messageText}
-                                </ReactMarkdown>
+                                <>
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {messageText}
+                                  </ReactMarkdown>
+
+                                  {/* PDF Download Button */}
+                                  {hasPdf && pdfUrl && (
+                                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                      <div className="flex items-center space-x-2">
+                                        <FileText className="h-5 w-5 text-blue-600" />
+                                        <div className="flex-1">
+                                          <p className="text-sm font-medium text-blue-900">
+                                            Cotización de Viaje
+                                          </p>
+                                          <p className="text-xs text-blue-700">
+                                            PDF con todos los detalles de tu viaje
+                                          </p>
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          onClick={() => window.open(pdfUrl, '_blank')}
+                                          className="bg-blue-600 hover:bg-blue-700"
+                                        >
+                                          <Download className="h-4 w-4 mr-1" />
+                                          Descargar
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
                               )}
 
                               <p className="text-xs opacity-70 mt-1 flex items-center justify-between">

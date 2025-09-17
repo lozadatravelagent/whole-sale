@@ -32,7 +32,7 @@ import {
 
 interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
-  onPdfGenerated?: (pdfUrl: string) => void;
+  onPdfGenerated?: (pdfUrl: string, selectedFlights: FlightData[], selectedHotels: HotelData[]) => Promise<void>;
 }
 
 const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
@@ -160,7 +160,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       }
 
       if (pdfUrl?.document_url && onPdfGenerated) {
-        onPdfGenerated(pdfUrl.document_url);
+        await onPdfGenerated(pdfUrl.document_url, selectedFlightData, selectedHotelData);
       }
 
       if (pdfUrl?.success) {
