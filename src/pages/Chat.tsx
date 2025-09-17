@@ -591,7 +591,7 @@ const Chat = () => {
     } catch (error) {
       console.error('❌ [FLIGHT SEARCH] Error in flight search process:', error);
       return {
-        response: '❌ Error buscando vuelos. Intenta con fechas y destinos específicos.',
+        response: '❌ **Servicio de vuelos temporalmente no disponible**\n\nNuestros servicios de búsqueda de vuelos están siendo actualizados. Mientras tanto:\n\n✈️ **Puedo ayudarte con:**\n- Información general sobre destinos\n- Consultas sobre hoteles\n- Paquetes turísticos\n\n📞 **Para búsquedas de vuelos inmediatas:**\nContacta a nuestro equipo directamente para asistencia personalizada.',
         data: null
       };
     }
@@ -664,7 +664,7 @@ const Chat = () => {
     } catch (error) {
       console.error('❌ [HOTEL SEARCH] Error in hotel search process:', error);
       return {
-        response: '❌ Error buscando hoteles. Verifica la ciudad y fechas.',
+        response: '❌ **Servicio de hoteles temporalmente no disponible**\n\nNuestros servicios de búsqueda de hoteles están siendo configurados. Mientras tanto:\n\n🏨 **Puedo ayudarte con:**\n- Recomendaciones generales de destinos\n- Información sobre ciudades\n- Planificación de viajes\n\n📞 **Para reservas de hoteles:**\nNuestro equipo puede asistirte con cotizaciones personalizadas.',
         data: null
       };
     }
@@ -1209,10 +1209,8 @@ const Chat = () => {
                       combinedTravelData = (msg.meta as unknown as { combinedData: LocalCombinedTravelResults }).combinedData;
                     }
 
-                    // Memoize the conversion to prevent unnecessary re-renders
-                    const memoizedCombinedData = useMemo(() => {
-                      return combinedTravelData ? convertToGlobalCombinedData(combinedTravelData) : null;
-                    }, [combinedTravelData]);
+                    // Convert data directly (without useMemo inside map)
+                    const memoizedCombinedData = combinedTravelData ? convertToGlobalCombinedData(combinedTravelData) : null;
 
                     return (
                       <div key={msg.id}>
