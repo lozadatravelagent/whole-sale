@@ -387,11 +387,14 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       source: hotelWithRoom.selectedRoom ? 'SELECTED_BY_USER' : 'CHEAPEST_FALLBACK'
     });
 
+    // Calculate total price for all nights
+    const priceForAllNights = roomToUse.total_price || (roomToUse.price_per_night * hotel.nights);
+
     return {
       name: hotel.name,
       stars: hotel.category || "5", // Default to 5 stars like the example
       location: hotel.address || `${hotel.city}, República Dominicana`, // Full address format
-      price: formatPriceForTemplate(roomToUse.total_price), // Formato europeo
+      price: formatPriceForTemplate(priceForAllNights), // Formato europeo - precio total por todas las noches
       link: `https://wholesale-connect.com/hotel/${hotel.id}` // Placeholder link
     };
   });
@@ -422,20 +425,26 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     totalFlightPrice += flightPrice || 0;
   });
 
-  // Sum all hotel prices (using selected rooms)
+  // Sum all hotel prices (using selected rooms and multiplying by nights)
   hotels.forEach(hotel => {
     const hotelWithRoom = hotel as HotelDataWithSelectedRoom;
     const roomToUse = hotelWithRoom.selectedRoom || hotel.rooms.reduce((cheapest, room) =>
       room.total_price < cheapest.total_price ? room : cheapest
     );
 
+    // Calculate total price: if total_price is for all nights, use it; otherwise multiply price_per_night by nights
+    const priceForAllNights = roomToUse.total_price || (roomToUse.price_per_night * hotel.nights);
+
     console.log(`💰 Adding hotel ${hotel.name} price:`, {
       room_type: roomToUse.type,
-      room_price: roomToUse.total_price,
+      price_per_night: roomToUse.price_per_night,
+      total_price_from_room: roomToUse.total_price,
+      nights: hotel.nights,
+      calculated_total: priceForAllNights,
       source: hotelWithRoom.selectedRoom ? 'SELECTED_BY_USER' : 'CHEAPEST_FALLBACK'
     });
 
-    totalHotelPrice += roomToUse.total_price || 0;
+    totalHotelPrice += priceForAllNights || 0;
   });
 
   const totalPrice = totalFlightPrice + totalHotelPrice;
