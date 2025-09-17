@@ -12,6 +12,7 @@ import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
 import { createLeadFromChat, updateLeadWithPdfData, diagnoseCRMIntegration } from '@/utils/chatToLead';
+import { analyzePdfContent, generatePriceChangeSuggestions, uploadPdfFile, processPriceChangeRequest } from '@/services/pdfProcessor';
 import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling, validateFlightRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
@@ -31,7 +32,9 @@ import {
   Check,
   CheckCheck,
   FileText,
-  Download
+  Download,
+  Paperclip,
+  Upload
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Database } from '@/integrations/supabase/types';
@@ -714,6 +717,9 @@ const Chat = () => {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false);
+  const [lastPdfAnalysis, setLastPdfAnalysis] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarLimit, setSidebarLimit] = useState(5);
@@ -897,6 +903,71 @@ const Chat = () => {
     if (!message.trim() || !selectedConversation || isLoading) {
       console.warn('❌ [MESSAGE FLOW] Validation failed - aborting send');
       return;
+    }
+
+    // Check if this is a price change request for a previously uploaded PDF
+    if (isPriceChangeRequest(message) && lastPdfAnalysis && lastPdfAnalysis.conversationId === selectedConversation) {
+      console.log('💰 [PRICE CHANGE] Detected price change request for previous PDF');
+
+      setIsLoading(true);
+
+      try {
+        // Add user message
+        await addMessageViaSupabase({
+          conversation_id: selectedConversation,
+          role: 'user' as const,
+          content: { text: message.trim() },
+          meta: { status: 'sent', messageType: 'price_change_request' }
+        });
+
+        // Process the price change request
+        const result = await processPriceChangeRequest(
+          message.trim(),
+          lastPdfAnalysis.analysis,
+          selectedConversation
+        );
+
+        // Add assistant response
+        const responseMessage = await addMessageViaSupabase({
+          conversation_id: selectedConversation,
+          role: 'assistant' as const,
+          content: {
+            text: result.response,
+            pdfUrl: result.modifiedPdfUrl,
+            metadata: {
+              type: 'price_change_response',
+              hasModifiedPdf: !!result.modifiedPdfUrl,
+              originalAnalysis: lastPdfAnalysis.analysis.content
+            }
+          },
+          meta: {
+            status: 'sent',
+            messageType: result.modifiedPdfUrl ? 'pdf_generated' : 'price_change_response'
+          }
+        });
+
+        if (result.modifiedPdfUrl) {
+          toast({
+            title: "PDF Modificado Generado",
+            description: "He creado un nuevo PDF con el precio que solicitaste.",
+          });
+        }
+
+        setMessage('');
+        return; // Exit early, don't continue with normal flow
+
+      } catch (error) {
+        console.error('❌ Error processing price change request:', error);
+        toast({
+          title: "Error",
+          description: "No pude procesar tu solicitud de cambio de precio.",
+          variant: "destructive",
+        });
+        setMessage('');
+        return;
+      } finally {
+        setIsLoading(false);
+      }
     }
 
     const currentMessage = message;
@@ -1711,6 +1782,167 @@ const Chat = () => {
     });
   };
 
+  // Check if message is a price change request
+  const isPriceChangeRequest = (message: string): boolean => {
+    const lowerMessage = message.toLowerCase();
+    const priceKeywords = [
+      'cambia el precio',
+      'cambiar precio',
+      'precio total',
+      'que cueste',
+      'quiero que el precio',
+      'modifica el precio',
+      'ajusta el precio',
+      'precio a',
+      'cuesta',
+      '$',
+      'dólar',
+      'usd'
+    ];
+
+    return priceKeywords.some(keyword => lowerMessage.includes(keyword));
+  };
+
+  // Handle PDF upload
+  const handlePdfUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || file.type !== 'application/pdf') {
+      toast({
+        title: "Archivo no válido",
+        description: "Por favor selecciona un archivo PDF.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      toast({
+        title: "Archivo muy grande",
+        description: "El archivo no puede ser mayor a 10MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUploadingPdf(true);
+
+    try {
+      // Convert file to base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      console.log('📎 PDF uploaded:', file.name, 'Size:', file.size);
+
+      // Send PDF analysis request
+      const analysisMessage = `He subido el PDF "${file.name}" para análisis. ¿Podrías revisar el contenido y ayudarme con cualquier cambio que necesite?`;
+
+      // Add user message with PDF attachment info
+      await addMessageViaSupabase({
+        conversation_id: selectedConversation!,
+        role: 'user' as const,
+        content: {
+          text: analysisMessage,
+          metadata: {
+            type: 'pdf_upload',
+            fileName: file.name,
+            fileSize: file.size,
+            uploadedAt: new Date().toISOString()
+          }
+        },
+        meta: {
+          status: 'sent',
+          messageType: 'pdf_upload'
+        }
+      });
+
+      // Process PDF content (we'll implement this service)
+      await processPdfContent(file, selectedConversation!);
+
+      toast({
+        title: "PDF subido exitosamente",
+        description: `${file.name} ha sido analizado y procesado.`,
+      });
+
+    } catch (error) {
+      console.error('Error uploading PDF:', error);
+      toast({
+        title: "Error al subir PDF",
+        description: "No se pudo procesar el archivo. Inténtalo nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingPdf(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Process PDF content and generate response
+  const processPdfContent = async (file: File, conversationId: string) => {
+    try {
+      console.log('📄 Starting PDF analysis for:', file.name);
+
+      // Analyze PDF content using the new service
+      const analysis = await analyzePdfContent(file);
+
+      if (analysis.success) {
+        // Generate structured response based on analysis
+        const analysisResponse = generatePriceChangeSuggestions(analysis);
+
+        // Add AI response with analysis
+        await addMessageViaSupabase({
+          conversation_id: conversationId,
+          role: 'assistant' as const,
+          content: {
+            text: analysisResponse,
+            metadata: {
+              type: 'pdf_analysis',
+              analysis: analysis.content,
+              suggestions: analysis.suggestions
+            }
+          },
+          meta: {
+            status: 'sent',
+            messageType: 'pdf_analysis'
+          }
+        });
+
+        console.log('✅ PDF analysis completed successfully');
+
+        // Store the analysis for future price change requests
+        setLastPdfAnalysis({
+          analysis,
+          conversationId,
+          timestamp: new Date().toISOString()
+        });
+
+      } else {
+        throw new Error(analysis.error || 'PDF analysis failed');
+      }
+
+    } catch (error) {
+      console.error('❌ Error processing PDF content:', error);
+
+      // Add error response
+      await addMessageViaSupabase({
+        conversation_id: conversationId,
+        role: 'assistant' as const,
+        content: {
+          text: `❌ **Error analizando PDF**\n\nNo pude procesar el archivo "${file.name}". Esto puede deberse a:\n\n• El PDF está protegido o encriptado\n• El formato no es compatible\n• El archivo está dañado\n\n¿Podrías intentar con otro archivo o verificar que el PDF se abra correctamente?`
+        },
+        meta: {
+          status: 'sent',
+          messageType: 'error'
+        }
+      });
+    }
+  };
+
   const handlePdfGenerated = async (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => {
     console.log('📄 PDF generated, adding to chat and updating lead:', pdfUrl);
     console.log('🛫 Selected flights:', selectedFlights.length);
@@ -1884,10 +2116,36 @@ const Chat = () => {
           className="flex-1"
           autoComplete="off"
         />
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf"
+          onChange={handlePdfUpload}
+          style={{ display: 'none' }}
+        />
+
+        {/* PDF Upload button */}
+        <Button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled || isUploadingPdf}
+          size="sm"
+          variant="outline"
+          className="px-3"
+        >
+          {isUploadingPdf ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Paperclip className="h-4 w-4" />
+          )}
+        </Button>
+
+        {/* Send button */}
         <Button
           onClick={onSend}
           className="px-3"
-          disabled={disabled}
+          disabled={disabled || !value.trim()}
         >
           {disabled ? (
             <Loader2 className="h-4 w-4 animate-spin" />
