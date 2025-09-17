@@ -387,8 +387,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       source: hotelWithRoom.selectedRoom ? 'SELECTED_BY_USER' : 'CHEAPEST_FALLBACK'
     });
 
-    // Calculate total price for all nights
-    const priceForAllNights = roomToUse.total_price || (roomToUse.price_per_night * hotel.nights);
+    // Calculate total price for all nights - total_price is already for all nights
+    const priceForAllNights = roomToUse.total_price;
 
     return {
       name: hotel.name,
@@ -432,8 +432,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       room.total_price < cheapest.total_price ? room : cheapest
     );
 
-    // Calculate total price: if total_price is for all nights, use it; otherwise multiply price_per_night by nights
-    const priceForAllNights = roomToUse.total_price || (roomToUse.price_per_night * hotel.nights);
+    // Calculate total price: total_price is already for all nights
+    const priceForAllNights = roomToUse.total_price;
 
     console.log(`💰 Adding hotel ${hotel.name} price:`, {
       room_type: roomToUse.type,
