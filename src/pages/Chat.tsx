@@ -1511,17 +1511,23 @@ const Chat = () => {
         }
       }
 
-      // 3. Use AI Parser to classify request
+      // 3. Load contextual memory before parsing
+      console.log('🧠 [MESSAGE FLOW] Step 7.5: Loading contextual memory before parsing');
+      const contextFromDB = await loadContextualMemory(selectedConversation);
+      const contextToUse = contextFromDB || previousParsedRequest;
+      console.log('📝 [CONTEXT] Using context:', contextToUse);
+
+      // 4. Use AI Parser to classify request
       console.log('🤖 [MESSAGE FLOW] Step 8: Starting AI parsing process');
       console.log('📤 [MESSAGE FLOW] About to call AI message parser (Supabase Edge Function)');
       console.log('🧠 Message to parse:', currentMessage);
 
-      let parsedRequest = await parseMessageWithAI(currentMessage, previousParsedRequest);
+      let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse);
 
       console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
       console.log('🎯 AI parsing result:', parsedRequest);
 
-      // 4. Combine with previous request if available (contextual memory)
+      // 5. Combine with previous request if available (contextual memory)
       console.log('🧠 [MESSAGE FLOW] Step 10: Combining with previous request');
       if (previousParsedRequest) {
         console.log('🔄 [MEMORY] Combining with previous request:', {
@@ -1531,7 +1537,7 @@ const Chat = () => {
         parsedRequest = combineWithPreviousRequest(previousParsedRequest, currentMessage, parsedRequest);
       }
 
-      // 5. Validate required fields (handle combined specially)
+      // 6. Validate required fields (handle combined specially)
       console.log('🔍 [MESSAGE FLOW] Step 11: Validating required fields');
       console.log('📊 Request type detected:', parsedRequest.requestType);
 
