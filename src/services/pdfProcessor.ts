@@ -234,22 +234,20 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
 
     // Flight information
     if (content.flights && content.flights.length > 0) {
-        response += `✈️ **Vuelos Encontrados:**\n`;
+        response += `✈️ **Vuelos Encontrados:**\n\n`;
         content.flights.forEach((flight, index) => {
-            response += `   ${index + 1}. ${flight.airline} - ${flight.route}\n`;
-            response += `      📅 ${flight.dates} | 💰 $${flight.price} ${content.currency}\n`;
+            response += `${flight.airline} - ${flight.route}\n`;
+            response += `📅 ${flight.dates} | 💰 $${flight.price} ${content.currency}\n\n`;
         });
-        response += `\n`;
     }
 
     // Hotel information
     if (content.hotels && content.hotels.length > 0) {
-        response += `🏨 **Hoteles Encontrados:**\n`;
+        response += `🏨 **Hoteles Encontrados:**\n\n`;
         content.hotels.forEach((hotel, index) => {
-            response += `   ${index + 1}. ${hotel.name} - ${hotel.location}\n`;
-            response += `      🌙 ${hotel.nights} noches | 💰 $${hotel.price}/noche\n`;
+            response += `${hotel.name} - ${hotel.location}\n`;
+            response += `🌙 ${hotel.nights} noches | 💰 $${hotel.price}/noche\n\n`;
         });
-        response += `\n`;
     }
 
     // Total price
@@ -260,26 +258,25 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
 
     // Suggestions
     if (suggestions && suggestions.length > 0) {
-        response += `🔄 **Sugerencias de Mejora:**\n`;
+        response += `🔄 **Sugerencias de Mejora:**\n\n`;
         suggestions.forEach((suggestion, index) => {
-            response += `   ${index + 1}. ${suggestion}\n`;
+            response += `${suggestion}\n\n`;
         });
 
         // Add cheaper flights option if there are flights in the PDF
         if (content.flights && content.flights.length > 0) {
-            response += `\n💡 **Opciones adicionales:**\n`;
-            response += `   • Escribe "buscar vuelos más baratos" para encontrar alternativas más económicas\n`;
-            response += `   • Escribe "cambiar precio a $[cantidad]" para modificar el presupuesto\n`;
+            response += `💡 **Opciones adicionales:**\n\n`;
+            response += `• Escribe "buscar vuelos más baratos" para encontrar alternativas más económicas\n`;
+            response += `• Escribe "cambiar precio a $[cantidad]" para modificar el presupuesto\n\n`;
         }
-        response += `\n`;
     }
 
-    response += `💬 **¿Qué te gustaría modificar?**\n`;
-    response += `Puedes pedirme:\n`;
-    response += `• "Busca vuelos más baratos para las mismas fechas"\n`;
-    response += `• "Encuentra hoteles de 4 estrellas en vez de 5"\n`;
-    response += `• "Cambia las fechas a la segunda quincena de noviembre"\n`;
-    response += `• "Agrega seguro de viaje y traslados"\n`;
+    response += `💬 **¿Qué te gustaría modificar?**\n\n`;
+    response += `Puedes pedirme:\n\n`;
+    response += `• "Busca vuelos más baratos para las mismas fechas"\n\n`;
+    response += `• "Encuentra hoteles de 4 estrellas en vez de 5"\n\n`;
+    response += `• "Cambia las fechas a la segunda quincena de noviembre"\n\n`;
+    response += `• "Agrega seguro de viaje y traslados"\n\n`;
 
     return response;
 }

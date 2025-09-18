@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ParsedTravelRequest {
-    requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general';
+    requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request';
     flights?: {
         origin: string;
         destination: string;
@@ -48,6 +48,9 @@ export interface ParsedTravelRequest {
     };
     confidence: number; // 0-1 score of parsing confidence
     originalMessage: string;
+    // Fields for missing_info_request
+    message?: string;
+    missingFields?: string[];
     missingRequiredFields?: string[]; // Campos requeridos que faltan
     needsMoreInfo?: boolean; // Si necesita más información del usuario
 }
@@ -434,13 +437,33 @@ export function getFallbackParsing(message: string): ParsedTravelRequest {
         requestType = 'services';
     }
 
-    // Basic date extraction
-    const today = new Date();
-    const futureDate = new Date(today);
-    futureDate.setDate(today.getDate() + 7);
+    // For flights, check if we have all required fields
+    if (requestType === 'flights') {
+        const hasOrigin = lowerMessage.includes('desde') || lowerMessage.includes('de ') || lowerMessage.includes('buenos aires') || lowerMessage.includes('ezeiza');
+        const hasDestination = lowerMessage.includes('a ') || lowerMessage.includes('hacia') || lowerMessage.includes('madrid') || lowerMessage.includes('punta cana');
+        const hasDates = lowerMessage.includes('el ') || lowerMessage.includes('día') || lowerMessage.includes('fecha') || /\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message);
+        const hasPassengers = /\d+\s+(?:personas?|adultos?)/i.test(message);
+        const hasLuggage = lowerMessage.includes('valija') || lowerMessage.includes('equipaje') || lowerMessage.includes('bodega') || lowerMessage.includes('mochila');
+        const hasStops = lowerMessage.includes('directo') || lowerMessage.includes('escala') || lowerMessage.includes('escalas');
 
-    const defaultDateFrom = today.toISOString().split('T')[0];
-    const defaultDateTo = futureDate.toISOString().split('T')[0];
+        const missingFields = [];
+        if (!hasOrigin) missingFields.push('origen');
+        if (!hasDestination) missingFields.push('destino');
+        if (!hasDates) missingFields.push('fechas');
+        if (!hasPassengers) missingFields.push('cantidad de personas');
+        if (!hasLuggage) missingFields.push('tipo de equipaje');
+        if (!hasStops) missingFields.push('tipo de vuelo (directo/escalas)');
+
+        if (missingFields.length > 0) {
+            return {
+                requestType: 'missing_info_request',
+                message: `Para buscar tu vuelo necesito algunos datos adicionales:\n\n${missingFields.map(field => `- ${field}`).join('\n')}\n\nPor favor, proporciona esta información para continuar con la búsqueda.`,
+                missingFields,
+                confidence: 0.2,
+                originalMessage: message
+            } as any;
+        }
+    }
 
     // Basic people extraction
     const peopleMatch = message.match(/(\d+)\s+(?:personas?|adultos?)/i);
@@ -452,70 +475,73 @@ export function getFallbackParsing(message: string): ParsedTravelRequest {
         originalMessage: message
     };
 
-    // Add type-specific data based on detected type
-    switch (requestType) {
-        case 'flights':
-            result.flights = {
-                origin: 'Buenos Aires',
-                destination: 'Madrid',
-                departureDate: defaultDateFrom,
-                returnDate: defaultDateTo,
-                adults,
-                children: 0
-            };
-            break;
+    // For all request types, check if we have enough information
+    // If not, return missing info request instead of using hardcoded defaults
+    const missingFields = [];
 
-        case 'hotels':
-            result.hotels = {
-                city: 'Madrid',
-                checkinDate: defaultDateFrom,
-                checkoutDate: defaultDateTo,
-                adults,
-                children: 0,
-                roomType: 'double',
-                mealPlan: 'breakfast'
-            };
-            break;
-
-        case 'packages':
-            result.packages = {
-                destination: 'España',
-                dateFrom: defaultDateFrom,
-                dateTo: defaultDateTo,
-                packageClass: 'AEROTERRESTRE',
-                adults,
-                children: 0
-            };
-            break;
-
-        case 'services':
-            result.services = {
-                city: 'Madrid',
-                dateFrom: defaultDateFrom,
-                serviceType: '1'
-            };
-            break;
-
-        case 'combined':
-            result.flights = {
-                origin: 'Buenos Aires',
-                destination: 'Madrid',
-                departureDate: defaultDateFrom,
-                returnDate: defaultDateTo,
-                adults,
-                children: 0
-            };
-            result.hotels = {
-                city: 'Madrid',
-                checkinDate: defaultDateFrom,
-                checkoutDate: defaultDateTo,
-                adults,
-                children: 0,
-                roomType: 'double',
-                mealPlan: 'breakfast'
-            };
-            break;
+    if (requestType === 'flights') {
+        if (!lowerMessage.includes('desde') && !lowerMessage.includes('de ') && !lowerMessage.includes('buenos aires') && !lowerMessage.includes('ezeiza')) {
+            missingFields.push('origen');
+        }
+        if (!lowerMessage.includes('a ') && !lowerMessage.includes('hacia') && !lowerMessage.includes('madrid') && !lowerMessage.includes('punta cana')) {
+            missingFields.push('destino');
+        }
+        if (!lowerMessage.includes('el ') && !lowerMessage.includes('día') && !lowerMessage.includes('fecha') && !/\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message)) {
+            missingFields.push('fechas');
+        }
+        if (!/\d+\s+(?:personas?|adultos?)/i.test(message)) {
+            missingFields.push('cantidad de personas');
+        }
+        if (!lowerMessage.includes('valija') && !lowerMessage.includes('equipaje') && !lowerMessage.includes('bodega') && !lowerMessage.includes('mochila')) {
+            missingFields.push('tipo de equipaje');
+        }
+        if (!lowerMessage.includes('directo') && !lowerMessage.includes('escala') && !lowerMessage.includes('escalas')) {
+            missingFields.push('tipo de vuelo (directo/escalas)');
+        }
+    } else if (requestType === 'hotels') {
+        if (!lowerMessage.includes('en ') && !lowerMessage.includes('hotel') && !lowerMessage.includes('madrid') && !lowerMessage.includes('punta cana')) {
+            missingFields.push('ciudad del hotel');
+        }
+        if (!lowerMessage.includes('el ') && !lowerMessage.includes('día') && !lowerMessage.includes('fecha') && !/\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message)) {
+            missingFields.push('fechas de estadía');
+        }
+        if (!/\d+\s+(?:personas?|adultos?)/i.test(message)) {
+            missingFields.push('cantidad de personas');
+        }
+    } else if (requestType === 'packages') {
+        if (!lowerMessage.includes('para ') && !lowerMessage.includes('destino') && !lowerMessage.includes('españa') && !lowerMessage.includes('madrid')) {
+            missingFields.push('destino del paquete');
+        }
+        if (!lowerMessage.includes('el ') && !lowerMessage.includes('día') && !lowerMessage.includes('fecha') && !/\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message)) {
+            missingFields.push('fechas del viaje');
+        }
+        if (!/\d+\s+(?:personas?|adultos?)/i.test(message)) {
+            missingFields.push('cantidad de personas');
+        }
+    } else if (requestType === 'services') {
+        if (!lowerMessage.includes('en ') && !lowerMessage.includes('ciudad') && !lowerMessage.includes('madrid')) {
+            missingFields.push('ciudad del servicio');
+        }
+        if (!lowerMessage.includes('el ') && !lowerMessage.includes('día') && !lowerMessage.includes('fecha') && !/\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message)) {
+            missingFields.push('fecha del servicio');
+        }
     }
+
+    // If we have missing fields, return missing info request
+    if (missingFields.length > 0) {
+        return {
+            requestType: 'missing_info_request',
+            message: `Para ayudarte necesito algunos datos adicionales:\n\n${missingFields.map(field => `- ${field}`).join('\n')}\n\nPor favor, proporciona esta información para continuar.`,
+            missingFields,
+            confidence: 0.2,
+            originalMessage: message
+        } as any;
+    }
+
+    // If we reach here, we have enough basic info to proceed
+    // But we still don't use hardcoded defaults - let the AI parser handle it
+    result.requestType = 'general'; // Fallback to general query
+    result.confidence = 0.1; // Very low confidence
 
     console.log('🔄 Fallback parsing result:', result);
     return result;

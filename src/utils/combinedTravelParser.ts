@@ -181,8 +181,8 @@ function extractFlightParams(message: string): AirfareSearchParams {
             if (cityParts[i].match(/^[A-Z][a-z]/)) { // Capital letter starting word
               const possibleDest = cityParts.slice(i).join(' ');
               if (possibleDest.toLowerCase().includes('cana') ||
-                  possibleDest.toLowerCase().includes('plata') ||
-                  possibleDest.toLowerCase().includes('domingo')) {
+                possibleDest.toLowerCase().includes('plata') ||
+                possibleDest.toLowerCase().includes('domingo')) {
                 splitIndex = i;
                 break;
               }
@@ -338,11 +338,9 @@ function extractFlightParams(message: string): AirfareSearchParams {
   const adults = adultsMatch ? parseInt(adultsMatch[1]) : 1;
   const children = childrenMatch ? parseInt(childrenMatch[1]) : 0;
 
-  // Use default dates if not specified
-  if (!departureDate) {
-    const today = new Date();
-    today.setDate(today.getDate() + 7); // Default to 7 days from now
-    departureDate = today.toISOString().split('T')[0];
+  // Check for required fields - if missing, return null to trigger missing info request
+  if (!departureDate || !origin || !destination) {
+    return null; // This will trigger the missing info request in the main parser
   }
 
   if (!returnDate && (message.includes('vuelta') || message.includes('return') || message.includes('regreso'))) {
@@ -564,15 +562,9 @@ function extractHotelParams(message: string): HotelSearchParams {
     }
   }
 
-  // Use default dates if still not specified
-  if (!dateFrom || !dateTo) {
-    const today = new Date();
-    today.setDate(today.getDate() + 7);
-    const futureDate = new Date(today);
-    futureDate.setDate(today.getDate() + 3);
-
-    dateFrom = today.toISOString().split('T')[0];
-    dateTo = futureDate.toISOString().split('T')[0];
+  // Check for required fields - if missing, return null to trigger missing info request
+  if (!dateFrom || !dateTo || !city) {
+    return null; // This will trigger the missing info request in the main parser
   }
 
   // Ensure checkout is after checkin

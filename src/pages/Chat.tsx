@@ -1711,8 +1711,18 @@ const Chat = () => {
       let structuredData = null;
 
       switch (parsedRequest.requestType) {
+        case 'missing_info_request': {
+          console.log('❓ [MESSAGE FLOW] Step 12a: Missing info request - asking for more details');
+          assistantResponse = parsedRequest.message || 'Necesito más información para ayudarte. Por favor, proporciona los datos faltantes.';
+          structuredData = {
+            messageType: 'missing_info_request',
+            missingFields: parsedRequest.missingFields || []
+          };
+          console.log('✅ [MESSAGE FLOW] Missing info request completed');
+          break;
+        }
         case 'flights': {
-          console.log('✈️ [MESSAGE FLOW] Step 12a: Processing flight search');
+          console.log('✈️ [MESSAGE FLOW] Step 12b: Processing flight search');
           const flightResult = await handleFlightSearch(parsedRequest);
           assistantResponse = flightResult.response;
           structuredData = flightResult.data;
@@ -1720,7 +1730,7 @@ const Chat = () => {
           break;
         }
         case 'hotels': {
-          console.log('🏨 [MESSAGE FLOW] Step 12b: Processing hotel search');
+          console.log('🏨 [MESSAGE FLOW] Step 12c: Processing hotel search');
           const hotelResult = await handleHotelSearch(parsedRequest);
           assistantResponse = hotelResult.response;
           structuredData = hotelResult.data;
@@ -1728,7 +1738,7 @@ const Chat = () => {
           break;
         }
         case 'packages': {
-          console.log('🎒 [MESSAGE FLOW] Step 11c: Processing package search');
+          console.log('🎒 [MESSAGE FLOW] Step 12d: Processing package search');
           const packageResult = await handlePackageSearch(parsedRequest);
           assistantResponse = packageResult.response;
           structuredData = packageResult.data;
@@ -1736,14 +1746,14 @@ const Chat = () => {
           break;
         }
         case 'services': {
-          console.log('🚌 [MESSAGE FLOW] Step 11d: Processing service search');
+          console.log('🚌 [MESSAGE FLOW] Step 12e: Processing service search');
           const serviceResult = await handleServiceSearch(parsedRequest);
           assistantResponse = serviceResult.response;
           console.log('✅ [MESSAGE FLOW] Service search completed');
           break;
         }
         case 'combined': {
-          console.log('🌟 [MESSAGE FLOW] Step 11e: Processing combined search');
+          console.log('🌟 [MESSAGE FLOW] Step 12f: Processing combined search');
           const combinedResult = await handleCombinedSearch(parsedRequest);
           assistantResponse = combinedResult.response;
           structuredData = combinedResult.data;
@@ -1751,7 +1761,7 @@ const Chat = () => {
           break;
         }
         default:
-          console.log('💬 [MESSAGE FLOW] Step 11f: Processing general query');
+          console.log('💬 [MESSAGE FLOW] Step 12g: Processing general query');
           assistantResponse = await handleGeneralQuery(parsedRequest);
           console.log('✅ [MESSAGE FLOW] General query completed');
       }
@@ -3078,45 +3088,45 @@ const Chat = () => {
 
   return (
     <MainLayout userRole="ADMIN" sidebarExtra={sidebarExtra}>
-      <div className="min-h-screen flex">
-        <div className="flex-1 flex flex-col">
-          {selectedConversation ? (
-            <>
-              <ChatHeader />
+      <div className="h-screen flex flex-col">
+        {selectedConversation ? (
+          <>
+            <ChatHeader />
 
-              <div className="flex-1 p-4 overflow-hidden relative">
-                <div className="space-y-4">
-                  {/* Inspiration text overlay for new conversations */}
-                  <InspirationText />
+            {/* Messages area - scrollable */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-4">
+                {/* Inspiration text overlay for new conversations */}
+                <InspirationText />
 
-                  {messages
-                    .filter((m) => {
-                      const meta = (m as any).meta;
-                      // Ocultar mensajes de memoria/contexto del sistema
-                      if (m.role === 'system' && meta && meta.messageType === 'contextual_memory') return false;
-                      // Ocultar pedidos internos de info faltante si se desea mantener limpio (opcional)
-                      // if (m.role === 'assistant' && meta?.messageType === 'missing_info_request') return false;
-                      return true;
-                    })
-                    .map((msg) => (
-                      <MessageItem key={msg.id} msg={msg} />
-                    ))}
+                {messages
+                  .filter((m) => {
+                    const meta = (m as any).meta;
+                    // Ocultar mensajes de memoria/contexto del sistema
+                    if (m.role === 'system' && meta && meta.messageType === 'contextual_memory') return false;
+                    // Ocultar pedidos internos de info faltante si se desea mantener limpio (opcional)
+                    // if (m.role === 'assistant' && meta?.messageType === 'missing_info_request') return false;
+                    return true;
+                  })
+                  .map((msg) => (
+                    <MessageItem key={msg.id} msg={msg} />
+                  ))}
 
-                  {isTyping && <TypingIndicator />}
-                </div>
+                {isTyping && <TypingIndicator />}
               </div>
+            </div>
 
-              <MessageInput
-                value={message}
-                onChange={handleMessageChange}
-                onSend={handleSendMessage}
-                disabled={isLoading}
-              />
-            </>
-          ) : (
-            <EmptyState onCreateChat={createNewChat} />
-          )}
-        </div>
+            {/* Input area - fixed at bottom */}
+            <MessageInput
+              value={message}
+              onChange={handleMessageChange}
+              onSend={handleSendMessage}
+              disabled={isLoading}
+            />
+          </>
+        ) : (
+          <EmptyState onCreateChat={createNewChat} />
+        )}
       </div>
     </MainLayout>
   );
