@@ -743,6 +743,18 @@ const Chat = () => {
     }
   }, []);
 
+  // Helper: detect intent to add a hotel to existing flight search
+  const isAddHotelRequest = useCallback((text: string): boolean => {
+    const norm = normalizeText(text);
+    const hotelKeywords = [
+      'agrega un hotel', 'agregale un hotel', 'agregar un hotel', 'sumale un hotel', 'añade un hotel',
+      'agrega hotel', 'agregale hotel', 'sumale hotel', 'añade hotel', 'agregar hotel', 'agregame un hotel'
+    ];
+    return hotelKeywords.some(k => norm.includes(k)) || (norm.includes('hotel') && norm.includes('misma')); // e.g., "hotel mismas fechas"
+  }, [normalizeText]);
+
+
+
   // Load contextual memory from database when conversation changes
   const loadContextualMemory = useCallback(async (conversationId: string) => {
     try {
@@ -854,6 +866,59 @@ const Chat = () => {
     messages,
     updateMessageStatus
   } = useMessages(selectedConversation);
+  // Helper: extract last flight context (destination/dates/adults/children) from recent assistant message
+  const getContextFromLastFlights = useCallback(() => {
+    try {
+      const lastWithFlights = [...(messages || [])]
+        .filter(m => m.role === 'assistant' && m.meta && (m.meta as any).combinedData && Array.isArray((m.meta as any).combinedData.flights) && (m.meta as any).combinedData.flights.length > 0)
+        .pop();
+      if (!lastWithFlights) return null;
+      const meta = lastWithFlights.meta as any;
+      const flights = meta.combinedData.flights as Array<any>;
+      const first = flights[0];
+      if (!first) return null;
+      const destination = first.legs?.[0]?.arrival?.city_code || '';
+      const origin = first.legs?.[0]?.departure?.city_code || '';
+      const departureDate = first.departure_date || '';
+      const returnDate = first.return_date || undefined;
+      const adults = first.adults || 1;
+      const children = first.childrens || 0;
+      return { origin, destination, departureDate, returnDate, adults, children };
+    } catch (e) {
+      console.warn('⚠️ [CONTEXT] Could not extract last flight context:', e);
+      return null;
+    }
+  }, [messages]);
+  // Rehydrate last PDF analysis from the latest assistant message with pdf_analysis metadata
+  useEffect(() => {
+    if (!selectedConversation || !messages || messages.length === 0) return;
+
+    try {
+      const lastPdfAnalysisMsg = [...messages]
+        .filter(m => {
+          if (m.role !== 'assistant') return false;
+          const content = m.content as any;
+          const metadata = content?.metadata as any;
+          return metadata?.type === 'pdf_analysis' && metadata?.analysis;
+        })
+        .pop();
+
+      if (lastPdfAnalysisMsg) {
+        const metadata = (lastPdfAnalysisMsg.content as any)?.metadata as any;
+        setLastPdfAnalysis({
+          analysis: {
+            success: true,
+            content: metadata.analysis,
+            suggestions: metadata.suggestions || []
+          },
+          conversationId: selectedConversation,
+          timestamp: lastPdfAnalysisMsg.created_at
+        });
+      }
+    } catch (e) {
+      console.warn('⚠️ [PDF ANALYSIS REHYDRATE] Could not rehydrate last analysis:', e);
+    }
+  }, [selectedConversation, messages]);
 
   // Create new chat function (defined before useEffects that use it)
   const createNewChat = useCallback(async (initialTitle?: string) => {
@@ -941,36 +1006,7 @@ const Chat = () => {
 
   // Removed auto-scroll behavior to prevent input jumping
 
-  // Rehydrate last PDF analysis from the latest assistant message with pdf_analysis metadata
-  useEffect(() => {
-    if (!selectedConversation || !messages || messages.length === 0) return;
 
-    try {
-      const lastPdfAnalysisMsg = [...messages]
-        .filter(m => {
-          if (m.role !== 'assistant') return false;
-          const content = m.content as any;
-          const metadata = content?.metadata as any;
-          return metadata?.type === 'pdf_analysis' && metadata?.analysis;
-        })
-        .pop();
-
-      if (lastPdfAnalysisMsg) {
-        const metadata = (lastPdfAnalysisMsg.content as any)?.metadata as any;
-        setLastPdfAnalysis({
-          analysis: {
-            success: true,
-            content: metadata.analysis,
-            suggestions: metadata.suggestions || []
-          },
-          conversationId: selectedConversation,
-          timestamp: lastPdfAnalysisMsg.created_at
-        });
-      }
-    } catch (e) {
-      console.warn('⚠️ [PDF ANALYSIS REHYDRATE] Could not rehydrate last analysis:', e);
-    }
-  }, [selectedConversation, messages]);
 
   // Handle Add to CRM button click
   const handleAddToCRM = useCallback(async () => {
@@ -1299,6 +1335,64 @@ const Chat = () => {
 
         setIsLoading(false);
         return;
+      }
+    }
+
+    // If user asks to add a hotel for same dates after flight results, coerce to combined using last flight context
+    if (isAddHotelRequest(message)) {
+      const flightCtx = getContextFromLastFlights();
+      if (flightCtx) {
+        console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
+        setIsLoading(true);
+        try {
+          // Persist a synthetic combined request and run combined search directly
+          const combinedParsed: ParsedTravelRequest = {
+            requestType: 'combined',
+            flights: {
+              origin: flightCtx.origin,
+              destination: flightCtx.destination,
+              departureDate: flightCtx.departureDate,
+              returnDate: flightCtx.returnDate,
+              adults: flightCtx.adults,
+              children: flightCtx.children,
+              luggage: 'checked',
+              stops: 'any'
+            },
+            hotels: {
+              city: flightCtx.destination,
+              checkinDate: flightCtx.departureDate,
+              checkoutDate: flightCtx.returnDate || new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+              adults: flightCtx.adults,
+              children: flightCtx.children,
+              roomType: 'double',
+              mealPlan: 'breakfast'
+            },
+            confidence: 0.9,
+            originalMessage: message
+          } as any;
+
+          // Save minimal context for later refinement
+          setPreviousParsedRequest(combinedParsed);
+          await saveContextualMemory(selectedConversation, combinedParsed);
+
+          // Run combined search (will ask only missing hotel details later if needed)
+          const combinedResult = await handleCombinedSearch(combinedParsed);
+
+          await addMessageViaSupabase({
+            conversation_id: selectedConversation,
+            role: 'assistant' as const,
+            content: { text: combinedResult.response },
+            meta: combinedResult.data ? { ...combinedResult.data } : {}
+          });
+
+          setMessage('');
+          setIsLoading(false);
+          return;
+        } catch (err) {
+          console.error('❌ [INTENT] Add hotel flow failed:', err);
+          setIsLoading(false);
+          // fall through to normal flow
+        }
       }
     }
 
