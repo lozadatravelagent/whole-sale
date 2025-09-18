@@ -1872,8 +1872,41 @@ const Chat = () => {
     console.log('📋 Parsed request:', parsed);
 
     try {
+      // Enrich hotel params from flight context if missing (city/dates/pax)
+      const enrichedParsed: ParsedTravelRequest = {
+        ...parsed,
+        hotels: {
+          // Prefer existing hotel fields
+          city: parsed.hotels?.city || parsed.flights?.destination || '',
+          checkinDate: parsed.hotels?.checkinDate || parsed.flights?.departureDate || '',
+          checkoutDate:
+            parsed.hotels?.checkoutDate ||
+            parsed.flights?.returnDate ||
+            (parsed.flights?.departureDate
+              ? new Date(new Date(parsed.flights.departureDate).getTime() + 3 * 86400000)
+                .toISOString()
+                .split('T')[0]
+              : ''),
+          adults: parsed.hotels?.adults || parsed.flights?.adults || 1,
+          children: parsed.hotels?.children || parsed.flights?.children || 0,
+          roomType: parsed.hotels?.roomType,
+          mealPlan: parsed.hotels?.mealPlan,
+          hotelName: (parsed as any)?.hotels?.hotelName
+        } as any
+      };
+
+      // Validate we have at least a city to look up
+      if (!enrichedParsed.hotels?.city) {
+        console.warn('⚠️ [HOTEL SEARCH] Missing city for hotel search after enrichment');
+        return {
+          response:
+            '🏨 Necesito la ciudad o destino del hotel. ¿En qué ciudad quieres hospedarte?',
+          data: null
+        };
+      }
+
       console.log('🔄 [HOTEL SEARCH] Step 1: Formatting parameters for EUROVIPS API');
-      const eurovipsParams = formatForEurovips(parsed);
+      const eurovipsParams = formatForEurovips(enrichedParsed);
       console.log('📊 EUROVIPS parameters:', eurovipsParams);
 
       // Get city code first
