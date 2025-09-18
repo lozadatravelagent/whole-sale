@@ -766,9 +766,11 @@ const Chat = () => {
         .select('*')
         .eq('conversation_id', conversationId)
         .eq('role', 'assistant')
-        .or('meta->messageType.eq.contextual_memory,meta->messageType.eq.missing_info_request')
+        .or('meta->>messageType.eq.contextual_memory,meta->>messageType.eq.missing_info_request')
         .order('created_at', { ascending: false })
         .limit(1);
+
+      console.log('🔍 [MEMORY DEBUG] Query result:', { messages, error });
 
       if (error) {
         console.error('❌ [MEMORY] Error loading contextual memory:', error);
@@ -777,8 +779,11 @@ const Chat = () => {
 
       if (messages && messages.length > 0) {
         const message = messages[0];
+        console.log('🔍 [MEMORY DEBUG] Found message:', message);
         const meta = message.meta as any;
+        console.log('🔍 [MEMORY DEBUG] Message meta:', meta);
         const parsedRequest = meta?.parsedRequest || meta?.originalRequest;
+        console.log('🔍 [MEMORY DEBUG] Extracted parsed request:', parsedRequest);
 
         if (parsedRequest) {
           console.log('✅ [MEMORY] Found previous incomplete request:', parsedRequest);
@@ -1513,9 +1518,14 @@ const Chat = () => {
 
       // 3. Load contextual memory before parsing
       console.log('🧠 [MESSAGE FLOW] Step 7.5: Loading contextual memory before parsing');
+      console.log('🔍 [DEBUG] Selected conversation:', selectedConversation);
+      console.log('🔍 [DEBUG] Previous parsed request from state:', previousParsedRequest);
+
       const contextFromDB = await loadContextualMemory(selectedConversation);
+      console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
+
       const contextToUse = contextFromDB || previousParsedRequest;
-      console.log('📝 [CONTEXT] Using context:', contextToUse);
+      console.log('📝 [CONTEXT] Final context to use:', contextToUse);
 
       // 4. Use AI Parser to classify request
       console.log('🤖 [MESSAGE FLOW] Step 8: Starting AI parsing process');
