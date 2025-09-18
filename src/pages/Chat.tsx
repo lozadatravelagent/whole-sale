@@ -760,13 +760,13 @@ const Chat = () => {
     try {
       console.log('🧠 [MEMORY] Loading contextual memory for conversation:', conversationId);
 
-      // Look for the most recent contextual memory message
+      // Look for the most recent contextual memory message OR missing info request
       const { data: messages, error } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .eq('role', 'system')
-        .contains('meta', { messageType: 'contextual_memory' })
+        .eq('role', 'assistant')
+        .or('meta->messageType.eq.contextual_memory,meta->messageType.eq.missing_info_request')
         .order('created_at', { ascending: false })
         .limit(1);
 
@@ -778,7 +778,7 @@ const Chat = () => {
       if (messages && messages.length > 0) {
         const message = messages[0];
         const meta = message.meta as any;
-        const parsedRequest = meta?.parsedRequest;
+        const parsedRequest = meta?.parsedRequest || meta?.originalRequest;
 
         if (parsedRequest) {
           console.log('✅ [MEMORY] Found previous incomplete request:', parsedRequest);
