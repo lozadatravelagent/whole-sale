@@ -126,6 +126,54 @@ function preparePdfData(flights: FlightData[]) {
       legs_count: flight.legs?.length || 0
     });
 
+    // Process legs and ensure we have proper outbound/return structure
+    const processedLegs = flight.legs.map((leg, legIndex) => ({
+      departure: {
+        city_code: leg.departure.city_code,
+        city_name: leg.departure.city_name,
+        time: leg.departure.time
+      },
+      arrival: {
+        city_code: leg.arrival.city_code,
+        city_name: leg.arrival.city_name,
+        time: leg.arrival.time
+      },
+      duration: leg.duration,
+      flight_type: leg.flight_type || (legIndex === 0 ? 'outbound' : 'return'),
+      layovers: leg.layovers?.map(layover => ({
+        waiting_time: layover.waiting_time,
+        destination_city: layover.destination_city,
+        destination_code: layover.destination_code
+      })) || []
+    }));
+
+    // Ensure we have at least 2 legs for round trip flights
+    // If we only have 1 leg but have a return_date, create a placeholder return leg
+    let finalLegs = processedLegs;
+    if (processedLegs.length === 1 && flight.return_date && flight.return_date !== flight.departure_date) {
+      console.log(`🔄 Creating return leg for flight ${index + 1} - original leg was outbound only`);
+
+      // Create a return leg by reversing the outbound leg
+      const outboundLeg = processedLegs[0];
+      const returnLeg = {
+        departure: {
+          city_code: outboundLeg.arrival.city_code,
+          city_name: outboundLeg.arrival.city_name,
+          time: outboundLeg.arrival.time // This should be updated with actual return time
+        },
+        arrival: {
+          city_code: outboundLeg.departure.city_code,
+          city_name: outboundLeg.departure.city_name,
+          time: outboundLeg.departure.time // This should be updated with actual return time
+        },
+        duration: outboundLeg.duration,
+        flight_type: 'return',
+        layovers: []
+      };
+
+      finalLegs = [outboundLeg, returnLeg];
+    }
+
     return {
       airline: {
         code: flight.airline.code,
@@ -136,25 +184,7 @@ function preparePdfData(flights: FlightData[]) {
       luggage: flight.luggage || false,
       adults: flight.adults,
       childrens: flight.childrens,
-      legs: flight.legs.map(leg => ({
-        departure: {
-          city_code: leg.departure.city_code,
-          city_name: leg.departure.city_name,
-          time: leg.departure.time
-        },
-        arrival: {
-          city_code: leg.arrival.city_code,
-          city_name: leg.arrival.city_name,
-          time: leg.arrival.time
-        },
-        duration: leg.duration,
-        flight_type: leg.flight_type,
-        layovers: leg.layovers?.map(layover => ({
-          waiting_time: layover.waiting_time,
-          destination_city: layover.destination_city,
-          destination_code: layover.destination_code
-        })) || []
-      })),
+      legs: finalLegs,
       price: {
         amount: flight.price.amount.toFixed(2),
         currency: flight.price.currency
@@ -184,7 +214,16 @@ function preparePdfData(flights: FlightData[]) {
     transfers: firstFlight.transfers
   };
 
-  console.log('🎯 SENDING FLIGHT DATA AT ROOT LEVEL:', flightData);
+  console.log('🎯 SENDING FLIGHT DATA AT ROOT LEVEL:', {
+    ...flightData,
+    legs_count: flightData.legs.length,
+    legs_preview: flightData.legs.map((leg, i) => ({
+      index: i,
+      type: leg.flight_type,
+      route: `${leg.departure.city_code} → ${leg.arrival.city_code}`
+    }))
+  });
+
   return flightData;
 }
 
