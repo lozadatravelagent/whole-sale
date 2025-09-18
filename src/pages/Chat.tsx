@@ -775,16 +775,16 @@ const Chat = () => {
     try {
       console.log('💾 [MEMORY] Saving contextual memory for conversation:', conversationId);
 
-      // Store as a special system message for contextual memory
+      // Store as a special system message for contextual memory WITHOUT visible content
       const { error } = await supabase
         .from('messages')
         .insert({
           conversation_id: conversationId,
           role: 'system',
-          content: { text: 'Contextual memory stored' },
+          content: { text: '' }, // empty content to avoid visible noise
           meta: {
             messageType: 'contextual_memory',
-            parsedRequest: JSON.parse(JSON.stringify(parsedRequest)), // Convert to JSON-compatible format
+            parsedRequest: JSON.parse(JSON.stringify(parsedRequest)),
             timestamp: new Date().toISOString()
           }
         });
@@ -2716,9 +2716,18 @@ const Chat = () => {
                   {/* Inspiration text overlay for new conversations */}
                   <InspirationText />
 
-                  {messages.map((msg) => (
-                    <MessageItem key={msg.id} msg={msg} />
-                  ))}
+                  {messages
+                    .filter((m) => {
+                      const meta = (m as any).meta;
+                      // Ocultar mensajes de memoria/contexto del sistema
+                      if (m.role === 'system' && meta && meta.messageType === 'contextual_memory') return false;
+                      // Ocultar pedidos internos de info faltante si se desea mantener limpio (opcional)
+                      // if (m.role === 'assistant' && meta?.messageType === 'missing_info_request') return false;
+                      return true;
+                    })
+                    .map((msg) => (
+                      <MessageItem key={msg.id} msg={msg} />
+                    ))}
 
                   {isTyping && <TypingIndicator />}
                 </div>

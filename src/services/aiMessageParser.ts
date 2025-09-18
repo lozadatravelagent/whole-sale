@@ -334,6 +334,50 @@ export function combineWithPreviousRequest(
 export async function parseMessageWithAI(message: string): Promise<ParsedTravelRequest> {
     console.log('🤖 Starting AI message parsing for:', message);
 
+    // Pre-parser rápido: captura patrones comunes tipo
+    // "Ezeiza - Punta Cana, con valija para 2 personas"
+    // para mejorar el contexto antes de llamar al parser de IA.
+    const quick: Partial<ParsedTravelRequest> = {} as any;
+    try {
+        const normalized = message.replace(/\s+/g, ' ').trim();
+
+        // Origen - Destino
+        const odMatch = normalized.match(/([\p{L} .]+)\s*-\s*([\p{L} .]+)/u);
+        if (odMatch && odMatch[1] && odMatch[2]) {
+            quick.requestType = 'flights' as any;
+            quick.flights = {
+                origin: odMatch[1].trim(),
+                destination: odMatch[2].split(',')[0].trim(),
+                departureDate: '',
+                adults: 1,
+                children: 0,
+            } as any;
+        }
+
+        // Equipaje
+        if (/con valija|equipaje facturado/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), luggage: 'checked' as any } as any;
+        } else if (/solo equipaje de mano|equipaje de mano/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), luggage: 'carry_on' as any } as any;
+        }
+
+        // Pasajeros
+        const paxMatch = normalized.match(/(\d+)\s*(personas|pasajeros|adultos)/i);
+        if (paxMatch) {
+            const adt = Math.max(1, parseInt(paxMatch[1], 10));
+            quick.flights = { ...(quick.flights || ({} as any)), adults: adt, children: 0 } as any;
+        }
+
+        // Tipo de vuelo
+        if (/directo/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), stops: 'direct' as any } as any;
+        } else if (/con\s+escala|con\s+escalas|escala/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), stops: 'one_stop' as any } as any;
+        }
+    } catch (e) {
+        console.warn('Quick pre-parse failed:', e);
+    }
+
     try {
         const response = await supabase.functions.invoke('ai-message-parser', {
             body: {
