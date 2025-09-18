@@ -192,7 +192,7 @@ export function LeadDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden p-0">
-        <form onSubmit={handleSubmit(onSubmit)} className="flex h-full">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex h-[95vh]">
           {/* Main Content - Left Side */}
           <div className="flex-1 overflow-y-auto">
             <div className="p-6">

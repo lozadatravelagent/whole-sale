@@ -604,13 +604,15 @@ export async function updateLeadWithPdfData(
 export async function createComprehensiveLeadFromChat(
   conversation: ConversationRow,
   messages: MessageRow[],
-  parsedRequest?: ParsedTravelRequest
+  parsedRequest?: ParsedTravelRequest,
+  budgetFromPdf?: number
 ): Promise<string | null> {
   try {
     console.log('=== CREATING COMPREHENSIVE LEAD FROM CHAT ===');
     console.log('Conversation:', conversation.external_key);
     console.log('Messages count:', messages.length);
     console.log('Parsed request:', parsedRequest);
+    console.log('Budget from PDF:', budgetFromPdf);
 
     // Extraer información básica de los mensajes
     const travelInfo = await extractTravelInfoFromMessages(messages);
@@ -763,8 +765,10 @@ export async function createComprehensiveLeadFromChat(
     }
 
     // Agregar presupuesto si está disponible
-    if (comprehensiveInfo.budget && comprehensiveInfo.budget > 0) {
-      description += `💰 Presupuesto: $${comprehensiveInfo.budget}\n`;
+    const finalBudget = budgetFromPdf || comprehensiveInfo.budget;
+    if (finalBudget && finalBudget > 0) {
+      const budgetSource = budgetFromPdf ? ' (del último PDF)' : '';
+      description += `💰 Presupuesto: $${finalBudget.toFixed(2)}${budgetSource}\n`;
     }
 
     // Asegurar valores por defecto
@@ -774,7 +778,7 @@ export async function createComprehensiveLeadFromChat(
       checkout: comprehensiveInfo.dates?.checkout || '',
       adults: comprehensiveInfo.travelers?.adults || 1,
       children: comprehensiveInfo.travelers?.children || 0,
-      budget: comprehensiveInfo.budget || 0,
+      budget: budgetFromPdf || comprehensiveInfo.budget || 0, // Use PDF budget first
       tripType: comprehensiveInfo.tripType || 'package',
       description: description
     };

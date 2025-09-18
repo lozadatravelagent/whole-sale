@@ -970,11 +970,56 @@ const Chat = () => {
 
       console.log('📊 [ADD TO CRM] Using parsed request:', parsedRequest);
 
+      // Extract budget from latest PDF if available
+      let budgetFromPdf = 0;
+      const latestPdfMessage = messages
+        .filter(msg => {
+          const hasPdf = typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content;
+          const metadata = (msg.content as any)?.metadata;
+          return hasPdf && metadata?.type === 'pdf_generated';
+        })
+        .reverse()[0]; // Get the most recent PDF
+
+      if (latestPdfMessage) {
+        console.log('📄 [ADD TO CRM] Found latest PDF message, extracting budget');
+        try {
+          // Look for combined travel results in the message metadata
+          const metadata = (latestPdfMessage.content as any)?.metadata;
+          if (metadata?.combinedResults) {
+            const { flights, hotels } = metadata.combinedResults;
+
+            // Calculate budget from flights
+            if (flights && Array.isArray(flights)) {
+              flights.forEach((flight: any) => {
+                budgetFromPdf += flight.price?.amount || 0;
+              });
+            }
+
+            // Calculate budget from hotels
+            if (hotels && Array.isArray(hotels)) {
+              hotels.forEach((hotel: any) => {
+                const cheapestRoom = hotel.rooms?.reduce((cheapest: any, room: any) =>
+                  room.total_price < cheapest.total_price ? room : cheapest
+                );
+                if (cheapestRoom) {
+                  budgetFromPdf += cheapestRoom.total_price;
+                }
+              });
+            }
+          }
+        } catch (error) {
+          console.warn('⚠️ [ADD TO CRM] Error extracting budget from PDF:', error);
+        }
+      }
+
+      console.log('💰 [ADD TO CRM] Budget from latest PDF:', budgetFromPdf);
+
       // Create comprehensive lead
       const leadId = await createComprehensiveLeadFromChat(
         conversation,
         messages,
-        parsedRequest
+        parsedRequest,
+        budgetFromPdf > 0 ? budgetFromPdf : undefined
       );
 
       if (leadId) {
@@ -1512,27 +1557,8 @@ const Chat = () => {
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
       console.log('💾 Assistant message result:', assistantMessage);
 
-      // 6. Lead generation (MAINTAIN EXACT)
-      console.log('📋 [MESSAGE FLOW] Step 15: Starting lead generation process');
-      const conversation = conversations.find(c => c.id === selectedConversation);
-
-      if (conversation) {
-        console.log('📤 [MESSAGE FLOW] About to create/update lead (CRM Integration)');
-        const allMessages = [...messages, userMessage, assistantMessage];
-        console.log('📊 Messages for lead generation:', allMessages.length);
-
-        const leadId = await createLeadFromChat(conversation, allMessages);
-
-        if (leadId) {
-          console.log('✅ [MESSAGE FLOW] Step 16: Lead created/updated successfully');
-          console.log('🆔 Lead ID:', leadId);
-
-          toast({
-            title: "Lead Actualizado",
-            description: "Se ha creado/actualizado automáticamente tu lead en el CRM.",
-          });
-        }
-      }
+      // 6. Lead generation disabled - Only manual creation via button
+      console.log('📋 [MESSAGE FLOW] Step 15: Automatic lead generation disabled - only manual creation available');
 
       console.log('🎉 [MESSAGE FLOW] Message processing completed successfully');
 
@@ -2337,7 +2363,11 @@ const Chat = () => {
             source: 'combined_travel_pdf',
             timestamp: new Date().toISOString(),
             selectedFlights: selectedFlights.length,
-            selectedHotels: selectedHotels.length
+            selectedHotels: selectedHotels.length,
+            combinedResults: {
+              flights: selectedFlights,
+              hotels: selectedHotels
+            }
           }
         },
         meta: {
