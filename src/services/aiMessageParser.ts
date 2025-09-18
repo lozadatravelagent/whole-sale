@@ -336,6 +336,7 @@ export function combineWithPreviousRequest(
  */
 export async function parseMessageWithAI(message: string, previousContext?: ParsedTravelRequest | null): Promise<ParsedTravelRequest> {
     console.log('🤖 Starting AI message parsing for:', message);
+    console.log('✅ OpenAI parsing is ENABLED - fallback has been removed, will always use OpenAI');
 
     // Pre-parser rápido: captura patrones comunes tipo
     // "Ezeiza - Punta Cana, con valija para 2 personas"
@@ -344,9 +345,22 @@ export async function parseMessageWithAI(message: string, previousContext?: Pars
     try {
         const normalized = message.replace(/\s+/g, ' ').trim();
 
-        // Origen - Destino
+        // Origen - Destino con "desde X a Y"
+        const desdeMatch = normalized.match(/desde\s+([^a]+?)\s+a\s+([^a]+?)(?=\s+desde|\s+para|\s+con|$)/i);
+        if (desdeMatch && desdeMatch[1] && desdeMatch[2]) {
+            quick.requestType = 'flights' as any;
+            quick.flights = {
+                origin: desdeMatch[1].trim(),
+                destination: desdeMatch[2].trim(),
+                departureDate: '',
+                adults: 1,
+                children: 0,
+            } as any;
+        }
+
+        // Origen - Destino con formato "X - Y"
         const odMatch = normalized.match(/([\p{L} .]+)\s*-\s*([\p{L} .]+)/u);
-        if (odMatch && odMatch[1] && odMatch[2]) {
+        if (odMatch && odMatch[1] && odMatch[2] && !quick.flights) {
             quick.requestType = 'flights' as any;
             quick.flights = {
                 origin: odMatch[1].trim(),
@@ -357,10 +371,30 @@ export async function parseMessageWithAI(message: string, previousContext?: Pars
             } as any;
         }
 
+        // Extraer fechas con formato "desde X de mes al Y de mes"
+        const fechaMatch = normalized.match(/(\d{1,2})\s+de\s+([a-záéíóú]+)(?:\s+al\s+(\d{1,2})\s+de\s+([a-záéíóú]+))?/i);
+        if (fechaMatch && quick.flights) {
+            const mes = fechaMatch[2].toLowerCase();
+            const meses = {
+                'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+                'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+                'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+            };
+            const mesNum = meses[mes] || '10';
+            const año = '2024';
+            quick.flights.departureDate = `${año}-${mesNum}-${fechaMatch[1].padStart(2, '0')}`;
+
+            if (fechaMatch[3] && fechaMatch[4]) {
+                const mes2 = fechaMatch[4].toLowerCase();
+                const mes2Num = meses[mes2] || '11';
+                quick.flights.returnDate = `${año}-${mes2Num}-${fechaMatch[3].padStart(2, '0')}`;
+            }
+        }
+
         // Equipaje
         if (/con valija|equipaje facturado/i.test(normalized)) {
             quick.flights = { ...(quick.flights || ({} as any)), luggage: 'checked' as any } as any;
-        } else if (/solo equipaje de mano|equipaje de mano/i.test(normalized)) {
+        } else if (/solo equipaje de mano|equipaje de mano|carry on|sin valija/i.test(normalized)) {
             quick.flights = { ...(quick.flights || ({} as any)), luggage: 'carry_on' as any } as any;
         }
 
@@ -369,6 +403,8 @@ export async function parseMessageWithAI(message: string, previousContext?: Pars
         if (paxMatch) {
             const adt = Math.max(1, parseInt(paxMatch[1], 10));
             quick.flights = { ...(quick.flights || ({} as any)), adults: adt, children: 0 } as any;
+        } else if (/una persona|un pasajero|un adulto/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), adults: 1, children: 0 } as any;
         }
 
         // Tipo de vuelo
@@ -382,6 +418,7 @@ export async function parseMessageWithAI(message: string, previousContext?: Pars
     }
 
     try {
+        console.log('🚀 Calling OpenAI via Supabase Edge Function...');
         const response = await supabase.functions.invoke('ai-message-parser', {
             body: {
                 message,
@@ -393,13 +430,13 @@ export async function parseMessageWithAI(message: string, previousContext?: Pars
 
         if (response.error) {
             console.error('❌ AI parsing error:', response.error);
-            return getFallbackParsing(message);
+            throw new Error(`AI parsing failed: ${response.error}`);
         }
 
         const parsedResult = response.data?.parsed;
         if (!parsedResult) {
-            console.warn('⚠️ No parsed result from AI, using fallback');
-            return getFallbackParsing(message);
+            console.warn('⚠️ No parsed result from AI');
+            throw new Error('No parsed result from AI service');
         }
 
         console.log('✅ AI parsing successful:', parsedResult);
@@ -410,142 +447,10 @@ export async function parseMessageWithAI(message: string, previousContext?: Pars
 
     } catch (error) {
         console.error('❌ AI parsing service error:', error);
-        return getFallbackParsing(message);
+        throw error;
     }
 }
 
-/**
- * Fallback parsing using simplified logic when AI fails
- */
-export function getFallbackParsing(message: string): ParsedTravelRequest {
-    console.log('🔄 Using fallback parsing for:', message);
-
-    const lowerMessage = message.toLowerCase();
-
-    // Detect request type
-    let requestType: ParsedTravelRequest['requestType'] = 'general';
-
-    if (lowerMessage.includes('paquete')) {
-        requestType = 'packages';
-    } else if (lowerMessage.includes('vuelo') && lowerMessage.includes('hotel')) {
-        requestType = 'combined';
-    } else if (lowerMessage.includes('vuelo')) {
-        requestType = 'flights';
-    } else if (lowerMessage.includes('hotel')) {
-        requestType = 'hotels';
-    } else if (lowerMessage.includes('transfer') || lowerMessage.includes('excursion')) {
-        requestType = 'services';
-    }
-
-    // For flights, check if we have all required fields
-    if (requestType === 'flights') {
-        const hasOrigin = lowerMessage.includes('desde') || lowerMessage.includes('de ') || lowerMessage.includes('buenos aires') || lowerMessage.includes('ezeiza');
-        const hasDestination = lowerMessage.includes('a ') || lowerMessage.includes('hacia') || lowerMessage.includes('madrid') || lowerMessage.includes('punta cana');
-        const hasDates = lowerMessage.includes('el ') || lowerMessage.includes('día') || lowerMessage.includes('fecha') || /\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message);
-        const hasPassengers = /\d+\s+(?:personas?|adultos?)/i.test(message);
-        const hasLuggage = lowerMessage.includes('valija') || lowerMessage.includes('equipaje') || lowerMessage.includes('bodega') || lowerMessage.includes('mochila');
-        const hasStops = lowerMessage.includes('directo') || lowerMessage.includes('escala') || lowerMessage.includes('escalas');
-
-        const missingFields = [];
-        if (!hasOrigin) missingFields.push('origen');
-        if (!hasDestination) missingFields.push('destino');
-        if (!hasDates) missingFields.push('fechas');
-        if (!hasPassengers) missingFields.push('cantidad de personas');
-        if (!hasLuggage) missingFields.push('tipo de equipaje');
-        if (!hasStops) missingFields.push('tipo de vuelo (directo/escalas)');
-
-        if (missingFields.length > 0) {
-            return {
-                requestType: 'missing_info_request',
-                message: `Para buscar tu vuelo necesito algunos datos adicionales:\n\n${missingFields.map(field => `- ${field}`).join('\n')}\n\nPor favor, proporciona esta información para continuar con la búsqueda.`,
-                missingFields,
-                confidence: 0.2,
-                originalMessage: message
-            } as any;
-        }
-    }
-
-    // Basic people extraction
-    const peopleMatch = message.match(/(\d+)\s+(?:personas?|adultos?)/i);
-    const adults = peopleMatch ? parseInt(peopleMatch[1]) : 1;
-
-    const result: ParsedTravelRequest = {
-        requestType,
-        confidence: 0.3, // Low confidence for fallback
-        originalMessage: message
-    };
-
-    // For all request types, check if we have enough information
-    // If not, return missing info request instead of using hardcoded defaults
-    const missingFields = [];
-
-    if (requestType === 'flights') {
-        if (!lowerMessage.includes('desde') && !lowerMessage.includes('de ') && !lowerMessage.includes('buenos aires') && !lowerMessage.includes('ezeiza')) {
-            missingFields.push('origen');
-        }
-        if (!lowerMessage.includes('a ') && !lowerMessage.includes('hacia') && !lowerMessage.includes('madrid') && !lowerMessage.includes('punta cana')) {
-            missingFields.push('destino');
-        }
-        if (!lowerMessage.includes('el ') && !lowerMessage.includes('día') && !lowerMessage.includes('fecha') && !/\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message)) {
-            missingFields.push('fechas');
-        }
-        if (!/\d+\s+(?:personas?|adultos?)/i.test(message)) {
-            missingFields.push('cantidad de personas');
-        }
-        if (!lowerMessage.includes('valija') && !lowerMessage.includes('equipaje') && !lowerMessage.includes('bodega') && !lowerMessage.includes('mochila')) {
-            missingFields.push('tipo de equipaje');
-        }
-        if (!lowerMessage.includes('directo') && !lowerMessage.includes('escala') && !lowerMessage.includes('escalas')) {
-            missingFields.push('tipo de vuelo (directo/escalas)');
-        }
-    } else if (requestType === 'hotels') {
-        if (!lowerMessage.includes('en ') && !lowerMessage.includes('hotel') && !lowerMessage.includes('madrid') && !lowerMessage.includes('punta cana')) {
-            missingFields.push('ciudad del hotel');
-        }
-        if (!lowerMessage.includes('el ') && !lowerMessage.includes('día') && !lowerMessage.includes('fecha') && !/\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message)) {
-            missingFields.push('fechas de estadía');
-        }
-        if (!/\d+\s+(?:personas?|adultos?)/i.test(message)) {
-            missingFields.push('cantidad de personas');
-        }
-    } else if (requestType === 'packages') {
-        if (!lowerMessage.includes('para ') && !lowerMessage.includes('destino') && !lowerMessage.includes('españa') && !lowerMessage.includes('madrid')) {
-            missingFields.push('destino del paquete');
-        }
-        if (!lowerMessage.includes('el ') && !lowerMessage.includes('día') && !lowerMessage.includes('fecha') && !/\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message)) {
-            missingFields.push('fechas del viaje');
-        }
-        if (!/\d+\s+(?:personas?|adultos?)/i.test(message)) {
-            missingFields.push('cantidad de personas');
-        }
-    } else if (requestType === 'services') {
-        if (!lowerMessage.includes('en ') && !lowerMessage.includes('ciudad') && !lowerMessage.includes('madrid')) {
-            missingFields.push('ciudad del servicio');
-        }
-        if (!lowerMessage.includes('el ') && !lowerMessage.includes('día') && !lowerMessage.includes('fecha') && !/\d{1,2}\s+de\s+[a-záéíóú]+/i.test(message)) {
-            missingFields.push('fecha del servicio');
-        }
-    }
-
-    // If we have missing fields, return missing info request
-    if (missingFields.length > 0) {
-        return {
-            requestType: 'missing_info_request',
-            message: `Para ayudarte necesito algunos datos adicionales:\n\n${missingFields.map(field => `- ${field}`).join('\n')}\n\nPor favor, proporciona esta información para continuar.`,
-            missingFields,
-            confidence: 0.2,
-            originalMessage: message
-        } as any;
-    }
-
-    // If we reach here, we have enough basic info to proceed
-    // But we still don't use hardcoded defaults - let the AI parser handle it
-    result.requestType = 'general'; // Fallback to general query
-    result.confidence = 0.1; // Very low confidence
-
-    console.log('🔄 Fallback parsing result:', result);
-    return result;
-}
 
 /**
  * Validates that required fields are present for each request type

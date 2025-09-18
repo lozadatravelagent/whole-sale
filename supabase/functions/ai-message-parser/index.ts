@@ -1,80 +1,26 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
-
-interface ParsedTravelRequest {
-    requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general';
-    flights?: {
-        origin: string;
-        destination: string;
-        departureDate: string;
-        returnDate?: string;
-        adults: number;
-        children: number;
-        // Nuevos campos requeridos y opcionales
-        luggage?: 'carry_on' | 'checked' | 'both' | 'none';
-        departureTimePreference?: string;
-        arrivalTimePreference?: string;
-        stops?: 'direct' | 'one_stop' | 'two_stops' | 'any';
-        layoverDuration?: string;
-        preferredAirline?: string;
-    };
-    hotels?: {
-        city: string;
-        hotelName?: string;
-        checkinDate: string;
-        checkoutDate: string;
-        adults: number;
-        children: number;
-        // Nuevos campos requeridos para hoteles
-        roomType: 'single' | 'double' | 'triple'; // Tipo de habitación
-        hotelChain?: string; // Cadena hotelera (opcional)
-        mealPlan: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'; // Modalidad de alimentación
-        freeCancellation?: boolean; // Cancelación gratuita (opcional)
-        roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view'; // Tipo de habitación (opcional)
-        roomCount?: number; // Cantidad de habitaciones (opcional, default 1)
-    };
-    packages?: {
-        destination: string;
-        dateFrom: string;
-        dateTo: string;
-        packageClass: 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO';
-        adults: number;
-        children: number;
-    };
-    services?: {
-        city: string;
-        dateFrom: string;
-        dateTo?: string;
-        serviceType: '1' | '2' | '3'; // 1=Transfer, 2=Excursion, 3=Other
-    };
-    confidence: number;
-}
-
-serve(async (req) => {
-    if (req.method === 'OPTIONS') {
-        return new Response(null, { headers: corsHeaders });
+serve(async (req)=>{
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      headers: corsHeaders
+    });
+  }
+  try {
+    const { message, language = 'es', currentDate, previousContext } = await req.json();
+    if (!message) {
+      throw new Error('Message is required');
     }
-
-    try {
-        const { message, language = 'es', currentDate, previousContext } = await req.json();
-
-        if (!message) {
-            throw new Error('Message is required');
-        }
-
-        console.log('🤖 AI Message Parser - Processing:', message);
-
-        const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-        if (!openaiApiKey) {
-            throw new Error('OpenAI API key not configured');
-        }
-
-        const systemPrompt = `You are an expert travel assistant that parses Spanish travel requests and extracts structured data.
+    console.log('🤖 AI Message Parser - Processing:', message);
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiApiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+    const systemPrompt = `You are an expert travel assistant that parses Spanish travel requests and extracts structured data.
 
 IMPORTANT: Always respond with valid JSON only. No additional text or explanation.
 
@@ -101,6 +47,19 @@ Your task is to analyze travel messages and extract structured information for:
 - services: city, dates, service type (transfer/excursion)
 - combined: flights + hotels together
 
+CRITICAL REQUIREMENTS - NO DEFAULTS ALLOWED:
+If ANY required field is missing, you MUST respond with a "missing_info_request" type asking for the specific missing information.
+
+REQUIRED FIELDS FOR FLIGHTS:
+- origin (REQUIRED)
+- destination (REQUIRED) 
+- departureDate (REQUIRED)
+- returnDate (REQUIRED for round trips)
+- adults (REQUIRED)
+- children (REQUIRED - can be 0)
+- luggage (REQUIRED - "carry_on", "checked", "both", or "none")
+- stops (REQUIRED - "direct", "one_stop", "two_stops", or "any")
+
 Rules:
 1. Use IATA codes for airports when possible:
    - Madrid → MAD, Barcelona → BCN
@@ -110,8 +69,8 @@ Rules:
    - Nueva York → JFK
 2. Convert Spanish city names and airports to correct IATA codes
 3. For dates, use YYYY-MM-DD format
-4. If no specific dates mentioned, use reasonable defaults (1 week from current date)
-5. Default adults to 1 if not specified
+4. NEVER use default dates - if dates are missing, ask for them
+5. NEVER use default passenger counts - if missing, ask for them
 6. Package classes: AEROTERRESTRE (flight+hotel), TERRESTRE (hotel only), AEREO (flight only)
 7. Service types: "1" (transfer), "2" (excursion), "3" (other)
 8. Confidence: 0-1 score based on how clear the request is
@@ -130,23 +89,32 @@ HOTEL SPECIFIC RULES:
 17. Free cancellation: Extract if mentioned "cancelación gratuita", "free cancellation", "sin penalización"
 18. Room views: "mountain_view" (vista a la montaña), "beach_view" (vista al mar), "city_view" (vista a la ciudad), "garden_view" (vista al jardín)
 19. Room count: Default to 1 if not specified, extract number if mentioned "2 habitaciones", "tres habitaciones"
-20. Default adults to 1 if not specified for hotels
-21. Default roomType to "double" if not specified
-22. Default mealPlan to "breakfast" if not specified
+20. NEVER use default values for adults, roomType, or mealPlan - always ask if missing
 
 Examples:
 
 Input: "Quiero un vuelo de Buenos Aires a Madrid el 15 de octubre"
+Output: {
+  "requestType": "missing_info_request",
+  "message": "Para buscar tu vuelo necesito algunos datos adicionales:\n\n✈️ **Fechas:**\n- ¿Cuál es la fecha de regreso? (si es viaje de ida y vuelta)\n\n👥 **Pasajeros:**\n- ¿Cuántos adultos viajan?\n- ¿Cuántos niños viajan? (si los hay)\n\n🧳 **Equipaje:**\n- ¿Necesitas equipaje en bodega (valija) o solo equipaje de mano?\n\n✈️ **Tipo de vuelo:**\n- ¿Prefieres vuelo directo, con una escala, o no te importa?\n\n⏰ **Horarios (opcional):**\n- ¿Tienes preferencia de horario de salida o llegada?\n\n🏢 **Aerolínea (opcional):**\n- ¿Tienes alguna aerolínea preferida?",
+  "missingFields": ["returnDate", "adults", "children", "luggage", "stops"],
+  "confidence": 0.3
+}
+
+Input: "Quiero un vuelo de Buenos Aires a Madrid el 15 de octubre, vuelta el 22 de octubre, para 2 adultos, con valija, vuelo directo"
 Output: {
   "requestType": "flights",
   "flights": {
     "origin": "BUE",
     "destination": "MAD",
     "departureDate": "2025-10-15",
-    "adults": 1,
-    "children": 0
+    "returnDate": "2025-10-22",
+    "adults": 2,
+    "children": 0,
+    "luggage": "checked",
+    "stops": "direct"
   },
-  "confidence": 0.7
+  "confidence": 0.9
 }
 
 Input: "Vuelo directo desde Ezeiza a Punta Cana el 20 de diciembre para 2 personas con equipaje facturado, prefiero salir por la mañana con Aerolíneas Argentinas"
@@ -168,15 +136,10 @@ Output: {
 
 Input: "Vuelo desde Ezeiza a Punta Cana el 20 de diciembre"
 Output: {
-  "requestType": "flights",
-  "flights": {
-    "origin": "EZE",
-    "destination": "PUJ",
-    "departureDate": "2025-12-20",
-    "adults": 1,
-    "children": 0
-  },
-  "confidence": 0.6
+  "requestType": "missing_info_request",
+  "message": "Para buscar tu vuelo necesito algunos datos adicionales:\n\n✈️ **Fechas:**\n- ¿Es un viaje de ida y vuelta? ¿Cuál es la fecha de regreso?\n\n👥 **Pasajeros:**\n- ¿Cuántos adultos viajan?\n- ¿Cuántos niños viajan? (si los hay)\n\n🧳 **Equipaje:**\n- ¿Necesitas equipaje en bodega (valija) o solo equipaje de mano?\n\n✈️ **Tipo de vuelo:**\n- ¿Prefieres vuelo directo, con una escala, o no te importa?",
+  "missingFields": ["returnDate", "adults", "children", "luggage", "stops"],
+  "confidence": 0.3
 }
 
 Input: "Necesito hotel en Barcelona del 1 al 5 de diciembre para 2 personas"
@@ -244,115 +207,84 @@ Output: {
 
 Input: "Busco vuelo de Madrid a Barcelona y hotel en Barcelona"
 Output: {
-  "requestType": "combined",
-  "flights": {
-    "origin": "MAD",
-    "destination": "BCN",
-    "departureDate": "${getDefaultDate(currentDate)}",
-    "returnDate": "${getDefaultReturnDate(currentDate)}",
-    "adults": 1,
-    "children": 0
-  },
-  "hotels": {
-    "city": "Barcelona",
-    "checkinDate": "${getDefaultDate(currentDate)}",
-    "checkoutDate": "${getDefaultReturnDate(currentDate)}",
-    "adults": 1,
-    "children": 0
-  },
-  "confidence": 0.85
+  "requestType": "missing_info_request",
+  "message": "Para buscar tu paquete combinado necesito algunos datos adicionales:\n\n✈️ **Fechas del vuelo:**\n- ¿Cuál es la fecha de salida?\n- ¿Es un viaje de ida y vuelta? ¿Cuál es la fecha de regreso?\n\n🏨 **Fechas del hotel:**\n- ¿Cuál es la fecha de check-in?\n- ¿Cuál es la fecha de check-out?\n\n👥 **Pasajeros:**\n- ¿Cuántos adultos viajan?\n- ¿Cuántos niños viajan? (si los hay)\n\n🧳 **Equipaje:**\n- ¿Necesitas equipaje en bodega (valija) o solo equipaje de mano?\n\n✈️ **Tipo de vuelo:**\n- ¿Prefieres vuelo directo, con una escala, o no te importa?\n\n🏨 **Habitación:**\n- ¿Qué tipo de habitación prefieres? (individual, doble, triple)\n- ¿Qué modalidad de alimentación? (solo habitación, desayuno, media pensión, todo incluido)",
+  "missingFields": ["departureDate", "returnDate", "checkinDate", "checkoutDate", "adults", "children", "luggage", "stops", "roomType", "mealPlan"],
+  "confidence": 0.2
 }
 
 Analyze the following message and respond with JSON only:`;
-
-        const userPrompt = message;
-
-        const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${openaiApiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt }
-                ],
-                temperature: 0.1,
-                max_tokens: 1000
-            })
-        });
-
-        if (!openaiResponse.ok) {
-            const errorData = await openaiResponse.text();
-            console.error('❌ OpenAI API error:', errorData);
-            throw new Error(`OpenAI API error: ${openaiResponse.status}`);
-        }
-
-        const openaiData = await openaiResponse.json();
-        const aiResponse = openaiData.choices[0]?.message?.content;
-
-        if (!aiResponse) {
-            throw new Error('No response from OpenAI');
-        }
-
-        console.log('🤖 Raw AI response:', aiResponse);
-
-        // Parse the JSON response
-        let parsed: ParsedTravelRequest;
-        try {
-            parsed = JSON.parse(aiResponse);
-        } catch (parseError) {
-            console.error('❌ Failed to parse AI response as JSON:', parseError);
-            console.error('❌ AI response was:', aiResponse);
-            throw new Error('Invalid JSON response from AI');
-        }
-
-        // Validate the response structure
-        if (!parsed.requestType || typeof parsed.confidence !== 'number') {
-            throw new Error('Invalid response structure from AI');
-        }
-
-        console.log('✅ AI parsing successful:', parsed);
-
-        return new Response(JSON.stringify({
-            success: true,
-            parsed,
-            aiResponse: aiResponse,
-            timestamp: new Date().toISOString()
-        }), {
-            headers: {
-                ...corsHeaders,
-                'Content-Type': 'application/json'
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ AI Message Parser error:', error);
-
-        return new Response(JSON.stringify({
-            success: false,
-            error: error.message,
-            timestamp: new Date().toISOString()
-        }), {
-            status: 500,
-            headers: {
-                ...corsHeaders,
-                'Content-Type': 'application/json'
-            }
-        });
+    const userPrompt = message;
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 1000
+      })
+    });
+    if (!openaiResponse.ok) {
+      const errorData = await openaiResponse.text();
+      console.error('❌ OpenAI API error:', errorData);
+      throw new Error(`OpenAI API error: ${openaiResponse.status}`);
     }
+    const openaiData = await openaiResponse.json();
+    const aiResponse = openaiData.choices[0]?.message?.content;
+    if (!aiResponse) {
+      throw new Error('No response from OpenAI');
+    }
+    console.log('🤖 Raw AI response:', aiResponse);
+    // Parse the JSON response
+    let parsed;
+    try {
+      parsed = JSON.parse(aiResponse);
+    } catch (parseError) {
+      console.error('❌ Failed to parse AI response as JSON:', parseError);
+      console.error('❌ AI response was:', aiResponse);
+      throw new Error('Invalid JSON response from AI');
+    }
+    // Validate the response structure
+    if (!parsed.requestType || typeof parsed.confidence !== 'number') {
+      throw new Error('Invalid response structure from AI');
+    }
+    console.log('✅ AI parsing successful:', parsed);
+    return new Response(JSON.stringify({
+      success: true,
+      parsed,
+      aiResponse: aiResponse,
+      timestamp: new Date().toISOString()
+    }), {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    });
+  } catch (error) {
+    console.error('❌ AI Message Parser error:', error);
+    return new Response(JSON.stringify({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    }), {
+      status: 500,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    });
+  }
 });
-
-function getDefaultDate(currentDate: string): string {
-    const date = new Date(currentDate);
-    date.setDate(date.getDate() + 7);
-    return date.toISOString().split('T')[0];
-}
-
-function getDefaultReturnDate(currentDate: string): string {
-    const date = new Date(currentDate);
-    date.setDate(date.getDate() + 14);
-    return date.toISOString().split('T')[0];
-}

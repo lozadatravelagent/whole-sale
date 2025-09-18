@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
 import { createLeadFromChat, updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
 import { analyzePdfContent, generatePriceChangeSuggestions, uploadPdfFile, processPriceChangeRequest, searchCheaperFlights } from '@/services/pdfProcessor';
-import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling, validateFlightRequiredFields, validateHotelRequiredFields, generateMissingInfoMessage, combineWithPreviousRequest } from '@/services/aiMessageParser';
+import { parseMessageWithAI, formatForEurovips, formatForStarling, validateFlightRequiredFields, validateHotelRequiredFields, generateMissingInfoMessage, combineWithPreviousRequest } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import CombinedTravelSelector from '@/components/crm/CombinedTravelSelector';
@@ -1513,23 +1513,13 @@ const Chat = () => {
 
       // 3. Use AI Parser to classify request
       console.log('🤖 [MESSAGE FLOW] Step 8: Starting AI parsing process');
-      let parsedRequest: ParsedTravelRequest;
+      console.log('📤 [MESSAGE FLOW] About to call AI message parser (Supabase Edge Function)');
+      console.log('🧠 Message to parse:', currentMessage);
 
-      try {
-        console.log('📤 [MESSAGE FLOW] About to call AI message parser (Supabase Edge Function)');
-        console.log('🧠 Message to parse:', currentMessage);
+      let parsedRequest = await parseMessageWithAI(currentMessage, previousParsedRequest);
 
-        parsedRequest = await parseMessageWithAI(currentMessage, previousParsedRequest);
-
-        console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
-        console.log('🎯 AI parsing result:', parsedRequest);
-      } catch (aiError) {
-        console.error('❌ [MESSAGE FLOW] AI parsing failed, using fallback');
-        console.log('🔄 [MESSAGE FLOW] Step 9b: Using fallback parsing');
-
-        parsedRequest = getFallbackParsing(currentMessage);
-        console.log('📋 Fallback parsing result:', parsedRequest);
-      }
+      console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
+      console.log('🎯 AI parsing result:', parsedRequest);
 
       // 4. Combine with previous request if available (contextual memory)
       console.log('🧠 [MESSAGE FLOW] Step 10: Combining with previous request');

@@ -155,8 +155,8 @@ function DroppableSection({
         </div>
         {totalBudget > 0 && (
           <div className={`flex items-center gap-1 text-sm font-semibold ${section.name.toLowerCase().includes('perdido') || section.name.toLowerCase().includes('lost')
-              ? 'text-red-600'
-              : 'text-green-600'
+            ? 'text-red-600'
+            : 'text-green-600'
             }`}>
             <DollarSign className="h-4 w-4" />
             {formatCurrency(totalBudget)}
