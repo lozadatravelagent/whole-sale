@@ -2945,21 +2945,6 @@ const Chat = () => {
           )}
         </Button>
 
-        {/* Add to CRM button */}
-        <Button
-          onClick={handleAddToCRM}
-          disabled={disabled || isAddingToCRM || !selectedConversation || messages.length === 0}
-          size="sm"
-          variant="outline"
-          className="px-3"
-          title="Agregar conversación al CRM"
-        >
-          {isAddingToCRM ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <UserPlus className="h-4 w-4" />
-          )}
-        </Button>
 
         {/* Send button */}
         <Button
@@ -2990,6 +2975,23 @@ const Chat = () => {
             </p>
           </div>
         </div>
+
+        {/* Add to CRM button in header */}
+        <Button
+          onClick={handleAddToCRM}
+          disabled={isAddingToCRM || !selectedConversation || messages.length === 0}
+          size="sm"
+          variant="outline"
+          className="px-3"
+          title="Agregar conversación al CRM"
+        >
+          {isAddingToCRM ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <UserPlus className="h-4 w-4 mr-2" />
+          )}
+          Generar card en CRM
+        </Button>
       </div>
     </div>
   ));
