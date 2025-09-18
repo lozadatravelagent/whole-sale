@@ -1722,7 +1722,8 @@ const Chat = () => {
           assistantResponse = parsedRequest.message || 'Necesito más información para ayudarte. Por favor, proporciona los datos faltantes.';
           structuredData = {
             messageType: 'missing_info_request',
-            missingFields: parsedRequest.missingFields || []
+            missingFields: parsedRequest.missingFields || [],
+            originalRequest: parsedRequest // ← Guardamos el request completo para contexto
           };
           console.log('✅ [MESSAGE FLOW] Missing info request completed');
           break;
