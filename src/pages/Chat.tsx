@@ -1266,12 +1266,76 @@ const Chat = () => {
         parsedRequest = combineWithPreviousRequest(previousParsedRequest, currentMessage, parsedRequest);
       }
 
-      // 5. Validate required fields for flights/combined requests
+      // 5. Validate required fields (handle combined specially)
       console.log('🔍 [MESSAGE FLOW] Step 11: Validating required fields');
       console.log('📊 Request type detected:', parsedRequest.requestType);
 
-      // Validate flight fields if request involves flights
-      if (parsedRequest.requestType === 'flights' || parsedRequest.requestType === 'combined') {
+      // If message implies combined (mentions hotel y vuelo), coerce to combined and mirror basic fields
+      const lowerMsg = currentMessage.toLowerCase();
+      const impliesHotel = /\bhotel|alojamiento|noche|noches\b/.test(lowerMsg);
+      const impliesFlight = /\bvuelo|vuelos\b/.test(lowerMsg);
+      if (impliesHotel && impliesFlight && parsedRequest.requestType !== 'combined') {
+        console.log('🔀 [INTENT] Coercing requestType to combined based on message keywords');
+        parsedRequest.requestType = 'combined';
+        // Mirror city/dates from flights to hotels if missing
+        const f = parsedRequest.flights;
+        parsedRequest.hotels = parsedRequest.hotels || ({} as any);
+        if (f?.destination && !parsedRequest.hotels.city) parsedRequest.hotels.city = f.destination as any;
+        if (f?.departureDate && !parsedRequest.hotels.checkinDate) parsedRequest.hotels.checkinDate = f.departureDate as any;
+        if (f?.returnDate && !parsedRequest.hotels.checkoutDate) parsedRequest.hotels.checkoutDate = f.returnDate as any;
+        if (f?.adults && !parsedRequest.hotels.adults) parsedRequest.hotels.adults = f.adults as any;
+        parsedRequest.hotels.children = parsedRequest.hotels.children ?? (f?.children as any) ?? 0;
+      }
+
+      // Combined flow: validate both and send ONE aggregated prompt
+      if (parsedRequest.requestType === 'combined') {
+        console.log('🌟 [VALIDATION] Combined request - validating flights and hotels');
+        const flightVal = validateFlightRequiredFields(parsedRequest.flights);
+        const hotelVal = validateHotelRequiredFields(parsedRequest.hotels);
+
+        const missingAny = !flightVal.isValid || !hotelVal.isValid;
+        console.log('🧾 [VALIDATION] Combined results:', { flight: flightVal, hotel: hotelVal });
+        if (missingAny) {
+          // Persist context
+          setPreviousParsedRequest(parsedRequest);
+          await saveContextualMemory(selectedConversation, parsedRequest);
+
+          // Build aggregated message
+          let parts: string[] = [];
+          if (!flightVal.isValid) {
+            parts.push(
+              generateMissingInfoMessage(flightVal.missingFieldsSpanish, 'flights')
+            );
+          }
+          if (!hotelVal.isValid) {
+            parts.push(
+              generateMissingInfoMessage(hotelVal.missingFieldsSpanish, 'hotels')
+            );
+          }
+          const missingInfoMessage = parts.join('\n\n');
+
+          await addMessageViaSupabase({
+            conversation_id: selectedConversation,
+            role: 'assistant' as const,
+            content: { text: missingInfoMessage },
+            meta: {
+              status: 'sent',
+              messageType: 'missing_info_request',
+              missingFlightFields: flightVal.missingFields,
+              missingHotelFields: hotelVal.missingFields,
+              originalRequest: parsedRequest
+            }
+          });
+
+          console.log('✅ [VALIDATION] Aggregated missing info message sent');
+          return;
+        }
+
+        console.log('✅ [VALIDATION] Combined: all required fields present');
+        setPreviousParsedRequest(null);
+        await clearContextualMemory(selectedConversation);
+      } else if (parsedRequest.requestType === 'flights') {
+        // Validate flight fields
         console.log('✈️ [VALIDATION] Validating flight required fields');
         const validation = validateFlightRequiredFields(parsedRequest.flights);
 
@@ -1317,10 +1381,7 @@ const Chat = () => {
         // Clear previous request since we have all required fields
         setPreviousParsedRequest(null);
         await clearContextualMemory(selectedConversation);
-      }
-
-      // Validate hotel fields if request involves hotels
-      if (parsedRequest.requestType === 'hotels' || parsedRequest.requestType === 'combined') {
+      } else if (parsedRequest.requestType === 'hotels') {
         console.log('🏨 [VALIDATION] Validating hotel required fields');
         const validation = validateHotelRequiredFields(parsedRequest.hotels);
 
