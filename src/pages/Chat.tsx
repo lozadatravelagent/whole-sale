@@ -1551,6 +1551,23 @@ const Chat = () => {
       console.log('🔍 [MESSAGE FLOW] Step 11: Validating required fields');
       console.log('📊 Request type detected:', parsedRequest.requestType);
 
+      // If it's a missing_info_request but no fields are actually missing, convert to the appropriate type
+      if (parsedRequest.requestType === 'missing_info_request' &&
+        (!parsedRequest.missingFields || parsedRequest.missingFields.length === 0)) {
+        console.log('🔀 [VALIDATION] No missing fields detected - converting missing_info_request to appropriate type');
+
+        if (parsedRequest.flights) {
+          parsedRequest.requestType = 'flights';
+          console.log('✈️ [VALIDATION] Converted to flights request');
+        } else if (parsedRequest.hotels) {
+          parsedRequest.requestType = 'hotels';
+          console.log('🏨 [VALIDATION] Converted to hotels request');
+        } else if (parsedRequest.flights && parsedRequest.hotels) {
+          parsedRequest.requestType = 'combined';
+          console.log('🏨✈️ [VALIDATION] Converted to combined request');
+        }
+      }
+
       // If message implies combined (mentions hotel y vuelo), coerce to combined and mirror basic fields
       const lowerMsg = currentMessage.toLowerCase();
       const impliesHotel = /\bhotel|alojamiento|noche|noches\b/.test(lowerMsg);
