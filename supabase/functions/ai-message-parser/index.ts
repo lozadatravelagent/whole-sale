@@ -61,7 +61,7 @@ serve(async (req) => {
     }
 
     try {
-        const { message, language = 'es', currentDate } = await req.json();
+        const { message, language = 'es', currentDate, previousContext } = await req.json();
 
         if (!message) {
             throw new Error('Message is required');
@@ -79,6 +79,20 @@ serve(async (req) => {
 IMPORTANT: Always respond with valid JSON only. No additional text or explanation.
 
 Current date: ${currentDate}
+
+${previousContext ? `CONVERSATION CONTEXT: You have previous travel request context from this conversation:
+${JSON.stringify(previousContext, null, 2)}
+
+CRITICAL: Use this context to understand incomplete messages. If the current message only provides additional details (like "con valija", "single", "desayuno"), combine them with the previous context rather than asking for everything again.
+
+For example, if previous context shows a flight request for "Ezeiza to Punta Cana" and current message is "con valija, con escalas", update the previous flight request with luggage: "checked" and stops: "one_stop".
+
+RULES FOR CONTEXT HANDLING:
+- If current message adds missing fields to previous request, merge them
+- If current message contradicts previous request, use current message values
+- If current message is completely new request, ignore previous context
+- Maintain all valid fields from previous context when adding new information
+` : ''}
 
 Your task is to analyze travel messages and extract structured information for:
 - flights: origin, destination, dates, passengers, luggage, flight preferences

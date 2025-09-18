@@ -1244,7 +1244,7 @@ const Chat = () => {
         console.log('📤 [MESSAGE FLOW] About to call AI message parser (Supabase Edge Function)');
         console.log('🧠 Message to parse:', currentMessage);
 
-        parsedRequest = await parseMessageWithAI(currentMessage);
+        parsedRequest = await parseMessageWithAI(currentMessage, previousParsedRequest);
 
         console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
         console.log('🎯 AI parsing result:', parsedRequest);

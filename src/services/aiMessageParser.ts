@@ -331,7 +331,7 @@ export function combineWithPreviousRequest(
 /**
  * Uses OpenAI to intelligently parse travel messages and extract structured parameters
  */
-export async function parseMessageWithAI(message: string): Promise<ParsedTravelRequest> {
+export async function parseMessageWithAI(message: string, previousContext?: ParsedTravelRequest | null): Promise<ParsedTravelRequest> {
     console.log('🤖 Starting AI message parsing for:', message);
 
     // Pre-parser rápido: captura patrones comunes tipo
@@ -383,7 +383,8 @@ export async function parseMessageWithAI(message: string): Promise<ParsedTravelR
             body: {
                 message,
                 language: 'es', // Spanish
-                currentDate: new Date().toISOString().split('T')[0]
+                currentDate: new Date().toISOString().split('T')[0],
+                previousContext: previousContext // Include conversation context
             }
         });
 
