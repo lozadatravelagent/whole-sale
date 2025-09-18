@@ -388,7 +388,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       source: hotelWithRoom.selectedRoom ? 'SELECTED_BY_USER' : 'CHEAPEST_FALLBACK'
     });
 
-    // Calculate total price for all nights - total_price is already for all nights
+    // Calculate total price for all nights - total_price is already calculated by EUROVIPS
     const priceForAllNights = roomToUse.total_price;
 
     console.log(`💰 Hotel ${hotel.name} FINAL CALCULATION:`, {
@@ -441,7 +441,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       room.total_price < cheapest.total_price ? room : cheapest
     );
 
-    // Calculate total price: total_price is already for all nights
+    // Calculate total price: total_price is already calculated by EUROVIPS for all nights
     const priceForAllNights = roomToUse.total_price;
 
     console.log(`💰 Adding hotel ${hotel.name} price:`, {

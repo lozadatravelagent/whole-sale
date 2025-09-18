@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { createLead, getSections, getLeads, updateLead } from '@/lib/supabase-leads';
 import type { Database } from '@/integrations/supabase/types';
 import type { FlightData, HotelData } from '@/types';
@@ -28,6 +29,34 @@ export interface ExtractedTravelInfo {
     email?: string;
   };
   description?: string;
+  // Additional properties for comprehensive lead creation
+  flightDetails?: {
+    origin?: string;
+    destination?: string;
+    departureDate?: string;
+    returnDate?: string;
+    adults?: number;
+    children?: number;
+    luggage?: string;
+    stops?: string;
+    departureTimePreference?: string;
+    arrivalTimePreference?: string;
+    preferredAirline?: string;
+  };
+  hotelDetails?: {
+    city?: string;
+    hotelName?: string;
+    checkinDate?: string;
+    checkoutDate?: string;
+    adults?: number;
+    children?: number;
+    roomType?: string;
+    hotelChain?: string;
+    mealPlan?: string;
+    freeCancellation?: boolean;
+    roomView?: string;
+    roomCount?: number;
+  };
 }
 
 // Mapea requestType de ai-message-parser a tripType esperado
@@ -567,6 +596,238 @@ export async function updateLeadWithPdfData(
 
   } catch (error) {
     console.error('❌ [LEAD UPDATE] Error updating lead with PDF data:', error);
+    return null;
+  }
+}
+
+// Función para crear un lead completo desde toda la información del chat
+export async function createComprehensiveLeadFromChat(
+  conversation: ConversationRow,
+  messages: MessageRow[],
+  parsedRequest?: ParsedTravelRequest
+): Promise<string | null> {
+  try {
+    console.log('=== CREATING COMPREHENSIVE LEAD FROM CHAT ===');
+    console.log('Conversation:', conversation.external_key);
+    console.log('Messages count:', messages.length);
+    console.log('Parsed request:', parsedRequest);
+
+    // Extraer información básica de los mensajes
+    const travelInfo = await extractTravelInfoFromMessages(messages);
+
+    // Si tenemos un parsedRequest, usar esa información como prioritaria
+    let comprehensiveInfo = { ...travelInfo };
+
+    if (parsedRequest) {
+      console.log('📊 Using parsed request information for lead creation');
+
+      // Extraer información de vuelos si existe
+      if (parsedRequest.flights) {
+        comprehensiveInfo.destination = parsedRequest.flights.destination || travelInfo.destination;
+        comprehensiveInfo.dates = {
+          checkin: parsedRequest.flights.departureDate || travelInfo.dates?.checkin || '',
+          checkout: parsedRequest.flights.returnDate || travelInfo.dates?.checkout || ''
+        };
+        comprehensiveInfo.travelers = {
+          adults: parsedRequest.flights.adults || travelInfo.travelers?.adults || 1,
+          children: parsedRequest.flights.children || travelInfo.travelers?.children || 0
+        };
+        comprehensiveInfo.tripType = 'flight';
+
+        // Agregar información específica de vuelos
+        comprehensiveInfo.flightDetails = {
+          origin: parsedRequest.flights.origin,
+          destination: parsedRequest.flights.destination,
+          departureDate: parsedRequest.flights.departureDate,
+          returnDate: parsedRequest.flights.returnDate,
+          adults: parsedRequest.flights.adults,
+          children: parsedRequest.flights.children,
+          luggage: parsedRequest.flights.luggage,
+          stops: parsedRequest.flights.stops,
+          departureTimePreference: parsedRequest.flights.departureTimePreference,
+          arrivalTimePreference: parsedRequest.flights.arrivalTimePreference,
+          preferredAirline: parsedRequest.flights.preferredAirline
+        };
+      }
+
+      // Extraer información de hoteles si existe
+      if (parsedRequest.hotels) {
+        comprehensiveInfo.destination = parsedRequest.hotels.city || travelInfo.destination;
+        comprehensiveInfo.dates = {
+          checkin: parsedRequest.hotels.checkinDate || travelInfo.dates?.checkin || '',
+          checkout: parsedRequest.hotels.checkoutDate || travelInfo.dates?.checkout || ''
+        };
+        comprehensiveInfo.travelers = {
+          adults: parsedRequest.hotels.adults || travelInfo.travelers?.adults || 1,
+          children: parsedRequest.hotels.children || travelInfo.travelers?.children || 0
+        };
+        comprehensiveInfo.tripType = 'hotel';
+
+        // Agregar información específica de hoteles
+        comprehensiveInfo.hotelDetails = {
+          city: parsedRequest.hotels.city,
+          hotelName: parsedRequest.hotels.hotelName,
+          checkinDate: parsedRequest.hotels.checkinDate,
+          checkoutDate: parsedRequest.hotels.checkoutDate,
+          adults: parsedRequest.hotels.adults,
+          children: parsedRequest.hotels.children,
+          roomType: parsedRequest.hotels.roomType,
+          hotelChain: parsedRequest.hotels.hotelChain,
+          mealPlan: parsedRequest.hotels.mealPlan,
+          freeCancellation: parsedRequest.hotels.freeCancellation,
+          roomView: parsedRequest.hotels.roomView,
+          roomCount: parsedRequest.hotels.roomCount
+        };
+      }
+
+      // Si es combined, determinar el tipo de viaje
+      if (parsedRequest.requestType === 'combined') {
+        comprehensiveInfo.tripType = 'package';
+      }
+    }
+
+    console.log('📋 Comprehensive travel info:', comprehensiveInfo);
+
+    // Obtener la primera sección (Nuevos) para asignar el lead
+    const sections = await getSections(DUMMY_AGENCY_ID);
+    const firstSectionId = sections.length > 0 ? sections[0].id : undefined;
+
+    // Generar nombre del contacto secuencial
+    const allLeads = await getLeads();
+    const chatLeads = allLeads.filter(lead =>
+      lead.contact.name.startsWith('Chat-')
+    );
+    const nextChatNumber = chatLeads.length + 1;
+    const contactName = comprehensiveInfo.contactInfo?.name || `Chat-${nextChatNumber}`;
+
+    // Crear descripción detallada
+    let description = `Conversación iniciada: ${conversation.external_key}\n\n`;
+
+    if (comprehensiveInfo.flightDetails) {
+      description += `✈️ VUELO:\n`;
+      description += `- Origen: ${comprehensiveInfo.flightDetails.origin}\n`;
+      description += `- Destino: ${comprehensiveInfo.flightDetails.destination}\n`;
+      description += `- Fecha salida: ${comprehensiveInfo.flightDetails.departureDate}\n`;
+      if (comprehensiveInfo.flightDetails.returnDate) {
+        description += `- Fecha regreso: ${comprehensiveInfo.flightDetails.returnDate}\n`;
+      }
+      description += `- Pasajeros: ${comprehensiveInfo.flightDetails.adults} adultos, ${comprehensiveInfo.flightDetails.children} niños\n`;
+      if (comprehensiveInfo.flightDetails.luggage) {
+        description += `- Equipaje: ${comprehensiveInfo.flightDetails.luggage}\n`;
+      }
+      if (comprehensiveInfo.flightDetails.stops) {
+        description += `- Tipo vuelo: ${comprehensiveInfo.flightDetails.stops}\n`;
+      }
+      if (comprehensiveInfo.flightDetails.preferredAirline) {
+        description += `- Aerolínea preferida: ${comprehensiveInfo.flightDetails.preferredAirline}\n`;
+      }
+      description += `\n`;
+    }
+
+    if (comprehensiveInfo.hotelDetails) {
+      description += `🏨 HOTEL:\n`;
+      description += `- Ciudad: ${comprehensiveInfo.hotelDetails.city}\n`;
+      if (comprehensiveInfo.hotelDetails.hotelName) {
+        description += `- Hotel: ${comprehensiveInfo.hotelDetails.hotelName}\n`;
+      }
+      description += `- Check-in: ${comprehensiveInfo.hotelDetails.checkinDate}\n`;
+      description += `- Check-out: ${comprehensiveInfo.hotelDetails.checkoutDate}\n`;
+      description += `- Pasajeros: ${comprehensiveInfo.hotelDetails.adults} adultos, ${comprehensiveInfo.hotelDetails.children} niños\n`;
+      if (comprehensiveInfo.hotelDetails.roomType) {
+        description += `- Tipo habitación: ${comprehensiveInfo.hotelDetails.roomType}\n`;
+      }
+      if (comprehensiveInfo.hotelDetails.mealPlan) {
+        description += `- Modalidad: ${comprehensiveInfo.hotelDetails.mealPlan}\n`;
+      }
+      if (comprehensiveInfo.hotelDetails.hotelChain) {
+        description += `- Cadena hotelera: ${comprehensiveInfo.hotelDetails.hotelChain}\n`;
+      }
+      if (comprehensiveInfo.hotelDetails.freeCancellation) {
+        description += `- Cancelación gratuita: Sí\n`;
+      }
+      if (comprehensiveInfo.hotelDetails.roomView) {
+        description += `- Vista: ${comprehensiveInfo.hotelDetails.roomView}\n`;
+      }
+      if (comprehensiveInfo.hotelDetails.roomCount) {
+        description += `- Cantidad habitaciones: ${comprehensiveInfo.hotelDetails.roomCount}\n`;
+      }
+      description += `\n`;
+    }
+
+    // Agregar información de contacto si está disponible
+    if (comprehensiveInfo.contactInfo?.phone) {
+      description += `📞 Teléfono: ${comprehensiveInfo.contactInfo.phone}\n`;
+    }
+    if (comprehensiveInfo.contactInfo?.email) {
+      description += `📧 Email: ${comprehensiveInfo.contactInfo.email}\n`;
+    }
+
+    // Agregar presupuesto si está disponible
+    if (comprehensiveInfo.budget && comprehensiveInfo.budget > 0) {
+      description += `💰 Presupuesto: $${comprehensiveInfo.budget}\n`;
+    }
+
+    // Asegurar valores por defecto
+    const safeInfo = {
+      destination: comprehensiveInfo.destination || 'Por definir',
+      checkin: comprehensiveInfo.dates?.checkin || '',
+      checkout: comprehensiveInfo.dates?.checkout || '',
+      adults: comprehensiveInfo.travelers?.adults || 1,
+      children: comprehensiveInfo.travelers?.children || 0,
+      budget: comprehensiveInfo.budget || 0,
+      tripType: comprehensiveInfo.tripType || 'package',
+      description: description
+    };
+
+    console.log('📋 Safe info for lead creation:', safeInfo);
+
+    // Crear el lead
+    const leadData = {
+      contact: {
+        name: contactName,
+        phone: comprehensiveInfo.contactInfo?.phone || 'No especificado',
+        email: comprehensiveInfo.contactInfo?.email || ''
+      },
+      trip: {
+        type: safeInfo.tripType,
+        city: safeInfo.destination,
+        dates: {
+          checkin: safeInfo.checkin,
+          checkout: safeInfo.checkout
+        },
+        adults: safeInfo.adults,
+        children: safeInfo.children
+      },
+      tenant_id: DUMMY_TENANT_ID,
+      agency_id: DUMMY_AGENCY_ID,
+      status: 'new' as const,
+      section_id: firstSectionId,
+      budget: safeInfo.budget,
+      description: safeInfo.description,
+      conversation_id: conversation.id,
+      checklist: [
+        { id: '1', text: 'Chat iniciado', completed: true },
+        { id: '2', text: 'Información recopilada', completed: safeInfo.destination !== 'Por definir' },
+        { id: '3', text: 'Presupuesto definido', completed: safeInfo.budget > 0 },
+        { id: '4', text: 'Contacto pendiente', completed: false },
+        { id: '5', text: 'Lead creado manualmente', completed: true }
+      ]
+    };
+
+    console.log('📋 Creating comprehensive lead with data:', leadData);
+
+    const newLead = await createLead(leadData);
+
+    if (newLead) {
+      console.log('✅ Comprehensive lead created successfully:', newLead.id);
+      return newLead.id;
+    } else {
+      console.error('❌ Failed to create comprehensive lead');
+      return null;
+    }
+
+  } catch (error) {
+    console.error('❌ Error creating comprehensive lead from chat:', error);
     return null;
   }
 }

@@ -11,9 +11,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
-import { createLeadFromChat, updateLeadWithPdfData, diagnoseCRMIntegration } from '@/utils/chatToLead';
+import { createLeadFromChat, updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
 import { analyzePdfContent, generatePriceChangeSuggestions, uploadPdfFile, processPriceChangeRequest } from '@/services/pdfProcessor';
-import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling, validateFlightRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
+import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling, validateFlightRequiredFields, validateHotelRequiredFields, generateMissingInfoMessage, combineWithPreviousRequest } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import CombinedTravelSelector from '@/components/crm/CombinedTravelSelector';
@@ -34,7 +34,8 @@ import {
   FileText,
   Download,
   Paperclip,
-  Upload
+  Upload,
+  UserPlus
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { Database } from '@/integrations/supabase/types';
@@ -725,6 +726,104 @@ const Chat = () => {
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarLimit, setSidebarLimit] = useState(5);
+  const [previousParsedRequest, setPreviousParsedRequest] = useState<ParsedTravelRequest | null>(null);
+  const [isAddingToCRM, setIsAddingToCRM] = useState(false);
+
+  // Load contextual memory from database when conversation changes
+  const loadContextualMemory = useCallback(async (conversationId: string) => {
+    try {
+      console.log('🧠 [MEMORY] Loading contextual memory for conversation:', conversationId);
+
+      // Look for the most recent contextual memory message
+      const { data: messages, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .eq('role', 'system')
+        .contains('meta', { messageType: 'contextual_memory' })
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('❌ [MEMORY] Error loading contextual memory:', error);
+        return null;
+      }
+
+      if (messages && messages.length > 0) {
+        const message = messages[0];
+        const meta = message.meta as any;
+        const parsedRequest = meta?.parsedRequest;
+
+        if (parsedRequest) {
+          console.log('✅ [MEMORY] Found previous incomplete request:', parsedRequest);
+          setPreviousParsedRequest(parsedRequest);
+          return parsedRequest;
+        }
+      }
+
+      console.log('ℹ️ [MEMORY] No previous incomplete request found');
+      setPreviousParsedRequest(null);
+      return null;
+    } catch (error) {
+      console.error('❌ [MEMORY] Error in loadContextualMemory:', error);
+      return null;
+    }
+  }, []);
+
+  // Save contextual memory to database
+  const saveContextualMemory = useCallback(async (conversationId: string, parsedRequest: ParsedTravelRequest) => {
+    try {
+      console.log('💾 [MEMORY] Saving contextual memory for conversation:', conversationId);
+
+      // Store as a special system message for contextual memory
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          role: 'system',
+          content: { text: 'Contextual memory stored' },
+          meta: {
+            messageType: 'contextual_memory',
+            parsedRequest: JSON.parse(JSON.stringify(parsedRequest)), // Convert to JSON-compatible format
+            timestamp: new Date().toISOString()
+          }
+        });
+
+      if (error) {
+        console.error('❌ [MEMORY] Error saving contextual memory:', error);
+      } else {
+        console.log('✅ [MEMORY] Contextual memory saved successfully');
+      }
+    } catch (error) {
+      console.error('❌ [MEMORY] Error in saveContextualMemory:', error);
+    }
+  }, []);
+
+  // Clear contextual memory
+  const clearContextualMemory = useCallback(async (conversationId: string) => {
+    try {
+      console.log('🗑️ [MEMORY] Clearing contextual memory for conversation:', conversationId);
+
+      // Delete all contextual memory messages for this conversation
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .eq('conversation_id', conversationId)
+        .eq('role', 'system')
+        .contains('meta', { messageType: 'contextual_memory' });
+
+      if (error) {
+        console.error('❌ [MEMORY] Error clearing contextual memory:', error);
+      } else {
+        console.log('✅ [MEMORY] Contextual memory cleared successfully');
+        setPreviousParsedRequest(null);
+      }
+    } catch (error) {
+      console.error('❌ [MEMORY] Error in clearContextualMemory:', error);
+    }
+  }, []);
+
+
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -828,6 +927,79 @@ const Chat = () => {
 
   // Removed auto-scroll behavior to prevent input jumping
 
+  // Handle Add to CRM button click
+  const handleAddToCRM = useCallback(async () => {
+    if (!selectedConversation || !messages.length) {
+      toast({
+        title: "Error",
+        description: "No hay conversación seleccionada o mensajes disponibles",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsAddingToCRM(true);
+
+    try {
+      console.log('📋 [ADD TO CRM] Starting comprehensive lead creation');
+
+      // Get current conversation
+      const conversation = conversations.find(c => c.id === selectedConversation);
+      if (!conversation) {
+        throw new Error('Conversación no encontrada');
+      }
+
+      // Get the most recent parsed request from memory or messages
+      let parsedRequest = previousParsedRequest;
+
+      // If no parsed request in memory, try to find one in recent messages
+      if (!parsedRequest) {
+        const recentAssistantMessage = messages
+          .filter(msg => msg.role === 'assistant')
+          .reverse()
+          .find(msg => {
+            const meta = msg.meta as any;
+            return meta?.originalRequest || meta?.parsedRequest;
+          });
+
+        if (recentAssistantMessage) {
+          const meta = recentAssistantMessage.meta as any;
+          parsedRequest = meta?.originalRequest || meta?.parsedRequest;
+        }
+      }
+
+      console.log('📊 [ADD TO CRM] Using parsed request:', parsedRequest);
+
+      // Create comprehensive lead
+      const leadId = await createComprehensiveLeadFromChat(
+        conversation,
+        messages,
+        parsedRequest
+      );
+
+      if (leadId) {
+        toast({
+          title: "¡Lead creado exitosamente!",
+          description: `Lead agregado al CRM con ID: ${leadId}`,
+        });
+
+        console.log('✅ [ADD TO CRM] Lead created successfully:', leadId);
+      } else {
+        throw new Error('No se pudo crear el lead');
+      }
+
+    } catch (error) {
+      console.error('❌ [ADD TO CRM] Error creating lead:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo crear el lead. Inténtalo de nuevo.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsAddingToCRM(false);
+    }
+  }, [selectedConversation, messages, conversations, previousParsedRequest, toast]);
+
   // Handle message input changes - memoized to prevent re-renders
   const handleMessageChange = useCallback((newMessage: string) => {
     setMessage(newMessage);
@@ -839,8 +1011,11 @@ const Chat = () => {
       console.log('🔄 [CHAT] Conversation selected, resetting loading state');
       setIsLoading(false);
       setIsTyping(false);
+
+      // Load contextual memory for the selected conversation
+      loadContextualMemory(selectedConversation);
     }
-  }, [selectedConversation]);
+  }, [selectedConversation, loadContextualMemory]);
 
   // Maintain focus on input after re-renders
   useEffect(() => {
@@ -1081,8 +1256,18 @@ const Chat = () => {
         console.log('📋 Fallback parsing result:', parsedRequest);
       }
 
-      // 4. Validate required fields for flights/combined requests
-      console.log('🔍 [MESSAGE FLOW] Step 10: Validating required fields');
+      // 4. Combine with previous request if available (contextual memory)
+      console.log('🧠 [MESSAGE FLOW] Step 10: Combining with previous request');
+      if (previousParsedRequest) {
+        console.log('🔄 [MEMORY] Combining with previous request:', {
+          previousType: previousParsedRequest.requestType,
+          newType: parsedRequest.requestType
+        });
+        parsedRequest = combineWithPreviousRequest(previousParsedRequest, currentMessage, parsedRequest);
+      }
+
+      // 5. Validate required fields for flights/combined requests
+      console.log('🔍 [MESSAGE FLOW] Step 11: Validating required fields');
       console.log('📊 Request type detected:', parsedRequest.requestType);
 
       // Validate flight fields if request involves flights
@@ -1098,6 +1283,10 @@ const Chat = () => {
 
         if (!validation.isValid) {
           console.log('⚠️ [VALIDATION] Missing required fields, requesting more info');
+
+          // Store the current parsed request for future combination
+          setPreviousParsedRequest(parsedRequest);
+          await saveContextualMemory(selectedConversation, parsedRequest);
 
           // Generate message asking for missing information
           const missingInfoMessage = generateMissingInfoMessage(
@@ -1125,10 +1314,62 @@ const Chat = () => {
         }
 
         console.log('✅ [VALIDATION] All required fields present, proceeding with search');
+        // Clear previous request since we have all required fields
+        setPreviousParsedRequest(null);
+        await clearContextualMemory(selectedConversation);
       }
 
-      // 5. Execute searches based on type (WITHOUT N8N)
-      console.log('🔍 [MESSAGE FLOW] Step 11: Starting search process');
+      // Validate hotel fields if request involves hotels
+      if (parsedRequest.requestType === 'hotels' || parsedRequest.requestType === 'combined') {
+        console.log('🏨 [VALIDATION] Validating hotel required fields');
+        const validation = validateHotelRequiredFields(parsedRequest.hotels);
+
+        console.log('📋 [VALIDATION] Hotel validation result:', {
+          isValid: validation.isValid,
+          missingFields: validation.missingFields,
+          missingFieldsSpanish: validation.missingFieldsSpanish
+        });
+
+        if (!validation.isValid) {
+          console.log('⚠️ [VALIDATION] Missing hotel required fields, requesting more info');
+
+          // Store the current parsed request for future combination
+          setPreviousParsedRequest(parsedRequest);
+          await saveContextualMemory(selectedConversation, parsedRequest);
+
+          // Generate message asking for missing information
+          const missingInfoMessage = generateMissingInfoMessage(
+            validation.missingFieldsSpanish,
+            parsedRequest.requestType
+          );
+
+          console.log('💬 [VALIDATION] Generated missing hotel info message');
+
+          // Add assistant message with missing info request
+          const assistantMessage = await addMessageViaSupabase({
+            conversation_id: selectedConversation,
+            role: 'assistant' as const,
+            content: { text: missingInfoMessage },
+            meta: {
+              status: 'sent',
+              messageType: 'missing_info_request',
+              missingFields: validation.missingFields,
+              originalRequest: parsedRequest
+            }
+          });
+
+          console.log('✅ [VALIDATION] Missing hotel info message sent, stopping process');
+          return; // Stop processing here, wait for user response
+        }
+
+        console.log('✅ [VALIDATION] All hotel required fields present, proceeding with search');
+        // Clear previous request since we have all required fields
+        setPreviousParsedRequest(null);
+        await clearContextualMemory(selectedConversation);
+      }
+
+      // 6. Execute searches based on type (WITHOUT N8N)
+      console.log('🔍 [MESSAGE FLOW] Step 12: Starting search process');
 
       let assistantResponse = '';
       let structuredData = null;
@@ -2294,6 +2535,22 @@ const Chat = () => {
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Paperclip className="h-4 w-4" />
+          )}
+        </Button>
+
+        {/* Add to CRM button */}
+        <Button
+          onClick={handleAddToCRM}
+          disabled={disabled || isAddingToCRM || !selectedConversation || messages.length === 0}
+          size="sm"
+          variant="outline"
+          className="px-3"
+          title="Agregar conversación al CRM"
+        >
+          {isAddingToCRM ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <UserPlus className="h-4 w-4" />
           )}
         </Button>
 

@@ -24,6 +24,13 @@ export interface ParsedTravelRequest {
         checkoutDate: string;
         adults: number;
         children: number;
+        // Nuevos campos requeridos para hoteles
+        roomType: 'single' | 'double' | 'triple'; // Tipo de habitación
+        hotelChain?: string; // Cadena hotelera (opcional)
+        mealPlan: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'; // Modalidad de alimentación
+        freeCancellation?: boolean; // Cancelación gratuita (opcional)
+        roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view'; // Tipo de habitación (opcional)
+        roomCount?: number; // Cantidad de habitaciones (opcional, default 1)
     };
     packages?: {
         destination: string;
@@ -53,6 +60,16 @@ export interface RequiredFlightFields {
     adults: boolean;
     luggage: boolean;
     stops: boolean;
+}
+
+// Interfaz para campos requeridos de hoteles
+export interface RequiredHotelFields {
+    city: boolean;
+    checkinDate: boolean;
+    checkoutDate: boolean;
+    adults: boolean;
+    roomType: boolean;
+    mealPlan: boolean;
 }
 
 // Función para validar campos requeridos de vuelos
@@ -105,11 +122,63 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
     };
 }
 
+// Función para validar campos requeridos de hoteles
+export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels']): {
+    isValid: boolean;
+    missingFields: string[];
+    missingFieldsSpanish: string[];
+} {
+    if (!hotels) {
+        return {
+            isValid: false,
+            missingFields: ['city', 'checkinDate', 'checkoutDate', 'adults', 'roomType', 'mealPlan'],
+            missingFieldsSpanish: ['destino', 'fecha de entrada', 'fecha de salida', 'cantidad de pasajeros', 'tipo de habitación', 'modalidad de alimentación']
+        };
+    }
+
+    const missingFields: string[] = [];
+    const missingFieldsSpanish: string[] = [];
+
+    // Validar campos requeridos
+    if (!hotels.city) {
+        missingFields.push('city');
+        missingFieldsSpanish.push('destino');
+    }
+    if (!hotels.checkinDate) {
+        missingFields.push('checkinDate');
+        missingFieldsSpanish.push('fecha de entrada');
+    }
+    if (!hotels.checkoutDate) {
+        missingFields.push('checkoutDate');
+        missingFieldsSpanish.push('fecha de salida');
+    }
+    if (!hotels.adults || hotels.adults < 1) {
+        missingFields.push('adults');
+        missingFieldsSpanish.push('cantidad de pasajeros');
+    }
+    if (!hotels.roomType) {
+        missingFields.push('roomType');
+        missingFieldsSpanish.push('tipo de habitación (single, double, triple)');
+    }
+    if (!hotels.mealPlan) {
+        missingFields.push('mealPlan');
+        missingFieldsSpanish.push('modalidad de alimentación (all inclusive, desayuno, media pensión)');
+    }
+
+    return {
+        isValid: missingFields.length === 0,
+        missingFields,
+        missingFieldsSpanish
+    };
+}
+
 // Función para generar mensaje solicitando información faltante
 export function generateMissingInfoMessage(missingFieldsSpanish: string[], requestType: string): string {
     const baseMessage = requestType === 'flights'
         ? 'Para buscar los mejores vuelos, necesito que me proporciones la siguiente información:'
-        : 'Para buscar las mejores opciones de viaje, necesito que me proporciones la siguiente información:';
+        : requestType === 'hotels'
+            ? 'Para buscar los mejores hoteles, necesito que me proporciones la siguiente información:'
+            : 'Para buscar las mejores opciones de viaje, necesito que me proporciones la siguiente información:';
 
     const fieldsList = missingFieldsSpanish.map((field, index) =>
         `${index + 1}. **${field.charAt(0).toUpperCase() + field.slice(1)}**`
@@ -150,14 +219,113 @@ function generateFieldExamples(missingFieldsSpanish: string[]): string {
             case 'tipo de vuelo (directo o con escalas)':
                 examples.push('✈️ **Tipo de vuelo:** Por ejemplo: "vuelo directo", "con una escala", "cualquier vuelo"');
                 break;
+            // Ejemplos para hoteles
+            case 'destino':
+                examples.push('🏨 **Destino:** Por ejemplo: "Punta Cana", "Barcelona", "Miami"');
+                break;
+            case 'fecha de entrada':
+                examples.push('📅 **Fecha de entrada:** Por ejemplo: "15 de diciembre", "2025-12-15"');
+                break;
+            case 'fecha de salida':
+                examples.push('📅 **Fecha de salida:** Por ejemplo: "20 de diciembre", "2025-12-20"');
+                break;
+            case 'cantidad de pasajeros':
+                examples.push('👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 adulto y 2 niños"');
+                break;
+            case 'tipo de habitación (single, double, triple)':
+                examples.push('🛏️ **Tipo de habitación:** Por ejemplo: "single", "double", "triple"');
+                break;
+            case 'modalidad de alimentación (all inclusive, desayuno, media pensión)':
+                examples.push('🍽️ **Modalidad:** Por ejemplo: "all inclusive", "con desayuno", "media pensión"');
+                break;
         }
     });
 
     if (examples.length > 0) {
-        return '**Ejemplos:**\n' + examples.join('\n');
+        return '**Ejemplos:**\n\n' + examples.join('\n\n');
     }
 
     return '';
+}
+
+/**
+ * Combines previous parsed request with new information from user message
+ */
+export function combineWithPreviousRequest(
+    previousRequest: ParsedTravelRequest | null,
+    newMessage: string,
+    parsedNewRequest: ParsedTravelRequest
+): ParsedTravelRequest {
+    if (!previousRequest) {
+        return parsedNewRequest;
+    }
+
+    // If request types don't match, return the new request
+    if (previousRequest.requestType !== parsedNewRequest.requestType) {
+        return parsedNewRequest;
+    }
+
+    console.log('🔄 Combining with previous request:', {
+        previousType: previousRequest.requestType,
+        newType: parsedNewRequest.requestType,
+        previousFields: previousRequest.flights ? Object.keys(previousRequest.flights) :
+            previousRequest.hotels ? Object.keys(previousRequest.hotels) : [],
+        newFields: parsedNewRequest.flights ? Object.keys(parsedNewRequest.flights) :
+            parsedNewRequest.hotels ? Object.keys(parsedNewRequest.hotels) : []
+    });
+
+    // Combine flights data
+    if (parsedNewRequest.requestType === 'flights' || parsedNewRequest.requestType === 'combined') {
+        const combinedFlights = {
+            ...previousRequest.flights,
+            ...parsedNewRequest.flights,
+            // Only update fields that have new values
+            ...(parsedNewRequest.flights?.origin && { origin: parsedNewRequest.flights.origin }),
+            ...(parsedNewRequest.flights?.destination && { destination: parsedNewRequest.flights.destination }),
+            ...(parsedNewRequest.flights?.departureDate && { departureDate: parsedNewRequest.flights.departureDate }),
+            ...(parsedNewRequest.flights?.returnDate && { returnDate: parsedNewRequest.flights.returnDate }),
+            ...(parsedNewRequest.flights?.adults && { adults: parsedNewRequest.flights.adults }),
+            ...(parsedNewRequest.flights?.children && { children: parsedNewRequest.flights.children }),
+            ...(parsedNewRequest.flights?.luggage && { luggage: parsedNewRequest.flights.luggage }),
+            ...(parsedNewRequest.flights?.stops && { stops: parsedNewRequest.flights.stops }),
+            ...(parsedNewRequest.flights?.departureTimePreference && { departureTimePreference: parsedNewRequest.flights.departureTimePreference }),
+            ...(parsedNewRequest.flights?.arrivalTimePreference && { arrivalTimePreference: parsedNewRequest.flights.arrivalTimePreference }),
+            ...(parsedNewRequest.flights?.layoverDuration && { layoverDuration: parsedNewRequest.flights.layoverDuration }),
+            ...(parsedNewRequest.flights?.preferredAirline && { preferredAirline: parsedNewRequest.flights.preferredAirline })
+        };
+
+        parsedNewRequest.flights = combinedFlights;
+    }
+
+    // Combine hotels data
+    if (parsedNewRequest.requestType === 'hotels' || parsedNewRequest.requestType === 'combined') {
+        const combinedHotels = {
+            ...previousRequest.hotels,
+            ...parsedNewRequest.hotels,
+            // Only update fields that have new values
+            ...(parsedNewRequest.hotels?.city && { city: parsedNewRequest.hotels.city }),
+            ...(parsedNewRequest.hotels?.checkinDate && { checkinDate: parsedNewRequest.hotels.checkinDate }),
+            ...(parsedNewRequest.hotels?.checkoutDate && { checkoutDate: parsedNewRequest.hotels.checkoutDate }),
+            ...(parsedNewRequest.hotels?.adults && { adults: parsedNewRequest.hotels.adults }),
+            ...(parsedNewRequest.hotels?.children && { children: parsedNewRequest.hotels.children }),
+            ...(parsedNewRequest.hotels?.roomType && { roomType: parsedNewRequest.hotels.roomType }),
+            ...(parsedNewRequest.hotels?.mealPlan && { mealPlan: parsedNewRequest.hotels.mealPlan }),
+            ...(parsedNewRequest.hotels?.hotelChain && { hotelChain: parsedNewRequest.hotels.hotelChain }),
+            ...(parsedNewRequest.hotels?.freeCancellation !== undefined && { freeCancellation: parsedNewRequest.hotels.freeCancellation }),
+            ...(parsedNewRequest.hotels?.roomView && { roomView: parsedNewRequest.hotels.roomView }),
+            ...(parsedNewRequest.hotels?.roomCount && { roomCount: parsedNewRequest.hotels.roomCount })
+        };
+
+        parsedNewRequest.hotels = combinedHotels;
+    }
+
+    console.log('✅ Combined request result:', {
+        type: parsedNewRequest.requestType,
+        flights: parsedNewRequest.flights ? Object.keys(parsedNewRequest.flights) : null,
+        hotels: parsedNewRequest.hotels ? Object.keys(parsedNewRequest.hotels) : null
+    });
+
+    return parsedNewRequest;
 }
 
 /**
@@ -258,7 +426,9 @@ export function getFallbackParsing(message: string): ParsedTravelRequest {
                 checkinDate: defaultDateFrom,
                 checkoutDate: defaultDateTo,
                 adults,
-                children: 0
+                children: 0,
+                roomType: 'double',
+                mealPlan: 'breakfast'
             };
             break;
 
@@ -295,7 +465,9 @@ export function getFallbackParsing(message: string): ParsedTravelRequest {
                 checkinDate: defaultDateFrom,
                 checkoutDate: defaultDateTo,
                 adults,
-                children: 0
+                children: 0,
+                roomType: 'double',
+                mealPlan: 'breakfast'
             };
             break;
     }
@@ -313,7 +485,8 @@ export function validateParsedRequest(parsed: ParsedTravelRequest): boolean {
             return !!(parsed.flights?.origin && parsed.flights?.destination && parsed.flights?.departureDate);
 
         case 'hotels':
-            return !!(parsed.hotels?.city && parsed.hotels?.checkinDate && parsed.hotels?.checkoutDate);
+            return !!(parsed.hotels?.city && parsed.hotels?.checkinDate && parsed.hotels?.checkoutDate &&
+                parsed.hotels?.adults && parsed.hotels?.roomType && parsed.hotels?.mealPlan);
 
         case 'packages':
             return !!(parsed.packages?.destination && parsed.packages?.dateFrom && parsed.packages?.dateTo);

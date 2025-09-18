@@ -30,6 +30,13 @@ interface ParsedTravelRequest {
         checkoutDate: string;
         adults: number;
         children: number;
+        // Nuevos campos requeridos para hoteles
+        roomType: 'single' | 'double' | 'triple'; // Tipo de habitación
+        hotelChain?: string; // Cadena hotelera (opcional)
+        mealPlan: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'; // Modalidad de alimentación
+        freeCancellation?: boolean; // Cancelación gratuita (opcional)
+        roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view'; // Tipo de habitación (opcional)
+        roomCount?: number; // Cantidad de habitaciones (opcional, default 1)
     };
     packages?: {
         destination: string;
@@ -75,7 +82,7 @@ Current date: ${currentDate}
 
 Your task is to analyze travel messages and extract structured information for:
 - flights: origin, destination, dates, passengers, luggage, flight preferences
-- hotels: city, dates, hotel name (if specified), passengers  
+- hotels: city, dates, hotel name (if specified), passengers, room type, meal plan, hotel chain, cancellation, room view, room count
 - packages: destination, dates, package type, passengers
 - services: city, dates, service type (transfer/excursion)
 - combined: flights + hotels together
@@ -101,6 +108,17 @@ FLIGHT SPECIFIC RULES:
 11. Stops: "direct" (directo), "one_stop" (una escala), "two_stops" (dos escalas), "any" (cualquier vuelo)
 12. Layover duration: Use format like "2h", "3h 30m" for preferred connection times
 13. Preferred airline: Use airline names like "Aerolíneas Argentinas", "Iberia", "LATAM", etc.
+
+HOTEL SPECIFIC RULES:
+14. Room types: "single" (habitación individual), "double" (habitación doble), "triple" (habitación triple)
+15. Meal plans: "all_inclusive" (todo incluido), "breakfast" (desayuno), "half_board" (media pensión), "room_only" (solo habitación)
+16. Hotel chains: Extract specific hotel chains mentioned like "Hilton", "Marriott", "Iberostar", "Barceló", etc.
+17. Free cancellation: Extract if mentioned "cancelación gratuita", "free cancellation", "sin penalización"
+18. Room views: "mountain_view" (vista a la montaña), "beach_view" (vista al mar), "city_view" (vista a la ciudad), "garden_view" (vista al jardín)
+19. Room count: Default to 1 if not specified, extract number if mentioned "2 habitaciones", "tres habitaciones"
+20. Default adults to 1 if not specified for hotels
+21. Default roomType to "double" if not specified
+22. Default mealPlan to "breakfast" if not specified
 
 Examples:
 
@@ -155,9 +173,45 @@ Output: {
     "checkinDate": "2025-12-01",
     "checkoutDate": "2025-12-05", 
     "adults": 2,
-    "children": 0
+    "children": 0,
+    "roomType": "double",
+    "mealPlan": "breakfast"
   },
   "confidence": 0.95
+}
+
+Input: "Busco hotel en Punta Cana del 15 al 20 de diciembre, habitación triple todo incluido con cancelación gratuita, vista al mar, 2 habitaciones"
+Output: {
+  "requestType": "hotels",
+  "hotels": {
+    "city": "Punta Cana",
+    "checkinDate": "2025-12-15",
+    "checkoutDate": "2025-12-20",
+    "adults": 1,
+    "children": 0,
+    "roomType": "triple",
+    "mealPlan": "all_inclusive",
+    "freeCancellation": true,
+    "roomView": "beach_view",
+    "roomCount": 2
+  },
+  "confidence": 0.95
+}
+
+Input: "Hotel en Madrid del 10 al 15 de enero, habitación individual con desayuno, cadena Marriott"
+Output: {
+  "requestType": "hotels",
+  "hotels": {
+    "city": "Madrid",
+    "checkinDate": "2025-01-10",
+    "checkoutDate": "2025-01-15",
+    "adults": 1,
+    "children": 0,
+    "roomType": "single",
+    "mealPlan": "breakfast",
+    "hotelChain": "Marriott"
+  },
+  "confidence": 0.9
 }
 
 Input: "Quiero paquetes para España en octubre 2025"
