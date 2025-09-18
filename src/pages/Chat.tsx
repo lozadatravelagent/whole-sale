@@ -12,7 +12,7 @@ import remarkGfm from 'remark-gfm';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth, useConversations, useMessages } from '@/hooks/useChat';
 import { createLeadFromChat, updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
-import { analyzePdfContent, generatePriceChangeSuggestions, uploadPdfFile, processPriceChangeRequest } from '@/services/pdfProcessor';
+import { analyzePdfContent, generatePriceChangeSuggestions, uploadPdfFile, processPriceChangeRequest, searchCheaperFlights } from '@/services/pdfProcessor';
 import { parseMessageWithAI, getFallbackParsing, formatForEurovips, formatForStarling, validateFlightRequiredFields, validateHotelRequiredFields, generateMissingInfoMessage, combineWithPreviousRequest } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
@@ -729,6 +729,20 @@ const Chat = () => {
   const [previousParsedRequest, setPreviousParsedRequest] = useState<ParsedTravelRequest | null>(null);
   const [isAddingToCRM, setIsAddingToCRM] = useState(false);
 
+  // Helper: normalize text removing diacritics and trimming spaces for robust intent detection
+  const normalizeText = useCallback((text: string): string => {
+    try {
+      return text
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+    } catch {
+      return text.toLowerCase();
+    }
+  }, []);
+
   // Load contextual memory from database when conversation changes
   const loadContextualMemory = useCallback(async (conversationId: string) => {
     try {
@@ -926,6 +940,37 @@ const Chat = () => {
   }, [isTyping]);
 
   // Removed auto-scroll behavior to prevent input jumping
+
+  // Rehydrate last PDF analysis from the latest assistant message with pdf_analysis metadata
+  useEffect(() => {
+    if (!selectedConversation || !messages || messages.length === 0) return;
+
+    try {
+      const lastPdfAnalysisMsg = [...messages]
+        .filter(m => {
+          if (m.role !== 'assistant') return false;
+          const content = m.content as any;
+          const metadata = content?.metadata as any;
+          return metadata?.type === 'pdf_analysis' && metadata?.analysis;
+        })
+        .pop();
+
+      if (lastPdfAnalysisMsg) {
+        const metadata = (lastPdfAnalysisMsg.content as any)?.metadata as any;
+        setLastPdfAnalysis({
+          analysis: {
+            success: true,
+            content: metadata.analysis,
+            suggestions: metadata.suggestions || []
+          },
+          conversationId: selectedConversation,
+          timestamp: lastPdfAnalysisMsg.created_at
+        });
+      }
+    } catch (e) {
+      console.warn('⚠️ [PDF ANALYSIS REHYDRATE] Could not rehydrate last analysis:', e);
+    }
+  }, [selectedConversation, messages]);
 
   // Handle Add to CRM button click
   const handleAddToCRM = useCallback(async () => {
@@ -1164,6 +1209,97 @@ const Chat = () => {
     if (!message.trim() || !selectedConversation || isLoading) {
       console.warn('❌ [MESSAGE FLOW] Validation failed - aborting send');
       return;
+    }
+
+    // Check if this is a cheaper flights search request for a previously uploaded PDF
+    if (isCheaperFlightRequest(message) && lastPdfAnalysis && lastPdfAnalysis.conversationId === selectedConversation) {
+      console.log('✈️ [CHEAPER FLIGHTS] Detected cheaper flights search request for previous PDF');
+
+      setIsLoading(true);
+
+      try {
+        // Search for cheaper flights based on PDF analysis
+        const cheaperFlightResult = await searchCheaperFlights(lastPdfAnalysis.analysis);
+
+        let responseMessage = '';
+
+        if (cheaperFlightResult.success) {
+          if (cheaperFlightResult.alternativeFlights && cheaperFlightResult.alternativeFlights.length > 0) {
+            responseMessage = `🔍 **Búsqueda de Vuelos Más Baratos**\n\n`;
+
+            if (cheaperFlightResult.savings && cheaperFlightResult.savings > 0) {
+              responseMessage += `💰 **¡Buenas noticias!** ${cheaperFlightResult.message}\n\n`;
+            } else {
+              responseMessage += `📊 **Comparación:** ${cheaperFlightResult.message}\n\n`;
+            }
+
+            responseMessage += `**📋 Vuelos del PDF:**\n`;
+            cheaperFlightResult.originalFlights?.forEach((flight, index) => {
+              responseMessage += `   ${index + 1}. ${flight.airline} - ${flight.route}\n`;
+              responseMessage += `      📅 ${flight.dates} | 💰 $${flight.price}\n`;
+            });
+
+            responseMessage += `\n**✈️ Alternativas encontradas:**\n`;
+            cheaperFlightResult.alternativeFlights.slice(0, 5).forEach((flight, index) => {
+              const price = flight.price?.amount || 0;
+              const currency = flight.price?.currency || 'USD';
+              responseMessage += `   ${index + 1}. ${flight.airline?.name || 'Aerolínea'}\n`;
+              responseMessage += `      📅 ${flight.departure_date} | 💰 $${price} ${currency}\n`;
+              if (flight.legs && flight.legs.length > 0) {
+                responseMessage += `      🛫 ${flight.legs[0].departure?.city_code} → ${flight.legs[0].arrival?.city_code}\n`;
+              }
+            });
+
+            if (cheaperFlightResult.savings && cheaperFlightResult.savings > 0) {
+              responseMessage += `\n💡 **¿Te interesa alguna de estas opciones?** Puedo generar un nuevo PDF con los vuelos que prefieras.`;
+            }
+
+          } else {
+            responseMessage = `🔍 **Búsqueda de Vuelos Más Baratos**\n\n${cheaperFlightResult.message || 'No se encontraron opciones más baratas para estas fechas, pero los precios del PDF son competitivos.'}\n\n💡 **Sugerencias:**\n• Intenta con fechas flexibles (+/- 3 días)\n• Considera aeropuertos alternativos\n• ¿Te interesa cambiar el presupuesto?`;
+          }
+        } else {
+          responseMessage = `❌ **Error en la búsqueda**\n\n${cheaperFlightResult.error}\n\n💡 **Alternativas:**\n• Verifica que el PDF contenga información de vuelos\n• Intenta subir el PDF nuevamente\n• Puedo ayudarte a buscar vuelos manualmente si me das los detalles`;
+        }
+
+        // Send response message
+        await addMessageViaSupabase({
+          conversation_id: selectedConversation,
+          role: 'assistant' as const,
+          content: {
+            text: responseMessage,
+            metadata: {
+              type: 'cheaper_flights_search',
+              originalRequest: message,
+              searchResult: cheaperFlightResult
+            }
+          },
+          meta: {
+            status: 'sent',
+            messageType: 'cheaper_flights_response'
+          }
+        });
+
+        setIsLoading(false);
+        return; // Exit early, don't process as regular message
+
+      } catch (error) {
+        console.error('❌ Error searching for cheaper flights:', error);
+
+        await addMessageViaSupabase({
+          conversation_id: selectedConversation,
+          role: 'assistant' as const,
+          content: {
+            text: `❌ **Error en la búsqueda de vuelos**\n\nNo pude buscar vuelos alternativos en este momento. Esto puede deberse a:\n\n• Problemas temporales con el servicio de búsqueda\n• El PDF no contiene información de vuelos válida\n• Error de conectividad\n\n¿Podrías intentarlo nuevamente o proporcionarme manualmente los detalles del vuelo?`
+          },
+          meta: {
+            status: 'sent',
+            messageType: 'error_response'
+          }
+        });
+
+        setIsLoading(false);
+        return;
+      }
     }
 
     // Check if this is a price change request for a previously uploaded PDF
@@ -2151,9 +2287,28 @@ const Chat = () => {
     });
   };
 
+  // Check if message is a cheaper flights search request
+  const isCheaperFlightRequest = (message: string): boolean => {
+    const norm = normalizeText(message);
+    const flightKeywords = [
+      'buscar vuelos mas baratos',
+      'busca vuelos mas baratos',
+      'buca vuelos mas baratos',
+      'vuelos mas baratos',
+      'opciones mas economicas',
+      'vuelos mas economicos',
+      'alternativas mas baratas',
+      'opciones mas baratas',
+      'vuelos alternativos',
+      'mejores precios vuelos',
+      'vuelos menos caros'
+    ];
+    return flightKeywords.some(keyword => norm.includes(keyword));
+  };
+
   // Check if message is a price change request
   const isPriceChangeRequest = (message: string): boolean => {
-    const lowerMessage = message.toLowerCase();
+    const norm = normalizeText(message);
     const priceKeywords = [
       'cambia el precio',
       'cambiar precio',
@@ -2165,11 +2320,11 @@ const Chat = () => {
       'precio a',
       'cuesta',
       '$',
-      'dólar',
+      'dolar',
       'usd'
     ];
 
-    return priceKeywords.some(keyword => lowerMessage.includes(keyword));
+    return priceKeywords.some(keyword => norm.includes(keyword));
   };
 
 

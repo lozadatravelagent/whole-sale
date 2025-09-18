@@ -4,6 +4,8 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { searchAirFares, type AirfareSearchParams } from './airfareSearch';
+import type { FlightData } from '@/types';
 
 export interface PdfAnalysisResult {
     success: boolean;
@@ -33,6 +35,20 @@ export interface PdfAnalysisResult {
 export interface PdfUploadResult {
     success: boolean;
     url?: string;
+    error?: string;
+}
+
+export interface CheaperFlightSearchResult {
+    success: boolean;
+    originalFlights?: Array<{
+        airline: string;
+        route: string;
+        price: number;
+        dates: string;
+    }>;
+    alternativeFlights?: FlightData[];
+    savings?: number;
+    message?: string;
     error?: string;
 }
 
@@ -154,37 +170,39 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
             return extractPdfMonkeyData(file.name);
         }
 
-        // For external PDFs, use general analysis
-        console.log('📋 External PDF detected - using general analysis');
+        // For external PDFs, extract real content
+        console.log('📋 External PDF detected - extracting real content');
 
-        // Simulate processing time
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Convert file to array buffer for PDF processing
+        const arrayBuffer = await file.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
 
-        // Mock analysis result for external PDFs
-        const mockAnalysis: PdfAnalysisResult = {
+        // Extract text content from PDF using Supabase Edge Function
+        const { data: extractionResult, error } = await supabase.functions.invoke('pdf-text-extractor', {
+            body: {
+                pdfData: Array.from(uint8Array),
+                fileName: file.name
+            }
+        });
+
+        if (error) {
+            console.error('❌ PDF extraction error:', error);
+            throw new Error(`PDF extraction failed: ${error.message}`);
+        }
+
+        if (!extractionResult?.success) {
+            throw new Error(extractionResult?.error || 'PDF extraction failed');
+        }
+
+        const extractedText = extractionResult.text;
+        console.log('📄 Extracted PDF text:', extractedText.substring(0, 500) + '...');
+
+        // Parse extracted text to find travel information
+        const parsedData = parseExtractedTravelData(extractedText);
+
+        return {
             success: true,
-            content: {
-                flights: [
-                    {
-                        airline: "American Airlines",
-                        route: "EZE → MIA → PUJ",
-                        price: 725,
-                        dates: "2025-11-01 / 2025-11-15"
-                    }
-                ],
-                hotels: [
-                    {
-                        name: "Bavaro Green Aparthotel",
-                        location: "Punta Cana",
-                        price: 45,
-                        nights: 14
-                    }
-                ],
-                totalPrice: 1355,
-                currency: "USD",
-                passengers: 1,
-                extractedFromPdfMonkey: false
-            },
+            content: parsedData,
             suggestions: [
                 "Puedo buscar vuelos con mejores horarios o conexiones más cortas",
                 "Hay hoteles con mejor ubicación disponibles en las mismas fechas",
@@ -192,8 +210,6 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
                 "¿Te interesa agregar servicios adicionales como traslados o seguro de viaje?"
             ]
         };
-
-        return mockAnalysis;
 
     } catch (error) {
         console.error('Error analyzing PDF:', error);
@@ -248,6 +264,13 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
         suggestions.forEach((suggestion, index) => {
             response += `   ${index + 1}. ${suggestion}\n`;
         });
+
+        // Add cheaper flights option if there are flights in the PDF
+        if (content.flights && content.flights.length > 0) {
+            response += `\n💡 **Opciones adicionales:**\n`;
+            response += `   • Escribe "buscar vuelos más baratos" para encontrar alternativas más económicas\n`;
+            response += `   • Escribe "cambiar precio a $[cantidad]" para modificar el presupuesto\n`;
+        }
         response += `\n`;
     }
 
@@ -493,11 +516,36 @@ export async function generateModifiedPdf(
             })) || [];
         }
 
+        // Ensure exact total equals the requested newPrice by applying a final delta adjustment
+        const currentFlightsTotal = adjustedFlights.reduce((sum, f) => sum + (f.price?.amount || 0), 0);
+        const currentHotelsTotal = adjustedHotels.reduce((sum, h) => sum + (h.rooms?.[0]?.total_price || 0), 0);
+        const currentTotal = currentFlightsTotal + currentHotelsTotal;
+        const deltaToTarget = Math.round(newPrice - currentTotal);
+
+        if (deltaToTarget !== 0) {
+            // Prefer adjusting hotels (room total) to keep flight fares intact; otherwise adjust last flight amount
+            if (adjustedHotels.length > 0 && adjustedHotels[adjustedHotels.length - 1]?.rooms?.[0]) {
+                const lastHotel = adjustedHotels[adjustedHotels.length - 1];
+                const room = lastHotel.rooms[0];
+                const newTotalPrice = Math.max(0, (room.total_price || 0) + deltaToTarget);
+                room.total_price = newTotalPrice;
+            } else if (adjustedFlights.length > 0) {
+                const lastFlight = adjustedFlights[adjustedFlights.length - 1];
+                const newAmount = Math.max(0, (lastFlight.price?.amount || 0) + deltaToTarget);
+                lastFlight.price = {
+                    ...(lastFlight.price || {}),
+                    amount: newAmount,
+                    currency: analysis.content?.currency || 'USD'
+                };
+            }
+        }
+
         console.log('📋 Regenerating PDF with adjusted data:', {
             flights: adjustedFlights.length,
             hotels: adjustedHotels.length,
             totalFlightPrice: adjustedFlights.reduce((sum, f) => sum + (f.price?.amount || 0), 0),
-            totalHotelPrice: adjustedHotels.reduce((sum, h) => sum + (h.rooms?.[0]?.total_price || 0), 0)
+            totalHotelPrice: adjustedHotels.reduce((sum, h) => sum + (h.rooms?.[0]?.total_price || 0), 0),
+            targetTotal: newPrice
         });
 
         // Generate the modified PDF using our existing PdfMonkey service
@@ -602,4 +650,681 @@ export async function processPriceChangeRequest(
             response: `❌ Hubo un error procesando tu solicitud. ¿Podrías intentarlo nuevamente con más detalles?`
         };
     }
+}
+
+/**
+ * Search for cheaper flight alternatives based on PDF analysis
+ */
+export async function searchCheaperFlights(pdfAnalysis: PdfAnalysisResult): Promise<CheaperFlightSearchResult> {
+    try {
+        console.log('🔍 Starting cheaper flight search from PDF analysis');
+
+        if (!pdfAnalysis.success || !pdfAnalysis.content?.flights) {
+            return {
+                success: false,
+                error: 'No flight information found in PDF analysis'
+            };
+        }
+
+        const originalFlights = pdfAnalysis.content.flights;
+        console.log('✈️ Original flights from PDF:', originalFlights);
+
+        // Extract search parameters from the first flight
+        const firstFlight = originalFlights[0];
+        if (!firstFlight) {
+            return {
+                success: false,
+                error: 'No flight data available'
+            };
+        }
+
+        // Parse route to get origin and destination
+        const { origin, destination } = parseFlightRoute(firstFlight.route);
+        if (!origin || !destination) {
+            return {
+                success: false,
+                error: 'Could not parse flight route from PDF'
+            };
+        }
+
+        // Parse dates (assuming format from PDF)
+        const dateRange = firstFlight.dates;
+        const dates = dateRange.split(' - ');
+        const departureDate = parseDate(dates[0]);
+        const returnDate = dates.length > 1 ? parseDate(dates[1]) : undefined;
+
+        const searchParams: AirfareSearchParams = {
+            origin,
+            destination,
+            departureDate,
+            returnDate,
+            adults: pdfAnalysis.content.passengers || 1,
+            children: 0
+        };
+
+        console.log('🔍 Searching with parameters:', searchParams);
+
+        // Convert to Starling format for flight search
+        const starlingRequest = formatParsedDataForStarling({
+            requestType: 'flights',
+            flights: {
+                origin,
+                destination,
+                departureDate,
+                returnDate,
+                adults: searchParams.adults || 1,
+                children: searchParams.children || 0
+            }
+        } as any);
+
+        console.log('🔍 Starling request format:', starlingRequest);
+
+        // Search for alternative flights using Starling API
+        const alternativeFlights = await searchFlightsWithStarling(starlingRequest);
+
+        if (alternativeFlights.length === 0) {
+            return {
+                success: true,
+                originalFlights,
+                alternativeFlights: [],
+                message: 'No se encontraron vuelos alternativos para estas fechas y destino.'
+            };
+        }
+
+        // Calculate potential savings
+        const originalTotalPrice = originalFlights.reduce((sum, flight) => sum + flight.price, 0);
+        const cheapestAlternative = alternativeFlights.reduce((cheapest, current) =>
+            (current.price?.amount || 0) < (cheapest.price?.amount || 0) ? current : cheapest
+        );
+
+        const potentialSavings = originalTotalPrice - (cheapestAlternative.price?.amount || 0);
+
+        console.log('💰 Price comparison:', {
+            original: originalTotalPrice,
+            cheapest: cheapestAlternative.price?.amount,
+            savings: potentialSavings
+        });
+
+        return {
+            success: true,
+            originalFlights,
+            alternativeFlights,
+            savings: potentialSavings > 0 ? potentialSavings : 0,
+            message: potentialSavings > 0
+                ? `¡Encontré opciones más baratas! Puedes ahorrar hasta $${potentialSavings.toFixed(2)} USD`
+                : 'Los precios del PDF son competitivos, pero aquí tienes más opciones disponibles.'
+        };
+
+    } catch (error) {
+        console.error('❌ Error searching for cheaper flights:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Error searching for alternative flights'
+        };
+    }
+}
+
+/**
+ * Helper function to parse date from PDF text
+ */
+function parseDate(dateStr: string): string {
+    try {
+        // Handle different date formats from PDF
+        dateStr = dateStr.trim();
+
+        // If already in YYYY-MM-DD format
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            return dateStr;
+        }
+
+        // Handle DD/MM/YYYY format
+        if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
+            const [day, month, year] = dateStr.split('/');
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+
+        // Handle DD-MM-YYYY format
+        if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(dateStr)) {
+            const [day, month, year] = dateStr.split('-');
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+
+        // Handle text dates like "15 Nov 2024"
+        const months = {
+            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+            'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+            'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12',
+            'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+            'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+            'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+        };
+
+        const dateMatch = dateStr.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/i);
+        if (dateMatch) {
+            const [, day, monthName, year] = dateMatch;
+            const monthNum = months[monthName.toLowerCase().substring(0, 3)];
+            if (monthNum) {
+                return `${year}-${monthNum}-${day.padStart(2, '0')}`;
+            }
+        }
+
+        // Fallback: use current date + 7 days
+        const fallbackDate = new Date();
+        fallbackDate.setDate(fallbackDate.getDate() + 7);
+        return fallbackDate.toISOString().split('T')[0];
+
+    } catch (error) {
+        console.warn('Could not parse date:', dateStr, error);
+        // Return date 7 days from now as fallback
+        const fallbackDate = new Date();
+        fallbackDate.setDate(fallbackDate.getDate() + 7);
+        return fallbackDate.toISOString().split('T')[0];
+    }
+}
+
+/**
+ * Parse extracted PDF text to find travel information
+ */
+function parseExtractedTravelData(text: string): PdfAnalysisResult['content'] {
+    console.log('🔍 Parsing extracted PDF text for travel data');
+
+    const flights = extractFlightInfo(text);
+    const hotels = extractHotelInfo(text);
+    const totalPrice = extractTotalPrice(text);
+    const passengers = extractPassengerCount(text);
+    const currency = extractCurrency(text);
+
+    return {
+        flights,
+        hotels,
+        totalPrice,
+        currency,
+        passengers,
+        extractedFromPdfMonkey: false
+    };
+}
+
+/**
+ * Extract flight information from PDF text
+ */
+function extractFlightInfo(text: string): Array<{ airline: string, route: string, price: number, dates: string }> {
+    const flights: Array<{ airline: string, route: string, price: number, dates: string }> = [];
+
+    // Patterns for common flight information
+    const airlinePatterns = [
+        /(?:LATAM|Aerolíneas Argentinas|American Airlines|United|Delta|Air France|Iberia|AVIANCA|JetSmart|Flybondi)/gi,
+        /(?:AA|UA|DL|AF|IB|AV|LAN|TAM)/gi
+    ];
+
+    // Patterns for routes (airport codes or city names)
+    const routePatterns = [
+        /([A-Z]{3})\s*[-–→]\s*([A-Z]{3})/g, // EZE - MIA
+        /([A-Z]{3})\s*[-–→]\s*([A-Z]{3})\s*[-–→]\s*([A-Z]{3})/g, // EZE - MIA - PUJ
+        /(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York)\s*[-–→]\s*(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York)/gi
+    ];
+
+    // Patterns for dates
+    const datePatterns = [
+        /(\d{1,2})\/(\d{1,2})\/(\d{4})\s*[-–]\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/g, // DD/MM/YYYY - DD/MM/YYYY
+        /(\d{1,2})\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+(\d{4})\s*[-–]\s*(\d{1,2})\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+(\d{4})/gi,
+        /(\d{4})-(\d{2})-(\d{2})\s*[-–]\s*(\d{4})-(\d{2})-(\d{2})/g // YYYY-MM-DD - YYYY-MM-DD
+    ];
+
+    // Patterns for prices
+    const pricePatterns = [
+        /(?:USD|US\$|\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
+        /(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi
+    ];
+
+    // Extract airlines
+    const airlines = [];
+    for (const pattern of airlinePatterns) {
+        const matches = [...text.matchAll(pattern)];
+        airlines.push(...matches.map(m => m[0]));
+    }
+
+    // Extract routes
+    const routes = [];
+    for (const pattern of routePatterns) {
+        const matches = [...text.matchAll(pattern)];
+        routes.push(...matches.map(m => m[0]));
+    }
+
+    // Extract dates
+    const dates = [];
+    for (const pattern of datePatterns) {
+        const matches = [...text.matchAll(pattern)];
+        dates.push(...matches.map(m => m[0]));
+    }
+
+    // Extract prices
+    const prices = [];
+    for (const pattern of pricePatterns) {
+        const matches = [...text.matchAll(pattern)];
+        prices.push(...matches.map(m => {
+            const priceStr = m[1] || m[0];
+            return parseFloat(priceStr.replace(/,/g, ''));
+        }));
+    }
+
+    // Combine extracted information
+    const maxEntries = Math.max(airlines.length, routes.length, dates.length, prices.length, 1);
+
+    for (let i = 0; i < maxEntries; i++) {
+        flights.push({
+            airline: airlines[i] || 'Aerolínea no especificada',
+            route: routes[i] || 'Ruta no especificada',
+            price: prices[i] || 0,
+            dates: dates[i] || 'Fechas no especificadas'
+        });
+    }
+
+    console.log('✈️ Extracted flights:', flights);
+    return flights.slice(0, 3); // Limit to 3 flights max
+}
+
+/**
+ * Extract hotel information from PDF text
+ */
+function extractHotelInfo(text: string): Array<{ name: string, location: string, price: number, nights: number }> {
+    const hotels: Array<{ name: string, location: string, price: number, nights: number }> = [];
+
+    // Patterns for hotel names
+    const hotelPatterns = [
+        /(?:Hotel|Resort|Aparthotel|Inn|Lodge|Suites?)\s+([A-Za-z\s]+)/gi,
+        /([A-Za-z\s]+)\s+(?:Hotel|Resort|Aparthotel|Inn|Lodge|Suites?)/gi
+    ];
+
+    // Patterns for locations/cities
+    const locationPatterns = [
+        /(Punta Cana|Cancún|Miami|Madrid|Barcelona|Buenos Aires|Río de Janeiro|São Paulo)/gi,
+        /(?:en|in)\s+([A-Za-z\s]+)/gi
+    ];
+
+    // Patterns for nightly rates and nights
+    const nightlyRatePatterns = [
+        /(\d+)\s*(?:USD|US\$|\$)\s*(?:por noche|per night|\/night)/gi,
+        /(?:por noche|per night|\/night)\s*(\d+)\s*(?:USD|US\$|\$)/gi
+    ];
+
+    const nightsPatterns = [
+        /(\d+)\s*(?:noches?|nights?)/gi,
+        /(?:noches?|nights?)\s*(\d+)/gi
+    ];
+
+    // Extract hotel names
+    const hotelNames = [];
+    for (const pattern of hotelPatterns) {
+        const matches = [...text.matchAll(pattern)];
+        hotelNames.push(...matches.map(m => m[1]?.trim()).filter(Boolean));
+    }
+
+    // Extract locations
+    const locations = [];
+    for (const pattern of locationPatterns) {
+        const matches = [...text.matchAll(pattern)];
+        locations.push(...matches.map(m => m[1]?.trim()).filter(Boolean));
+    }
+
+    // Extract nightly rates
+    const nightlyRates = [];
+    for (const pattern of nightlyRatePatterns) {
+        const matches = [...text.matchAll(pattern)];
+        nightlyRates.push(...matches.map(m => parseFloat(m[1])));
+    }
+
+    // Extract nights
+    const nightsArray = [];
+    for (const pattern of nightsPatterns) {
+        const matches = [...text.matchAll(pattern)];
+        nightsArray.push(...matches.map(m => parseInt(m[1])));
+    }
+
+    // Combine extracted information
+    const maxEntries = Math.max(hotelNames.length, locations.length, nightlyRates.length, nightsArray.length, 1);
+
+    for (let i = 0; i < maxEntries; i++) {
+        hotels.push({
+            name: hotelNames[i] || 'Hotel no especificado',
+            location: locations[i] || 'Ubicación no especificada',
+            price: nightlyRates[i] || 0,
+            nights: nightsArray[i] || 0
+        });
+    }
+
+    console.log('🏨 Extracted hotels:', hotels);
+    return hotels.slice(0, 3); // Limit to 3 hotels max
+}
+
+/**
+ * Extract total price from PDF text
+ */
+function extractTotalPrice(text: string): number {
+    const totalPatterns = [
+        /(?:total|precio total|total price|grand total)\s*:?\s*(?:USD|US\$|\$)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
+        /(?:USD|US\$|\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:total|precio total|total price|grand total)/gi
+    ];
+
+    for (const pattern of totalPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+            const priceStr = match[1] || match[0];
+            const price = parseFloat(priceStr.replace(/[^\d.]/g, ''));
+            if (!isNaN(price)) {
+                console.log('💰 Extracted total price:', price);
+                return price;
+            }
+        }
+    }
+
+    console.log('💰 No total price found');
+    return 0;
+}
+
+/**
+ * Extract passenger count from PDF text
+ */
+function extractPassengerCount(text: string): number {
+    const passengerPatterns = [
+        /(\d+)\s*(?:pasajeros?|passengers?|adultos?|adults?|personas?|people)/gi,
+        /(?:pasajeros?|passengers?|adultos?|adults?|personas?|people)\s*:?\s*(\d+)/gi
+    ];
+
+    for (const pattern of passengerPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+            const count = parseInt(match[1]);
+            if (!isNaN(count) && count > 0) {
+                console.log('👥 Extracted passenger count:', count);
+                return count;
+            }
+        }
+    }
+
+    console.log('👥 No passenger count found, defaulting to 1');
+    return 1;
+}
+
+/**
+ * Extract currency from PDF text
+ */
+function extractCurrency(text: string): string {
+    const currencyPatterns = [
+        /\b(USD|US\$|EUR|ARS|BRL)\b/gi,
+        /\$([\d,]+(?:\.\d{2})?)/g
+    ];
+
+    for (const pattern of currencyPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+            const currency = match[1]?.toUpperCase() || 'USD';
+            console.log('💱 Extracted currency:', currency);
+            return currency === 'US$' ? 'USD' : currency;
+        }
+    }
+
+    console.log('💱 No currency found, defaulting to USD');
+    return 'USD';
+}
+
+/**
+ * Parse flight route string to extract origin and destination
+ */
+function parseFlightRoute(route: string): { origin: string; destination: string } {
+    console.log('🛫 Parsing route:', route);
+
+    // Remove common separators and clean the route
+    const cleanRoute = route.replace(/[→–-]/g, '-').trim();
+
+    // Pattern 1: EZE - MIA - PUJ (with connection)
+    const connectionMatch = cleanRoute.match(/([A-Z]{3})\s*-\s*[A-Z]{3}\s*-\s*([A-Z]{3})/);
+    if (connectionMatch) {
+        return {
+            origin: connectionMatch[1],
+            destination: connectionMatch[2]
+        };
+    }
+
+    // Pattern 2: EZE - PUJ (direct)
+    const directMatch = cleanRoute.match(/([A-Z]{3})\s*-\s*([A-Z]{3})/);
+    if (directMatch) {
+        return {
+            origin: directMatch[1],
+            destination: directMatch[2]
+        };
+    }
+
+    // Pattern 3: City names
+    const cityMatch = cleanRoute.match(/(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York)\s*-\s*(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York)/i);
+    if (cityMatch) {
+        return {
+            origin: mapCityToCode(cityMatch[1]),
+            destination: mapCityToCode(cityMatch[2])
+        };
+    }
+
+    console.warn('⚠️ Could not parse route:', route);
+    return { origin: '', destination: '' };
+}
+
+/**
+ * Map city names to airport codes
+ */
+function mapCityToCode(cityName: string): string {
+    const cityMap: Record<string, string> = {
+        'Buenos Aires': 'BUE',
+        'Madrid': 'MAD',
+        'Barcelona': 'BCN',
+        'Miami': 'MIA',
+        'Punta Cana': 'PUJ',
+        'Cancún': 'CUN',
+        'Nueva York': 'JFK'
+    };
+
+    return cityMap[cityName] || cityName;
+}
+
+/**
+ * Format parsed data for Starling API
+ */
+function formatParsedDataForStarling(parsed: any) {
+    if (!parsed.flights) return null;
+
+    // Create passenger array for TVC API format
+    const passengers = [];
+    if ((parsed.flights.adults || 1) > 0) {
+        passengers.push({
+            Count: parsed.flights.adults || 1,
+            Type: 'ADT'
+        });
+    }
+    if ((parsed.flights.children || 0) > 0) {
+        passengers.push({
+            Count: parsed.flights.children,
+            Type: 'CHD'
+        });
+    }
+
+    // Create legs array for TVC API format
+    const legs = [
+        {
+            DepartureAirportCity: parsed.flights.origin,
+            ArrivalAirportCity: parsed.flights.destination,
+            FlightDate: parsed.flights.departureDate
+        }
+    ];
+
+    // Add return leg if this is a round trip
+    if (parsed.flights.returnDate) {
+        legs.push({
+            DepartureAirportCity: parsed.flights.destination,
+            ArrivalAirportCity: parsed.flights.origin,
+            FlightDate: parsed.flights.returnDate
+        });
+    }
+
+    return {
+        Passengers: passengers,
+        Legs: legs,
+        Airlines: null
+    };
+}
+
+/**
+ * Search flights using existing Starling/TVC API through Supabase Edge Function
+ */
+async function searchFlightsWithStarling(starlingRequest: any): Promise<FlightData[]> {
+    try {
+        console.log('🚀 Calling existing starling-flights function');
+        console.log('📋 Request format:', JSON.stringify(starlingRequest, null, 2));
+
+        // Use the existing starling-flights function with 'searchFlights' action
+        const { data, error } = await supabase.functions.invoke('starling-flights', {
+            body: {
+                action: 'searchFlights',
+                data: starlingRequest
+            }
+        });
+
+        if (error) {
+            console.error('❌ Starling flights function error:', error);
+            throw new Error(`Starling flights error: ${error.message}`);
+        }
+
+        if (!data?.success) {
+            throw new Error(data?.error || 'Starling flights search failed');
+        }
+
+        // Extract flight data from TVC response format
+        const tvcFlights = data.data?.Recommendations || [];
+        console.log('✅ TVC API response:', tvcFlights.length, 'recommendations found');
+
+        // Transform TVC recommendations to our FlightData format
+        const transformedFlights = transformTvcRecommendationsToFlightData(tvcFlights, starlingRequest);
+
+        console.log('✅ Transformed flights:', transformedFlights.length, 'flights ready');
+        return transformedFlights;
+
+    } catch (error) {
+        console.error('❌ Error calling starling-flights function:', error);
+        // Fallback to EUROVIPS if Starling fails
+        console.log('🔄 Falling back to EUROVIPS search');
+        return await searchAirFares({
+            origin: starlingRequest.Legs[0]?.DepartureAirportCity || '',
+            destination: starlingRequest.Legs[0]?.ArrivalAirportCity || '',
+            departureDate: starlingRequest.Legs[0]?.FlightDate || '',
+            returnDate: starlingRequest.Legs[1]?.FlightDate,
+            adults: starlingRequest.Passengers?.find((p: any) => p.Type === 'ADT')?.Count || 1,
+            children: starlingRequest.Passengers?.find((p: any) => p.Type === 'CHD')?.Count || 0
+        });
+    }
+}
+
+/**
+ * Transform TVC Recommendations to FlightData format
+ */
+function transformTvcRecommendationsToFlightData(recommendations: any[], originalRequest: any): FlightData[] {
+    const flights: FlightData[] = [];
+
+    if (!Array.isArray(recommendations)) {
+        console.warn('⚠️ TVC recommendations is not an array');
+        return flights;
+    }
+
+    recommendations.forEach((recommendation, index) => {
+        try {
+            // Extract basic flight information
+            const flightGroups = recommendation.FlightGroups || [];
+            const firstGroup = flightGroups[0];
+
+            if (!firstGroup?.Flights?.[0]) {
+                console.warn(`⚠️ No flights in recommendation ${index}`);
+                return;
+            }
+
+            const firstFlight = firstGroup.Flights[0];
+            const lastFlight = flightGroups[flightGroups.length - 1]?.Flights?.[0] || firstFlight;
+
+            // Calculate total price
+            const totalPrice = recommendation.TotalFare?.TotalPrice || 0;
+            const currency = recommendation.TotalFare?.Currency || 'USD';
+
+            // Extract passenger counts
+            const adultCount = originalRequest.Passengers?.find((p: any) => p.Type === 'ADT')?.Count || 1;
+            const childCount = originalRequest.Passengers?.find((p: any) => p.Type === 'CHD')?.Count || 0;
+
+            // Build flight legs
+            const legs = flightGroups.map((group: any) => {
+                const flight = group.Flights[0];
+                return {
+                    departure: {
+                        airport_code: flight.OriginAirport || '',
+                        city_name: flight.OriginCity || '',
+                        datetime: flight.DepartureDateTime || '',
+                        terminal: flight.OriginTerminal || ''
+                    },
+                    arrival: {
+                        airport_code: flight.DestinationAirport || '',
+                        city_name: flight.DestinationCity || '',
+                        datetime: flight.ArrivalDateTime || '',
+                        terminal: flight.DestinationTerminal || ''
+                    },
+                    duration: flight.FlightDuration || '',
+                    flight_number: flight.FlightNumber || '',
+                    aircraft: flight.AircraftType || '',
+                    airline_code: flight.AirlineCode || ''
+                };
+            });
+
+            const transformedFlight: FlightData = {
+                id: `tvc_${recommendation.RecommendationId || index}`,
+                airline: {
+                    code: firstFlight.AirlineCode || '',
+                    name: firstFlight.AirlineName || 'Unknown Airline'
+                },
+                price: {
+                    amount: totalPrice,
+                    currency: currency
+                },
+                departure_date: originalRequest.Legs[0]?.FlightDate || '',
+                return_date: originalRequest.Legs[1]?.FlightDate,
+                adults: adultCount,
+                childrens: childCount,
+                legs: legs
+            };
+
+            flights.push(transformedFlight);
+
+        } catch (err) {
+            console.error(`❌ Error transforming TVC recommendation ${index}:`, err);
+        }
+    });
+
+    console.log(`✅ Successfully transformed ${flights.length} flights from ${recommendations.length} TVC recommendations`);
+    return flights;
+}
+
+/**
+ * Calculate total flight duration from legs
+ */
+function calculateTotalDuration(legs: any[]): string {
+    if (!legs || legs.length === 0) return '';
+
+    // Simple implementation - just return the duration of the first leg
+    // In a real implementation, you'd calculate the total travel time including layovers
+    return legs[0]?.duration || '';
+}
+
+/**
+ * Extract baggage information from TVC recommendation
+ */
+function extractBaggageInfo(recommendation: any): string {
+    // Extract baggage info if available in the TVC response
+    const baggage = recommendation.BaggageAllowance || recommendation.Baggage;
+    if (baggage) {
+        if (typeof baggage === 'string') return baggage;
+        if (baggage.CheckedBaggage) return `${baggage.CheckedBaggage} checked`;
+        if (baggage.CabinBaggage) return `${baggage.CabinBaggage} cabin`;
+    }
+    return 'Standard baggage allowance';
 }
