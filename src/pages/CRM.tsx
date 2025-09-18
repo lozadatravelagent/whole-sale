@@ -34,16 +34,16 @@ const DUMMY_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const DUMMY_AGENCY_ID = '00000000-0000-0000-0000-000000000002';
 
 // Draggable Lead Card Component
-function DraggableLeadCard({ 
-  lead, 
-  onEdit, 
-  onDelete, 
+function DraggableLeadCard({
+  lead,
+  onEdit,
+  onDelete,
   onSave,
   seller,
-  sectionName 
-}: { 
-  lead: Lead; 
-  onEdit: () => void; 
+  sectionName
+}: {
+  lead: Lead;
+  onEdit: () => void;
   onDelete: () => void;
   onSave: (updates: Partial<Lead>) => void;
   seller?: any;
@@ -56,7 +56,7 @@ function DraggableLeadCard({
     transform,
     transition,
     isDragging
-  } = useSortable({ 
+  } = useSortable({
     id: lead.id,
     data: {
       type: 'lead',
@@ -77,7 +77,7 @@ function DraggableLeadCard({
       {...listeners}
       className="touch-none"
     >
-      <LeadCard 
+      <LeadCard
         lead={lead}
         onClick={onEdit}
         onDelete={onDelete}
@@ -91,17 +91,17 @@ function DraggableLeadCard({
 }
 
 // Droppable Section Column Component
-function DroppableSection({ 
+function DroppableSection({
   section,
-  leads, 
-  onEdit, 
+  leads,
+  onEdit,
   onDelete,
   onSave,
   onDeleteSection,
   totalBudget,
   sellers,
   isOver
-}: { 
+}: {
   section: Section;
   leads: Lead[];
   onEdit: (lead: Lead) => void;
@@ -130,13 +130,12 @@ function DroppableSection({
   };
 
   return (
-    <Card 
+    <Card
       ref={setNodeRef}
-      className={`flex-1 min-h-[600px] transition-colors ${
-        isOver ? 'bg-primary/5 border-primary/30' : ''
-      }`}
+      className={`flex-1 h-[600px] transition-colors flex flex-col ${isOver ? 'bg-primary/5 border-primary/30' : ''
+        }`}
     >
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Users className="h-4 w-4" />
@@ -155,23 +154,22 @@ function DroppableSection({
           </Button>
         </div>
         {totalBudget > 0 && (
-          <div className={`flex items-center gap-1 text-sm font-semibold ${
-            section.name.toLowerCase().includes('perdido') || section.name.toLowerCase().includes('lost') 
-              ? 'text-red-600' 
+          <div className={`flex items-center gap-1 text-sm font-semibold ${section.name.toLowerCase().includes('perdido') || section.name.toLowerCase().includes('lost')
+              ? 'text-red-600'
               : 'text-green-600'
-          }`}>
+            }`}>
             <DollarSign className="h-4 w-4" />
             {formatCurrency(totalBudget)}
           </div>
         )}
       </CardHeader>
 
-      <CardContent>
-        <SortableContext 
-          items={leads.map(lead => lead.id)} 
+      <CardContent className="flex-1 overflow-hidden p-3">
+        <SortableContext
+          items={leads.map(lead => lead.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-3 min-h-[400px]">
+          <div className="space-y-3 h-full overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
             {leads.map((lead) => {
               const seller = sellers.find(s => s.id === lead.seller_id);
               return (
@@ -209,21 +207,21 @@ export default function CRM() {
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
 
-  const { 
-    sections, 
-    sellers, 
-    leadsBySection, 
-    budgetBySection, 
-    loading, 
-    addLead, 
-    editLead, 
-    removeLead, 
-    moveLeadToSection, 
+  const {
+    sections,
+    sellers,
+    leadsBySection,
+    budgetBySection,
+    loading,
+    addLead,
+    editLead,
+    removeLead,
+    moveLeadToSection,
     addSection,
     removeSection,
     leads
   } = useLeads();
-  
+
   const { toast } = useToast();
 
   const sensors = useSensors(
@@ -237,7 +235,7 @@ export default function CRM() {
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     const leadData = active.data.current;
-    
+
     if (leadData?.type === 'lead') {
       setActiveLead(leadData.lead);
     }
@@ -250,15 +248,15 @@ export default function CRM() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    
+
     setActiveLead(null);
     setOverId(null);
-    
+
     if (!over) return;
 
     const activeId = active.id as string;
     const overId = over.id as string;
-    
+
     // Get the lead being dragged
     const lead = leads.find(l => l.id === activeId);
     if (!lead) return;
@@ -358,7 +356,7 @@ export default function CRM() {
       'bg-teal-100 text-teal-800 border-teal-200',
     ];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    
+
     await addSection(DUMMY_AGENCY_ID, `Nueva Sección ${sections.length + 1}`, randomColor);
   };
 
@@ -403,7 +401,7 @@ export default function CRM() {
               Gestiona el embudo de ventas arrastrando los leads entre secciones
             </p>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <Button onClick={handleNewSection} variant="outline" className="gap-2">
               <Plus className="h-4 w-4" />
@@ -423,7 +421,7 @@ export default function CRM() {
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <div className={`grid gap-6 min-h-[600px]`} style={{ gridTemplateColumns: `repeat(${sections.length || 1}, 1fr)` }}>
+          <div className={`grid gap-6 h-[600px]`} style={{ gridTemplateColumns: `repeat(${sections.length || 1}, 1fr)` }}>
             {sections.map((section) => (
               <DroppableSection
                 key={section.id}
@@ -444,9 +442,9 @@ export default function CRM() {
           <DragOverlay>
             {activeLead ? (
               <div className="transform rotate-2 opacity-90 scale-105 shadow-2xl">
-                <LeadCard 
-                  lead={activeLead} 
-                  isDragging 
+                <LeadCard
+                  lead={activeLead}
+                  isDragging
                   seller={sellers.find(s => s.id === activeLead.seller_id)}
                 />
               </div>
@@ -483,13 +481,13 @@ export default function CRM() {
             <AlertDialogHeader>
               <AlertDialogTitle>¿Eliminar Lead?</AlertDialogTitle>
               <AlertDialogDescription>
-                Esta acción no se puede deshacer. El lead "{leadToDelete?.contact.name}" 
+                Esta acción no se puede deshacer. El lead "{leadToDelete?.contact.name}"
                 será eliminado permanentemente.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction 
+              <AlertDialogAction
                 onClick={confirmDelete}
                 className="bg-destructive hover:bg-destructive/90"
               >
@@ -505,7 +503,7 @@ export default function CRM() {
             <AlertDialogHeader>
               <AlertDialogTitle>¿Eliminar Sección?</AlertDialogTitle>
               <AlertDialogDescription>
-                Esta acción no se puede deshacer. La sección "{sectionToDelete?.name}" 
+                Esta acción no se puede deshacer. La sección "{sectionToDelete?.name}"
                 será eliminada permanentemente.
                 {leadsBySection[sectionToDelete?.id || '']?.length > 0 && (
                   <span className="block mt-2 font-semibold text-amber-600">
@@ -516,7 +514,7 @@ export default function CRM() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction 
+              <AlertDialogAction
                 onClick={confirmDeleteSection}
                 className="bg-destructive hover:bg-destructive/90"
               >
