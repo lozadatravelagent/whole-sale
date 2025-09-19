@@ -1148,16 +1148,17 @@ const Chat = () => {
     }
   }, [selectedConversation, loadContextualMemory]);
 
-  // Maintain focus on input after re-renders
-  useEffect(() => {
-    if (messageInputRef.current && document.activeElement !== messageInputRef.current) {
-      // Only refocus if the user was previously typing
-      const wasTyping = message.length > 0;
-      if (wasTyping) {
-        messageInputRef.current.focus();
-      }
-    }
-  }, [messages.length, message.length]);
+  // Maintain focus on input after re-renders - removed to prevent cursor jumping
+  // This was causing the cursor to jump to the end when editing text
+  // useEffect(() => {
+  //   if (messageInputRef.current && document.activeElement !== messageInputRef.current) {
+  //     // Only refocus if the user was previously typing
+  //     const wasTyping = message.length > 0;
+  //     if (wasTyping) {
+  //       messageInputRef.current.focus();
+  //     }
+  //   }
+  // }, [messages.length, message.length]);
 
   // Show inspiration text for new conversations - DISABLED
   useEffect(() => {

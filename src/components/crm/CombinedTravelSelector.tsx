@@ -348,6 +348,27 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     }).format(price);
   };
 
+  const formatPassengerText = (adults: number, children: number = 0) => {
+    const parts = [];
+
+    if (adults > 0) {
+      parts.push(`${adults} adult${adults > 1 ? 'os' : 'o'}`);
+    }
+
+    if (children > 0) {
+      parts.push(`${children} niñ${children > 1 ? 'os' : 'o'}`);
+    }
+
+    if (parts.length === 0) {
+      return 'por persona';
+    }
+
+    const totalPassengers = adults + children;
+    const passengerText = parts.join(' + ');
+
+    return `para ${passengerText} (${totalPassengers} ${totalPassengers > 1 ? 'personas' : 'persona'})`;
+  };
+
   return (
     <div className="space-y-4 w-full">
       {/* Tabs for flights and hotels */}
@@ -401,7 +422,9 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                         <div className="text-lg font-bold text-primary">
                           {formatPrice(flight.price.amount, flight.price.currency)}
                         </div>
-                        <div className="text-xs text-muted-foreground">por persona</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatPassengerText(flight.adults, flight.childrens)}
+                        </div>
                       </div>
                     </div>
 
