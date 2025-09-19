@@ -8,13 +8,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
-import { 
-  CalendarDays, 
-  MapPin, 
-  Users, 
-  Phone, 
-  DollarSign, 
-  User, 
+import {
+  CalendarDays,
+  MapPin,
+  Users,
+  Phone,
+  DollarSign,
+  User,
   Plane,
   Hotel,
   Package,
@@ -64,14 +64,14 @@ interface LeadDialogProps {
   sellers?: Seller[];
 }
 
-export function LeadDialog({ 
-  open, 
-  onOpenChange, 
-  lead, 
-  onSave, 
-  isEditing = false, 
-  sections = [], 
-  sellers = [] 
+export function LeadDialog({
+  open,
+  onOpenChange,
+  lead,
+  onSave,
+  isEditing = false,
+  sections = [],
+  sellers = []
 }: LeadDialogProps) {
   const [checklist, setChecklist] = React.useState<ChecklistItem[]>([]);
   const [newChecklistItem, setNewChecklistItem] = React.useState('');
@@ -96,7 +96,7 @@ export function LeadDialog({
       due_date: lead.due_date || ''
     } : {
       contact: { name: '', phone: '', email: '' },
-      trip: { 
+      trip: {
         type: 'hotel',
         city: '',
         dates: { checkin: '', checkout: '' },
@@ -133,7 +133,7 @@ export function LeadDialog({
       const defaultSectionId = sections.length > 0 ? sections[0].id : '';
       reset({
         contact: { name: '', phone: '', email: '' },
-        trip: { 
+        trip: {
           type: 'hotel',
           city: '',
           dates: { checkin: '', checkout: '' },
@@ -169,7 +169,7 @@ export function LeadDialog({
   };
 
   const toggleChecklistItem = (id: string) => {
-    setChecklist(checklist.map(item => 
+    setChecklist(checklist.map(item =>
       item.id === id ? { ...item, completed: !item.completed } : item
     ));
   };
@@ -259,8 +259,8 @@ export function LeadDialog({
                 <Textarea
                   {...register('description')}
                   placeholder="Agrega una descripción más detallada..."
-                  rows={4}
-                  className="resize-none"
+                  rows={8}
+                  className="resize-none min-h-[200px]"
                 />
               </div>
 
@@ -277,8 +277,8 @@ export function LeadDialog({
 
                 {/* Progress Bar */}
                 <div className="w-full bg-muted rounded-full h-2">
-                  <div 
-                    className="bg-green-600 h-2 rounded-full transition-all duration-300" 
+                  <div
+                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${progressPercentage}%` }}
                   />
                 </div>
@@ -326,7 +326,7 @@ export function LeadDialog({
           {/* Right Sidebar - Business Fields */}
           <div className="w-80 border-l bg-muted/20 p-6 space-y-6">
             <h3 className="font-semibold text-lg">Información del viaje</h3>
-            
+
             {/* Presupuesto */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
@@ -446,9 +446,9 @@ export function LeadDialog({
               <Button type="submit" className="w-full">
                 {isEditing ? 'Guardar Cambios' : 'Crear Lead'}
               </Button>
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 className="w-full"
                 onClick={() => onOpenChange(false)}
               >
