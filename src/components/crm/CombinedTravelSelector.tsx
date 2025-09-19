@@ -166,7 +166,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
 
-  // Log data only once when component mounts or data changes significantly
+  // Log data only once when component mounts - removed to prevent constant re-renders
   useEffect(() => {
     if (!hasLoggedData.current) {
       console.log('🌟 CombinedTravelSelector initialized with data:', {
@@ -176,7 +176,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       });
       hasLoggedData.current = true;
     }
-  }, [combinedData.requestType, combinedData.flights?.length, combinedData.hotels?.length]);
+  }, []); // Empty dependency array to run only once on mount
 
   const handleFlightToggle = (flightId: string) => {
     setSelectedFlights(prev => {
