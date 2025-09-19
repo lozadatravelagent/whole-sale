@@ -1040,6 +1040,9 @@ const Chat = () => {
 
       // If no parsed request in memory, try to find one in recent messages
       if (!parsedRequest) {
+        console.log('🔍 [ADD TO CRM] No parsed request in memory, searching in messages...');
+
+        // First, try to find in assistant messages
         const recentAssistantMessage = messages
           .filter(msg => msg.role === 'assistant')
           .reverse()
@@ -1051,12 +1054,28 @@ const Chat = () => {
         if (recentAssistantMessage) {
           const meta = recentAssistantMessage.meta as any;
           parsedRequest = meta?.originalRequest || meta?.parsedRequest;
+          console.log('📊 [ADD TO CRM] Found parsed request in assistant message:', parsedRequest);
+        }
+
+        // If still no parsed request, try to find in user messages
+        if (!parsedRequest) {
+          const recentUserMessage = messages
+            .filter(msg => msg.role === 'user')
+            .reverse()
+            .find(msg => {
+              const meta = msg.meta as any;
+              return meta?.parsedRequest;
+            });
+
+          if (recentUserMessage) {
+            const meta = recentUserMessage.meta as any;
+            parsedRequest = meta?.parsedRequest;
+            console.log('📊 [ADD TO CRM] Found parsed request in user message:', parsedRequest);
+          }
         }
       }
 
-      console.log('📊 [ADD TO CRM] Using parsed request:', parsedRequest);
-
-      // Extract budget from latest PDF if available
+      // Extract budget and flight data from latest PDF if available
       let budgetFromPdf = 0;
       const latestPdfMessage = messages
         .filter(msg => {
@@ -1067,7 +1086,7 @@ const Chat = () => {
         .reverse()[0]; // Get the most recent PDF
 
       if (latestPdfMessage) {
-        console.log('📄 [ADD TO CRM] Found latest PDF message, extracting budget');
+        console.log('📄 [ADD TO CRM] Found latest PDF message, extracting budget and flight data');
         try {
           // Look for combined travel results in the message metadata
           const metadata = (latestPdfMessage.content as any)?.metadata;
@@ -1092,11 +1111,35 @@ const Chat = () => {
                 }
               });
             }
+
+            // If no parsed request found, try to construct one from PDF data
+            if (!parsedRequest && flights && Array.isArray(flights) && flights.length > 0) {
+              const firstFlight = flights[0];
+              console.log('🔧 [ADD TO CRM] Constructing parsed request from PDF flight data:', firstFlight);
+
+              parsedRequest = {
+                requestType: 'flights' as const,
+                flights: {
+                  origin: firstFlight.legs?.[0]?.departure?.city_name || 'Unknown',
+                  destination: firstFlight.legs?.[0]?.arrival?.city_name || 'Unknown',
+                  departureDate: firstFlight.departure_date || '',
+                  returnDate: firstFlight.return_date || undefined,
+                  adults: firstFlight.adults || 1,
+                  children: firstFlight.childrens || 0,
+                  luggage: firstFlight.luggage ? 'checked' : 'none'
+                },
+                confidence: 0.9,
+                originalMessage: 'Reconstructed from PDF data'
+              };
+              console.log('✅ [ADD TO CRM] Constructed parsed request from PDF:', parsedRequest);
+            }
           }
         } catch (error) {
-          console.warn('⚠️ [ADD TO CRM] Error extracting budget from PDF:', error);
+          console.warn('⚠️ [ADD TO CRM] Error extracting data from PDF:', error);
         }
       }
+
+      console.log('📊 [ADD TO CRM] Final parsed request to use:', parsedRequest);
 
       console.log('💰 [ADD TO CRM] Budget from latest PDF:', budgetFromPdf);
 
