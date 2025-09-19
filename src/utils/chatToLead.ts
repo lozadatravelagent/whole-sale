@@ -302,6 +302,77 @@ function extractBasicInfo(text: string): ExtractedTravelInfo {
   return info;
 }
 
+// Función para generar nombre descriptivo del lead basado en la información de viaje
+function generateLeadName(travelInfo: ExtractedTravelInfo, parsedRequest?: ParsedTravelRequest, budgetFromPdf?: number): string {
+  // Determinar el tipo de viaje
+  let tripType = 'Paquete';
+  let origin = '';
+  let destination = '';
+  let price = 0;
+
+  // Obtener información del parsedRequest si está disponible
+  if (parsedRequest) {
+    if (parsedRequest.requestType === 'flights' && parsedRequest.flights) {
+      tripType = 'Vuelo';
+      origin = parsedRequest.flights.origin || '';
+      destination = parsedRequest.flights.destination || '';
+    } else if (parsedRequest.requestType === 'hotels' && parsedRequest.hotels) {
+      tripType = 'Hotel';
+      destination = parsedRequest.hotels.city || '';
+    } else if (parsedRequest.requestType === 'packages' && parsedRequest.packages) {
+      tripType = 'Paquete';
+      destination = parsedRequest.packages.destination || '';
+    } else if (parsedRequest.requestType === 'combined') {
+      tripType = 'Paquete';
+      if (parsedRequest.flights) {
+        origin = parsedRequest.flights.origin || '';
+        destination = parsedRequest.flights.destination || parsedRequest.hotels?.city || '';
+      } else if (parsedRequest.hotels) {
+        destination = parsedRequest.hotels.city || '';
+      }
+    }
+  }
+
+  // Si no hay parsedRequest, usar travelInfo
+  if (!origin && !destination) {
+    if (travelInfo.tripType === 'flight') {
+      tripType = 'Vuelo';
+      origin = travelInfo.flightDetails?.origin || '';
+      destination = travelInfo.flightDetails?.destination || travelInfo.destination || '';
+    } else if (travelInfo.tripType === 'hotel') {
+      tripType = 'Hotel';
+      destination = travelInfo.hotelDetails?.city || travelInfo.destination || '';
+    } else {
+      tripType = 'Paquete';
+      destination = travelInfo.destination || '';
+    }
+  }
+
+  // Determinar el precio
+  price = budgetFromPdf || travelInfo.budget || 0;
+
+  // Construir el nombre
+  let leadName = tripType;
+
+  // Agregar ruta (origen-destino o solo destino)
+  if (origin && destination) {
+    leadName += ` (${origin}-${destination}`;
+  } else if (destination) {
+    leadName += ` (${destination}`;
+  } else {
+    leadName += ' (Destino pendiente';
+  }
+
+  // Agregar precio si está disponible
+  if (price > 0) {
+    leadName += `, €${price.toLocaleString()}`;
+  }
+
+  leadName += ')';
+
+  return leadName;
+}
+
 // Función para crear un lead desde una conversación
 export async function createLeadFromChat(
   conversation: ConversationRow,
@@ -323,13 +394,8 @@ export async function createLeadFromChat(
 
     console.log('Target section ID:', firstSectionId);
 
-    // Generar nombre del contacto secuencial
-    const allLeads = await getLeads();
-    const chatLeads = allLeads.filter(lead =>
-      lead.contact.name.startsWith('Chat-')
-    );
-    const nextChatNumber = chatLeads.length + 1;
-    const contactName = travelInfo.contactInfo?.name || `Chat-${nextChatNumber}`;
+    // Generar nombre descriptivo del contacto
+    const contactName = travelInfo.contactInfo?.name || generateLeadName(travelInfo);
 
     // Asegurar valores por defecto
     const safeInfo = {
@@ -694,13 +760,8 @@ export async function createComprehensiveLeadFromChat(
     const sections = await getSections(DUMMY_AGENCY_ID);
     const firstSectionId = sections.length > 0 ? sections[0].id : undefined;
 
-    // Generar nombre del contacto secuencial
-    const allLeads = await getLeads();
-    const chatLeads = allLeads.filter(lead =>
-      lead.contact.name.startsWith('Chat-')
-    );
-    const nextChatNumber = chatLeads.length + 1;
-    const contactName = comprehensiveInfo.contactInfo?.name || `Chat-${nextChatNumber}`;
+    // Generar nombre descriptivo del contacto
+    const contactName = comprehensiveInfo.contactInfo?.name || generateLeadName(comprehensiveInfo, parsedRequest, budgetFromPdf);
 
     // Crear descripción detallada
     let description = `Conversación iniciada: ${conversation.external_key}\n\n`;
