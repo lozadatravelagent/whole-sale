@@ -259,7 +259,7 @@ export function LeadDialog({
                 <Textarea
                   {...register('description')}
                   placeholder="Agrega una descripción más detallada..."
-                  rows={8}
+                  rows={12}
                   className="resize-none min-h-[200px]"
                 />
               </div>
