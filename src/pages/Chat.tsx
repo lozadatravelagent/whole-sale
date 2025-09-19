@@ -2743,7 +2743,12 @@ const Chat = () => {
     // Memoize the conversion to prevent recalculation on every render
     const memoizedCombinedData = useMemo(() => {
       return combinedTravelData ? convertToGlobalCombinedData(combinedTravelData) : null;
-    }, [combinedTravelData]);
+    }, [
+      combinedTravelData?.requestType,
+      combinedTravelData?.flights?.length,
+      combinedTravelData?.hotels?.length,
+      msg.id // Use message ID as stable dependency
+    ]);
 
     return (
       <div key={msg.id}>
