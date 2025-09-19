@@ -1148,21 +1148,8 @@ const Chat = () => {
     }
   }, [selectedConversation, loadContextualMemory]);
 
-  // Maintain focus on input after re-renders - improved to preserve cursor position
-  useEffect(() => {
-    if (messageInputRef.current && document.activeElement !== messageInputRef.current) {
-      // Only refocus if the user was previously typing, but preserve cursor position
-      const wasTyping = message.length > 0;
-      if (wasTyping) {
-        const currentPosition = messageInputRef.current.selectionStart;
-        messageInputRef.current.focus();
-        // Restore cursor position after focus
-        if (currentPosition !== null) {
-          messageInputRef.current.setSelectionRange(currentPosition, currentPosition);
-        }
-      }
-    }
-  }, [messages.length]); // Removed message.length to prevent cursor jumping during typing
+  // Removed automatic focus management to prevent cursor jumping and screen scrolling issues
+  // The input will maintain focus naturally during user interaction
 
   // Show inspiration text for new conversations - DISABLED
   useEffect(() => {
@@ -2921,7 +2908,7 @@ const Chat = () => {
           onChange={(e) => onChange(e.target.value)}
           placeholder="Escribe tu mensaje..."
           disabled={disabled}
-          onKeyDown={(e) => e.key === 'Enter' && onSend()}
+          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && onSend()}
           className="flex-1"
           autoComplete="off"
         />
