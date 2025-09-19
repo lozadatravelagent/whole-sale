@@ -5,6 +5,7 @@ const PDFMONKEY_API_BASE = 'https://api.pdfmonkey.io/api/v1/documents';
 const PDFMONKEY_SYNC_BASE = 'https://api.pdfmonkey.io/api/v1/documents/sync';
 const FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376';
 const COMBINED_TEMPLATE_ID = '3E8394AC-84D4-4286-A1CD-A12D1AB001D5';
+const FLIGHTS_TEMPLATE_ID = '30B142BF-1DD9-432D-8261-5287556DC9FC';
 
 // Get API key from environment variables
 const getApiKey = (): string => {
@@ -82,6 +83,12 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
       };
     }
 
+    // Select appropriate template based on number of flights
+    const templateId = selectedFlights.length === 2 ? FLIGHTS_TEMPLATE_ID : FLIGHT_TEMPLATE_ID;
+    const templateName = selectedFlights.length === 2 ? 'flights2.html' : 'flights.html';
+
+    console.log(`🎯 Using template: ${templateName} (${templateId}) for ${selectedFlights.length} flight(s)`);
+
     // Prepare data for PdfMonkey template
     const pdfData = preparePdfData(selectedFlights);
 
@@ -91,7 +98,7 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
     // Correct PdfMonkey API structure
     const request = {
       document: {
-        document_template_id: FLIGHT_TEMPLATE_ID,
+        document_template_id: templateId,
         status: "pending",
         payload: pdfData,
         meta: {
@@ -197,10 +204,34 @@ function preparePdfData(flights: FlightData[]) {
 
   console.log('✅ PREPARED SELECTED FLIGHTS:', selected_flights.length, 'flights');
 
-  // Since template expects direct access (not in a loop), send first flight's data at root level
-  const firstFlight = selected_flights[0];
+  // For multiple flights (2), use flights2.html template structure
+  if (flights.length === 2) {
+    console.log('🎯 USING FLIGHTS2.HTML TEMPLATE STRUCTURE - Sending selected_flights array');
 
-  const flightData = {
+    const multiFlightData = {
+      selected_flights: selected_flights
+    };
+
+    console.log('🎯 SENDING MULTI-FLIGHT DATA:', {
+      template: 'flights2.html',
+      flights_count: multiFlightData.selected_flights.length,
+      flights_preview: multiFlightData.selected_flights.map((flight, i) => ({
+        index: i,
+        airline: flight.airline.name,
+        route: flight.legs.length > 0 ? `${flight.legs[0].departure.city_code} → ${flight.legs[0].arrival.city_code}` : 'Unknown route',
+        price: `${flight.price.amount} ${flight.price.currency}`,
+        legs_count: flight.legs.length
+      }))
+    });
+
+    return multiFlightData;
+  }
+
+  // For single flight, use flights.html template structure (original behavior)
+  console.log('🎯 USING FLIGHTS.HTML TEMPLATE STRUCTURE - Sending flight data at root level');
+
+  const firstFlight = selected_flights[0];
+  const singleFlightData = {
     // Direct flight data for template access
     airline: firstFlight.airline,
     price: firstFlight.price,
@@ -214,17 +245,17 @@ function preparePdfData(flights: FlightData[]) {
     transfers: firstFlight.transfers
   };
 
-  console.log('🎯 SENDING FLIGHT DATA AT ROOT LEVEL:', {
-    ...flightData,
-    legs_count: flightData.legs.length,
-    legs_preview: flightData.legs.map((leg, i) => ({
+  console.log('🎯 SENDING SINGLE FLIGHT DATA AT ROOT LEVEL:', {
+    template: 'flights.html',
+    legs_count: singleFlightData.legs.length,
+    legs_preview: singleFlightData.legs.map((leg, i) => ({
       index: i,
       type: leg.flight_type,
       route: `${leg.departure.city_code} → ${leg.arrival.city_code}`
     }))
   });
 
-  return flightData;
+  return singleFlightData;
 }
 
 export async function checkPdfStatus(documentId: string): Promise<{
