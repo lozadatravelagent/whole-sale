@@ -324,136 +324,138 @@ export function LeadDialog({
           </div>
 
           {/* Right Sidebar - Business Fields */}
-          <div className="w-80 border-l bg-muted/20 p-6 space-y-6">
-            <h3 className="font-semibold text-lg">Información del viaje</h3>
+          <div className="w-80 border-l bg-muted/20 p-6 overflow-y-auto">
+            <h3 className="font-semibold text-lg mb-6">Información del viaje</h3>
+            <div className="space-y-6">
 
-            {/* Presupuesto */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                Presupuesto
-              </Label>
-              <Input
-                type="number"
-                min="0"
-                {...register('budget', { valueAsNumber: true })}
-                placeholder="Monto en USD"
-              />
-            </div>
-
-            {/* Destino */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                Destino
-              </Label>
-              <Input
-                {...register('trip.city')}
-                placeholder="Ciudad destino"
-              />
-            </div>
-
-            {/* Servicio */}
-            <div className="space-y-2">
-              <Label>Servicio</Label>
-              <Select value={watchedType} onValueChange={(value: 'hotel' | 'flight' | 'package') => setValue('trip.type', value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="flight">
-                    <div className="flex items-center gap-2">
-                      <Plane className="h-4 w-4" />
-                      Vuelo
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="hotel">
-                    <div className="flex items-center gap-2">
-                      <Hotel className="h-4 w-4" />
-                      Hotel
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="package">
-                    <div className="flex items-center gap-2">
-                      <Package className="h-4 w-4" />
-                      Paquete
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Fechas - Ida y Vuelta */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Fechas
-              </Label>
+              {/* Presupuesto */}
               <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Presupuesto
+                </Label>
                 <Input
-                  type="date"
-                  {...register('trip.dates.checkin')}
-                  placeholder="Fecha de ida"
-                />
-                <Input
-                  type="date"
-                  {...register('trip.dates.checkout')}
-                  placeholder="Fecha de vuelta"
+                  type="number"
+                  min="0"
+                  {...register('budget', { valueAsNumber: true })}
+                  placeholder="Monto en USD"
                 />
               </div>
-            </div>
 
-            {/* Personas */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Personas
-              </Label>
-              <Input
-                type="number"
-                min="1"
-                {...register('trip.adults', { valueAsNumber: true })}
-                placeholder="Número de adultos"
-              />
-            </div>
+              {/* Destino */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4" />
+                  Destino
+                </Label>
+                <Input
+                  {...register('trip.city')}
+                  placeholder="Ciudad destino"
+                />
+              </div>
 
-            {/* Niños */}
-            <div className="space-y-2">
-              <Label>Niños</Label>
-              <Input
-                type="number"
-                min="0"
-                {...register('trip.children', { valueAsNumber: true })}
-                placeholder="Número de niños"
-              />
-            </div>
+              {/* Servicio */}
+              <div className="space-y-2">
+                <Label>Servicio</Label>
+                <Select value={watchedType} onValueChange={(value: 'hotel' | 'flight' | 'package') => setValue('trip.type', value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="flight">
+                      <div className="flex items-center gap-2">
+                        <Plane className="h-4 w-4" />
+                        Vuelo
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="hotel">
+                      <div className="flex items-center gap-2">
+                        <Hotel className="h-4 w-4" />
+                        Hotel
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="package">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4" />
+                        Paquete
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* WhatsApp */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                WhatsApp
-              </Label>
-              <Input
-                type="tel"
-                {...register('contact.phone')}
-                placeholder="Número de WhatsApp"
-              />
-            </div>
+              {/* Fechas - Ida y Vuelta */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Fechas
+                </Label>
+                <div className="space-y-2">
+                  <Input
+                    type="date"
+                    {...register('trip.dates.checkin')}
+                    placeholder="Fecha de ida"
+                  />
+                  <Input
+                    type="date"
+                    {...register('trip.dates.checkout')}
+                    placeholder="Fecha de vuelta"
+                  />
+                </div>
+              </div>
 
-            {/* Actions */}
-            <div className="pt-6 space-y-2">
-              <Button type="submit" className="w-full">
-                {isEditing ? 'Guardar Cambios' : 'Crear Lead'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancelar
-              </Button>
+              {/* Personas */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Personas
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  {...register('trip.adults', { valueAsNumber: true })}
+                  placeholder="Número de adultos"
+                />
+              </div>
+
+              {/* Niños */}
+              <div className="space-y-2">
+                <Label>Niños</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  {...register('trip.children', { valueAsNumber: true })}
+                  placeholder="Número de niños"
+                />
+              </div>
+
+              {/* WhatsApp */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  WhatsApp
+                </Label>
+                <Input
+                  type="tel"
+                  {...register('contact.phone')}
+                  placeholder="Número de WhatsApp"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="pt-6 space-y-2">
+                <Button type="submit" className="w-full">
+                  {isEditing ? 'Guardar Cambios' : 'Crear Lead'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Cancelar
+                </Button>
+              </div>
             </div>
           </div>
         </form>
