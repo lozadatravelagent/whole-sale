@@ -688,9 +688,11 @@ export async function createComprehensiveLeadFromChat(
 
     if (parsedRequest) {
       console.log('📊 Using parsed request information for lead creation');
+      console.log('📊 ParsedRequest details:', JSON.stringify(parsedRequest, null, 2));
 
       // Extraer información de vuelos si existe
       if (parsedRequest.flights) {
+        console.log('✈️ Processing flight details from parsedRequest:', parsedRequest.flights);
         comprehensiveInfo.destination = parsedRequest.flights.destination || travelInfo.destination;
         comprehensiveInfo.dates = {
           checkin: parsedRequest.flights.departureDate || travelInfo.dates?.checkin || '',
@@ -755,6 +757,10 @@ export async function createComprehensiveLeadFromChat(
     }
 
     console.log('📋 Comprehensive travel info:', comprehensiveInfo);
+    console.log('🔍 Flight details check:', {
+      hasFlightDetails: !!comprehensiveInfo.flightDetails,
+      flightDetails: comprehensiveInfo.flightDetails
+    });
 
     // Obtener la primera sección (Nuevos) para asignar el lead
     const sections = await getSections(DUMMY_AGENCY_ID);
@@ -766,7 +772,9 @@ export async function createComprehensiveLeadFromChat(
     // Crear descripción detallada
     let description = `Conversación iniciada: ${conversation.external_key}\n\n`;
 
+    console.log('📝 Starting description generation...');
     if (comprehensiveInfo.flightDetails) {
+      console.log('✈️ Adding flight details to description');
       description += `✈️ VUELO:\n`;
       description += `- Origen: ${comprehensiveInfo.flightDetails.origin}\n`;
       description += `- Destino: ${comprehensiveInfo.flightDetails.destination}\n`;
@@ -785,9 +793,12 @@ export async function createComprehensiveLeadFromChat(
         description += `- Aerolínea preferida: ${comprehensiveInfo.flightDetails.preferredAirline}\n`;
       }
       description += `\n`;
+    } else {
+      console.log('⚠️ No flight details found in comprehensiveInfo');
     }
 
     if (comprehensiveInfo.hotelDetails) {
+      console.log('🏨 Adding hotel details to description');
       description += `🏨 HOTEL:\n`;
       description += `- Ciudad: ${comprehensiveInfo.hotelDetails.city}\n`;
       if (comprehensiveInfo.hotelDetails.hotelName) {
@@ -815,6 +826,8 @@ export async function createComprehensiveLeadFromChat(
         description += `- Cantidad habitaciones: ${comprehensiveInfo.hotelDetails.roomCount}\n`;
       }
       description += `\n`;
+    } else {
+      console.log('⚠️ No hotel details found in comprehensiveInfo');
     }
 
     // Agregar información de contacto si está disponible
