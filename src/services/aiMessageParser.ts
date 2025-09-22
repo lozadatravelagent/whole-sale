@@ -214,7 +214,7 @@ function generateFieldExamples(missingFieldsSpanish: string[]): string {
                 examples.push('📅 **Fecha de salida:** Por ejemplo: "15 de diciembre", "2025-12-15"');
                 break;
             case 'cantidad de pasajeros':
-                examples.push('👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 adulto y 2 niños"');
+                examples.push('👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 persona", "3 adultos"');
                 break;
             case 'equipaje (con o sin valija)':
                 examples.push('🧳 **Equipaje:** Por ejemplo: "con valija", "solo equipaje de mano", "sin equipaje"');
@@ -233,7 +233,7 @@ function generateFieldExamples(missingFieldsSpanish: string[]): string {
                 examples.push('📅 **Fecha de salida:** Por ejemplo: "20 de diciembre", "2025-12-20"');
                 break;
             case 'cantidad de pasajeros':
-                examples.push('👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 adulto y 2 niños"');
+                examples.push('👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 persona", "3 adultos"');
                 break;
             case 'tipo de habitación (single, double, triple)':
                 examples.push('🛏️ **Tipo de habitación:** Por ejemplo: "single", "double", "triple"');

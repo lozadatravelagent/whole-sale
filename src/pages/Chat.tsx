@@ -725,7 +725,7 @@ const Chat = () => {
   const messageInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState('active');
   const [isTyping, setIsTyping] = useState(false);
-  const [sidebarLimit, setSidebarLimit] = useState(5);
+  const [sidebarLimit, setSidebarLimit] = useState(50);
   const [previousParsedRequest, setPreviousParsedRequest] = useState<ParsedTravelRequest | null>(null);
   const [isAddingToCRM, setIsAddingToCRM] = useState(false);
 
@@ -988,6 +988,7 @@ const Chat = () => {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]); // Now stable with useCallback
+
 
   // Handle ?new=1 URL parameter to create new chat automatically
   useEffect(() => {
@@ -3079,163 +3080,266 @@ const Chat = () => {
     </div>
   ));
 
-  // Empty state component - memoized to prevent re-renders
-  const EmptyState = React.memo(({ onCreateChat }: { onCreateChat: () => void }) => (
-    <div className="flex-1 flex items-center justify-center bg-muted/20">
-      <div className="text-center">
-        <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Ninguna conversación seleccionada</h3>
-        <p className="text-muted-foreground mb-4">Elige una conversación del sidebar o crea una nueva para comenzar.</p>
-        <Button onClick={onCreateChat} className="bg-primary hover:bg-primary/90">
-          <Plus className="h-4 w-4 mr-2" />
-          Crear Nuevo Chat
-        </Button>
+  // Empty state component with direct input - memoized to prevent re-renders
+  const EmptyState = React.memo(() => {
+    const [newMessage, setNewMessage] = useState('');
+    const [isCreatingChat, setIsCreatingChat] = useState(false);
+
+    const handleSendNewMessage = useCallback(async () => {
+      if (!newMessage.trim() || isCreatingChat) return;
+
+      const messageToSend = newMessage.trim();
+      setIsCreatingChat(true);
+
+      try {
+        console.log('🚀 [NEW CHAT] Creating new conversation with message:', messageToSend);
+
+        // Create new conversation first
+        const newConversation = await createConversation({
+          channel: 'web' as const,
+          status: 'active' as const
+        });
+
+        if (newConversation) {
+          console.log('✅ [NEW CHAT] Conversation created:', newConversation.id);
+
+          // Set as selected conversation
+          setSelectedConversation(newConversation.id);
+          await updateConversationState(newConversation.id, 'active');
+
+          // Clear the input immediately
+          setNewMessage('');
+
+          // Send the message directly using the same flow as handleSendMessage
+          console.log('📤 [NEW CHAT] Sending initial message...');
+
+          // Add user message
+          const userMessage = await addMessageViaSupabase({
+            conversation_id: newConversation.id,
+            role: 'user' as const,
+            content: { text: messageToSend },
+            meta: { status: 'sending' }
+          });
+
+          console.log('✅ [NEW CHAT] User message saved:', userMessage.id);
+
+          // Update message status
+          await updateMessageStatus(userMessage.id, 'sent');
+
+          // Update conversation title
+          const title = generateChatTitle(messageToSend);
+          await updateConversationTitle(newConversation.id, title);
+
+          // Set the message in the main input for processing
+          setMessage(messageToSend);
+
+          // Process the message with AI parser and send response
+          setTimeout(() => {
+            handleSendMessage();
+          }, 200);
+        }
+      } catch (error) {
+        console.error('❌ [NEW CHAT] Error creating conversation or sending message:', error);
+        toast({
+          title: "Error",
+          description: "No se pudo crear la conversación. Inténtalo de nuevo.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsCreatingChat(false);
+      }
+    }, [newMessage, isCreatingChat, createConversation, updateConversationState, toast, addMessageViaSupabase, updateMessageStatus, generateChatTitle, updateConversationTitle, handleSendMessage]);
+
+    return (
+      <div className="flex-1 flex items-center justify-center bg-muted/20">
+        <div className="text-center max-w-2xl w-full px-6">
+          <div className="mb-12">
+            <h1 className="text-4xl font-bold mb-8 text-foreground">
+              ¿Donde queres viajar hoy?
+            </h1>
+          </div>
+
+          <div className="relative">
+            <Input
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Pregunta lo que quieras..."
+              disabled={isCreatingChat}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendNewMessage()}
+              className="pr-12 h-12 text-base rounded-full"
+              autoComplete="off"
+            />
+            <Button
+              onClick={handleSendNewMessage}
+              disabled={isCreatingChat || !newMessage.trim()}
+              className="absolute right-1 top-1 h-10 w-10 rounded-full p-0"
+              size="sm"
+            >
+              {isCreatingChat ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  });
+
+  // Conversations sidebar component
+  const ConversationsSidebar = React.memo(() => (
+    <div className="w-80 border-r bg-background flex flex-col">
+      <div className="p-4 border-b">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-lg font-semibold">Conversaciones</h3>
+          <Button
+            onClick={() => createNewChat()}
+            size="sm"
+            className="bg-primary hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Nuevo Chat
+          </Button>
+        </div>
+        <p className="text-sm text-muted-foreground">Chats de viajes</p>
+      </div>
+
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="p-4 pb-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="active">Chats Activos</TabsTrigger>
+              <TabsTrigger value="archived">
+                <Archive className="h-3 w-3 mr-1" />
+                Archivadas
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 pb-4">
+          {activeTab === 'active' && (
+            <div className="space-y-2">
+              {conversations
+                .filter(conv => conv.state === 'active')
+                .slice(0, sidebarLimit)
+                .map((conversation) => (
+                  <Card
+                    key={conversation.id}
+                    className={`mb-2 cursor-pointer transition-colors ${selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
+                      }`}
+                    onClick={() => setSelectedConversation(conversation.id)}
+                  >
+                    <CardContent className="p-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-sm truncate">
+                            {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
+                          </h4>
+                          <div className="flex items-center mt-1 text-xs text-muted-foreground">
+                            {conversation.channel === 'wa' ? (
+                              <Phone className="h-3 w-3 mr-1" />
+                            ) : (
+                              <Globe className="h-3 w-3 mr-1" />
+                            )}
+                            <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="ml-2">
+                          {conversation.channel}
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+            </div>
+          )}
+
+          {activeTab === 'archived' && (
+            <div className="space-y-2">
+              {conversations
+                .filter(conv => conv.state === 'closed')
+                .slice(0, sidebarLimit)
+                .map((conversation) => (
+                  <Card
+                    key={conversation.id}
+                    className={`mb-2 cursor-pointer transition-colors ${selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
+                      }`}
+                    onClick={() => setSelectedConversation(conversation.id)}
+                  >
+                    <CardContent className="p-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-sm truncate">
+                            {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
+                          </h4>
+                          <div className="flex items-center mt-1 text-xs text-muted-foreground">
+                            <Archive className="h-3 w-3 mr-1" />
+                            <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className="ml-2">
+                          archivada
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   ));
 
-  // Sidebar extra content (conversations list)
-  const sidebarExtra = (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Conversaciones</h3>
-        <Button onClick={() => createNewChat()} size="sm" variant="outline">
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="active">Activas</TabsTrigger>
-          <TabsTrigger value="archived">Archivadas</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="active" className="space-y-2">
-          <ScrollArea className="h-[400px]">
-            {conversations
-              .filter(conv => conv.state === 'active')
-              .slice(0, sidebarLimit)
-              .map((conversation) => (
-                <Card
-                  key={conversation.id}
-                  className={`mb-2 cursor-pointer transition-colors ${selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
-                    }`}
-                  onClick={() => setSelectedConversation(conversation.id)}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm truncate">
-                          {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
-                        </h4>
-                        <div className="flex items-center mt-1 text-xs text-muted-foreground">
-                          {conversation.channel === 'wa' ? (
-                            <Phone className="h-3 w-3 mr-1" />
-                          ) : (
-                            <Globe className="h-3 w-3 mr-1" />
-                          )}
-                          <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                      <Badge variant="secondary" className="ml-2">
-                        {conversation.channel}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-          </ScrollArea>
-
-          {conversations.filter(conv => conv.state === 'active').length > sidebarLimit && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSidebarLimit(prev => prev + 5)}
-              className="w-full"
-            >
-              <ChevronDown className="h-4 w-4 mr-2" />
-              Mostrar más ({conversations.filter(conv => conv.state === 'active').length - sidebarLimit} restantes)
-            </Button>
-          )}
-        </TabsContent>
-
-        <TabsContent value="archived" className="space-y-2">
-          <ScrollArea className="h-[400px]">
-            {conversations
-              .filter(conv => conv.state === 'closed')
-              .slice(0, sidebarLimit)
-              .map((conversation) => (
-                <Card
-                  key={conversation.id}
-                  className={`mb-2 cursor-pointer transition-colors ${selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
-                    }`}
-                  onClick={() => setSelectedConversation(conversation.id)}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm truncate">
-                          {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
-                        </h4>
-                        <div className="flex items-center mt-1 text-xs text-muted-foreground">
-                          <Archive className="h-3 w-3 mr-1" />
-                          <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="ml-2">
-                        archivada
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-          </ScrollArea>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-
   return (
-    <MainLayout userRole="ADMIN" sidebarExtra={sidebarExtra}>
-      <div className="h-screen flex flex-col">
-        {selectedConversation ? (
-          <>
-            <ChatHeader />
+    <MainLayout userRole="ADMIN">
+      <div className="h-screen flex">
+        {/* Conversations Sidebar */}
+        <ConversationsSidebar />
 
-            {/* Messages area - scrollable */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="space-y-4">
-                {/* Inspiration text overlay for new conversations */}
-                <InspirationText />
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col">
+          {selectedConversation ? (
+            <>
+              <ChatHeader />
 
-                {messages
-                  .filter((m) => {
-                    const meta = (m as any).meta;
-                    // Ocultar mensajes de memoria/contexto del sistema
-                    if (m.role === 'system' && meta && meta.messageType === 'contextual_memory') return false;
-                    // Ocultar pedidos internos de info faltante si se desea mantener limpio (opcional)
-                    // if (m.role === 'assistant' && meta?.messageType === 'missing_info_request') return false;
-                    return true;
-                  })
-                  .map((msg) => (
-                    <MessageItem key={msg.id} msg={msg} />
-                  ))}
+              {/* Messages area - scrollable */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="space-y-4">
+                  {/* Inspiration text overlay for new conversations */}
+                  <InspirationText />
 
-                {isTyping && <TypingIndicator />}
+                  {messages
+                    .filter((m) => {
+                      const meta = (m as any).meta;
+                      // Ocultar mensajes de memoria/contexto del sistema
+                      if (m.role === 'system' && meta && meta.messageType === 'contextual_memory') return false;
+                      // Ocultar pedidos internos de info faltante si se desea mantener limpio (opcional)
+                      // if (m.role === 'assistant' && meta?.messageType === 'missing_info_request') return false;
+                      return true;
+                    })
+                    .map((msg) => (
+                      <MessageItem key={msg.id} msg={msg} />
+                    ))}
+
+                  {isTyping && <TypingIndicator />}
+                </div>
               </div>
-            </div>
 
-            {/* Input area - fixed at bottom */}
-            <MessageInput
-              value={message}
-              onChange={handleMessageChange}
-              onSend={handleSendMessage}
-              disabled={isLoading}
-            />
-          </>
-        ) : (
-          <EmptyState onCreateChat={createNewChat} />
-        )}
+              {/* Input area - fixed at bottom */}
+              <MessageInput
+                value={message}
+                onChange={handleMessageChange}
+                onSend={handleSendMessage}
+                disabled={isLoading}
+              />
+            </>
+          ) : (
+            <EmptyState />
+          )}
+        </div>
       </div>
     </MainLayout>
   );

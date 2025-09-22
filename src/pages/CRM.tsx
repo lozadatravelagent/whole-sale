@@ -8,195 +8,26 @@ import {
   useSensor,
   useSensors,
   DragOverEvent,
-  useDroppable
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  verticalListSortingStrategy,
-  useSortable
+  horizontalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Plus, Users, DollarSign, X } from 'lucide-react';
-import { LeadCard } from '@/components/crm/LeadCard';
+import { Plus, Star, Lock } from 'lucide-react';
+import { TrelloColumn } from '@/components/crm/TrelloColumn';
+import { TrelloCard } from '@/components/crm/TrelloCard';
 import { LeadDialog } from '@/components/crm/LeadDialog';
 import { useLeads } from '@/hooks/useLeads';
 import { Lead, Section } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
-// Dummy data for initial testing - usar tenant y agency reales después
+// Dummy data for initial testing
 const DUMMY_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const DUMMY_AGENCY_ID = '00000000-0000-0000-0000-000000000002';
-
-// Draggable Lead Card Component
-function DraggableLeadCard({
-  lead,
-  onEdit,
-  onDelete,
-  onSave,
-  seller,
-  sectionName
-}: {
-  lead: Lead;
-  onEdit: () => void;
-  onDelete: () => void;
-  onSave: (updates: Partial<Lead>) => void;
-  seller?: any;
-  sectionName?: string;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({
-    id: lead.id,
-    data: {
-      type: 'lead',
-      lead
-    }
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="touch-none"
-    >
-      <LeadCard
-        lead={lead}
-        onClick={onEdit}
-        onDelete={onDelete}
-        onSave={onSave}
-        isDragging={isDragging}
-        seller={seller}
-        sectionName={sectionName}
-      />
-    </div>
-  );
-}
-
-// Droppable Section Column Component
-function DroppableSection({
-  section,
-  leads,
-  onEdit,
-  onDelete,
-  onSave,
-  onDeleteSection,
-  totalBudget,
-  sellers,
-  isOver
-}: {
-  section: Section;
-  leads: Lead[];
-  onEdit: (lead: Lead) => void;
-  onDelete: (lead: Lead) => void;
-  onSave: (lead: Lead, updates: Partial<Lead>) => void;
-  onDeleteSection: (section: Section) => void;
-  totalBudget: number;
-  sellers: any[];
-  isOver?: boolean;
-}) {
-  const { setNodeRef } = useDroppable({
-    id: section.id,
-    data: {
-      type: 'section',
-      section
-    }
-  });
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-ES', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  return (
-    <Card
-      ref={setNodeRef}
-      className={`flex-1 h-[600px] transition-colors flex flex-col ${isOver ? 'bg-primary/5 border-primary/30' : ''
-        }`}
-    >
-      <CardHeader className="pb-3 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Users className="h-4 w-4" />
-            {section.name}
-            <Badge variant="secondary" className={section.color}>
-              {leads.length}
-            </Badge>
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDeleteSection(section)}
-            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        {totalBudget > 0 && (
-          <div className={`flex items-center gap-1 text-sm font-semibold ${section.name.toLowerCase().includes('perdido') || section.name.toLowerCase().includes('lost')
-            ? 'text-red-600'
-            : 'text-green-600'
-            }`}>
-            <DollarSign className="h-4 w-4" />
-            {formatCurrency(totalBudget)}
-          </div>
-        )}
-      </CardHeader>
-
-      <CardContent className="flex-1 overflow-hidden p-3">
-        <SortableContext
-          items={leads.map(lead => lead.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="space-y-3 h-full overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-            {leads.map((lead) => {
-              const seller = sellers.find(s => s.id === lead.seller_id);
-              return (
-                <DraggableLeadCard
-                  key={lead.id}
-                  lead={lead}
-                  onEdit={() => onEdit(lead)}
-                  onDelete={() => onDelete(lead)}
-                  onSave={(updates) => onSave(lead, updates)}
-                  seller={seller}
-                  sectionName={section.name}
-                />
-              );
-            })}
-            {leads.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                <div className="text-4xl mb-2">📋</div>
-                <p>No hay leads en {section.name.toLowerCase()}</p>
-                <p className="text-xs mt-1">Arrastra leads aquí</p>
-              </div>
-            )}
-          </div>
-        </SortableContext>
-      </CardContent>
-    </Card>
-  );
-}
 
 export default function CRM() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -206,6 +37,7 @@ export default function CRM() {
   const [sectionToDelete, setSectionToDelete] = useState<Section | null>(null);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  const [selectedSectionForNewLead, setSelectedSectionForNewLead] = useState<string | null>(null);
 
   const {
     sections,
@@ -257,18 +89,15 @@ export default function CRM() {
     const activeId = active.id as string;
     const overId = over.id as string;
 
-    // Get the lead being dragged
     const lead = leads.find(l => l.id === activeId);
     if (!lead) return;
 
-    // Check if dropping on a different section
     const targetSection = sections.find(s => s.id === overId);
     if (targetSection && lead.section_id !== targetSection.id) {
-      // Move lead to new section
       moveLeadToSection(activeId, targetSection.id);
       toast({
-        title: "Lead movido",
-        description: `Lead movido a ${targetSection.name}`,
+        title: "Tarjeta movida",
+        description: `Movida a ${targetSection.name}`,
       });
     }
   };
@@ -279,43 +108,18 @@ export default function CRM() {
     setIsDialogOpen(true);
   };
 
-  const handleQuickSave = async (lead: Lead, updates: Partial<Lead>) => {
-    try {
-      await editLead({
-        id: lead.id,
-        ...updates
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "No se pudo guardar el lead",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleNewLead = () => {
+  const handleNewLead = (sectionId?: string) => {
     setSelectedLead(null);
+    setSelectedSectionForNewLead(sectionId || null);
     setIsEditing(false);
     setIsDialogOpen(true);
   };
 
-  const handleDeleteLead = (lead: Lead) => {
-    setLeadToDelete(lead);
-  };
-
-  const confirmDelete = () => {
-    if (leadToDelete) {
-      removeLead(leadToDelete.id);
-      setLeadToDelete(null);
-    }
-  };
-
   const handleSaveLead = async (data: any) => {
     try {
-      // Add default section if no section specified
-      if (!data.section_id && sections.length > 0) {
-        data.section_id = sections[0].id;
+      // Use selected section for new lead or first section as fallback
+      if (!data.section_id) {
+        data.section_id = selectedSectionForNewLead || (sections.length > 0 ? sections[0].id : null);
       }
 
       if (isEditing && selectedLead) {
@@ -324,7 +128,7 @@ export default function CRM() {
           ...data
         });
         toast({
-          title: "Lead actualizado",
+          title: "Tarjeta actualizada",
           description: "Los cambios se han guardado correctamente.",
         });
       } else {
@@ -334,30 +138,23 @@ export default function CRM() {
           agency_id: DUMMY_AGENCY_ID
         });
         toast({
-          title: "Lead creado",
-          description: "El nuevo lead se ha creado correctamente.",
+          title: "Nueva tarjeta creada",
+          description: "La tarjeta se ha agregado correctamente.",
         });
       }
       setIsDialogOpen(false);
+      setSelectedSectionForNewLead(null);
     } catch (error) {
       toast({
         title: "Error",
-        description: "No se pudo guardar el lead. Inténtalo de nuevo.",
+        description: "No se pudo guardar la tarjeta. Inténtalo de nuevo.",
         variant: "destructive",
       });
     }
   };
 
   const handleNewSection = async () => {
-    const colors = [
-      'bg-purple-100 text-purple-800 border-purple-200',
-      'bg-pink-100 text-pink-800 border-pink-200',
-      'bg-indigo-100 text-indigo-800 border-indigo-200',
-      'bg-teal-100 text-teal-800 border-teal-200',
-    ];
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
-
-    await addSection(DUMMY_AGENCY_ID, `Nueva Sección ${sections.length + 1}`, randomColor);
+    await addSection(DUMMY_AGENCY_ID, `Nueva Lista ${sections.length + 1}`);
   };
 
   const handleDeleteSection = (section: Section) => {
@@ -374,15 +171,8 @@ export default function CRM() {
   if (loading) {
     return (
       <MainLayout>
-        <div className="p-6 space-y-6">
-          <div className="animate-pulse">
-            <div className="h-8 bg-muted rounded w-48 mb-4"></div>
-            <div className="grid grid-cols-5 gap-6">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-96 bg-muted rounded"></div>
-              ))}
-            </div>
-          </div>
+        <div className="h-full flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       </MainLayout>
     );
@@ -390,81 +180,119 @@ export default function CRM() {
 
   return (
     <MainLayout userRole="ADMIN">
-      <div className="p-6 space-y-6">
+      <div className="h-full bg-background relative overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute inset-0 opacity-10 bg-white/5"></div>
+
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-primary">
-              CRM - Gestión de Leads
+        <div className="relative z-10 flex items-center justify-between p-4 bg-card border-b border-border">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold text-foreground">
+              Lozada Madero
             </h1>
-            <p className="text-muted-foreground mt-1">
-              Gestiona el embudo de ventas arrastrando los leads entre secciones
-            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted"
+            >
+              <Star className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted"
+            >
+              <Lock className="h-4 w-4" />
+              Privado
+            </Button>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Button onClick={handleNewSection} variant="outline" className="gap-2">
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleNewSection}
+              variant="ghost"
+              className="text-muted-foreground hover:bg-muted gap-2"
+            >
               <Plus className="h-4 w-4" />
-              Nueva Sección
-            </Button>
-            <Button onClick={handleNewLead} className="gap-2 bg-primary hover:bg-primary/90">
-              <Plus className="h-4 w-4" />
-              Nuevo Lead
+              Agregar otra lista
             </Button>
           </div>
         </div>
 
-        {/* Kanban Board with Drag & Drop */}
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-        >
-          <div className={`grid gap-6 h-[600px]`} style={{ gridTemplateColumns: `repeat(${sections.length || 1}, 1fr)` }}>
-            {sections.map((section) => (
-              <DroppableSection
-                key={section.id}
-                section={section}
-                leads={leadsBySection[section.id] || []}
-                onEdit={handleEditLead}
-                onDelete={handleDeleteLead}
-                onSave={handleQuickSave}
-                onDeleteSection={handleDeleteSection}
-                totalBudget={budgetBySection[section.id] || 0}
-                sellers={sellers}
-                isOver={overId === section.id}
-              />
-            ))}
-          </div>
+        {/* Board Content */}
+        <div className="relative z-10 p-4 h-[calc(100vh-80px)] overflow-y-hidden">
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-3 h-full min-w-0">
+              <SortableContext
+                items={sections.map(s => s.id)}
+                strategy={horizontalListSortingStrategy}
+              >
+                {sections.map((section) => (
+                  <TrelloColumn
+                    key={section.id}
+                    section={section}
+                    leads={leadsBySection[section.id] || []}
+                    onEdit={handleEditLead}
+                    onAddCard={() => handleNewLead(section.id)}
+                    onDeleteSection={handleDeleteSection}
+                    isOver={overId === section.id}
+                  />
+                ))}
+              </SortableContext>
 
-          {/* Drag Overlay - Preview while dragging */}
-          <DragOverlay>
-            {activeLead ? (
-              <div className="transform rotate-2 opacity-90 scale-105 shadow-2xl">
-                <LeadCard
-                  lead={activeLead}
-                  isDragging
-                  seller={sellers.find(s => s.id === activeLead.seller_id)}
-                />
+              {/* Add new list button */}
+              {sections.length > 0 && (
+                <div className="w-80 flex-shrink-0">
+                  <Button
+                    onClick={handleNewSection}
+                    variant="ghost"
+                    className="w-full justify-start bg-muted hover:bg-muted/80 text-muted-foreground border-border h-auto py-3"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agregar otra lista
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Drag Overlay */}
+            <DragOverlay>
+              {activeLead ? (
+                <div className="transform rotate-2 opacity-90 scale-105">
+                  <TrelloCard
+                    lead={activeLead}
+                    onClick={() => { }}
+                    isDragging
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+
+          {/* Empty state */}
+          {sections.length === 0 && (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center text-foreground">
+                <h3 className="text-xl font-semibold mb-2">¡Bienvenido a tu nuevo tablero!</h3>
+                <p className="text-muted-foreground mb-6">Crea tu primera lista para empezar a organizar</p>
+                <Button
+                  onClick={handleNewSection}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Crear primera lista
+                </Button>
               </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+            </div>
+          )}
+        </div>
 
-        {sections.length === 0 && (
-          <div className="text-center py-12">
-            <div className="text-4xl mb-4">🏗️</div>
-            <h3 className="text-lg font-semibold mb-2">No hay secciones configuradas</h3>
-            <p className="text-muted-foreground mb-4">Crea tu primera sección para empezar a organizar leads</p>
-            <Button onClick={handleNewSection} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Crear Primera Sección
-            </Button>
-          </div>
-        )}
-
-        {/* Enhanced Lead Dialog */}
+        {/* Lead Dialog */}
         <LeadDialog
           open={isDialogOpen}
           onOpenChange={setIsDialogOpen}
@@ -475,39 +303,16 @@ export default function CRM() {
           sellers={sellers}
         />
 
-        {/* Delete Lead Confirmation */}
-        <AlertDialog open={!!leadToDelete} onOpenChange={() => setLeadToDelete(null)}>
-          <AlertDialogContent className="bg-background">
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Eliminar Lead?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Esta acción no se puede deshacer. El lead "{leadToDelete?.contact.name}"
-                será eliminado permanentemente.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmDelete}
-                className="bg-destructive hover:bg-destructive/90"
-              >
-                Eliminar
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
         {/* Delete Section Confirmation */}
         <AlertDialog open={!!sectionToDelete} onOpenChange={() => setSectionToDelete(null)}>
-          <AlertDialogContent className="bg-background">
+          <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>¿Eliminar Sección?</AlertDialogTitle>
+              <AlertDialogTitle>¿Eliminar lista?</AlertDialogTitle>
               <AlertDialogDescription>
-                Esta acción no se puede deshacer. La sección "{sectionToDelete?.name}"
-                será eliminada permanentemente.
+                Esta acción eliminará permanentemente la lista "{sectionToDelete?.name}".
                 {leadsBySection[sectionToDelete?.id || '']?.length > 0 && (
-                  <span className="block mt-2 font-semibold text-amber-600">
-                    Los {leadsBySection[sectionToDelete?.id || '']?.length} leads en esta sección serán movidos a la primera sección disponible.
+                  <span className="block mt-2 font-medium text-amber-600">
+                    Las {leadsBySection[sectionToDelete?.id || '']?.length} tarjetas en esta lista serán movidas a la primera lista disponible.
                   </span>
                 )}
               </AlertDialogDescription>
@@ -518,7 +323,7 @@ export default function CRM() {
                 onClick={confirmDeleteSection}
                 className="bg-destructive hover:bg-destructive/90"
               >
-                Eliminar Sección
+                Eliminar lista
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

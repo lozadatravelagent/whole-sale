@@ -111,20 +111,7 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
                       <item.icon className="h-4 w-4" />
                       {item.name}
                     </span>
-                    <span className={cn("text-xs transition-transform", chatOpen ? "rotate-180" : "rotate-0")}>▼</span>
                   </Button>
-                  {chatOpen && location.pathname.startsWith('/chat') && (
-                    <div className="mt-1 space-y-1">
-                      <Link to="/chat?new=1">
-                        <Button
-                          variant="ghost"
-                          className="w-full justify-start gap-3 h-9 pl-8"
-                        >
-                          + Nuevo Chat
-                        </Button>
-                      </Link>
-                    </div>
-                  )}
                 </div>
               );
             }
