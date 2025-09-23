@@ -29,11 +29,17 @@ export const getMessageStatusIconType = (status: string): 'sending' | 'sent' | '
   }
 };
 
-export const formatTime = (timestamp: string): string => {
-  return new Date(timestamp).toLocaleTimeString('es-ES', {
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+export const formatTime = (timestampOrTime: string): string => {
+  // If it's a plain HH:mm (or H:mm) time string, return as-is
+  if (/^\d{1,2}:\d{2}$/.test(timestampOrTime)) {
+    return timestampOrTime;
+  }
+  const d = new Date(timestampOrTime);
+  if (isNaN(d.getTime())) {
+    // Fallback: return original if not parseable
+    return timestampOrTime;
+  }
+  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 };
 
 export const generateChatTitle = (message: string): string => {
