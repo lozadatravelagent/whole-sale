@@ -170,8 +170,22 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
 
     const allHotels = response.data.results || [];
 
+    // Fix hotel dates - EUROVIPS sometimes returns incorrect dates, so we force the correct ones
+    const correctedHotels = allHotels.map((hotel: any) => ({
+      ...hotel,
+      check_in: enrichedParsed.hotels?.checkinDate || hotel.check_in,
+      check_out: enrichedParsed.hotels?.checkoutDate || hotel.check_out,
+      nights: hotel.nights // Keep calculated nights
+    }));
+
+    console.log('🔧 [HOTEL SEARCH] Corrected hotel dates:', {
+      original: allHotels[0]?.check_in,
+      corrected: correctedHotels[0]?.check_in,
+      params: enrichedParsed.hotels?.checkinDate
+    });
+
     // Sort hotels by lowest price (minimum room price) and limit to 5
-    const hotels = allHotels
+    const hotels = correctedHotels
       .sort((a: LocalHotelData, b: LocalHotelData) => {
         const minPriceA = Math.min(...a.rooms.map(r => r.total_price));
         const minPriceB = Math.min(...b.rooms.map(r => r.total_price));
