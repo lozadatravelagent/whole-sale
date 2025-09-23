@@ -34,6 +34,22 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
 
   // Convert local combined data to global type for component compatibility
   const convertToGlobalCombinedData = (localData: LocalCombinedTravelResults): CombinedTravelResults => {
+    const calcWait = (arrTime?: string, depTime?: string) => {
+      if (!arrTime || !depTime) return 'N/A';
+      try {
+        const [ah, am] = arrTime.split(':').map(Number);
+        const [dh, dm] = depTime.split(':').map(Number);
+        let diff = (dh * 60 + dm) - (ah * 60 + am);
+        if (diff < 0) diff += 24 * 60; // handle next-day departures
+        const h = Math.floor(diff / 60);
+        const m = diff % 60;
+        if (h === 0) return `${m}m`;
+        if (m === 0) return `${h}h`;
+        return `${h}h ${m}m`;
+      } catch {
+        return 'N/A';
+      }
+    };
     return {
       flights: localData.flights.map(flight => ({
         id: flight.id,
@@ -51,6 +67,17 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
 
           const departureCode = firstSegment?.departure?.airportCode || '';
           const arrivalCode = lastSegment?.arrival?.airportCode || '';
+          // Build layovers from intermediate segments (EZE-GRU-MAD => layover at GRU)
+          const layovers = (firstOption?.segments && firstOption.segments.length > 1)
+            ? firstOption.segments.slice(0, -1).map((seg, idx) => {
+              const next = firstOption.segments[idx + 1];
+              return {
+                destination_city: getCityNameFromCode(seg.arrival?.airportCode || ''),
+                destination_code: seg.arrival?.airportCode || '',
+                waiting_time: calcWait(seg.arrival?.time, next?.departure?.time)
+              };
+            })
+            : [];
 
           return {
             departure: {
@@ -64,7 +91,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
               time: lastSegment?.arrival?.time || ''
             },
             duration: firstOption?.duration ? `${Math.floor(firstOption.duration / 60)}h ${firstOption.duration % 60}m` : '0h 0m',
-            flight_type: legIndex === 0 ? 'outbound' : 'return'
+            flight_type: legIndex === 0 ? 'outbound' : 'return',
+            layovers
           };
         }),
         luggage: flight.luggage || false
