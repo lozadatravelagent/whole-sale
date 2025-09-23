@@ -84,8 +84,8 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
     if (!flights) {
         return {
             isValid: false,
-            missingFields: ['origin', 'destination', 'departureDate', 'adults', 'luggage', 'stops'],
-            missingFieldsSpanish: ['origen', 'destino', 'fecha de salida', 'cantidad de pasajeros', 'equipaje', 'tipo de vuelo (directo o con escalas)']
+            missingFields: ['origin', 'destination', 'departureDate', 'adults'],
+            missingFieldsSpanish: ['origen', 'destino', 'fecha de salida', 'cantidad de pasajeros']
         };
     }
 
@@ -108,14 +108,6 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
     if (!flights.adults || flights.adults < 1) {
         missingFields.push('adults');
         missingFieldsSpanish.push('cantidad de pasajeros');
-    }
-    if (!flights.luggage) {
-        missingFields.push('luggage');
-        missingFieldsSpanish.push('equipaje (con o sin valija)');
-    }
-    if (!flights.stops) {
-        missingFields.push('stops');
-        missingFieldsSpanish.push('tipo de vuelo (directo o con escalas)');
     }
 
     return {
@@ -337,7 +329,7 @@ export function combineWithPreviousRequest(
 export async function parseMessageWithAI(
     message: string,
     previousContext?: ParsedTravelRequest | null,
-    conversationHistory?: Array<{role: string, content: string, timestamp: string}>
+    conversationHistory?: Array<{ role: string, content: string, timestamp: string }>
 ): Promise<ParsedTravelRequest> {
     console.log('🤖 Starting AI message parsing for:', message);
     console.log('✅ OpenAI parsing is ENABLED - fallback has been removed, will always use OpenAI');

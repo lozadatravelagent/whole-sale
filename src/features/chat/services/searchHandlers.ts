@@ -62,6 +62,8 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
         console.log('⚠️ [FLIGHT SEARCH] No non-stop options available for this itinerary');
       }
     }
+
+    // If user didn't specify stops, show mixed results (no filtering). Optionally we could prefer direct-first ordering later.
     console.log('✅ [FLIGHT SEARCH] Step 5: Flight data transformed successfully');
     console.log('✈️ Flights found:', flights.length);
 

@@ -113,7 +113,15 @@ const useMessageHandler = (
 
     // If user asks to add a hotel for same dates after flight results, coerce to combined using last flight context
     if (isAddHotelRequest(currentMessage)) {
-      const flightCtx = getContextFromLastFlights();
+      // Try to reuse flight context from last assistant message; fallback to previous parsed request
+      const flightCtx = getContextFromLastFlights() || (previousParsedRequest?.flights ? {
+        origin: previousParsedRequest.flights.origin,
+        destination: previousParsedRequest.flights.destination,
+        departureDate: previousParsedRequest.flights.departureDate,
+        returnDate: previousParsedRequest.flights.returnDate,
+        adults: previousParsedRequest.flights.adults,
+        children: previousParsedRequest.flights.children || 0
+      } : null);
       if (flightCtx) {
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
         setIsLoading(true);
