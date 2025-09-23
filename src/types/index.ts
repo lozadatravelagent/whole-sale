@@ -233,6 +233,7 @@ export interface FlightLeg {
   duration: string;
   flight_type: string;
   layovers?: LayoverInfo[];
+  arrival_next_day?: boolean;
 }
 
 export interface FlightData {

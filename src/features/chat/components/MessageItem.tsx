@@ -79,6 +79,11 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
             })
             : [];
 
+          // Determine if arrival date is next day vs first segment departure date
+          const isNextDay = (firstSegment?.departure?.date && lastSegment?.arrival?.date)
+            ? (new Date(lastSegment.arrival.date).getTime() > new Date(firstSegment.departure.date).getTime())
+            : false;
+
           return {
             departure: {
               city_code: departureCode,
@@ -92,7 +97,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
             },
             duration: firstOption?.duration ? `${Math.floor(firstOption.duration / 60)}h ${firstOption.duration % 60}m` : '0h 0m',
             flight_type: legIndex === 0 ? 'outbound' : 'return',
-            layovers
+            layovers,
+            arrival_next_day: isNextDay
           };
         }),
         luggage: flight.luggage || false

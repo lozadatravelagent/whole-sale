@@ -33,6 +33,7 @@ import {
   Timer,
   Navigation
 } from 'lucide-react';
+import { formatTime } from '@/features/chat/utils/messageHelpers';
 
 interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
@@ -117,7 +118,12 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
 
                 <div className="text-center">
                   <div className="font-bold text-lg text-white">{leg.arrival.city_code}</div>
-                  <div className="text-sm font-medium text-white">{leg.arrival.time}</div>
+                  <div className="text-sm font-medium text-white flex items-center justify-center space-x-1">
+                    <span>{formatTime(leg.arrival.time)}</span>
+                    {leg.arrival_next_day && (
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-amber-700 text-amber-100">+1</span>
+                    )}
+                  </div>
                   <div className="text-xs text-gray-300">{leg.arrival.city_name}</div>
                 </div>
               </div>
