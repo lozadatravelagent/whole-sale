@@ -34,7 +34,7 @@ const ChatInterface = React.memo(({
   onAddToCRM,
   onPdfGenerated
 }: ChatInterfaceProps) => {
-  const { messages } = useMessages(selectedConversation);
+  const { messages, refreshMessages } = useMessages(selectedConversation);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -52,6 +52,14 @@ const ChatInterface = React.memo(({
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [visibleMessages.length, isTyping]);
+
+  // Refresh messages when conversation changes
+  useEffect(() => {
+    if (selectedConversation) {
+      console.log('🔄 [CHAT INTERFACE] Conversation changed, refreshing messages');
+      setTimeout(() => refreshMessages(), 500);
+    }
+  }, [selectedConversation, refreshMessages]);
 
   // Add CSS animations to head (only once)
   useEffect(() => {

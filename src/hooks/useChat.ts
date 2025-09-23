@@ -319,7 +319,7 @@ export function useMessages(conversationId: string | null) {
         (payload) => {
           console.log('🟢 NEW MESSAGE RECEIVED via real-time:', payload.new);
           const newMessage = payload.new as MessageRow;
-          
+
           setMessages(prev => {
             console.log('🔵 Current messages count:', prev.length);
             // Check if message already exists to prevent duplicates
@@ -328,13 +328,13 @@ export function useMessages(conversationId: string | null) {
               console.log('🟡 Duplicate message prevented:', newMessage.id);
               return prev;
             }
-            
+
             console.log('🟢 Adding new message to state:', newMessage.id, newMessage.content);
             // Add new message in chronological order and force re-render
-            const updated = [...prev, newMessage].sort((a, b) => 
+            const updated = [...prev, newMessage].sort((a, b) =>
               new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             );
-            
+
             console.log('🔵 Updated messages count:', updated.length);
             return updated;
           });
@@ -379,11 +379,18 @@ export function useMessages(conversationId: string | null) {
     };
   }, [conversationId]);
 
+  // Add a function to force refresh messages
+  const refreshMessages = useCallback(() => {
+    console.log('🔄 Force refreshing messages');
+    loadMessages();
+  }, [loadMessages]);
+
   return {
     messages,
     loading,
     loadMessages,
     saveMessage,
-    updateMessageStatus
+    updateMessageStatus,
+    refreshMessages
   };
 }

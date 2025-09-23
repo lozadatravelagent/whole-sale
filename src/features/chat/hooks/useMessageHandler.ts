@@ -24,7 +24,7 @@ const useMessageHandler = (
   setMessage: (message: string) => void,
   toast: any
 ) => {
-  const { messages } = useMessages(selectedConversation);
+  const { messages, refreshMessages } = useMessages(selectedConversation);
 
   // Helper: extract last flight context (destination/dates/adults/children) from recent assistant message
   const getContextFromLastFlights = useCallback(() => {
@@ -253,6 +253,10 @@ const useMessageHandler = (
       console.log('📤 [MESSAGE FLOW] Step 4: About to update message status (Supabase UPDATE)');
       await updateMessageStatus(userMessage.id, 'sent');
       console.log('✅ [MESSAGE FLOW] Step 5: Message status updated to "sent"');
+
+      // Force refresh messages to ensure UI updates
+      console.log('🔄 [MESSAGE FLOW] Step 5.5: Force refreshing messages to ensure UI updates');
+      setTimeout(() => refreshMessages(), 1000);
 
       // 2. Update conversation title if first message
       if (messages.length === 0) {
@@ -562,6 +566,10 @@ const useMessageHandler = (
       });
 
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
+
+      // Force refresh messages after assistant response
+      console.log('🔄 [MESSAGE FLOW] Step 14.5: Force refreshing messages after assistant response');
+      setTimeout(() => refreshMessages(), 1500);
 
       // 6. Lead generation disabled - Only manual creation via button
       console.log('📋 [MESSAGE FLOW] Step 15: Automatic lead generation disabled - only manual creation available');
