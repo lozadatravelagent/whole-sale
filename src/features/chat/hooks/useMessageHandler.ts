@@ -120,7 +120,7 @@ const useMessageHandler = (
     if (isAddHotelRequest(currentMessage)) {
       // Load persistent context state first, then fallback to other sources
       const persistentState = await loadContextState(selectedConversation);
-      const flightCtx = persistentState?.flights || getContextFromLastFlights() || (previousParsedRequest?.flights ? {
+      const flightCtx = persistentState?.flights || (previousParsedRequest?.flights ? {
         origin: previousParsedRequest.flights.origin,
         destination: previousParsedRequest.flights.destination,
         departureDate: previousParsedRequest.flights.departureDate,
@@ -158,6 +158,14 @@ const useMessageHandler = (
             originalMessage: currentMessage
           } as any;
 
+          console.log('🏨 [INTENT] Hotel request built:', {
+            city: hotelsParsed.hotels?.city,
+            checkinDate: hotelsParsed.hotels?.checkinDate,
+            checkoutDate: hotelsParsed.hotels?.checkoutDate,
+            adults: hotelsParsed.hotels?.adults,
+            flightCtx: flightCtx
+          });
+
           // Persist context for follow-ups
           setPreviousParsedRequest(hotelsParsed);
           await saveContextualMemory(selectedConversation, hotelsParsed);
@@ -184,7 +192,6 @@ const useMessageHandler = (
         console.warn('⚠️ [INTENT] Add hotel detected but no flight context found');
         console.warn('⚠️ [INTENT] Available sources:', {
           persistentState,
-          flightCtxFromMessages: getContextFromLastFlights(),
           previousParsedRequest: previousParsedRequest?.flights
         });
         // Continue to normal AI parsing flow
