@@ -119,12 +119,12 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
           availability: room.availability >= 0 ? Math.max(room.availability, 3) : 5, // Ensure at least "Consultar" status
           occupancy_id: room.occupancy_id || Math.random().toString(36)
         })),
-        check_in: localData.flights.length > 0 && localData.flights[0].departure_date
+        check_in: hotel.check_in || (localData.flights.length > 0 && localData.flights[0].departure_date
           ? localData.flights[0].departure_date
-          : new Date().toISOString().split('T')[0],
-        check_out: localData.flights.length > 0 && localData.flights[0].return_date
+          : new Date().toISOString().split('T')[0]),
+        check_out: hotel.check_out || (localData.flights.length > 0 && localData.flights[0].return_date
           ? localData.flights[0].return_date
-          : new Date(Date.now() + 86400000 * hotel.nights).toISOString().split('T')[0],
+          : new Date(Date.now() + 86400000 * hotel.nights).toISOString().split('T')[0]),
         nights: hotel.nights
       })),
       requestType: localData.requestType
