@@ -484,6 +484,12 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
           <TabsContent value="hotels" className="space-y-2">
             {combinedData.hotels.map((hotel) => {
+              console.log('🏨 [UI] Hotel data:', {
+                name: hotel.name,
+                check_in: hotel.check_in,
+                check_out: hotel.check_out,
+                nights: hotel.nights
+              });
               const isSelected = selectedHotels.includes(hotel.id);
 
               return (
@@ -519,7 +525,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                             <div className="flex items-center space-x-4">
                               <div className="flex items-center space-x-1">
                                 <Calendar className="h-3 w-3" />
-                                <span>{hotel.check_in} → {hotel.check_out}</span>
+                                <span>{hotel.check_in || 'N/A'} → {hotel.check_out || 'N/A'}</span>
                               </div>
                               <span>({hotel.nights} noche{hotel.nights > 1 ? 's' : ''})</span>
                             </div>

@@ -189,6 +189,8 @@ export interface LocalHotelData {
   name: string;
   city: string;
   nights: number;
+  check_in: string;
+  check_out: string;
   rooms: Array<{
     type?: string;
     description?: string;
