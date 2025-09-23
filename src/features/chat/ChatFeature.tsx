@@ -49,7 +49,7 @@ const ChatFeature = () => {
   const { messages, updateMessageStatus } = useMessages(selectedConversation);
 
   // Contextual memory hooks
-  const { loadContextualMemory, saveContextualMemory, clearContextualMemory } = useContextualMemory();
+  const { loadContextualMemory, saveContextualMemory, clearContextualMemory, loadContextState, saveContextState } = useContextualMemory();
 
   // PDF analysis hooks
   const {
@@ -67,6 +67,8 @@ const ChatFeature = () => {
     loadContextualMemory,
     saveContextualMemory,
     clearContextualMemory,
+    loadContextState,
+    saveContextState,
     updateMessageStatus,
     updateConversationTitle,
     handleCheaperFlightsSearch,

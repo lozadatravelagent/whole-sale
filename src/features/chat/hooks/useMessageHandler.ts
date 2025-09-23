@@ -15,6 +15,8 @@ const useMessageHandler = (
   loadContextualMemory: (conversationId: string) => Promise<ParsedTravelRequest | null>,
   saveContextualMemory: (conversationId: string, request: ParsedTravelRequest) => Promise<void>,
   clearContextualMemory: (conversationId: string) => Promise<void>,
+  loadContextState: (conversationId: string) => Promise<any>,
+  saveContextState: (conversationId: string, state: any) => Promise<void>,
   updateMessageStatus: (messageId: string, status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed') => Promise<any>,
   updateConversationTitle: (conversationId: string, title: string) => Promise<void>,
   handleCheaperFlightsSearch: (message: string) => Promise<string | null>,
@@ -291,8 +293,7 @@ const useMessageHandler = (
 
       const contextFromDB = await loadContextualMemory(selectedConversation);
       // Load persistent context state (params that persist across turns)
-      const { loadContextState, saveContextState } = require('./useContextualMemory');
-      const persistentState = await (loadContextState as any)(selectedConversation);
+      const persistentState = await loadContextState(selectedConversation);
       console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
       console.log('🔍 [DEBUG] Persistent context state:', persistentState);
 
@@ -708,7 +709,7 @@ const useMessageHandler = (
               flights: parsedRequest.flights,
               domain: 'flights'
             };
-            await (saveContextState as any)(selectedConversation, state);
+            await saveContextState(selectedConversation, state);
           } else {
             // No results (e.g., no direct flights). Preserve context so follow-up like "con escalas" can merge.
             await saveContextualMemory(selectedConversation, parsedRequest);
@@ -721,7 +722,7 @@ const useMessageHandler = (
               hotels: parsedRequest.hotels,
               domain: 'hotels'
             };
-            await (saveContextState as any)(selectedConversation, state);
+            await saveContextState(selectedConversation, state);
           }
         }
       } catch (memErr) {
