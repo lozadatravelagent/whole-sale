@@ -7,6 +7,7 @@ import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
 import type { MessageRow } from '../types/chat';
 import { useMessages } from '@/hooks/useChat-polling';
+import { translateBaggage } from '../utils/translations';
 
 const useMessageHandler = (
   selectedConversation: string | null,
@@ -151,8 +152,8 @@ const useMessageHandler = (
               checkoutDate: flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0],
               adults: flightCtx.adults,
               children: flightCtx.children,
-              roomType: 'double',
-              mealPlan: 'breakfast'
+              roomType: 'doble',
+              mealPlan: 'desayuno'
             },
             confidence: 0.9,
             originalMessage: currentMessage
@@ -559,8 +560,8 @@ const useMessageHandler = (
               checkoutDate: parsedRequest.hotels?.checkoutDate || (flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0]),
               adults: parsedRequest.hotels?.adults || flightCtx.adults,
               children: parsedRequest.hotels?.children ?? flightCtx.children ?? 0,
-              roomType: parsedRequest.hotels?.roomType || 'double',
-              mealPlan: parsedRequest.hotels?.mealPlan || 'breakfast'
+              roomType: parsedRequest.hotels?.roomType || 'doble',
+              mealPlan: parsedRequest.hotels?.mealPlan || 'desayuno'
             } as any;
 
             const reval = validateHotelRequiredFields(parsedRequest.hotels);

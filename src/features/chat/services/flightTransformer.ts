@@ -1,6 +1,7 @@
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { FlightData } from '../types/chat';
 import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime } from '../utils/flightHelpers';
+import { translateFlightInfo, translateBaggage } from '../utils/translations';
 
 // Helper function to calculate layover hours between two flight segments
 function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
@@ -166,7 +167,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       },
       cabin: {
         class: firstSegment.CabinClass || 'Y',
-        brandName: firstSegment.BrandName || 'Economy'
+        brandName: translateFlightInfo(firstSegment.BrandName || 'Economy')
       },
       booking: {
         validatingCarrier: fare.ValidatingCarrier || '',
@@ -342,7 +343,7 @@ export const generateFlightItinerary = (flight: FlightData): string => {
         itinerary += `   ✈️ **Vuelo Directo:** ${segment.airline}${segment.flightNumber}\n`;
         itinerary += `   📍 ${segment.departure.airportCode} ${segment.departure.time} → ${segment.arrival.airportCode} ${segment.arrival.time}\n`;
         itinerary += `   ⏱️ Duración: ${formatDuration(segment.duration)}\n`;
-        itinerary += `   💺 Clase: ${segment.cabinClass} (${segment.brandName})\n`;
+        itinerary += `   💺 Clase: ${translateFlightInfo(segment.cabinClass)} (${translateFlightInfo(segment.brandName)})\n`;
         itinerary += `   ✈️ Equipo: ${segment.equipment}\n`;
       } else {
         // Vuelo con conexiones
@@ -351,7 +352,7 @@ export const generateFlightItinerary = (flight: FlightData): string => {
         segments.forEach((segment, segIndex) => {
           itinerary += `   **Segmento ${segIndex + 1}:** ${segment.airline}${segment.flightNumber}\n`;
           itinerary += `   📍 ${segment.departure.airportCode} ${segment.departure.time} → ${segment.arrival.airportCode} ${segment.arrival.time}\n`;
-          itinerary += `   ⏱️ ${formatDuration(segment.duration)} | 💺 ${segment.cabinClass} | ✈️ ${segment.equipment}\n`;
+          itinerary += `   ⏱️ ${formatDuration(segment.duration)} | 💺 ${translateFlightInfo(segment.cabinClass)} | ✈️ ${segment.equipment}\n`;
 
           // Mostrar conexión si no es el último segmento
           if (segIndex < segments.length - 1) {

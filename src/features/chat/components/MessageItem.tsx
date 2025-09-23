@@ -8,6 +8,7 @@ import type { MessageRow, LocalCombinedTravelResults } from '../types/chat';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import { getMessageContent, getMessageStatusIconType, formatTime } from '../utils/messageHelpers';
 import { getCityNameFromCode } from '../utils/flightHelpers';
+import { translateRoomDescription } from '../utils/translations';
 
 interface MessageItemProps {
   msg: MessageRow;
@@ -112,7 +113,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
         address: '',
         rooms: hotel.rooms.map(room => ({
           type: room.type || 'Standard',
-          description: room.description || 'Habitación estándar',
+          description: translateRoomDescription(room.description || 'Habitación estándar'),
           price_per_night: room.price_per_night, // Use the price_per_night from EUROVIPS directly
           total_price: room.total_price, // Use the total_price from EUROVIPS directly
           currency: room.currency,

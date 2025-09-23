@@ -1,6 +1,7 @@
 import type { FlightData, LocalHotelData, LocalPackageData, LocalServiceData, LocalCombinedTravelResults } from '../types/chat';
 import { generateFlightItinerary } from './flightTransformer';
 import { formatDuration } from '../utils/flightHelpers';
+import { translateRoomDescription, translateRoomTypeTitle, translateFlightInfo, translateBaggage } from '../utils/translations';
 
 // Response formatters - using the main FlightData interface
 export const formatFlightResponse = (flights: FlightData[]) => {
@@ -40,13 +41,16 @@ export const formatFlightResponse = (flights: FlightData[]) => {
     response += `🛑 **Tipo:** ${flight.stops?.direct ? 'Vuelo directo' : `Con ${flight.stops?.count || 0} conexión(es)`}\n`;
 
     // Información de equipaje
-    response += `🧳 **Equipaje:** ${flight.baggage?.included ? 'Incluido' : 'No incluido'} - ${flight.baggage?.details || 'N/A'}\n`;
+    const baggageDetails = flight.baggage?.details ? translateBaggage(flight.baggage.details) : 'N/A';
+    response += `🧳 **Equipaje:** ${flight.baggage?.included ? 'Incluido' : 'No incluido'} - ${baggageDetails}\n`;
     if (flight.baggage?.carryOnQuantity) {
       response += `   • Equipaje de mano: ${flight.baggage.carryOnQuantity} pieza(s)\n`;
     }
 
     // Clase de cabina
-    response += `💺 **Clase:** ${flight.cabin?.brandName || flight.cabin?.class || 'Economy'}\n`;
+    const cabinClass = flight.cabin?.brandName || flight.cabin?.class || 'Economy';
+    const translatedCabinClass = translateFlightInfo(cabinClass);
+    response += `💺 **Clase:** ${translatedCabinClass}\n`;
 
     // Información de reserva
     if (flight.booking?.lastTicketingDate) {
@@ -164,6 +168,108 @@ export const getDetailedFlightInfo = (flight: FlightData): string => {
   return info;
 };
 
+// Función para ordenar habitaciones de manera inteligente
+const sortHotelRooms = (rooms: LocalHotelData['rooms']) => {
+  // Función para determinar el tipo de habitación y su prioridad
+  const getRoomTypePriority = (description: string): { type: string; priority: number } => {
+    const desc = description.toLowerCase();
+
+    // Identificar tipo de habitación
+    if (desc.includes('single') || desc.includes('sgl')) {
+      return { type: 'SGL', priority: 1 };
+    } else if (desc.includes('double') && desc.includes('single use')) {
+      return { type: 'DUS', priority: 2 };
+    } else if (desc.includes('double')) {
+      return { type: 'DBL', priority: 3 };
+    } else if (desc.includes('triple')) {
+      return { type: 'TPL', priority: 4 };
+    } else if (desc.includes('quad') || desc.includes('family')) {
+      return { type: 'QUA', priority: 5 };
+    } else {
+      return { type: 'OTHER', priority: 6 };
+    }
+  };
+
+  // Función para determinar la categoría de la habitación
+  const getRoomCategory = (description: string): { category: string; priority: number } => {
+    const desc = description.toLowerCase();
+
+    if (desc.includes('superior') || desc.includes('executive')) {
+      return { category: 'SUPERIOR', priority: 3 };
+    } else if (desc.includes('standard') || desc.includes('estándar')) {
+      return { category: 'STANDARD', priority: 2 };
+    } else if (desc.includes('comfort') || desc.includes('deluxe')) {
+      return { category: 'COMFORT', priority: 4 };
+    } else {
+      return { category: 'BASIC', priority: 1 };
+    }
+  };
+
+  // Función para determinar si incluye desayuno
+  const hasBreakfast = (description: string): boolean => {
+    const desc = description.toLowerCase();
+    return desc.includes('breakfast') || desc.includes('desayuno') || desc.includes('bed and breakfast');
+  };
+
+  return rooms.sort((a, b) => {
+    const aType = getRoomTypePriority(a.description || '');
+    const bType = getRoomTypePriority(b.description || '');
+
+    const aCategory = getRoomCategory(a.description || '');
+    const bCategory = getRoomCategory(b.description || '');
+
+    const aBreakfast = hasBreakfast(a.description || '');
+    const bBreakfast = hasBreakfast(b.description || '');
+
+    // 1. Ordenar por tipo de habitación (SGL, DUS, DBL, TPL, QUA)
+    if (aType.priority !== bType.priority) {
+      return aType.priority - bType.priority;
+    }
+
+    // 2. Ordenar por categoría (BASIC, STANDARD, COMFORT, SUPERIOR)
+    if (aCategory.priority !== bCategory.priority) {
+      return aCategory.priority - bCategory.priority;
+    }
+
+    // 3. Ordenar por desayuno (sin desayuno primero, con desayuno después)
+    if (aBreakfast !== bBreakfast) {
+      return aBreakfast ? 1 : -1;
+    }
+
+    // 4. Ordenar por precio (más barato primero)
+    return a.total_price - b.total_price;
+  });
+};
+
+// Función para agrupar habitaciones por tipo
+const groupRoomsByType = (rooms: LocalHotelData['rooms']) => {
+  const groups: { [key: string]: LocalHotelData['rooms'] } = {};
+
+  rooms.forEach(room => {
+    const desc = (room.description || '').toLowerCase();
+    let groupKey = 'OTHER';
+
+    if (desc.includes('single') || desc.includes('sgl')) {
+      groupKey = 'SGL';
+    } else if (desc.includes('double') && desc.includes('single use')) {
+      groupKey = 'DUS';
+    } else if (desc.includes('double')) {
+      groupKey = 'DBL';
+    } else if (desc.includes('triple')) {
+      groupKey = 'TPL';
+    } else if (desc.includes('quad') || desc.includes('family')) {
+      groupKey = 'QUA';
+    }
+
+    if (!groups[groupKey]) {
+      groups[groupKey] = [];
+    }
+    groups[groupKey].push(room);
+  });
+
+  return groups;
+};
+
 export const formatHotelResponse = (hotels: LocalHotelData[]) => {
   if (hotels.length === 0) {
     return '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.';
@@ -174,11 +280,38 @@ export const formatHotelResponse = (hotels: LocalHotelData[]) => {
 
   hotels.slice(0, 5).forEach((hotel, index) => {
     const minPrice = Math.min(...hotel.rooms.map((r) => r.total_price));
+    const sortedRooms = sortHotelRooms(hotel.rooms);
+    const roomGroups = groupRoomsByType(sortedRooms);
+
     response += `---\n\n`;
     response += `🏨 **${hotel.name}**\n`;
     response += `📍 ${hotel.city}\n`;
     response += `💰 Desde ${minPrice} ${hotel.rooms[0].currency}\n`;
-    response += `🌙 ${hotel.nights} noches\n\n`;
+    response += `🌙 ${hotel.nights} noches\n`;
+    response += `📅 ${hotel.check_in} → ${hotel.check_out}\n\n`;
+
+    // Mostrar habitaciones agrupadas por tipo (máximo 3 por tipo)
+    Object.entries(roomGroups).forEach(([type, rooms]) => {
+      const typeName = `🛏️ ${translateRoomTypeTitle(type)}`;
+
+      response += `**${typeName}:**\n`;
+
+      // Mostrar máximo 3 habitaciones por tipo, ordenadas por precio
+      rooms.slice(0, 3).forEach((room, roomIndex) => {
+        const translatedDescription = translateRoomDescription(room.description || 'Habitación estándar');
+        const breakfast = (room.description || '').toLowerCase().includes('breakfast') ||
+          (room.description || '').toLowerCase().includes('desayuno') ? ' 🍳' : '';
+        const availability = room.availability && room.availability > 0 ?
+          (room.availability >= 3 ? '✅' : `⚠️ ${room.availability}`) : '❌';
+
+        response += `   • ${translatedDescription}${breakfast} - ${room.total_price} ${room.currency} ${availability}\n`;
+      });
+
+      if (rooms.length > 3) {
+        response += `   • ... y ${rooms.length - 3} opciones más\n`;
+      }
+      response += `\n`;
+    });
   });
 
   response += '\n📋 Selecciona los hoteles que prefieras para tu cotización.';
