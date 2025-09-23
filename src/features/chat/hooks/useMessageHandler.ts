@@ -290,9 +290,13 @@ const useMessageHandler = (
       console.log('🔍 [DEBUG] Previous parsed request from state:', previousParsedRequest);
 
       const contextFromDB = await loadContextualMemory(selectedConversation);
+      // Load persistent context state (params that persist across turns)
+      const { loadContextState, saveContextState } = require('./useContextualMemory');
+      const persistentState = await (loadContextState as any)(selectedConversation);
       console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
+      console.log('🔍 [DEBUG] Persistent context state:', persistentState);
 
-      const contextToUse = contextFromDB || previousParsedRequest;
+      const contextToUse = contextFromDB || previousParsedRequest || persistentState;
       console.log('📝 [CONTEXT] Final context to use:', contextToUse);
 
       // 4. Use AI Parser to classify request
@@ -317,6 +321,24 @@ const useMessageHandler = (
       });
 
       let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory);
+
+      // Merge persistent state into parsed request where fields are missing (user intent wins over stored)
+      const mergeFlights = (a: any, b: any) => ({
+        ...(b || {}),
+        ...(a || {})
+      });
+      const mergeHotels = (a: any, b: any) => ({
+        ...(b || {}),
+        ...(a || {})
+      });
+      if (persistentState) {
+        if (parsedRequest.flights || persistentState.flights) {
+          parsedRequest.flights = mergeFlights(parsedRequest.flights, persistentState.flights);
+        }
+        if (parsedRequest.hotels || persistentState.hotels) {
+          parsedRequest.hotels = mergeHotels(parsedRequest.hotels, persistentState.hotels);
+        }
+      }
 
       // If user replied "con escalas" after a direct-only attempt, force a flights request with stops:any using prior context
       if (/\bcon\s+escalas\b/i.test(currentMessage)) {
@@ -681,10 +703,25 @@ const useMessageHandler = (
             // We have usable results, clear context
             setPreviousParsedRequest(null);
             await clearContextualMemory(selectedConversation);
+            // Save persistent state for flights
+            const state = {
+              flights: parsedRequest.flights,
+              domain: 'flights'
+            };
+            await (saveContextState as any)(selectedConversation, state);
           } else {
             // No results (e.g., no direct flights). Preserve context so follow-up like "con escalas" can merge.
             await saveContextualMemory(selectedConversation, parsedRequest);
             setPreviousParsedRequest(parsedRequest);
+          }
+        } else if (parsedRequest.requestType === 'hotels') {
+          const hotelsCount = (structuredData as any)?.combinedData?.hotels?.length ?? 0;
+          if (hotelsCount > 0) {
+            const state = {
+              hotels: parsedRequest.hotels,
+              domain: 'hotels'
+            };
+            await (saveContextState as any)(selectedConversation, state);
           }
         }
       } catch (memErr) {

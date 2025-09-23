@@ -98,10 +98,66 @@ const useContextualMemory = () => {
     }
   }, []);
 
+  // Load persistent context state (parameters that persist across turns)
+  const loadContextState = useCallback(async (conversationId: string) => {
+    try {
+      console.log('🧠 [STATE] Loading context state for conversation:', conversationId);
+      const { data: messages, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .eq('role', 'system')
+        .contains('meta', { messageType: 'context_state' })
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('❌ [STATE] Error loading context state:', error);
+        return null;
+      }
+
+      const meta: any = messages?.[0]?.meta as any;
+      const state = meta && typeof meta === 'object' && 'contextState' in meta ? (meta as any).contextState : null;
+      console.log('✅ [STATE] Loaded context state:', state);
+      return state;
+    } catch (error) {
+      console.error('❌ [STATE] Error in loadContextState:', error);
+      return null;
+    }
+  }, []);
+
+  // Save persistent context state
+  const saveContextState = useCallback(async (conversationId: string, contextState: any) => {
+    try {
+      console.log('💾 [STATE] Saving context state for conversation:', conversationId, contextState);
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          role: 'system',
+          content: { text: '' },
+          meta: {
+            messageType: 'context_state',
+            contextState,
+            timestamp: new Date().toISOString()
+          }
+        });
+      if (error) {
+        console.error('❌ [STATE] Error saving context state:', error);
+      } else {
+        console.log('✅ [STATE] Context state saved');
+      }
+    } catch (error) {
+      console.error('❌ [STATE] Error in saveContextState:', error);
+    }
+  }, []);
+
   return {
     loadContextualMemory,
     saveContextualMemory,
-    clearContextualMemory
+    clearContextualMemory,
+    loadContextState,
+    saveContextState
   };
 };
 
