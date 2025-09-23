@@ -96,9 +96,43 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       }
     }
 
-    // If user specified maximum layover duration, filter flights by layover time
+    // If user specified maximum layover duration, we need to do a NEW SEARCH with more permissive stops
+    // to find more options that can then be filtered by layover time
     if (parsed?.flights?.maxLayoverHours) {
-      console.log(`⏰ [FLIGHT SEARCH] Filtering flights with layovers <= ${parsed.flights.maxLayoverHours} hours`);
+      console.log(`⏰ [FLIGHT SEARCH] User requested layovers <= ${parsed.flights.maxLayoverHours} hours - doing expanded search`);
+
+      // For layover filtering, we need to search with "any" stops to get more options
+      const expandedStarlingParams = {
+        ...starlingParams,
+        stops: 'any' as any // Force expanded search to get more layover options
+      };
+
+      console.log(`🔍 [LAYOVER FILTER] Doing expanded search with stops: any to find more layover options`);
+
+      try {
+        // Do a new search with expanded parameters using the same Starling API
+        const expandedResponse = await supabase.functions.invoke('starling-flights', {
+          body: {
+            action: 'searchFlights',
+            data: expandedStarlingParams
+          }
+        });
+
+        if (!expandedResponse.error && expandedResponse.data) {
+          const expandedFlightData = expandedResponse.data?.data || expandedResponse.data;
+          const expandedFlights = transformStarlingResults(expandedFlightData, parsed);
+          console.log(`📊 [LAYOVER FILTER] Expanded search found ${expandedFlights.length} flights`);
+
+          if (expandedFlights.length > 0) {
+            flights = expandedFlights;
+          }
+        }
+      } catch (error) {
+        console.log(`⚠️ [LAYOVER FILTER] Expanded search failed, using original results:`, error);
+      }
+
+      // Now filter the expanded results by layover time
+      console.log(`🔍 [LAYOVER FILTER] Filtering ${flights.length} flights for layovers <= ${parsed.flights.maxLayoverHours} hours`);
       flights = flights
         .map((flight: any) => {
           const filteredLegs = (flight.legs || []).map((leg: any) => {
@@ -130,9 +164,9 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
         .filter(Boolean) as any[];
 
       if (flights.length === 0) {
-        console.log(`⚠️ [FLIGHT SEARCH] No flights available with layovers <= ${parsed.flights.maxLayoverHours} hours`);
+        console.log(`⚠️ [LAYOVER FILTER] No flights available with layovers <= ${parsed.flights.maxLayoverHours} hours`);
       } else {
-        console.log(`✅ [FLIGHT SEARCH] Found ${flights.length} flights with layovers <= ${parsed.flights.maxLayoverHours} hours`);
+        console.log(`✅ [LAYOVER FILTER] Found ${flights.length} flights with layovers <= ${parsed.flights.maxLayoverHours} hours`);
       }
     }
 
