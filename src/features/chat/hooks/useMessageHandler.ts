@@ -462,9 +462,7 @@ const useMessageHandler = (
         }
 
         console.log('✅ [VALIDATION] All required fields present, proceeding with search');
-        // Clear previous request since we have all required fields
-        setPreviousParsedRequest(null);
-        await clearContextualMemory(selectedConversation);
+        // Do NOT clear contextual memory yet. We will clear it after search only if we find results.
       } else if (parsedRequest.requestType === 'hotels') {
         console.log('🏨 [VALIDATION] Validating hotel required fields');
         const validation = validateHotelRequiredFields(parsedRequest.hotels);
@@ -579,6 +577,24 @@ const useMessageHandler = (
       console.log('📝 [MESSAGE FLOW] Step 12: Generated assistant response');
       console.log('💬 Response preview:', assistantResponse.substring(0, 100) + '...');
       console.log('📊 Structured data:', structuredData);
+
+      // Clear or preserve contextual memory depending on search results
+      try {
+        if (parsedRequest.requestType === 'flights') {
+          const flightsCount = (structuredData as any)?.combinedData?.flights?.length ?? 0;
+          if (flightsCount > 0) {
+            // We have usable results, clear context
+            setPreviousParsedRequest(null);
+            await clearContextualMemory(selectedConversation);
+          } else {
+            // No results (e.g., no direct flights). Preserve context so follow-up like "con escalas" can merge.
+            await saveContextualMemory(selectedConversation, parsedRequest);
+            setPreviousParsedRequest(parsedRequest);
+          }
+        }
+      } catch (memErr) {
+        console.warn('⚠️ [MEMORY] Could not update contextual memory after search:', memErr);
+      }
 
       // 5. Save response with structured data
       console.log('📤 [MESSAGE FLOW] Step 13: About to save assistant message (Supabase INSERT)');
