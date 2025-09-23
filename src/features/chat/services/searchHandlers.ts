@@ -6,6 +6,39 @@ import { transformStarlingResults } from './flightTransformer';
 import { formatFlightResponse, formatHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse } from './responseFormatters';
 import { getCityCode } from './messageService';
 
+// Helper function to calculate layover hours between two flight segments
+function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
+  try {
+    // Parse arrival time and date
+    const arrivalTime = arrivalSegment.arrival?.time || '';
+    const arrivalDate = arrivalSegment.arrival?.date || '';
+
+    // Parse departure time and date  
+    const departureTime = departureSegment.departure?.time || '';
+    const departureDate = departureSegment.departure?.date || '';
+
+    if (!arrivalTime || !arrivalDate || !departureTime || !departureDate) {
+      console.warn('⚠️ [LAYOVER CALC] Missing time/date data for layover calculation');
+      return 0;
+    }
+
+    // Create Date objects
+    const arrivalDateTime = new Date(`${arrivalDate}T${arrivalTime}:00`);
+    const departureDateTime = new Date(`${departureDate}T${departureTime}:00`);
+
+    // Calculate difference in milliseconds, then convert to hours
+    const layoverMs = departureDateTime.getTime() - arrivalDateTime.getTime();
+    const layoverHours = layoverMs / (1000 * 60 * 60);
+
+    console.log(`🕐 [LAYOVER CALC] ${arrivalSegment.arrival?.airportCode} ${arrivalTime} → ${departureSegment.departure?.airportCode} ${departureTime} = ${layoverHours.toFixed(1)}h`);
+
+    return layoverHours;
+  } catch (error) {
+    console.error('❌ [LAYOVER CALC] Error calculating layover:', error);
+    return 0;
+  }
+}
+
 // Handler functions WITHOUT N8N
 export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
   console.log('✈️ [FLIGHT SEARCH] Starting flight search process');
@@ -60,6 +93,46 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
 
       if (flights.length === 0) {
         console.log('⚠️ [FLIGHT SEARCH] No non-stop options available for this itinerary');
+      }
+    }
+
+    // If user specified maximum layover duration, filter flights by layover time
+    if (parsed?.flights?.maxLayoverHours) {
+      console.log(`⏰ [FLIGHT SEARCH] Filtering flights with layovers <= ${parsed.flights.maxLayoverHours} hours`);
+      flights = flights
+        .map((flight: any) => {
+          const filteredLegs = (flight.legs || []).map((leg: any) => {
+            const options = (leg.options || []).filter((opt: any) => {
+              const segments = opt.segments || [];
+              if (segments.length <= 1) return true; // Direct flights are always allowed
+
+              // Check layover times between segments
+              for (let i = 0; i < segments.length - 1; i++) {
+                const currentSegment = segments[i];
+                const nextSegment = segments[i + 1];
+                const layoverHours = calculateLayoverHours(currentSegment, nextSegment);
+
+                if (layoverHours > parsed.flights.maxLayoverHours) {
+                  console.log(`❌ [LAYOVER FILTER] Rejecting option: layover ${layoverHours}h > max ${parsed.flights.maxLayoverHours}h`);
+                  return false;
+                }
+              }
+              return true;
+            });
+            return { ...leg, options };
+          });
+
+          // Keep flight only if every leg still has at least one option
+          const allLegsHaveOptions = filteredLegs.every((leg: any) => (leg.options?.length || 0) > 0);
+          if (!allLegsHaveOptions) return null;
+          return { ...flight, legs: filteredLegs };
+        })
+        .filter(Boolean) as any[];
+
+      if (flights.length === 0) {
+        console.log(`⚠️ [FLIGHT SEARCH] No flights available with layovers <= ${parsed.flights.maxLayoverHours} hours`);
+      } else {
+        console.log(`✅ [FLIGHT SEARCH] Found ${flights.length} flights with layovers <= ${parsed.flights.maxLayoverHours} hours`);
       }
     }
 

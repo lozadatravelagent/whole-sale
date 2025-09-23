@@ -14,7 +14,8 @@ export interface ParsedTravelRequest {
         departureTimePreference?: string; // horario de salida preferido
         arrivalTimePreference?: string; // horario de llegada preferido  
         stops?: 'direct' | 'one_stop' | 'two_stops' | 'any'; // vuelo directo o con escalas
-        layoverDuration?: string; // tiempo de escala preferido
+        layoverDuration?: string; // tiempo de escala preferido (ej: "3 hours", "10 hours")
+        maxLayoverHours?: number; // duración máxima de escalas en horas
         preferredAirline?: string; // aerolínea preferida
     };
     hotels?: {

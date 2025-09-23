@@ -2,6 +2,36 @@ import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { FlightData } from '../types/chat';
 import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime } from '../utils/flightHelpers';
 
+// Helper function to calculate layover hours between two flight segments
+function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
+  try {
+    // Parse arrival time and date
+    const arrivalTime = arrivalSegment.arrival?.time || '';
+    const arrivalDate = arrivalSegment.arrival?.date || '';
+
+    // Parse departure time and date  
+    const departureTime = departureSegment.departure?.time || '';
+    const departureDate = departureSegment.departure?.date || '';
+
+    if (!arrivalTime || !arrivalDate || !departureTime || !departureDate) {
+      return 0;
+    }
+
+    // Create Date objects
+    const arrivalDateTime = new Date(`${arrivalDate}T${arrivalTime}:00`);
+    const departureDateTime = new Date(`${departureDate}T${departureTime}:00`);
+
+    // Calculate difference in milliseconds, then convert to hours
+    const layoverMs = departureDateTime.getTime() - arrivalDateTime.getTime();
+    const layoverHours = layoverMs / (1000 * 60 * 60);
+
+    return layoverHours;
+  } catch (error) {
+    console.error('❌ [LAYOVER CALC] Error calculating layover:', error);
+    return 0;
+  }
+}
+
 export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequest): FlightData[] => {
   console.log('🔄 Transforming TVC API results:', tvcData);
 
@@ -329,9 +359,10 @@ export const generateFlightItinerary = (flight: FlightData): string => {
             const connectionTime = calculateConnectionTime(segment, nextSegment);
             const connectionAirport = segment.arrival.airportCode;
             const connectionCity = getCityNameFromCode(connectionAirport);
+            const layoverHours = calculateLayoverHours(segment, nextSegment);
 
             itinerary += `\n   🔄 **Conexión en ${connectionCity} (${connectionAirport}):**\n`;
-            itinerary += `   ⏰ Tiempo de conexión: ${connectionTime}\n`;
+            itinerary += `   ⏰ Tiempo de conexión: ${connectionTime} (${layoverHours.toFixed(1)}h)\n`;
             itinerary += `   🚶 Cambio de terminal/puerta\n\n`;
           }
         });
