@@ -715,11 +715,26 @@ const useMessageHandler = (
             // We have usable results, clear context
             setPreviousParsedRequest(null);
             await clearContextualMemory(selectedConversation);
-            // Save persistent state for flights
+
+            // Extract actual dates from the first flight found
+            const firstFlight = (structuredData as any)?.combinedData?.flights?.[0];
+            const actualDepartureDate = firstFlight?.departure_date;
+            const actualReturnDate = firstFlight?.return_date;
+
+            // Save persistent state for flights with actual dates from search results
             const state = {
-              flights: parsedRequest.flights,
+              flights: {
+                ...parsedRequest.flights,
+                departureDate: actualDepartureDate || parsedRequest.flights?.departureDate,
+                returnDate: actualReturnDate || parsedRequest.flights?.returnDate
+              },
               domain: 'flights'
             };
+            console.log('💾 [STATE] Saving flight context state with actual dates:', state);
+            console.log('💾 [STATE] Original dates:', {
+              original: parsedRequest.flights?.departureDate,
+              actual: actualDepartureDate
+            });
             await saveContextState(selectedConversation, state);
           } else {
             // No results (e.g., no direct flights). Preserve context so follow-up like "con escalas" can merge.
