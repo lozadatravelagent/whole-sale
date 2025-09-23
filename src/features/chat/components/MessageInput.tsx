@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Send, Loader2, Paperclip } from 'lucide-react';
 
 interface MessageInputProps {
@@ -21,7 +21,7 @@ const MessageInput = React.memo(({
   isUploadingPdf,
   onPdfUpload
 }: MessageInputProps) => {
-  const messageInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-focus when component mounts or when user starts typing
@@ -34,7 +34,7 @@ const MessageInput = React.memo(({
   return (
     <div className="border-t bg-background p-4 shadow-lg">
       <div className="flex space-x-2">
-        <Input
+        <Textarea
           ref={messageInputRef}
           id="chat-message-input"
           name="message"
@@ -45,9 +45,7 @@ const MessageInput = React.memo(({
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               if (e.shiftKey || e.altKey) {
-                // Insert newline behavior is native for textarea; for Input, we append \n manually
-                e.preventDefault();
-                onChange(value + '\n');
+                // In textarea, newline is native; do not send
                 return;
               }
               e.preventDefault();
@@ -64,7 +62,7 @@ const MessageInput = React.memo(({
               }, 50);
             }
           }}
-          className="flex-1"
+          className="flex-1 min-h-[60px] resize-y"
           autoComplete="off"
         />
 
