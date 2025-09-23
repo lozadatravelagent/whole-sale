@@ -46,7 +46,7 @@ const ChatFeature = () => {
     toast
   } = useChatState();
 
-  const { messages, updateMessageStatus } = useMessages(selectedConversation);
+  const { messages, updateMessageStatus, loadMessages } = useMessages(selectedConversation);
 
   // Contextual memory hooks
   const { loadContextualMemory, saveContextualMemory, clearContextualMemory, loadContextState, saveContextState } = useContextualMemory();
@@ -368,8 +368,15 @@ const ChatFeature = () => {
         await updateConversationTitle(newConversation.id, title);
 
         // Process the message with AI parser and send response immediately
-        // No need to set the message in the input since we're processing directly
         console.log('🤖 [NEW CHAT] Processing message with AI parser...');
+
+        // Force refresh messages to ensure the conversation is loaded
+        loadMessages();
+
+        // Wait for the conversation state to update
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Now process the message with the updated conversation
         await handleSendMessageRaw(messageToSend);
       }
     } catch (error) {
