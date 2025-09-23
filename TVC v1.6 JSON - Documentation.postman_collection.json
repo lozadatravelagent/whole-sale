@@ -1,0 +1,936 @@
+{
+	"info": {
+		"_postman_id": "9a4ff05f-32ab-48da-b2bd-0faf01d13d7c",
+		"name": "TVC v1.6 JSON - Documentation",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "1668932"
+	},
+	"item": [
+		{
+			"name": "1*-GetToken",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "username",
+							"value": "{{usernema}}",
+							"type": "text"
+						},
+						{
+							"key": "password",
+							"value": "{{password}}",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/GetAccessToken",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"GetAccessToken"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "2-GetFlightAvailability",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"Passengers\": [\n        {\n            \"Count\": 1,\n            \"Type\": \"ADT\"\n        }\n    ],\n    \"Legs\": [\n        {\n            \"DepartureAirportCity\": \"LON\",\n            \"FlightDate\": \"2020-04-16\",\n            \"ArrivalAirportCity\": \"BOS\"\n        }\n    ],\n    \"Airlines\": null\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/GetFlightAvailability",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"GetFlightAvailability"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "3.A-ConfirmFlightAvailability",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"RecommendationID\": \"b3b832344ef9e01a\",\n    \"FareID\": \"6a4fa6dc9494e01a\",\n    \"OptionID\": [\n        \"7ad070f6c149e01a\"\n    ],\n    \"WithAncillaries\": false\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/ConfirmFlightAvailability",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"ConfirmFlightAvailability"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "3.B-GetFareOptions",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"RecommendationID\": \"b3b832344ef9e01a\",\n    \"FareID\": \"6a4fa6dc9494e01a\",\n    \"OptionID\": [\n        \"7ad070f6c149e01a\"\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/GetFareOptions",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"GetFareOptions"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "3.C*-GetFlightFareRules",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"RecommendationID\": \"b3b832344ef9e01a\",\n    \"FareID\": \"6a4fa6dc9494e01a\",\n    \"OptionID\": [\n        \"7ad070f6c149e01a\"\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/GetFlightFareRules",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"GetFlightFareRules"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "4-BookFlight",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n\t\"Token\": \"{{TOKEN}}\",\n    \"TransactionCode\": null,\n    \"RecommendationID\": \"e7d4f1f3f28206dd\",\n    \"TransactionID\": \"2b45cb4a20e7a56a\",\n    \"Passengers\": [\n        {\n            \"Count\": 0,\n            \"DateOfBirth\": \"1982-09-19\",\n            \"FirstName\": \"ADULTO\",\n            \"Gender\": \"MR\",\n            \"LastName\": \"PRUEBA\",\n            \"Type\": \"ADT\",\n            \"Number\": 1,\n            \"RequiredInformations\": [\n                {\n                    \"FieldName\": \"NATL\",\n                    \"FieldValue\": \"ARG\"\n                },\n                {\n                    \"FieldName\": \"FOID\",\n                    \"FieldValue\": \"PP34000001\"\n                }\n            ]\n        },\n        {\n            \"Count\": 1,\n            \"DateOfBirth\": \"1979-09-19\",\n            \"FirstName\": \"ACOMANIA\",\n            \"Gender\": \"MR\",\n            \"LastName\": \"TESTER\",\n            \"Type\": \"ADT\",\n            \"Number\": 2,\n            \"RequiredInformations\": [\n                {\n                    \"FieldName\": \"NATL\",\n                    \"FieldValue\": \"ARG\"\n                },\n                {\n                    \"FieldName\": \"FOID\",\n                    \"FieldValue\": \"34000002\"\n                }\n            ]\n        }\n    ],\n    \"BookingFare\": {\n        \"ServiceAmount\": 0,\n        \"ValidatingCarrier\": \"AR\",\n        \"TaxAmount\": 400,\n        \"FareType\": \"P\",\n        \"IataCurrency\": \"ARS\",\n        \"LastTicketingDate\": \"2020-01-31T23:59:59.000Z\",\n        \"FareAmount\": 150,\n        \"IataTotalAmount\": 36508,\n        \"FareID\": \"7e05a78ce05dc5b5\",\n        \"CommissionAmount\": 1,\n        \"FareSupplier\": \"GDS\",\n        \"Currency\": \"USD\",\n        \"Commission\": {\n            \"OverCalculation\": null,\n            \"Percentage\": 1,\n            \"Over\": 0,\n            \"PassengerTypes\": null\n        },\n        \"PaxFares\": [\n            {\n                \"Count\": 2,\n                \"PaxTotalAmount\": 287.47,\n                \"PaxType\": \"ADT\",\n                \"PaxFareAmount\": 76.62992125984255,\n                \"PaxSubType\": null,\n                \"PaxTaxAmount\": 210.84094488188975,\n                \"PaxCommissionAmount\": 0.766299212598426\n            }\n        ],\n        \"IataCountry\": \"AR\",\n        \"TotalAmount\": 550,\n        \"Legs\": [\n            {\n                \"Options\": [\n                    {\n                        \"Segments\": [\n                            {\n                                \"Arrival\": {\n                                    \"Date\": \"2020-04-16\",\n                                    \"AirportCode\": \"LIS\",\n                                    \"Time\": \"09:10\"\n                                },\n                                \"Status\": \"NN\",\n                                \"CabinClass\": \"M\",\n                                \"AirRecLoc\": null,\n                                \"Baggage\": \"0PC\",\n                                \"SegmentNumber\": 1,\n                                \"FareBasis\": \"EFRDSI0D\",\n                                \"FlightNumber\": 443,\n                                \"Stops\": [],\n                                \"Departure\": {\n                                    \"Date\": \"2020-04-16\",\n                                    \"AirportCode\": \"ORY\",\n                                    \"Time\": \"07:40\"\n                                },\n                                \"OperatingAirline\": \"TP\",\n                                \"BookingClass\": \"E\",\n                                \"Airline\": \"TP\",\n                                \"Duration\": 0,\n                                \"Features\": null\n                            },\n                            {\n                                \"Arrival\": {\n                                    \"Date\": \"2020-04-16\",\n                                    \"AirportCode\": \"BOS\",\n                                    \"Time\": \"13:20\"\n                                },\n                                \"Status\": \"NN\",\n                                \"CabinClass\": \"M\",\n                                \"AirRecLoc\": null,\n                                \"Baggage\": \"0PC\",\n                                \"SegmentNumber\": 2,\n                                \"FareBasis\": \"EFRDSI0D\",\n                                \"FlightNumber\": 217,\n                                \"Stops\": [],\n                                \"Departure\": {\n                                    \"Date\": \"2020-04-16\",\n                                    \"AirportCode\": \"LIS\",\n                                    \"Time\": \"10:55\"\n                                },\n                                \"OperatingAirline\": \"TP\",\n                                \"BookingClass\": \"E\",\n                                \"Airline\": \"TP\",\n                                \"Duration\": 0,\n                                \"Features\": null\n                            }\n                        ],\n                        \"FlightOptionID\": \"8371305c2bb55b5\",\n                        \"OptionDuration\": 660\n                    }\n                ],\n                \"LegNumber\": 1\n            }\n        ],\n        \"MaxInstallments\": 12,\n        \"AllowedFOPs\": [\n            \"ALL\",\n            \"MULTIFOP\"\n        ]\n    },\n    \"CreditCardInfo\": {\n        \"CardType\": \"VI\",\n        \"CardNumber\": \"42424242424242\",\n        \"SecurityCode\": \"100\",\n        \"NameOnCard\": \"TEST TEST\",\n        \"ExpirationDate\": \"2021-09\"\n    },\n    \"Buyer\": {\n        \"City\": \"Buenos Aires\",\n        \"Country\": \"AR\",\n        \"FirstName\": \"PRUEBA\",\n        \"LastName\": \"ADULTO\",\n        \"TelephoneCountry\": \"54\",\n        \"Telephone\": \"5555555\",\n        \"Email\": \"test@test.com\"\n    }\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/BookFlight",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"BookFlight"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "5-RetrieveBooking",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"BookingNumber\": \"{{RecLoc}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/RetrieveBooking",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"RetrieveBooking"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "6*-AddBookingInfo",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"BookingNumber\": \"{{RecLoc}}\",\n    \"PaxNumber\": 1,\n    \"FieldName\": \"RMK-CC\",\n    \"Value\": \"111\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/AddBookingInfo",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"AddBookingInfo"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "7*-UpdateBookingPayments",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"BookingNumber\": \"{{RecLoc}}\",\n    \"Payments\": [\n\t\t{\n            \"PaymentNumber\": 1,\n\t\t\t\"FormOfPayment\": \"CARD\",\n\t\t\t\"Amount\": 200,\n\t\t\t\"Currency\": \"USD\",\n\t\t\t\"CreditCardInfo\": {\n\t\t\t\t\"CardType\": \"VI\",\n\t\t\t\t\"CardNumber\": \"4444333322221111\",\n\t\t\t\t\"SecurityCode\": \"100\",\n\t\t\t\t\"NameOnCard\": \"TEST TEST\",\n\t\t\t\t\"ExpirationDate\": \"2025-09\"\n\t\t\t}\n\t\t},\n        {\n            \"PaymentNumber\": 2,\n\t\t\t\"FormOfPayment\": \"CASH\",\n\t\t\t\"Amount\": 24.55,\n\t\t\t\"Currency\": \"USD\"\n\t\t}\n\t]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/UpdateBookingPayments",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"UpdateBookingPayments"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "8.A-ChangeFlightBookingStatus",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"BookingNumber\": \"{{RecLoc}}\",\n    \"BookingStatus\": 101\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/ChangeFlightBookingStatus",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"ChangeFlightBookingStatus"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "8.B-IssueBooking",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"BookingNumber\": \"{{RecLoc}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/IssueBooking",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"IssueBooking"
+					]
+				}
+			},
+			"response": [
+				{
+					"name": "IssueBooking - Sucsess response",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"name": "Content-Type",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"TransactionID\": \"989fc10a4a1011b8\",\n    \"BookingNumber\": \"XXXXX1\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{endPoint}}/FlightService.json/IssueBooking",
+							"host": [
+								"{{endPoint}}"
+							],
+							"path": [
+								"FlightService.json",
+								"IssueBooking"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Cache-Control",
+							"value": "private"
+						},
+						{
+							"key": "Content-Type",
+							"value": "text/json; charset=utf-8"
+						},
+						{
+							"key": "Content-Encoding",
+							"value": "gzip"
+						},
+						{
+							"key": "Vary",
+							"value": "Accept-Encoding"
+						},
+						{
+							"key": "Server",
+							"value": "Microsoft-IIS/10.0"
+						},
+						{
+							"key": "X-API-Version",
+							"value": "1.6.6.0"
+						},
+						{
+							"key": "X-AspNet-Version",
+							"value": "4.0.30319"
+						},
+						{
+							"key": "X-Powered-By",
+							"value": "ASP.NET"
+						},
+						{
+							"key": "Date",
+							"value": "Mon, 04 Mar 2024 13:14:14 GMT"
+						},
+						{
+							"key": "Content-Length",
+							"value": "253"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"BookingNumber\": \"XXXXX1\",\n    \"TicketNumbers\": [\n        \"000-1111111111\",\n        \"000-2222222222\"\n    ],\n    \"Token\": \"35758044d76c2fc5D100027\",\n    \"TransactionID\": \"989fc10a4a1011b8\",\n    \"TransactionMessage\": null,\n    \"TransactionCode\": null\n}"
+				},
+				{
+					"name": "IssueBooking - Success response - 2",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"name": "Content-Type",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"TransactionID\": \"989fc10a4a1011b9\",\n    \"BookingNumber\": \"{{RecLoc}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{endPoint}}/FlightService.json/IssueBooking",
+							"host": [
+								"{{endPoint}}"
+							],
+							"path": [
+								"FlightService.json",
+								"IssueBooking"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Cache-Control",
+							"value": "private"
+						},
+						{
+							"key": "Content-Type",
+							"value": "text/json; charset=utf-8"
+						},
+						{
+							"key": "Content-Encoding",
+							"value": "gzip"
+						},
+						{
+							"key": "Vary",
+							"value": "Accept-Encoding"
+						},
+						{
+							"key": "Server",
+							"value": "Microsoft-IIS/10.0"
+						},
+						{
+							"key": "X-API-Version",
+							"value": "1.6.6.0"
+						},
+						{
+							"key": "X-AspNet-Version",
+							"value": "4.0.30319"
+						},
+						{
+							"key": "X-Powered-By",
+							"value": "ASP.NET"
+						},
+						{
+							"key": "Date",
+							"value": "Mon, 04 Mar 2024 13:50:58 GMT"
+						},
+						{
+							"key": "Content-Length",
+							"value": "286"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"BookingNumber\": \"PWRHMX\",\n    \"TicketNumbers\": [\n        \"ETK:01.01/PEREZ JUAN PABLO/0446688189214\"\n    ],\n    \"Token\": \"35758044d76c2fc5D100027\",\n    \"TransactionID\": \"d11bab99beb2d575\",\n    \"TransactionMessage\": null,\n    \"TransactionCode\": null\n}"
+				},
+				{
+					"name": "IssueBooking - Error response - 1",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"name": "Content-Type",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"TransactionID\": \"989fc10a4a1011b9\",\n    \"BookingNumber\": \"XXXXX2\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{endPoint}}/FlightService.json/IssueBooking",
+							"host": [
+								"{{endPoint}}"
+							],
+							"path": [
+								"FlightService.json",
+								"IssueBooking"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Cache-Control",
+							"value": "private"
+						},
+						{
+							"key": "Content-Type",
+							"value": "text/json; charset=utf-8"
+						},
+						{
+							"key": "Content-Encoding",
+							"value": "gzip"
+						},
+						{
+							"key": "Vary",
+							"value": "Accept-Encoding"
+						},
+						{
+							"key": "Server",
+							"value": "Microsoft-IIS/10.0"
+						},
+						{
+							"key": "X-API-Version",
+							"value": "1.6.6.0"
+						},
+						{
+							"key": "X-AspNet-Version",
+							"value": "4.0.30319"
+						},
+						{
+							"key": "X-Powered-By",
+							"value": "ASP.NET"
+						},
+						{
+							"key": "Date",
+							"value": "Mon, 04 Mar 2024 13:16:53 GMT"
+						},
+						{
+							"key": "Content-Length",
+							"value": "245"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"BookingNumber\": null,\n    \"TicketNumbers\": null,\n    \"Token\": \"35758044d76c2fc5D100027\",\n    \"TransactionID\": \"c9daf466ee81928f\",\n    \"TransactionMessage\": \"TST expired\",\n    \"TransactionCode\": \"1952\"\n}"
+				},
+				{
+					"name": "IssueBooking - Error response - 2",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"name": "Content-Type",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"TransactionID\": \"989fc10a4a1011b9\",\n    \"BookingNumber\": \"{{RecLoc}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{endPoint}}/FlightService.json/IssueBooking",
+							"host": [
+								"{{endPoint}}"
+							],
+							"path": [
+								"FlightService.json",
+								"IssueBooking"
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Cache-Control",
+							"value": "private"
+						},
+						{
+							"key": "Content-Type",
+							"value": "text/json; charset=utf-8"
+						},
+						{
+							"key": "Content-Encoding",
+							"value": "gzip"
+						},
+						{
+							"key": "Vary",
+							"value": "Accept-Encoding"
+						},
+						{
+							"key": "Server",
+							"value": "Microsoft-IIS/10.0"
+						},
+						{
+							"key": "X-API-Version",
+							"value": "1.6.6.0"
+						},
+						{
+							"key": "X-AspNet-Version",
+							"value": "4.0.30319"
+						},
+						{
+							"key": "X-Powered-By",
+							"value": "ASP.NET"
+						},
+						{
+							"key": "Date",
+							"value": "Mon, 04 Mar 2024 13:31:06 GMT"
+						},
+						{
+							"key": "Content-Length",
+							"value": "415"
+						}
+					],
+					"cookie": [],
+					"body": "{\n    \"BookingNumber\": null,\n    \"TicketNumbers\": null,\n    \"Token\": \"35758044d76c2fc5D100027\",\n    \"TransactionID\": \"c4b91cb333f0c77b\",\n    \"TransactionMessage\": \"TKT RQ: PWTRTM/1BLF, starting.\\n Matched rule #65b121d0127c8fca458e28ab [Regla general] with commission 0, tourcode -.\\n Error while trying to ticket >>> \\u0087INCORRECT CARD NUMBER\\u0087\\n, for 82466.00ARS\",\n    \"TransactionCode\": \"1952\"\n}"
+				}
+			]
+		},
+		{
+			"name": "9*-ListBookings",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"exec": [
+							""
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"FromDate\": \"2024-06-01\",\n    \"ToDate\": \"2024-07-01\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/ListBookings",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"ListBookings"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "10*-GetFlightBookingNotifications",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Token\": \"{{TOKEN}}\",\n    \"BookingNumber\": \"{{RecLoc}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://testapi.webtravelcaster.com/api/1.6/FlightService.json/GetFlightBookingNotifications",
+					"protocol": "https",
+					"host": [
+						"testapi",
+						"webtravelcaster",
+						"com"
+					],
+					"path": [
+						"api",
+						"1.6",
+						"FlightService.json",
+						"GetFlightBookingNotifications"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	]
+}

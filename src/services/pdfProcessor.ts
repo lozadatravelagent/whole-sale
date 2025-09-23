@@ -101,47 +101,97 @@ function isPdfMonkeyTemplate(fileName: string, content?: string): boolean {
     const pdfMonkeyPatterns = [
         /viaje-combinado-cotizacion/i,
         /wholesale-connect/i,
-        /cotizacion.*pdf/i
+        /cotizacion.*pdf/i,
+        /vuelos-cotizacion/i
     ];
 
-    return pdfMonkeyPatterns.some(pattern => pattern.test(fileName));
+    // First check filename
+    const filenameMatch = pdfMonkeyPatterns.some(pattern => pattern.test(fileName));
+    if (filenameMatch) {
+        return true;
+    }
+
+    // If content is available, check for template-specific patterns
+    if (content) {
+        return isPdfMonkeyTemplateByContent(content);
+    }
+
+    return false;
 }
 
 /**
- * Extract structured data from our PdfMonkey template
+ * Detect PdfMonkey template by analyzing PDF content
+ */
+function isPdfMonkeyTemplateByContent(content: string): boolean {
+    // Patterns that are unique to our templates
+    const templateIndicators = [
+        // From both.html template
+        /PRESUPUESTO DE VIAJE/i,
+        /Para confirmar tu reserva.*contactanos por WhatsApp/i,
+        /Documentación y requisitos de ingreso.*responsabilidad del pasajero/i,
+        /Tarifa sujeta a disponibilidad al momento de reservar/i,
+
+        // From flights.html template  
+        /DETALLE DEL VUELO/i,
+        /Vuelo de ida.*Vuelo de regreso/i,
+        /Equipaje de bodega incluido.*Carry On incluido/i,
+
+        // General template patterns
+        /wholesale-connect/i,
+        /Tiempo de espera.*en.*\([A-Z]{3}\)/i, // Layover pattern
+        /adultos.*niños/i // Passenger pattern
+    ];
+
+    // Check if content contains multiple template indicators
+    const matchCount = templateIndicators.filter(pattern => pattern.test(content)).length;
+
+    // If we find 2 or more indicators, it's likely our template
+    return matchCount >= 2;
+}
+
+/**
+ * Extract structured data from our PdfMonkey template using real content
  * Since we know the exact structure, we can extract data more precisely
  */
-function extractPdfMonkeyData(fileName: string): PdfAnalysisResult {
-    console.log('🎯 Detected PdfMonkey template, extracting structured data');
+function extractPdfMonkeyDataFromContent(fileName: string, content: string): PdfAnalysisResult {
+    console.log('🎯 Extracting structured data from PdfMonkey template content');
 
-    // Since this is our own template, we can extract data more accurately
-    // In a real implementation, you might store metadata when generating PDFs
-    // or use OCR to extract specific fields from known positions
+    // Determine which template was used based on content
+    const isCombinedTemplate = content.includes('PRESUPUESTO DE VIAJE') || content.includes('Hotel Recomendado');
+    const isFlightsOnlyTemplate = content.includes('DETALLE DEL VUELO') && !isCombinedTemplate;
+
+    console.log('📋 Template type detected:', isCombinedTemplate ? 'Combined (both.html)' : isFlightsOnlyTemplate ? 'Flights only (flights.html)' : 'Unknown');
+
+    // Extract flight information from our template structure
+    const flights = extractFlightsFromPdfMonkeyTemplate(content);
+
+    // Extract hotel information (only for combined template)
+    const hotels = isCombinedTemplate ? extractHotelsFromPdfMonkeyTemplate(content) : [];
+
+    // Extract total price
+    const totalPrice = extractTotalPriceFromPdfMonkeyTemplate(content);
+
+    // Extract passenger information
+    const passengers = extractPassengersFromPdfMonkeyTemplate(content);
+
+    // Extract currency
+    const currency = extractCurrencyFromPdfMonkeyTemplate(content);
+
+    // Determine original template ID based on content
+    const originalTemplate = isCombinedTemplate ?
+        "3E8394AC-84D4-4286-A1CD-A12D1AB001D5" : // COMBINED_TEMPLATE_ID
+        "67B7F3A5-7BFE-4F52-BE6B-110371CB9376";   // FLIGHT_TEMPLATE_ID
 
     return {
         success: true,
         content: {
-            flights: [
-                {
-                    airline: "American Airlines", // This would be extracted from PDF
-                    route: "EZE → MIA → PUJ",
-                    price: 725,
-                    dates: "2025-11-01 / 2025-11-15"
-                }
-            ],
-            hotels: [
-                {
-                    name: "Bavaro Green Aparthotel", // Extracted from PDF
-                    location: "Punta Cana",
-                    price: 45,
-                    nights: 14
-                }
-            ],
-            totalPrice: 1355, // Key field - extracted from PDF total
-            currency: "USD",
-            passengers: 1,
+            flights,
+            hotels,
+            totalPrice,
+            currency,
+            passengers,
             // Additional metadata for regeneration
-            originalTemplate: "3E8394AC-84D4-4286-A1CD-A12D1AB001D5",
+            originalTemplate,
             extractedFromPdfMonkey: true
         },
         suggestions: [
@@ -160,18 +210,8 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
     try {
         console.log('📄 Analyzing PDF:', file.name);
 
-        // Check if this is a PDF generated by our PdfMonkey template
-        if (isPdfMonkeyTemplate(file.name)) {
-            console.log('🎯 PDF recognized as PdfMonkey template - using structured extraction');
-
-            // Simulate processing time for extraction
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
-            return extractPdfMonkeyData(file.name);
-        }
-
-        // For external PDFs, extract real content
-        console.log('📋 External PDF detected - extracting real content');
+        // Always extract text content first to determine if it's our template
+        console.log('📋 Extracting PDF content for analysis');
 
         // Convert file to array buffer for PDF processing
         const arrayBuffer = await file.arrayBuffer();
@@ -196,6 +236,16 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
 
         const extractedText = extractionResult.text;
         console.log('📄 Extracted PDF text:', extractedText.substring(0, 500) + '...');
+
+        // Check if this is a PDF generated by our PdfMonkey template using both filename and content
+        if (isPdfMonkeyTemplate(file.name, extractedText)) {
+            console.log('🎯 PDF recognized as PdfMonkey template - using structured extraction');
+
+            return extractPdfMonkeyDataFromContent(file.name, extractedText);
+        }
+
+        // For external PDFs, parse the extracted content
+        console.log('📋 External PDF detected - parsing extracted content');
 
         // Parse extracted text to find travel information
         const parsedData = parseExtractedTravelData(extractedText);
@@ -343,12 +393,128 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
     const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
 
     return analysis.content.flights.map((flight, index) => {
-        const [departureDate, returnDate] = flight.dates.split(' / ');
+        // Parse dates from PDF data
+        const datesParsed = parseDateRange(flight.dates);
+
+        // Extract route information from PDF
+        const routeInfo = parseFlightRoute(flight.route);
+
+        // Get airline code from PDF data or extract from airline name
+        const airlineCode = extractAirlineCode(flight.airline);
+
+        // Build legs from extracted PDF data
+        const legs = [];
+
+        // Check if flight has detailed leg information from enhanced extraction
+        if ((flight as any).legs && (flight as any).legs.length > 0) {
+            // Use detailed leg information from PDF
+            const pdfLegs = (flight as any).legs;
+
+            // Add outbound legs
+            pdfLegs.forEach((leg: any, legIndex: number) => {
+                if (legIndex < pdfLegs.length / 2 || pdfLegs.length <= 2) {
+                    legs.push({
+                        departure: {
+                            city_code: leg.from || routeInfo.origin,
+                            city_name: mapCodeToCity(leg.from || routeInfo.origin),
+                            time: leg.departureTime || (flight as any).departureTime || '08:00'
+                        },
+                        arrival: {
+                            city_code: leg.to || routeInfo.destination,
+                            city_name: mapCodeToCity(leg.to || routeInfo.destination),
+                            time: leg.arrivalTime || (flight as any).arrivalTime || '18:00'
+                        },
+                        duration: calculateFlightDuration(leg.departureTime, leg.arrivalTime) || '10h',
+                        flight_type: 'outbound',
+                        flight_number: leg.flightNumber
+                    });
+                }
+            });
+
+            // Add return legs for round trip
+            if (datesParsed.returnDate) {
+                pdfLegs.forEach((leg: any, legIndex: number) => {
+                    if (legIndex >= pdfLegs.length / 2 && pdfLegs.length > 2) {
+                        legs.push({
+                            departure: {
+                                city_code: leg.from || routeInfo.destination,
+                                city_name: mapCodeToCity(leg.from || routeInfo.destination),
+                                time: leg.departureTime || '10:00'
+                            },
+                            arrival: {
+                                city_code: leg.to || routeInfo.origin,
+                                city_name: mapCodeToCity(leg.to || routeInfo.origin),
+                                time: leg.arrivalTime || '20:00'
+                            },
+                            duration: calculateFlightDuration(leg.departureTime, leg.arrivalTime) || '10h',
+                            flight_type: 'return',
+                            flight_number: leg.flightNumber
+                        });
+                    }
+                });
+
+                // If no return legs found but we have a return date, create return legs
+                const returnLegsExist = legs.some(leg => leg.flight_type === 'return');
+                if (!returnLegsExist && routeInfo.origin && routeInfo.destination) {
+                    legs.push({
+                        departure: {
+                            city_code: routeInfo.destination,
+                            city_name: mapCodeToCity(routeInfo.destination),
+                            time: (flight as any).departureTime || '10:00'
+                        },
+                        arrival: {
+                            city_code: routeInfo.origin,
+                            city_name: mapCodeToCity(routeInfo.origin),
+                            time: (flight as any).arrivalTime || '20:00'
+                        },
+                        duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
+                        flight_type: 'return'
+                    });
+                }
+            }
+        } else {
+            // Fallback: create basic legs from route information
+            if (routeInfo.origin && routeInfo.destination) {
+                // Outbound leg
+                legs.push({
+                    departure: {
+                        city_code: routeInfo.origin,
+                        city_name: mapCodeToCity(routeInfo.origin),
+                        time: (flight as any).departureTime || '08:00'
+                    },
+                    arrival: {
+                        city_code: routeInfo.destination,
+                        city_name: mapCodeToCity(routeInfo.destination),
+                        time: (flight as any).arrivalTime || '18:00'
+                    },
+                    duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
+                    flight_type: 'outbound'
+                });
+
+                // Return leg if round trip
+                if (datesParsed.returnDate) {
+                    legs.push({
+                        departure: {
+                            city_code: routeInfo.destination,
+                            city_name: mapCodeToCity(routeInfo.destination),
+                            time: (flight as any).departureTime || '10:00'
+                        },
+                        arrival: {
+                            city_code: routeInfo.origin,
+                            city_name: mapCodeToCity(routeInfo.origin),
+                            time: (flight as any).arrivalTime || '20:00'
+                        },
+                        duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
+                        flight_type: 'return'
+                    });
+                }
+            }
+        }
 
         return {
             id: `regenerated-${Date.now()}-${index}`,
             airline: {
-                code: flight.airline.substring(0, 2).toUpperCase(),
+                code: airlineCode,
                 name: flight.airline
             },
             price: {
@@ -363,35 +529,20 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
             },
             adults: analysis.content?.passengers || 1,
             childrens: 0,
-            departure_date: departureDate || '2025-11-01',
-            return_date: returnDate || '2025-11-15',
-            departure_time: '07:35',
-            arrival_time: '17:35',
-            duration: { formatted: '11h' },
-            stops: { direct: false, count: 1 },
+            departure_date: datesParsed.departureDate,
+            return_date: datesParsed.returnDate,
+            departure_time: (flight as any).departureTime || '08:00',
+            arrival_time: (flight as any).arrivalTime || '18:00',
+            duration: { formatted: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h' },
+            stops: { direct: legs.length <= 2, count: Math.max(0, legs.length - 2) },
             baggage: { included: true, details: '2PC' },
             cabin: { class: 'Economy', brandName: 'Economy Flexible' },
             booking: {
                 lastTicketingDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                validatingCarrier: flight.airline.substring(0, 2).toUpperCase(),
+                validatingCarrier: airlineCode,
                 fareType: 'P'
             },
-            legs: [
-                {
-                    departure: {
-                        city_code: flight.route.split(' → ')[0],
-                        city_name: flight.route.split(' → ')[0] === 'EZE' ? 'Buenos Aires' : 'Origen',
-                        time: '07:35'
-                    },
-                    arrival: {
-                        city_code: flight.route.split(' → ').pop() || 'PUJ',
-                        city_name: flight.route.split(' → ').pop() === 'PUJ' ? 'Punta Cana' : 'Destino',
-                        time: '17:35'
-                    },
-                    duration: '11h',
-                    flight_type: 'outbound'
-                }
-            ]
+            legs: legs
         };
     });
 }
@@ -476,24 +627,63 @@ export async function generateModifiedPdf(
             console.log('🔄 Adapting external PDF data');
             const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
 
-            adjustedFlights = analysis.content.flights?.map((flight, index) => ({
-                id: `external-modified-${Date.now()}-${index}`,
-                airline: { code: 'AA', name: flight.airline },
-                price: {
-                    amount: Math.round(flight.price * priceRatio),
-                    currency: analysis.content?.currency || 'USD'
-                },
-                adults: analysis.content?.passengers || 1,
-                childrens: 0,
-                departure_date: flight.dates.split(' / ')[0] || '2025-11-01',
-                return_date: flight.dates.split(' / ')[1] || '2025-11-15',
-                legs: [{
-                    departure: { city_code: 'EZE', city_name: 'Buenos Aires', time: '07:35' },
-                    arrival: { city_code: 'PUJ', city_name: 'Punta Cana', time: '17:35' },
-                    duration: '11h',
-                    flight_type: 'outbound'
-                }]
-            })) || [];
+            adjustedFlights = analysis.content.flights?.map((flight, index) => {
+                const datesParsed = parseDateRange(flight.dates);
+                const routeInfo = parseFlightRoute(flight.route);
+                const airlineCode = extractAirlineCode(flight.airline);
+
+                const legs = [];
+
+                // Outbound leg using real data
+                if (routeInfo.origin && routeInfo.destination) {
+                    legs.push({
+                        departure: {
+                            city_code: routeInfo.origin,
+                            city_name: mapCodeToCity(routeInfo.origin),
+                            time: (flight as any).departureTime || '08:00'
+                        },
+                        arrival: {
+                            city_code: routeInfo.destination,
+                            city_name: mapCodeToCity(routeInfo.destination),
+                            time: (flight as any).arrivalTime || '18:00'
+                        },
+                        duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
+                        flight_type: 'outbound'
+                    });
+
+                    // Return leg if round trip
+                    if (datesParsed.returnDate) {
+                        legs.push({
+                            departure: {
+                                city_code: routeInfo.destination,
+                                city_name: mapCodeToCity(routeInfo.destination),
+                                time: (flight as any).departureTime || '10:00'
+                            },
+                            arrival: {
+                                city_code: routeInfo.origin,
+                                city_name: mapCodeToCity(routeInfo.origin),
+                                time: (flight as any).arrivalTime || '20:00'
+                            },
+                            duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
+                            flight_type: 'return'
+                        });
+                    }
+                }
+
+                return {
+                    id: `external-modified-${Date.now()}-${index}`,
+                    airline: { code: airlineCode, name: flight.airline },
+                    price: {
+                        amount: Math.round(flight.price * priceRatio),
+                        currency: analysis.content?.currency || 'USD'
+                    },
+                    adults: analysis.content?.passengers || 1,
+                    childrens: 0,
+                    departure_date: datesParsed.departureDate,
+                    return_date: datesParsed.returnDate,
+                    legs: legs
+                };
+            }) || [];
 
             adjustedHotels = analysis.content.hotels?.map((hotel, index) => ({
                 id: `external-modified-hotel-${Date.now()}-${index}`,
@@ -842,32 +1032,82 @@ function parseExtractedTravelData(text: string): PdfAnalysisResult['content'] {
 }
 
 /**
- * Extract flight information from PDF text
+ * Extract flight information from PDF text with detailed parsing
  */
-function extractFlightInfo(text: string): Array<{ airline: string, route: string, price: number, dates: string }> {
-    const flights: Array<{ airline: string, route: string, price: number, dates: string }> = [];
+function extractFlightInfo(text: string): Array<{
+    airline: string,
+    route: string,
+    price: number,
+    dates: string,
+    departureTime?: string,
+    arrivalTime?: string,
+    originCode?: string,
+    destinationCode?: string,
+    originCity?: string,
+    destinationCity?: string,
+    legs?: Array<{
+        from: string,
+        to: string,
+        departureTime?: string,
+        arrivalTime?: string,
+        flightNumber?: string
+    }>
+}> {
+    const flights: Array<{
+        airline: string,
+        route: string,
+        price: number,
+        dates: string,
+        departureTime?: string,
+        arrivalTime?: string,
+        originCode?: string,
+        destinationCode?: string,
+        originCity?: string,
+        destinationCity?: string,
+        legs?: Array<{
+            from: string,
+            to: string,
+            departureTime?: string,
+            arrivalTime?: string,
+            flightNumber?: string
+        }>
+    }> = [];
 
-    // Patterns for common flight information
+    // Enhanced patterns for detailed flight information
     const airlinePatterns = [
-        /(?:LATAM|Aerolíneas Argentinas|American Airlines|United|Delta|Air France|Iberia|AVIANCA|JetSmart|Flybondi)/gi,
-        /(?:AA|UA|DL|AF|IB|AV|LAN|TAM)/gi
+        /(?:LATAM|Aerolíneas Argentinas|American Airlines|United|Delta|Air France|Iberia|AVIANCA|JetSmart|Flybondi|Copa Airlines)/gi,
+        /(?:AA|UA|DL|AF|IB|AV|LAN|TAM|CM)/gi
     ];
 
-    // Patterns for routes (airport codes or city names)
+    // Enhanced patterns for routes with more detail
     const routePatterns = [
         /([A-Z]{3})\s*[-–→]\s*([A-Z]{3})/g, // EZE - MIA
         /([A-Z]{3})\s*[-–→]\s*([A-Z]{3})\s*[-–→]\s*([A-Z]{3})/g, // EZE - MIA - PUJ
         /(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York)\s*[-–→]\s*(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York)/gi
     ];
 
-    // Patterns for dates
+    // Enhanced patterns for dates
     const datePatterns = [
         /(\d{1,2})\/(\d{1,2})\/(\d{4})\s*[-–]\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/g, // DD/MM/YYYY - DD/MM/YYYY
         /(\d{1,2})\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+(\d{4})\s*[-–]\s*(\d{1,2})\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+(\d{4})/gi,
         /(\d{4})-(\d{2})-(\d{2})\s*[-–]\s*(\d{4})-(\d{2})-(\d{2})/g // YYYY-MM-DD - YYYY-MM-DD
     ];
 
-    // Patterns for prices
+    // Patterns for flight times
+    const timePatterns = [
+        /(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/g, // 07:35 - 17:35
+        /(?:salida|departure|dep).*?(\d{1,2}):(\d{2})/gi,
+        /(?:llegada|arrival|arr).*?(\d{1,2}):(\d{2})/gi,
+        /(\d{1,2}):(\d{2})\s*(?:AM|PM|am|pm)?/g // General time pattern
+    ];
+
+    // Patterns for flight numbers
+    const flightNumberPatterns = [
+        /(?:vuelo|flight|voo)\s*(?:n[oº°]?\.?\s*)?([A-Z]{2}\d{2,4})/gi,
+        /([A-Z]{2}\s?\d{2,4})/g // AA 1234 or AA1234
+    ];
+
+    // Enhanced patterns for prices
     const pricePatterns = [
         /(?:USD|US\$|\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
         /(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi
@@ -880,11 +1120,31 @@ function extractFlightInfo(text: string): Array<{ airline: string, route: string
         airlines.push(...matches.map(m => m[0]));
     }
 
-    // Extract routes
+    // Extract routes with detailed parsing
     const routes = [];
+    const routeDetails = [];
     for (const pattern of routePatterns) {
         const matches = [...text.matchAll(pattern)];
         routes.push(...matches.map(m => m[0]));
+
+        // Parse route details for origin/destination
+        matches.forEach(match => {
+            if (match.length >= 3) {
+                // Route with connection: EZE - MIA - PUJ
+                const origin = match[1];
+                const destination = match[3] || match[2];
+                const connection = match[3] ? match[2] : null;
+                routeDetails.push({ origin, destination, connection, fullRoute: match[0] });
+            } else if (match.length >= 2) {
+                // Direct route: EZE - PUJ
+                routeDetails.push({
+                    origin: match[1],
+                    destination: match[2],
+                    connection: null,
+                    fullRoute: match[0]
+                });
+            }
+        });
     }
 
     // Extract dates
@@ -892,6 +1152,34 @@ function extractFlightInfo(text: string): Array<{ airline: string, route: string
     for (const pattern of datePatterns) {
         const matches = [...text.matchAll(pattern)];
         dates.push(...matches.map(m => m[0]));
+    }
+
+    // Extract flight times
+    const times = [];
+    const departureTime = [];
+    const arrivalTimes = [];
+    for (const pattern of timePatterns) {
+        const matches = [...text.matchAll(pattern)];
+        times.push(...matches.map(m => m[0]));
+
+        // Try to separate departure and arrival times
+        matches.forEach(match => {
+            if (match.length >= 4) {
+                // Time range: 07:35 - 17:35
+                departureTime.push(`${match[1]}:${match[2]}`);
+                arrivalTimes.push(`${match[3]}:${match[4]}`);
+            } else if (match.length >= 3) {
+                // Single time
+                times.push(`${match[1]}:${match[2]}`);
+            }
+        });
+    }
+
+    // Extract flight numbers
+    const flightNumbers = [];
+    for (const pattern of flightNumberPatterns) {
+        const matches = [...text.matchAll(pattern)];
+        flightNumbers.push(...matches.map(m => m[1] || m[0]));
     }
 
     // Extract prices
@@ -904,16 +1192,72 @@ function extractFlightInfo(text: string): Array<{ airline: string, route: string
         }));
     }
 
-    // Combine extracted information
+    // Combine extracted information with enhanced details
     const maxEntries = Math.max(airlines.length, routes.length, dates.length, prices.length, 1);
 
     for (let i = 0; i < maxEntries; i++) {
-        flights.push({
+        const routeDetail = routeDetails[i];
+        const flight = {
             airline: airlines[i] || 'Aerolínea no especificada',
             route: routes[i] || 'Ruta no especificada',
             price: prices[i] || 0,
-            dates: dates[i] || 'Fechas no especificadas'
-        });
+            dates: dates[i] || 'Fechas no especificadas',
+            departureTime: departureTime[i],
+            arrivalTime: arrivalTimes[i],
+            originCode: routeDetail?.origin,
+            destinationCode: routeDetail?.destination,
+            originCity: mapCodeToCity(routeDetail?.origin || ''),
+            destinationCity: mapCodeToCity(routeDetail?.destination || ''),
+            legs: []
+        };
+
+        // Create legs based on route details
+        if (routeDetail) {
+            // Outbound leg
+            flight.legs.push({
+                from: routeDetail.origin,
+                to: routeDetail.connection || routeDetail.destination,
+                departureTime: departureTime[i * 2],
+                arrivalTime: arrivalTimes[i * 2],
+                flightNumber: flightNumbers[i * 2]
+            });
+
+            // If there's a connection, add second leg
+            if (routeDetail.connection) {
+                flight.legs.push({
+                    from: routeDetail.connection,
+                    to: routeDetail.destination,
+                    departureTime: departureTime[i * 2 + 1],
+                    arrivalTime: arrivalTimes[i * 2 + 1],
+                    flightNumber: flightNumbers[i * 2 + 1]
+                });
+            }
+
+            // For round trip, create return legs (reverse the outbound)
+            if (dates[i] && dates[i].includes('-') || dates[i].includes('/')) {
+                // Return leg (reverse)
+                flight.legs.push({
+                    from: routeDetail.destination,
+                    to: routeDetail.connection || routeDetail.origin,
+                    departureTime: departureTime[i * 2 + 2],
+                    arrivalTime: arrivalTimes[i * 2 + 2],
+                    flightNumber: flightNumbers[i * 2 + 2]
+                });
+
+                // If there was a connection on outbound, add connection on return
+                if (routeDetail.connection) {
+                    flight.legs.push({
+                        from: routeDetail.connection,
+                        to: routeDetail.origin,
+                        departureTime: departureTime[i * 2 + 3],
+                        arrivalTime: arrivalTimes[i * 2 + 3],
+                        flightNumber: flightNumbers[i * 2 + 3]
+                    });
+                }
+            }
+        }
+
+        flights.push(flight);
     }
 
     console.log('✈️ Extracted flights:', flights);
@@ -1119,6 +1463,295 @@ function mapCityToCode(cityName: string): string {
     };
 
     return cityMap[cityName] || cityName;
+}
+
+/**
+ * Map airport codes to city names
+ */
+function mapCodeToCity(airportCode: string): string {
+    const codeMap: Record<string, string> = {
+        'BUE': 'Buenos Aires',
+        'EZE': 'Buenos Aires',
+        'AEP': 'Buenos Aires',
+        'MAD': 'Madrid',
+        'BCN': 'Barcelona',
+        'MIA': 'Miami',
+        'PUJ': 'Punta Cana',
+        'CUN': 'Cancún',
+        'JFK': 'Nueva York',
+        'LGA': 'Nueva York',
+        'EWR': 'Nueva York',
+        'PTY': 'Ciudad de Panamá',
+        'FLL': 'Fort Lauderdale',
+        'BOG': 'Bogotá',
+        'LIM': 'Lima',
+        'SCL': 'Santiago',
+        'GRU': 'São Paulo',
+        'GIG': 'Río de Janeiro'
+    };
+
+    return codeMap[airportCode] || airportCode;
+}
+
+/**
+ * Parse date range from PDF text (e.g., "01/11/2025 - 15/11/2025")
+ */
+function parseDateRange(dateString: string): { departureDate: string; returnDate?: string } {
+    if (!dateString) {
+        return { departureDate: '2025-11-01' };
+    }
+
+    // Handle different separators
+    const separators = [' - ', ' / ', ' – ', ' — ', ' to ', ' al '];
+    let dates: string[] = [dateString];
+
+    for (const separator of separators) {
+        if (dateString.includes(separator)) {
+            dates = dateString.split(separator);
+            break;
+        }
+    }
+
+    const departureDate = parseDate(dates[0]?.trim() || '');
+    const returnDate = dates.length > 1 ? parseDate(dates[1]?.trim() || '') : undefined;
+
+    return {
+        departureDate,
+        returnDate
+    };
+}
+
+/**
+ * Extract airline code from airline name
+ */
+function extractAirlineCode(airlineName: string): string {
+    const airlineCodes: Record<string, string> = {
+        'American Airlines': 'AA',
+        'United Airlines': 'UA',
+        'Delta Air Lines': 'DL',
+        'LATAM': 'LA',
+        'Aerolíneas Argentinas': 'AR',
+        'Copa Airlines': 'CM',
+        'Avianca': 'AV',
+        'Air France': 'AF',
+        'Iberia': 'IB',
+        'JetSmart': 'JA',
+        'Flybondi': 'FO'
+    };
+
+    // First try exact match
+    if (airlineCodes[airlineName]) {
+        return airlineCodes[airlineName];
+    }
+
+    // Try partial match
+    for (const [name, code] of Object.entries(airlineCodes)) {
+        if (airlineName.toLowerCase().includes(name.toLowerCase())) {
+            return code;
+        }
+    }
+
+    // If already looks like a code (2-3 uppercase letters), return it
+    if (/^[A-Z]{2,3}$/.test(airlineName)) {
+        return airlineName;
+    }
+
+    // Fallback: take first 2 letters and uppercase
+    return airlineName.substring(0, 2).toUpperCase();
+}
+
+/**
+ * Calculate flight duration between two times
+ */
+function calculateFlightDuration(departureTime?: string, arrivalTime?: string): string | null {
+    if (!departureTime || !arrivalTime) return null;
+
+    try {
+        // Parse times (assuming same day for simplicity)
+        const [depHour, depMin] = departureTime.split(':').map(Number);
+        const [arrHour, arrMin] = arrivalTime.split(':').map(Number);
+
+        let depMinutes = depHour * 60 + depMin;
+        let arrMinutes = arrHour * 60 + arrMin;
+
+        // Handle next day arrival
+        if (arrMinutes < depMinutes) {
+            arrMinutes += 24 * 60;
+        }
+
+        const durationMinutes = arrMinutes - depMinutes;
+        const hours = Math.floor(durationMinutes / 60);
+        const minutes = durationMinutes % 60;
+
+        return `${hours}h${minutes > 0 ? ` ${minutes}m` : ''}`;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Extract flight information from PdfMonkey template content
+ */
+function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
+    airline: string,
+    route: string,
+    price: number,
+    dates: string,
+    departureTime?: string,
+    arrivalTime?: string,
+    originCode?: string,
+    destinationCode?: string,
+    originCity?: string,
+    destinationCity?: string
+}> {
+    const flights = [];
+
+    // Extract airline name - looking for patterns from our templates
+    const airlineMatch = content.match(/Vuelos\s+([^$\n]+)/i);
+    const airline = airlineMatch ? airlineMatch[1].trim() : 'Aerolínea no especificada';
+
+    // Extract route information from airport codes in template
+    const routeMatches = content.match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/g);
+    let route = 'Ruta no especificada';
+    let originCode = '';
+    let destinationCode = '';
+
+    if (routeMatches && routeMatches.length > 0) {
+        const routeMatch = routeMatches[0].match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/);
+        if (routeMatch) {
+            originCode = routeMatch[1];
+            destinationCode = routeMatch[2];
+            route = `${originCode} → ${destinationCode}`;
+        }
+    }
+
+    // Extract dates from template
+    const dateMatch = content.match(/(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})/);
+    let dates = 'Fechas no especificadas';
+    if (dateMatch) {
+        dates = `${dateMatch[1]} / ${dateMatch[2]}`;
+    }
+
+    // Extract flight times from template
+    const timeMatches = content.match(/(\d{1,2}:\d{2})/g);
+    const departureTime = timeMatches ? timeMatches[0] : undefined;
+    const arrivalTime = timeMatches && timeMatches.length > 1 ? timeMatches[1] : undefined;
+
+    // Extract price from template - looking for currency patterns
+    const priceMatches = content.match(/\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi);
+    let price = 0;
+    if (priceMatches && priceMatches.length > 0) {
+        const priceStr = priceMatches[0].match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/);
+        if (priceStr) {
+            price = parseFloat(priceStr[1].replace(/,/g, ''));
+        }
+    }
+
+    flights.push({
+        airline,
+        route,
+        price,
+        dates,
+        departureTime,
+        arrivalTime,
+        originCode,
+        destinationCode,
+        originCity: mapCodeToCity(originCode),
+        destinationCity: mapCodeToCity(destinationCode)
+    });
+
+    console.log('✈️ Extracted flights from PdfMonkey template:', flights);
+    return flights;
+}
+
+/**
+ * Extract hotel information from PdfMonkey template content  
+ */
+function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
+    name: string,
+    location: string,
+    price: number,
+    nights: number
+}> {
+    const hotels = [];
+
+    // Extract hotel name from template
+    const hotelNameMatch = content.match(/Hotel Recomendado[^$]*?([^\n]+(?:Hotel|Resort|Aparthotel)[^\n]*)/i) ||
+        content.match(/([^\n]+(?:Hotel|Resort|Aparthotel)[^\n]*)/i);
+    const hotelName = hotelNameMatch ? hotelNameMatch[1].trim() : 'Hotel no especificado';
+
+    // Extract location
+    const locationMatch = content.match(/(\d+)\s*estrellas[^$]*?([^\n]+(?:Cana|Aires|Madrid|Barcelona|Miami)[^\n]*)/i) ||
+        content.match(/([^\n]+(?:Cana|Aires|Madrid|Barcelona|Miami)[^\n]*)/i);
+    const location = locationMatch ? (locationMatch[2] || locationMatch[1]).trim() : 'Ubicación no especificada';
+
+    // Extract nights duration
+    const nightsMatch = content.match(/(\d+)\s*(?:Noche|Noches|noche|noches)/i);
+    const nights = nightsMatch ? parseInt(nightsMatch[1]) : 0;
+
+    // Extract hotel price - this might be tricky, look for patterns around hotel section
+    const hotelPriceMatches = content.match(/Hotel[^$]*?\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i);
+    let hotelPrice = 0;
+    if (hotelPriceMatches) {
+        hotelPrice = parseFloat(hotelPriceMatches[1].replace(/,/g, ''));
+    }
+
+    hotels.push({
+        name: hotelName,
+        location,
+        price: hotelPrice,
+        nights
+    });
+
+    console.log('🏨 Extracted hotels from PdfMonkey template:', hotels);
+    return hotels;
+}
+
+/**
+ * Extract total price from PdfMonkey template content
+ */
+function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
+    // Look for total price patterns in our templates
+    const totalPatterns = [
+        /\$(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*USD/g,
+        /(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*USD/g
+    ];
+
+    const allPrices = [];
+    for (const pattern of totalPatterns) {
+        const matches = [...content.matchAll(pattern)];
+        matches.forEach(match => {
+            const price = parseFloat((match[1] || match[0]).replace(/[^\d.]/g, ''));
+            if (!isNaN(price) && price > 0) {
+                allPrices.push(price);
+            }
+        });
+    }
+
+    // Return the highest price found (likely the total)
+    const totalPrice = allPrices.length > 0 ? Math.max(...allPrices) : 0;
+    console.log('💰 Extracted total price from PdfMonkey template:', totalPrice);
+    return totalPrice;
+}
+
+/**
+ * Extract passenger count from PdfMonkey template content
+ */
+function extractPassengersFromPdfMonkeyTemplate(content: string): number {
+    const passengerMatch = content.match(/(\d+)\s*(?:Adulto|Adultos|adulto|adultos)/i);
+    const passengers = passengerMatch ? parseInt(passengerMatch[1]) : 1;
+    console.log('👥 Extracted passengers from PdfMonkey template:', passengers);
+    return passengers;
+}
+
+/**
+ * Extract currency from PdfMonkey template content
+ */
+function extractCurrencyFromPdfMonkeyTemplate(content: string): string {
+    const currencyMatch = content.match(/\b(USD|US\$|EUR|ARS)\b/i);
+    const currency = currencyMatch ? currencyMatch[1].toUpperCase().replace('US$', 'USD') : 'USD';
+    console.log('💱 Extracted currency from PdfMonkey template:', currency);
+    return currency;
 }
 
 /**

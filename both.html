@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flight & Hotel Information</title>
+</head>
+<body>
+
+  {%- comment -%}
+    Helpers: normalize numbers that might come as "5.745,60" or "5745.60".
+    We also coerce missing values to 0.
+  {%- endcomment -%}
+  {% assign _ta_str = travel_assistance | default: 0 %}
+  {% assign _ta_norm = _ta_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+  {% assign _tr_str = transfers | default: 0 %}
+  {% assign _tr_norm = _tr_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+
+  <!-- SUMMARY PAGE -->
+  <div class="page">
+    <div class="summary-container">
+      <h1 class="summary-title">PRESUPUESTO DE VIAJE</h1>
+
+      <div class="trip-info">
+        <div class="trip-details">
+          <div class="trip-detail">
+            <div class="trip-detail-label">Destino</div>
+            <div class="trip-detail-value">{{ selected_flights[0].legs[0].departure.city_code }} -- {{ selected_flights[0].legs[0].arrival.city_code }}</div>
+          </div>
+          <div class="trip-detail">
+            <div class="trip-detail-label">Fechas</div>
+            <div class="trip-detail-value">{{ checkin }} - {{ checkout }}</div>
+          </div>
+          <div class="trip-detail">
+            <div class="trip-detail-label">Pasajeros</div>
+            <div class="trip-detail-value">{{ adults }} {% if adults == 1 %}Adulto{% else %}Adultos{% endif %}{% if childrens > 0 %} {{ childrens }} {% if childrens == 1 %}Niño{% else %}Niños{% endif %}{% endif %}</div>
+          </div>
+          <div class="trip-detail">
+            <div class="trip-detail-label">Duración</div>
+            <div class="trip-detail-value">
+              {% assign checkout_epoch = checkout | date: "%s" %}
+              {% assign checkin_epoch = checkin | date: "%s" %}
+              {% assign duration = checkout_epoch | minus: checkin_epoch | divided_by: 86400 %}
+              {{ duration }} {% if duration == 1 %}Noche{% else %}Noches{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="package-combinations">
+        <h2 class="combinations-title">INCLUYE</h2>
+
+        <!-- Package Option 1: Main Hotel -->
+        {% if best_hotels[0] %}
+        <div class="package-card best-deal">
+          <div class="package-header">
+            <div class="package-title"></div>
+            <div class="package-price">
+              {% assign _flight_str = selected_flights[0].price.amount | default: 0 %}
+              {% assign _flight = _flight_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+              {% assign _hotel_str = best_hotels[0].price | default: 0 %}
+              {% assign _hotel = _hotel_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+              {% assign total_price = _flight | plus: _hotel %}
+              {% if _ta_norm > 0 %}{% assign total_price = total_price | plus: _ta_norm %}{% endif %}
+              {% if _tr_norm > 0 %}{% assign total_price = total_price | plus: _tr_norm %}{% endif %}
+              ${{ total_price }} {{ selected_flights[0].price.currency }}
+            </div>
+          </div>
+
+          <div class="package-details">
+  <!-- VUELOS -->
+  <div class="package-section">
+    <div class="section-title">
+      <span class="section-icon">✈️</span>
+      Vuelos {{ selected_flights[0].airline.name }}
+    </div>
+
+    <div class="section-content">
+      <div class="sc-row">
+        <div class="sc-icon"></div>
+        <div class="sc-text">
+          {{ selected_flights[0].legs[0].departure.city_name }} ⇄ {{ selected_flights[0].legs[0].arrival.city_name }}
+        </div>
+      </div>
+
+      <div class="sc-row">
+        <div class="sc-icon"></div>
+        <div class="sc-text">{{ selected_flights[0].legs[0].flight_type }}</div>
+      </div>
+
+      <div class="sc-row">
+        <div class="sc-icon"></div>
+        <div class="sc-text">
+          {% if selected_flights[0].luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif %}
+        </div>
+      </div>
+      </br>
+
+      {% if _tr_norm > 0 %}
+      <div class="sc-row sc-row--van">
+        <div class="sc-icon">🚐</div>
+        <div class="sc-text">Traslados, por pasajero.</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- HOTEL RECOMENDADO -->
+  <div class="package-section">
+    <div class="section-title">
+      <span class="section-icon">🏨</span>
+      Hotel Recomendado
+    </div>
+
+    <div class="section-content">
+      <div class="sc-row">
+        <div class="sc-icon"></div>
+        <div class="sc-text">{{ best_hotels[0].name }}</div>
+      </div>
+      <div class="sc-row">
+        <div class="sc-icon"></div>
+        <div class="sc-text">{{ best_hotels[0].stars }} estrellas</div>
+      </div>
+      <div class="sc-row">
+        <div class="sc-icon"></div>
+        <div class="sc-text">{{ best_hotels[0].location }}</div>
+      </div>
+      </br>
+
+      {% if _ta_norm > 0 %}
+      <div class="sc-row">
+        <div class="sc-icon">🏥</div>
+        <div class="sc-text">Tarjeta de asistencia médica, por pasajero.</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% comment %}
+{% if _ta_norm > 0 or _tr_norm > 0 %}
+  <div class="optional-addons">
+    {% if _ta_norm > 0 %}
+      <div class="addon-row">
+        <span class="addon-icon" aria-hidden="true">🏥</span>
+        <span class="addon-label">Tarjeta de asistencia médica, por pasajero.</span>
+        <!-- <span class="addon-amount">USD {{ travel_assistance }}</span> -->
+      </div>
+    {% endif %}
+    {% if _tr_norm > 0 %}
+      <div class="addon-row">
+        <span class="addon-icon" aria-hidden="true">🚐</span>
+        <span class="addon-label">Traslados, por pasajero.</span>
+        <!-- <span class="addon-amount">USD {{ transfers }}</span> -->
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endcomment %}
+</div>
+{% endif %}
+
+        <!-- Package Option 2: Alternative Hotel 1 -->
+        {% if best_hotels[0] and best_hotels[0].alternatives and best_hotels[0].alternatives[0] %}
+        <div class="package-card">
+          <div class="package-header">
+            <div class="package-title">Paquete Alternativo 1</div>
+            <div class="package-price">
+              {% assign _flight2 = selected_flights[0].price.amount | replace: ".", "" | replace: ",", "." | times: 1 %}
+              {% assign _hotel2 = best_hotels[0].alternatives[0].price | replace: ".", "" | replace: ",", "." | times: 1 %}
+              {% assign total_price2 = _flight2 | plus: _hotel2 %}
+              {% if _ta_norm > 0 %}{% assign total_price2 = total_price2 | plus: _ta_norm %}{% endif %}
+              {% if _tr_norm > 0 %}{% assign total_price2 = total_price2 | plus: _tr_norm %}{% endif %}
+              ${{ total_price2 }} {{ selected_flights[0].price.currency }}
+            </div>
+          </div>
+
+          <div class="package-details">
+            <div class="package-section">
+              <div class="section-title"><span class="section-icon">✈️</span>Vuelos {{ selected_flights[0].airline.name }}</div>
+              <div class="section-content">
+                {{ selected_flights[0].legs[0].departure.city_name }} ⇄ {{ selected_flights[0].legs[0].arrival.city_name }}<br>
+                {{ selected_flights[0].legs[0].flight_type }}<br>
+                {% if selected_flights[0].luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif %}
+              </div>
+            </div>
+            <div class="package-section">
+              <div class="section-title"><span class="section-icon">🏨</span>Hotel Alternativo</div>
+              <div class="section-content">
+                {{ best_hotels[0].alternatives[0].name }}<br>
+                Ubicación conveniente<br>
+                Opción alternativa
+              </div>
+            </div>
+          </div>
+
+          <div class="price-breakdown">
+            <div class="breakdown-row">
+              <span class="breakdown-label">Vuelos ({{ adults }} {% if adults == 1 %}persona{% else %}personas{% endif %})</span>
+              <span class="breakdown-value">${{ selected_flights[0].price.amount }} {{ selected_flights[0].price.currency }}</span>
+            </div>
+            <div class="breakdown-row">
+              <span class="breakdown-label">Hotel
+                ({% assign checkout_epoch = checkout | date: "%s" %}
+                 {% assign checkin_epoch = checkin | date: "%s" %}
+                 {% assign duration = checkout_epoch | minus: checkin_epoch | divided_by: 86400 %}
+                 {{ duration }} {% if duration == 1 %}noche{% else %}noches{% endif %})
+              </span>
+              <span class="breakdown-value">USD {{ best_hotels[0].alternatives[0].price }}</span>
+            </div>
+
+            {% if _ta_norm > 0 %}
+            <div class="breakdown-row">
+              <span class="breakdown-label">Asistencia al viajero (opcional)</span>
+              <span class="breakdown-value">USD {{ travel_assistance }}</span>
+            </div>
+            {% endif %}
+
+            {% if _tr_norm > 0 %}
+            <div class="breakdown-row">
+              <span class="breakdown-label">Traslados (opcional)</span>
+              <span class="breakdown-value">USD {{ transfers }}</span>
+            </div>
+            {% endif %}
+
+            <div class="breakdown-row">
+              <span class="breakdown-label">Total del Paquete</span>
+              <span class="breakdown-value">${{ total_price2 }} {{ selected_flights[0].price.currency }}</span>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Package Option 3: Alternative Hotel 2 -->
+        {% if best_hotels[0] and best_hotels[0].alternatives and best_hotels[0].alternatives[1] %}
+        <div class="package-card">
+          <div class="package-header">
+            <div class="package-title">Paquete Alternativo 2</div>
+            <div class="package-price">
+              {% assign _flight3 = selected_flights[0].price.amount | replace: ".", "" | replace: ",", "." | times: 1 %}
+              {% assign _hotel3 = best_hotels[0].alternatives[1].price | replace: ".", "" | replace: ",", "." | times: 1 %}
+              {% assign total_price3 = _flight3 | plus: _hotel3 %}
+              {% if _ta_norm > 0 %}{% assign total_price3 = total_price3 | plus: _ta_norm %}{% endif %}
+              {% if _tr_norm > 0 %}{% assign total_price3 = total_price3 | plus: _tr_norm %}{% endif %}
+              ${{ total_price3 }} {{ selected_flights[0].price.currency }}
+            </div>
+          </div>
+
+          <div class="package-details">
+            <div class="package-section">
+              <div class="section-title"><span class="section-icon">✈️</span>Vuelos {{ selected_flights[0].airline.name }}</div>
+              <div class="section-content">
+                {{ selected_flights[0].legs[0].departure.city_name }} ⇄ {{ selected_flights[0].legs[0].arrival.city_name }}<br>
+                {{ selected_flights[0].legs[0].flight_type }}<br>
+                {% if selected_flights[0].luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif %}
+              </div>
+            </div>
+            <div class="package-section">
+              <div class="section-title"><span class="section-icon">🏨</span>Hotel Premium</div>
+              <div class="section-content">
+                {{ best_hotels[0].alternatives[1].name }}<br>
+                Categoría superior<br>
+                Opción premium
+              </div>
+            </div>
+          </div>
+
+          <div class="price-breakdown">
+            <div class="breakdown-row">
+              <span class="breakdown-label">Vuelos ({{ adults }} {% if adults == 1 %}persona{% else %}personas{% endif %})</span>
+              <span class="breakdown-value">${{ selected_flights[0].price.amount }} {{ selected_flights[0].price.currency }}</span>
+            </div>
+            <div class="breakdown-row">
+              <span class="breakdown-label">Hotel
+                ({% assign checkout_epoch = checkout | date: "%s" %}
+                 {% assign checkin_epoch = checkin | date: "%s" %}
+                 {% assign duration = checkout_epoch | minus: checkin_epoch | divided_by: 86400 %}
+                 {{ duration }} {% if duration == 1 %}noche{% else %}noches{% endif %})
+              </span>
+              <span class="breakdown-value">USD {{ best_hotels[0].alternatives[1].price }}</span>
+            </div>
+
+            {% if _ta_norm > 0 %}
+            <div class="breakdown-row">
+              <span class="breakdown-label">Asistencia al viajero (opcional)</span>
+              <span class="breakdown-value">USD {{ travel_assistance }}</span>
+            </div>
+            {% endif %}
+
+            {% if _tr_norm > 0 %}
+            <div class="breakdown-row">
+              <span class="breakdown-label">Traslados (opcional)</span>
+              <span class="breakdown-value">USD {{ transfers }}</span>
+            </div>
+            {% endif %}
+
+            <div class="breakdown-row">
+              <span class="breakdown-label">Total del Paquete</span>
+              <span class="breakdown-value">${{ total_price3 }} {{ selected_flights[0].price.currency }}</span>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="contact-section">
+        <div class="contact-text">Para confirmar tu reserva, contactanos por WhatsApp</div>
+        <div class="contact-text">o respondé este mensaje.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLIGHT PAGES -->
+  {% for flight in selected_flights %}
+  <div class="page">
+    <div class="content">
+      <div class="flight-card">
+        <h2 class="combinations-title">DETALLE DEL VUELO</h2>
+        <div class="flight-header">
+          <div class="airline-info">
+            <div class="airline-logo">{{ flight.airline.code }}</div>
+            <div class="airline-name">
+              <div class="price-amount">{{ flight.airline.name }}</div>
+              <div class="no-adults-box">
+                <span class="detail-label">Ocupación:</span>
+                <span class="detail-value">{{ flight.adults }} adultos {{ flight.childrens }} niños</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Outbound Flight -->
+        <div class="flight-leg">
+          <div class="leg-header">
+            <div class="leg-title">Vuelo de ida <span class="flight-type">{{ flight.departure_date }}</span></div>
+            <div class="leg-header">
+              {% if flight.luggage %}
+                <div class="flight-type">Equipaje de bodega incluido</div>
+              {% else %}
+                <div class="flight-type">Carry On incluido</div>
+              {% endif %}
+              <div class="flight-type">{{ flight.legs[0].flight_type }}</div>
+            </div>
+          </div>
+          <div class="flight-route">
+            <div class="airport-info">
+              <div class="airport-code">{{ flight.legs[0].departure.city_code }}</div>
+              <div class="airport-name">{{ flight.legs[0].departure.city_name }}</div>
+              <div class="time">{{ flight.legs[0].departure.time }}</div>
+            </div>
+            <div class="flight-arrow">
+              <div class="arrow-line">
+                <div class="arrow-head"></div>
+                <div class="duration-info">{{ flight.legs[0].duration }}</div>
+              </div>
+            </div>
+            <div class="airport-info">
+              <div class="airport-code">{{ flight.legs[0].arrival.city_code }}</div>
+              <div class="airport-name">{{ flight.legs[0].arrival.city_name }}</div>
+              <div class="time">{{ flight.legs[0].arrival.time }}</div>
+            </div>
+          </div>
+
+          {% if flight.legs[0].layovers and flight.legs[0].layovers.size > 0 %}
+          <div class="layover-info">
+            {% for layover in flight.legs[0].layovers %}
+              <div class="layover-title">Escala en {{ layover.destination_city }}</div>
+              <div class="layover-details">
+                Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{ layover.destination_city }})
+              </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Return Flight -->
+        {% if flight.legs.size > 1 %}
+        <div class="flight-leg">
+          <div class="leg-header">
+            <div class="leg-title">Vuelo de regreso <span class="flight-type">{{ flight.return_date }}</span></div>
+            <div class="leg-header">
+              {% if flight.luggage %}
+                <div class="flight-type">Equipaje de bodega incluido</div>
+              {% else %}
+                <div class="flight-type">Carry On incluido</div>
+              {% endif %}
+              <div class="flight-type">{{ flight.legs[1].flight_type }}</div>
+            </div>
+          </div>
+          <div class="flight-route">
+            <div class="airport-info">
+              <div class="airport-code">{{ flight.legs[1].departure.city_code }}</div>
+              <div class="airport-name">{{ flight.legs[1].departure.city_name }}</div>
+              <div class="time">{{ flight.legs[1].departure.time }}</div>
+            </div>
+            <div class="flight-arrow">
+              <div class="arrow-line">
+                <div class="arrow-head"></div>
+                <div class="duration-info">{{ flight.legs[1].duration }}</div>
+              </div>
+            </div>
+            <div class="airport-info">
+              <div class="airport-code">{{ flight.legs[1].arrival.city_code }}</div>
+              <div class="airport-name">{{ flight.legs[1].arrival.city_name }}</div>
+              <div class="time">{{ flight.legs[1].arrival.time }}</div>
+            </div>
+          </div>
+
+          {% if flight.legs[1].layovers and flight.legs[1].layovers.size > 0 %}
+          <div class="layover-info">
+            {% for layover in flight.legs[1].layovers %}
+              <div class="layover-title">Escala en {{ layover.destination_city }}</div>
+              <div class="layover-details">
+                Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{ layover.destination_city }})
+              </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Optional Notes -->
+       
+
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- HOTEL PAGES -->
+  {% for best_hotel in best_hotels %}
+  <div class="page">
+    <div class="quote-container">
+      <h1 class="hotel-title">{{ best_hotel.name }}</h1>
+
+      <div class="hotel-details">
+        <div class="detail-row">
+          <div class="detail-icon">🏨</div>
+          <span class="detail-label">Hotel</span>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-icon">📍</div>
+          <span class="detail-label">Ubicación:</span>
+          <span class="detail-value">{{ best_hotel.location }}</span>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-icon">⭐</div>
+          <span class="detail-label">Categoría:</span>
+          <span class="detail-value">{{ best_hotel.stars }} estrellas</span>
+        </div>
+
+        <div class="detail-row">
+          <div class="detail-icon">👥</div>
+          <span class="detail-label">Ocupación:</span>
+          <span class="detail-value">{{ adults }} adultos {{ childrens }} niños</span>
+        </div>
+      </div>
+
+      <div class="price-section">
+    
+        <div class="price-note">Tarifa sujeta a disponibilidad al momento de reservar</div>
+        {%- comment -%}
+        <a href="{{ best_hotel.link }}">
+          <button class="reserve-button">Reservar Ahora</button>
+        </a>
+        {%- endcomment -%}
+      </div>
+
+      {% if best_hotel.alternatives %}
+      <div class="alternative-hotels">
+        {% for alt in best_hotel.alternatives %}
+        <div class="hotel-option">
+          <span class="hotel-name">• {{ alt.name }}</span>
+          <span class="hotel-price">{{ alt.price }} USD</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Optional Notes -->
+      
+
+      <div class="important-info-contact">
+        <div class="contact-text">Para confirmar tu reserva,</div>
+        <div class="contact-text">contactanos por WhatsApp o respondé este mensaje.</div>
+      </div>
+      
+      <div class="price-section price-section--disclaimer">
+  <div class="price-note">Documentación y requisitos de ingreso a cada pais son reponsabilidad del pasajero.</div>
+  <div class="price-note">Los precios publicados son orientativos y pueden variar según disponibilidad y condiciones de los proveedores y aerolíneas.<br> La agencia no se responsabiliza por cambios en tarifas, horarios o servicios ajenos a nuestra gestión.</div>
+</div>
+
+    </div>
+  </div>
+  {% endfor %}
+
+</body>
+</html>
