@@ -385,6 +385,8 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     console.log('✅ [COMBINED SEARCH] Step 2: Parallel searches completed');
     console.log('✈️ Flight search result:', flightResult ? 'SUCCESS' : 'FAILED');
     console.log('🏨 Hotel search result:', hotelResult ? 'SUCCESS' : 'FAILED');
+    console.log('🔍 [DEBUG] Flight result data:', flightResult.data);
+    console.log('🔍 [DEBUG] Hotel result data:', hotelResult.data);
 
     console.log('🔄 [COMBINED SEARCH] Step 3: Combining search results');
     const combinedData = {
