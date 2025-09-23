@@ -447,8 +447,19 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               <Card>
                 <CardContent className="p-6 text-center">
                   <Plane className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground">No se encontraron vuelos disponibles</p>
-                  <p className="text-sm text-muted-foreground mt-1">Los servicios de vuelos están siendo configurados en EUROVIPS</p>
+                  <p className="text-muted-foreground">No se encontraron vuelos directos para este itinerario</p>
+                  <p className="text-sm text-muted-foreground mt-1">¿Quieres repetir la búsqueda permitiendo escalas?</p>
+                  <div className="mt-3">
+                    <Button
+                      onClick={() => {
+                        try {
+                          window.dispatchEvent(new CustomEvent('chat:retryWithStops'));
+                        } catch (e) { }
+                      }}
+                    >
+                      Repetir búsqueda con escalas
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}

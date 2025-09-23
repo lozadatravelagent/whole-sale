@@ -294,7 +294,11 @@ const useMessageHandler = (
       // Prepare full conversation history for better context understanding
       const conversationHistory = messages?.map(msg => ({
         role: msg.role,
-        content: typeof msg.content === 'string' ? msg.content : msg.content?.text || '',
+        content: typeof msg.content === 'string'
+          ? msg.content
+          : typeof msg.content === 'object' && msg.content !== null
+            ? (msg.content as { text?: string }).text || ''
+            : '',
         timestamp: msg.created_at
       })) || [];
 

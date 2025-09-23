@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useMessages } from '@/hooks/useChat-polling';
 import { updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
@@ -76,6 +76,18 @@ const ChatFeature = () => {
     setMessage,
     toast
   );
+
+  // CTA: Retry with stops when no direct flights
+  useEffect(() => {
+    const onRetryWithStops = () => {
+      if (isLoading) return;
+      // Send a minimal message that our parser understands to allow stops
+      handleSendMessageRaw('con escalas');
+      toast({ title: 'Buscando con escalas', description: 'Reintentando la búsqueda permitiendo conexiones.' });
+    };
+    window.addEventListener('chat:retryWithStops', onRetryWithStops);
+    return () => window.removeEventListener('chat:retryWithStops', onRetryWithStops);
+  }, [handleSendMessageRaw, isLoading, toast]);
 
   // Wrapper for handleSendMessage
   const handleSendMessage = useCallback(() => {
