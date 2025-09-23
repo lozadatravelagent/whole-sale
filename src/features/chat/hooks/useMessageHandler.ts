@@ -118,8 +118,9 @@ const useMessageHandler = (
 
     // If user asks to add a hotel for same dates after flight results, coerce to combined using last flight context
     if (isAddHotelRequest(currentMessage)) {
-      // Try to reuse flight context from last assistant message; fallback to previous parsed request
-      const flightCtx = getContextFromLastFlights() || (previousParsedRequest?.flights ? {
+      // Load persistent context state first, then fallback to other sources
+      const persistentState = await loadContextState(selectedConversation);
+      const flightCtx = persistentState?.flights || getContextFromLastFlights() || (previousParsedRequest?.flights ? {
         origin: previousParsedRequest.flights.origin,
         destination: previousParsedRequest.flights.destination,
         departureDate: previousParsedRequest.flights.departureDate,
@@ -129,6 +130,8 @@ const useMessageHandler = (
       } : null);
       if (flightCtx) {
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
+        console.log('🏨 [INTENT] Flight context:', flightCtx);
+        console.log('🏨 [INTENT] Persistent state:', persistentState);
         setIsLoading(true);
         try {
           // Save user's intent message into conversation before executing
@@ -177,6 +180,14 @@ const useMessageHandler = (
           setIsLoading(false);
           // fall through to normal flow
         }
+      } else {
+        console.warn('⚠️ [INTENT] Add hotel detected but no flight context found');
+        console.warn('⚠️ [INTENT] Available sources:', {
+          persistentState,
+          flightCtxFromMessages: getContextFromLastFlights(),
+          previousParsedRequest: previousParsedRequest?.flights
+        });
+        // Continue to normal AI parsing flow
       }
     }
 
