@@ -291,7 +291,19 @@ const useMessageHandler = (
       console.log('📤 [MESSAGE FLOW] About to call AI message parser (Supabase Edge Function)');
       console.log('🧠 Message to parse:', currentMessage);
 
-      let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse);
+      // Prepare full conversation history for better context understanding
+      const conversationHistory = messages?.map(msg => ({
+        role: msg.role,
+        content: typeof msg.content === 'string' ? msg.content : msg.content?.text || '',
+        timestamp: msg.created_at
+      })) || [];
+
+      console.log('📚 [CONTEXT] Sending full conversation history to AI parser:', {
+        messageCount: conversationHistory.length,
+        previousContext: contextToUse ? 'Yes' : 'No'
+      });
+
+      let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory);
 
       console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
       console.log('🎯 AI parsing result:', parsedRequest);
@@ -328,11 +340,15 @@ const useMessageHandler = (
       }
 
       // If message implies combined (mentions hotel y vuelo), coerce to combined and mirror basic fields
+      // BUT be more careful - only if user explicitly wants both services
       const lowerMsg = currentMessage.toLowerCase();
-      const impliesHotel = /\bhotel|alojamiento|noche|noches\b/.test(lowerMsg);
-      const impliesFlight = /\bvuelo|vuelos\b/.test(lowerMsg);
-      if (impliesHotel && impliesFlight && parsedRequest.requestType !== 'combined') {
-        console.log('🔀 [INTENT] Coercing requestType to combined based on message keywords');
+      const explicitlyWantsHotel = /\b(hotel|alojamiento|hospedaje|donde quedarme|donde alojarme)\b/.test(lowerMsg);
+      const explicitlyWantsFlight = /\b(vuelo|vuelos|avion|aereo)\b/.test(lowerMsg);
+      const explicitlyRejectsHotel = /\b(no quiero hotel|sin hotel|solo vuelo|solo el vuelo|no necesito hotel)\b/.test(lowerMsg);
+
+      // Only coerce to combined if user explicitly mentions both services AND doesn't reject hotel
+      if (explicitlyWantsHotel && explicitlyWantsFlight && !explicitlyRejectsHotel && parsedRequest.requestType !== 'combined') {
+        console.log('🔀 [INTENT] Coercing requestType to combined based on explicit hotel+flight mention');
         parsedRequest.requestType = 'combined';
         // Mirror city/dates from flights to hotels if missing
         const f = parsedRequest.flights;
@@ -342,6 +358,13 @@ const useMessageHandler = (
         if (f?.returnDate && !parsedRequest.hotels.checkoutDate) parsedRequest.hotels.checkoutDate = f.returnDate as any;
         if (f?.adults && !parsedRequest.hotels.adults) parsedRequest.hotels.adults = f.adults as any;
         parsedRequest.hotels.children = parsedRequest.hotels.children ?? (f?.children as any) ?? 0;
+      }
+
+      // If user explicitly rejects hotel, force flights-only
+      if (explicitlyRejectsHotel && parsedRequest.requestType === 'combined') {
+        console.log('🚫 [INTENT] User explicitly rejects hotel - forcing flights-only');
+        parsedRequest.requestType = 'flights';
+        parsedRequest.hotels = undefined;
       }
 
       // Combined flow: validate both and send ONE aggregated prompt

@@ -334,7 +334,11 @@ export function combineWithPreviousRequest(
 /**
  * Uses OpenAI to intelligently parse travel messages and extract structured parameters
  */
-export async function parseMessageWithAI(message: string, previousContext?: ParsedTravelRequest | null): Promise<ParsedTravelRequest> {
+export async function parseMessageWithAI(
+    message: string,
+    previousContext?: ParsedTravelRequest | null,
+    conversationHistory?: Array<{role: string, content: string, timestamp: string}>
+): Promise<ParsedTravelRequest> {
     console.log('🤖 Starting AI message parsing for:', message);
     console.log('✅ OpenAI parsing is ENABLED - fallback has been removed, will always use OpenAI');
 
@@ -419,12 +423,18 @@ export async function parseMessageWithAI(message: string, previousContext?: Pars
 
     try {
         console.log('🚀 Calling OpenAI via Supabase Edge Function...');
+        console.log('📚 [CONTEXT] Sending conversation history:', {
+            historyLength: conversationHistory?.length || 0,
+            hasPreviousContext: !!previousContext
+        });
+
         const response = await supabase.functions.invoke('ai-message-parser', {
             body: {
                 message,
                 language: 'es', // Spanish
                 currentDate: new Date().toISOString().split('T')[0],
-                previousContext: previousContext // Include conversation context
+                previousContext: previousContext, // Include conversation context
+                conversationHistory: conversationHistory || [] // Include full conversation history
             }
         });
 
