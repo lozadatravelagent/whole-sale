@@ -13,7 +13,6 @@ const useContextualMemory = () => {
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .eq('role', 'assistant')
         .or('meta->>messageType.eq.contextual_memory,meta->>messageType.eq.missing_info_request')
         .order('created_at', { ascending: false })
         .limit(1);

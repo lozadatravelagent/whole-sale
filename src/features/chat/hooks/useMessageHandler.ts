@@ -309,9 +309,21 @@ const useMessageHandler = (
 
       let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory);
 
-      // If user replied "con escalas" after a direct-only attempt, coerce stops to any to avoid asking again
-      if (/\bcon\s+escalas\b/i.test(currentMessage) && parsedRequest?.flights) {
-        parsedRequest.flights.stops = 'any' as any;
+      // If user replied "con escalas" after a direct-only attempt, force a flights request with stops:any using prior context
+      if (/\bcon\s+escalas\b/i.test(currentMessage)) {
+        const baseFlights = parsedRequest?.flights || previousParsedRequest?.flights || (contextToUse as any)?.flights;
+        if (baseFlights?.origin && baseFlights?.destination && baseFlights?.departureDate && (baseFlights?.adults ?? 0) >= 1) {
+          parsedRequest = {
+            requestType: 'flights',
+            flights: {
+              ...baseFlights,
+              stops: 'any' as any
+            },
+            confidence: parsedRequest?.confidence ?? 0.9,
+            originalMessage: currentMessage
+          } as any;
+          console.log('🔀 [INTENT] Forced flights search with stops:any using prior context');
+        }
       }
 
       console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
