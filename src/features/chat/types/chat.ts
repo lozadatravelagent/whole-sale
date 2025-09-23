@@ -1,0 +1,242 @@
+import type { Database } from '@/integrations/supabase/types';
+import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+
+export type MessageRow = Database['public']['Tables']['messages']['Row'];
+
+export interface FlightData {
+  id: string;
+  airline: { code: string; name: string };
+  price: {
+    amount: number;
+    currency: string;
+    netAmount?: number;
+    fareAmount?: number;
+    taxAmount?: number;
+    baseCurrency?: string;
+    localAmount?: number;
+    localCurrency?: string;
+    serviceAmount?: number;
+    commissionAmount?: number;
+    breakdown?: {
+      fareAmount: number;
+      taxAmount: number;
+      serviceAmount: number;
+      commissionAmount: number;
+    };
+  };
+  adults: number;
+  childrens: number;
+  departure_date: string;
+  departure_time?: string;
+  arrival_date?: string;
+  arrival_time?: string;
+  return_date?: string;
+  duration?: {
+    total: number;
+    formatted: string;
+  };
+  stops?: {
+    count: number;
+    direct: boolean;
+  };
+  baggage?: {
+    included: boolean;
+    details: string;
+    carryOn: string;
+    carryOnQuantity?: string;
+    carryOnWeight?: string;
+    carryOnDimensions?: string;
+  };
+  cabin?: {
+    class: string;
+    brandName: string;
+  };
+  booking?: {
+    validatingCarrier: string;
+    lastTicketingDate: string;
+    fareType: string;
+    fareSupplier: string;
+    fareSupplierCode: string;
+    cancelPolicy: string;
+    maxInstallments: number;
+    allowedFOPs: string[];
+    iataCountry: string;
+    iataCurrency: string;
+    iataAmount: number;
+  };
+  commission?: {
+    percentage: number;
+    amount: number;
+    over: number;
+    overCalculation?: string;
+    passengerTypes?: string[];
+  };
+  passengerFares?: Array<{
+    fareAmount: number;
+    taxAmount: number;
+    commissionAmount: number;
+    totalAmount: number;
+    passengerType: string;
+    passengerSubType?: string;
+    count: number;
+    taxDetails: Array<{
+      code: string;
+      amount: number;
+      currency: string;
+      description?: string;
+    }>;
+  }>;
+  extendedFareInfo?: {
+    ruleId?: string;
+    netFareAmount: number;
+    netTaxAmount: number;
+    netTotalAmount: number;
+    netTotalAmountWithFee: number;
+    additionalTaxes?: any;
+    fee: {
+      amount: number;
+      paxDetail: Array<{
+        ptc: string;
+        amountPerPax: number;
+      }>;
+    };
+    commission: {
+      amount: number;
+      paxDetail: Array<{
+        ptc: string;
+        amountPerPax: number;
+      }>;
+    };
+    over: {
+      amount: number;
+      paxDetail: Array<{
+        ptc: string;
+        amountPerPax: number;
+      }>;
+    };
+  };
+  commissionPolicyInfo?: {
+    ruleId: string;
+    allowedFOPs: string[];
+    commissionPct: number;
+    overPct: number;
+    overCalculation?: string;
+  };
+  legs: Array<{
+    legNumber: number;
+    options: Array<{
+      optionId: string;
+      duration: number;
+      segments: Array<{
+        segmentNumber: number;
+        airline: string;
+        operatingAirline: string;
+        operatingAirlineName?: string;
+        flightNumber: string;
+        bookingClass: string;
+        cabinClass: string;
+        departure: {
+          airportCode: string;
+          date: string;
+          time: string;
+        };
+        arrival: {
+          airportCode: string;
+          date: string;
+          time: string;
+        };
+        stops: Array<{
+          airportCode: string;
+          date: string;
+          time: string;
+          duration: string;
+        }>;
+        duration: number;
+        equipment: string;
+        status: string;
+        baggage: string;
+        carryOnBagInfo: {
+          quantity?: string;
+          weight?: string;
+          dimensions?: string;
+        };
+        fareBasis: string;
+        brandName: string;
+        features: any;
+        airRecLoc?: string;
+        availStatus?: string;
+      }>;
+    }>;
+  }>;
+  taxes?: Array<{
+    code: string;
+    amount: number;
+    currency: string;
+    description?: string;
+  }>;
+  luggage?: boolean;
+  provider: string;
+  contentOwner?: string;
+  ownContent?: boolean;
+  transactionId?: string;
+  fareMessages?: any;
+  fareCode?: string;
+  fareFeatures?: any;
+  fareCategory?: string;
+}
+
+export interface LocalHotelData {
+  name: string;
+  city: string;
+  nights: number;
+  rooms: Array<{
+    type?: string;
+    description?: string;
+    price_per_night?: number;
+    total_price: number;
+    currency: string;
+    availability?: number;
+    occupancy_id?: string;
+  }>;
+}
+
+export interface LocalCombinedTravelResults {
+  flights: FlightData[];
+  hotels: LocalHotelData[];
+  requestType: 'combined' | 'flights-only' | 'hotels-only';
+}
+
+export interface LocalPackageData {
+  name: string;
+  destination: string;
+  price: number;
+  currency: string;
+  duration: number;
+}
+
+export interface LocalServiceData {
+  name: string;
+  city: string;
+  price: number;
+  currency: string;
+  duration: string;
+}
+
+export interface ChatState {
+  selectedConversation: string | null;
+  message: string;
+  isLoading: boolean;
+  isUploadingPdf: boolean;
+  lastPdfAnalysis: any;
+  showInspirationText: boolean;
+  activeTab: string;
+  isTyping: boolean;
+  sidebarLimit: number;
+  previousParsedRequest: ParsedTravelRequest | null;
+  isAddingToCRM: boolean;
+}
+
+export interface SearchResult {
+  response: string;
+  data: any;
+}

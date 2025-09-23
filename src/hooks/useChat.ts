@@ -18,7 +18,7 @@ export function useAuth() {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => {
         setUser(session?.user ?? null);
         setLoading(false);
       }
@@ -48,7 +48,6 @@ export function useConversations() {
       // For now, create a mock agency_id and tenant_id since we don't have full user management
       // In production, these would come from the authenticated user's profile
       const mockAgencyId = '00000000-0000-0000-0000-000000000001';
-      const mockTenantId = '00000000-0000-0000-0000-000000000001';
 
       const { data, error } = await supabase
         .from('conversations')
@@ -97,8 +96,8 @@ export function useConversations() {
 
       const newConversation = {
         external_key: `chat-${Date.now()}`,
-        channel: (params?.channel || 'web') as const,
-        state: (params?.status || 'active') as const,
+        channel: (params?.channel === 'whatsapp' ? 'wa' : params?.channel || 'web') as 'web' | 'wa',
+        state: (params?.status || 'active') as 'active' | 'closed' | 'pending',
         agency_id: mockAgencyId,
         tenant_id: mockTenantId,
         last_message_at: new Date().toISOString()
@@ -219,8 +218,8 @@ export function useMessages(conversationId: string | null) {
   const saveMessage = async (message: {
     conversation_id: string;
     role: 'user' | 'assistant' | 'system';
-    content: { text?: string; cards?: unknown[]; pdfUrl?: string; metadata?: Record<string, unknown>; };
-    meta?: { status?: string; [key: string]: unknown; };
+    content: { text?: string; cards?: any[]; pdfUrl?: string; metadata?: Record<string, any>; };
+    meta?: { status?: string; [key: string]: any; };
   }) => {
     console.log('💾 [SUPABASE] Starting saveMessage');
     console.log('📋 Message to save:', message);
@@ -229,7 +228,10 @@ export function useMessages(conversationId: string | null) {
 
     try {
       const messageData = {
-        ...message,
+        conversation_id: message.conversation_id,
+        role: message.role,
+        content: message.content as any, // Cast to Json compatible type
+        meta: message.meta as any, // Cast to Json compatible type
         created_at: new Date().toISOString()
       };
 
