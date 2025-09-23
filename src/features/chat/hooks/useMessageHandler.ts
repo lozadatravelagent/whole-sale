@@ -6,7 +6,7 @@ import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
 import type { MessageRow } from '../types/chat';
-import { useMessages } from '@/hooks/useChat';
+import { useMessages } from '@/hooks/useChat-polling';
 
 const useMessageHandler = (
   selectedConversation: string | null,
@@ -254,9 +254,10 @@ const useMessageHandler = (
       await updateMessageStatus(userMessage.id, 'sent');
       console.log('✅ [MESSAGE FLOW] Step 5: Message status updated to "sent"');
 
-      // Force refresh messages to ensure UI updates
+      // Force refresh messages to ensure UI updates (immediate + delayed)
       console.log('🔄 [MESSAGE FLOW] Step 5.5: Force refreshing messages to ensure UI updates');
-      setTimeout(() => refreshMessages(), 1000);
+      refreshMessages(); // Immediate refresh
+      setTimeout(() => refreshMessages(), 500); // Quick fallback
 
       // 2. Update conversation title if first message
       if (messages.length === 0) {
@@ -567,9 +568,11 @@ const useMessageHandler = (
 
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
 
-      // Force refresh messages after assistant response
+      // Force refresh messages after assistant response (immediate + delayed)
       console.log('🔄 [MESSAGE FLOW] Step 14.5: Force refreshing messages after assistant response');
-      setTimeout(() => refreshMessages(), 1500);
+      refreshMessages(); // Immediate refresh
+      setTimeout(() => refreshMessages(), 500); // Quick fallback
+      setTimeout(() => refreshMessages(), 1500); // Extended fallback
 
       // 6. Lead generation disabled - Only manual creation via button
       console.log('📋 [MESSAGE FLOW] Step 15: Automatic lead generation disabled - only manual creation available');

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { useMessages } from '@/hooks/useChat';
+import { useMessages } from '@/hooks/useChat-polling';
 import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageItem from './MessageItem';
@@ -59,6 +59,18 @@ const ChatInterface = React.memo(({
       console.log('🔄 [CHAT INTERFACE] Conversation changed, refreshing messages');
       setTimeout(() => refreshMessages(), 500);
     }
+  }, [selectedConversation, refreshMessages]);
+
+  // Polling fallback for when real-time subscriptions fail
+  useEffect(() => {
+    if (!selectedConversation) return;
+
+    const pollInterval = setInterval(() => {
+      console.log('🔄 [POLLING] Periodic message refresh');
+      refreshMessages();
+    }, 10000); // Poll every 10 seconds as fallback
+
+    return () => clearInterval(pollInterval);
   }, [selectedConversation, refreshMessages]);
 
   // Add CSS animations to head (only once)

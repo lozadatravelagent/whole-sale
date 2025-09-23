@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
-import { useMessages } from '@/hooks/useChat';
+import { useMessages } from '@/hooks/useChat-polling';
 import { updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 

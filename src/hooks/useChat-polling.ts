@@ -116,13 +116,15 @@ export function useConversations() {
       console.log('📨 [SUPABASE] INSERT response received');
       console.log('✅ Success:', !error);
       console.log('❌ Error:', error);
-      console.log('💾 Data:', data);
 
       if (error) {
         console.error('❌ [SUPABASE] Database error in createConversation:', error);
         throw error;
       }
 
+      console.log('💾 Data:', data);
+
+      // Update local state
       console.log('🔄 [SUPABASE] Updating local conversations state');
       setConversations(prev => [data, ...prev]);
 
@@ -134,18 +136,19 @@ export function useConversations() {
     }
   };
 
-  const updateConversationState = async (id: string, state: 'active' | 'closed') => {
+  // Update conversation state (e.g., 'active' to 'closed')
+  const updateConversationState = async (id: string, newState: 'active' | 'closed') => {
     try {
       const { data, error } = await supabase
         .from('conversations')
-        .update({ state })
+        .update({ state: newState })
         .eq('id', id)
         .select()
         .single();
 
       if (error) throw error;
 
-      setConversations(prev => 
+      setConversations(prev =>
         prev.map(conv => conv.id === id ? data : conv)
       );
     } catch (error) {
@@ -154,21 +157,19 @@ export function useConversations() {
     }
   };
 
+  // Update conversation title
   const updateConversationTitle = async (id: string, title: string) => {
     try {
       const { data, error } = await supabase
         .from('conversations')
-        .update({ 
-          external_key: title,
-          last_message_at: new Date().toISOString()
-        })
+        .update({ external_key: title })
         .eq('id', id)
         .select()
         .single();
 
       if (error) throw error;
 
-      setConversations(prev => 
+      setConversations(prev =>
         prev.map(conv => conv.id === id ? data : conv)
       );
     } catch (error) {
@@ -259,6 +260,7 @@ export function useMessages(conversationId: string | null) {
       // Don't add to local state here - let the real-time subscription handle it
       // This prevents duplicate messages when we get both the return value and the subscription event
       console.log('✅ [SUPABASE] saveMessage completed successfully');
+
       return data;
     } catch (error) {
       console.error('❌ [SUPABASE] Error in saveMessage process:', error);
@@ -270,7 +272,7 @@ export function useMessages(conversationId: string | null) {
     try {
       const { data, error } = await supabase
         .from('messages')
-        .update({ 
+        .update({
           meta: { status }
         })
         .eq('id', messageId)
@@ -292,8 +294,7 @@ export function useMessages(conversationId: string | null) {
     loadMessages();
   }, [conversationId, loadMessages]);
 
-  // TEMPORARILY DISABLED: Real-time subscriptions due to Supabase client/server binding mismatch
-  // Using polling approach instead until issue is resolved
+  // POLLING APPROACH: Poll for new messages every 3 seconds when in active conversation
   useEffect(() => {
     if (!conversationId) {
       console.log('No conversationId - skipping polling setup');
@@ -302,84 +303,17 @@ export function useMessages(conversationId: string | null) {
 
     console.log(`🔄 [POLLING] Setting up message polling for conversation: ${conversationId}`);
 
-    const channel = supabase
-      .channel(`messages-${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          console.log('🟢 NEW MESSAGE RECEIVED via real-time:', payload.new);
-          const newMessage = payload.new as MessageRow;
-
-          setMessages(prev => {
-            console.log('🔵 Current messages count:', prev.length);
-            // Check if message already exists to prevent duplicates
-            const exists = prev.some(msg => msg.id === newMessage.id);
-            if (exists) {
-              console.log('🟡 Duplicate message prevented:', newMessage.id);
-              return prev;
-            }
-
-            console.log('🟢 Adding new message to state:', newMessage.id, newMessage.content);
-            // Add new message in chronological order and force re-render
-            const updated = [...prev, newMessage].sort((a, b) =>
-              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            );
-
-            console.log('🔵 Updated messages count:', updated.length);
-            return updated;
-          });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          console.log('🟡 Message updated via real-time:', payload.new);
-          const updatedMessage = payload.new as MessageRow;
-          
-          setMessages(prev => 
-            prev.map(msg => 
-              msg.id === updatedMessage.id ? updatedMessage : msg
-            )
-          );
-        }
-      )
-      .subscribe((status, err) => {
-        console.log(`🔴 Real-time subscription status for ${conversationId}:`, status);
-        if (err) {
-          console.error('🔴 Real-time subscription ERROR:', err);
-        }
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Real-time subscription ACTIVE for conversation:', conversationId);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Real-time subscription ERROR for conversation:', conversationId);
-          // Fallback: refresh messages when real-time fails
-          console.log('🔄 Real-time failed, using fallback refresh');
-          setTimeout(() => refreshMessages(), 2000);
-        } else if (status === 'TIMED_OUT') {
-          console.error('⏰ Real-time subscription TIMED OUT for conversation:', conversationId);
-          // Fallback: refresh messages when real-time times out
-          console.log('🔄 Real-time timed out, using fallback refresh');
-          setTimeout(() => refreshMessages(), 2000);
-        }
-      });
+    // Poll for new messages every 3 seconds when in active conversation
+    const pollInterval = setInterval(() => {
+      console.log(`🔄 [POLLING] Checking for new messages in conversation: ${conversationId}`);
+      loadMessages();
+    }, 3000);
 
     return () => {
-      console.log(`🔴 Cleaning up real-time subscription for conversation: ${conversationId}`);
-      channel.unsubscribe();
+      console.log(`🔄 [POLLING] Cleaning up message polling for conversation: ${conversationId}`);
+      clearInterval(pollInterval);
     };
-  }, [conversationId]);
+  }, [conversationId, loadMessages]);
 
   // Add a function to force refresh messages
   const refreshMessages = useCallback(() => {
