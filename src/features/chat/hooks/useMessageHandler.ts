@@ -26,6 +26,9 @@ const useMessageHandler = (
 ) => {
   const { messages, refreshMessages } = useMessages(selectedConversation);
 
+  // Track active domain for this conversation to avoid cross responses
+  let activeDomain: 'flights' | 'hotels' | null = null;
+
   // Helper: extract last flight context (destination/dates/adults/children) from recent assistant message
   const getContextFromLastFlights = useCallback(() => {
     try {
@@ -126,6 +129,14 @@ const useMessageHandler = (
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
         setIsLoading(true);
         try {
+          // Save user's intent message into conversation before executing
+          await addMessageViaSupabase({
+            conversation_id: selectedConversation!,
+            role: 'user' as const,
+            content: { text: currentMessage.trim() },
+            meta: { status: 'sent', messageType: 'add_hotel_intent' }
+          });
+
           // Build a hotels-only request using flight context (city/dates/pax inferred)
           const hotelsParsed: ParsedTravelRequest = {
             requestType: 'hotels',
@@ -489,35 +500,87 @@ const useMessageHandler = (
         });
 
         if (!validation.isValid) {
-          console.log('⚠️ [VALIDATION] Missing hotel required fields, requesting more info');
+          // Attempt to auto-enrich hotel params from last flight context
+          const flightCtx = getContextFromLastFlights() || (previousParsedRequest?.flights ? {
+            origin: previousParsedRequest.flights.origin,
+            destination: previousParsedRequest.flights.destination,
+            departureDate: previousParsedRequest.flights.departureDate,
+            returnDate: previousParsedRequest.flights.returnDate,
+            adults: previousParsedRequest.flights.adults,
+            children: previousParsedRequest.flights.children || 0
+          } : null);
 
-          // Store the current parsed request for future combination
-          setPreviousParsedRequest(parsedRequest);
-          await saveContextualMemory(selectedConversation, parsedRequest);
+          if (flightCtx) {
+            console.log('🧩 [ENRICH] Filling missing hotel fields from flight context');
+            parsedRequest.hotels = {
+              city: parsedRequest.hotels?.city || flightCtx.destination,
+              checkinDate: parsedRequest.hotels?.checkinDate || flightCtx.departureDate,
+              checkoutDate: parsedRequest.hotels?.checkoutDate || (flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0]),
+              adults: parsedRequest.hotels?.adults || flightCtx.adults,
+              children: parsedRequest.hotels?.children ?? flightCtx.children ?? 0,
+              roomType: parsedRequest.hotels?.roomType || 'double',
+              mealPlan: parsedRequest.hotels?.mealPlan || 'breakfast'
+            } as any;
 
-          // Generate message asking for missing information
-          const missingInfoMessage = generateMissingInfoMessage(
-            validation.missingFieldsSpanish,
-            parsedRequest.requestType
-          );
-
-          console.log('💬 [VALIDATION] Generated missing hotel info message');
-
-          // Add assistant message with missing info request
-          await addMessageViaSupabase({
-            conversation_id: selectedConversation,
-            role: 'assistant' as const,
-            content: { text: missingInfoMessage },
-            meta: {
-              status: 'sent',
-              messageType: 'missing_info_request',
-              missingFields: validation.missingFields,
-              originalRequest: parsedRequest
+            const reval = validateHotelRequiredFields(parsedRequest.hotels);
+            console.log('📋 [REVALIDATION] After enrichment:', reval);
+            if (!reval.isValid) {
+              console.log('⚠️ [VALIDATION] Still missing hotel required fields, requesting more info');
+            } else {
+              console.log('✅ [VALIDATION] Hotel fields completed via enrichment, continuing');
             }
-          });
 
-          console.log('✅ [VALIDATION] Missing hotel info message sent, stopping process');
-          return; // Stop processing here, wait for user response
+            if (reval.isValid) {
+              // proceed without asking
+            } else {
+              // Store the current parsed request for future combination
+              setPreviousParsedRequest(parsedRequest);
+              await saveContextualMemory(selectedConversation, parsedRequest);
+
+              const missingInfoMessage = generateMissingInfoMessage(
+                reval.missingFieldsSpanish,
+                parsedRequest.requestType
+              );
+
+              await addMessageViaSupabase({
+                conversation_id: selectedConversation,
+                role: 'assistant' as const,
+                content: { text: missingInfoMessage },
+                meta: {
+                  status: 'sent',
+                  messageType: 'missing_info_request',
+                  missingFields: reval.missingFields,
+                  originalRequest: parsedRequest
+                }
+              });
+
+              return; // wait for user response
+            }
+          } else {
+            console.log('⚠️ [VALIDATION] Missing hotel required fields and no flight context available');
+            // Store the current parsed request for future combination
+            setPreviousParsedRequest(parsedRequest);
+            await saveContextualMemory(selectedConversation, parsedRequest);
+
+            const missingInfoMessage = generateMissingInfoMessage(
+              validation.missingFieldsSpanish,
+              parsedRequest.requestType
+            );
+
+            await addMessageViaSupabase({
+              conversation_id: selectedConversation,
+              role: 'assistant' as const,
+              content: { text: missingInfoMessage },
+              meta: {
+                status: 'sent',
+                messageType: 'missing_info_request',
+                missingFields: validation.missingFields,
+                originalRequest: parsedRequest
+              }
+            });
+
+            return;
+          }
         }
 
         console.log('✅ [VALIDATION] All hotel required fields present, proceeding with search');
@@ -531,6 +594,12 @@ const useMessageHandler = (
 
       let assistantResponse = '';
       let structuredData = null;
+
+      // Lock domain for this turn to avoid cross responses
+      const domainForTurn = parsedRequest.requestType === 'hotels' ? 'hotels'
+        : parsedRequest.requestType === 'flights' ? 'flights'
+          : parsedRequest.requestType === 'combined' ? 'flights' : null;
+      activeDomain = domainForTurn || activeDomain;
 
       switch (parsedRequest.requestType) {
         case 'missing_info_request': {
@@ -576,11 +645,22 @@ const useMessageHandler = (
           break;
         }
         case 'combined': {
-          console.log('🌟 [MESSAGE FLOW] Step 12f: Processing combined search');
-          const combinedResult = await handleCombinedSearch(parsedRequest);
-          assistantResponse = combinedResult.response;
-          structuredData = combinedResult.data;
-          console.log('✅ [MESSAGE FLOW] Combined search completed');
+          // Respect domain lock: if user intent was hotel-only turn, prioritize hotels; else run combined
+          if (activeDomain === 'hotels') {
+            console.log('🏨 [MESSAGE FLOW] Step 12f: Domain locked to hotels, skipping flights');
+            const hotelResult = await handleHotelSearch({
+              ...parsedRequest,
+              requestType: 'hotels'
+            } as any);
+            assistantResponse = hotelResult.response;
+            structuredData = hotelResult.data;
+          } else {
+            console.log('🌟 [MESSAGE FLOW] Step 12f: Processing combined search');
+            const combinedResult = await handleCombinedSearch(parsedRequest);
+            assistantResponse = combinedResult.response;
+            structuredData = combinedResult.data;
+            console.log('✅ [MESSAGE FLOW] Combined search completed');
+          }
           break;
         }
         default:

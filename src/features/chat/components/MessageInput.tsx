@@ -40,9 +40,20 @@ const MessageInput = React.memo(({
           name="message"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Escribe tu mensaje..."
+          placeholder="Escribe tu mensaje... (Enter: enviar • Shift+Enter/Alt+Enter: salto de línea)"
           disabled={disabled}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && onSend()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              if (e.shiftKey || e.altKey) {
+                // Insert newline behavior is native for textarea; for Input, we append \n manually
+                e.preventDefault();
+                onChange(value + '\n');
+                return;
+              }
+              e.preventDefault();
+              onSend();
+            }
+          }}
           onBlur={(e) => {
             // Prevent blur if user is still typing
             if (value.length > 0 && !disabled) {
