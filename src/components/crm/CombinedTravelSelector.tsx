@@ -74,11 +74,23 @@ const calculateConnectionTime = (segment1: any, segment2: any): string => {
 
 // Component to display flight itinerary with visual connections
 const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
+  const formatDate = (iso?: string) => (iso ? iso : '');
+  const addDays = (iso: string, days: number) => {
+    try {
+      const d = new Date(iso);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().split('T')[0];
+    } catch {
+      return iso;
+    }
+  };
   return (
     <div className="space-y-3">
       {flight.legs.map((leg, legIndex) => {
         const legType = leg.flight_type === 'outbound' ? 'IDA' : 'REGRESO';
         const legIcon = leg.flight_type === 'outbound' ? <Plane className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />;
+        const baseDate = leg.flight_type === 'outbound' ? flight.departure_date : (flight.return_date || flight.departure_date);
+        const arrivalDate = leg.arrival_next_day ? addDays(baseDate, 1) : baseDate;
 
         return (
           <div key={legIndex} className="border border-black rounded-lg p-3 bg-black">
@@ -107,6 +119,7 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                 <div className="text-center">
                   <div className="font-bold text-lg text-white">{leg.departure.city_code}</div>
                   <div className="text-sm font-medium text-white">{leg.departure.time}</div>
+                  <div className="text-[10px] text-gray-300">{formatDate(baseDate)}</div>
                   <div className="text-xs text-gray-300">{leg.departure.city_name}</div>
                 </div>
 
@@ -124,6 +137,7 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                       <span className="text-[10px] px-1 py-0.5 rounded bg-amber-700 text-amber-100">+1</span>
                     )}
                   </div>
+                  <div className="text-[10px] text-gray-300">{formatDate(arrivalDate)}</div>
                   <div className="text-xs text-gray-300">{leg.arrival.city_name}</div>
                 </div>
               </div>
