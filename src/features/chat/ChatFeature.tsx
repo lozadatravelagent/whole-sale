@@ -14,6 +14,8 @@ import usePdfAnalysis from './hooks/usePdfAnalysis';
 import useMessageHandler from './hooks/useMessageHandler';
 import { addMessageViaSupabase } from './services/messageService';
 import { generateChatTitle } from './utils/messageHelpers';
+import { parseMessageWithAI } from '@/services/aiMessageParser';
+import { handleFlightSearch, handleHotelSearch, handlePackageSearch, handleServiceSearch, handleCombinedSearch, handleGeneralQuery } from './services/searchHandlers';
 
 const ChatFeature = () => {
   const {
@@ -332,6 +334,76 @@ const ChatFeature = () => {
     }
   }, [selectedConversation, toast]);
 
+  // Process message directly with conversation ID (for EmptyState)
+  const processMessageDirectly = useCallback(async (message: string, conversationId: string) => {
+    console.log('🤖 [DIRECT PROCESS] Starting direct message processing');
+    console.log('📝 Message:', message);
+    console.log('💬 Conversation ID:', conversationId);
+
+    try {
+      // Parse the message with AI
+      const parsedRequest = await parseMessageWithAI(message);
+      console.log('🧠 [DIRECT PROCESS] AI parsing result:', parsedRequest);
+
+      if (!parsedRequest) {
+        console.warn('⚠️ [DIRECT PROCESS] AI parsing failed');
+        return;
+      }
+
+      // Handle the parsed request based on type
+      let response = '';
+      let structuredData = null;
+
+      if (parsedRequest.requestType === 'flights') {
+        console.log('✈️ [DIRECT PROCESS] Processing flight search');
+        const result = await handleFlightSearch(parsedRequest);
+        response = result.response;
+        structuredData = result.data;
+      } else if (parsedRequest.requestType === 'hotels') {
+        console.log('🏨 [DIRECT PROCESS] Processing hotel search');
+        const result = await handleHotelSearch(parsedRequest);
+        response = result.response;
+        structuredData = result.data;
+      } else if (parsedRequest.requestType === 'packages') {
+        console.log('🎒 [DIRECT PROCESS] Processing package search');
+        const result = await handlePackageSearch(parsedRequest);
+        response = result.response;
+        structuredData = result.data;
+      } else if (parsedRequest.requestType === 'services') {
+        console.log('🚌 [DIRECT PROCESS] Processing service search');
+        const result = await handleServiceSearch(parsedRequest);
+        response = result.response;
+        structuredData = result.data;
+      } else if (parsedRequest.requestType === 'combined') {
+        console.log('🌟 [DIRECT PROCESS] Processing combined search');
+        const result = await handleCombinedSearch(parsedRequest);
+        response = result.response;
+        structuredData = result.data;
+      } else {
+        console.log('💬 [DIRECT PROCESS] Processing general query');
+        response = await handleGeneralQuery(parsedRequest);
+        structuredData = null;
+      }
+
+      // Save the assistant response
+      console.log('📤 [DIRECT PROCESS] Saving assistant response');
+      await addMessageViaSupabase({
+        conversation_id: conversationId,
+        role: 'assistant' as const,
+        content: { text: response },
+        meta: structuredData ? {
+          source: 'AI_PARSER + EUROVIPS',
+          ...structuredData
+        } : {}
+      });
+
+      console.log('✅ [DIRECT PROCESS] Message processing completed successfully');
+    } catch (error) {
+      console.error('❌ [DIRECT PROCESS] Error processing message:', error);
+      throw error;
+    }
+  }, [parseMessageWithAI, handleFlightSearch, handleHotelSearch, handlePackageSearch, handleServiceSearch, handleCombinedSearch, handleGeneralQuery, addMessageViaSupabase]);
+
   // Handle new message from empty state
   const handleSendNewMessage = useCallback(async (messageToSend: string) => {
     console.log('🚀 [NEW CHAT] Creating new conversation with message:', messageToSend);
@@ -376,8 +448,9 @@ const ChatFeature = () => {
         // Wait for the conversation state to update
         await new Promise(resolve => setTimeout(resolve, 200));
 
-        // Now process the message with the updated conversation
-        await handleSendMessageRaw(messageToSend);
+        // Process the message directly with the conversation ID
+        console.log('🤖 [NEW CHAT] Processing message directly with conversation:', newConversation.id);
+        await processMessageDirectly(messageToSend, newConversation.id);
       }
     } catch (error) {
       console.error('❌ [NEW CHAT] Error creating conversation or sending message:', error);
