@@ -367,13 +367,10 @@ const ChatFeature = () => {
         const title = generateChatTitle(messageToSend);
         await updateConversationTitle(newConversation.id, title);
 
-        // Set the message in the main input for processing
-        setMessage(messageToSend);
-
-        // Process the message with AI parser and send response
-        setTimeout(() => {
-          handleSendMessageRaw(messageToSend);
-        }, 200);
+        // Process the message with AI parser and send response immediately
+        // No need to set the message in the input since we're processing directly
+        console.log('🤖 [NEW CHAT] Processing message with AI parser...');
+        await handleSendMessageRaw(messageToSend);
       }
     } catch (error) {
       console.error('❌ [NEW CHAT] Error creating conversation or sending message:', error);
