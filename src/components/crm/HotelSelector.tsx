@@ -6,12 +6,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { HotelData } from '@/types';
-import { 
-  Hotel, 
-  MapPin, 
+import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
+import {
+  Hotel,
+  MapPin,
   Calendar,
-  DollarSign, 
-  FileText, 
+  DollarSign,
+  FileText,
   Loader2,
   Download,
   Star,
@@ -29,15 +30,15 @@ interface HotelSelectorProps {
   onPdfGenerated?: (pdfUrl: string) => void;
 }
 
-const HotelSelector: React.FC<HotelSelectorProps> = ({ 
-  hotels, 
-  onPdfGenerated 
+const HotelSelector: React.FC<HotelSelectorProps> = ({
+  hotels,
+  onPdfGenerated
 }) => {
   const [selectedHotels, setSelectedHotels] = useState<string[]>([]);
   const [selectedRooms, setSelectedRooms] = useState<Record<string, string>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
-  
+
   console.log('🎯 HotelSelector rendered with hotels:', hotels.length);
   console.log('🎯 Hotels data:', hotels);
 
@@ -51,7 +52,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
         setSelectedRooms(newRooms);
         return newSelected;
       }
-      
+
       // Limit to maximum 3 hotels
       if (prev.length >= 3) {
         toast({
@@ -61,7 +62,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
         });
         return prev;
       }
-      
+
       // Auto-select first room when hotel is selected
       const hotel = hotels.find(h => h.id === hotelId);
       if (hotel && hotel.rooms.length > 0) {
@@ -70,7 +71,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
           [hotelId]: hotel.rooms[0].occupancy_id
         }));
       }
-      
+
       return [...prev, hotelId];
     });
   };
@@ -100,14 +101,14 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
         title: "PDF En Desarrollo",
         description: `Funcionalidad de PDF para ${selectedHotels.length} hotel${selectedHotels.length > 1 ? 'es' : ''} en desarrollo.`,
       });
-      
+
       // Mock PDF URL for testing
       const mockPdfUrl = "https://example.com/hotel-quote.pdf";
       onPdfGenerated?.(mockPdfUrl);
-      
+
     } catch (error) {
       console.error('Error generating PDF:', error);
-      
+
       toast({
         title: "Error",
         description: "No se pudo generar el PDF. Inténtalo de nuevo.",
@@ -175,15 +176,14 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
         {hotels.map((hotel, index) => {
           const isSelected = selectedHotels.includes(hotel.id);
           const selectedRoom = getSelectedRoom(hotel);
-          
+
           return (
-            <Card 
+            <Card
               key={hotel.id}
-              className={`transition-all cursor-pointer ${
-                isSelected
-                  ? 'ring-2 ring-primary bg-primary/5' 
+              className={`transition-all cursor-pointer ${isSelected
+                  ? 'ring-2 ring-primary bg-primary/5'
                   : 'hover:bg-muted/50'
-              }`}
+                }`}
               onClick={() => handleHotelToggle(hotel.id)}
             >
               <CardContent className="p-4">
@@ -202,7 +202,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                           </Badge>
                         )}
                       </div>
-                      
+
                       <div className="flex items-center text-sm text-muted-foreground space-x-4 mt-1">
                         {hotel.city && (
                           <span className="flex items-center">
@@ -231,7 +231,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                       )}
                     </div>
                   </div>
-                  
+
                   <div className="text-right">
                     <div className="text-2xl font-bold text-primary">
                       {formatPrice(selectedRoom?.total_price || 0, selectedRoom?.currency || 'USD')}
@@ -246,67 +246,19 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
 
                 <Separator className="my-3" />
 
-                {/* Room Selection */}
+                {/* Room Selection - Using RoomGroupSelector */}
                 {hotel.rooms.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium flex items-center">
-                      <Bed className="h-4 w-4 mr-2" />
-                      Habitaciones Disponibles
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {hotel.rooms.map((room, roomIndex) => (
-                        <div 
-                          key={room.occupancy_id}
-                          className={`bg-muted/30 rounded-lg p-3 cursor-pointer transition-colors ${
-                            isSelected && selectedRooms[hotel.id] === room.occupancy_id 
-                              ? 'bg-primary/10 ring-1 ring-primary/30' 
-                              : 'hover:bg-muted/50'
-                          }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isSelected) {
-                              handleRoomSelection(hotel.id, room.occupancy_id);
-                            }
-                          }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2">
-                                <div className="font-medium">{room.type}</div>
-                                <Badge 
-                                  variant={room.availability >= 3 ? "default" : room.availability >= 2 ? "secondary" : "destructive"}
-                                  className="text-xs"
-                                >
-                                  <span className="flex items-center space-x-1">
-                                    {getAvailabilityIcon(room.availability)}
-                                    <span>{getAvailabilityText(room.availability)}</span>
-                                  </span>
-                                </Badge>
-                              </div>
-                              
-                              {room.description && room.description !== room.type && (
-                                <div className="text-sm text-muted-foreground mt-1">
-                                  {room.description}
-                                </div>
-                              )}
-                            </div>
-                            
-                            <div className="text-right">
-                              <div className="font-bold">
-                                {formatPrice(room.total_price, room.currency)}
-                              </div>
-                              {room.price_per_night && room.price_per_night !== room.total_price && (
-                                <div className="text-sm text-muted-foreground">
-                                  {formatPrice(room.price_per_night, room.currency)} por noche
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <RoomGroupSelector
+                    rooms={hotel.rooms}
+                    selectedRoomId={selectedRooms[hotel.id]}
+                    onRoomSelect={(roomId) => {
+                      if (isSelected) {
+                        handleRoomSelection(hotel.id, roomId);
+                      }
+                    }}
+                    isDisabled={!isSelected}
+                    maxInitialRooms={4}
+                  />
                 )}
 
                 {/* Hotel Info */}

@@ -15,7 +15,12 @@ export const translations = {
         'double': 'doble',
         'triple': 'triple',
         'quad': 'cuádruple',
-        'family': 'familiar'
+        'family': 'familiar',
+        // Traducciones específicas para EUROVIPS
+        'doble ROOM FOR individual USE': 'Habitación Doble Uso Individual',
+        'doble ROOM WITH A KING SIZE BED OR TWO BEDS': 'Habitación Doble con Cama King o Dos Camas',
+        'confort triple ROOM': 'Habitación Triple Confort',
+        'Habitación Familiar ROOM': 'Habitación Familiar'
     },
 
     // Equipaje
@@ -67,7 +72,13 @@ export const translations = {
         'room only': 'solo habitación',
         'all inclusive': 'todo incluido',
         'half board': 'media pensión',
-        'full board': 'pensión completa'
+        'full board': 'pensión completa',
+        // Traducciones específicas para EUROVIPS
+        'solo habitación': 'solo habitación',
+        'individual USE': 'uso individual',
+        'KING SIZE BED': 'cama king size',
+        'TWO BEDS': 'dos camas',
+        'OR': 'o'
     },
 
     // Categorías de habitación
@@ -93,15 +104,17 @@ export const translations = {
 export const translateRoomDescription = (description: string): string => {
     let translated = description;
 
-    // Traducir tipos de habitación
+    // Traducir frases completas primero (orden de mayor a menor longitud)
     Object.entries(translations.roomTypes).forEach(([en, es]) => {
-        const regex = new RegExp(`\\b${en}\\b`, 'gi');
-        translated = translated.replace(regex, es);
+        if (en.length > 3) { // Solo frases largas
+            const regex = new RegExp(`\\b${en.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+            translated = translated.replace(regex, es);
+        }
     });
 
     // Traducir servicios
     Object.entries(translations.roomServices).forEach(([en, es]) => {
-        const regex = new RegExp(`\\b${en}\\b`, 'gi');
+        const regex = new RegExp(`\\b${en.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
         translated = translated.replace(regex, es);
     });
 
@@ -109,6 +122,14 @@ export const translateRoomDescription = (description: string): string => {
     Object.entries(translations.roomCategories).forEach(([en, es]) => {
         const regex = new RegExp(`\\b${en}\\b`, 'gi');
         translated = translated.replace(regex, es);
+    });
+
+    // Traducir tipos de habitación cortos al final
+    Object.entries(translations.roomTypes).forEach(([en, es]) => {
+        if (en.length <= 3) { // Solo códigos cortos
+            const regex = new RegExp(`\\b${en}\\b`, 'gi');
+            translated = translated.replace(regex, es);
+        }
     });
 
     return translated;

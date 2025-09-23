@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
+import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import {
   Hotel,
   MapPin,
@@ -75,9 +77,8 @@ export function HotelSelector({
         {[...Array(5)].map((_, i) => (
           <Star
             key={i}
-            className={`h-3 w-3 ${
-              i < rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
-            }`}
+            className={`h-3 w-3 ${i < rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'
+              }`}
           />
         ))}
         <span className="text-xs text-muted-foreground ml-1">({rating})</span>
@@ -147,13 +148,12 @@ export function HotelSelector({
           return (
             <Card
               key={hotel.id || index}
-              className={`transition-all duration-200 ${
-                isSelected
+              className={`transition-all duration-200 ${isSelected
                   ? 'ring-2 ring-green-500 bg-green-50'
                   : canSelect
                     ? 'hover:shadow-md cursor-pointer'
                     : 'opacity-50'
-              }`}
+                }`}
             >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
@@ -217,31 +217,15 @@ export function HotelSelector({
               </CardHeader>
 
               <CardContent className="space-y-4">
-                {/* Room Selection */}
-                {isSelected && hotel.rooms && hotel.rooms.length > 1 && (
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Seleccionar habitación:</Label>
-                    <Select
-                      value={selectedRooms[hotel.id] || ''}
-                      onValueChange={(value) => handleRoomChange(hotel.id, value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar habitación" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {hotel.rooms.map((room: any) => (
-                          <SelectItem key={room.occupancy_id} value={room.occupancy_id}>
-                            <div className="flex items-center justify-between w-full">
-                              <span>{room.type}</span>
-                              <span className="ml-2 text-green-600 font-medium">
-                                {formatCurrency(room.total_price)}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                {/* Room Selection - Using RoomGroupSelector */}
+                {isSelected && hotel.rooms && hotel.rooms.length > 0 && (
+                  <RoomGroupSelector
+                    rooms={hotel.rooms}
+                    selectedRoomId={selectedRooms[hotel.id]}
+                    onRoomSelect={(roomId) => handleRoomChange(hotel.id, roomId)}
+                    isDisabled={false}
+                    maxInitialRooms={3}
+                  />
                 )}
 
                 {/* Room Details */}

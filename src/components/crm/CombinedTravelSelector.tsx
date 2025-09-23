@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { FlightData, HotelData, CombinedTravelResults } from '@/types';
 import { generateFlightPdf, generateCombinedTravelPdf } from '@/services/pdfMonkey';
+import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import {
   Plane,
   Hotel,
@@ -536,43 +537,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
                     <Separator className="my-3" />
 
-                    {/* Hotel rooms - More compact layout */}
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium">Habitaciones disponibles:</h4>
-                      <div className="grid gap-2 sm:grid-cols-1 lg:grid-cols-2">
-                        {hotel.rooms.map((room, roomIndex) => {
-                          const availabilityStatus = getAvailabilityStatus(room.availability);
-                          const AvailabilityIcon = availabilityStatus.icon;
-                          const isRoomSelected = selectedRooms[hotel.id] === room.occupancy_id;
-
-                          return (
-                            <div key={roomIndex} className={`p-3 border rounded-lg cursor-pointer transition-all ${isRoomSelected ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
-                              } ${!isSelected ? 'opacity-50 pointer-events-none' : ''}`}
-                              onClick={() => isSelected && handleRoomSelect(hotel.id, room.occupancy_id)}>
-                              <div className="space-y-2">
-                                <div className="flex items-center space-x-2">
-                                  <Bed className="h-4 w-4" />
-                                  <span className="font-medium text-sm truncate">{room.type}</span>
-                                </div>
-                                {room.description !== room.type && (
-                                  <p className="text-xs text-muted-foreground truncate">{room.description}</p>
-                                )}
-
-                                <div className="flex items-center justify-between">
-                                  <div className="text-lg font-bold text-primary">
-                                    {formatPrice(room.total_price, room.currency)}
-                                  </div>
-                                  <div className="flex items-center space-x-1">
-                                    <div className={`w-2 h-2 rounded-full ${availabilityStatus.color}`}></div>
-                                    <span className="text-xs">{availabilityStatus.text}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    {/* Hotel rooms - Using RoomGroupSelector */}
+                    <RoomGroupSelector
+                      rooms={hotel.rooms}
+                      selectedRoomId={selectedRooms[hotel.id]}
+                      onRoomSelect={(roomId) => handleRoomSelect(hotel.id, roomId)}
+                      isDisabled={!isSelected}
+                      maxInitialRooms={3}
+                    />
                   </CardContent>
                 </Card>
               );
