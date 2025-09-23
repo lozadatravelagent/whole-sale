@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useMessages } from '@/hooks/useChat';
 import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
@@ -35,6 +35,8 @@ const ChatInterface = React.memo(({
   onPdfGenerated
 }: ChatInterfaceProps) => {
   const { messages } = useMessages(selectedConversation);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   // Filter out system contextual memory messages
   const visibleMessages = messages.filter((m: MessageRow) => {
@@ -43,6 +45,13 @@ const ChatInterface = React.memo(({
     if (m.role === 'system' && meta && meta.messageType === 'contextual_memory') return false;
     return true;
   });
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [visibleMessages.length, isTyping]);
 
   // Add CSS animations to head (only once)
   useEffect(() => {
@@ -73,7 +82,7 @@ const ChatInterface = React.memo(({
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col h-full">
       <ChatHeader
         isTyping={isTyping}
         isAddingToCRM={isAddingToCRM}
@@ -82,8 +91,11 @@ const ChatInterface = React.memo(({
         onAddToCRM={onAddToCRM}
       />
 
-      {/* Messages area - scrollable */}
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* Messages area - scrollable with fixed height */}
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-4 min-h-0"
+      >
         <div className="space-y-4">
           {visibleMessages.map((msg) => (
             <MessageItem
@@ -94,18 +106,23 @@ const ChatInterface = React.memo(({
           ))}
 
           {isTyping && <TypingIndicator />}
+
+          {/* Invisible element to scroll to */}
+          <div ref={messagesEndRef} />
         </div>
       </div>
 
-      {/* Input area - fixed at bottom */}
-      <MessageInput
-        value={message}
-        onChange={onMessageChange}
-        onSend={onSendMessage}
-        disabled={isLoading}
-        isUploadingPdf={isUploadingPdf}
-        onPdfUpload={onPdfUpload}
-      />
+      {/* Input area - always fixed at bottom */}
+      <div className="flex-shrink-0">
+        <MessageInput
+          value={message}
+          onChange={onMessageChange}
+          onSend={onSendMessage}
+          disabled={isLoading}
+          isUploadingPdf={isUploadingPdf}
+          onPdfUpload={onPdfUpload}
+        />
+      </div>
     </div>
   );
 });

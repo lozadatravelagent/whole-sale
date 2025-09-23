@@ -32,7 +32,7 @@ const MessageInput = React.memo(({
   }, [value.length > 0, disabled]);
 
   return (
-    <div className="border-t bg-background p-4">
+    <div className="border-t bg-background p-4 shadow-lg">
       <div className="flex space-x-2">
         <Input
           ref={messageInputRef}
