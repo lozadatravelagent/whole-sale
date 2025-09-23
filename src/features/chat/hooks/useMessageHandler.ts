@@ -126,23 +126,13 @@ const useMessageHandler = (
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
         setIsLoading(true);
         try {
-          // Persist a synthetic combined request and run combined search directly
-          const combinedParsed: ParsedTravelRequest = {
-            requestType: 'combined',
-            flights: {
-              origin: flightCtx.origin,
-              destination: flightCtx.destination,
-              departureDate: flightCtx.departureDate,
-              returnDate: flightCtx.returnDate,
-              adults: flightCtx.adults,
-              children: flightCtx.children,
-              luggage: 'checked',
-              stops: 'any'
-            },
+          // Build a hotels-only request using flight context (city/dates/pax inferred)
+          const hotelsParsed: ParsedTravelRequest = {
+            requestType: 'hotels',
             hotels: {
               city: flightCtx.destination,
               checkinDate: flightCtx.departureDate,
-              checkoutDate: flightCtx.returnDate || new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+              checkoutDate: flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0],
               adults: flightCtx.adults,
               children: flightCtx.children,
               roomType: 'double',
@@ -152,18 +142,18 @@ const useMessageHandler = (
             originalMessage: currentMessage
           } as any;
 
-          // Save minimal context for later refinement
-          setPreviousParsedRequest(combinedParsed);
-          await saveContextualMemory(selectedConversation, combinedParsed);
+          // Persist context for follow-ups
+          setPreviousParsedRequest(hotelsParsed);
+          await saveContextualMemory(selectedConversation, hotelsParsed);
 
-          // Run combined search (will ask only missing hotel details later if needed)
-          const combinedResult = await handleCombinedSearch(combinedParsed);
+          // Run HOTELS search only
+          const hotelResult = await handleHotelSearch(hotelsParsed);
 
           await addMessageViaSupabase({
             conversation_id: selectedConversation,
             role: 'assistant' as const,
-            content: { text: combinedResult.response },
-            meta: combinedResult.data ? { ...combinedResult.data } : {}
+            content: { text: hotelResult.response },
+            meta: hotelResult.data ? { ...hotelResult.data } : {}
           });
 
           setMessage('');
