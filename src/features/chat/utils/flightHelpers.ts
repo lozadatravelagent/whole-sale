@@ -62,6 +62,44 @@ export const getTaxDescription = (taxCode: string): string => {
   return taxDescriptions[taxCode] || `Tasa ${taxCode}`;
 };
 
+// Helper function to get airline name from airline code
+export const getAirlineNameFromCode = (airlineCode: string): string => {
+  const airlineMapping: Record<string, string> = {
+    'LA': 'LATAM AIRLINES GROUP',
+    'AR': 'Aerolíneas Argentinas',
+    'UA': 'United Airlines',
+    'AA': 'American Airlines',
+    'DL': 'Delta Air Lines',
+    'IB': 'Iberia',
+    'LH': 'Lufthansa',
+    'AF': 'Air France',
+    'KL': 'KLM',
+    'BA': 'British Airways',
+    'AZ': 'Alitalia',
+    'LX': 'Swiss International Air Lines',
+    'TP': 'TAP Air Portugal',
+    'JJ': 'TAM Airlines',
+    'G3': 'Gol Transportes Aéreos',
+    'AD': 'Azul Brazilian Airlines',
+    'CM': 'Copa Airlines',
+    'AV': 'Avianca',
+    'AM': 'Aeroméxico',
+    'VY': 'Vueling',
+    'FR': 'Ryanair',
+    'EK': 'Emirates',
+    'QR': 'Qatar Airways',
+    'TK': 'Turkish Airlines',
+    'SU': 'Aeroflot',
+    'CX': 'Cathay Pacific',
+    'SQ': 'Singapore Airlines',
+    'TG': 'Thai Airways',
+    'JL': 'Japan Airlines',
+    'NH': 'All Nippon Airways'
+  };
+
+  return airlineMapping[airlineCode] || airlineCode;
+};
+
 // Helper function to calculate connection time between segments
 export const calculateConnectionTime = (segment1: any, segment2: any): string => {
   if (!segment1?.Arrival?.Date || !segment1?.Arrival?.Time ||

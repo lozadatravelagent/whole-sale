@@ -1,6 +1,6 @@
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { FlightData } from '../types/chat';
-import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime } from '../utils/flightHelpers';
+import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime, getAirlineNameFromCode } from '../utils/flightHelpers';
 import { translateFlightInfo, translateBaggage } from '../utils/translations';
 
 // Helper function to calculate layover hours between two flight segments
@@ -130,7 +130,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       id: fare.FareID || `tvc-fare-${index}`,
       airline: {
         code: firstSegment.Airline || 'N/A',
-        name: firstSegment.AirlineName || firstSegment.Airline || 'Unknown'
+        name: firstSegment.OperatingAirlineName || getAirlineNameFromCode(firstSegment.Airline || '') || firstSegment.Airline || 'Unknown'
       },
       price: {
         amount: fare.TotalAmount || 0,
@@ -262,7 +262,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
             segmentNumber: segment.SegmentNumber || 0,
             airline: segment.Airline || '',
             operatingAirline: segment.OperatingAirline || segment.Airline || '',
-            operatingAirlineName: segment.OperatingAirlineName || null,
+            operatingAirlineName: segment.OperatingAirlineName || getAirlineNameFromCode(segment.OperatingAirline || segment.Airline || '') || null,
             flightNumber: segment.FlightNumber || '',
             bookingClass: segment.BookingClass || '',
             cabinClass: segment.CabinClass || '',
