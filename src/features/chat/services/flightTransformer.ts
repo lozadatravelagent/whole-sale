@@ -3,6 +3,64 @@ import type { FlightData } from '../types/chat';
 import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime, getAirlineNameFromCode } from '../utils/flightHelpers';
 import { translateFlightInfo, translateBaggage } from '../utils/translations';
 
+// Improved flight analysis functions
+function analyzeFlightType(fare: any) {
+  const legs = fare.Legs || [];
+
+  // Analizar cada tramo
+  const legAnalysis = legs.map((leg: any) => {
+    const options = leg.Options || [];
+
+    // Para cada option, contar segmentos
+    const optionAnalysis = options.map((option: any) => {
+      const segments = option.Segments || [];
+      return {
+        optionId: option.FlightOptionID,
+        segmentCount: segments.length,
+        isDirect: segments.length === 1,
+        connections: Math.max(0, segments.length - 1)
+      };
+    });
+
+    return {
+      legNumber: leg.LegNumber,
+      options: optionAnalysis,
+      hasDirectOptions: optionAnalysis.some(opt => opt.isDirect),
+      hasConnectionOptions: optionAnalysis.some(opt => !opt.isDirect),
+      minConnections: Math.min(...optionAnalysis.map(opt => opt.connections)),
+      maxConnections: Math.max(...optionAnalysis.map(opt => opt.connections))
+    };
+  });
+
+  // Clasificación del vuelo completo
+  const isCompleteDirect = legAnalysis.every(leg => leg.hasDirectOptions && !leg.hasConnectionOptions);
+  const hasAnyConnections = legAnalysis.some(leg => leg.hasConnectionOptions);
+  const totalMinConnections = legAnalysis.reduce((sum, leg) => sum + leg.minConnections, 0);
+  const totalMaxConnections = legAnalysis.reduce((sum, leg) => sum + leg.maxConnections, 0);
+
+  return {
+    legs: legAnalysis,
+    classification: {
+      isCompleteDirect: isCompleteDirect,
+      hasDirectOptions: legAnalysis.every(leg => leg.hasDirectOptions),
+      hasConnectionOptions: hasAnyConnections,
+      minTotalConnections: totalMinConnections,
+      maxTotalConnections: totalMaxConnections
+    }
+  };
+}
+
+function isDirectFlight(fare: any): boolean {
+  const analysis = analyzeFlightType(fare);
+  return analysis.classification.isCompleteDirect;
+}
+
+function hasExactConnectionsCount(fare: any, targetConnections: number): boolean {
+  const analysis = analyzeFlightType(fare);
+  return analysis.classification.minTotalConnections <= targetConnections &&
+         analysis.classification.maxTotalConnections >= targetConnections;
+}
+
 // Helper function to calculate layover hours between two flight segments
 function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
   try {
@@ -62,8 +120,15 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       returnDate = secondSegment.Departure?.Date || null;
     }
 
-    // Calculate total connections (stops) count
-    // In TVC: Stops = Technical stops within a segment, Connections = Multiple segments in a leg
+    // Use the improved flight analysis
+    const flightAnalysis = analyzeFlightType(fare);
+    console.log(`🔍 [FLIGHT ANALYSIS] FareID ${fare.FareID}:`, {
+      isCompleteDirect: flightAnalysis.classification.isCompleteDirect,
+      minConnections: flightAnalysis.classification.minTotalConnections,
+      maxConnections: flightAnalysis.classification.maxTotalConnections
+    });
+
+    // Calculate technical stops (stops within segments)
     const totalTechnicalStops = legs.reduce((total, leg) => {
       return total + (leg.Options || []).reduce((legTotal: number, option: any) => {
         return legTotal + (option.Segments || []).reduce((segTotal: number, segment: any) => {
@@ -72,23 +137,9 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       }, 0);
     }, 0);
 
-    // Calculate connections (segment changes) - for a flight to be "direct", ALL legs must have only 1 segment each
-    const isDirectFlight = legs.every(leg => {
-      return leg.Options?.every((option: any) => {
-        const segments = option.Segments || [];
-        return segments.length === 1; // Each leg must have exactly 1 segment to be direct
-      });
-    });
-
-    // Calculate total connections for reporting
-    const totalConnections = legs.reduce((total, leg) => {
-      return total + (leg.Options || []).reduce((legTotal: number, option: any) => {
-        const segments = option.Segments || [];
-        return legTotal + Math.max(0, segments.length - 1); // Connections = segments - 1
-      }, 0);
-    }, 0);
-
-    // Total stops = technical stops + connections
+    // Use the improved analysis results
+    const isDirectFlight = flightAnalysis.classification.isCompleteDirect;
+    const totalConnections = flightAnalysis.classification.minTotalConnections;
     const totalStops = totalTechnicalStops + totalConnections;
 
 
@@ -126,13 +177,11 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     const carryOnDimensions = firstSegment.CarryOnBagInfo?.Dimensions || null;
 
 
-    // Debug airline name mapping
+    // Airline name mapping
     const airlineCode = firstSegment.Airline || 'N/A';
     const operatingAirlineName = firstSegment.OperatingAirlineName;
     const mappedName = getAirlineNameFromCode(airlineCode);
     const finalName = operatingAirlineName || mappedName || airlineCode || 'Unknown';
-
-    console.log(`🔍 [AIRLINE MAPPING] Code: ${airlineCode}, OperatingName: ${operatingAirlineName}, Mapped: ${mappedName}, Final: ${finalName}`);
 
     return {
       id: fare.FareID || `tvc-fare-${index}`,
@@ -331,16 +380,16 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
   if (parsedRequest?.flights?.stops === 'direct') {
     console.log('🚦 [TRANSFORMER] Filtering to NON-STOP flights (direct)');
     filteredFlights = allTransformedFlights.filter(flight => {
-      const isDirect = flight.stops.direct; // Use the correct direct flag
+      const isDirect = flight.stops.direct; // Use the improved direct flag
       if (!isDirect) {
-        console.log(`❌ Filtering out flight ${flight.id}: ${flight.stops.count} stops (not direct)`);
+        console.log(`❌ Filtering out flight ${flight.id}: ${flight.stops.connections} connections (not direct)`);
       }
       return isDirect;
     });
     console.log(`🎯 Direct flights found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
   }
 
-  // Filter by total connections in entire journey
+  // Filter by total connections in entire journey using improved logic
   if (parsedRequest?.flights?.stops === 'one_stop' || parsedRequest?.flights?.stops === 'two_stops') {
     const desiredConnections = parsedRequest.flights.stops === 'one_stop' ? 1 : 2;
     const maxLayover = parsedRequest?.flights?.maxLayoverHours;
@@ -348,7 +397,6 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     console.log(`🚦 [TRANSFORMER] Filtering to exactly ${desiredConnections} total connection(s) in entire journey`);
 
     filteredFlights = allTransformedFlights.filter(flight => {
-      // Use the already calculated totalConnections from flight.stops.connections
       const totalConnections = flight.stops.connections;
 
       if (totalConnections !== desiredConnections) {
