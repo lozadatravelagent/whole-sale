@@ -101,14 +101,16 @@ const BaggageIcon: React.FC<BaggageIconProps> = ({
         }
     };
 
-    if (showTooltip && baggageInfo.details) {
+    if (showTooltip) {
         return (
             <div className="group relative">
                 {renderIcon()}
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
-                    {baggageInfo.description}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50 shadow-lg">
+                    <div className="font-medium">
+                        {baggageInfo.description}
+                    </div>
                     {baggageInfo.details && (
-                        <div className="text-gray-300">
+                        <div className="text-gray-300 text-xs mt-1">
                             {baggageInfo.details}
                         </div>
                     )}
