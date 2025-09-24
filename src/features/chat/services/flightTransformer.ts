@@ -122,9 +122,55 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
           `${totalTechnicalStops} escala(s) técnica(s)`
     });
 
-    // Get baggage info from first segment
+    // Analyze baggage info across ALL segments to handle mixed baggage allowances
+    const baggageAnalysis = legs.map((leg, legIndex) => {
+      const legSegments = leg.Options?.[0]?.Segments || [];
+      const legBaggageInfo = legSegments[0]?.Baggage || '';
+      const legCarryOnInfo = legSegments[0]?.CarryOnBagInfo;
+
+      // Parse baggage allowance for this leg
+      const baggageMatch = legBaggageInfo.match(/(\d+)PC|(\d+)KG/);
+      const baggageQuantity = baggageMatch ? parseInt(baggageMatch[1] || baggageMatch[2]) : 0;
+
+      return {
+        legNumber: legIndex + 1,
+        baggageInfo: legBaggageInfo,
+        baggageQuantity,
+        carryOnQuantity: legCarryOnInfo?.Quantity || '0',
+        carryOnWeight: legCarryOnInfo?.Weight || null,
+        carryOnDimensions: legCarryOnInfo?.Dimensions || null
+      };
+    });
+
+    // Get overall baggage info (use first segment for backward compatibility)
     const baggageInfo = firstSegment.Baggage || '';
-    const hasFreeBaggage = baggageInfo.includes('PC') || baggageInfo.includes('KG');
+    const baggageMatch = baggageInfo.match(/(\d+)PC|(\d+)KG/);
+    const baggageQuantity = baggageMatch ? parseInt(baggageMatch[1] || baggageMatch[2]) : 0;
+    const hasFreeBaggage = baggageQuantity > 0;
+
+    // Get carry-on info from first segment
+    const carryOnQuantity = firstSegment.CarryOnBagInfo?.Quantity || '0';
+    const hasCarryOn = parseInt(carryOnQuantity) > 0;
+    const carryOnWeight = firstSegment.CarryOnBagInfo?.Weight || null;
+    const carryOnDimensions = firstSegment.CarryOnBagInfo?.Dimensions || null;
+
+    console.log(`🎒 Baggage analysis for Fare ${index + 1}:`, {
+      baggageAnalysis, // Show all legs
+      overallBaggage: {
+        baggageInfo,
+        baggageQuantity,
+        hasFreeBaggage,
+        carryOnQuantity,
+        hasCarryOn,
+        carryOnWeight,
+        carryOnDimensions
+      },
+      explanation: hasFreeBaggage ? `${baggageQuantity} checked bags` : 'No checked bags',
+      carryOnExplanation: hasCarryOn ? `${carryOnQuantity} carry-on bag(s)${carryOnWeight ? ` (${carryOnWeight})` : ''}` : 'No carry-on included',
+      legDetails: baggageAnalysis.map(leg =>
+        `Leg ${leg.legNumber}: ${leg.baggageQuantity}PC checked, ${leg.carryOnQuantity} carry-on${leg.carryOnWeight ? ` (${leg.carryOnWeight})` : ''}`
+      )
+    });
 
     return {
       id: fare.FareID || `tvc-fare-${index}`,
@@ -168,10 +214,10 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       baggage: {
         included: hasFreeBaggage,
         details: baggageInfo,
-        carryOn: firstSegment.CarryOnBagInfo?.Quantity || 'Standard',
-        carryOnQuantity: firstSegment.CarryOnBagInfo?.Quantity || '1',
-        carryOnWeight: firstSegment.CarryOnBagInfo?.Weight || null,
-        carryOnDimensions: firstSegment.CarryOnBagInfo?.Dimensions || null
+        carryOn: carryOnQuantity,
+        carryOnQuantity: carryOnQuantity,
+        carryOnWeight: carryOnWeight,
+        carryOnDimensions: carryOnDimensions
       },
       cabin: {
         class: firstSegment.CabinClass || 'Y',
@@ -330,6 +376,62 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     console.log(`🎯 Direct flights found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
   }
 
+  // Filter by luggage preference BEFORE limiting by price
+  if (parsedRequest?.flights?.luggage) {
+    const luggagePreference = parsedRequest.flights.luggage;
+    console.log(`🧳 [TRANSFORMER] Filtering by luggage preference: ${luggagePreference}`);
+
+    filteredFlights = filteredFlights.filter(flight => {
+      const hasCheckedBaggage = flight.baggage?.included || false;
+      const hasCarryOn = parseInt(flight.baggage?.carryOnQuantity || '0') > 0;
+
+      let matchesPreference = false;
+
+      switch (luggagePreference) {
+        case 'checked':
+          // User wants checked baggage
+          matchesPreference = hasCheckedBaggage;
+          if (!matchesPreference) {
+            console.log(`❌ Filtering out flight ${flight.id}: No checked baggage (user wants checked)`);
+          }
+          break;
+
+        case 'carry_on':
+          // User wants carry-on only (no checked baggage)
+          matchesPreference = hasCarryOn && !hasCheckedBaggage;
+          if (!matchesPreference) {
+            console.log(`❌ Filtering out flight ${flight.id}: Has checked baggage or no carry-on (user wants carry-on only)`);
+          }
+          break;
+
+        case 'both':
+          // User wants both checked and carry-on
+          matchesPreference = hasCheckedBaggage && hasCarryOn;
+          if (!matchesPreference) {
+            console.log(`❌ Filtering out flight ${flight.id}: Missing checked baggage or carry-on (user wants both)`);
+          }
+          break;
+
+        case 'none':
+          // User wants no baggage at all
+          matchesPreference = !hasCheckedBaggage && !hasCarryOn;
+          if (!matchesPreference) {
+            console.log(`❌ Filtering out flight ${flight.id}: Has baggage (user wants none)`);
+          }
+          break;
+
+        default:
+          // 'any' or unknown preference - show all flights
+          matchesPreference = true;
+          break;
+      }
+
+      return matchesPreference;
+    });
+
+    console.log(`🧳 Luggage-filtered flights found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
+  }
+
   // Sort by price (lowest first) and limit to 5
   const transformedFlights = filteredFlights
     .sort((a, b) => (a.price.amount || 0) - (b.price.amount || 0))
@@ -337,6 +439,15 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
 
   console.log(`✅ Transformation complete. Generated ${allTransformedFlights.length} flight objects`);
   console.log(`💰 After filtering: ${filteredFlights.length} flights, showing ${transformedFlights.length} cheapest`);
+
+  // Log luggage filtering summary
+  if (parsedRequest?.flights?.luggage) {
+    const luggagePreference = parsedRequest.flights.luggage;
+    const originalCount = allTransformedFlights.length;
+    const filteredCount = filteredFlights.length;
+    console.log(`🧳 [LUGGAGE SUMMARY] Preference: "${luggagePreference}" | ${originalCount} → ${filteredCount} flights (${((1 - filteredCount / originalCount) * 100).toFixed(1)}% filtered out)`);
+  }
+
   if (transformedFlights.length > 0) {
     console.log(`💸 Price range: ${transformedFlights[0].price.amount} - ${transformedFlights[transformedFlights.length - 1].price.amount} ${transformedFlights[0].price.currency}`);
   }
