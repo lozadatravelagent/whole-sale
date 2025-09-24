@@ -174,7 +174,7 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                 className="text-white"
               />
               {/* Mostrar texto del equipaje al lado */}
-              <span className="text-sm text-yellow-400 font-bold">
+              <span className="text-sm text-white font-bold">
                 {(() => {
                   const baggageText = getBaggageTextFromLeg(leg);
                   console.log('🧳 Rendering baggage text:', baggageText);
