@@ -44,8 +44,17 @@ export const formatFlightResponse = (flights: FlightData[]) => {
     const baggageDetails = flight.baggage?.details ? translateBaggage(flight.baggage.details) : 'N/A';
     response += `🧳 **Equipaje despachado:** ${baggageDetails}\n`;
 
-    // Información de carry-on
-    const carryOnQuantity = parseInt(flight.baggage?.carryOnQuantity || '0');
+    // Información de carry-on - detectar inconsistencias en los datos
+    let carryOnQuantity = parseInt(flight.baggage?.carryOnQuantity || '0');
+
+    // Fix para datos inconsistentes: si carryOnQuantity es 0 pero los segments tienen carry-on, usar los segments
+    if (carryOnQuantity === 0 && flight.legs?.length > 0) {
+      const firstSegment = flight.legs[0]?.options?.[0]?.segments?.[0];
+      if (firstSegment?.carryOnBagInfo?.quantity) {
+        carryOnQuantity = parseInt(firstSegment.carryOnBagInfo.quantity);
+      }
+    }
+
     if (carryOnQuantity > 0) {
       response += `🎒 **Equipaje de mano:** ✅ ${carryOnQuantity} pieza(s) incluida(s)`;
       if (flight.baggage?.carryOnWeight) {
