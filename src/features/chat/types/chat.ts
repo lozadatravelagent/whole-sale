@@ -38,6 +38,10 @@ export interface FlightData {
   stops?: {
     count: number;
     direct: boolean;
+    // Number of connections across all legs (segment changes)
+    connections?: number;
+    // Number of technical stops within segments across all legs
+    technical?: number;
   };
   baggage?: {
     included: boolean;

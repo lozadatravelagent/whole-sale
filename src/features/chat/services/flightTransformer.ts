@@ -209,7 +209,9 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       },
       stops: {
         count: totalStops,
-        direct: isDirectFlight
+        direct: isDirectFlight,
+        connections: totalConnections,
+        technical: totalTechnicalStops
       },
       baggage: {
         included: hasFreeBaggage,
@@ -374,6 +376,47 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       return isDirect;
     });
     console.log(`🎯 Direct flights found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
+  }
+
+  // Per-leg connection filtering: keep flights where EACH leg has at least one option
+  // with exactly the requested number of connections (segments - 1). Also enforce
+  // max layover hours per connection when provided.
+  if (parsedRequest?.flights?.stops === 'one_stop' || parsedRequest?.flights?.stops === 'two_stops') {
+    const desiredConnections = parsedRequest.flights.stops === 'one_stop' ? 1 : 2;
+    const maxLayover = parsedRequest?.flights?.maxLayoverHours;
+
+    console.log(`🚦 [TRANSFORMER] Filtering per-leg to exactly ${desiredConnections} connection(s)`);
+
+    filteredFlights = allTransformedFlights
+      .map(flight => {
+        const filteredLegs = flight.legs.map(leg => {
+          const options = (leg.options || []).filter(option => {
+            const segments = option.segments || [];
+            const connections = Math.max(0, segments.length - 1);
+            if (connections !== desiredConnections) return false;
+
+            if (maxLayover && connections > 0) {
+              for (let i = 0; i < segments.length - 1; i++) {
+                const current = segments[i];
+                const next = segments[i + 1];
+                const hours = calculateLayoverHours(current, next);
+                if (hours > maxLayover) {
+                  return false;
+                }
+              }
+            }
+            return true;
+          });
+          return { ...leg, options };
+        });
+
+        const allLegsHaveOptions = filteredLegs.every(l => (l.options?.length || 0) > 0);
+        if (!allLegsHaveOptions) return null;
+        return { ...flight, legs: filteredLegs };
+      })
+      .filter(Boolean) as any[];
+
+    console.log(`🎯 Flights with per-leg ${desiredConnections} connection(s): ${filteredFlights.length} of ${allTransformedFlights.length}`);
   }
 
   // Filter by luggage preference BEFORE limiting by price
