@@ -99,7 +99,9 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
             duration: firstOption?.duration ? `${Math.floor(firstOption.duration / 60)}h ${firstOption.duration % 60}m` : '0h 0m',
             flight_type: legIndex === 0 ? 'outbound' : 'return',
             layovers,
-            arrival_next_day: isNextDay
+            arrival_next_day: isNextDay,
+            // Preservar la información de equipaje del segmento original
+            options: leg.options
           };
         }),
         luggage: flight.luggage || false
