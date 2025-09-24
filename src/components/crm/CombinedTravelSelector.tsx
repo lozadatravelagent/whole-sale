@@ -35,11 +35,25 @@ import {
   Navigation
 } from 'lucide-react';
 import { formatTime } from '@/features/chat/utils/messageHelpers';
+import BaggageIcon from '@/components/ui/BaggageIcon';
 
 interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
   onPdfGenerated?: (pdfUrl: string, selectedFlights: FlightData[], selectedHotels: HotelData[]) => Promise<void>;
 }
+
+// Función para obtener información de equipaje del primer segmento de un leg
+const getBaggageInfoFromLeg = (leg: any) => {
+  // Buscar en la estructura legs -> options -> segments
+  if (leg?.options?.[0]?.segments?.[0]) {
+    const segment = leg.options[0].segments[0];
+    return {
+      baggage: segment.baggage,
+      carryOnBagInfo: segment.carryOnBagInfo
+    };
+  }
+  return { baggage: undefined, carryOnBagInfo: undefined };
+};
 
 // Helper function to calculate connection time
 const calculateConnectionTime = (segment1: any, segment2: any): string => {
@@ -98,6 +112,12 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
             <div className="flex items-center space-x-2 mb-3">
               {React.cloneElement(legIcon, { className: "h-4 w-4 text-white" })}
               <span className="font-semibold text-sm text-white">{legType}</span>
+              <BaggageIcon
+                {...getBaggageInfoFromLeg(leg)}
+                size="sm"
+                showTooltip={true}
+                className="text-white"
+              />
             </div>
 
             {/* Simplified display for current FlightLeg structure */}

@@ -7,32 +7,46 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { FlightData } from '@/types';
 import { generateFlightPdf } from '@/services/pdfMonkey';
-import { 
-  Plane, 
-  Clock, 
-  MapPin, 
-  DollarSign, 
-  FileText, 
+import {
+  Plane,
+  Clock,
+  MapPin,
+  DollarSign,
+  FileText,
   Loader2,
   Download,
   ChevronRight,
   Users,
   Luggage
 } from 'lucide-react';
+import BaggageIcon from '@/components/ui/BaggageIcon';
 
 interface FlightSelectorProps {
   flights: FlightData[];
   onPdfGenerated?: (pdfUrl: string) => void;
 }
 
-const FlightSelector: React.FC<FlightSelectorProps> = ({ 
-  flights, 
-  onPdfGenerated 
+// Función para obtener información de equipaje del primer segmento de un leg
+const getBaggageInfoFromLeg = (leg: any) => {
+  // Buscar en la estructura legs -> options -> segments
+  if (leg?.options?.[0]?.segments?.[0]) {
+    const segment = leg.options[0].segments[0];
+    return {
+      baggage: segment.baggage,
+      carryOnBagInfo: segment.carryOnBagInfo
+    };
+  }
+  return { baggage: undefined, carryOnBagInfo: undefined };
+};
+
+const FlightSelector: React.FC<FlightSelectorProps> = ({
+  flights,
+  onPdfGenerated
 }) => {
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
-  
+
   console.log('🎯 FlightSelector rendered with flights:', flights.length);
   console.log('🎯 Flights data:', flights);
 
@@ -41,7 +55,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
       if (prev.includes(flightId)) {
         return prev.filter(id => id !== flightId);
       }
-      
+
       // Limit to maximum 2 flights
       if (prev.length >= 2) {
         toast({
@@ -51,7 +65,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
         });
         return prev;
       }
-      
+
       return [...prev, flightId];
     });
   };
@@ -69,7 +83,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
     setIsGenerating(true);
 
     try {
-      const flightsToGenerate = flights.filter(flight => 
+      const flightsToGenerate = flights.filter(flight =>
         flight.id && selectedFlights.includes(flight.id)
       );
 
@@ -80,16 +94,16 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
           title: "PDF Generado",
           description: "Tu cotización de vuelos ha sido generada exitosamente.",
         });
-        
+
         onPdfGenerated?.(result.document_url);
       } else {
         throw new Error(result.error || 'Error desconocido');
       }
     } catch (error) {
       console.error('Error generating PDF:', error);
-      
+
       let errorMessage = "No se pudo generar el PDF. Inténtalo de nuevo.";
-      
+
       if (error instanceof Error) {
         if (error.message.includes('PDFMONKEY_API_KEY')) {
           errorMessage = "Configuración de API incompleta. Contacta al administrador.";
@@ -97,7 +111,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
           errorMessage = "API key inválida. Verifica la configuración.";
         }
       }
-      
+
       toast({
         title: "Error",
         description: errorMessage,
@@ -148,13 +162,12 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
 
       <CardContent className="space-y-4">
         {flights.map((flight, index) => (
-          <Card 
+          <Card
             key={flight.id}
-            className={`transition-all cursor-pointer ${
-              flight.id && selectedFlights.includes(flight.id)
-                ? 'ring-2 ring-primary bg-primary/5' 
+            className={`transition-all cursor-pointer ${flight.id && selectedFlights.includes(flight.id)
+                ? 'ring-2 ring-primary bg-primary/5'
                 : 'hover:bg-muted/50'
-            }`}
+              }`}
             onClick={() => flight.id && handleFlightToggle(flight.id)}
           >
             <CardContent className="p-4">
@@ -182,7 +195,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="text-right">
                   <div className="text-2xl font-bold text-primary">
                     {formatPrice(safePrice(flight), safeCurrency(flight))}
@@ -200,30 +213,37 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                 {flight.legs.map((leg, legIndex) => (
                   <div key={legIndex} className="bg-muted/30 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <Badge variant="outline" className="text-xs">
-                        {leg.flight_type === 'outbound' ? 'Ida' : 'Regreso'} - {
-                          leg.flight_type === 'outbound' ? flight.departure_date : flight.return_date
-                        }
-                      </Badge>
+                      <div className="flex items-center space-x-2">
+                        <Badge variant="outline" className="text-xs">
+                          {leg.flight_type === 'outbound' ? 'Ida' : 'Regreso'} - {
+                            leg.flight_type === 'outbound' ? flight.departure_date : flight.return_date
+                          }
+                        </Badge>
+                        <BaggageIcon
+                          {...getBaggageInfoFromLeg(leg)}
+                          size="sm"
+                          showTooltip={true}
+                        />
+                      </div>
                       <span className="text-sm text-muted-foreground flex items-center">
                         <Clock className="h-3 w-3 mr-1" />
                         {formatDuration(leg.duration)}
                       </span>
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
                       <div className="text-center">
                         <div className="font-mono text-lg font-bold">{leg.departure.city_code}</div>
                         <div className="text-xs text-muted-foreground">{leg.departure.city_name}</div>
                         <div className="text-sm font-medium">{leg.departure.time}</div>
                       </div>
-                      
+
                       <div className="flex-1 mx-4 flex items-center">
                         <div className="flex-1 h-px bg-border"></div>
                         <ChevronRight className="h-4 w-4 text-muted-foreground mx-2" />
                         <div className="flex-1 h-px bg-border"></div>
                       </div>
-                      
+
                       <div className="text-center">
                         <div className="font-mono text-lg font-bold">{leg.arrival.city_code}</div>
                         <div className="text-xs text-muted-foreground">{leg.arrival.city_name}</div>
@@ -247,8 +267,8 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
               </div>
 
               {/* Optional services */}
-              {(flight.travel_assistance && flight.travel_assistance > 0) || 
-               (flight.transfers && flight.transfers > 0) ? (
+              {(flight.travel_assistance && flight.travel_assistance > 0) ||
+                (flight.transfers && flight.transfers > 0) ? (
                 <div className="mt-3 pt-3 border-t border-border/50 space-y-1">
                   {flight.travel_assistance && flight.travel_assistance > 0 && (
                     <div className="text-xs text-muted-foreground">
