@@ -63,6 +63,44 @@ const getBaggageInfoFromLeg = (leg: any) => {
   return { baggage: undefined, carryOnBagInfo: undefined };
 };
 
+// Función para obtener texto corto del equipaje para mostrar al lado de IDA/REGRESO
+const getBaggageTextFromLeg = (leg: any): string => {
+  const baggageInfo = getBaggageInfoFromLeg(leg);
+
+  if (!baggageInfo.baggage && !baggageInfo.carryOnBagInfo) {
+    return '';
+  }
+
+  // Extraer número de piezas de equipaje de bodega
+  let checkedPieces = 0;
+  if (baggageInfo.baggage) {
+    const checkedMatch = baggageInfo.baggage.match(/^(\d+)PC$/);
+    if (checkedMatch) {
+      checkedPieces = parseInt(checkedMatch[1]);
+    }
+  }
+
+  // Verificar equipaje de mano
+  let hasCarryOn = false;
+  if (baggageInfo.carryOnBagInfo && baggageInfo.carryOnBagInfo.quantity) {
+    const quantity = parseInt(baggageInfo.carryOnBagInfo.quantity);
+    hasCarryOn = quantity > 0;
+  }
+
+  // Generar texto corto
+  const parts = [];
+
+  if (checkedPieces > 0) {
+    parts.push(`${checkedPieces} despachada${checkedPieces > 1 ? 's' : ''}`);
+  }
+
+  if (hasCarryOn) {
+    parts.push('1 de mano');
+  }
+
+  return parts.length > 0 ? `(${parts.join(' + ')})` : '';
+};
+
 // Helper function to calculate connection time
 const calculateConnectionTime = (segment1: any, segment2: any): string => {
   if (!segment1?.arrival?.time || !segment2?.departure?.time) {
@@ -126,6 +164,10 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                 showTooltip={true}
                 className="text-white"
               />
+              {/* Mostrar texto del equipaje al lado */}
+              <span className="text-xs text-gray-300">
+                {getBaggageTextFromLeg(leg)}
+              </span>
             </div>
 
             {/* Simplified display for current FlightLeg structure */}
