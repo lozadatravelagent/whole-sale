@@ -4,7 +4,8 @@ import {
     Briefcase,
     Backpack,
     X,
-    HelpCircle
+    HelpCircle,
+    MinusCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BaggageType, getBaggageType } from '@/utils/baggageUtils';
@@ -83,7 +84,7 @@ const BaggageIcon: React.FC<BaggageIconProps> = ({
                 );
             case 'none':
                 return (
-                    <X
+                    <MinusCircle
                         className={cn(iconClassName, getColorClass('text-gray-400'))}
                         {...({ title: baggageInfo.description } as any)}
                     />
