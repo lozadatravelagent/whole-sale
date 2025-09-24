@@ -65,9 +65,13 @@ const getBaggageInfoFromLeg = (leg: any) => {
 
 // Función para obtener texto corto del equipaje para mostrar al lado de IDA/REGRESO
 const getBaggageTextFromLeg = (leg: any): string => {
+  console.log('🧳 getBaggageTextFromLeg called with leg:', leg);
+
   const baggageInfo = getBaggageInfoFromLeg(leg);
+  console.log('🧳 baggageInfo from getBaggageTextFromLeg:', baggageInfo);
 
   if (!baggageInfo.baggage && !baggageInfo.carryOnBagInfo) {
+    console.log('🧳 No baggage info found, returning empty string');
     return '';
   }
 
@@ -87,6 +91,8 @@ const getBaggageTextFromLeg = (leg: any): string => {
     hasCarryOn = quantity > 0;
   }
 
+  console.log('🧳 Parsed baggage info:', { checkedPieces, hasCarryOn });
+
   // Generar texto corto
   const parts = [];
 
@@ -98,7 +104,10 @@ const getBaggageTextFromLeg = (leg: any): string => {
     parts.push('1 de mano');
   }
 
-  return parts.length > 0 ? `(${parts.join(' + ')})` : '';
+  const result = parts.length > 0 ? `(${parts.join(' + ')})` : '';
+  console.log('🧳 Final baggage text result:', result);
+
+  return result;
 };
 
 // Helper function to calculate connection time
@@ -165,8 +174,12 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                 className="text-white"
               />
               {/* Mostrar texto del equipaje al lado */}
-              <span className="text-xs text-gray-300">
-                {getBaggageTextFromLeg(leg)}
+              <span className="text-sm text-yellow-400 font-bold">
+                {(() => {
+                  const baggageText = getBaggageTextFromLeg(leg);
+                  console.log('🧳 Rendering baggage text:', baggageText);
+                  return baggageText || 'SIN EQUIPAJE';
+                })()}
               </span>
             </div>
 
