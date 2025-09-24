@@ -1,6 +1,6 @@
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { FlightData } from '../types/chat';
-import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime, getAirlineNameFromCode } from '../utils/flightHelpers';
+import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime, getAirlineNameFromCode, getAirlineCodeFromName } from '../utils/flightHelpers';
 import { translateFlightInfo, translateBaggage } from '../utils/translations';
 
 // Improved flight analysis functions
@@ -95,7 +95,43 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
   console.log('🔄 Transforming TVC API results:', tvcData);
 
   // TVC API returns fares in Fares array, not Recommendations
-  const fares = tvcData?.Fares || [];
+  let fares = tvcData?.Fares || [];
+
+  // Filter by preferred airline BEFORE transformation for efficiency
+  if (parsedRequest?.flights?.preferredAirline) {
+    const airlinePreference = parsedRequest.flights.preferredAirline;
+    console.log(`✈️ [PRE-FILTER] Filtering ${fares.length} fares by preferred airline: ${airlinePreference}`);
+
+    // Convert preference to airline code if it's a name
+    const preferredCode = airlinePreference.length <= 3 ?
+      airlinePreference.toUpperCase() :
+      getAirlineCodeFromName(airlinePreference);
+
+    fares = fares.filter((fare: any) => {
+      const legs = fare.Legs || [];
+
+      // Check if ANY segment in ANY leg matches the preferred airline
+      for (const leg of legs) {
+        for (const option of leg.Options || []) {
+          for (const segment of option.Segments || []) {
+            const segmentAirline = segment.Airline || '';
+            const operatingAirline = segment.OperatingAirline || '';
+
+            // Match against Airline or OperatingAirline fields
+            if (segmentAirline === preferredCode || operatingAirline === preferredCode) {
+              console.log(`✅ Fare ${fare.FareID} matches: found ${segmentAirline}/${operatingAirline}`);
+              return true;
+            }
+          }
+        }
+      }
+
+      console.log(`❌ Fare ${fare.FareID} filtered out: no segments match ${preferredCode}`);
+      return false;
+    });
+
+    console.log(`✈️ [PRE-FILTER] After airline filtering: ${fares.length} fares remain`);
+  }
 
   // First transform all flights
   const allTransformedFlights = fares.map((fare: any, index: number) => {
@@ -492,6 +528,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     console.log(`🧳 Luggage-filtered flights found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
   }
 
+
   // Sort by price (lowest first) and limit to 5
   const transformedFlights = filteredFlights
     .sort((a, b) => (a.price.amount || 0) - (b.price.amount || 0))
@@ -507,6 +544,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     const filteredCount = filteredFlights.length;
     console.log(`🧳 [LUGGAGE SUMMARY] Preference: "${luggagePreference}" | ${originalCount} → ${filteredCount} flights (${((1 - filteredCount / originalCount) * 100).toFixed(1)}% filtered out)`);
   }
+
 
   if (transformedFlights.length > 0) {
     console.log(`💸 Price range: ${transformedFlights[0].price.amount} - ${transformedFlights[transformedFlights.length - 1].price.amount} ${transformedFlights[0].price.currency}`);

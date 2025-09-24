@@ -100,6 +100,118 @@ export const getAirlineNameFromCode = (airlineCode: string): string => {
   return airlineMapping[airlineCode] || airlineCode;
 };
 
+// Helper function to get airline code from airline name (reverse mapping)
+export const getAirlineCodeFromName = (airlineName: string): string => {
+  const normalizedName = airlineName.toLowerCase().trim();
+
+  const nameToCodeMapping: Record<string, string> = {
+    // LATAM variations
+    'latam': 'LA',
+    'latam airlines': 'LA',
+    'latam airlines group': 'LA',
+    'tam': 'JJ',
+
+    // Aerolíneas Argentinas variations
+    'aerolineas argentinas': 'AR',
+    'aerolíneas argentinas': 'AR',
+    'aerolineas': 'AR',
+    'aerolíneas': 'AR',
+
+    // Air France variations
+    'air france': 'AF',
+    'airfrance': 'AF',
+
+    // Other major airlines
+    'iberia': 'IB',
+    'lufthansa': 'LH',
+    'american airlines': 'AA',
+    'american': 'AA',
+    'united airlines': 'UA',
+    'united': 'UA',
+    'delta': 'DL',
+    'delta air lines': 'DL',
+    'british airways': 'BA',
+    'klm': 'KL',
+    'alitalia': 'AZ',
+    'swiss': 'LX',
+    'swiss international air lines': 'LX',
+    'tap air portugal': 'TP',
+    'tap': 'TP',
+    'gol': 'G3',
+    'azul': 'AD',
+    'copa airlines': 'CM',
+    'copa': 'CM',
+    'avianca': 'AV',
+    'aeromexico': 'AM',
+    'aeroméxico': 'AM',
+    'vueling': 'VY',
+    'ryanair': 'FR',
+    'emirates': 'EK',
+    'qatar airways': 'QR',
+    'qatar': 'QR',
+    'turkish airlines': 'TK',
+    'turkish': 'TK',
+    'aeroflot': 'SU',
+    'cathay pacific': 'CX',
+    'singapore airlines': 'SQ',
+    'singapore': 'SQ',
+    'thai airways': 'TG',
+    'thai': 'TG',
+    'japan airlines': 'JL',
+    'jal': 'JL',
+    'ana': 'NH',
+    'all nippon airways': 'NH'
+  };
+
+  // Try exact match first
+  if (nameToCodeMapping[normalizedName]) {
+    return nameToCodeMapping[normalizedName];
+  }
+
+  // Try partial matches for common variations
+  for (const [name, code] of Object.entries(nameToCodeMapping)) {
+    if (normalizedName.includes(name) || name.includes(normalizedName)) {
+      return code;
+    }
+  }
+
+  // If no match found, return the original name (uppercase for consistency)
+  return airlineName.toUpperCase();
+};
+
+// Helper function to check if airline matches preference (supports both codes and names)
+export const matchesAirlinePreference = (airlineCode: string, operatingAirlineName: string | null, preference: string): boolean => {
+  if (!preference) return true;
+
+  const normalizedPreference = preference.toLowerCase().trim();
+  const normalizedCode = airlineCode.toLowerCase();
+  const normalizedOperatingName = operatingAirlineName?.toLowerCase() || '';
+
+  // Check if preference is already a code (2-3 characters)
+  if (preference.length <= 3 && preference.toUpperCase() === airlineCode) {
+    return true;
+  }
+
+  // Check if preference matches the operating airline name
+  if (operatingAirlineName && normalizedOperatingName.includes(normalizedPreference)) {
+    return true;
+  }
+
+  // Check if preference matches mapped airline name
+  const mappedName = getAirlineNameFromCode(airlineCode).toLowerCase();
+  if (mappedName.includes(normalizedPreference)) {
+    return true;
+  }
+
+  // Try to convert preference to code and compare
+  const preferenceAsCode = getAirlineCodeFromName(preference);
+  if (preferenceAsCode === airlineCode) {
+    return true;
+  }
+
+  return false;
+};
+
 // Helper function to calculate connection time between segments
 export const calculateConnectionTime = (segment1: any, segment2: any): string => {
   if (!segment1?.Arrival?.Date || !segment1?.Arrival?.Time ||
