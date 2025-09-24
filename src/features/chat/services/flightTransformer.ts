@@ -92,7 +92,15 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       }, 0);
     }, 0);
 
-    // Calculate connections (segment changes)
+    // Calculate connections (segment changes) - for a flight to be "direct", ALL legs must have only 1 segment each
+    const isDirectFlight = legs.every(leg => {
+      return leg.Options?.every((option: any) => {
+        const segments = option.Segments || [];
+        return segments.length === 1; // Each leg must have exactly 1 segment to be direct
+      });
+    });
+
+    // Calculate total connections for reporting
     const totalConnections = legs.reduce((total, leg) => {
       return total + (leg.Options || []).reduce((legTotal: number, option: any) => {
         const segments = option.Segments || [];
@@ -107,8 +115,8 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       technicalStops: totalTechnicalStops,
       connections: totalConnections,
       totalStops: totalStops,
-      isDirect: totalStops === 0,
-      explanation: totalStops === 0 ? 'Vuelo directo' :
+      isDirect: isDirectFlight,
+      explanation: isDirectFlight ? 'Vuelo directo' :
         totalConnections > 0 ? `${totalConnections} conexión(es)` +
           (totalTechnicalStops > 0 ? ` + ${totalTechnicalStops} escala(s) técnica(s)` : '') :
           `${totalTechnicalStops} escala(s) técnica(s)`
@@ -155,7 +163,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       },
       stops: {
         count: totalStops,
-        direct: totalStops === 0
+        direct: isDirectFlight
       },
       baggage: {
         included: hasFreeBaggage,
@@ -313,9 +321,9 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
   if (parsedRequest?.flights?.stops === 'direct') {
     console.log('🚦 [TRANSFORMER] Filtering to NON-STOP flights (direct)');
     filteredFlights = allTransformedFlights.filter(flight => {
-      const isDirect = flight.stops === 0;
+      const isDirect = flight.stops.direct; // Use the correct direct flag
       if (!isDirect) {
-        console.log(`❌ Filtering out flight ${flight.id}: ${flight.stops} stops (not direct)`);
+        console.log(`❌ Filtering out flight ${flight.id}: ${flight.stops.count} stops (not direct)`);
       }
       return isDirect;
     });
