@@ -4,7 +4,8 @@
  */
 
 interface CityCodeMapping {
-  iata: string;      // Airport code for flights (IATA)
+  iata: string;      // Airport code for flights (IATA) - primary
+  iataSecondary?: string; // Secondary IATA airport code
   hotelCode: string; // City code for hotels (may differ from IATA)
   country: string;
   aliases: string[]; // Alternative names for the city
@@ -14,6 +15,7 @@ const CITY_MAPPINGS: Record<string, CityCodeMapping> = {
   // Argentina
   'buenos aires': {
     iata: 'EZE',
+    iataSecondary: 'AEP',
     hotelCode: 'BUE',
     country: 'AR',
     aliases: ['bsas', 'capital federal', 'caba']
@@ -199,7 +201,7 @@ const CITY_MAPPINGS: Record<string, CityCodeMapping> = {
 };
 
 /**
- * Get IATA airport code for flights
+ * Get IATA airport code for flights (primary airport)
  */
 export function getAirportCode(cityName: string): string | null {
   const normalizedCity = normalizeString(cityName);
@@ -219,6 +221,93 @@ export function getAirportCode(cityName: string): string | null {
 
   console.warn(`⚠️ No IATA code found for city: ${cityName}`);
   return null;
+}
+
+/**
+ * Get smart airport code based on flight context
+ * For Buenos Aires: EZE for international flights, AEP for domestic/regional
+ */
+export function getSmartAirportCode(cityName: string, destination?: string): string | null {
+  const normalizedCity = normalizeString(cityName);
+
+  // Special handling for Buenos Aires
+  if (normalizedCity === 'buenos aires' || normalizedCity === 'bsas' ||
+    normalizedCity === 'capital federal' || normalizedCity === 'caba') {
+
+    if (destination) {
+      const destNormalized = normalizeString(destination);
+
+      // Domestic destinations from Buenos Aires (use AEP)
+      const domesticDestinations = [
+        'cordoba', 'córdoba', 'mendoza', 'bariloche', 'ushuaia', 'salta',
+        'rosario', 'neuquen', 'neuquén', 'tucuman', 'tucumán', 'jujuy',
+        'la plata', 'mar del plata', 'san martin de los andes', 'el calafate'
+      ];
+
+      // Regional destinations (South America - use EZE)
+      const regionalDestinations = [
+        'santiago', 'lima', 'bogota', 'bogotá', 'sao paulo', 'são paulo',
+        'rio de janeiro', 'brasilia', 'montevideo', 'asuncion', 'asunción',
+        'la paz', 'caracas', 'quito', 'guayaquil', 'cali', 'medellin', 'medellín'
+      ];
+
+      // International destinations (use EZE)
+      const internationalDestinations = [
+        'madrid', 'barcelona', 'paris', 'london', 'londres', 'rome', 'roma',
+        'miami', 'new york', 'nueva york', 'los angeles', 'chicago', 'toronto',
+        'mexico city', 'ciudad de mexico', 'cancun', 'cancún'
+      ];
+
+      if (domesticDestinations.some(dest => destNormalized.includes(dest) || dest.includes(destNormalized))) {
+        console.log(`🏠 Domestic flight detected: Buenos Aires -> ${destination}, using AEP`);
+        return 'AEP';
+      } else if (regionalDestinations.some(dest => destNormalized.includes(dest) || dest.includes(destNormalized))) {
+        console.log(`🌎 Regional flight detected: Buenos Aires -> ${destination}, using EZE`);
+        return 'EZE';
+      } else if (internationalDestinations.some(dest => destNormalized.includes(dest) || dest.includes(destNormalized))) {
+        console.log(`🌍 International flight detected: Buenos Aires -> ${destination}, using EZE`);
+        return 'EZE';
+      }
+    }
+
+    // Default to EZE for Buenos Aires if no destination context
+    console.log(`✈️ Buenos Aires without destination context, defaulting to EZE`);
+    return 'EZE';
+  }
+
+  // For other cities, use the standard logic
+  return getAirportCode(cityName);
+}
+
+/**
+ * Get all IATA airport codes for a city (primary + secondary if available)
+ */
+export function getAllAirportCodes(cityName: string): string[] {
+  const normalizedCity = normalizeString(cityName);
+
+  // Direct match
+  const mapping = CITY_MAPPINGS[normalizedCity];
+  if (mapping) {
+    const codes = [mapping.iata];
+    if (mapping.iataSecondary) {
+      codes.push(mapping.iataSecondary);
+    }
+    return codes;
+  }
+
+  // Check aliases
+  for (const [key, value] of Object.entries(CITY_MAPPINGS)) {
+    if (value.aliases.some(alias => normalizeString(alias) === normalizedCity)) {
+      const codes = [value.iata];
+      if (value.iataSecondary) {
+        codes.push(value.iataSecondary);
+      }
+      return codes;
+    }
+  }
+
+  console.warn(`⚠️ No IATA codes found for city: ${cityName}`);
+  return [];
 }
 
 /**

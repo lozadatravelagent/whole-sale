@@ -145,6 +145,8 @@ async function getCityCodeForFlight(cityName: string): Promise<string> {
         'buenos aires': 'EZE',
         'buenos aires aeropuerto': 'EZE',
         'ezeiza': 'EZE',
+        'jorge newbery': 'AEP',
+        'aeroparque': 'AEP',
         'cordoba': 'COR',
         'mendoza': 'MDZ',
         'bariloche': 'BRC',

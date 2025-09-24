@@ -1,7 +1,7 @@
 import { AirfareSearchParams } from '@/services/airfareSearch';
 import { HotelSearchParams } from '@/types';
 import { FlightData, HotelData } from '@/types';
-import { getAirportCode, getHotelCode, logCityConversion } from '@/services/cityCodeService';
+import { getAirportCode, getSmartAirportCode, getHotelCode, logCityConversion } from '@/services/cityCodeService';
 
 export interface CombinedTravelRequest {
   flights: AirfareSearchParams;
@@ -229,7 +229,8 @@ function extractFlightParams(message: string): AirfareSearchParams {
 
   // Convert city names to IATA codes using the centralized service
   if (origin && !/^[A-Z]{3}$/.test(origin)) {
-    const airportCode = getAirportCode(origin);
+    // Use smart airport code selection for origin (considering destination context)
+    const airportCode = getSmartAirportCode(origin, destination);
     if (airportCode) {
       logCityConversion(origin, 'flight');
       origin = airportCode;
@@ -239,7 +240,8 @@ function extractFlightParams(message: string): AirfareSearchParams {
   }
 
   if (destination && !/^[A-Z]{3}$/.test(destination)) {
-    const airportCode = getAirportCode(destination);
+    // Use smart airport code selection for destination (considering origin context)
+    const airportCode = getSmartAirportCode(destination, origin);
     if (airportCode) {
       logCityConversion(destination, 'flight');
       destination = airportCode;

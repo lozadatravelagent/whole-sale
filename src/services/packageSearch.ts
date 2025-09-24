@@ -189,6 +189,8 @@ async function getCityCode(cityName: string, dateFrom?: string, dateTo?: string)
         'buenos aires': 'EZE',
         'buenos aires aeropuerto': 'EZE',
         'ezeiza': 'EZE',
+        'jorge newbery': 'AEP',
+        'aeroparque': 'AEP',
         'españa': 'MAD', // Default España to Madrid
         'spain': 'MAD',
         'viena': 'VIE',

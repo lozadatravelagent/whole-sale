@@ -1453,7 +1453,10 @@ function parseFlightRoute(route: string): { origin: string; destination: string 
  */
 function mapCityToCode(cityName: string): string {
     const cityMap: Record<string, string> = {
-        'Buenos Aires': 'BUE',
+        'Buenos Aires': 'EZE',
+        'Ezeiza': 'EZE',
+        'Jorge Newbery': 'AEP',
+        'Aeroparque': 'AEP',
         'Madrid': 'MAD',
         'Barcelona': 'BCN',
         'Miami': 'MIA',

@@ -240,9 +240,11 @@ async function getCityCode(cityName: string): Promise<string> {
         'san sebastian': 'EAS',
 
         // Argentina
-        'buenos aires': 'BUE',
+        'buenos aires': 'EZE',
         'buenos aires aeropuerto': 'EZE',
         'ezeiza': 'EZE',
+        'jorge newbery': 'AEP',
+        'aeroparque': 'AEP',
         'cordoba': 'COR',
         'mendoza': 'MDZ',
         'rosario': 'ROS',

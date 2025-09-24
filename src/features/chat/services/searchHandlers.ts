@@ -71,31 +71,6 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     const flightData = response.data?.data || response.data;
     let flights = transformStarlingResults(flightData, parsed);
 
-    // If user requested direct flights only, filter options with exactly one segment per leg
-    if (parsed?.flights?.stops === 'direct') {
-      console.log('🚦 [FLIGHT SEARCH] Filtering to NON-STOP flights (direct)');
-      flights = flights
-        .map((flight: any) => {
-          const filteredLegs = (flight.legs || []).map((leg: any) => {
-            const options = (leg.options || []).filter((opt: any) => {
-              const segments = opt.segments || [];
-              return segments.length === 1 && (segments[0]?.stops?.length || 0) === 0;
-            });
-            return { ...leg, options };
-          });
-
-          // Keep flight only if every leg still has at least one option
-          const allLegsHaveOptions = filteredLegs.every((leg: any) => (leg.options?.length || 0) > 0);
-          if (!allLegsHaveOptions) return null;
-          return { ...flight, legs: filteredLegs };
-        })
-        .filter(Boolean) as any[];
-
-      if (flights.length === 0) {
-        console.log('⚠️ [FLIGHT SEARCH] No non-stop options available for this itinerary');
-      }
-    }
-
     // If user specified maximum layover duration, we need to do a NEW SEARCH with more permissive stops
     // to find more options that can then be filtered by layover time
     if (parsed?.flights?.maxLayoverHours) {

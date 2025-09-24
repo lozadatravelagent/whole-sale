@@ -40,7 +40,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
   const fares = tvcData?.Fares || [];
   console.log(`📊 Processing ${fares.length} fares from TVC API`);
 
-  // First transform all flights, then sort by price and limit to 5
+  // First transform all flights
   const allTransformedFlights = fares.map((fare: any, index: number) => {
     // TVC Fare structure: Fares -> Legs -> Options -> Segments
     console.log(`🔍 Processing fare ${index + 1}:`, {
@@ -307,13 +307,28 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     };
   });
 
+  // Filter by stops preference BEFORE limiting by price
+  let filteredFlights = allTransformedFlights;
+
+  if (parsedRequest?.flights?.stops === 'direct') {
+    console.log('🚦 [TRANSFORMER] Filtering to NON-STOP flights (direct)');
+    filteredFlights = allTransformedFlights.filter(flight => {
+      const isDirect = flight.stops === 0;
+      if (!isDirect) {
+        console.log(`❌ Filtering out flight ${flight.id}: ${flight.stops} stops (not direct)`);
+      }
+      return isDirect;
+    });
+    console.log(`🎯 Direct flights found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
+  }
+
   // Sort by price (lowest first) and limit to 5
-  const transformedFlights = allTransformedFlights
+  const transformedFlights = filteredFlights
     .sort((a, b) => (a.price.amount || 0) - (b.price.amount || 0))
     .slice(0, 5);
 
   console.log(`✅ Transformation complete. Generated ${allTransformedFlights.length} flight objects`);
-  console.log(`💰 Sorted by price and limited to ${transformedFlights.length} cheapest flights`);
+  console.log(`💰 After filtering: ${filteredFlights.length} flights, showing ${transformedFlights.length} cheapest`);
   if (transformedFlights.length > 0) {
     console.log(`💸 Price range: ${transformedFlights[0].price.amount} - ${transformedFlights[transformedFlights.length - 1].price.amount} ${transformedFlights[0].price.currency}`);
   }

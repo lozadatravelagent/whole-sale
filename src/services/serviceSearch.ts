@@ -183,6 +183,8 @@ async function getCityCode(cityName: string): Promise<string> {
         'buenos aires': 'EZE',
         'buenos aires aeropuerto': 'EZE',
         'ezeiza': 'EZE',
+        'jorge newbery': 'AEP',
+        'aeroparque': 'AEP',
         'sao paulo': 'GRU',
         'são paulo': 'GRU',
         'brasilia': 'BSB'
