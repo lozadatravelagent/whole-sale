@@ -15,8 +15,27 @@ export const normalizeText = (text: string): string => {
 };
 
 // Helper: detect intent to add a hotel to existing flight search
+// This should ONLY trigger for follow-up messages, not initial combined requests
 export const isAddHotelRequest = (text: string): boolean => {
   const norm = normalizeText(text);
+
+  // If the message contains flight details (origin, destination, dates), it's likely a combined request, not an "add hotel" request
+  const hasFlightDetails = (
+    // Has origin indicator
+    norm.includes('desde') &&
+    // Has destination indicator  
+    (norm.includes('a ') || norm.includes('para ')) &&
+    // Has flight-related keywords
+    (norm.includes('vuelo') || norm.includes('semana') || norm.includes('mes') || norm.includes('día') ||
+      norm.includes('enero') || norm.includes('febrero') || norm.includes('marzo') || norm.includes('abril') ||
+      norm.includes('mayo') || norm.includes('junio') || norm.includes('julio') || norm.includes('agosto') ||
+      norm.includes('septiembre') || norm.includes('octubre') || norm.includes('noviembre') || norm.includes('diciembre'))
+  );
+
+  if (hasFlightDetails) {
+    return false; // This is likely a combined request, not an "add hotel" request
+  }
+
   const hotelKeywords = [
     'agrega un hotel', 'agregale un hotel', 'agregar un hotel', 'sumale un hotel', 'añade un hotel',
     'agrega hotel', 'agregale hotel', 'sumale hotel', 'añade hotel', 'agregar hotel', 'agregame un hotel'
