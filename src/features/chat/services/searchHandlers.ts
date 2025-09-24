@@ -69,7 +69,7 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
 
     console.log('🔄 [FLIGHT SEARCH] Step 4: Transforming Starling results');
     const flightData = response.data?.data || response.data;
-    let flights = transformStarlingResults(flightData, parsed);
+    let flights = await transformStarlingResults(flightData, parsed);
 
     // If user specified maximum layover duration, we need to do a NEW SEARCH with more permissive stops
     // to find more options that can then be filtered by layover time
@@ -95,7 +95,7 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
 
         if (!expandedResponse.error && expandedResponse.data) {
           const expandedFlightData = expandedResponse.data?.data || expandedResponse.data;
-          const expandedFlights = transformStarlingResults(expandedFlightData, parsed);
+          const expandedFlights = await transformStarlingResults(expandedFlightData, parsed);
           console.log(`📊 [LAYOVER FILTER] Expanded search found ${expandedFlights.length} flights`);
 
           if (expandedFlights.length > 0) {
