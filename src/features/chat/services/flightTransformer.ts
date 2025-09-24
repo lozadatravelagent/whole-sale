@@ -2,6 +2,7 @@ import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { FlightData } from '../types/chat';
 import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime, getAirlineNameFromCode, getAirlineCodeFromName } from '../utils/flightHelpers';
 import { translateFlightInfo, translateBaggage } from '../utils/translations';
+import { airlineResolver } from './airlineResolver';
 
 // Improved flight analysis functions
 function analyzeFlightType(fare: any) {
@@ -91,21 +92,23 @@ function calculateLayoverHours(arrivalSegment: any, departureSegment: any): numb
   }
 }
 
-export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTravelRequest): FlightData[] => {
+export const transformStarlingResults = async (tvcData: any, parsedRequest?: ParsedTravelRequest): Promise<FlightData[]> => {
   console.log('🔄 Transforming TVC API results:', tvcData);
 
   // TVC API returns fares in Fares array, not Recommendations
   let fares = tvcData?.Fares || [];
+
+  // Learn airline mappings from API response FIRST
+  airlineResolver.processApiResponse(tvcData);
 
   // Filter by preferred airline BEFORE transformation for efficiency
   if (parsedRequest?.flights?.preferredAirline) {
     const airlinePreference = parsedRequest.flights.preferredAirline;
     console.log(`✈️ [PRE-FILTER] Filtering ${fares.length} fares by preferred airline: ${airlinePreference}`);
 
-    // Convert preference to airline code if it's a name
-    const preferredCode = airlinePreference.length <= 3 ?
-      airlinePreference.toUpperCase() :
-      getAirlineCodeFromName(airlinePreference);
+    // Use the airline resolver to get the correct code
+    const resolvedAirline = await airlineResolver.resolveAirline(airlinePreference);
+    const preferredCode = resolvedAirline.code;
 
     fares = fares.filter((fare: any) => {
       const legs = fare.Legs || [];
@@ -133,8 +136,8 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     console.log(`✈️ [PRE-FILTER] After airline filtering: ${fares.length} fares remain`);
   }
 
-  // First transform all flights
-  const allTransformedFlights = fares.map((fare: any, index: number) => {
+  // First transform all flights (using Promise.all for async mapping)
+  const allTransformedFlights = await Promise.all(fares.map(async (fare: any, index: number) => {
     // TVC Fare structure: Fares -> Legs -> Options -> Segments
 
 
@@ -213,11 +216,13 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     const carryOnDimensions = firstSegment.CarryOnBagInfo?.Dimensions || null;
 
 
-    // Airline name mapping
+    // Airline name mapping using resolver
     const airlineCode = firstSegment.Airline || 'N/A';
     const operatingAirlineName = firstSegment.OperatingAirlineName;
-    const mappedName = getAirlineNameFromCode(airlineCode);
-    const finalName = operatingAirlineName || mappedName || airlineCode || 'Unknown';
+
+    // The resolver has already learned from the API response, so try resolver first
+    const resolvedAirline = await airlineResolver.resolveAirline(airlineCode);
+    const finalName = operatingAirlineName || resolvedAirline.name || 'Unknown';
 
     return {
       id: fare.FareID || `tvc-fare-${index}`,
@@ -408,7 +413,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
       fareFeatures: fare.FareFeatures || null,
       fareCategory: fare.FareCategory || null
     };
-  });
+  }));
 
   // Filter by stops preference BEFORE limiting by price
   let filteredFlights = allTransformedFlights;
