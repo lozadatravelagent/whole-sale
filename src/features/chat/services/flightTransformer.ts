@@ -126,11 +126,19 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     const carryOnDimensions = firstSegment.CarryOnBagInfo?.Dimensions || null;
 
 
+    // Debug airline name mapping
+    const airlineCode = firstSegment.Airline || 'N/A';
+    const operatingAirlineName = firstSegment.OperatingAirlineName;
+    const mappedName = getAirlineNameFromCode(airlineCode);
+    const finalName = operatingAirlineName || mappedName || airlineCode || 'Unknown';
+
+    console.log(`🔍 [AIRLINE MAPPING] Code: ${airlineCode}, OperatingName: ${operatingAirlineName}, Mapped: ${mappedName}, Final: ${finalName}`);
+
     return {
       id: fare.FareID || `tvc-fare-${index}`,
       airline: {
-        code: firstSegment.Airline || 'N/A',
-        name: firstSegment.OperatingAirlineName || getAirlineNameFromCode(firstSegment.Airline || '') || firstSegment.Airline || 'Unknown'
+        code: airlineCode,
+        name: finalName
       },
       price: {
         amount: fare.TotalAmount || 0,
