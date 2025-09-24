@@ -1,5 +1,5 @@
 # Build stage
-FROM node:18 as builder
+FROM public.ecr.aws/docker/library/node:18-alpine as builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:18
+FROM public.ecr.aws/docker/library/node:18-alpine
 
 WORKDIR /app
 
