@@ -197,9 +197,9 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
         legNumber: legIndex + 1,
         baggageInfo: legBaggageInfo,
         baggageQuantity,
-        carryOnQuantity: legCarryOnInfo?.Quantity || '0',
-        carryOnWeight: legCarryOnInfo?.Weight || null,
-        carryOnDimensions: legCarryOnInfo?.Dimensions || null
+        carryOnQuantity: legCarryOnInfo?.Quantity || legSegments[0]?.carryOnBagInfo?.quantity || '0',
+        carryOnWeight: legCarryOnInfo?.Weight || legSegments[0]?.carryOnBagInfo?.weight || null,
+        carryOnDimensions: legCarryOnInfo?.Dimensions || legSegments[0]?.carryOnBagInfo?.dimensions || null
       };
     });
 
@@ -210,10 +210,10 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     const hasFreeBaggage = baggageQuantity > 0;
 
     // Get carry-on info from first segment
-    const carryOnQuantity = firstSegment.CarryOnBagInfo?.Quantity || '0';
+    const carryOnQuantity = firstSegment.CarryOnBagInfo?.Quantity || firstSegment.carryOnBagInfo?.quantity || '0';
     const hasCarryOn = parseInt(carryOnQuantity) > 0;
-    const carryOnWeight = firstSegment.CarryOnBagInfo?.Weight || null;
-    const carryOnDimensions = firstSegment.CarryOnBagInfo?.Dimensions || null;
+    const carryOnWeight = firstSegment.CarryOnBagInfo?.Weight || firstSegment.carryOnBagInfo?.weight || null;
+    const carryOnDimensions = firstSegment.CarryOnBagInfo?.Dimensions || firstSegment.carryOnBagInfo?.dimensions || null;
 
 
     // Airline name mapping using resolver
@@ -385,9 +385,9 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
             status: segment.Status || '',
             baggage: segment.Baggage || '',
             carryOnBagInfo: {
-              quantity: segment.CarryOnBagInfo?.Quantity || '1',
-              weight: segment.CarryOnBagInfo?.Weight || null,
-              dimensions: segment.CarryOnBagInfo?.Dimensions || null
+              quantity: segment.CarryOnBagInfo?.Quantity || segment.carryOnBagInfo?.quantity || '1',
+              weight: segment.CarryOnBagInfo?.Weight || segment.carryOnBagInfo?.weight || null,
+              dimensions: segment.CarryOnBagInfo?.Dimensions || segment.carryOnBagInfo?.dimensions || null
             },
             fareBasis: segment.FareBasis || '',
             brandName: segment.BrandName || '',
