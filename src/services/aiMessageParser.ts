@@ -287,6 +287,7 @@ export function combineWithPreviousRequest(
             ...(parsedNewRequest.flights?.departureTimePreference && { departureTimePreference: parsedNewRequest.flights.departureTimePreference }),
             ...(parsedNewRequest.flights?.arrivalTimePreference && { arrivalTimePreference: parsedNewRequest.flights.arrivalTimePreference }),
             ...(parsedNewRequest.flights?.layoverDuration && { layoverDuration: parsedNewRequest.flights.layoverDuration }),
+            ...(parsedNewRequest.flights?.maxLayoverHours && { maxLayoverHours: parsedNewRequest.flights.maxLayoverHours }),
             ...(parsedNewRequest.flights?.preferredAirline && { preferredAirline: parsedNewRequest.flights.preferredAirline })
         };
 
@@ -395,6 +396,32 @@ export async function parseMessageWithAI(
             quick.flights = { ...(quick.flights || ({} as any)), luggage: 'carry_on' as any } as any;
         }
 
+        // Cantidad de escalas explícita (1/2 escalas)
+        const escalasNumMatch = normalized.match(/(?:con\s+)?(\d+)\s+escala(?:s)?/i);
+        if (escalasNumMatch) {
+            const num = parseInt(escalasNumMatch[1], 10);
+            if (num === 0) {
+                quick.flights = { ...(quick.flights || ({} as any)), stops: 'direct' as any } as any;
+            } else if (num === 1) {
+                quick.flights = { ...(quick.flights || ({} as any)), stops: 'one_stop' as any } as any;
+            } else if (num === 2) {
+                quick.flights = { ...(quick.flights || ({} as any)), stops: 'two_stops' as any } as any;
+            } else {
+                quick.flights = { ...(quick.flights || ({} as any)), stops: 'any' as any } as any;
+            }
+        } else if (/una\s+escala/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), stops: 'one_stop' as any } as any;
+        }
+
+        // Máximo tiempo de conexión: "no más de X horas" / "no mas de 8 hs" / "<= 8h"
+        const layoverMatch = normalized.match(/no\s+m[áa]s\s+de\s+(\d{1,2})\s*(?:h|hs|hora|horas)\b|<=\s*(\d{1,2})\s*h/i);
+        if (layoverMatch) {
+            const hours = parseInt(layoverMatch[1] || layoverMatch[2], 10);
+            if (!isNaN(hours)) {
+                quick.flights = { ...(quick.flights || ({} as any)), maxLayoverHours: hours as any } as any;
+            }
+        }
+
         // Pasajeros
         const paxMatch = normalized.match(/(\d+)\s*(personas|pasajeros|adultos)/i);
         if (paxMatch) {
@@ -407,7 +434,7 @@ export async function parseMessageWithAI(
         // Tipo de vuelo
         if (/directo/i.test(normalized)) {
             quick.flights = { ...(quick.flights || ({} as any)), stops: 'direct' as any } as any;
-        } else if (/con\s+escala|con\s+escalas|escala/i.test(normalized)) {
+        } else if (/con\s+escala|con\s+escalas\b|\bescala\b/i.test(normalized)) {
             quick.flights = { ...(quick.flights || ({} as any)), stops: 'one_stop' as any } as any;
         }
     } catch (e) {
