@@ -469,11 +469,21 @@ export async function parseMessageWithAI(
             throw new Error('No parsed result from AI service');
         }
 
-        console.log('✅ AI parsing successful:', parsedResult);
-        return {
+        // Merge quick pre-parse hints if AI missed them (e.g., max layover hours, stops)
+        const mergedFlights = {
+            ...(parsedResult.flights || {}),
+            ...(quick.flights?.stops && !parsedResult.flights?.stops ? { stops: quick.flights.stops } : {}),
+            ...(quick.flights?.maxLayoverHours && !parsedResult.flights?.maxLayoverHours ? { maxLayoverHours: quick.flights.maxLayoverHours } : {})
+        } as any;
+
+        const mergedResult = {
             ...parsedResult,
+            flights: Object.keys(mergedFlights).length ? mergedFlights : parsedResult.flights,
             originalMessage: message
         };
+
+        console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
+        return mergedResult;
 
     } catch (error) {
         console.error('❌ AI parsing service error:', error);

@@ -6,13 +6,13 @@ import { translateFlightInfo, translateBaggage } from '../utils/translations';
 // Helper function to calculate layover hours between two flight segments
 function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
   try {
-    // Parse arrival time and date
-    const arrivalTime = arrivalSegment.arrival?.time || '';
-    const arrivalDate = arrivalSegment.arrival?.date || '';
+    // Parse arrival time and date (support both lowercase and uppercase API responses)
+    const arrivalTime = arrivalSegment.arrival?.time || arrivalSegment.Arrival?.Time || '';
+    const arrivalDate = arrivalSegment.arrival?.date || arrivalSegment.Arrival?.Date || '';
 
-    // Parse departure time and date  
-    const departureTime = departureSegment.departure?.time || '';
-    const departureDate = departureSegment.departure?.date || '';
+    // Parse departure time and date (support both lowercase and uppercase API responses)
+    const departureTime = departureSegment.departure?.time || departureSegment.Departure?.Time || '';
+    const departureDate = departureSegment.departure?.date || departureSegment.Departure?.Date || '';
 
     if (!arrivalTime || !arrivalDate || !departureTime || !departureDate) {
       return 0;

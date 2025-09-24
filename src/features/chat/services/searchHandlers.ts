@@ -9,13 +9,13 @@ import { getCityCode } from './messageService';
 // Helper function to calculate layover hours between two flight segments
 function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
   try {
-    // Parse arrival time and date
-    const arrivalTime = arrivalSegment.arrival?.time || '';
-    const arrivalDate = arrivalSegment.arrival?.date || '';
+    // Parse arrival time and date (support both lowercase and uppercase API responses)
+    const arrivalTime = arrivalSegment.arrival?.time || arrivalSegment.Arrival?.Time || '';
+    const arrivalDate = arrivalSegment.arrival?.date || arrivalSegment.Arrival?.Date || '';
 
-    // Parse departure time and date  
-    const departureTime = departureSegment.departure?.time || '';
-    const departureDate = departureSegment.departure?.date || '';
+    // Parse departure time and date (support both lowercase and uppercase API responses)
+    const departureTime = departureSegment.departure?.time || departureSegment.Departure?.Time || '';
+    const departureDate = departureSegment.departure?.date || departureSegment.Departure?.Date || '';
 
     if (!arrivalTime || !arrivalDate || !departureTime || !departureDate) {
       console.warn('⚠️ [LAYOVER CALC] Missing time/date data for layover calculation');
@@ -30,7 +30,7 @@ function calculateLayoverHours(arrivalSegment: any, departureSegment: any): numb
     const layoverMs = departureDateTime.getTime() - arrivalDateTime.getTime();
     const layoverHours = layoverMs / (1000 * 60 * 60);
 
-    console.log(`🕐 [LAYOVER CALC] ${arrivalSegment.arrival?.airportCode} ${arrivalTime} → ${departureSegment.departure?.airportCode} ${departureTime} = ${layoverHours.toFixed(1)}h`);
+    console.log(`🕐 [LAYOVER CALC] ${arrivalSegment.arrival?.airportCode || arrivalSegment.Arrival?.AirportCode} ${arrivalTime} → ${departureSegment.departure?.airportCode || departureSegment.Departure?.AirportCode} ${departureTime} = ${layoverHours.toFixed(1)}h`);
 
     return layoverHours;
   } catch (error) {
