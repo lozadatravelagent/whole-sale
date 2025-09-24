@@ -28,14 +28,20 @@ interface FlightSelectorProps {
 
 // Función para obtener información de equipaje del primer segmento de un leg
 const getBaggageInfoFromLeg = (leg: any) => {
+  console.log('🧳 getBaggageInfoFromLeg called with leg:', leg);
+
   // Buscar en la estructura legs -> options -> segments
   if (leg?.options?.[0]?.segments?.[0]) {
     const segment = leg.options[0].segments[0];
-    return {
+    const result = {
       baggage: segment.baggage,
       carryOnBagInfo: segment.carryOnBagInfo
     };
+    console.log('🧳 Found baggage info in segment:', result);
+    return result;
   }
+
+  console.log('🧳 No baggage info found, returning undefined');
   return { baggage: undefined, carryOnBagInfo: undefined };
 };
 
