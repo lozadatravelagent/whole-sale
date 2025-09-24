@@ -40,11 +40,20 @@ export const formatFlightResponse = (flights: FlightData[]) => {
     response += `⏱️ **Duración:** ${flight.duration?.formatted || 'N/A'}\n`;
     response += `🛑 **Tipo:** ${flight.stops?.direct ? 'Vuelo directo' : `Con ${flight.stops?.count || 0} conexión(es)`}\n`;
 
-    // Información de equipaje
+    // Información de equipaje mejorada
     const baggageDetails = flight.baggage?.details ? translateBaggage(flight.baggage.details) : 'N/A';
-    response += `🧳 **Equipaje:** ${flight.baggage?.included ? 'Incluido' : 'No incluido'} - ${baggageDetails}\n`;
-    if (flight.baggage?.carryOnQuantity) {
-      response += `   • Equipaje de mano: ${flight.baggage.carryOnQuantity} pieza(s)\n`;
+    response += `🧳 **Equipaje despachado:** ${baggageDetails}\n`;
+
+    // Información de carry-on
+    const carryOnQuantity = parseInt(flight.baggage?.carryOnQuantity || '0');
+    if (carryOnQuantity > 0) {
+      response += `🎒 **Equipaje de mano:** ✅ ${carryOnQuantity} pieza(s) incluida(s)`;
+      if (flight.baggage?.carryOnWeight) {
+        response += ` (${flight.baggage.carryOnWeight})`;
+      }
+      response += '\n';
+    } else {
+      response += `🎒 **Equipaje de mano:** ❌ No incluido\n`;
     }
 
     // Clase de cabina

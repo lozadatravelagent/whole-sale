@@ -173,5 +173,19 @@ export const translateFlightInfo = (text: string): string => {
 
 // Función para traducir equipaje
 export const translateBaggage = (baggageType: string): string => {
+    // Handle API response formats first
+    if (baggageType.includes('PC') || baggageType.includes('KG')) {
+        const match = baggageType.match(/(\d+)PC|(\d+)KG/);
+        if (match) {
+            const quantity = parseInt(match[1] || match[2]);
+            if (quantity > 0) {
+                return `✅ ${quantity}${baggageType.includes('PC') ? ' pieza(s)' : 'kg'} incluido(s)`;
+            } else {
+                return '❌ No incluido';
+            }
+        }
+    }
+
+    // Handle standard baggage types
     return translations.baggage[baggageType as keyof typeof translations.baggage] || baggageType;
 };
