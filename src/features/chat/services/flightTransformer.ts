@@ -38,19 +38,11 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
 
   // TVC API returns fares in Fares array, not Recommendations
   const fares = tvcData?.Fares || [];
-  console.log(`📊 Processing ${fares.length} fares from TVC API`);
 
   // First transform all flights
   const allTransformedFlights = fares.map((fare: any, index: number) => {
     // TVC Fare structure: Fares -> Legs -> Options -> Segments
-    console.log(`🔍 Processing fare ${index + 1}:`, {
-      fareId: fare.FareID,
-      totalAmount: fare.TotalAmount,
-      netAmount: fare.ExtendedFareInfo?.NetTotalAmount,
-      legsCount: fare.Legs?.length || 0,
-      validatingCarrier: fare.ValidatingCarrier,
-      lastTicketingDate: fare.LastTicketingDate
-    });
+
 
     const legs = fare.Legs || [];
     const firstLeg = legs[0] || {};
@@ -59,19 +51,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     const firstSegment = firstOption.Segments?.[0] || {};
     const lastSegment = firstOption.Segments?.[firstOption.Segments?.length - 1] || firstSegment;
 
-    console.log(`📊 Fare ${index + 1} structure:`, {
-      legs: legs.length,
-      firstLegOptions: firstLeg.Options?.length || 0,
-      firstOptionSegments: firstOption.Segments?.length || 0,
-      totalDuration: firstOption.OptionDuration,
-      brandName: firstSegment.BrandName,
-      cabinClass: firstSegment.CabinClass,
-      segmentDetails: (firstOption.Segments || []).map((seg: any) => ({
-        flight: `${seg.Airline}${seg.FlightNumber}`,
-        route: `${seg.Departure?.AirportCode} → ${seg.Arrival?.AirportCode}`,
-        technicalStops: seg.Stops?.length || 0
-      }))
-    });
+
 
     // For return date, check if there's a second leg
     let returnDate = null;
@@ -111,16 +91,7 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     // Total stops = technical stops + connections
     const totalStops = totalTechnicalStops + totalConnections;
 
-    console.log(`🛑 Stops analysis for Fare ${index + 1}:`, {
-      technicalStops: totalTechnicalStops,
-      connections: totalConnections,
-      totalStops: totalStops,
-      isDirect: isDirectFlight,
-      explanation: isDirectFlight ? 'Vuelo directo' :
-        totalConnections > 0 ? `${totalConnections} conexión(es)` +
-          (totalTechnicalStops > 0 ? ` + ${totalTechnicalStops} escala(s) técnica(s)` : '') :
-          `${totalTechnicalStops} escala(s) técnica(s)`
-    });
+
 
     // Analyze baggage info across ALL segments to handle mixed baggage allowances
     const baggageAnalysis = legs.map((leg, legIndex) => {
@@ -154,23 +125,6 @@ export const transformStarlingResults = (tvcData: any, parsedRequest?: ParsedTra
     const carryOnWeight = firstSegment.CarryOnBagInfo?.Weight || null;
     const carryOnDimensions = firstSegment.CarryOnBagInfo?.Dimensions || null;
 
-    console.log(`🎒 Baggage analysis for Fare ${index + 1}:`, {
-      baggageAnalysis, // Show all legs
-      overallBaggage: {
-        baggageInfo,
-        baggageQuantity,
-        hasFreeBaggage,
-        carryOnQuantity,
-        hasCarryOn,
-        carryOnWeight,
-        carryOnDimensions
-      },
-      explanation: hasFreeBaggage ? `${baggageQuantity} checked bags` : 'No checked bags',
-      carryOnExplanation: hasCarryOn ? `${carryOnQuantity} carry-on bag(s)${carryOnWeight ? ` (${carryOnWeight})` : ''}` : 'No carry-on included',
-      legDetails: baggageAnalysis.map(leg =>
-        `Leg ${leg.legNumber}: ${leg.baggageQuantity}PC checked, ${leg.carryOnQuantity} carry-on${leg.carryOnWeight ? ` (${leg.carryOnWeight})` : ''}`
-      )
-    });
 
     return {
       id: fare.FareID || `tvc-fare-${index}`,
