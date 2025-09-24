@@ -30,14 +30,37 @@ interface FlightSelectorProps {
 const getBaggageInfoFromLeg = (leg: any) => {
   console.log('🧳 getBaggageInfoFromLeg called with leg:', leg);
 
-  // Buscar en la estructura legs -> options -> segments
+  // Buscar en la estructura con mayúsculas: Legs -> Options -> Segments
+  if (leg?.Options?.[0]?.Segments?.[0]) {
+    const segment = leg.Options[0].Segments[0];
+
+    // Convertir CarryOnBagInfo si existe y no es null
+    let carryOnBagInfo = null;
+    if (segment.CarryOnBagInfo) {
+      carryOnBagInfo = {
+        quantity: segment.CarryOnBagInfo.Quantity || segment.CarryOnBagInfo.quantity,
+        weight: segment.CarryOnBagInfo.Weight || segment.CarryOnBagInfo.weight,
+        dimensions: segment.CarryOnBagInfo.Dimensions || segment.CarryOnBagInfo.dimensions
+      };
+    }
+
+    const result = {
+      baggage: segment.Baggage,
+      carryOnBagInfo: carryOnBagInfo
+    };
+    console.log('🧳 Found baggage info in segment (uppercase):', result);
+    console.log('🧳 Original CarryOnBagInfo:', segment.CarryOnBagInfo);
+    return result;
+  }
+
+  // Fallback para estructura con minúsculas: legs -> options -> segments
   if (leg?.options?.[0]?.segments?.[0]) {
     const segment = leg.options[0].segments[0];
     const result = {
       baggage: segment.baggage,
       carryOnBagInfo: segment.carryOnBagInfo
     };
-    console.log('🧳 Found baggage info in segment:', result);
+    console.log('🧳 Found baggage info in segment (lowercase):', result);
     return result;
   }
 
