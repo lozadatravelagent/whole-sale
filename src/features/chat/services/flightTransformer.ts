@@ -595,7 +595,7 @@ export const generateFlightItinerary = (flight: FlightData): string => {
         const hasTechnicalStops = segment.stops && segment.stops.length > 0;
 
         if (hasTechnicalStops) {
-          itinerary += `   🔄 **Vuelo con ${segment.stops.length} Conexión(es) Técnica(s):**\n\n`;
+          itinerary += `   🔄 **Vuelo con ${segment.stops.length} Conexión(es):**\n\n`;
         } else {
           itinerary += `   ✈️ **Vuelo Directo:** ${segment.airline}${segment.flightNumber}\n`;
         }
@@ -609,7 +609,7 @@ export const generateFlightItinerary = (flight: FlightData): string => {
         if (hasTechnicalStops) {
           segment.stops.forEach((stop: any, stopIndex: number) => {
             const stopCity = getCityNameFromCode(stop.airportCode);
-            itinerary += `\n   🔄 **Conexión Técnica ${stopIndex + 1} en ${stopCity} (${stop.airportCode}):**\n`;
+            itinerary += `\n   🔄 **Conexión ${stopIndex + 1} en ${stopCity} (${stop.airportCode}):**\n`;
             itinerary += `   ⏰ Tiempo de escala: ${stop.duration || 'N/A'}\n`;
             itinerary += `   📅 Fecha: ${stop.date || 'N/A'}\n`;
             itinerary += `   🚶 Reabastecimiento de combustible\n\n`;
