@@ -177,7 +177,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     }, 0);
 
     // Use the improved analysis results
-    const isDirectFlight = flightAnalysis.classification.isCompleteDirect;
+    const isDirectFlight = flightAnalysis.classification.isCompleteDirect && totalTechnicalStops === 0;
     const totalConnections = flightAnalysis.classification.minTotalConnections;
     const totalStops = totalTechnicalStops + totalConnections;
 
@@ -262,7 +262,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       stops: {
         count: totalStops,
         direct: isDirectFlight,
-        connections: totalConnections,
+        connections: totalConnections + totalTechnicalStops, // Incluir escalas técnicas como conexiones
         technical: totalTechnicalStops
       },
       baggage: {
@@ -421,9 +421,9 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
   if (parsedRequest?.flights?.stops === 'direct') {
     console.log('🚦 [TRANSFORMER] Filtering to NON-STOP flights (direct)');
     filteredFlights = allTransformedFlights.filter(flight => {
-      const isDirect = flight.stops.direct; // Use the improved direct flag
+      const isDirect = flight.stops.direct; // Use the improved direct flag (now includes technical stops)
       if (!isDirect) {
-        console.log(`❌ Filtering out flight ${flight.id}: ${flight.stops.connections} connections (not direct)`);
+        console.log(`❌ Filtering out flight ${flight.id}: ${flight.stops.connections} connections (${flight.stops.technical} technical) (not direct)`);
       }
       return isDirect;
     });
@@ -438,10 +438,10 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     console.log(`🚦 [TRANSFORMER] Filtering to exactly ${desiredConnections} total connection(s) in entire journey`);
 
     filteredFlights = allTransformedFlights.filter(flight => {
-      const totalConnections = flight.stops.connections;
+      const totalConnections = flight.stops.connections; // Ahora incluye escalas técnicas
 
       if (totalConnections !== desiredConnections) {
-        console.log(`❌ Filtering out flight ${flight.id}: ${totalConnections} connections (want ${desiredConnections})`);
+        console.log(`❌ Filtering out flight ${flight.id}: ${totalConnections} connections (${flight.stops.technical} technical) (want ${desiredConnections})`);
         return false;
       }
 
@@ -590,13 +590,31 @@ export const generateFlightItinerary = (flight: FlightData): string => {
       }
 
       if (segments.length === 1) {
-        // Vuelo directo
+        // Vuelo directo o con escalas técnicas
         const segment = segments[0];
-        itinerary += `   ✈️ **Vuelo Directo:** ${segment.airline}${segment.flightNumber}\n`;
+        const hasTechnicalStops = segment.stops && segment.stops.length > 0;
+
+        if (hasTechnicalStops) {
+          itinerary += `   🔄 **Vuelo con ${segment.stops.length} Conexión(es) Técnica(s):**\n\n`;
+        } else {
+          itinerary += `   ✈️ **Vuelo Directo:** ${segment.airline}${segment.flightNumber}\n`;
+        }
+
         itinerary += `   📍 ${segment.departure.airportCode} ${segment.departure.time} → ${segment.arrival.airportCode} ${segment.arrival.time}\n`;
         itinerary += `   ⏱️ Duración: ${formatDuration(segment.duration)}\n`;
         itinerary += `   💺 Clase: ${translateFlightInfo(segment.cabinClass)} (${translateFlightInfo(segment.brandName)})\n`;
         itinerary += `   ✈️ Equipo: ${segment.equipment}\n`;
+
+        // Mostrar escalas técnicas si las hay
+        if (hasTechnicalStops) {
+          segment.stops.forEach((stop: any, stopIndex: number) => {
+            const stopCity = getCityNameFromCode(stop.airportCode);
+            itinerary += `\n   🔄 **Conexión Técnica ${stopIndex + 1} en ${stopCity} (${stop.airportCode}):**\n`;
+            itinerary += `   ⏰ Tiempo de escala: ${stop.duration || 'N/A'}\n`;
+            itinerary += `   📅 Fecha: ${stop.date || 'N/A'}\n`;
+            itinerary += `   🚶 Reabastecimiento de combustible\n\n`;
+          });
+        }
       } else {
         // Vuelo con conexiones
         itinerary += `   🔄 **Vuelo con ${segments.length - 1} Conexión(es):**\n\n`;
