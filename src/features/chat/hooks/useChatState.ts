@@ -152,7 +152,6 @@ const useChatState = () => {
   // Reset loading state when conversation changes
   useEffect(() => {
     if (chatState.selectedConversation) {
-      console.log('🔄 [CHAT] Conversation selected, resetting loading state');
       setIsLoading(false);
       setIsTyping(false);
     }

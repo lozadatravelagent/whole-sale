@@ -64,8 +64,8 @@ export function useConversations() {
 
       // Only retry for network errors, not for authentication or other errors
       const isNetworkError = error.message?.includes('Failed to fetch') ||
-                            error.message?.includes('ERR_CONNECTION_CLOSED') ||
-                            error.message?.includes('ERR_NETWORK');
+        error.message?.includes('ERR_CONNECTION_CLOSED') ||
+        error.message?.includes('ERR_NETWORK');
 
       if (isNetworkError && retryCount < maxRetries) {
         console.log(`⏳ Retrying loadConversations (${retryCount + 1}/${maxRetries}) in 2 seconds...`);
@@ -145,7 +145,7 @@ export function useConversations() {
 
       if (error) throw error;
 
-      setConversations(prev => 
+      setConversations(prev =>
         prev.map(conv => conv.id === id ? data : conv)
       );
     } catch (error) {
@@ -158,7 +158,7 @@ export function useConversations() {
     try {
       const { data, error } = await supabase
         .from('conversations')
-        .update({ 
+        .update({
           external_key: title,
           last_message_at: new Date().toISOString()
         })
@@ -168,7 +168,7 @@ export function useConversations() {
 
       if (error) throw error;
 
-      setConversations(prev => 
+      setConversations(prev =>
         prev.map(conv => conv.id === id ? data : conv)
       );
     } catch (error) {
@@ -219,7 +219,7 @@ export function useMessages(conversationId: string | null) {
     conversation_id: string;
     role: 'user' | 'assistant' | 'system';
     content: { text?: string; cards?: any[]; pdfUrl?: string; metadata?: Record<string, any>; };
-    meta?: { status?: string; [key: string]: any; };
+    meta?: { status?: string;[key: string]: any; };
   }) => {
     console.log('💾 [SUPABASE] Starting saveMessage');
     console.log('📋 Message to save:', message);
@@ -270,7 +270,7 @@ export function useMessages(conversationId: string | null) {
     try {
       const { data, error } = await supabase
         .from('messages')
-        .update({ 
+        .update({
           meta: { status }
         })
         .eq('id', messageId)
@@ -300,7 +300,6 @@ export function useMessages(conversationId: string | null) {
       return;
     }
 
-    console.log(`🔄 [POLLING] Setting up message polling for conversation: ${conversationId}`);
 
     const channel = supabase
       .channel(`messages-${conversationId}`)
@@ -347,9 +346,9 @@ export function useMessages(conversationId: string | null) {
         (payload) => {
           console.log('🟡 Message updated via real-time:', payload.new);
           const updatedMessage = payload.new as MessageRow;
-          
-          setMessages(prev => 
-            prev.map(msg => 
+
+          setMessages(prev =>
+            prev.map(msg =>
               msg.id === updatedMessage.id ? updatedMessage : msg
             )
           );
@@ -383,7 +382,6 @@ export function useMessages(conversationId: string | null) {
 
   // Add a function to force refresh messages
   const refreshMessages = useCallback(() => {
-    console.log('🔄 Force refreshing messages');
     loadMessages();
   }, [loadMessages]);
 

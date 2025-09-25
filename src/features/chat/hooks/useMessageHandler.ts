@@ -285,7 +285,6 @@ const useMessageHandler = (
       console.log('✅ [MESSAGE FLOW] Step 5: Message status updated to "sent"');
 
       // Force refresh messages to ensure UI updates (immediate + delayed)
-      console.log('🔄 [MESSAGE FLOW] Step 5.5: Force refreshing messages to ensure UI updates');
       refreshMessages(); // Immediate refresh
       setTimeout(() => refreshMessages(), 500); // Quick fallback
 
@@ -779,7 +778,6 @@ const useMessageHandler = (
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
 
       // Force refresh messages after assistant response (immediate + delayed)
-      console.log('🔄 [MESSAGE FLOW] Step 14.5: Force refreshing messages after assistant response');
       refreshMessages(); // Immediate refresh
       setTimeout(() => refreshMessages(), 500); // Quick fallback
       setTimeout(() => refreshMessages(), 1500); // Extended fallback

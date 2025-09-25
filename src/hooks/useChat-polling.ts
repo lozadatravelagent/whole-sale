@@ -64,8 +64,8 @@ export function useConversations() {
 
       // Only retry for network errors, not for authentication or other errors
       const isNetworkError = error.message?.includes('Failed to fetch') ||
-                            error.message?.includes('ERR_CONNECTION_CLOSED') ||
-                            error.message?.includes('ERR_NETWORK');
+        error.message?.includes('ERR_CONNECTION_CLOSED') ||
+        error.message?.includes('ERR_NETWORK');
 
       if (isNetworkError && retryCount < maxRetries) {
         console.log(`⏳ Retrying loadConversations (${retryCount + 1}/${maxRetries}) in 2 seconds...`);
@@ -220,7 +220,7 @@ export function useMessages(conversationId: string | null) {
     conversation_id: string;
     role: 'user' | 'assistant' | 'system';
     content: { text?: string; cards?: any[]; pdfUrl?: string; metadata?: Record<string, any>; };
-    meta?: { status?: string; [key: string]: any; };
+    meta?: { status?: string;[key: string]: any; };
   }) => {
     console.log('💾 [SUPABASE] Starting saveMessage');
     console.log('📋 Message to save:', message);
@@ -301,23 +301,18 @@ export function useMessages(conversationId: string | null) {
       return;
     }
 
-    console.log(`🔄 [POLLING] Setting up message polling for conversation: ${conversationId}`);
-
     // Poll for new messages every 3 seconds when in active conversation
     const pollInterval = setInterval(() => {
-      console.log(`🔄 [POLLING] Checking for new messages in conversation: ${conversationId}`);
       loadMessages();
     }, 3000);
 
     return () => {
-      console.log(`🔄 [POLLING] Cleaning up message polling for conversation: ${conversationId}`);
       clearInterval(pollInterval);
     };
   }, [conversationId, loadMessages]);
 
   // Add a function to force refresh messages
   const refreshMessages = useCallback(() => {
-    console.log('🔄 Force refreshing messages');
     loadMessages();
   }, [loadMessages]);
 

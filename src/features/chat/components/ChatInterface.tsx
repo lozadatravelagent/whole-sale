@@ -56,7 +56,6 @@ const ChatInterface = React.memo(({
   // Refresh messages when conversation changes
   useEffect(() => {
     if (selectedConversation) {
-      console.log('🔄 [CHAT INTERFACE] Conversation changed, refreshing messages');
       setTimeout(() => refreshMessages(), 500);
     }
   }, [selectedConversation, refreshMessages]);
@@ -66,7 +65,6 @@ const ChatInterface = React.memo(({
     if (!selectedConversation) return;
 
     const pollInterval = setInterval(() => {
-      console.log('🔄 [POLLING] Periodic message refresh');
       refreshMessages();
     }, 10000); // Poll every 10 seconds as fallback
 
