@@ -44,34 +44,22 @@ interface CombinedTravelSelectorProps {
 
 // Función para obtener información de equipaje del primer segmento de un leg
 const getBaggageInfoFromLeg = (leg: any) => {
-  console.log('🧳 getBaggageInfoFromLeg called with leg:', leg);
-
   // Buscar en la estructura legs -> options -> segments
   if (leg?.options?.[0]?.segments?.[0]) {
     const segment = leg.options[0].segments[0];
-    console.log('🧳 Found segment with baggage info:', {
-      baggage: segment.baggage,
-      carryOnBagInfo: segment.carryOnBagInfo
-    });
     return {
       baggage: segment.baggage,
       carryOnBagInfo: segment.carryOnBagInfo
     };
   }
-
-  console.log('🧳 No baggage info found in leg structure');
   return { baggage: undefined, carryOnBagInfo: undefined };
 };
 
 // Función para obtener texto corto del equipaje para mostrar al lado de IDA/REGRESO
 const getBaggageTextFromLeg = (leg: any): string => {
-  console.log('🧳 getBaggageTextFromLeg called with leg:', leg);
-
   const baggageInfo = getBaggageInfoFromLeg(leg);
-  console.log('🧳 baggageInfo from getBaggageTextFromLeg:', baggageInfo);
 
   if (!baggageInfo.baggage && !baggageInfo.carryOnBagInfo) {
-    console.log('🧳 No baggage info found, returning empty string');
     return '';
   }
 
@@ -91,8 +79,6 @@ const getBaggageTextFromLeg = (leg: any): string => {
     hasCarryOn = quantity > 0;
   }
 
-  console.log('🧳 Parsed baggage info:', { checkedPieces, hasCarryOn });
-
   // Generar texto corto
   const parts = [];
 
@@ -105,7 +91,6 @@ const getBaggageTextFromLeg = (leg: any): string => {
   }
 
   const result = parts.length > 0 ? `(${parts.join(' + ')})` : '';
-  console.log('🧳 Final baggage text result:', result);
 
   return result;
 };
@@ -177,7 +162,6 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
               <span className="text-sm text-white font-bold">
                 {(() => {
                   const baggageText = getBaggageTextFromLeg(leg);
-                  console.log('🧳 Rendering baggage text:', baggageText);
                   return baggageText || 'SIN EQUIPAJE';
                 })()}
               </span>

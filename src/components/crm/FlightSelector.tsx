@@ -28,8 +28,6 @@ interface FlightSelectorProps {
 
 // Función para obtener información de equipaje del primer segmento de un leg
 const getBaggageInfoFromLeg = (leg: any) => {
-  console.log('🧳 getBaggageInfoFromLeg called with leg:', leg);
-
   // Buscar en la estructura con mayúsculas: Legs -> Options -> Segments
   if (leg?.Options?.[0]?.Segments?.[0]) {
     const segment = leg.Options[0].Segments[0];
@@ -48,8 +46,6 @@ const getBaggageInfoFromLeg = (leg: any) => {
       baggage: segment.Baggage,
       carryOnBagInfo: carryOnBagInfo
     };
-    console.log('🧳 Found baggage info in segment (uppercase):', result);
-    console.log('🧳 Original CarryOnBagInfo:', segment.CarryOnBagInfo);
     return result;
   }
 
@@ -60,11 +56,8 @@ const getBaggageInfoFromLeg = (leg: any) => {
       baggage: segment.baggage,
       carryOnBagInfo: segment.carryOnBagInfo
     };
-    console.log('🧳 Found baggage info in segment (lowercase):', result);
     return result;
   }
-
-  console.log('🧳 No baggage info found, returning undefined');
   return { baggage: undefined, carryOnBagInfo: undefined };
 };
 
@@ -76,8 +69,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
 
-  console.log('🎯 FlightSelector rendered with flights:', flights.length);
-  console.log('🎯 Flights data:', flights);
+
 
   const handleFlightToggle = (flightId: string) => {
     setSelectedFlights(prev => {
@@ -194,8 +186,8 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
           <Card
             key={flight.id}
             className={`transition-all cursor-pointer ${flight.id && selectedFlights.includes(flight.id)
-                ? 'ring-2 ring-primary bg-primary/5'
-                : 'hover:bg-muted/50'
+              ? 'ring-2 ring-primary bg-primary/5'
+              : 'hover:bg-muted/50'
               }`}
             onClick={() => flight.id && handleFlightToggle(flight.id)}
           >

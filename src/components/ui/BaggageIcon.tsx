@@ -35,9 +35,7 @@ const BaggageIcon: React.FC<BaggageIconProps> = ({
     size = 'md',
     showTooltip = true
 }) => {
-    console.log('🎒 BaggageIcon props:', { baggage, carryOnBagInfo, size, showTooltip });
     const baggageInfo = getBaggageType(baggage, carryOnBagInfo);
-    console.log('🎒 BaggageIcon resolved type:', baggageInfo);
 
     const renderIcon = () => {
         const iconClassName = cn(iconSizes[size], className);
