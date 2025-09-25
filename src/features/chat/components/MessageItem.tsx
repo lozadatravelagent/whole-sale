@@ -88,11 +88,56 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
           if (firstOption?.segments) {
             for (const segment of firstOption.segments) {
               if (segment.stops && segment.stops.length > 0) {
-                const technicalStops = segment.stops.map((stop) => ({
-                  destination_city: getCityNameFromCode(stop.airportCode || ''),
-                  destination_code: stop.airportCode || '',
-                  waiting_time: stop.duration || 'N/A'
-                }));
+                const technicalStops = segment.stops.map((stop, stopIndex) => {
+                  // For technical stops, calculate layover time using the stop's arrival and departure times
+                  let waitingTime = 'N/A';
+
+                  // Try to calculate the layover time
+                  // The stop contains when we arrive at the stop airport
+                  // For departure time, we need to look at the stop's Time field (which is departure from the stop)
+                  const stopArrivalTime = stop.date || '';  // When we arrive at the stop
+                  const stopDepartureTime = stop.time || ''; // When we depart from the stop
+
+                  if (stopArrivalTime && stopDepartureTime) {
+                    try {
+                      // Parse the stop arrival (format: "2025-11-12T22:35")
+                      const arrivalDateTime = new Date(stopArrivalTime);
+
+                      // Parse the departure time - need to construct full datetime
+                      // Extract date from arrival and combine with departure time
+                      const arrivalDate = stopArrivalTime.split('T')[0]; // "2025-11-12"
+                      const departureDateTime = new Date(`${arrivalDate}T${stopDepartureTime}:00`);
+
+                      // If departure is next day (common for overnight layovers)
+                      if (departureDateTime.getTime() < arrivalDateTime.getTime()) {
+                        departureDateTime.setDate(departureDateTime.getDate() + 1);
+                      }
+
+                      // Calculate layover in hours
+                      const layoverMs = departureDateTime.getTime() - arrivalDateTime.getTime();
+                      const layoverHours = layoverMs / (1000 * 60 * 60);
+
+                      if (layoverHours < 1) {
+                        waitingTime = `${Math.round(layoverHours * 60)}m`;
+                      } else if (layoverHours < 24) {
+                        const hours = Math.floor(layoverHours);
+                        const minutes = Math.round((layoverHours - hours) * 60);
+                        waitingTime = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+                      } else {
+                        waitingTime = `${Math.round(layoverHours)}h`;
+                      }
+                    } catch (error) {
+                      console.error('Error calculating technical stop layover time:', error);
+                      waitingTime = 'N/A';
+                    }
+                  }
+
+                  return {
+                    destination_city: getCityNameFromCode(stop.airportCode || ''),
+                    destination_code: stop.airportCode || '',
+                    waiting_time: waitingTime
+                  };
+                });
                 layovers.push(...technicalStops);
               }
             }
