@@ -68,17 +68,35 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
 
           const departureCode = firstSegment?.departure?.airportCode || '';
           const arrivalCode = lastSegment?.arrival?.airportCode || '';
-          // Build layovers from intermediate segments (EZE-GRU-MAD => layover at GRU)
-          const layovers = (firstOption?.segments && firstOption.segments.length > 1)
-            ? firstOption.segments.slice(0, -1).map((seg, idx) => {
+          // Build layovers from intermediate segments AND technical stops within segments
+          const layovers = [];
+
+          // Add layovers from multiple segments (EZE-GRU-MAD => layover at GRU)
+          if (firstOption?.segments && firstOption.segments.length > 1) {
+            const segmentLayovers = firstOption.segments.slice(0, -1).map((seg, idx) => {
               const next = firstOption.segments[idx + 1];
               return {
                 destination_city: getCityNameFromCode(seg.arrival?.airportCode || ''),
                 destination_code: seg.arrival?.airportCode || '',
                 waiting_time: calcWait(seg.arrival?.time, next?.departure?.time)
               };
-            })
-            : [];
+            });
+            layovers.push(...segmentLayovers);
+          }
+
+          // Add technical stops from within segments (single segment with stops)
+          if (firstOption?.segments) {
+            for (const segment of firstOption.segments) {
+              if (segment.stops && segment.stops.length > 0) {
+                const technicalStops = segment.stops.map((stop) => ({
+                  destination_city: getCityNameFromCode(stop.airportCode || ''),
+                  destination_code: stop.airportCode || '',
+                  waiting_time: stop.duration || 'N/A'
+                }));
+                layovers.push(...technicalStops);
+              }
+            }
+          }
 
           // Determine if arrival date is next day vs first segment departure date
           const isNextDay = (firstSegment?.departure?.date && lastSegment?.arrival?.date)
