@@ -59,7 +59,7 @@ function isDirectFlight(fare: any): boolean {
 function hasExactConnectionsCount(fare: any, targetConnections: number): boolean {
   const analysis = analyzeFlightType(fare);
   return analysis.classification.minTotalConnections <= targetConnections &&
-         analysis.classification.maxTotalConnections >= targetConnections;
+    analysis.classification.maxTotalConnections >= targetConnections;
 }
 
 // Helper function to calculate layover hours between two flight segments
@@ -480,11 +480,20 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
   // Filter by luggage preference BEFORE limiting by price
   if (parsedRequest?.flights?.luggage) {
     const luggagePreference = parsedRequest.flights.luggage;
+    console.log(`🧳 [LUGGAGE FILTER] Starting luggage filtering with ${allTransformedFlights.length} total flights`);
     console.log(`🧳 [TRANSFORMER] Filtering by luggage preference: ${luggagePreference}`);
 
     filteredFlights = filteredFlights.filter(flight => {
       const hasCheckedBaggage = flight.baggage?.included || false;
       const hasCarryOn = parseInt(flight.baggage?.carryOnQuantity || '0') > 0;
+      const carryOnQuantity = flight.baggage?.carryOnQuantity || '0';
+      const baggageDetails = flight.baggage?.details || 'N/A';
+
+      // Log detailed baggage info for each flight
+      console.log(`🔍 [LUGGAGE COMPARISON] Flight ${flight.id}:`);
+      console.log(`   📦 API Data - Checked: ${hasCheckedBaggage}, Carry-on: ${hasCarryOn} (qty: ${carryOnQuantity})`);
+      console.log(`   📋 API Data - Details: ${baggageDetails}`);
+      console.log(`   🎯 User wants: ${luggagePreference}`);
 
       let matchesPreference = false;
 
@@ -492,6 +501,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
         case 'checked':
           // User wants checked baggage
           matchesPreference = hasCheckedBaggage;
+          console.log(`   ✅/❌ Checked baggage match: ${matchesPreference} (API: ${hasCheckedBaggage} vs User: checked)`);
           if (!matchesPreference) {
             console.log(`❌ Filtering out flight ${flight.id}: No checked baggage (user wants checked)`);
           }
@@ -500,6 +510,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
         case 'carry_on':
           // User wants carry-on (accept flights with carry-on, regardless of checked baggage)
           matchesPreference = hasCarryOn;
+          console.log(`   ✅/❌ Carry-on match: ${matchesPreference} (API: ${hasCarryOn} vs User: carry_on)`);
           if (!matchesPreference) {
             console.log(`❌ Filtering out flight ${flight.id}: No carry-on available (user wants carry-on)`);
           }
@@ -508,6 +519,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
         case 'both':
           // User wants both checked and carry-on
           matchesPreference = hasCheckedBaggage && hasCarryOn;
+          console.log(`   ✅/❌ Both match: ${matchesPreference} (API: checked=${hasCheckedBaggage}, carry-on=${hasCarryOn} vs User: both)`);
           if (!matchesPreference) {
             console.log(`❌ Filtering out flight ${flight.id}: Missing checked baggage or carry-on (user wants both)`);
           }
@@ -516,6 +528,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
         case 'none':
           // User wants no baggage at all
           matchesPreference = !hasCheckedBaggage && !hasCarryOn;
+          console.log(`   ✅/❌ None match: ${matchesPreference} (API: checked=${hasCheckedBaggage}, carry-on=${hasCarryOn} vs User: none)`);
           if (!matchesPreference) {
             console.log(`❌ Filtering out flight ${flight.id}: Has baggage (user wants none)`);
           }
@@ -524,13 +537,15 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
         default:
           // 'any' or unknown preference - show all flights
           matchesPreference = true;
+          console.log(`   ✅ Any preference: showing all flights`);
           break;
       }
 
+      console.log(`   🎯 Final decision: ${matchesPreference ? 'KEEP' : 'FILTER OUT'}`);
       return matchesPreference;
     });
 
-    console.log(`🧳 Luggage-filtered flights found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
+    console.log(`🧳 [LUGGAGE FILTER] Filtering complete: ${filteredFlights.length} flights remain out of ${allTransformedFlights.length} total flights`);
   }
 
 
