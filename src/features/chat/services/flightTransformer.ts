@@ -430,11 +430,29 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     console.log(`🎯 Direct flights found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
   }
 
+  // Debug: Check if we're filtering by with_stops
+  console.log('🔍 [DEBUG] Parsed request stops:', parsedRequest?.flights?.stops);
+  console.log('🔍 [DEBUG] Should filter with_stops?', parsedRequest?.flights?.stops === 'with_stops');
+
   // Filter by 'with_stops' preference - any flight with 1 or more connections (excludes direct)
   if (parsedRequest?.flights?.stops === 'with_stops') {
     console.log('🚦 [TRANSFORMER] Filtering to flights WITH stops (excluding direct flights)');
+    console.log('🔍 [DEBUG] All flights before filtering:', allTransformedFlights.length);
+
+    // Debug: Show stops info for first few flights
+    allTransformedFlights.slice(0, 3).forEach((flight, index) => {
+      console.log(`🔍 [DEBUG] Flight ${index + 1} stops:`, {
+        id: flight.id,
+        direct: flight.stops.direct,
+        connections: flight.stops.connections,
+        technical: flight.stops.technical,
+        count: flight.stops.count
+      });
+    });
+
     filteredFlights = allTransformedFlights.filter(flight => {
       const hasConnections = flight.stops.connections > 0; // Any number of connections > 0
+      console.log(`🔍 [DEBUG] Flight ${flight.id}: connections=${flight.stops.connections}, direct=${flight.stops.direct}, hasConnections=${hasConnections}`);
       if (!hasConnections) {
         console.log(`❌ Filtering out flight ${flight.id}: direct flight (user wants flights with stops)`);
       }
