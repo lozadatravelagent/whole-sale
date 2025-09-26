@@ -579,11 +579,12 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
           break;
 
         case 'carry_on':
-          // User wants carry-on (accept flights with carry-on, regardless of checked baggage)
-          matchesPreference = hasCarryOn;
-          console.log(`   ✅/❌ Carry-on match: ${matchesPreference} (API: ${hasCarryOn} vs User: carry_on)`);
+          // User wants carry-on (accept flights with carry-on OR flights without luggage that can be considered carry-on)
+          const noLuggage = !hasCheckedBaggage && !hasCarryOn; // 0PC + no CarryOnBagInfo
+          matchesPreference = hasCarryOn || noLuggage;
+          console.log(`   ✅/❌ Carry-on match: ${matchesPreference} (API: hasCarryOn=${hasCarryOn}, noLuggage=${noLuggage} vs User: carry_on)`);
           if (!matchesPreference) {
-            console.log(`❌ Filtering out flight ${flight.id}: No carry-on available (user wants carry-on)`);
+            console.log(`❌ Filtering out flight ${flight.id}: No carry-on available and has other luggage (user wants carry-on)`);
           }
           break;
 

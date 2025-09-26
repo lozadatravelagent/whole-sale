@@ -56,7 +56,7 @@ const getBaggageInfoFromLeg = (leg: any) => {
 };
 
 // Función para obtener texto corto del equipaje para mostrar al lado de IDA/REGRESO
-const getBaggageTextFromLeg = (leg: any): string => {
+const getBaggageTextFromLeg = (leg: any, airlineCode?: string): string => {
   const baggageInfo = getBaggageInfoFromLeg(leg);
 
   if (!baggageInfo.baggage && !baggageInfo.carryOnBagInfo) {
@@ -90,9 +90,17 @@ const getBaggageTextFromLeg = (leg: any): string => {
     parts.push('1 de mano');
   }
 
-  // Si no hay equipaje despachado ni carry-on, es tarifa light
+  // Si no hay equipaje despachado ni carry-on, decidir según aerolínea
   if (parts.length === 0) {
-    return 'Tarifa Light';
+    // Aerolíneas que muestran "Tarifa Light" cuando no hay equipaje
+    const lightTarifAirlines = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
+
+    if (airlineCode && lightTarifAirlines.includes(airlineCode)) {
+      return 'Tarifa Light';
+    } else {
+      // Para otras aerolíneas, consideramos que incluye carry-on básico
+      return '(1 de mano)';
+    }
   }
 
   const result = `(${parts.join(' + ')})`;
@@ -165,7 +173,7 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
               />
               {/* Mostrar texto del equipaje al lado */}
               <span className="text-sm text-white font-bold">
-                {getBaggageTextFromLeg(leg)}
+                {getBaggageTextFromLeg(leg, flight.airline.code)}
               </span>
             </div>
 
