@@ -474,6 +474,12 @@ export async function parseMessageWithAI(
         }
 
         // Merge quick pre-parse hints if AI missed them (e.g., max layover hours, stops)
+        console.log('🔍 [MERGE DEBUG] AI Result stops:', parsedResult.flights?.stops);
+        console.log('🔍 [MERGE DEBUG] Quick Result stops:', quick.flights?.stops);
+        console.log('🔍 [MERGE DEBUG] Should merge stops?', !parsedResult.flights?.stops);
+        console.log('🔍 [MERGE DEBUG] Full AI result:', parsedResult.flights);
+        console.log('🔍 [MERGE DEBUG] Full Quick result:', quick.flights);
+
         const mergedFlights = {
             ...(parsedResult.flights || {}),
             ...(quick.flights?.stops && !parsedResult.flights?.stops ? { stops: quick.flights.stops } : {}),
@@ -486,6 +492,7 @@ export async function parseMessageWithAI(
             originalMessage: message
         };
 
+        console.log('🔍 [MERGE DEBUG] Final merged stops:', mergedResult.flights?.stops);
         console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
         return mergedResult;
 
