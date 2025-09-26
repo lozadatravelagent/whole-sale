@@ -13,7 +13,7 @@ export interface ParsedTravelRequest {
         luggage?: 'carry_on' | 'checked' | 'both' | 'none'; // con o sin valija/equipaje
         departureTimePreference?: string; // horario de salida preferido
         arrivalTimePreference?: string; // horario de llegada preferido  
-        stops?: 'direct' | 'one_stop' | 'two_stops' | 'any'; // vuelo directo o con escalas
+        stops?: 'direct' | 'one_stop' | 'two_stops' | 'with_stops' | 'any'; // vuelo directo o con escalas
         layoverDuration?: string; // tiempo de escala preferido (ej: "3 hours", "10 hours")
         maxLayoverHours?: number; // duración máxima de escalas en horas
         preferredAirline?: string; // aerolínea preferida
@@ -434,7 +434,11 @@ export async function parseMessageWithAI(
         // Tipo de vuelo
         if (/directo/i.test(normalized)) {
             quick.flights = { ...(quick.flights || ({} as any)), stops: 'direct' as any } as any;
-        } else if (/con\s+escala|con\s+escalas\b|\bescala\b/i.test(normalized)) {
+        } else if (/con\s+escalas\b/i.test(normalized)) {
+            // "con escalas" genérico = cualquier vuelo con escalas (1 o 2+)
+            quick.flights = { ...(quick.flights || ({} as any)), stops: 'with_stops' as any } as any;
+        } else if (/con\s+escala\b|\buna\s+escala\b/i.test(normalized)) {
+            // "con escala" o "una escala" = específicamente 1 escala
             quick.flights = { ...(quick.flights || ({} as any)), stops: 'one_stop' as any } as any;
         }
     } catch (e) {
