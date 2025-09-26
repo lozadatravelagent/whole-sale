@@ -38,7 +38,11 @@ const useChatState = () => {
 
   // Setters for individual properties
   const setSelectedConversation = useCallback((id: string | null) => {
-    updateChatState({ selectedConversation: id });
+    updateChatState({
+      selectedConversation: id,
+      // 🧹 Clear previousParsedRequest when switching conversations to prevent cross-contamination
+      previousParsedRequest: null
+    });
   }, [updateChatState]);
 
   const setMessage = useCallback((message: string) => {

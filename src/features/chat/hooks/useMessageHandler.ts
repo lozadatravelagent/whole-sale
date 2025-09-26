@@ -318,11 +318,16 @@ const useMessageHandler = (
       // 🧹 Clean context for new conversations (first message)
       let contextToUse = null;
       const isFirstMessage = messages.length === 0;
-      const hasNoStoredContext = !contextFromDB && !persistentState && !previousParsedRequest;
+      const hasNoStoredContext = !contextFromDB && !persistentState;
 
-      if (isFirstMessage || hasNoStoredContext) {
-        console.log('🧹 [NEW CONVERSATION] First message or no stored context - starting fresh');
+      if (isFirstMessage) {
+        console.log('🧹 [NEW CONVERSATION] First message detected - cleaning ALL context including React state');
         contextToUse = null; // Start fresh for new conversations
+        // Also clear the React state to prevent cross-conversation contamination
+        setPreviousParsedRequest(null);
+      } else if (hasNoStoredContext) {
+        console.log('🧹 [NEW CONVERSATION] No stored context - starting fresh');
+        contextToUse = null;
       } else {
         contextToUse = contextFromDB || previousParsedRequest || persistentState;
       }
