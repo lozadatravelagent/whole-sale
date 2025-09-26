@@ -90,7 +90,12 @@ const getBaggageTextFromLeg = (leg: any): string => {
     parts.push('1 de mano');
   }
 
-  const result = parts.length > 0 ? `(${parts.join(' + ')})` : '';
+  // Si no hay equipaje despachado ni carry-on, es tarifa light
+  if (parts.length === 0) {
+    return 'Tarifa Light';
+  }
+
+  const result = `(${parts.join(' + ')})`;
 
   return result;
 };
@@ -160,10 +165,7 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
               />
               {/* Mostrar texto del equipaje al lado */}
               <span className="text-sm text-white font-bold">
-                {(() => {
-                  const baggageText = getBaggageTextFromLeg(leg);
-                  return baggageText || 'SIN EQUIPAJE';
-                })()}
+                {getBaggageTextFromLeg(leg)}
               </span>
             </div>
 
