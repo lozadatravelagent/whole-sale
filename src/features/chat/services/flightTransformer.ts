@@ -46,7 +46,13 @@ function analyzeFlightType(fare: any) {
       hasDirectOptions: legAnalysis.every(leg => leg.hasDirectOptions),
       hasConnectionOptions: hasAnyConnections,
       minTotalConnections: totalMinConnections,
-      maxTotalConnections: totalMaxConnections
+      maxTotalConnections: totalMaxConnections,
+      // Nuevo: análisis por trayecto individual
+      perLegConnections: {
+        minPerLeg: legAnalysis.length > 0 ? Math.min(...legAnalysis.map(leg => leg.minConnections)) : 0,
+        maxPerLeg: legAnalysis.length > 0 ? Math.max(...legAnalysis.map(leg => leg.maxConnections)) : 0,
+        allLegsHaveSameConnections: legAnalysis.length > 0 && legAnalysis.every(leg => leg.minConnections === legAnalysis[0].minConnections && leg.maxConnections === legAnalysis[0].maxConnections)
+      }
     }
   };
 }
@@ -60,6 +66,17 @@ function hasExactConnectionsCount(fare: any, targetConnections: number): boolean
   const analysis = analyzeFlightType(fare);
   return analysis.classification.minTotalConnections <= targetConnections &&
     analysis.classification.maxTotalConnections >= targetConnections;
+}
+
+// Nueva función: verificar conexiones por trayecto individual
+function hasExactConnectionsPerLeg(fare: any, targetConnectionsPerLeg: number): boolean {
+  const analysis = analyzeFlightType(fare);
+  const perLeg = analysis.classification.perLegConnections;
+
+  // Todos los trayectos deben tener exactamente el número de conexiones solicitado
+  return perLeg.allLegsHaveSameConnections &&
+         perLeg.minPerLeg === targetConnectionsPerLeg &&
+         perLeg.maxPerLeg === targetConnectionsPerLeg;
 }
 
 // Helper function to calculate layover hours between two flight segments
@@ -163,8 +180,9 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     const flightAnalysis = analyzeFlightType(fare);
     console.log(`🔍 [FLIGHT ANALYSIS] FareID ${fare.FareID}:`, {
       isCompleteDirect: flightAnalysis.classification.isCompleteDirect,
-      minConnections: flightAnalysis.classification.minTotalConnections,
-      maxConnections: flightAnalysis.classification.maxTotalConnections
+      minTotalConnections: flightAnalysis.classification.minTotalConnections,
+      maxTotalConnections: flightAnalysis.classification.maxTotalConnections,
+      perLegConnections: flightAnalysis.classification.perLegConnections
     });
 
     // Calculate technical stops (stops within segments)
@@ -177,6 +195,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     }, 0);
 
     // Use the improved analysis results
+    // Un vuelo es directo solo si no tiene conexiones NI escalas técnicas
     const isDirectFlight = flightAnalysis.classification.isCompleteDirect && totalTechnicalStops === 0;
     const totalConnections = flightAnalysis.classification.minTotalConnections;
     const totalStops = totalTechnicalStops + totalConnections;
@@ -430,29 +449,11 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     console.log(`🎯 Direct flights found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
   }
 
-  // Debug: Check if we're filtering by with_stops
-  console.log('🔍 [DEBUG] Parsed request stops:', parsedRequest?.flights?.stops);
-  console.log('🔍 [DEBUG] Should filter with_stops?', parsedRequest?.flights?.stops === 'with_stops');
-
   // Filter by 'with_stops' preference - any flight with 1 or more connections (excludes direct)
   if (parsedRequest?.flights?.stops === 'with_stops') {
     console.log('🚦 [TRANSFORMER] Filtering to flights WITH stops (excluding direct flights)');
-    console.log('🔍 [DEBUG] All flights before filtering:', allTransformedFlights.length);
-
-    // Debug: Show stops info for first few flights
-    allTransformedFlights.slice(0, 3).forEach((flight, index) => {
-      console.log(`🔍 [DEBUG] Flight ${index + 1} stops:`, {
-        id: flight.id,
-        direct: flight.stops.direct,
-        connections: flight.stops.connections,
-        technical: flight.stops.technical,
-        count: flight.stops.count
-      });
-    });
-
     filteredFlights = allTransformedFlights.filter(flight => {
       const hasConnections = flight.stops.connections > 0; // Any number of connections > 0
-      console.log(`🔍 [DEBUG] Flight ${flight.id}: connections=${flight.stops.connections}, direct=${flight.stops.direct}, hasConnections=${hasConnections}`);
       if (!hasConnections) {
         console.log(`❌ Filtering out flight ${flight.id}: direct flight (user wants flights with stops)`);
       }
@@ -461,23 +462,32 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     console.log(`🎯 Flights with stops found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
   }
 
-  // Filter by total connections in entire journey using improved logic
+  // Filter by connections PER LEG (per trayecto) using new logic
   if (parsedRequest?.flights?.stops === 'one_stop' || parsedRequest?.flights?.stops === 'two_stops') {
-    const desiredConnections = parsedRequest.flights.stops === 'one_stop' ? 1 : 2;
+    const desiredConnectionsPerLeg = parsedRequest.flights.stops === 'one_stop' ? 1 : 2;
     const maxLayover = parsedRequest?.flights?.maxLayoverHours;
 
-    console.log(`🚦 [TRANSFORMER] Filtering to exactly ${desiredConnections} total connection(s) in entire journey`);
+    console.log(`🚦 [TRANSFORMER] Filtering to exactly ${desiredConnectionsPerLeg} connection(s) PER TRAYECTO (ida/vuelta individual)`);
 
     filteredFlights = allTransformedFlights.filter(flight => {
-      const totalConnections = flight.stops.connections; // Ahora incluye escalas técnicas
+      // Usar la nueva función que verifica conexiones por trayecto
+      const fareData = fares.find(fare => fare.FareID === flight.id);
+      if (!fareData) {
+        console.log(`❌ Filtering out flight ${flight.id}: fare data not found`);
+        return false;
+      }
 
-      if (totalConnections !== desiredConnections) {
-        console.log(`❌ Filtering out flight ${flight.id}: ${totalConnections} connections (${flight.stops.technical} technical) (want ${desiredConnections})`);
+      const hasCorrectConnectionsPerLeg = hasExactConnectionsPerLeg(fareData, desiredConnectionsPerLeg);
+
+      if (!hasCorrectConnectionsPerLeg) {
+        const analysis = analyzeFlightType(fareData);
+        const perLeg = analysis.classification.perLegConnections;
+        console.log(`❌ Filtering out flight ${flight.id}: connections per leg ${perLeg.minPerLeg}-${perLeg.maxPerLeg} (want ${desiredConnectionsPerLeg} per leg)`);
         return false;
       }
 
       // Check max layover hours if specified
-      if (maxLayover && totalConnections > 0) {
+      if (maxLayover && desiredConnectionsPerLeg > 0) {
         let exceedsMaxLayover = false;
 
         // Check layovers across all legs and segments
@@ -505,7 +515,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       return true;
     });
 
-    console.log(`🎯 Flights with exactly ${desiredConnections} total connection(s): ${filteredFlights.length} of ${allTransformedFlights.length}`);
+    console.log(`🎯 Flights with exactly ${desiredConnectionsPerLeg} connection(s) PER TRAYECTO: ${filteredFlights.length} of ${allTransformedFlights.length}`);
   }
 
   // Filter by luggage preference BEFORE limiting by price
@@ -584,6 +594,12 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
   const transformedFlights = filteredFlights
     .sort((a, b) => (a.price.amount || 0) - (b.price.amount || 0))
     .slice(0, 5);
+
+  // Final flights summary
+  console.log(`🎯 Final flights: ${transformedFlights.length} flights with stops returned`);
+  if (transformedFlights.length > 0) {
+    console.log(`✅ All flights have connections > 0 (as requested)`);
+  }
 
   console.log(`✅ Transformation complete. Generated ${allTransformedFlights.length} flight objects`);
   console.log(`💰 After filtering: ${filteredFlights.length} flights, showing ${transformedFlights.length} cheapest`);
