@@ -61,10 +61,24 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
         departure_date: flight.departure_date,
         return_date: flight.return_date,
         legs: flight.legs.map((leg, legIndex) => {
-          // Get first segment from first option in the new TVC structure
-          const firstOption = leg.options?.[0];
-          const firstSegment = firstOption?.segments?.[0];
-          const lastSegment = firstOption?.segments?.[firstOption?.segments?.length - 1] || firstSegment;
+          // Find the option with technical stops or use the first option
+          let selectedOption = leg.options?.[0];
+          let hasTechnicalStops = false;
+
+          // Check if any option has technical stops
+          for (const option of leg.options || []) {
+            for (const segment of option.segments || []) {
+              if (segment.stops && segment.stops.length > 0) {
+                selectedOption = option;
+                hasTechnicalStops = true;
+                break;
+              }
+            }
+            if (hasTechnicalStops) break;
+          }
+
+          const firstSegment = selectedOption?.segments?.[0];
+          const lastSegment = selectedOption?.segments?.[selectedOption?.segments?.length - 1] || firstSegment;
 
           const departureCode = firstSegment?.departure?.airportCode || '';
           const arrivalCode = lastSegment?.arrival?.airportCode || '';
@@ -72,9 +86,9 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
           const layovers = [];
 
           // Add layovers from multiple segments (EZE-GRU-MAD => layover at GRU)
-          if (firstOption?.segments && firstOption.segments.length > 1) {
-            const segmentLayovers = firstOption.segments.slice(0, -1).map((seg, idx) => {
-              const next = firstOption.segments[idx + 1];
+          if (selectedOption?.segments && selectedOption.segments.length > 1) {
+            const segmentLayovers = selectedOption.segments.slice(0, -1).map((seg, idx) => {
+              const next = selectedOption.segments[idx + 1];
               return {
                 destination_city: getCityNameFromCode(seg.arrival?.airportCode || ''),
                 destination_code: seg.arrival?.airportCode || '',
@@ -85,8 +99,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
           }
 
           // Add technical stops from within segments (single segment with stops)
-          if (firstOption?.segments) {
-            for (const segment of firstOption.segments) {
+          if (selectedOption?.segments) {
+            for (const segment of selectedOption.segments) {
               if (segment.stops && segment.stops.length > 0) {
                 const technicalStops = segment.stops.map((stop, stopIndex) => {
                   // For technical stops, calculate layover time using the stop's arrival and departure times
@@ -97,6 +111,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
                   // For departure time, we need to look at the stop's Time field (which is departure from the stop)
                   const stopArrivalTime = stop.date || '';  // When we arrive at the stop
                   const stopDepartureTime = stop.time || ''; // When we depart from the stop
+
 
                   if (stopArrivalTime && stopDepartureTime) {
                     try {
@@ -159,7 +174,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
               city_name: getCityNameFromCode(arrivalCode),
               time: lastSegment?.arrival?.time || ''
             },
-            duration: firstOption?.duration ? `${Math.floor(firstOption.duration / 60)}h ${firstOption.duration % 60}m` : '0h 0m',
+            duration: selectedOption?.duration ? `${Math.floor(selectedOption.duration / 60)}h ${selectedOption.duration % 60}m` : '0h 0m',
             flight_type: legIndex === 0 ? 'outbound' : 'return',
             layovers,
             arrival_next_day: isNextDay,
