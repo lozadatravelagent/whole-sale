@@ -359,7 +359,7 @@ const useMessageHandler = (
         }
       }
 
-      // If user replied "con escalas" after a direct-only attempt, force a flights request with stops:any using prior context
+      // If user replied "con escalas" after a direct-only attempt, force a flights request with stops:with_stops using prior context
       if (/\bcon\s+escalas\b/i.test(currentMessage)) {
         const baseFlights = parsedRequest?.flights || previousParsedRequest?.flights || (contextToUse as any)?.flights;
         if (baseFlights?.origin && baseFlights?.destination && baseFlights?.departureDate && (baseFlights?.adults ?? 0) >= 1) {
@@ -367,12 +367,12 @@ const useMessageHandler = (
             requestType: 'flights',
             flights: {
               ...baseFlights,
-              stops: 'any' as any
+              stops: 'with_stops' as any  // Changed from 'any' to 'with_stops'
             },
             confidence: parsedRequest?.confidence ?? 0.9,
             originalMessage: currentMessage
           } as any;
-          console.log('🔀 [INTENT] Forced flights search with stops:any using prior context');
+          console.log('🔀 [INTENT] Forced flights search with stops:with_stops using prior context');
         }
       }
 
