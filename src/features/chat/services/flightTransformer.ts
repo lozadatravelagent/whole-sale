@@ -451,12 +451,42 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
 
   // Filter by 'with_stops' preference - any flight with 1 or more connections (excludes direct)
   if (parsedRequest?.flights?.stops === 'with_stops') {
+    const maxLayover = parsedRequest?.flights?.maxLayoverHours;
     console.log('🚦 [TRANSFORMER] Filtering to flights WITH stops (excluding direct flights)');
+
     filteredFlights = allTransformedFlights.filter(flight => {
       const hasConnections = flight.stops.connections > 0; // Any number of connections > 0
       if (!hasConnections) {
         console.log(`❌ Filtering out flight ${flight.id}: direct flight (user wants flights with stops)`);
+        return false;
       }
+
+      // Check max layover hours if specified for with_stops
+      if (maxLayover && hasConnections) {
+        let exceedsMaxLayover = false;
+
+        // Check layovers across all legs and segments
+        for (const leg of flight.legs) {
+          for (const option of leg.options || []) {
+            const segments = option.segments || [];
+            for (let i = 0; i < segments.length - 1; i++) {
+              const current = segments[i];
+              const next = segments[i + 1];
+              const hours = calculateLayoverHours(current, next);
+              if (hours > maxLayover) {
+                console.log(`❌ Filtering out flight ${flight.id}: layover ${hours.toFixed(1)}h exceeds max ${maxLayover}h`);
+                exceedsMaxLayover = true;
+                break;
+              }
+            }
+            if (exceedsMaxLayover) break;
+          }
+          if (exceedsMaxLayover) break;
+        }
+
+        if (exceedsMaxLayover) return false;
+      }
+
       return hasConnections;
     });
     console.log(`🎯 Flights with stops found: ${filteredFlights.length} out of ${allTransformedFlights.length}`);
