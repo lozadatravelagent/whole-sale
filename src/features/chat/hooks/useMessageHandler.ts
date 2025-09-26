@@ -309,13 +309,23 @@ const useMessageHandler = (
       console.log('🔍 [DEBUG] Selected conversation:', selectedConversation);
       console.log('🔍 [DEBUG] Previous parsed request from state:', previousParsedRequest);
 
+      // Load context from DB and state first
       const contextFromDB = await loadContextualMemory(selectedConversation);
-      // Load persistent context state (params that persist across turns)
       const persistentState = await loadContextState(selectedConversation);
       console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
       console.log('🔍 [DEBUG] Persistent context state:', persistentState);
 
-      const contextToUse = contextFromDB || previousParsedRequest || persistentState;
+      // 🧹 Clean context for new conversations (first message)
+      let contextToUse = null;
+      const isFirstMessage = messages.length === 0;
+      const hasNoStoredContext = !contextFromDB && !persistentState && !previousParsedRequest;
+
+      if (isFirstMessage || hasNoStoredContext) {
+        console.log('🧹 [NEW CONVERSATION] First message or no stored context - starting fresh');
+        contextToUse = null; // Start fresh for new conversations
+      } else {
+        contextToUse = contextFromDB || previousParsedRequest || persistentState;
+      }
       console.log('📝 [CONTEXT] Final context to use:', contextToUse);
 
       // 4. Use AI Parser to classify request
