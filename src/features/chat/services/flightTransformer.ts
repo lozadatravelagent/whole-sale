@@ -109,6 +109,23 @@ function calculateLayoverHours(arrivalSegment: any, departureSegment: any): numb
   }
 }
 
+// Helper function for legacy baggage logic (fallback when baggageAnalysis is not available)
+function evaluateLegacyBaggageLogic(hasCheckedBaggage: boolean, hasCarryOn: boolean, luggagePreference: string): boolean {
+  switch (luggagePreference) {
+    case 'checked':
+      return hasCheckedBaggage;
+    case 'carry_on':
+      const noLuggage = !hasCheckedBaggage && !hasCarryOn;
+      return hasCarryOn || noLuggage;
+    case 'both':
+      return hasCheckedBaggage && hasCarryOn;
+    case 'none':
+      return !hasCheckedBaggage && !hasCarryOn;
+    default:
+      return true; // 'any' or unknown preference
+  }
+}
+
 export const transformStarlingResults = async (tvcData: any, parsedRequest?: ParsedTravelRequest): Promise<FlightData[]> => {
   console.log('🔄 Transforming TVC API results:', tvcData);
 
@@ -207,6 +224,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       const legSegments = leg.Options?.[0]?.Segments || [];
       const legBaggageInfo = legSegments[0]?.Baggage || '';
       const legCarryOnInfo = legSegments[0]?.CarryOnBagInfo;
+      const legAirlineCode = legSegments[0]?.Airline || 'N/A';
 
       // Parse baggage allowance for this leg
       const baggageMatch = legBaggageInfo.match(/(\d+)PC|(\d+)KG/);
@@ -214,6 +232,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
 
       return {
         legNumber: legIndex + 1,
+        airlineCode: legAirlineCode,
         baggageInfo: legBaggageInfo,
         baggageQuantity,
         carryOnQuantity: legCarryOnInfo?.Quantity || legSegments[0]?.carryOnBagInfo?.quantity || '0',
@@ -430,7 +449,8 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       fareMessages: fare.FareMessages || null,
       fareCode: fare.FareCode || null,
       fareFeatures: fare.FareFeatures || null,
-      fareCategory: fare.FareCategory || null
+      fareCategory: fare.FareCategory || null,
+      baggageAnalysis: baggageAnalysis
     };
   }));
 
@@ -555,66 +575,81 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     console.log(`🧳 [TRANSFORMER] Filtering by luggage preference: ${luggagePreference}`);
 
     filteredFlights = filteredFlights.filter(flight => {
-      const hasCheckedBaggage = flight.baggage?.included || false;
-      const hasCarryOn = parseInt(flight.baggage?.carryOnQuantity || '0') > 0;
-      const carryOnQuantity = flight.baggage?.carryOnQuantity || '0';
-      const baggageDetails = flight.baggage?.details || 'N/A';
+      // Use baggageAnalysis to check ALL legs (ida and vuelta)
+      const baggageAnalysis = flight.baggageAnalysis || [];
 
-      // Log detailed baggage info for each flight
-      console.log(`🔍 [LUGGAGE COMPARISON] Flight ${flight.id}:`);
-      console.log(`   📦 API Data - Checked: ${hasCheckedBaggage}, Carry-on: ${hasCarryOn} (qty: ${carryOnQuantity})`);
-      console.log(`   📋 API Data - Details: ${baggageDetails}`);
+      console.log(`🔍 [LUGGAGE COMPARISON] Flight ${flight.id} - Checking ${baggageAnalysis.length} legs:`);
       console.log(`   🎯 User wants: ${luggagePreference}`);
 
-      let matchesPreference = false;
-
-      switch (luggagePreference) {
-        case 'checked':
-          // User wants checked baggage
-          matchesPreference = hasCheckedBaggage;
-          console.log(`   ✅/❌ Checked baggage match: ${matchesPreference} (API: ${hasCheckedBaggage} vs User: checked)`);
-          if (!matchesPreference) {
-            console.log(`❌ Filtering out flight ${flight.id}: No checked baggage (user wants checked)`);
-          }
-          break;
-
-        case 'carry_on':
-          // User wants carry-on (accept flights with carry-on OR flights without luggage that can be considered carry-on)
-          const noLuggage = !hasCheckedBaggage && !hasCarryOn; // 0PC + no CarryOnBagInfo
-          matchesPreference = hasCarryOn || noLuggage;
-          console.log(`   ✅/❌ Carry-on match: ${matchesPreference} (API: hasCarryOn=${hasCarryOn}, noLuggage=${noLuggage} vs User: carry_on)`);
-          if (!matchesPreference) {
-            console.log(`❌ Filtering out flight ${flight.id}: No carry-on available and has other luggage (user wants carry-on)`);
-          }
-          break;
-
-        case 'both':
-          // User wants both checked and carry-on
-          matchesPreference = hasCheckedBaggage && hasCarryOn;
-          console.log(`   ✅/❌ Both match: ${matchesPreference} (API: checked=${hasCheckedBaggage}, carry-on=${hasCarryOn} vs User: both)`);
-          if (!matchesPreference) {
-            console.log(`❌ Filtering out flight ${flight.id}: Missing checked baggage or carry-on (user wants both)`);
-          }
-          break;
-
-        case 'none':
-          // User wants no baggage at all
-          matchesPreference = !hasCheckedBaggage && !hasCarryOn;
-          console.log(`   ✅/❌ None match: ${matchesPreference} (API: checked=${hasCheckedBaggage}, carry-on=${hasCarryOn} vs User: none)`);
-          if (!matchesPreference) {
-            console.log(`❌ Filtering out flight ${flight.id}: Has baggage (user wants none)`);
-          }
-          break;
-
-        default:
-          // 'any' or unknown preference - show all flights
-          matchesPreference = true;
-          console.log(`   ✅ Any preference: showing all flights`);
-          break;
+      // If no baggage analysis available, fall back to legacy logic
+      if (baggageAnalysis.length === 0) {
+        console.log(`   ⚠️ No baggageAnalysis available, using legacy logic`);
+        const hasCheckedBaggage = flight.baggage?.included || false;
+        const hasCarryOn = parseInt(flight.baggage?.carryOnQuantity || '0') > 0;
+        return evaluateLegacyBaggageLogic(hasCheckedBaggage, hasCarryOn, luggagePreference);
       }
 
-      console.log(`   🎯 Final decision: ${matchesPreference ? 'KEEP' : 'FILTER OUT'}`);
-      return matchesPreference;
+      // Check EACH leg individually
+      let allLegsMatch = true;
+      const legResults = [];
+
+      for (let i = 0; i < baggageAnalysis.length; i++) {
+        const leg = baggageAnalysis[i];
+        const legHasChecked = leg.baggageQuantity > 0;
+        const legHasCarryOn = parseInt(leg.carryOnQuantity || '0') > 0;
+        const legName = leg.legNumber === 1 ? 'IDA' : 'VUELTA';
+
+        console.log(`   📦 ${legName} (Leg ${leg.legNumber}): Checked=${legHasChecked} (${leg.baggageQuantity}PC), CarryOn=${legHasCarryOn} (qty: ${leg.carryOnQuantity})`);
+
+        let legMatches = false;
+
+        switch (luggagePreference) {
+          case 'checked':
+            legMatches = legHasChecked;
+            break;
+          case 'carry_on':
+            // New logic: distinguish between "1 Mochila" (light fare) vs real carry-on
+            if (legHasCarryOn) {
+              // Any airline with carry-on info is valid
+              legMatches = true;
+            } else if (!legHasChecked && !legHasCarryOn) {
+              // 0PC + null case: check airline to distinguish "1 Mochila" vs carry-on básico
+              const lightTarifAirlines = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
+              const isLightFareAirline = lightTarifAirlines.includes(leg.airlineCode);
+              // Accept only if NOT a light fare airline (exclude "1 Mochila")
+              legMatches = !isLightFareAirline;
+            } else {
+              legMatches = false;
+            }
+            break;
+          case 'both':
+            legMatches = legHasChecked && legHasCarryOn;
+            break;
+          case 'none':
+            legMatches = !legHasChecked && !legHasCarryOn;
+            break;
+          default:
+            legMatches = true; // 'any' preference
+            break;
+        }
+
+        legResults.push({ leg: legName, matches: legMatches });
+        console.log(`   ${legMatches ? '✅' : '❌'} ${legName}: ${legMatches ? 'MATCHES' : 'FAILS'} ${luggagePreference} requirement`);
+
+        if (!legMatches) {
+          allLegsMatch = false;
+        }
+      }
+
+      const finalResult = allLegsMatch;
+      console.log(`   🎯 Final decision: ${finalResult ? 'KEEP' : 'FILTER OUT'} (${legResults.map(r => `${r.leg}:${r.matches ? '✅' : '❌'}`).join(', ')})`);
+
+      if (!finalResult) {
+        const failedLegs = legResults.filter(r => !r.matches).map(r => r.leg).join(', ');
+        console.log(`❌ Filtering out flight ${flight.id}: ${failedLegs} leg(s) don't match ${luggagePreference} requirement`);
+      }
+
+      return finalResult;
     });
 
     console.log(`🧳 [LUGGAGE FILTER] Filtering complete: ${filteredFlights.length} flights remain out of ${allTransformedFlights.length} total flights`);

@@ -96,7 +96,7 @@ const getBaggageTextFromLeg = (leg: any, airlineCode?: string): string => {
     const lightTarifAirlines = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
 
     if (airlineCode && lightTarifAirlines.includes(airlineCode)) {
-      return 'Tarifa Light';
+      return '1 Mochila';
     } else {
       // Para otras aerolíneas, consideramos que incluye carry-on básico
       return '(1 de mano)';
