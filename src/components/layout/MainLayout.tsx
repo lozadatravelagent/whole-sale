@@ -79,7 +79,7 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
       )}>
         <div className="flex h-16 items-center px-6 justify-between">
           <div className="text-xl font-bold text-primary">
-            VBOOK
+            VIBOOK
           </div>
           <Button variant="ghost" size="icon" onClick={() => setSidebarHidden(true)} className="text-muted-foreground">
             <ChevronLeft className="h-4 w-4" />

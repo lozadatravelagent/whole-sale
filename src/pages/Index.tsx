@@ -35,7 +35,7 @@ const Index = () => {
 
             <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-6">
               <span className="bg-clip-text text-transparent">
-                VBOOK
+                VIBOOK
               </span>
               <br />
               Travel SaaS Platform
@@ -70,7 +70,7 @@ const Index = () => {
             <h2 className="text-3xl font-bold mb-4">Everything you need to manage travel</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
               From WhatsApp conversations to CRM and provider integrations,
-              VBOOK handles it all in one unified platform.
+              VIBOOK handles it all in one unified platform.
             </p>
           </div>
 
@@ -140,7 +140,7 @@ const Index = () => {
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl font-bold mb-4">Ready to transform your travel business?</h2>
           <p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Join leading travel agencies already using VBOOK to streamline operations and increase bookings.
+            Join leading travel agencies already using VIBOOK to streamline operations and increase bookings.
           </p>
           <Button
             onClick={handleGetStarted}

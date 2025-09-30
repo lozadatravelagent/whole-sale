@@ -44,7 +44,7 @@ const Login = () => {
       if (data.user) {
         toast({
           title: "Login exitoso",
-          description: "¡Bienvenido a VBOOK!",
+          description: "¡Bienvenido a VIBOOK!",
         });
         const from = (location.state as any)?.from?.pathname || '/dashboard';
         navigate(from, { replace: true });
@@ -103,7 +103,7 @@ const Login = () => {
           </div>
           <div className="ml-3">
             <h1 className="text-2xl font-bold bg-gradient-hero bg-clip-text text-transparent">
-              VBOOK
+              VIBOOK
             </h1>
             <p className="text-sm text-muted-foreground">Travel SaaS Platform</p>
           </div>
