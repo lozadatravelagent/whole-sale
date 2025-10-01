@@ -276,16 +276,7 @@ export function useMessages(conversationId: string | null) {
 
       console.log('💾 [SUPABASE] Message saved with ID:', data.id);
 
-      // Send broadcast to notify other clients
-      console.log('📡 [SUPABASE] Sending broadcast notification');
-      const channel = supabase.channel(`conversation:${message.conversation_id}`);
-      await channel.send({
-        type: 'broadcast',
-        event: 'message',
-        payload: { message_id: data.id }
-      });
-
-      // Add to local state immediately for the sender
+      // Add to local state immediately for instant display
       setMessages(prev => {
         const exists = prev.some(msg => msg.id === data.id);
         if (exists) return prev;
@@ -296,6 +287,7 @@ export function useMessages(conversationId: string | null) {
       });
 
       console.log('✅ [SUPABASE] saveMessage completed successfully');
+      console.log('🔄 Message will sync to other tabs within 2 seconds');
       return data;
     } catch (error) {
       console.error('❌ [SUPABASE] Error in saveMessage process:', error);
@@ -329,35 +321,22 @@ export function useMessages(conversationId: string | null) {
     loadMessages();
   }, [conversationId, loadMessages]);
 
-  // Realtime subscription using Broadcast (via db.vibook.ai to bypass Cloudflare)
+  // Optimized polling for message updates (Cloudflare blocks WebSockets)
   useEffect(() => {
     if (!conversationId) {
-      console.log('No conversationId - skipping Realtime setup');
       return;
     }
 
-    console.log('🔄 Setting up Realtime Broadcast for conversation:', conversationId);
+    console.log('🔄 Starting message sync for conversation:', conversationId);
 
-    const channel = supabase
-      .channel(`conversation:${conversationId}`)
-      .on('broadcast', { event: 'message' }, (payload) => {
-        console.log('📨 Broadcast message received:', payload);
-        // Reload messages when broadcast received
-        loadMessages();
-      })
-      .subscribe((status) => {
-        console.log(`📡 Broadcast channel status:`, status);
-
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Realtime ACTIVE for conversation:', conversationId);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Realtime CHANNEL_ERROR');
-        }
-      });
+    // Poll every 2 seconds for new messages
+    const pollInterval = setInterval(() => {
+      loadMessages();
+    }, 2000);
 
     return () => {
-      console.log('🔴 Cleaning up Realtime for:', conversationId);
-      channel.unsubscribe();
+      console.log('🔴 Stopping message sync for:', conversationId);
+      clearInterval(pollInterval);
     };
   }, [conversationId, loadMessages]);
 
