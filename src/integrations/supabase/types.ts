@@ -290,7 +290,7 @@ export type Database = {
           created_at: string
           id: string
           meta: Json
-          role: Database["public"]["Enums"]["message_role"]
+          role: string
         }
         Insert: {
           content?: Json
@@ -298,7 +298,7 @@ export type Database = {
           created_at?: string
           id?: string
           meta?: Json
-          role: Database["public"]["Enums"]["message_role"]
+          role: string
         }
         Update: {
           content?: Json
@@ -306,7 +306,7 @@ export type Database = {
           created_at?: string
           id?: string
           meta?: Json
-          role?: Database["public"]["Enums"]["message_role"]
+          role?: string
         }
         Relationships: [
           {
@@ -314,6 +314,94 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rate_limit_config: {
+        Row: {
+          created_at: string | null
+          max_api_calls_per_hour: number | null
+          max_messages_per_day: number | null
+          max_messages_per_hour: number | null
+          max_searches_per_day: number | null
+          max_searches_per_hour: number | null
+          plan_type: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          max_api_calls_per_hour?: number | null
+          max_messages_per_day?: number | null
+          max_messages_per_hour?: number | null
+          max_searches_per_day?: number | null
+          max_searches_per_hour?: number | null
+          plan_type?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          max_api_calls_per_hour?: number | null
+          max_messages_per_day?: number | null
+          max_messages_per_hour?: number | null
+          max_searches_per_day?: number | null
+          max_searches_per_hour?: number | null
+          plan_type?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rate_limit_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rate_limit_usage: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          request_count: number | null
+          resource: string | null
+          tenant_id: string | null
+          user_id: string | null
+          window_end: string | null
+          window_start: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          request_count?: number | null
+          resource?: string | null
+          tenant_id?: string | null
+          user_id?: string | null
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          request_count?: number | null
+          resource?: string | null
+          tenant_id?: string | null
+          user_id?: string | null
+          window_end?: string | null
+          window_start?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rate_limit_usage_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -356,6 +444,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      search_cache: {
+        Row: {
+          cache_key: string
+          created_at: string | null
+          expires_at: string | null
+          hit_count: number | null
+          id: string
+          params: Json
+          results: Json
+          search_type: string
+          tenant_id: string | null
+        }
+        Insert: {
+          cache_key: string
+          created_at?: string | null
+          expires_at?: string | null
+          hit_count?: number | null
+          id?: string
+          params: Json
+          results: Json
+          search_type: string
+          tenant_id?: string | null
+        }
+        Update: {
+          cache_key?: string
+          created_at?: string | null
+          expires_at?: string | null
+          hit_count?: number | null
+          id?: string
+          params?: Json
+          results?: Json
+          search_type?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
       }
       sections: {
         Row: {
@@ -523,6 +647,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_rate_limit: {
+        Args: {
+          p_action: string
+          p_tenant_id: string
+          p_user_id: string
+          p_window_minutes?: number
+        }
+        Returns: Json
+      }
+      clean_expired_cache: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      cleanup_old_rate_limit_usage: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       is_same_agency: {
         Args: { _agency_id: string }
         Returns: boolean
@@ -534,6 +675,15 @@ export type Database = {
       is_superadmin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      record_rate_limit_usage: {
+        Args: {
+          p_action: string
+          p_resource?: string
+          p_tenant_id: string
+          p_user_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {
