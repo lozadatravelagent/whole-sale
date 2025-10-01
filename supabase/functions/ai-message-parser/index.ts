@@ -33,14 +33,33 @@ serve(async (req) => {
     console.log('📝 Previous context received:', previousContext);
     console.log('📚 Conversation history received:', conversationHistory?.length || 0, 'messages');
     console.log('📅 Current date:', currentDate);
-    // Safely format conversation history - limit to last 5 messages to avoid prompt length issues
+    // Format conversation history - use smart truncation to maximize context
     let conversationHistoryText = '';
     if (conversationHistory && conversationHistory.length > 0) {
       try {
-        const recentHistory = conversationHistory.slice(-8); // Last 8 messages for better context
+        // Take last 20 messages for comprehensive context (up from 8)
+        const recentHistory = conversationHistory.slice(-20);
+
         conversationHistoryText = recentHistory.map((msg, index) => {
-          // Escape any problematic characters and truncate long messages
-          const safeContent = (msg.content || '').replace(/`/g, "'").replace(/\$/g, "\\$").substring(0, 300); // Increased message length for better context
+          // Escape problematic characters
+          let safeContent = (msg.content || '').replace(/`/g, "'").replace(/\$/g, "\\$");
+
+          // Smart truncation: keep more for recent messages, less for older ones
+          const messagesFromEnd = recentHistory.length - index;
+          let maxLength;
+          if (messagesFromEnd <= 5) {
+            maxLength = 800; // Last 5 messages: keep almost full content
+          } else if (messagesFromEnd <= 10) {
+            maxLength = 500; // Messages 6-10: medium length
+          } else {
+            maxLength = 300; // Older messages: shorter summary
+          }
+
+          safeContent = safeContent.substring(0, maxLength);
+          if (safeContent.length === maxLength) {
+            safeContent += '...'; // Indicate truncation
+          }
+
           return `${msg.role}: ${safeContent}`;
         }).join('\\n');
       } catch (e) {
