@@ -33,22 +33,11 @@ export function useAuth() {
 export function useConversations() {
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
-  const maxRetries = 3;
+  const mockAgencyId = '00000000-0000-0000-0000-000000000001';
 
-  const loadConversations = useCallback(async (isRetry = false) => {
-    // Prevent infinite retries
-    if (isRetry && retryCount >= maxRetries) {
-      console.warn('⚠️ Max retries reached for loadConversations, stopping');
-      return;
-    }
-
+  const loadConversations = useCallback(async () => {
     setLoading(true);
     try {
-      // For now, create a mock agency_id and tenant_id since we don't have full user management
-      // In production, these would come from the authenticated user's profile
-      const mockAgencyId = '00000000-0000-0000-0000-000000000001';
-
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
@@ -58,27 +47,68 @@ export function useConversations() {
       if (error) throw error;
 
       setConversations(data || []);
-      setRetryCount(0); // Reset retry count on success
     } catch (error) {
       console.error('Error loading conversations:', error);
-
-      // Only retry for network errors, not for authentication or other errors
-      const isNetworkError = error.message?.includes('Failed to fetch') ||
-        error.message?.includes('ERR_CONNECTION_CLOSED') ||
-        error.message?.includes('ERR_NETWORK');
-
-      if (isNetworkError && retryCount < maxRetries) {
-        console.log(`⏳ Retrying loadConversations (${retryCount + 1}/${maxRetries}) in 2 seconds...`);
-        setRetryCount(prev => prev + 1);
-        setTimeout(() => loadConversations(true), 2000);
-      } else {
-        console.error('❌ loadConversations failed permanently, stopping retries');
-        setRetryCount(0);
-      }
     } finally {
       setLoading(false);
     }
-  }, [retryCount, maxRetries]);
+  }, [mockAgencyId]);
+
+  // Subscribe to real-time conversation updates
+  useEffect(() => {
+    loadConversations();
+
+    console.log('🔄 [REALTIME] Setting up Realtime subscription for conversations');
+
+    const channel = supabase
+      .channel('conversations')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'conversations',
+          filter: `agency_id=eq.${mockAgencyId}`
+        },
+        (payload) => {
+          console.log('🔔 [REALTIME] New conversation created:', payload.new);
+          const newConversation = payload.new as ConversationRow;
+
+          setConversations(prev => {
+            const exists = prev.some(conv => conv.id === newConversation.id);
+            if (exists) return prev;
+            return [newConversation, ...prev];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `agency_id=eq.${mockAgencyId}`
+        },
+        (payload) => {
+          console.log('🔔 [REALTIME] Conversation updated:', payload.new);
+          const updatedConversation = payload.new as ConversationRow;
+
+          setConversations(prev =>
+            prev
+              .map(conv => conv.id === updatedConversation.id ? updatedConversation : conv)
+              .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
+          );
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 [REALTIME] Conversations subscription status:', status);
+      });
+
+    return () => {
+      console.log('🔴 [REALTIME] Unsubscribing from conversations channel');
+      supabase.removeChannel(channel);
+    };
+  }, [loadConversations, mockAgencyId]);
 
   const createConversation = async (params?: {
     title?: string;
@@ -316,27 +346,78 @@ export function useMessages(conversationId: string | null) {
     }
   };
 
-  // Load messages initially
-  useEffect(() => {
-    loadMessages();
-  }, [conversationId, loadMessages]);
-
-  // Optimized polling for message updates (Cloudflare blocks WebSockets)
+  // Load messages initially and subscribe to real-time updates
   useEffect(() => {
     if (!conversationId) {
+      setMessages([]);
       return;
     }
 
-    console.log('🔄 Starting message sync for conversation:', conversationId);
+    loadMessages();
 
-    // Poll every 2 seconds for new messages
-    const pollInterval = setInterval(() => {
-      loadMessages();
-    }, 2000);
+    console.log('🔄 [REALTIME] Setting up Realtime subscription for conversation:', conversationId);
+
+    // Subscribe to real-time changes for this conversation
+    const channel = supabase
+      .channel(`messages:${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`
+        },
+        (payload) => {
+          console.log('🔔 [REALTIME] New message received:', payload.new);
+          const newMessage = payload.new as MessageRow;
+
+          setMessages(prev => {
+            // Avoid duplicates
+            const exists = prev.some(msg => msg.id === newMessage.id);
+            if (exists) {
+              console.log('⚠️ [REALTIME] Message already exists, skipping');
+              return prev;
+            }
+
+            console.log('✅ [REALTIME] Adding new message to state');
+            return [...prev, newMessage].sort((a, b) =>
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`
+        },
+        (payload) => {
+          console.log('🔔 [REALTIME] Message updated:', payload.new);
+          const updatedMessage = payload.new as MessageRow;
+
+          setMessages(prev =>
+            prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
+          );
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 [REALTIME] Subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [REALTIME] Successfully subscribed to messages channel');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ [REALTIME] Channel error - subscription failed');
+        } else if (status === 'TIMED_OUT') {
+          console.error('⏱️ [REALTIME] Subscription timed out');
+        }
+      });
 
     return () => {
-      console.log('🔴 Stopping message sync for:', conversationId);
-      clearInterval(pollInterval);
+      console.log('🔴 [REALTIME] Unsubscribing from messages channel');
+      supabase.removeChannel(channel);
     };
   }, [conversationId, loadMessages]);
 
