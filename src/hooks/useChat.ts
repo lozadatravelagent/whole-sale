@@ -313,31 +313,36 @@ export function useMessages(conversationId: string | null) {
     loadMessages();
   }, [conversationId, loadMessages]);
 
-  // TEMPORARILY DISABLED: Real-time subscriptions due to Supabase client/server binding mismatch
-  // Using polling approach instead until issue is resolved
+  // Realtime subscription for instant message updates
   useEffect(() => {
     if (!conversationId) {
-      console.log('No conversationId - skipping polling setup');
+      console.log('No conversationId - skipping Realtime setup');
       return;
     }
 
+    console.log('🔄 Setting up Realtime subscription for conversation:', conversationId);
 
+    // Create a unique channel for this conversation
     const channel = supabase
-      .channel(`messages-${conversationId}`)
+      .channel(`messages:${conversationId}`, {
+        config: {
+          broadcast: { self: true },
+          presence: { key: conversationId }
+        }
+      })
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter: `conversation_id=eq.${conversationId}`
         },
         (payload) => {
-          console.log('🟢 NEW MESSAGE RECEIVED via real-time:', payload.new);
+          console.log('🟢 NEW MESSAGE RECEIVED via Realtime:', payload.new);
           const newMessage = payload.new as MessageRow;
 
           setMessages(prev => {
-            console.log('🔵 Current messages count:', prev.length);
             // Check if message already exists to prevent duplicates
             const exists = prev.some(msg => msg.id === newMessage.id);
             if (exists) {
@@ -345,14 +350,11 @@ export function useMessages(conversationId: string | null) {
               return prev;
             }
 
-            console.log('🟢 Adding new message to state:', newMessage.id, newMessage.content);
-            // Add new message in chronological order and force re-render
-            const updated = [...prev, newMessage].sort((a, b) =>
+            console.log('🟢 Adding new message to state:', newMessage.id);
+            // Add new message in chronological order
+            return [...prev, newMessage].sort((a, b) =>
               new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             );
-
-            console.log('🔵 Updated messages count:', updated.length);
-            return updated;
           });
         }
       )
@@ -362,10 +364,10 @@ export function useMessages(conversationId: string | null) {
           event: 'UPDATE',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter: `conversation_id=eq.${conversationId}`
         },
         (payload) => {
-          console.log('🟡 Message updated via real-time:', payload.new);
+          console.log('🟡 MESSAGE UPDATED via Realtime:', payload.new);
           const updatedMessage = payload.new as MessageRow;
 
           setMessages(prev =>
@@ -375,31 +377,27 @@ export function useMessages(conversationId: string | null) {
           );
         }
       )
-      .subscribe((status, err) => {
-        console.log(`🔴 Real-time subscription status for ${conversationId}:`, status);
-        if (err) {
-          console.error('🔴 Real-time subscription ERROR:', err);
-        }
+      .subscribe((status) => {
+        console.log(`📡 Realtime status for ${conversationId}:`, status);
+
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Real-time subscription ACTIVE for conversation:', conversationId);
+          console.log('✅ Realtime ACTIVE for conversation:', conversationId);
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Real-time subscription ERROR for conversation:', conversationId);
-          // Fallback: refresh messages when real-time fails
-          console.log('🔄 Real-time failed, using fallback refresh');
-          setTimeout(() => refreshMessages(), 2000);
+          console.error('❌ Realtime ERROR - falling back to manual refresh');
+          loadMessages();
         } else if (status === 'TIMED_OUT') {
-          console.error('⏰ Real-time subscription TIMED OUT for conversation:', conversationId);
-          // Fallback: refresh messages when real-time times out
-          console.log('🔄 Real-time timed out, using fallback refresh');
-          setTimeout(() => refreshMessages(), 2000);
+          console.error('⏰ Realtime TIMED OUT - falling back to manual refresh');
+          loadMessages();
+        } else if (status === 'CLOSED') {
+          console.log('🔴 Realtime CLOSED for conversation:', conversationId);
         }
       });
 
     return () => {
-      console.log(`🔴 Cleaning up real-time subscription for conversation: ${conversationId}`);
-      channel.unsubscribe();
+      console.log('🔴 Cleaning up Realtime subscription for:', conversationId);
+      supabase.removeChannel(channel);
     };
-  }, [conversationId]);
+  }, [conversationId, loadMessages]);
 
   // Add a function to force refresh messages
   const refreshMessages = useCallback(() => {
