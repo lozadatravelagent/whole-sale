@@ -275,10 +275,26 @@ export function useMessages(conversationId: string | null) {
       }
 
       console.log('💾 [SUPABASE] Message saved with ID:', data.id);
-      console.log('🔄 [SUPABASE] Letting real-time subscription handle state update');
 
-      // Don't add to local state here - let the real-time subscription handle it
-      // This prevents duplicate messages when we get both the return value and the subscription event
+      // Send broadcast to notify other clients
+      console.log('📡 [SUPABASE] Sending broadcast notification');
+      const channel = supabase.channel(`conversation:${message.conversation_id}`);
+      await channel.send({
+        type: 'broadcast',
+        event: 'message',
+        payload: { message_id: data.id }
+      });
+
+      // Add to local state immediately for the sender
+      setMessages(prev => {
+        const exists = prev.some(msg => msg.id === data.id);
+        if (exists) return prev;
+
+        return [...prev, data].sort((a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+      });
+
       console.log('✅ [SUPABASE] saveMessage completed successfully');
       return data;
     } catch (error) {
@@ -313,94 +329,33 @@ export function useMessages(conversationId: string | null) {
     loadMessages();
   }, [conversationId, loadMessages]);
 
-  // Realtime subscription for instant message updates
+  // Realtime subscription using Broadcast (works on free plan)
   useEffect(() => {
     if (!conversationId) {
       console.log('No conversationId - skipping Realtime setup');
       return;
     }
 
-    console.log('🔄 Setting up Realtime subscription for conversation:', conversationId);
+    console.log('🔄 Setting up Realtime Broadcast for conversation:', conversationId);
 
-    // Create a unique channel for this conversation
     const channel = supabase
-      .channel(`messages:${conversationId}`, {
-        config: {
-          broadcast: { self: true }
-        }
+      .channel(`conversation:${conversationId}`)
+      .on('broadcast', { event: 'message' }, (payload) => {
+        console.log('📨 Broadcast message received:', payload);
+
+        // Reload messages when broadcast received
+        loadMessages();
       })
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
-        },
-        (payload) => {
-          console.log('📨 Realtime INSERT event received:', payload);
-          console.log('🟢 NEW MESSAGE via Realtime:', payload.new);
-          const newMessage = payload.new as MessageRow;
-
-          setMessages(prev => {
-            // Check if message already exists to prevent duplicates
-            const exists = prev.some(msg => msg.id === newMessage.id);
-            if (exists) {
-              console.log('🟡 Duplicate message prevented:', newMessage.id);
-              return prev;
-            }
-
-            console.log('🟢 Adding new message to state:', newMessage.id);
-            // Add new message in chronological order
-            return [...prev, newMessage].sort((a, b) =>
-              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            );
-          });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
-        },
-        (payload) => {
-          console.log('📨 Realtime UPDATE event received:', payload);
-          console.log('🟡 MESSAGE UPDATED via Realtime:', payload.new);
-          const updatedMessage = payload.new as MessageRow;
-
-          setMessages(prev =>
-            prev.map(msg =>
-              msg.id === updatedMessage.id ? updatedMessage : msg
-            )
-          );
-        }
-      )
-      .subscribe((status, err) => {
-        console.log(`📡 Realtime status for ${conversationId}:`, status);
-        if (err) {
-          console.error('❌ Realtime subscription error:', err);
-        }
+      .subscribe((status) => {
+        console.log(`📡 Broadcast channel status:`, status);
 
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Realtime ACTIVE for conversation:', conversationId);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Realtime CHANNEL_ERROR - Check Supabase Replication settings');
-          console.error('💡 Go to: Database → Replication → Enable "messages" table');
-          // Fallback: load messages once
-          loadMessages();
-        } else if (status === 'TIMED_OUT') {
-          console.error('⏰ Realtime TIMED OUT');
-          loadMessages();
-        } else if (status === 'CLOSED') {
-          console.log('🔴 Realtime channel CLOSED');
+          console.log('✅ Broadcast channel ACTIVE for conversation:', conversationId);
         }
       });
 
     return () => {
-      console.log('🔴 Cleaning up Realtime subscription for:', conversationId);
+      console.log('🔴 Cleaning up Broadcast channel for:', conversationId);
       channel.unsubscribe();
     };
   }, [conversationId, loadMessages]);
