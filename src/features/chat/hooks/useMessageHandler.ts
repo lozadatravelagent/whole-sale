@@ -6,7 +6,7 @@ import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
 import type { MessageRow } from '../types/chat';
-import { useMessages } from '@/hooks/useChat-polling';
+import { useMessages } from '@/hooks/useChat';
 import { translateBaggage } from '../utils/translations';
 
 const useMessageHandler = (
@@ -28,7 +28,7 @@ const useMessageHandler = (
   toast: any,
   setTypingMessage: (message: string) => void
 ) => {
-  const { messages, refreshMessages } = useMessages(selectedConversation);
+  const { messages, refreshMessages, addOptimisticMessage } = useMessages(selectedConversation);
 
   // Track active domain for this conversation to avoid cross responses
   let activeDomain: 'flights' | 'hotels' | null = null;
@@ -281,8 +281,7 @@ const useMessageHandler = (
       };
 
       // Add to local messages immediately (Realtime will replace with real message from DB)
-      messages.push(optimisticUserMessage as any);
-      refreshMessages(); // Trigger re-render with optimistic message
+      addOptimisticMessage(optimisticUserMessage as any);
 
       console.log('📤 [MESSAGE FLOW] Step 2: Saving user message to database (in background)');
 

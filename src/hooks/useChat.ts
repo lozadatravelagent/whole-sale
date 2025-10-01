@@ -207,7 +207,28 @@ export function useMessages(conversationId: string | null) {
 
       if (error) throw error;
 
-      setMessages(data || []);
+      // Preserve optimistic messages (temp IDs) when loading from DB
+      setMessages(prev => {
+        const optimisticMessages = prev.filter(msg => msg.id.toString().startsWith('temp-'));
+        const dbMessages = data || [];
+
+        // Merge: DB messages + optimistic messages that haven't been replaced
+        const merged = [...dbMessages];
+
+        optimisticMessages.forEach(optMsg => {
+          // Only keep optimistic message if DB doesn't have a similar one
+          const existsInDb = dbMessages.some(dbMsg =>
+            Math.abs(new Date(dbMsg.created_at).getTime() - new Date(optMsg.created_at).getTime()) < 5000
+          );
+          if (!existsInDb) {
+            merged.push(optMsg);
+          }
+        });
+
+        return merged.sort((a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+      });
     } catch (error) {
       console.error('Error loading messages:', error);
     } finally {
@@ -385,12 +406,27 @@ export function useMessages(conversationId: string | null) {
     loadMessages();
   }, [loadMessages]);
 
+  // Add a function to add optimistic message (before saving to DB)
+  const addOptimisticMessage = useCallback((message: any) => {
+    setMessages(prev => {
+      // Check if message already exists
+      const exists = prev.some(msg => msg.id === message.id);
+      if (exists) return prev;
+
+      // Add and sort by created_at
+      return [...prev, message].sort((a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+    });
+  }, []);
+
   return {
     messages,
     loading,
     loadMessages,
     saveMessage,
     updateMessageStatus,
-    refreshMessages
+    refreshMessages,
+    addOptimisticMessage
   };
 }
