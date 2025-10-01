@@ -403,3 +403,18 @@ export function logCityConversion(cityName: string, type: 'flight' | 'hotel'): v
     console.error(`❌ ${type.toUpperCase()} - No code found for "${cityName}"`);
   }
 }
+
+/**
+ * Get country code from airport IATA code
+ */
+export function getCountryFromAirportCode(airportCode: string): string | null {
+  // Search through all city mappings to find the airport code
+  for (const mapping of Object.values(CITY_MAPPINGS)) {
+    if (mapping.iata === airportCode || mapping.iataSecondary === airportCode) {
+      return mapping.country;
+    }
+  }
+
+  console.warn(`⚠️ No country found for airport code: ${airportCode}`);
+  return null;
+}

@@ -1,4 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { getCachedSearch, setCachedSearch } from "../_shared/cache.ts";
+import { withRateLimit } from "../_shared/rateLimit.ts";
 // ============================================================================
 // STARLING TVC API CLASS
 // ============================================================================
@@ -320,97 +323,187 @@ serve(async (req) => {
       headers: corsHeaders
     });
   }
-  try {
-    console.log(`🚀 Starling TVC API Edge Function - ${req.method} ${req.url}`);
-    // Get TVC credentials from Supabase secrets
-    const TVC_USERNAME = Deno.env.get('TVC_USERNAME');
-    const TVC_PASSWORD = Deno.env.get('TVC_PASSWORD');
-    const TVC_BASE_URL = Deno.env.get('TVC_BASE_URL');
-    if (!TVC_USERNAME || !TVC_PASSWORD) {
-      throw new Error('TVC credentials not configured in Supabase secrets');
-    }
-    console.log(`🔧 TVC Config: ${TVC_BASE_URL}, User: ${TVC_USERNAME}`);
-    console.log(`🔐 Password configured: ${TVC_PASSWORD ? 'YES' : 'NO'}`);
-    // Create TVC API instance
-    const tvcApi = new StarlingTvcApi({
-      baseUrl: TVC_BASE_URL,
-      username: TVC_USERNAME,
-      password: TVC_PASSWORD,
-      timeout: 30000
-    });
-    // Parse request body
-    const requestBody = await req.json();
-    const { action, data } = requestBody;
-    console.log(`📋 Action: ${action}`);
-    console.log(`📥 Data:`, JSON.stringify(data, null, 2));
+
+  // Initialize Supabase client
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Apply rate limiting
+  return await withRateLimit(
+    req,
+    supabase,
+    { action: 'search', resource: 'starling-tvc' },
+    async () => {
+      try {
+        console.log(`🚀 Starling TVC API Edge Function - ${req.method} ${req.url}`);
+
+        // Get TVC credentials from Supabase secrets
+        const TVC_USERNAME = Deno.env.get('TVC_USERNAME');
+        const TVC_PASSWORD = Deno.env.get('TVC_PASSWORD');
+        const TVC_BASE_URL = Deno.env.get('TVC_BASE_URL');
+        if (!TVC_USERNAME || !TVC_PASSWORD) {
+          throw new Error('TVC credentials not configured in Supabase secrets');
+        }
+        console.log(`🔧 TVC Config: ${TVC_BASE_URL}, User: ${TVC_USERNAME}`);
+        console.log(`🔐 Password configured: ${TVC_PASSWORD ? 'YES' : 'NO'}`);
+
+        // Parse request body
+        const requestBody = await req.json();
+        const { action, data, jobId } = requestBody;
+        console.log(`📋 Action: ${action}`);
+        console.log(`📥 Data:`, JSON.stringify(data, null, 2));
+
+        // If jobId exists, mark job as processing
+        if (jobId) {
+          console.log(`🔄 Async mode: Processing job ${jobId}`);
+          await supabase
+            .from('search_jobs')
+            .update({ status: 'processing' })
+            .eq('id', jobId);
+        }
+
+    // Actions that should be cached (heavy API calls)
+    const cacheableActions = ['searchFlights', 'getFareOptions'];
+    const shouldCache = cacheableActions.includes(action);
+
     let result;
-    // Route to appropriate TVC API method
-    switch (action) {
-      case 'searchFlights':
-        result = await tvcApi.getFlightAvailability(data);
-        break;
-      case 'confirmAvailability':
-        result = await tvcApi.confirmFlightAvailability(data);
-        break;
-      case 'bookFlight':
-        result = await tvcApi.bookFlight(data);
-        break;
-      case 'issueBooking':
-        result = await tvcApi.issueBooking(data);
-        break;
-      case 'retrieveBooking':
-        result = await tvcApi.retrieveBooking(data);
-        break;
-      case 'getFareOptions':
-        result = await tvcApi.getFareOptions(data);
-        break;
-      case 'listBookings':
-        result = await tvcApi.listBookings(data);
-        break;
-      case 'testConnection':
-        // Test endpoint to verify credentials
-        await tvcApi.getAccessToken();
-        result = {
-          status: 'connected',
-          message: 'TVC API connection successful'
-        };
-        break;
-      case 'createSearchRequest':
-        // Utility endpoint to create search requests
-        const { from, to, date, adults = 1, children = 0, infants = 0 } = data;
-        result = StarlingTvcApi.createSearchRequest(from, to, date, adults, children, infants);
-        break;
-      default:
-        throw new Error(`Unsupported action: ${action}`);
+    let cacheHit = false;
+
+    // Try to get from cache first
+    if (shouldCache && data) {
+      const cached = await getCachedSearch(supabase, action, data);
+      if (cached) {
+        console.log(`✅ Cache HIT for ${action}`);
+        result = cached;
+        cacheHit = true;
+      } else {
+        console.log(`❌ Cache MISS for ${action}`);
+      }
     }
-    // Return successful response
-    const response = {
-      success: true,
-      data: result,
-      provider: 'TVC',
-      timestamp: new Date().toISOString()
-    };
-    console.log(`✅ Action completed successfully: ${action}`);
-    return new Response(JSON.stringify(response), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
+
+    // If not cached, call the API
+    if (!cacheHit) {
+      // Create TVC API instance
+      const tvcApi = new StarlingTvcApi({
+        baseUrl: TVC_BASE_URL,
+        username: TVC_USERNAME,
+        password: TVC_PASSWORD,
+        timeout: 30000
+      });
+      // Route to appropriate TVC API method
+      switch (action) {
+        case 'searchFlights':
+          result = await tvcApi.getFlightAvailability(data);
+          break;
+        case 'confirmAvailability':
+          result = await tvcApi.confirmFlightAvailability(data);
+          break;
+        case 'bookFlight':
+          result = await tvcApi.bookFlight(data);
+          break;
+        case 'issueBooking':
+          result = await tvcApi.issueBooking(data);
+          break;
+        case 'retrieveBooking':
+          result = await tvcApi.retrieveBooking(data);
+          break;
+        case 'getFareOptions':
+          result = await tvcApi.getFareOptions(data);
+          break;
+        case 'listBookings':
+          result = await tvcApi.listBookings(data);
+          break;
+        case 'testConnection':
+          // Test endpoint to verify credentials
+          await tvcApi.getAccessToken();
+          result = {
+            status: 'connected',
+            message: 'TVC API connection successful'
+          };
+          break;
+        case 'createSearchRequest':
+          // Utility endpoint to create search requests
+          const { from, to, date, adults = 1, children = 0, infants = 0 } = data;
+          result = StarlingTvcApi.createSearchRequest(from, to, date, adults, children, infants);
+          break;
+        default:
+          throw new Error(`Unsupported action: ${action}`);
       }
-    });
-  } catch (error) {
-    console.error('❌ Starling TVC API Error:', error);
-    const errorResponse = {
-      success: false,
-      error: error.message,
-      provider: 'TVC',
-      timestamp: new Date().toISOString()
-    };
-    return new Response(JSON.stringify(errorResponse), {
-      status: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
+
+      // Store in cache for future requests
+      if (shouldCache && data && result) {
+        await setCachedSearch(supabase, action, data, result);
+        console.log(`💾 Cached results for ${action}`);
       }
-    });
-  }
+    }
+
+    // If jobId exists, update job with results (async mode)
+    if (jobId) {
+      console.log(`✅ Async mode: Completing job ${jobId}`);
+      await supabase
+        .from('search_jobs')
+        .update({
+          status: 'completed',
+          results: result,
+          cache_hit: cacheHit,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+
+      console.log(`🔔 Job ${jobId} updated - Realtime will notify frontend`);
+    }
+
+        // Return successful response
+        const response = {
+          success: true,
+          data: result,
+          provider: 'TVC',
+          cached: cacheHit,
+          jobId: jobId,
+          timestamp: new Date().toISOString()
+        };
+        console.log(`✅ Action completed successfully: ${action}`);
+        return new Response(JSON.stringify(response), {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+      } catch (error) {
+        console.error('❌ Starling TVC API Error:', error);
+
+        // If jobId exists, mark job as failed (async mode)
+        if (requestBody?.jobId) {
+          try {
+            await supabase
+              .from('search_jobs')
+              .update({
+                status: 'failed',
+                error: error.message,
+                completed_at: new Date().toISOString()
+              })
+              .eq('id', requestBody.jobId);
+          } catch (updateError) {
+            console.error('❌ Failed to update job status:', updateError);
+          }
+        }
+
+        const errorResponse = {
+          success: false,
+          error: error.message,
+          provider: 'TVC',
+          jobId: requestBody?.jobId,
+          timestamp: new Date().toISOString()
+        };
+        return new Response(JSON.stringify(errorResponse), {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+    }
+  );
 });

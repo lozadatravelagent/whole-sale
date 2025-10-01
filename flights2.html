@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flight & Hotel Information</title>
 </head>
+
 <body>
   {% for flight in selected_flights %}
   <div class="page">
@@ -33,9 +35,9 @@
             <div class="leg-title">Vuelo de ida <span class="flight-type">{{ flight.departure_date }}</span></div>
             <div class="leg-header">
               {% if flight.luggage %}
-                <div class="flight-type">Equipaje de bodega incluido</div>
+              <div class="flight-type">Equipaje de bodega incluido</div>
               {% else %}
-                <div class="flight-type">Carry On incluido</div>
+              <div class="flight-type">Carry On incluido</div>
               {% endif %}
               <div class="flight-type">{{ flight.legs[0].flight_type }}</div>
             </div>
@@ -64,7 +66,8 @@
             {% for layover in flight.legs[0].layovers %}
             <div class="layover-title">Escala en {{ layover.destination_city }}</div>
             <div class="layover-details">
-              Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{ layover.destination_city }})
+              Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{
+              layover.destination_city }})
             </div>
             {% endfor %}
           </div>
@@ -78,9 +81,9 @@
             <div class="leg-title">Vuelo de regreso <span class="flight-type">{{ flight.return_date }}</span></div>
             <div class="leg-header">
               {% if flight.luggage %}
-                <div class="flight-type">Equipaje de bodega incluido</div>
+              <div class="flight-type">Equipaje de bodega incluido</div>
               {% else %}
-                <div class="flight-type">Carry On incluido</div>
+              <div class="flight-type">Carry On incluido</div>
               {% endif %}
               <div class="flight-type">{{ flight.legs[1].flight_type }}</div>
             </div>
@@ -109,7 +112,8 @@
             {% for layover in flight.legs[1].layovers %}
             <div class="layover-title">Escala en {{ layover.destination_city }}</div>
             <div class="layover-details">
-              Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{ layover.destination_city }})
+              Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{
+              layover.destination_city }})
             </div>
             {% endfor %}
           </div>
@@ -137,4 +141,5 @@
   </div>
   {% endfor %}
 </body>
+
 </html>

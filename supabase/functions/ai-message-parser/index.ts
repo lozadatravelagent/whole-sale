@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withRateLimit } from "../_shared/rateLimit.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -10,7 +12,19 @@ serve(async (req) => {
       headers: corsHeaders
     });
   }
-  try {
+
+  // Initialize Supabase client for rate limiting
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Apply rate limiting
+  return await withRateLimit(
+    req,
+    supabase,
+    { action: 'message', resource: 'ai-parser' },
+    async () => {
+      try {
     const { message, language = 'es', currentDate, previousContext, conversationHistory = [] } = await req.json();
     if (!message) {
       throw new Error('Message is required');
@@ -72,6 +86,57 @@ EXAMPLES:
 
 TASK: Extract structured data for flights, hotels, packages, services, or combined requests.
 
+**FLIGHT REQUEST INTENTION DETECTION (CRITICAL):**
+
+RULE: If the message contains ANY flight-related keyword in a REQUEST CONTEXT, classify as requestType: "flights"
+
+**Flight Keywords:** vuelo, vuelos, volar, volando, flight, flights, aéreo, aérea, avión, aviones, boleto, boletos, pasaje, pasajes
+
+**Request Context Indicators:**
+- Verbs: quiero, dame, dáme, necesito, busco, me das, puedes, podrías, reserva, cotiza, consigue
+- Questions: cuánto cuesta, precio de, costo de, disponibilidad de
+- Commands: buscar, reservar, cotizar, conseguir
+- Travel phrases: viajar a, ir a, viaje a, viaje de
+
+**Examples that MUST be classified as "flights":**
+- "dame un vuelo" ✅
+- "quiero un vuelo" ✅
+- "necesito volar" ✅
+- "busco vuelos baratos" ✅
+- "me das precios de vuelos" ✅
+- "cuánto cuesta un vuelo" ✅
+- "cotización de vuelo" ✅
+- "quiero viajar" ✅
+- "boletos de avión" ✅
+
+**TYPO AND VARIATION TOLERANCE (CRITICAL):**
+Be EXTREMELY tolerant of spelling errors, typos, and variations:
+- "bulo" → vuelo
+- "buelo" → vuelo
+- "vuelo" with any typos → vuelo
+- "volar" with typos → volar
+- "vijar" → viajar
+- "biajar" → viajar
+- "aion" → avión
+- "abion" → avión
+- Casual language: "un vuelo x favor", "vuelo pls", "porfavor vuelo"
+- Incomplete phrases: "dame vuelo", "quero vuelo", "nesesito vuelo"
+- Mixed languages: "flight", "fly", combined with Spanish
+
+**SEMANTIC ANALYSIS APPROACH:**
+1. **Primary Focus**: What is the user TRYING TO DO? (intent over exact words)
+2. **Context Clues**: Look for travel-related context even with poor spelling
+3. **Fuzzy Matching**: Match words phonetically and by meaning, not just spelling
+4. **User Intent**: Always prioritize understanding what the user wants over perfect grammar
+
+INTELLIGENCE RULE: Use semantic understanding and context clues. If the user's intent seems to be about air travel, classify as "flights" regardless of spelling errors or grammatical mistakes.
+
+CRITICAL INSTRUCTION:
+- Do NOT require complete flight details to classify as "flights"
+- Even incomplete requests like "dame un vuelo" = requestType: "flights"
+- Focus on INTENTION, not completeness
+- Missing details trigger missing_info_request AFTER confirming flights intention
+
 **INTELLIGENCE GUIDELINES:**
 - Be extremely flexible interpreting ANY city, airport, country, or destination name globally
 - Understand ANY Spanish/English month names, date formats, and relative dates
@@ -111,24 +176,38 @@ TASK: Extract structured data for flights, hotels, packages, services, or combin
 
 **LUGGAGE INTERPRETATION (ONLY when explicitly mentioned):**
 - "carry_on": equipaje de mano, cabina, carry on, solo mochila, solo equipaje de mano
-- "checked": valija, equipaje facturado, maleta, bodega, despachado, con valija
+- "checked": valija, equipaje facturado, equipaje en bodega, maleta, bodega, despachado, con valija
 - "both": ambos tipos, equipaje completo, mano y bodega, con equipaje de mano y valija
 - "none": sin equipaje, solo personal, nada de equipaje
-- CRITICAL: If NO luggage terms mentioned, DO NOT include luggage field at all
-- NEVER assume luggage preferences - only include when user specifically mentions baggage
+
+🚨 **CRITICAL LUGGAGE RULE - READ CAREFULLY:**
+- IF the user message contains NO baggage/luggage/equipaje/valija/carry-on/mochila words → DO NOT include "luggage" field
+- ONLY include "luggage" field when user EXPLICITLY mentions baggage preferences
+- NEVER add luggage field as default or assumption
+- Example: "vuelo a madrid" → NO luggage field (user didn't mention baggage)
+- Example: "vuelo con equipaje en bodega" → luggage: "checked" (user mentioned baggage)
 
 **STOPS INTERPRETATION:**
 - "direct": directo, sin escalas, non-stop, vuelo directo
-- "any": con escalas, cualquier vuelo, no importa, flexible
+- "with_stops": con escalas (genérico), vuelos con conexiones, cualquier vuelo con paradas
 - "one_stop": una escala, con escala, una conexión
 - "two_stops": dos escalas, múltiples conexiones
+- "any": cualquier vuelo, no importa, flexible (incluye directos y con escalas)
 - Interpret ANY flight preference terminology intelligently
 
 **LAYOVER DURATION EXTRACTION:**
-- Extract specific layover time constraints: "no más de X horas", "escalas de máximo X horas", "con escalas de no más de X horas"
+🚨 **CRITICAL RULE - ONLY include maxLayoverHours when user EXPLICITLY mentions time limits:**
+- Extract ONLY when user mentions specific time constraints: "no más de X horas", "escalas de máximo X horas", "con escalas de no más de X horas", "escalas cortas", "escalas que sean menos de X horas"
 - Convert to maxLayoverHours field (number in hours)
 - Examples: "no más de 3 horas" → maxLayoverHours: 3, "escalas de máximo 10 horas" → maxLayoverHours: 10
 - "con 1 escala de no más de 3 horas" → stops: "one_stop", maxLayoverHours: 3
+
+❌ **DO NOT include maxLayoverHours if:**
+- User only mentions basic flight request without time constraints
+- User says "con escalas" without specifying time limit
+- User doesn't mention layover duration at all
+- Example: "vuelo madrid barcelona" → NO maxLayoverHours field
+- Example: "vuelo con escalas" → NO maxLayoverHours field
 
 **AIRLINE PREFERENCE EXTRACTION (OPTIONAL):**
 - CRITICAL: ONLY include preferredAirline if user EXPLICITLY mentions an airline name or preference
@@ -143,50 +222,85 @@ TASK: Extract structured data for flights, hotels, packages, services, or combin
 **COMBINED SEARCH TRIGGERS:**
 - "vuelo y hotel", "con hotel", "hotel incluido", "paquete", "agrega hotel"
 
-## REQUIRED FIELDS
+## REQUIRED FIELDS AND DEFAULTS
 
-**FLIGHTS:** origin, destination, departureDate, adults (returnDate only if round trip mentioned)
-**HOTELS:** city, checkinDate, checkoutDate, adults, roomType, mealPlan
-**COMBINED:** All flight + hotel required fields
+**FLIGHTS:**
+- Required: origin, destination, departureDate
+- Optional: returnDate (only if round trip mentioned)
+- **DEFAULT: adults = 1** (if not specified, always assume 1 adult)
+- children = 0 (default if not specified)
+
+**HOTELS:**
+- Required: city, checkinDate, checkoutDate
+- **DEFAULT: adults = 1** (if not specified, always assume 1 adult)
+- children = 0 (default if not specified)
+- roomType, mealPlan (optional)
+
+**COMBINED:** All flight + hotel required fields with same defaults
+
+**IMPORTANT PASSENGER RULES:**
+1. If NO passenger count mentioned → adults = 1, children = 0
+2. If "para 2" or "2 personas" mentioned → adults = 2, children = 0
+3. If "con un niño" mentioned → adults = 1, children = 1
+4. If "familia de 4" mentioned → infer adults = 2, children = 2
+5. NEVER ask for passenger count if not mentioned - default to 1 adult
 
 ## RESPONSE EXAMPLES
 
-Basic flight request (only include fields that are mentioned or required):
+Example 1 - Basic flight request WITHOUT passenger count specified:
+User: "Quiero un vuelo de [origen] a [destino] para [mes] de [año]"
 {
   "requestType": "flights",
   "flights": {
-    "origin": "MAD",
-    "destination": "MIA",
-    "departureDate": "2025-11-01",
-    "adults": 2,
+    "origin": [origen]",
+    "destination": "[destino]",
+    "departureDate": "[fecha de salida]",
+    "adults": 1,
     "children": 0,
-    "stops": "direct"
+    "stops": "any"
   },
   "confidence": 0.9
 }
 
-Flight with explicit preferences (include optional fields only when mentioned):
+Example 2 - Flight with multiple passengers explicitly mentioned:
+User: "Necesito vuelo para 2 adultos de [origen] a [destino]"
 {
   "requestType": "flights",
   "flights": {
-    "origin": "EZE",
-    "destination": "CDG",
-    "departureDate": "2025-10-02",
-    "returnDate": "2025-10-20",
+    "origin": "[origen]",
+    "destination": "[destino]",
+    "departureDate": "[FECHA_SALIDA]",
+    "adults": 2,
+    "children": 0,
+    "stops": "any"
+  },
+  "confidence": 0.9
+}
+
+Example 3 - Flight with preferences (include optional fields only when mentioned):
+{
+  "requestType": "flights",
+  "flights": {
+    "origin": "[ORIGEN]",
+    "destination": "[DESTINO]",
+    "departureDate": "[FECHA_SALIDA]",
+    "returnDate": "[FECHA_REGRESO]",
     "adults": 1,
+    "children": 0,
     "luggage": "checked",
     "stops": "one_stop",
     "maxLayoverHours": 3,
-    "preferredAirline": "AF"
+    "preferredAirline": "[CODIGO_AEROLINEA]"
   },
   "confidence": 0.9
 }
 
-Missing info request:
+Example 4 - Missing critical info (ONLY ask for origin/destination/dates, NOT passengers):
+User: "Quiero viajar"
 {
   "requestType": "missing_info_request",
-  "message": "Para buscar tu vuelo necesito:\\n\\n**Pasajeros:** ¿Cuántos adultos?",
-  "missingFields": ["adults"],
+  "message": "Para buscar tu vuelo necesito:\\n\\n**Origen:** ¿Desde dónde viajas?\\n**Destino:** ¿A dónde quieres ir?\\n**Fecha:** ¿Cuándo viajas?",
+  "missingFields": ["origin", "destination", "departureDate"],
   "confidence": 0.3
 }
 
@@ -296,41 +410,43 @@ Analyze this message and respond with JSON only:`;
       });
       throw new Error(`Invalid response structure from AI - requestType: ${parsed.requestType}, confidence: ${parsed.confidence} (${typeof parsed.confidence})`);
     }
-    console.log('✅ AI parsing successful:', parsed);
-    return new Response(JSON.stringify({
-      success: true,
-      parsed,
-      aiResponse: aiResponse,
-      timestamp: new Date().toISOString()
-    }), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
+        console.log('✅ AI parsing successful:', parsed);
+        return new Response(JSON.stringify({
+          success: true,
+          parsed,
+          aiResponse: aiResponse,
+          timestamp: new Date().toISOString()
+        }), {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+      } catch (error) {
+        console.error('❌ AI Message Parser error:', error);
+        console.error('❌ Error stack:', error.stack);
+        // More specific error handling
+        let errorMessage = 'Unknown error occurred';
+        let statusCode = 500;
+        if (error.message) {
+          errorMessage = error.message;
+        }
+        if (error.message?.includes('OpenAI')) {
+          statusCode = 502; // Bad Gateway for external service errors
+        }
+        return new Response(JSON.stringify({
+          success: false,
+          error: errorMessage,
+          errorType: error.constructor.name,
+          timestamp: new Date().toISOString()
+        }), {
+          status: statusCode,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
       }
-    });
-  } catch (error) {
-    console.error('❌ AI Message Parser error:', error);
-    console.error('❌ Error stack:', error.stack);
-    // More specific error handling
-    let errorMessage = 'Unknown error occurred';
-    let statusCode = 500;
-    if (error.message) {
-      errorMessage = error.message;
     }
-    if (error.message?.includes('OpenAI')) {
-      statusCode = 502; // Bad Gateway for external service errors
-    }
-    return new Response(JSON.stringify({
-      success: false,
-      error: errorMessage,
-      errorType: error.constructor.name,
-      timestamp: new Date().toISOString()
-    }), {
-      status: statusCode,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
-    });
-  }
+  );
 });

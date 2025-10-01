@@ -324,46 +324,58 @@ export function useMessages(conversationId: string | null) {
 
     // Create a unique channel for this conversation
     const channel = supabase
-      .channel(`public:messages:${conversationId}`)
+      .channel(`messages:${conversationId}`, {
+        config: {
+          broadcast: { self: true }
+        }
+      })
       .on(
         'postgres_changes',
         {
-          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          event: 'INSERT',
           schema: 'public',
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`
         },
         (payload) => {
-          console.log('📨 Realtime event received:', payload);
+          console.log('📨 Realtime INSERT event received:', payload);
+          console.log('🟢 NEW MESSAGE via Realtime:', payload.new);
+          const newMessage = payload.new as MessageRow;
 
-          if (payload.eventType === 'INSERT') {
-            console.log('🟢 NEW MESSAGE via Realtime:', payload.new);
-            const newMessage = payload.new as MessageRow;
+          setMessages(prev => {
+            // Check if message already exists to prevent duplicates
+            const exists = prev.some(msg => msg.id === newMessage.id);
+            if (exists) {
+              console.log('🟡 Duplicate message prevented:', newMessage.id);
+              return prev;
+            }
 
-            setMessages(prev => {
-              // Check if message already exists to prevent duplicates
-              const exists = prev.some(msg => msg.id === newMessage.id);
-              if (exists) {
-                console.log('🟡 Duplicate message prevented:', newMessage.id);
-                return prev;
-              }
-
-              console.log('🟢 Adding new message to state:', newMessage.id);
-              // Add new message in chronological order
-              return [...prev, newMessage].sort((a, b) =>
-                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-              );
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            console.log('🟡 MESSAGE UPDATED via Realtime:', payload.new);
-            const updatedMessage = payload.new as MessageRow;
-
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === updatedMessage.id ? updatedMessage : msg
-              )
+            console.log('🟢 Adding new message to state:', newMessage.id);
+            // Add new message in chronological order
+            return [...prev, newMessage].sort((a, b) =>
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             );
-          }
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `conversation_id=eq.${conversationId}`
+        },
+        (payload) => {
+          console.log('📨 Realtime UPDATE event received:', payload);
+          console.log('🟡 MESSAGE UPDATED via Realtime:', payload.new);
+          const updatedMessage = payload.new as MessageRow;
+
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === updatedMessage.id ? updatedMessage : msg
+            )
+          );
         }
       )
       .subscribe((status, err) => {

@@ -1,6 +1,9 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.45/deno-dom-wasm.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { getCachedSearch, setCachedSearch } from "../_shared/cache.ts";
+import { withRateLimit, extractIdentifiers } from "../_shared/rateLimit.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -777,65 +780,154 @@ serve(async (req) => {
       headers: corsHeaders
     });
   }
-  try {
-    if (req.method !== 'POST') {
-      throw new Error('Only POST method is allowed');
-    }
-    const body = await req.json();
-    console.log('📦 EUROVIPS REQUEST:', body.action, body.data ? Object.keys(body.data) : 'no-data');
-    const { action, data } = body;
-    const client = new EurovipsSOAPClient();
+
+  // Initialize Supabase client
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Apply rate limiting
+  return await withRateLimit(
+    req,
+    supabase,
+    { action: 'search', resource: 'eurovips' },
+    async () => {
+      try {
+        if (req.method !== 'POST') {
+          throw new Error('Only POST method is allowed');
+        }
+        const body = await req.json();
+        console.log('📦 EUROVIPS REQUEST:', body.action, body.data ? Object.keys(body.data) : 'no-data');
+        const { action, data, jobId } = body;
+
+        // If jobId exists, mark job as processing
+        if (jobId) {
+          console.log(`🔄 Async mode: Processing job ${jobId}`);
+          await supabase
+            .from('search_jobs')
+            .update({ status: 'processing' })
+            .eq('id', jobId);
+        }
+
+    // Actions that should be cached (heavy API calls)
+    const cacheableActions = ['searchHotels', 'searchFlights', 'searchPackages', 'searchServices'];
+    const shouldCache = cacheableActions.includes(action);
+
     let results;
-    switch (action) {
-      case 'getCountryList':
-        results = await client.getCountryList(data);
-        break;
-      case 'getAirlineList':
-        results = await client.getAirlineList();
-        break;
-      case 'searchHotels':
-        if (!data) throw new Error('Hotel search data is required');
-        results = await client.searchHotels(data);
-        break;
-      case 'searchFlights':
-        if (!data) throw new Error('Flight search data is required');
-        results = await client.searchFlights(data);
-        break;
-      case 'searchPackages':
-        if (!data) throw new Error('Package search data is required');
-        results = await client.searchPackages(data);
-        break;
-      case 'searchServices':
-        if (!data) throw new Error('Service search data is required');
-        results = await client.searchServices(data);
-        break;
-      default:
-        throw new Error(`Unknown action: ${action}`);
+    let cacheHit = false;
+
+    // Try to get from cache first
+    if (shouldCache && data) {
+      const cached = await getCachedSearch(supabase, action, data);
+      if (cached) {
+        console.log(`✅ Cache HIT for ${action}`);
+        results = cached;
+        cacheHit = true;
+      } else {
+        console.log(`❌ Cache MISS for ${action}`);
+      }
     }
-    return new Response(JSON.stringify({
-      success: true,
-      action,
-      results,
-      provider: 'EUROVIPS',
-      timestamp: new Date().toISOString()
-    }), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
+
+    // If not cached, call the API
+    if (!cacheHit) {
+      const client = new EurovipsSOAPClient();
+
+      switch (action) {
+        case 'getCountryList':
+          results = await client.getCountryList(data);
+          break;
+        case 'getAirlineList':
+          results = await client.getAirlineList();
+          break;
+        case 'searchHotels':
+          if (!data) throw new Error('Hotel search data is required');
+          results = await client.searchHotels(data);
+          break;
+        case 'searchFlights':
+          if (!data) throw new Error('Flight search data is required');
+          results = await client.searchFlights(data);
+          break;
+        case 'searchPackages':
+          if (!data) throw new Error('Package search data is required');
+          results = await client.searchPackages(data);
+          break;
+        case 'searchServices':
+          if (!data) throw new Error('Service search data is required');
+          results = await client.searchServices(data);
+          break;
+        default:
+          throw new Error(`Unknown action: ${action}`);
       }
-    });
-  } catch (error) {
-    console.error('❌ Error in eurovips-soap function:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    }), {
-      status: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
+
+      // Store in cache for future requests
+      if (shouldCache && data && results) {
+        await setCachedSearch(supabase, action, data, results);
+        console.log(`💾 Cached results for ${action}`);
       }
-    });
-  }
+    }
+
+    // If jobId exists, update job with results (async mode)
+    if (jobId) {
+      console.log(`✅ Async mode: Completing job ${jobId}`);
+      await supabase
+        .from('search_jobs')
+        .update({
+          status: 'completed',
+          results: results,
+          cache_hit: cacheHit,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+
+      console.log(`🔔 Job ${jobId} updated - Realtime will notify frontend`);
+    }
+
+        return new Response(JSON.stringify({
+          success: true,
+          action,
+          results,
+          provider: 'EUROVIPS',
+          cached: cacheHit,
+          jobId: jobId,
+          timestamp: new Date().toISOString()
+        }), {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+      } catch (error) {
+        console.error('❌ Error in eurovips-soap function:', error);
+
+        // If jobId exists, mark job as failed (async mode)
+        if (body?.jobId) {
+          try {
+            await supabase
+              .from('search_jobs')
+              .update({
+                status: 'failed',
+                error: error.message,
+                completed_at: new Date().toISOString()
+              })
+              .eq('id', body.jobId);
+          } catch (updateError) {
+            console.error('❌ Failed to update job status:', updateError);
+          }
+        }
+
+        return new Response(JSON.stringify({
+          success: false,
+          error: error.message,
+          jobId: body?.jobId,
+          timestamp: new Date().toISOString()
+        }), {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+    }
+  );
 });

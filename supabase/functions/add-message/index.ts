@@ -12,7 +12,9 @@ serve(async (req) => {
     });
   }
   try {
-    const { conversationId, role, content, meta } = await req.json();
+    const { id, conversationId, role, content, meta } = await req.json();
+    console.log('🆔 [ADD-MESSAGE] Received custom ID:', id);
+
     // Validate required parameters
     if (!conversationId || !role || !content) {
       return new Response(JSON.stringify({
@@ -29,14 +31,24 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    // Insert message into database
-    const { data, error } = await supabase.from('messages').insert({
+
+    // Prepare message data - use custom ID if provided
+    const messageData = {
       conversation_id: conversationId,
       role: role,
       content: content,
       meta: meta || {},
       created_at: new Date().toISOString()
-    }).select().single();
+    };
+
+    // Add custom ID if provided (for optimistic UI)
+    if (id) {
+      messageData.id = id;
+      console.log('🎯 [ADD-MESSAGE] Using provided ID for optimistic UI:', id);
+    }
+
+    // Insert message into database
+    const { data, error } = await supabase.from('messages').insert(messageData).select().single();
     if (error) {
       console.error('Error inserting message:', error);
       return new Response(JSON.stringify({
