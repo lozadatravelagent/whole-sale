@@ -12,6 +12,7 @@ interface ChatInterfaceProps {
   message: string;
   isLoading: boolean;
   isTyping: boolean;
+  typingMessage?: string;
   isUploadingPdf: boolean;
   isAddingToCRM: boolean;
   onMessageChange: (message: string) => void;
@@ -26,6 +27,7 @@ const ChatInterface = React.memo(({
   message,
   isLoading,
   isTyping,
+  typingMessage,
   isUploadingPdf,
   isAddingToCRM,
   onMessageChange,
@@ -123,7 +125,7 @@ const ChatInterface = React.memo(({
             />
           ))}
 
-          {isTyping && <TypingIndicator />}
+          {isTyping && <TypingIndicator message={typingMessage} />}
 
           {/* Invisible element to scroll to */}
           <div ref={messagesEndRef} />

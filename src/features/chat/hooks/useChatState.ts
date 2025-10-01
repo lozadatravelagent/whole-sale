@@ -20,6 +20,8 @@ const useChatState = () => {
     isAddingToCRM: false
   });
 
+  const [typingMessage, setTypingMessage] = useState<string>('');
+
   const { user } = useAuth();
   const {
     conversations,
@@ -169,6 +171,7 @@ const useChatState = () => {
   return {
     // State
     ...chatState,
+    typingMessage,
 
     // Related data
     conversations,
@@ -183,6 +186,7 @@ const useChatState = () => {
     setPreviousParsedRequest,
     setIsAddingToCRM,
     updateChatState,
+    setTypingMessage,
 
     // Actions
     createNewChat,

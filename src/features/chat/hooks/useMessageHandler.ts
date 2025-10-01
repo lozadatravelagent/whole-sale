@@ -25,7 +25,8 @@ const useMessageHandler = (
   setIsLoading: (loading: boolean) => void,
   setIsTyping: (typing: boolean) => void,
   setMessage: (message: string) => void,
-  toast: any
+  toast: any,
+  setTypingMessage: (message: string) => void
 ) => {
   const { messages, refreshMessages } = useMessages(selectedConversation);
 
@@ -268,25 +269,35 @@ const useMessageHandler = (
     console.log('📨 Processing message:', currentMessage);
 
     try {
-      // 1. Save user message
-      console.log('📤 [MESSAGE FLOW] Step 2: About to save user message (Supabase INSERT)');
+      // 1. Optimistic UI update - add user message to UI immediately (without waiting for DB)
+      console.log('⚡ [OPTIMISTIC UI] Adding user message to UI instantly');
+      const optimisticUserMessage = {
+        id: `temp-${Date.now()}-${Math.random()}`,
+        conversation_id: selectedConversation,
+        role: 'user' as const,
+        content: { text: currentMessage },
+        meta: { status: 'sending' },
+        created_at: new Date().toISOString()
+      };
 
+      // Add to local messages immediately (Realtime will replace with real message from DB)
+      messages.push(optimisticUserMessage as any);
+      refreshMessages(); // Trigger re-render with optimistic message
+
+      console.log('📤 [MESSAGE FLOW] Step 2: Saving user message to database (in background)');
+
+      // Save to database with final 'sent' status (single write, no update needed)
       const userMessage = await addMessageViaSupabase({
         conversation_id: selectedConversation,
         role: 'user' as const,
         content: { text: currentMessage },
-        meta: { status: 'sending' }
+        meta: { status: 'sent' } // Already 'sent' - no need for UPDATE
       });
 
-      console.log('✅ [MESSAGE FLOW] Step 3: User message saved successfully');
+      console.log('✅ [MESSAGE FLOW] Step 3: User message saved successfully with ID:', userMessage.id);
 
-      console.log('📤 [MESSAGE FLOW] Step 4: About to update message status (Supabase UPDATE)');
-      await updateMessageStatus(userMessage.id, 'sent');
-      console.log('✅ [MESSAGE FLOW] Step 5: Message status updated to "sent"');
-
-      // Force refresh messages to ensure UI updates (immediate + delayed)
-      refreshMessages(); // Immediate refresh
-      setTimeout(() => refreshMessages(), 500); // Quick fallback
+      // Realtime subscription will automatically update UI with the real message from DB
+      // No need for manual refreshes - Realtime handles it
 
       // 2. Update conversation title if first message
       if (messages.length === 0) {
@@ -337,6 +348,8 @@ const useMessageHandler = (
       console.log('🤖 [MESSAGE FLOW] Step 8: Starting AI parsing process');
       console.log('📤 [MESSAGE FLOW] About to call AI message parser (Supabase Edge Function)');
       console.log('🧠 Message to parse:', currentMessage);
+
+      setTypingMessage('Analizando tu mensaje...');
 
       // Prepare full conversation history for better context understanding
       const conversationHistory = messages?.map(msg => ({
@@ -671,6 +684,7 @@ const useMessageHandler = (
         }
         case 'flights': {
           console.log('✈️ [MESSAGE FLOW] Step 12b: Processing flight search');
+          setTypingMessage('Buscando vuelos disponibles...');
           const flightResult = await handleFlightSearch(parsedRequest);
           assistantResponse = flightResult.response;
           structuredData = flightResult.data;
@@ -679,6 +693,7 @@ const useMessageHandler = (
         }
         case 'hotels': {
           console.log('🏨 [MESSAGE FLOW] Step 12c: Processing hotel search');
+          setTypingMessage('Buscando hoteles disponibles...');
           const hotelResult = await handleHotelSearch(parsedRequest);
           assistantResponse = hotelResult.response;
           structuredData = hotelResult.data;
@@ -704,6 +719,7 @@ const useMessageHandler = (
           // Respect domain lock: if user intent was hotel-only turn, prioritize hotels; else run combined
           if (activeDomain === 'hotels') {
             console.log('🏨 [MESSAGE FLOW] Step 12f: Domain locked to hotels, skipping flights');
+            setTypingMessage('Buscando hoteles disponibles...');
             const hotelResult = await handleHotelSearch({
               ...parsedRequest,
               requestType: 'hotels'
@@ -712,6 +728,7 @@ const useMessageHandler = (
             structuredData = hotelResult.data;
           } else {
             console.log('🌟 [MESSAGE FLOW] Step 12f: Processing combined search');
+            setTypingMessage('Buscando vuelos y hoteles...');
             const combinedResult = await handleCombinedSearch(parsedRequest);
             assistantResponse = combinedResult.response;
             structuredData = combinedResult.data;
@@ -728,6 +745,8 @@ const useMessageHandler = (
       console.log('📝 [MESSAGE FLOW] Step 12: Generated assistant response');
       console.log('💬 Response preview:', assistantResponse.substring(0, 100) + '...');
       console.log('📊 Structured data:', structuredData);
+
+      setTypingMessage('Preparando resultados...');
 
       // Clear or preserve contextual memory depending on search results
       try {
@@ -792,10 +811,8 @@ const useMessageHandler = (
 
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
 
-      // Force refresh messages after assistant response (immediate + delayed)
-      refreshMessages(); // Immediate refresh
-      setTimeout(() => refreshMessages(), 500); // Quick fallback
-      setTimeout(() => refreshMessages(), 1500); // Extended fallback
+      // Realtime subscription will automatically update UI with assistant message
+      // No manual refreshes needed - trust Realtime WebSocket connection
 
       // 6. Lead generation disabled - Only manual creation via button
       console.log('📋 [MESSAGE FLOW] Step 15: Automatic lead generation disabled - only manual creation available');
@@ -830,7 +847,8 @@ const useMessageHandler = (
     setMessage,
     toast,
     messages,
-    getContextFromLastFlights
+    getContextFromLastFlights,
+    setTypingMessage
   ]);
 
   return {

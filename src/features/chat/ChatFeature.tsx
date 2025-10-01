@@ -78,7 +78,8 @@ const ChatFeature = () => {
     setIsLoading,
     setIsTyping,
     setMessage,
-    toast
+    toast,
+    setTypingMessage
   );
 
   // CTA: Retry with stops when no direct flights
@@ -485,6 +486,7 @@ const ChatFeature = () => {
               message={message}
               isLoading={isLoading}
               isTyping={isTyping}
+              typingMessage={typingMessage}
               isUploadingPdf={isUploadingPdf}
               isAddingToCRM={isAddingToCRM}
               onMessageChange={setMessage}
