@@ -324,78 +324,72 @@ export function useMessages(conversationId: string | null) {
 
     // Create a unique channel for this conversation
     const channel = supabase
-      .channel(`messages:${conversationId}`, {
-        config: {
-          broadcast: { self: true },
-          presence: { key: conversationId }
-        }
-      })
+      .channel(`public:messages:${conversationId}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
           schema: 'public',
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`
         },
         (payload) => {
-          console.log('🟢 NEW MESSAGE RECEIVED via Realtime:', payload.new);
-          const newMessage = payload.new as MessageRow;
+          console.log('📨 Realtime event received:', payload);
 
-          setMessages(prev => {
-            // Check if message already exists to prevent duplicates
-            const exists = prev.some(msg => msg.id === newMessage.id);
-            if (exists) {
-              console.log('🟡 Duplicate message prevented:', newMessage.id);
-              return prev;
-            }
+          if (payload.eventType === 'INSERT') {
+            console.log('🟢 NEW MESSAGE via Realtime:', payload.new);
+            const newMessage = payload.new as MessageRow;
 
-            console.log('🟢 Adding new message to state:', newMessage.id);
-            // Add new message in chronological order
-            return [...prev, newMessage].sort((a, b) =>
-              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            setMessages(prev => {
+              // Check if message already exists to prevent duplicates
+              const exists = prev.some(msg => msg.id === newMessage.id);
+              if (exists) {
+                console.log('🟡 Duplicate message prevented:', newMessage.id);
+                return prev;
+              }
+
+              console.log('🟢 Adding new message to state:', newMessage.id);
+              // Add new message in chronological order
+              return [...prev, newMessage].sort((a, b) =>
+                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            console.log('🟡 MESSAGE UPDATED via Realtime:', payload.new);
+            const updatedMessage = payload.new as MessageRow;
+
+            setMessages(prev =>
+              prev.map(msg =>
+                msg.id === updatedMessage.id ? updatedMessage : msg
+              )
             );
-          });
+          }
         }
       )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
-        },
-        (payload) => {
-          console.log('🟡 MESSAGE UPDATED via Realtime:', payload.new);
-          const updatedMessage = payload.new as MessageRow;
-
-          setMessages(prev =>
-            prev.map(msg =>
-              msg.id === updatedMessage.id ? updatedMessage : msg
-            )
-          );
-        }
-      )
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         console.log(`📡 Realtime status for ${conversationId}:`, status);
+        if (err) {
+          console.error('❌ Realtime subscription error:', err);
+        }
 
         if (status === 'SUBSCRIBED') {
           console.log('✅ Realtime ACTIVE for conversation:', conversationId);
         } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Realtime ERROR - falling back to manual refresh');
+          console.error('❌ Realtime CHANNEL_ERROR - Check Supabase Replication settings');
+          console.error('💡 Go to: Database → Replication → Enable "messages" table');
+          // Fallback: load messages once
           loadMessages();
         } else if (status === 'TIMED_OUT') {
-          console.error('⏰ Realtime TIMED OUT - falling back to manual refresh');
+          console.error('⏰ Realtime TIMED OUT');
           loadMessages();
         } else if (status === 'CLOSED') {
-          console.log('🔴 Realtime CLOSED for conversation:', conversationId);
+          console.log('🔴 Realtime channel CLOSED');
         }
       });
 
     return () => {
       console.log('🔴 Cleaning up Realtime subscription for:', conversationId);
-      supabase.removeChannel(channel);
+      channel.unsubscribe();
     };
   }, [conversationId, loadMessages]);
 
