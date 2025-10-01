@@ -329,7 +329,7 @@ export function useMessages(conversationId: string | null) {
     loadMessages();
   }, [conversationId, loadMessages]);
 
-  // Realtime subscription using Broadcast (works on free plan)
+  // Realtime subscription using Broadcast (via db.vibook.ai to bypass Cloudflare)
   useEffect(() => {
     if (!conversationId) {
       console.log('No conversationId - skipping Realtime setup');
@@ -342,7 +342,6 @@ export function useMessages(conversationId: string | null) {
       .channel(`conversation:${conversationId}`)
       .on('broadcast', { event: 'message' }, (payload) => {
         console.log('📨 Broadcast message received:', payload);
-
         // Reload messages when broadcast received
         loadMessages();
       })
@@ -350,12 +349,14 @@ export function useMessages(conversationId: string | null) {
         console.log(`📡 Broadcast channel status:`, status);
 
         if (status === 'SUBSCRIBED') {
-          console.log('✅ Broadcast channel ACTIVE for conversation:', conversationId);
+          console.log('✅ Realtime ACTIVE for conversation:', conversationId);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Realtime CHANNEL_ERROR');
         }
       });
 
     return () => {
-      console.log('🔴 Cleaning up Broadcast channel for:', conversationId);
+      console.log('🔴 Cleaning up Realtime for:', conversationId);
       channel.unsubscribe();
     };
   }, [conversationId, loadMessages]);
