@@ -176,7 +176,12 @@ CRITICAL INSTRUCTION:
 **DATE INTERPRETATION:**
 - Month names (enero, febrero, etc.) → first day of month
 - "primer/primera semana de [mes]" → first day of month
-- Year logic: Use current year (${currentDate.split('-')[0]}) unless month has passed, then use next year
+- **CRITICAL YEAR LOGIC:**
+  * Current date is: ${currentDate}
+  * If the mentioned month has ALREADY PASSED in the current year → use NEXT YEAR (${parseInt(currentDate.split('-')[0]) + 1})
+  * If the mentioned month is in the FUTURE (hasn't happened yet this year) → use CURRENT YEAR (${currentDate.split('-')[0]})
+  * Example: Today is ${currentDate}. If user says "marzo" (March), since March ${currentDate.split('-')[0]} already passed, use March ${parseInt(currentDate.split('-')[0]) + 1}
+  * Example: Today is ${currentDate}. If user says "noviembre" (November), since November ${currentDate.split('-')[0]} hasn't happened yet, use November ${currentDate.split('-')[0]}
 - No date mentioned → current date + 7 days
 - Round trip indicators: "vuelta", "regreso", "ida y vuelta" → require returnDate
 
