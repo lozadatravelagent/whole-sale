@@ -268,7 +268,7 @@ const useMessageHandler = (
     setMessage('');
     setIsLoading(true);
     setIsTyping(true);
-    setTypingMessage('Analizando tu solicitud...');
+    setTypingMessage('Chequeando tu pedido...');
 
     console.log('✅ [MESSAGE FLOW] Step 1: Message validation passed');
     console.log('📨 Processing message:', currentMessage);
