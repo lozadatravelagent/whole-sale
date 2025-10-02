@@ -61,47 +61,46 @@ export function useConversations() {
     console.log('🔄 [REALTIME] Setting up Realtime subscription for conversations');
 
     const channel = supabase
-      .channel('conversations')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'conversations',
-          filter: `agency_id=eq.${mockAgencyId}`
-        },
-        (payload) => {
-          console.log('🔔 [REALTIME] New conversation created:', payload.new);
-          const newConversation = payload.new as ConversationRow;
-
-          setConversations(prev => {
-            const exists = prev.some(conv => conv.id === newConversation.id);
-            if (exists) return prev;
-            return [newConversation, ...prev];
-          });
+      .channel('conversations-channel', {
+        config: {
+          broadcast: { self: true }
         }
-      )
+      })
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'conversations',
           filter: `agency_id=eq.${mockAgencyId}`
         },
         (payload) => {
-          console.log('🔔 [REALTIME] Conversation updated:', payload.new);
-          const updatedConversation = payload.new as ConversationRow;
+          console.log('🔔 [REALTIME] Conversation event:', payload.eventType, payload.new);
 
-          setConversations(prev =>
-            prev
-              .map(conv => conv.id === updatedConversation.id ? updatedConversation : conv)
-              .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
-          );
+          if (payload.eventType === 'INSERT') {
+            const newConversation = payload.new as ConversationRow;
+            setConversations(prev => {
+              const exists = prev.some(conv => conv.id === newConversation.id);
+              if (exists) return prev;
+              return [newConversation, ...prev];
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedConversation = payload.new as ConversationRow;
+            setConversations(prev =>
+              prev
+                .map(conv => conv.id === updatedConversation.id ? updatedConversation : conv)
+                .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
+            );
+          }
         }
       )
       .subscribe((status) => {
         console.log('📡 [REALTIME] Conversations subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [REALTIME] Conversations subscribed successfully');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ [REALTIME] Conversations channel error');
+        }
       });
 
     return () => {
@@ -354,72 +353,89 @@ export function useMessages(conversationId: string | null) {
     }
 
     loadMessages();
+  }, [conversationId, loadMessages]);
 
-    console.log('🔄 [REALTIME] Setting up Realtime subscription for conversation:', conversationId);
+  // Separate effect for Realtime subscription (global channel, reused across conversations)
+  useEffect(() => {
+    if (!conversationId) {
+      return;
+    }
 
-    // Subscribe to real-time changes for this conversation
-    const channel = supabase
-      .channel(`messages:${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
-        },
-        (payload) => {
-          console.log('🔔 [REALTIME] New message received:', payload.new);
-          const newMessage = payload.new as MessageRow;
+    console.log('🔄 [REALTIME] Setting up message listener for conversation:', conversationId);
 
-          setMessages(prev => {
-            // Avoid duplicates
-            const exists = prev.some(msg => msg.id === newMessage.id);
-            if (exists) {
-              console.log('⚠️ [REALTIME] Message already exists, skipping');
-              return prev;
-            }
+    // Use a single global channel for all messages
+    const channelName = 'global-messages';
 
-            console.log('✅ [REALTIME] Adding new message to state');
-            return [...prev, newMessage].sort((a, b) =>
-              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            );
-          });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`
-        },
-        (payload) => {
-          console.log('🔔 [REALTIME] Message updated:', payload.new);
-          const updatedMessage = payload.new as MessageRow;
+    // Check if channel already exists
+    let channel = supabase.getChannels().find(ch => ch.topic === `realtime:${channelName}`);
 
-          setMessages(prev =>
-            prev.map(msg => msg.id === updatedMessage.id ? updatedMessage : msg)
+    if (!channel) {
+      console.log('📢 [REALTIME] Creating new global messages channel');
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'messages'
+          },
+          (payload) => {
+            const message = payload.new as MessageRow;
+            console.log('🔔 [REALTIME] Global message event received:', payload.eventType, 'for conversation:', message.conversation_id);
+
+            // This callback will receive ALL messages, we filter in the specific conversation effect
+            // Dispatch custom event for other components to handle
+            const event = new CustomEvent('supabase-message', { detail: { payload } });
+            window.dispatchEvent(event);
+          }
+        )
+        .subscribe((status) => {
+          console.log('📡 [REALTIME] Global messages channel status:', status);
+        });
+    }
+
+    // Listen for messages via custom events (filtered by conversation)
+    const handleMessage = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { payload } = customEvent.detail;
+      const message = payload.new as MessageRow;
+
+      // Filter for this conversation only
+      if (message.conversation_id !== conversationId) {
+        return;
+      }
+
+      console.log('📨 [REALTIME] Message for this conversation:', payload.eventType, message);
+
+      if (payload.eventType === 'INSERT') {
+        setMessages(prev => {
+          const exists = prev.some(msg => msg.id === message.id);
+          if (exists) {
+            console.log('⚠️ [REALTIME] Message already exists, skipping');
+            return prev;
+          }
+
+          console.log('✅ [REALTIME] Adding new message to state');
+          return [...prev, message].sort((a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 [REALTIME] Subscription status:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ [REALTIME] Successfully subscribed to messages channel');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ [REALTIME] Channel error - subscription failed');
-        } else if (status === 'TIMED_OUT') {
-          console.error('⏱️ [REALTIME] Subscription timed out');
-        }
-      });
+        });
+      } else if (payload.eventType === 'UPDATE') {
+        setMessages(prev =>
+          prev.map(msg => msg.id === message.id ? message : msg)
+        );
+      }
+    };
+
+    window.addEventListener('supabase-message', handleMessage);
 
     return () => {
-      console.log('🔴 [REALTIME] Unsubscribing from messages channel');
-      supabase.removeChannel(channel);
+      console.log('🔴 [REALTIME] Removing message listener for conversation:', conversationId);
+      window.removeEventListener('supabase-message', handleMessage);
+      // Don't remove the channel, it's shared across all conversations
     };
-  }, [conversationId, loadMessages]);
+  }, [conversationId]);
 
   // Add a function to force refresh messages
   const refreshMessages = useCallback(() => {
