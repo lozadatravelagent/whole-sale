@@ -161,7 +161,7 @@ export function FlightSelector({
                     {segmentIndex > 0 && (
                       <div className="flex items-center justify-center py-2">
                         <Separator className="flex-1" />
-                        <Badge variant="outline" className="mx-2 text-xs">
+                        <Badge variant="outline" className="mx-2 text-xs bg-black text-white border-orange-500">
                           Conexión: {calculateConnectionTime(flight.segments[segmentIndex - 1], segment)}
                         </Badge>
                         <Separator className="flex-1" />

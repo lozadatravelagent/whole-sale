@@ -110,12 +110,7 @@ const useChatState = () => {
         await updateConversationState(newConversation.id, 'active');
         console.log('✅ [CHAT FLOW] Step 7: Conversation state updated successfully');
 
-        // Show success toast
-        console.log('🎉 [CHAT FLOW] Step 8: Showing success notification');
-        toast({
-          title: "Nueva Conversación",
-          description: "Se ha creado una nueva conversación exitosamente",
-        });
+        // Success notification removed as per user request
         console.log('✅ [CHAT FLOW] Chat creation process completed successfully');
         return newConversation;
       }

@@ -212,7 +212,7 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                   <div className="text-sm font-medium text-white flex items-center justify-center space-x-1">
                     <span>{formatTime(leg.arrival.time)}</span>
                     {leg.arrival_next_day && (
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-amber-700 text-amber-100">+1</span>
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-black text-white border border-orange-500">+1</span>
                     )}
                   </div>
                   <div className="text-[10px] text-gray-300">{formatDate(arrivalDate)}</div>
