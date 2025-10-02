@@ -145,15 +145,8 @@ const useChatState = () => {
     }
   }, [searchParams, conversations.length, setSearchParams, createNewChat]);
 
-  // Typing indicator effect
-  useEffect(() => {
-    if (chatState.isTyping) {
-      const timer = setTimeout(() => {
-        setIsTyping(false);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [chatState.isTyping, setIsTyping]);
+  // Typing indicator is now controlled manually in useMessageHandler
+  // No automatic timeout needed
 
   // Reset loading state when conversation changes
   useEffect(() => {

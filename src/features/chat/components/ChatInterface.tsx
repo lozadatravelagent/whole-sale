@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import { useMessages } from '@/hooks/useChat';
 import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageItem from './MessageItem';
@@ -15,6 +14,8 @@ interface ChatInterfaceProps {
   typingMessage?: string;
   isUploadingPdf: boolean;
   isAddingToCRM: boolean;
+  messages: MessageRow[];
+  refreshMessages: () => void;
   onMessageChange: (message: string) => void;
   onSendMessage: () => void;
   onPdfUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -30,13 +31,14 @@ const ChatInterface = React.memo(({
   typingMessage,
   isUploadingPdf,
   isAddingToCRM,
+  messages,
+  refreshMessages,
   onMessageChange,
   onSendMessage,
   onPdfUpload,
   onAddToCRM,
   onPdfGenerated
 }: ChatInterfaceProps) => {
-  const { messages, refreshMessages } = useMessages(selectedConversation);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
@@ -114,7 +116,27 @@ const ChatInterface = React.memo(({
             />
           ))}
 
-          {isTyping && <TypingIndicator message={typingMessage} />}
+          {isTyping && (
+            <div className="flex items-start gap-3 animate-in fade-in duration-300">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+                <span className="text-lg">🤖</span>
+              </div>
+              <div className="flex-1 bg-muted/50 border border-primary/10 rounded-2xl p-4 max-w-[80%]">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-1.5">
+                      <div className="w-2.5 h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '0.6s' }}></div>
+                      <div className="w-2.5 h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '0.6s' }}></div>
+                      <div className="w-2.5 h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '0.6s' }}></div>
+                    </div>
+                    <span className="text-sm font-medium text-foreground/80 animate-pulse">
+                      {typingMessage || 'Pensando...'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Invisible element to scroll to */}
           <div ref={messagesEndRef} />

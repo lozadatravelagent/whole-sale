@@ -50,7 +50,15 @@ const ChatFeature = () => {
     toast
   } = useChatState();
 
-  const { messages, updateMessageStatus, loadMessages } = useMessages(selectedConversation);
+  const {
+    messages,
+    updateMessageStatus,
+    loadMessages,
+    refreshMessages,
+    addOptimisticMessage,
+    updateOptimisticMessage,
+    removeOptimisticMessage
+  } = useMessages(selectedConversation);
 
   // Contextual memory hooks
   const { loadContextualMemory, saveContextualMemory, clearContextualMemory, loadContextState, saveContextState } = useContextualMemory();
@@ -81,7 +89,10 @@ const ChatFeature = () => {
     setIsTyping,
     setMessage,
     toast,
-    setTypingMessage
+    setTypingMessage,
+    addOptimisticMessage,
+    updateOptimisticMessage,
+    removeOptimisticMessage
   );
 
   // CTA: Retry with stops when no direct flights
@@ -491,6 +502,8 @@ const ChatFeature = () => {
               typingMessage={typingMessage}
               isUploadingPdf={isUploadingPdf}
               isAddingToCRM={isAddingToCRM}
+              messages={messages}
+              refreshMessages={refreshMessages}
               onMessageChange={setMessage}
               onSendMessage={handleSendMessage}
               onPdfUpload={handlePdfUpload}

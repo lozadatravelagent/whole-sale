@@ -416,6 +416,26 @@ export function useMessages(conversationId: string | null) {
             return prev;
           }
 
+          // Check if there's an optimistic message with the same role, content, and similar timestamp
+          // This handles replacing optimistic user messages with real ones from DB
+          const optimisticIndex = prev.findIndex(msg =>
+            msg.id.startsWith('temp-') &&
+            msg.role === message.role &&
+            !msg.id.startsWith('temp-thinking-') && // Don't remove thinking messages
+            typeof msg.content === 'object' && typeof message.content === 'object' &&
+            (msg.content as any).text === (message.content as any).text &&
+            Math.abs(new Date(msg.created_at).getTime() - new Date(message.created_at).getTime()) < 5000 // Within 5 seconds
+          );
+
+          if (optimisticIndex !== -1) {
+            console.log('🔄 [REALTIME] Replacing optimistic message with real one');
+            const updated = [...prev];
+            updated[optimisticIndex] = message;
+            return updated.sort((a, b) =>
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          }
+
           console.log('✅ [REALTIME] Adding new message to state');
           return [...prev, message].sort((a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -456,6 +476,22 @@ export function useMessages(conversationId: string | null) {
     });
   }, []);
 
+  // Add a function to update optimistic message (for thinking/progress updates)
+  const updateOptimisticMessage = useCallback((messageId: string, updates: Partial<any>) => {
+    setMessages(prev => {
+      return prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, ...updates }
+          : msg
+      );
+    });
+  }, []);
+
+  // Add a function to remove optimistic message
+  const removeOptimisticMessage = useCallback((messageId: string) => {
+    setMessages(prev => prev.filter(msg => msg.id !== messageId));
+  }, []);
+
   return {
     messages,
     loading,
@@ -463,6 +499,8 @@ export function useMessages(conversationId: string | null) {
     saveMessage,
     updateMessageStatus,
     refreshMessages,
-    addOptimisticMessage
+    addOptimisticMessage,
+    updateOptimisticMessage,
+    removeOptimisticMessage
   };
 }

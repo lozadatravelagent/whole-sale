@@ -26,9 +26,13 @@ const useMessageHandler = (
   setIsTyping: (typing: boolean) => void,
   setMessage: (message: string) => void,
   toast: any,
-  setTypingMessage: (message: string) => void
+  setTypingMessage: (message: string) => void,
+  addOptimisticMessage: (message: any) => void,
+  updateOptimisticMessage: (messageId: string, updates: Partial<any>) => void,
+  removeOptimisticMessage: (messageId: string) => void
 ) => {
-  const { messages, refreshMessages, addOptimisticMessage } = useMessages(selectedConversation);
+  // Get messages from the shared hook instance (passed from ChatFeature)
+  const { messages } = useMessages(selectedConversation);
 
   // Track active domain for this conversation to avoid cross responses
   let activeDomain: 'flights' | 'hotels' | null = null;
@@ -264,6 +268,7 @@ const useMessageHandler = (
     setMessage('');
     setIsLoading(true);
     setIsTyping(true);
+    setTypingMessage('Analizando tu solicitud...');
 
     console.log('✅ [MESSAGE FLOW] Step 1: Message validation passed');
     console.log('📨 Processing message:', currentMessage);
@@ -683,7 +688,7 @@ const useMessageHandler = (
         }
         case 'flights': {
           console.log('✈️ [MESSAGE FLOW] Step 12b: Processing flight search');
-          setTypingMessage('Buscando vuelos disponibles...');
+          setTypingMessage('Buscando los mejores vuelos...');
           const flightResult = await handleFlightSearch(parsedRequest);
           assistantResponse = flightResult.response;
           structuredData = flightResult.data;
@@ -692,7 +697,7 @@ const useMessageHandler = (
         }
         case 'hotels': {
           console.log('🏨 [MESSAGE FLOW] Step 12c: Processing hotel search');
-          setTypingMessage('Buscando hoteles disponibles...');
+          setTypingMessage('Buscando los mejores hoteles...');
           const hotelResult = await handleHotelSearch(parsedRequest);
           assistantResponse = hotelResult.response;
           structuredData = hotelResult.data;
@@ -718,7 +723,7 @@ const useMessageHandler = (
           // Respect domain lock: if user intent was hotel-only turn, prioritize hotels; else run combined
           if (activeDomain === 'hotels') {
             console.log('🏨 [MESSAGE FLOW] Step 12f: Domain locked to hotels, skipping flights');
-            setTypingMessage('Buscando hoteles disponibles...');
+            setTypingMessage('Buscando los mejores hoteles...');
             const hotelResult = await handleHotelSearch({
               ...parsedRequest,
               requestType: 'hotels'
@@ -727,7 +732,7 @@ const useMessageHandler = (
             structuredData = hotelResult.data;
           } else {
             console.log('🌟 [MESSAGE FLOW] Step 12f: Processing combined search');
-            setTypingMessage('Buscando vuelos y hoteles...');
+            setTypingMessage('Buscando las mejores opciones de viaje...');
             const combinedResult = await handleCombinedSearch(parsedRequest);
             assistantResponse = combinedResult.response;
             structuredData = combinedResult.data;
@@ -744,8 +749,6 @@ const useMessageHandler = (
       console.log('📝 [MESSAGE FLOW] Step 12: Generated assistant response');
       console.log('💬 Response preview:', assistantResponse.substring(0, 100) + '...');
       console.log('📊 Structured data:', structuredData);
-
-      setTypingMessage('Preparando resultados...');
 
       // Clear or preserve contextual memory depending on search results
       try {
@@ -798,6 +801,12 @@ const useMessageHandler = (
       // 5. Save response with structured data
       console.log('📤 [MESSAGE FLOW] Step 13: About to save assistant message (Supabase INSERT)');
 
+      // Hide typing indicator RIGHT BEFORE saving - Realtime will show the message immediately after
+      setIsTyping(false);
+      setIsLoading(false);
+      console.log('✅ [TYPING] Hiding typing indicator before saving message');
+
+      // Save assistant message to database
       await addMessageViaSupabase({
         conversation_id: selectedConversation,
         role: 'assistant' as const,
@@ -810,9 +819,6 @@ const useMessageHandler = (
 
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
 
-      // Realtime subscription will automatically update UI with assistant message
-      // No manual refreshes needed - trust Realtime WebSocket connection
-
       // 6. Lead generation disabled - Only manual creation via button
       console.log('📋 [MESSAGE FLOW] Step 15: Automatic lead generation disabled - only manual creation available');
 
@@ -820,15 +826,16 @@ const useMessageHandler = (
 
     } catch (error) {
       console.error('❌ [MESSAGE FLOW] Error in handleSendMessage process:', error);
+
+      // Hide indicators on error
+      setIsLoading(false);
+      setIsTyping(false);
+
       toast({
         title: "Error",
         description: "No se pudo enviar el mensaje. Inténtalo de nuevo.",
         variant: "destructive",
       });
-    } finally {
-      console.log('🏁 [MESSAGE FLOW] Cleaning up - setting loading states to false');
-      setIsLoading(false);
-      setIsTyping(false);
     }
   }, [
     selectedConversation,
@@ -847,7 +854,10 @@ const useMessageHandler = (
     toast,
     messages,
     getContextFromLastFlights,
-    setTypingMessage
+    setTypingMessage,
+    addOptimisticMessage,
+    updateOptimisticMessage,
+    removeOptimisticMessage
   ]);
 
   return {
