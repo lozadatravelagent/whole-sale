@@ -9,7 +9,9 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "npx serve -s dist -p $PORT"
+    "start": "npx serve -s dist -p $PORT",
+    "mcp:check": "npx @modelcontextprotocol/server-supabase --version",
+    "mcp:install": "npx -y @modelcontextprotocol/server-supabase"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# MCP Configuration (contains sensitive keys)
+.env.mcp
+.cursor/mcp-settings.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
