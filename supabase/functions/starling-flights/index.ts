@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { getCachedSearch, setCachedSearch } from "../_shared/cache.ts";
+import { getCachedSearch, setCachedSearch, triggerBackgroundRefresh } from "../_shared/cache.ts";
 import { withRateLimit } from "../_shared/rateLimit.ts";
 // ============================================================================
 // STARLING TVC API CLASS
@@ -370,13 +370,20 @@ serve(async (req) => {
     let result;
     let cacheHit = false;
 
-    // Try to get from cache first
+    // Try to get from cache first (with smart TTL)
     if (shouldCache && data) {
       const cached = await getCachedSearch(supabase, action, data);
       if (cached) {
-        console.log(`✅ Cache HIT for ${action}`);
-        result = cached;
+        console.log(`✅ Cache HIT for ${action} - Status: ${cached.status}`);
+        result = cached.results;
         cacheHit = true;
+
+        // If cache is STALE, trigger background refresh (fire-and-forget)
+        if (cached.needsRefresh && !req.url.includes('_background_refresh')) {
+          console.log(`🔄 Cache is STALE - triggering background refresh for ${action}`);
+          const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/starling-flights`;
+          triggerBackgroundRefresh(supabase, action, data, functionUrl);
+        }
       } else {
         console.log(`❌ Cache MISS for ${action}`);
       }
