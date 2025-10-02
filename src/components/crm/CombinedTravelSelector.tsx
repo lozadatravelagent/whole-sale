@@ -225,16 +225,16 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                 <div className="space-y-2">
                   {leg.layovers.map((layover, layoverIndex) => (
                     <div key={layoverIndex} className="flex justify-center">
-                      <div className="bg-amber-900 border border-amber-700 rounded-lg p-2 min-w-[200px]">
+                      <div className="bg-black border border-orange-500 rounded-lg p-2 min-w-[200px]">
                         <div className="text-center">
                           <div className="flex items-center justify-center space-x-1 mb-1">
-                            <Timer className="h-3 w-3 text-amber-400" />
-                            <span className="text-xs font-medium text-amber-200">CONEXIÓN</span>
+                            <Timer className="h-3 w-3 text-orange-500" />
+                            <span className="text-xs font-medium text-white">CONEXIÓN</span>
                           </div>
-                          <div className="text-sm font-bold text-amber-100">
+                          <div className="text-sm font-bold text-white">
                             {layover.destination_code} - {layover.waiting_time}
                           </div>
-                          <div className="text-xs text-amber-300">Cambio de terminal/puerta</div>
+                          <div className="text-xs text-gray-300">Cambio de terminal/puerta</div>
                         </div>
                       </div>
                     </div>
