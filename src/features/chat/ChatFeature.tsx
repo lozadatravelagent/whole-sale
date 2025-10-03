@@ -479,20 +479,22 @@ const ChatFeature = () => {
 
   return (
     <MainLayout userRole="ADMIN">
-      <div className="h-screen flex">
-        {/* Conversations Sidebar */}
-        <ChatSidebar
-          conversations={conversations}
-          selectedConversation={selectedConversation}
-          activeTab={activeTab}
-          sidebarLimit={sidebarLimit}
-          onSelectConversation={setSelectedConversation}
-          onCreateNewChat={createNewChat}
-          onTabChange={setActiveTab}
-        />
+      <div className="h-screen flex flex-col md:flex-row">
+        {/* Conversations Sidebar - Hidden on mobile when conversation is selected */}
+        <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} md:w-80 w-full`}>
+          <ChatSidebar
+            conversations={conversations}
+            selectedConversation={selectedConversation}
+            activeTab={activeTab}
+            sidebarLimit={sidebarLimit}
+            onSelectConversation={setSelectedConversation}
+            onCreateNewChat={createNewChat}
+            onTabChange={setActiveTab}
+          />
+        </div>
 
-        {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col min-h-0">
+        {/* Main Chat Area - Full width on mobile when conversation is selected */}
+        <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0`}>
           {selectedConversation ? (
             <ChatInterface
               selectedConversation={selectedConversation}
@@ -509,6 +511,7 @@ const ChatFeature = () => {
               onPdfUpload={handlePdfUpload}
               onAddToCRM={handleAddToCRM}
               onPdfGenerated={handlePdfGenerated}
+              onBackToList={() => setSelectedConversation(null)}
             />
           ) : (
             <EmptyState onSendNewMessage={handleSendNewMessage} />

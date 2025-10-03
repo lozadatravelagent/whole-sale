@@ -21,6 +21,7 @@ interface ChatInterfaceProps {
   onPdfUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onAddToCRM: () => void;
   onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
+  onBackToList?: () => void;
 }
 
 const ChatInterface = React.memo(({
@@ -37,7 +38,8 @@ const ChatInterface = React.memo(({
   onSendMessage,
   onPdfUpload,
   onAddToCRM,
-  onPdfGenerated
+  onPdfGenerated,
+  onBackToList
 }: ChatInterfaceProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -100,14 +102,15 @@ const ChatInterface = React.memo(({
         selectedConversation={selectedConversation}
         messagesCount={messages.length}
         onAddToCRM={onAddToCRM}
+        onBackToList={onBackToList}
       />
 
       {/* Messages area - scrollable with fixed height */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-4 min-h-0"
+        className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0"
       >
-        <div className="space-y-4">
+        <div className="space-y-3 md:space-y-4">
           {visibleMessages.map((msg) => (
             <MessageItem
               key={msg.id}
@@ -117,19 +120,19 @@ const ChatInterface = React.memo(({
           ))}
 
           {isTyping && (
-            <div className="flex items-start gap-3 animate-in fade-in duration-300">
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
-                <span className="text-lg">🤖</span>
+            <div className="flex items-start gap-2 md:gap-3 animate-in fade-in duration-300">
+              <div className="flex-shrink-0 w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+                <span className="text-base md:text-lg">🤖</span>
               </div>
-              <div className="flex-1 bg-muted/50 border border-primary/10 rounded-2xl p-4 max-w-[80%]">
+              <div className="flex-1 bg-muted/50 border border-primary/10 rounded-2xl p-3 md:p-4 max-w-[85%] md:max-w-[80%]">
                 <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="flex gap-1.5">
-                      <div className="w-2.5 h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '0.6s' }}></div>
-                      <div className="w-2.5 h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '0.6s' }}></div>
-                      <div className="w-2.5 h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '0.6s' }}></div>
+                  <div className="flex items-center gap-2 md:gap-3">
+                    <div className="flex gap-1 md:gap-1.5">
+                      <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '0.6s' }}></div>
+                      <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '0.6s' }}></div>
+                      <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '0.6s' }}></div>
                     </div>
-                    <span className="text-sm font-medium text-foreground/80 animate-pulse">
+                    <span className="text-xs md:text-sm font-medium text-foreground/80 animate-pulse">
                       {typingMessage || 'Pensando...'}
                     </span>
                   </div>

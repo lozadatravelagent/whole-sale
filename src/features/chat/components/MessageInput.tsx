@@ -32,15 +32,15 @@ const MessageInput = React.memo(({
   }, [value.length > 0, disabled]);
 
   return (
-    <div className="border-t bg-background p-4 shadow-lg">
-      <div className="flex space-x-2">
+    <div className="border-t bg-background p-2 md:p-4 shadow-lg">
+      <div className="flex space-x-1.5 md:space-x-2">
         <Textarea
           ref={messageInputRef}
           id="chat-message-input"
           name="message"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Escribe tu mensaje... (Enter: enviar • Shift+Enter/Alt+Enter: salto de línea)"
+          placeholder="Escribe tu mensaje..."
           disabled={disabled}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -62,7 +62,7 @@ const MessageInput = React.memo(({
               }, 50);
             }
           }}
-          className="flex-1 min-h-[60px] resize-y"
+          className="flex-1 min-h-[50px] md:min-h-[60px] resize-y text-sm md:text-base"
           autoComplete="off"
         />
 
@@ -81,25 +81,25 @@ const MessageInput = React.memo(({
           disabled={disabled || isUploadingPdf}
           size="sm"
           variant="outline"
-          className="px-3"
+          className="px-2 md:px-3 flex-shrink-0"
         >
           {isUploadingPdf ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-3.5 md:h-4 w-3.5 md:w-4 animate-spin" />
           ) : (
-            <Paperclip className="h-4 w-4" />
+            <Paperclip className="h-3.5 md:h-4 w-3.5 md:w-4" />
           )}
         </Button>
 
         {/* Send button */}
         <Button
           onClick={onSend}
-          className="px-3"
+          className="px-2 md:px-3 flex-shrink-0"
           disabled={disabled || !value.trim()}
         >
           {disabled ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-3.5 md:h-4 w-3.5 md:w-4 animate-spin" />
           ) : (
-            <Send className="h-4 w-4" />
+            <Send className="h-3.5 md:h-4 w-3.5 md:w-4" />
           )}
         </Button>
       </div>

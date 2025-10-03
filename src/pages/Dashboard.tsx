@@ -110,15 +110,15 @@ const Dashboard = () => {
 
   return (
     <MainLayout userRole="ADMIN">
-      <div className="h-full overflow-y-auto p-8 space-y-8">
-        <div className="flex items-center justify-between">
+      <div className="h-full overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-            <p className="text-muted-foreground mt-1">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-sm md:text-base text-muted-foreground mt-1">
               Overview of your travel agency performance
             </p>
           </div>
-          <Badge variant="outline" className="h-6">
+          <Badge variant="outline" className="h-6 text-xs md:text-sm w-fit">
             Today, {new Date().toLocaleDateString()}
           </Badge>
         </div>
@@ -126,28 +126,29 @@ const Dashboard = () => {
         {/* Alertas Importantes */}
         {alerts.length > 0 && (
           <Card className="shadow-card border-l-4 border-l-warning">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2 md:pb-3 p-4 md:p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Bell className="h-5 w-5 text-warning" />
-                  <CardTitle className="text-lg">Alertas Importantes</CardTitle>
+                  <Bell className="h-4 md:h-5 w-4 md:w-5 text-warning" />
+                  <CardTitle className="text-base md:text-lg">Alertas Importantes</CardTitle>
                 </div>
-                <Badge variant="secondary">{alerts.length}</Badge>
+                <Badge variant="secondary" className="text-xs">{alerts.length}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2 md:space-y-3 p-4 md:p-6">
               {alerts.map((alert, index) => {
                 const IconComponent = alert.icon;
                 return (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-gradient-card">
-                    <div className="flex items-center gap-3">
-                      <IconComponent className="h-4 w-4 text-warning" />
-                      <span className="text-sm">{alert.message}</span>
+                  <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 md:p-3 rounded-lg bg-gradient-card">
+                    <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+                      <IconComponent className="h-3.5 md:h-4 w-3.5 md:w-4 text-warning flex-shrink-0" />
+                      <span className="text-xs md:text-sm">{alert.message}</span>
                     </div>
                     <Button
                       variant={getAlertVariant(alert.type)}
                       size="sm"
                       onClick={() => handleAlertAction(alert.action)}
+                      className="text-xs w-full sm:w-auto"
                     >
                       {alert.action}
                     </Button>
@@ -159,46 +160,46 @@ const Dashboard = () => {
         )}
 
         {/* Objetivos y Rendimiento General */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           <Card className="shadow-card lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5 text-primary" />
+            <CardHeader className="p-4 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                <Target className="h-4 md:h-5 w-4 md:w-5 text-primary" />
                 Objetivos del Mes
               </CardTitle>
-              <CardDescription>Progreso hacia las metas establecidas</CardDescription>
+              <CardDescription className="text-xs md:text-sm">Progreso hacia las metas establecidas</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">Ingresos Mensuales</span>
-                  <span className="text-sm text-muted-foreground">
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <span className="font-medium text-sm md:text-base">Ingresos Mensuales</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">
                     ${metrics.monthly_revenue.toLocaleString()} / ${metrics.monthly_goal.toLocaleString()}
                   </span>
                 </div>
-                <Progress value={(metrics.monthly_revenue / metrics.monthly_goal) * 100} className="h-3" />
-                <p className="text-xs text-muted-foreground mt-1">
+                <Progress value={(metrics.monthly_revenue / metrics.monthly_goal) * 100} className="h-2 md:h-3" />
+                <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
                   {((metrics.monthly_revenue / metrics.monthly_goal) * 100).toFixed(1)}% completado
                 </p>
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">Tasa de Conversión</span>
-                  <span className="text-sm text-muted-foreground">{metrics.conversion_rate}% / 70%</span>
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <span className="font-medium text-sm md:text-base">Tasa de Conversión</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">{metrics.conversion_rate}% / 70%</span>
                 </div>
-                <Progress value={metrics.conversion_rate} className="h-3" />
-                <p className="text-xs text-muted-foreground mt-1">Objetivo: 70%</p>
+                <Progress value={metrics.conversion_rate} className="h-2 md:h-3" />
+                <p className="text-[10px] md:text-xs text-muted-foreground mt-1">Objetivo: 70%</p>
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">Tiempo de Respuesta</span>
-                  <span className="text-sm text-muted-foreground">{metrics.response_time} min / 5 min</span>
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <span className="font-medium text-sm md:text-base">Tiempo de Respuesta</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">{metrics.response_time} min / 5 min</span>
                 </div>
-                <Progress value={(5 - metrics.response_time) * 20} className="h-3" />
-                <p className="text-xs text-success mt-1">
-                  <CheckCircle className="inline h-3 w-3 mr-1" />
+                <Progress value={(5 - metrics.response_time) * 20} className="h-2 md:h-3" />
+                <p className="text-[10px] md:text-xs text-success mt-1">
+                  <CheckCircle className="inline h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                   Bajo el objetivo
                 </p>
               </div>
@@ -206,44 +207,44 @@ const Dashboard = () => {
           </Card>
 
           <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5 text-accent" />
+            <CardHeader className="p-4 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                <Zap className="h-4 md:h-5 w-4 md:w-5 text-accent" />
                 Integraciones
               </CardTitle>
-              <CardDescription>Estado de conexiones</CardDescription>
+              <CardDescription className="text-xs md:text-sm">Estado de conexiones</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6">
               <div className="text-center">
-                <div className="text-2xl font-bold text-success">{metrics.active_integrations}</div>
-                <p className="text-sm text-muted-foreground">de {metrics.total_integrations} activas</p>
+                <div className="text-xl md:text-2xl font-bold text-success">{metrics.active_integrations}</div>
+                <p className="text-xs md:text-sm text-muted-foreground">de {metrics.total_integrations} activas</p>
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Building className="h-4 w-4 text-success" />
-                    <span className="text-sm">Eurovips</span>
+                    <Building className="h-3.5 md:h-4 w-3.5 md:w-4 text-success" />
+                    <span className="text-xs md:text-sm">Eurovips</span>
                   </div>
-                  <Badge variant="outline" className="text-success">Activo</Badge>
+                  <Badge variant="outline" className="text-success text-xs">Activo</Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Plane className="h-4 w-4 text-success" />
-                    <span className="text-sm">Starlings</span>
+                    <Plane className="h-3.5 md:h-4 w-3.5 md:w-4 text-success" />
+                    <span className="text-xs md:text-sm">Starlings</span>
                   </div>
-                  <Badge variant="outline" className="text-success">Activo</Badge>
+                  <Badge variant="outline" className="text-success text-xs">Activo</Badge>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Building className="h-4 w-4 text-destructive" />
-                    <span className="text-sm">Delfos</span>
+                    <Building className="h-3.5 md:h-4 w-3.5 md:w-4 text-destructive" />
+                    <span className="text-xs md:text-sm">Delfos</span>
                   </div>
-                  <Badge variant="destructive">Error</Badge>
+                  <Badge variant="destructive" className="text-xs">Error</Badge>
                 </div>
               </div>
 
-              <Button variant="outline" size="sm" className="w-full">
+              <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
                 Ver Todas
               </Button>
             </CardContent>
@@ -251,57 +252,57 @@ const Dashboard = () => {
         </div>
 
         {/* Métricas Clave Mejoradas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-6">
           <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Conversaciones Hoy</CardTitle>
-              <MessageSquare className="h-4 w-4 text-primary" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 md:p-6">
+              <CardTitle className="text-xs md:text-sm font-medium">Conversaciones Hoy</CardTitle>
+              <MessageSquare className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{metrics.conversations_today}</div>
-              <p className="text-xs text-success flex items-center">
-                <TrendingUp className="h-3 w-3 mr-1" />
+            <CardContent className="p-4 md:p-6 pt-0">
+              <div className="text-xl md:text-2xl font-bold">{metrics.conversations_today}</div>
+              <p className="text-[10px] md:text-xs text-success flex items-center mt-1">
+                <TrendingUp className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                 +12% desde ayer
               </p>
             </CardContent>
           </Card>
 
           <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Cotizaciones</CardTitle>
-              <FileText className="h-4 w-4 text-accent" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 md:p-6">
+              <CardTitle className="text-xs md:text-sm font-medium">Cotizaciones</CardTitle>
+              <FileText className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{metrics.quotes_generated}</div>
-              <p className="text-xs text-muted-foreground">
+            <CardContent className="p-4 md:p-6 pt-0">
+              <div className="text-xl md:text-2xl font-bold">{metrics.quotes_generated}</div>
+              <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
                 {metrics.pdfs_created} PDFs enviados
               </p>
             </CardContent>
           </Card>
 
           <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Satisfacción</CardTitle>
-              <Star className="h-4 w-4 text-warning" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 md:p-6">
+              <CardTitle className="text-xs md:text-sm font-medium">Satisfacción</CardTitle>
+              <Star className="h-3.5 md:h-4 w-3.5 md:w-4 text-warning" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{metrics.satisfaction}</div>
-              <p className="text-xs text-success flex items-center">
-                <TrendingUp className="h-3 w-3 mr-1" />
+            <CardContent className="p-4 md:p-6 pt-0">
+              <div className="text-xl md:text-2xl font-bold">{metrics.satisfaction}</div>
+              <p className="text-[10px] md:text-xs text-success flex items-center mt-1">
+                <TrendingUp className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                 Rating promedio
               </p>
             </CardContent>
           </Card>
 
           <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tiempo Respuesta</CardTitle>
-              <Timer className="h-4 w-4 text-success" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 md:p-6">
+              <CardTitle className="text-xs md:text-sm font-medium">Tiempo Respuesta</CardTitle>
+              <Timer className="h-3.5 md:h-4 w-3.5 md:w-4 text-success" />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{metrics.response_time}m</div>
-              <p className="text-xs text-success flex items-center">
-                <CheckCircle className="h-3 w-3 mr-1" />
+            <CardContent className="p-4 md:p-6 pt-0">
+              <div className="text-xl md:text-2xl font-bold">{metrics.response_time}m</div>
+              <p className="text-[10px] md:text-xs text-success flex items-center mt-1">
+                <CheckCircle className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                 Bajo objetivo
               </p>
             </CardContent>
@@ -310,44 +311,44 @@ const Dashboard = () => {
 
         {/* Performance del Equipo */}
         <Card className="shadow-card">
-          <CardHeader>
-            <div className="flex items-center justify-between">
+          <CardHeader className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Award className="h-5 w-5 text-primary" />
+                <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                  <Award className="h-4 md:h-5 w-4 md:w-5 text-primary" />
                   Performance del Equipo
                 </CardTitle>
-                <CardDescription>Rendimiento de vendedores este mes</CardDescription>
+                <CardDescription className="text-xs md:text-sm">Rendimiento de vendedores este mes</CardDescription>
               </div>
-              <Button variant="outline" size="sm">Ver Todos</Button>
+              <Button variant="outline" size="sm" className="text-xs md:text-sm w-full sm:w-auto">Ver Todos</Button>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
+          <CardContent className="p-4 md:p-6">
+            <div className="space-y-3 md:space-y-4">
               {teamPerformance.map((member, index) => (
-                <div key={index} className="flex items-center justify-between p-4 rounded-lg bg-gradient-card">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Users className="h-5 w-5 text-primary" />
+                <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 md:p-4 rounded-lg bg-gradient-card">
+                  <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+                    <div className="relative flex-shrink-0">
+                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Users className="h-4 md:h-5 w-4 md:w-5 text-primary" />
                       </div>
-                      <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-background ${getStatusColor(member.status)}`} />
+                      <div className={`absolute -bottom-1 -right-1 w-2.5 md:w-3 h-2.5 md:h-3 rounded-full border-2 border-background ${getStatusColor(member.status)}`} />
                     </div>
-                    <div>
-                      <p className="font-medium">{member.name}</p>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm md:text-base truncate">{member.name}</p>
+                      <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[10px] md:text-xs text-muted-foreground">
                         <span>{member.leads} leads</span>
                         <span>{member.conversions} conversiones</span>
                         <div className="flex items-center gap-1">
-                          <Star className="h-3 w-3 text-warning" />
+                          <Star className="h-2.5 md:h-3 w-2.5 md:w-3 text-warning" />
                           {member.rating}
                         </div>
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-success">${member.revenue.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">
+                  <div className="text-left sm:text-right">
+                    <p className="font-bold text-success text-sm md:text-base">${member.revenue.toLocaleString()}</p>
+                    <p className="text-[10px] md:text-xs text-muted-foreground">
                       {((member.conversions / member.leads) * 100).toFixed(1)}% conversión
                     </p>
                   </div>
@@ -358,42 +359,42 @@ const Dashboard = () => {
         </Card>
 
         {/* Próximos Vencimientos */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-warning" />
+            <CardHeader className="p-4 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                <Clock className="h-4 md:h-5 w-4 md:w-5 text-warning" />
                 Próximos Vencimientos
               </CardTitle>
-              <CardDescription>Acciones importantes pendientes</CardDescription>
+              <CardDescription className="text-xs md:text-sm">Acciones importantes pendientes</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6">
               {upcomingDeadlines.map((item, index) => (
-                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-gradient-card">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${item.days <= 2 ? 'bg-destructive/10' : item.days <= 5 ? 'bg-warning/10' : 'bg-success/10'
+                <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 p-2 md:p-3 rounded-lg bg-gradient-card">
+                  <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+                    <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${item.days <= 2 ? 'bg-destructive/10' : item.days <= 5 ? 'bg-warning/10' : 'bg-success/10'
                       }`}>
-                      <Calendar className={`h-4 w-4 ${item.days <= 2 ? 'text-destructive' : item.days <= 5 ? 'text-warning' : 'text-success'
+                      <Calendar className={`h-3.5 md:h-4 w-3.5 md:w-4 ${item.days <= 2 ? 'text-destructive' : item.days <= 5 ? 'text-warning' : 'text-success'
                         }`} />
                     </div>
-                    <div>
-                      <p className="font-medium">{item.client}</p>
-                      <p className="text-xs text-muted-foreground">{item.destination}</p>
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm md:text-base truncate">{item.client}</p>
+                      <p className="text-xs md:text-sm text-muted-foreground truncate">{item.destination}</p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <Badge variant={item.days <= 2 ? 'destructive' : item.days <= 5 ? 'secondary' : 'outline'}>
+                  <div className="text-left sm:text-right flex sm:flex-col items-center sm:items-end gap-2">
+                    <Badge variant={item.days <= 2 ? 'destructive' : item.days <= 5 ? 'secondary' : 'outline'} className="text-xs">
                       {item.days} días
                     </Badge>
-                    <p className="text-xs text-muted-foreground mt-1">{item.type}</p>
+                    <p className="text-xs text-muted-foreground">{item.type}</p>
                   </div>
                 </div>
               ))}
 
               {metrics.pending_followups > 0 && (
                 <div className="pt-2 border-t">
-                  <Button variant="outline" size="sm" className="w-full">
-                    <Briefcase className="h-4 w-4 mr-2" />
+                  <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
+                    <Briefcase className="h-3.5 md:h-4 w-3.5 md:w-4 mr-2" />
                     Ver {metrics.pending_followups} seguimientos pendientes
                   </Button>
                 </div>
@@ -402,14 +403,14 @@ const Dashboard = () => {
           </Card>
 
           <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-primary" />
+            <CardHeader className="p-4 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                <Activity className="h-4 md:h-5 w-4 md:w-5 text-primary" />
                 Actividad Reciente
               </CardTitle>
-              <CardDescription>Últimas interacciones importantes</CardDescription>
+              <CardDescription className="text-xs md:text-sm">Últimas interacciones importantes</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6">
               {[
                 {
                   type: 'lead_won',
@@ -450,18 +451,18 @@ const Dashboard = () => {
               ].map((activity, index) => {
                 const IconComponent = activity.icon;
                 return (
-                  <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-gradient-card">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-background flex items-center justify-center">
-                        <IconComponent className={`h-4 w-4 ${activity.color}`} />
+                  <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 md:p-3 rounded-lg bg-gradient-card">
+                    <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-background flex items-center justify-center flex-shrink-0">
+                        <IconComponent className={`h-3.5 md:h-4 w-3.5 md:w-4 ${activity.color}`} />
                       </div>
-                      <div>
-                        <p className="font-medium">{activity.customer}</p>
-                        <p className="text-xs text-muted-foreground">{activity.action}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm md:text-base truncate">{activity.customer}</p>
+                        <p className="text-xs md:text-sm text-muted-foreground truncate">{activity.action}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-semibold ${activity.color}`}>{activity.amount}</p>
+                    <div className="text-left sm:text-right">
+                      <p className={`font-semibold text-sm md:text-base ${activity.color}`}>{activity.amount}</p>
                       <p className="text-xs text-muted-foreground">{activity.time}</p>
                     </div>
                   </div>

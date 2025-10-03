@@ -52,23 +52,23 @@ const Settings = () => {
 
   return (
     <MainLayout userRole="ADMIN">
-      <div className="p-8 space-y-8">
-        <div className="flex items-center justify-between">
+      <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-            <p className="text-muted-foreground mt-1">Customize your agency branding and preferences</p>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Settings</h1>
+            <p className="text-sm md:text-base text-muted-foreground mt-1">Customize your agency branding and preferences</p>
           </div>
-          <Button onClick={handleSave} className="bg-gradient-hero shadow-primary">
-            <Save className="h-4 w-4 mr-2" />
+          <Button onClick={handleSave} className="bg-gradient-hero shadow-primary text-xs md:text-sm w-full md:w-auto">
+            <Save className="h-3.5 md:h-4 w-3.5 md:w-4 mr-2" />
             Save Changes
           </Button>
         </div>
 
         <Tabs defaultValue="branding" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="branding">Branding</TabsTrigger>
-            <TabsTrigger value="contact">Contact Info</TabsTrigger>
-            <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 h-auto">
+            <TabsTrigger value="branding" className="text-xs md:text-sm">Branding</TabsTrigger>
+            <TabsTrigger value="contact" className="text-xs md:text-sm">Contact Info</TabsTrigger>
+            <TabsTrigger value="account" className="text-xs md:text-sm">Account</TabsTrigger>
           </TabsList>
 
           <TabsContent value="branding" className="space-y-6">

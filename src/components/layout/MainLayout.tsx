@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,9 @@ import {
   Building,
   Phone,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Menu,
+  X
 } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -44,6 +46,12 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
   const location = useLocation();
   const { toast } = useToast();
   const [sidebarHidden, setSidebarHidden] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Close mobile menu when route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     try {
@@ -72,12 +80,40 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 bg-gradient-card border-b border-border flex items-center justify-between px-4">
+        <div className="text-xl font-bold text-primary">
+          VIBOOK
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="text-foreground"
+        >
+          {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </Button>
+      </div>
+
+      {/* Backdrop for mobile menu */}
+      {mobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-gradient-card border-r border-border flex flex-col transform transition-transform",
-        sidebarHidden ? "-translate-x-full" : "translate-x-0"
+        "fixed inset-y-0 left-0 z-50 w-64 bg-gradient-card border-r border-border flex flex-col transform transition-transform duration-300",
+        // Desktop behavior
+        "lg:translate-x-0",
+        sidebarHidden && "lg:-translate-x-full",
+        // Mobile behavior
+        "lg:top-0",
+        mobileMenuOpen ? "translate-x-0 top-16" : "-translate-x-full lg:translate-x-0 top-16 lg:top-0"
       )}>
-        <div className="flex h-16 items-center px-6 justify-between">
+        <div className="hidden lg:flex h-16 items-center px-6 justify-between">
           <div className="text-xl font-bold text-primary">
             VIBOOK
           </div>
@@ -177,9 +213,13 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
       </div>
 
       {/* Main content */}
-      <div className={cn(sidebarHidden ? "pl-0" : "pl-64")}>
+      <div className={cn(
+        "min-h-screen",
+        "pt-16 lg:pt-0", // Add top padding on mobile for fixed header
+        sidebarHidden ? "lg:pl-0" : "lg:pl-64"
+      )}>
         {sidebarHidden && (
-          <div className="fixed top-4 left-4 z-40">
+          <div className="hidden lg:block fixed top-4 left-4 z-40">
             <Button size="icon" variant="secondary" onClick={() => setSidebarHidden(false)}>
               <ChevronRight className="h-4 w-4" />
             </Button>

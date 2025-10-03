@@ -225,11 +225,11 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
   return (
     <div key={msg.id}>
       <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-        <div className={`${hasCombinedTravel ? 'max-w-4xl' : 'max-w-lg'} flex items-start space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-          <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
-            {msg.role === 'user' ? <User className="h-4 w-4 text-primary" /> : <Bot className="h-4 w-4 text-accent" />}
+        <div className={`${hasCombinedTravel ? 'max-w-full md:max-w-4xl' : 'max-w-[85%] md:max-w-lg'} flex items-start space-x-1.5 md:space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+          <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-card flex items-center justify-center flex-shrink-0">
+            {msg.role === 'user' ? <User className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" /> : <Bot className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />}
           </div>
-          <div className={`rounded-lg p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+          <div className={`rounded-lg p-3 md:p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'} text-sm md:text-base`}>
 
             {/* Interactive selectors */}
             {hasCombinedTravel && combinedTravelData ? (
@@ -247,24 +247,24 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
 
                 {/* PDF Download Button */}
                 {hasPdf && pdfUrl && (
-                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="mt-2 md:mt-3 p-2 md:p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-center space-x-2">
-                      <FileText className="h-5 w-5 text-blue-600" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-blue-900">
+                      <FileText className="h-4 md:h-5 w-4 md:w-5 text-blue-600 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs md:text-sm font-medium text-blue-900 truncate">
                           Cotización de Viaje
                         </p>
-                        <p className="text-xs text-blue-700">
+                        <p className="text-[10px] md:text-xs text-blue-700 truncate">
                           PDF con todos los detalles de tu viaje
                         </p>
                       </div>
                       <Button
                         size="sm"
                         onClick={() => window.open(pdfUrl, '_blank')}
-                        className="bg-blue-600 hover:bg-blue-700"
+                        className="bg-blue-600 hover:bg-blue-700 flex-shrink-0 text-xs md:text-sm px-2 md:px-3"
                       >
-                        <Download className="h-4 w-4 mr-1" />
-                        Descargar
+                        <Download className="h-3 md:h-4 w-3 md:w-4 md:mr-1" />
+                        <span className="hidden md:inline">Descargar</span>
                       </Button>
                     </div>
                   </div>
@@ -272,11 +272,11 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
               </>
             )}
 
-            <p className="text-xs opacity-70 mt-1 flex items-center justify-between">
+            <p className="text-[10px] md:text-xs opacity-70 mt-1 flex items-center justify-between">
               <span className="flex items-center">
-                {getMessageStatusIconType('sent') === 'sending' && <Clock className="h-3 w-3" />}
-                {getMessageStatusIconType('sent') === 'sent' && <Check className="h-3 w-3" />}
-                {getMessageStatusIconType('sent') === 'delivered' && <CheckCheck className="h-3 w-3" />}
+                {getMessageStatusIconType('sent') === 'sending' && <Clock className="h-2.5 md:h-3 w-2.5 md:w-3" />}
+                {getMessageStatusIconType('sent') === 'sent' && <Check className="h-2.5 md:h-3 w-2.5 md:w-3" />}
+                {getMessageStatusIconType('sent') === 'delivered' && <CheckCheck className="h-2.5 md:h-3 w-2.5 md:w-3" />}
                 <span className="ml-1">{formatTime(msg.created_at)}</span>
               </span>
             </p>

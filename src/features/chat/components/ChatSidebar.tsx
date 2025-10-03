@@ -28,36 +28,37 @@ const ChatSidebar = React.memo(({
   onCreateNewChat,
   onTabChange
 }: ChatSidebarProps) => (
-  <div className="w-80 border-r bg-background flex flex-col">
-    <div className="p-4 border-b">
+  <div className="w-full md:w-80 border-r bg-background flex flex-col">
+    <div className="p-3 md:p-4 border-b">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-lg font-semibold">Conversaciones</h3>
+        <h3 className="text-base md:text-lg font-semibold">Conversaciones</h3>
         <Button
           onClick={onCreateNewChat}
           size="sm"
           className="bg-primary hover:bg-primary/90"
         >
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Chat
+          <Plus className="h-4 w-4 md:mr-2" />
+          <span className="hidden md:inline">Nuevo Chat</span>
         </Button>
       </div>
-      <p className="text-sm text-muted-foreground">Chats de viajes</p>
+      <p className="text-xs md:text-sm text-muted-foreground">Chats de viajes</p>
     </div>
 
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="p-4 pb-2">
+      <div className="p-3 md:p-4 pb-2">
         <Tabs value={activeTab} onValueChange={onTabChange}>
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="active">Chats Activos</TabsTrigger>
-            <TabsTrigger value="archived">
+            <TabsTrigger value="active" className="text-xs md:text-sm">Chats Activos</TabsTrigger>
+            <TabsTrigger value="archived" className="text-xs md:text-sm">
               <Archive className="h-3 w-3 mr-1" />
-              Archivadas
+              <span className="hidden sm:inline">Archivadas</span>
+              <span className="sm:hidden">Arch.</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="flex-1 overflow-y-auto px-3 md:px-4 pb-4">
         {activeTab === 'active' && (
           <div className="space-y-2">
             {conversations
@@ -70,22 +71,22 @@ const ChatSidebar = React.memo(({
                     }`}
                   onClick={() => onSelectConversation(conversation.id)}
                 >
-                  <CardContent className="p-3">
+                  <CardContent className="p-2 md:p-3">
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm truncate">
+                        <h4 className="font-medium text-xs md:text-sm truncate">
                           {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
                         </h4>
-                        <div className="flex items-center mt-1 text-xs text-muted-foreground">
+                        <div className="flex items-center mt-1 text-[10px] md:text-xs text-muted-foreground">
                           {conversation.channel === 'wa' ? (
-                            <Phone className="h-3 w-3 mr-1" />
+                            <Phone className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                           ) : (
-                            <Globe className="h-3 w-3 mr-1" />
+                            <Globe className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                           )}
                           <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
                         </div>
                       </div>
-                      <Badge variant="secondary" className="ml-2">
+                      <Badge variant="secondary" className="ml-2 text-[10px] md:text-xs px-1.5 md:px-2">
                         {conversation.channel}
                       </Badge>
                     </div>
@@ -107,18 +108,18 @@ const ChatSidebar = React.memo(({
                     }`}
                   onClick={() => onSelectConversation(conversation.id)}
                 >
-                  <CardContent className="p-3">
+                  <CardContent className="p-2 md:p-3">
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm truncate">
+                        <h4 className="font-medium text-xs md:text-sm truncate">
                           {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
                         </h4>
-                        <div className="flex items-center mt-1 text-xs text-muted-foreground">
-                          <Archive className="h-3 w-3 mr-1" />
+                        <div className="flex items-center mt-1 text-[10px] md:text-xs text-muted-foreground">
+                          <Archive className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                           <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
                         </div>
                       </div>
-                      <Badge variant="outline" className="ml-2">
+                      <Badge variant="outline" className="ml-2 text-[10px] md:text-xs px-1.5 md:px-2">
                         archivada
                       </Badge>
                     </div>

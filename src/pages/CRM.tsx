@@ -185,25 +185,25 @@ export default function CRM() {
         <div className="absolute inset-0 opacity-10 bg-white/5"></div>
 
         {/* Header */}
-        <div className="relative z-10 flex items-center justify-between p-4 bg-card border-b border-border">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-foreground">
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 md:p-4 bg-card border-b border-border">
+          <div className="flex items-center gap-2 md:gap-3">
+            <h1 className="text-lg md:text-xl font-semibold text-foreground truncate">
               Lozada Madero
             </h1>
             <Button
               variant="ghost"
               size="sm"
-              className="text-muted-foreground hover:text-foreground hover:bg-muted"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted flex-shrink-0"
             >
-              <Star className="h-4 w-4" />
+              <Star className="h-3.5 md:h-4 w-3.5 md:w-4" />
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="text-muted-foreground hover:text-foreground hover:bg-muted"
+              className="text-muted-foreground hover:text-foreground hover:bg-muted hidden sm:flex"
             >
-              <Lock className="h-4 w-4" />
-              Privado
+              <Lock className="h-3.5 md:h-4 w-3.5 md:w-4" />
+              <span className="ml-1 text-xs md:text-sm">Privado</span>
             </Button>
           </div>
 
@@ -211,23 +211,23 @@ export default function CRM() {
             <Button
               onClick={handleNewSection}
               variant="ghost"
-              className="text-muted-foreground hover:bg-muted gap-2"
+              className="text-muted-foreground hover:bg-muted gap-2 text-xs md:text-sm w-full sm:w-auto"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 md:h-4 w-3.5 md:w-4" />
               Agregar otra lista
             </Button>
           </div>
         </div>
 
         {/* Board Content */}
-        <div className="relative z-10 p-4 h-[calc(100vh-80px)] overflow-y-hidden">
+        <div className="relative z-10 p-2 md:p-4 h-[calc(100vh-80px)] md:h-[calc(100vh-80px)] overflow-y-hidden">
           <DndContext
             sensors={sensors}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex gap-3 h-full min-w-0">
+            <div className="flex gap-2 md:gap-3 h-full min-w-0 overflow-x-auto pb-4">
               <SortableContext
                 items={sections.map(s => s.id)}
                 strategy={horizontalListSortingStrategy}
@@ -247,13 +247,13 @@ export default function CRM() {
 
               {/* Add new list button */}
               {sections.length > 0 && (
-                <div className="w-80 flex-shrink-0">
+                <div className="w-72 md:w-80 flex-shrink-0">
                   <Button
                     onClick={handleNewSection}
                     variant="ghost"
-                    className="w-full justify-start bg-muted hover:bg-muted/80 text-muted-foreground border-border h-auto py-3"
+                    className="w-full justify-start bg-muted hover:bg-muted/80 text-muted-foreground border-border h-auto py-2 md:py-3 text-xs md:text-sm"
                   >
-                    <Plus className="h-4 w-4 mr-2" />
+                    <Plus className="h-3.5 md:h-4 w-3.5 md:w-4 mr-2" />
                     Agregar otra lista
                   </Button>
                 </div>
@@ -276,15 +276,15 @@ export default function CRM() {
 
           {/* Empty state */}
           {sections.length === 0 && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center text-foreground">
-                <h3 className="text-xl font-semibold mb-2">¡Bienvenido a tu nuevo tablero!</h3>
-                <p className="text-muted-foreground mb-6">Crea tu primera lista para empezar a organizar</p>
+            <div className="flex items-center justify-center h-full px-4">
+              <div className="text-center text-foreground max-w-md">
+                <h3 className="text-lg md:text-xl font-semibold mb-2">¡Bienvenido a tu nuevo tablero!</h3>
+                <p className="text-sm md:text-base text-muted-foreground mb-4 md:mb-6">Crea tu primera lista para empezar a organizar</p>
                 <Button
                   onClick={handleNewSection}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs md:text-sm"
                 >
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="h-3.5 md:h-4 w-3.5 md:w-4 mr-2" />
                   Crear primera lista
                 </Button>
               </div>
