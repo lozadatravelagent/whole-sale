@@ -11,7 +11,19 @@ export const addMessageViaSupabase = async (messageData: {
   console.log('📋 Message data:', messageData);
 
   try {
+    // Get the current session to ensure we have a valid JWT
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      throw new Error('No active session - please log in again');
+    }
+
+    console.log('✅ [AUTH] Session valid, calling function with JWT');
+
     const response = await supabase.functions.invoke('add-message', {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
       body: {
         conversationId: messageData.conversation_id,
         role: messageData.role,
