@@ -437,14 +437,13 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
     }
   };
 
-  // Función auxiliar para obtener conversaciones
+  // Función auxiliar para obtener conversaciones (ya no se usa, filtrado por rol en calculateMetrics)
   const getConversations = async () => {
     try {
-      const mockAgencyId = '00000000-0000-0000-0000-000000000001';
+      // RLS will filter automatically based on user permissions
       const { data, error } = await supabase
         .from('conversations')
-        .select('*')
-        .eq('agency_id', mockAgencyId);
+        .select('*');
 
       if (error) throw error;
       return data || [];
@@ -455,8 +454,10 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
   };
 
   useEffect(() => {
-    calculateMetrics();
-  }, [dateFrom, dateTo]);
+    if (user) {
+      calculateMetrics();
+    }
+  }, [dateFrom, dateTo, user?.id]); // Re-run when user changes
 
   return {
     metrics,
