@@ -142,6 +142,7 @@ export function useConversations() {
         state: (params?.status || 'active') as 'active' | 'closed' | 'pending',
         agency_id: userData.agency_id,
         tenant_id: userData.tenant_id,
+        created_by: user.id, // Set conversation owner
         last_message_at: new Date().toISOString()
         // Note: meta field doesn't exist in database schema, removed
       };
