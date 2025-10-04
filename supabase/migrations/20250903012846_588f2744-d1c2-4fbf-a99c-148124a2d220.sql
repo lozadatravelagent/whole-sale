@@ -2,6 +2,7 @@
 DROP POLICY IF EXISTS "temp_dev_policy_all_leads" ON public.leads;
 
 -- Crear política temporal permisiva para desarrollo
+DROP POLICY IF EXISTS "temp_dev_policy_all_leads" ON public.leads;
 CREATE POLICY "temp_dev_policy_all_leads" 
 ON public.leads 
 FOR ALL 

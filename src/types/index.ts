@@ -1,6 +1,6 @@
 // VBOOK Types - Multi-tenant Travel SaaS
 
-export type Role = 'SUPERADMIN' | 'ADMIN';
+export type Role = 'OWNER' | 'SUPERADMIN' | 'ADMIN' | 'SELLER';
 export type ConversationChannel = 'wa' | 'web';
 export type ConversationState = 'active' | 'closed' | 'pending';
 export type MessageRole = 'user' | 'assistant' | 'system';
@@ -39,8 +39,9 @@ export interface Agency {
 
 export interface User {
   id: string;
-  agency_id: string;
-  tenant_id: string;
+  agency_id: string | null; // Nullable for OWNER/SUPERADMIN
+  tenant_id: string | null; // Nullable for OWNER (sees all tenants)
+  name?: string; // Added for display purposes
   email: string;
   role: Role;
   provider: 'email' | 'google';
@@ -95,6 +96,9 @@ export interface Message {
 }
 
 // New types for enhanced CRM
+// NOTE: Seller interface deprecated - now use User interface with role='SELLER'
+// Kept for backward compatibility during migration
+/** @deprecated Use User with role='SELLER' instead */
 export interface Seller {
   id: string;
   name: string;
@@ -150,8 +154,9 @@ export interface Lead {
   section_id?: string;
   conversation_id?: string;
   pdf_urls: string[];
-  assigned_user_id?: string;
-  seller_id?: string;
+  assigned_user_id?: string; // User ID of assigned seller (from users table with role='SELLER')
+  /** @deprecated Use assigned_user_id instead */
+  seller_id?: string; // Deprecated: kept for backward compatibility
   budget?: number;
   description?: string;
   due_date?: string;
@@ -212,6 +217,59 @@ export interface DashboardMetrics {
   leads_won: number;
   leads_lost: number;
   conversion_rate: number;
+}
+
+// Tenant with aggregated metrics (for OWNER dashboard)
+export interface TenantWithMetrics extends Tenant {
+  agencies_count: number;
+  users_count: number;
+  total_revenue: number;
+  total_leads: number;
+  conversion_rate: number;
+}
+
+// Agency performance metrics (for SUPERADMIN/OWNER)
+export interface AgencyPerformance {
+  agency_id: string;
+  agency_name: string;
+  tenant_id?: string;
+  tenant_name?: string;
+  sellers_count: number;
+  leads_count: number;
+  revenue: number;
+  conversion_rate: number;
+  active_conversations: number;
+}
+
+// Seller performance metrics (for ADMIN)
+export interface SellerPerformance {
+  seller_id: string;
+  seller_name: string;
+  agency_id: string;
+  agency_name?: string;
+  leads_count: number;
+  won_count: number;
+  lost_count: number;
+  revenue: number;
+  conversion_rate: number;
+  avg_budget: number;
+}
+
+// Personal metrics (for SELLER)
+export interface SellerPersonalMetrics {
+  my_leads: number;
+  my_won: number;
+  my_revenue: number;
+  my_conversion_rate: number;
+  my_leads_by_section: { [section_name: string]: number };
+  upcoming_deadlines: Array<{
+    lead_id: string;
+    contact_name: string;
+    destination: string;
+    due_date: string;
+  }>;
+  monthly_goal?: number;
+  monthly_progress?: number;
 }
 
 // Flight and PDF types

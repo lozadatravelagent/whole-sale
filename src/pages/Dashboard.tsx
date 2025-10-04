@@ -5,6 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { useAuthUser } from '@/hooks/useAuthUser';
+import { useReports } from '@/hooks/useReports';
+import { TeamPerformanceCard } from '@/components/dashboard/TeamPerformanceCard';
+import { PersonalMetricsCard } from '@/components/dashboard/PersonalMetricsCard';
 import {
   MessageSquare,
   FileText,
@@ -35,6 +39,33 @@ import {
 const Dashboard = () => {
   const [timeRange, setTimeRange] = useState('today');
   const navigate = useNavigate();
+  const { user, isOwner, isSuperAdmin, isAdmin, isSeller, loading: authLoading } = useAuthUser();
+  const { metrics, loading: metricsLoading } = useReports();
+
+  // Show loading state
+  if (authLoading || metricsLoading) {
+    return (
+      <MainLayout>
+        <div className="flex h-96 items-center justify-center">
+          <div className="text-center">
+            <Activity className="mx-auto h-8 w-8 animate-spin text-primary" />
+            <p className="mt-2 text-sm text-muted-foreground">Cargando dashboard...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // No user logged in
+  if (!user) {
+    return (
+      <MainLayout>
+        <div className="flex h-96 items-center justify-center">
+          <p className="text-muted-foreground">Por favor, inicia sesión para ver el dashboard</p>
+        </div>
+      </MainLayout>
+    );
+  }
 
   const metrics = {
     conversations_today: 23,
@@ -309,23 +340,65 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        {/* Performance del Equipo */}
-        <Card className="shadow-card">
-          <CardHeader className="p-4 md:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                  <Award className="h-4 md:h-5 w-4 md:w-5 text-primary" />
-                  Performance del Equipo
-                </CardTitle>
-                <CardDescription className="text-xs md:text-sm">Rendimiento de vendedores este mes</CardDescription>
+        {/* ✅ DASHBOARDS PERSONALIZADOS POR ROL */}
+        {isSeller && metrics?.personalMetrics && (
+          <PersonalMetricsCard metrics={metrics.personalMetrics} />
+        )}
+
+        {isAdmin && metrics?.teamPerformance && (
+          <TeamPerformanceCard teamPerformance={metrics.teamPerformance} />
+        )}
+
+        {(isSuperAdmin || isOwner) && metrics?.agenciesPerformance && (
+          <Card className="shadow-card">
+            <CardHeader className="p-4 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                <Building className="h-4 md:h-5 w-4 md:w-5 text-primary" />
+                {isOwner ? 'Performance por Agencia (Todas)' : 'Performance de Agencias'}
+              </CardTitle>
+              <CardDescription className="text-xs md:text-sm">
+                {isOwner ? 'Comparativa cross-tenant' : 'Agencias de tu mayorista'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 md:p-6">
+              <div className="space-y-3">
+                {metrics.agenciesPerformance.slice(0, 5).map((agency) => (
+                  <div key={agency.agency_id} className="flex items-center justify-between p-3 rounded-lg bg-gradient-card">
+                    <div>
+                      <p className="font-medium">{agency.agency_name}</p>
+                      {agency.tenant_name && (
+                        <p className="text-xs text-muted-foreground">{agency.tenant_name}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold">${agency.revenue.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">{agency.conversion_rate.toFixed(1)}% conv.</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <Button variant="outline" size="sm" className="text-xs md:text-sm w-full sm:w-auto">Ver Todos</Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 md:p-6">
-            <div className="space-y-3 md:space-y-4">
-              {teamPerformance.map((member, index) => (
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Performance del Equipo (MOCK - Solo para demo) */}
+        {!isSeller && !isAdmin && !isSuperAdmin && !isOwner && (
+          <Card className="shadow-card">
+            <CardHeader className="p-4 md:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Award className="h-4 md:h-5 w-4 md:w-5 text-primary" />
+                    Performance del Equipo
+                  </CardTitle>
+                  <CardDescription className="text-xs md:text-sm">Rendimiento de vendedores este mes</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" className="text-xs md:text-sm w-full sm:w-auto">Ver Todos</Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 md:p-6">
+              <div className="space-y-3 md:space-y-4">
+                {teamPerformance.map((member, index) => (
                 <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 md:p-4 rounded-lg bg-gradient-card">
                   <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
                     <div className="relative flex-shrink-0">
@@ -357,6 +430,7 @@ const Dashboard = () => {
             </div>
           </CardContent>
         </Card>
+        )}
 
         {/* Próximos Vencimientos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">

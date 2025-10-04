@@ -14,16 +14,18 @@ DROP POLICY IF EXISTS "admins can write messages of their agency" ON public.mess
 DROP POLICY IF EXISTS "superadmins can manage messages in tenant" ON public.messages;
 
 -- Create temporary permissive policies for development
-CREATE POLICY "temp_dev_policy_all_conversations" 
-ON public.conversations 
-FOR ALL 
-USING (true) 
+DROP POLICY IF EXISTS "temp_dev_policy_all_conversations" ON public.conversations;
+CREATE POLICY "temp_dev_policy_all_conversations"
+ON public.conversations
+FOR ALL
+USING (true)
 WITH CHECK (true);
 
-CREATE POLICY "temp_dev_policy_all_messages" 
-ON public.messages 
-FOR ALL 
-USING (true) 
+DROP POLICY IF EXISTS "temp_dev_policy_all_messages" ON public.messages;
+CREATE POLICY "temp_dev_policy_all_messages"
+ON public.messages
+FOR ALL
+USING (true)
 WITH CHECK (true);
 
 -- Insert basic data for development without foreign key constraints

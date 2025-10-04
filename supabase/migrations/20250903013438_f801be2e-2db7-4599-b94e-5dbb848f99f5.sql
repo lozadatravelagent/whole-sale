@@ -18,9 +18,10 @@ CREATE TABLE IF NOT EXISTS public.sellers (
 ALTER TABLE public.sellers ENABLE ROW LEVEL SECURITY;
 
 -- Create temporary policy for sellers (similar to leads)
-CREATE POLICY "temp_dev_policy_all_sellers" 
-ON public.sellers 
-FOR ALL 
+DROP POLICY IF EXISTS "temp_dev_policy_all_sellers" ON public.sellers;
+CREATE POLICY "temp_dev_policy_all_sellers"
+ON public.sellers
+FOR ALL
 TO public
 USING (true)
 WITH CHECK (true);
@@ -52,9 +53,10 @@ CREATE TABLE IF NOT EXISTS public.sections (
 ALTER TABLE public.sections ENABLE ROW LEVEL SECURITY;
 
 -- Create temporary policy for sections
-CREATE POLICY "temp_dev_policy_all_sections" 
-ON public.sections 
-FOR ALL 
+DROP POLICY IF EXISTS "temp_dev_policy_all_sections" ON public.sections;
+CREATE POLICY "temp_dev_policy_all_sections"
+ON public.sections
+FOR ALL
 TO public
 USING (true)
 WITH CHECK (true);

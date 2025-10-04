@@ -9,6 +9,7 @@ DROP POLICY IF EXISTS "admins can update leads of their agency" ON public.leads;
 DROP POLICY IF EXISTS "superadmins can manage leads in tenant" ON public.leads;
 
 -- Crear política temporal permisiva para desarrollo
+DROP POLICY IF EXISTS "temp_dev_policy_all_leads" ON public.leads;
 CREATE POLICY "temp_dev_policy_all_leads" 
 ON public.leads 
 FOR ALL 
@@ -25,6 +26,7 @@ DROP POLICY IF EXISTS "user can update self" ON public.users;
 DROP POLICY IF EXISTS "superadmins can update users in tenant" ON public.users;
 DROP POLICY IF EXISTS "superadmins can delete users in tenant" ON public.users;
 
+DROP POLICY IF EXISTS "temp_dev_policy_all_users" ON public.users;
 CREATE POLICY "temp_dev_policy_all_users" 
 ON public.users 
 FOR ALL 

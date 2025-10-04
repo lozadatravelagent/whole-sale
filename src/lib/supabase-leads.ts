@@ -21,6 +21,8 @@ export interface CreateLeadInput {
   agency_id: string;
   status?: LeadStatus;
   section_id?: string;
+  assigned_user_id?: string; // User ID from users table with role='SELLER'
+  /** @deprecated Use assigned_user_id instead */
   seller_id?: string;
   budget?: number;
   description?: string;
@@ -100,7 +102,11 @@ export async function createLead(input: CreateLeadInput): Promise<Lead | null> {
       ...input,
       due_date: input.due_date && input.due_date.trim() !== '' ? input.due_date : null,
       section_id: input.section_id && input.section_id.trim() !== '' ? input.section_id : null,
-      seller_id: input.seller_id && input.seller_id.trim() !== '' ? input.seller_id : null,
+      // Support both assigned_user_id and seller_id (deprecated) for backward compatibility
+      assigned_user_id: input.assigned_user_id && input.assigned_user_id.trim() !== ''
+        ? input.assigned_user_id
+        : (input.seller_id && input.seller_id.trim() !== '' ? input.seller_id : null),
+      seller_id: undefined, // Remove seller_id from insert
       // Handle empty date strings in trip dates
       trip: {
         ...input.trip,
@@ -213,20 +219,34 @@ export async function updateLeadSection(id: string, section_id: string): Promise
   return updateLead({ id, section_id });
 }
 
-// Fetch all sellers
-export async function getSellers(): Promise<Seller[]> {
+// Fetch all sellers (now from users table with role='SELLER')
+export async function getSellers(agencyId?: string): Promise<Seller[]> {
   try {
-    const { data, error } = await supabase
-      .from('sellers')
-      .select('*')
+    let query = supabase
+      .from('users')
+      .select('id, name, email, created_at')
+      .eq('role', 'SELLER')
       .order('name', { ascending: true });
+
+    if (agencyId) {
+      query = query.eq('agency_id', agencyId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching sellers:', error);
       throw error;
     }
 
-    return data || [];
+    // Map User to Seller interface for backward compatibility
+    return (data || []).map(user => ({
+      id: user.id,
+      name: user.name || user.email,
+      email: user.email,
+      created_at: user.created_at,
+      updated_at: user.created_at, // users table doesn't have updated_at
+    }));
   } catch (error) {
     console.error('Error in getSellers:', error);
     return [];

@@ -17,6 +17,11 @@ INSERT INTO public.agencies (id, tenant_id, name, status, phones, branding) VALU
 ON CONFLICT (id) DO NOTHING;
 
 -- Create a basic user for development
-INSERT INTO public.users (id, tenant_id, agency_id, email, role, provider) VALUES 
+-- NOTE: Users must first exist in auth.users before being added to public.users
+-- This insert is commented out as it requires auth.users entry first
+-- You need to create the user through Supabase Auth first, then add them to public.users
+/*
+INSERT INTO public.users (id, tenant_id, agency_id, email, role, provider) VALUES
   ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'demo@vbook.com', 'ADMIN', 'email')
 ON CONFLICT (id) DO NOTHING;
+*/
