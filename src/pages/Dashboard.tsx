@@ -67,7 +67,8 @@ const Dashboard = () => {
     );
   }
 
-  const metrics = {
+  // Mock metrics for demo purposes (fallback if real metrics not available)
+  const mockMetrics = {
     conversations_today: 23,
     quotes_generated: 12,
     pdfs_created: 8,
@@ -83,6 +84,9 @@ const Dashboard = () => {
     pending_followups: 12,
     urgent_leads: 3
   };
+
+  // Use real metrics if available, otherwise use mock
+  const displayMetrics = metrics || mockMetrics;
 
   const teamPerformance = [
     { name: 'María García', leads: 18, conversions: 12, revenue: 45600, rating: 4.9, status: 'online' },
@@ -205,30 +209,30 @@ const Dashboard = () => {
                 <div className="flex items-center justify-between mb-2 gap-2">
                   <span className="font-medium text-sm md:text-base">Ingresos Mensuales</span>
                   <span className="text-xs md:text-sm text-muted-foreground">
-                    ${metrics.monthly_revenue.toLocaleString()} / ${metrics.monthly_goal.toLocaleString()}
+                    ${displayMetrics.monthly_revenue.toLocaleString()} / ${displayMetrics.monthly_goal.toLocaleString()}
                   </span>
                 </div>
-                <Progress value={(metrics.monthly_revenue / metrics.monthly_goal) * 100} className="h-2 md:h-3" />
+                <Progress value={(displayMetrics.monthly_revenue / displayMetrics.monthly_goal) * 100} className="h-2 md:h-3" />
                 <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
-                  {((metrics.monthly_revenue / metrics.monthly_goal) * 100).toFixed(1)}% completado
+                  {((displayMetrics.monthly_revenue / displayMetrics.monthly_goal) * 100).toFixed(1)}% completado
                 </p>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2 gap-2">
                   <span className="font-medium text-sm md:text-base">Tasa de Conversión</span>
-                  <span className="text-xs md:text-sm text-muted-foreground">{metrics.conversion_rate}% / 70%</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">{displayMetrics.conversion_rate}% / 70%</span>
                 </div>
-                <Progress value={metrics.conversion_rate} className="h-2 md:h-3" />
+                <Progress value={displayMetrics.conversion_rate} className="h-2 md:h-3" />
                 <p className="text-[10px] md:text-xs text-muted-foreground mt-1">Objetivo: 70%</p>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2 gap-2">
                   <span className="font-medium text-sm md:text-base">Tiempo de Respuesta</span>
-                  <span className="text-xs md:text-sm text-muted-foreground">{metrics.response_time} min / 5 min</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">{displayMetrics.response_time} min / 5 min</span>
                 </div>
-                <Progress value={(5 - metrics.response_time) * 20} className="h-2 md:h-3" />
+                <Progress value={(5 - displayMetrics.response_time) * 20} className="h-2 md:h-3" />
                 <p className="text-[10px] md:text-xs text-success mt-1">
                   <CheckCircle className="inline h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                   Bajo el objetivo
@@ -247,8 +251,8 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6">
               <div className="text-center">
-                <div className="text-xl md:text-2xl font-bold text-success">{metrics.active_integrations}</div>
-                <p className="text-xs md:text-sm text-muted-foreground">de {metrics.total_integrations} activas</p>
+                <div className="text-xl md:text-2xl font-bold text-success">{displayMetrics.active_integrations}</div>
+                <p className="text-xs md:text-sm text-muted-foreground">de {displayMetrics.total_integrations} activas</p>
               </div>
 
               <div className="space-y-2">
@@ -290,7 +294,7 @@ const Dashboard = () => {
               <MessageSquare className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" />
             </CardHeader>
             <CardContent className="p-4 md:p-6 pt-0">
-              <div className="text-xl md:text-2xl font-bold">{metrics.conversations_today}</div>
+              <div className="text-xl md:text-2xl font-bold">{displayMetrics.conversations_today}</div>
               <p className="text-[10px] md:text-xs text-success flex items-center mt-1">
                 <TrendingUp className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                 +12% desde ayer
@@ -304,9 +308,9 @@ const Dashboard = () => {
               <FileText className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />
             </CardHeader>
             <CardContent className="p-4 md:p-6 pt-0">
-              <div className="text-xl md:text-2xl font-bold">{metrics.quotes_generated}</div>
+              <div className="text-xl md:text-2xl font-bold">{displayMetrics.quotes_generated}</div>
               <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
-                {metrics.pdfs_created} PDFs enviados
+                {displayMetrics.pdfs_created} PDFs enviados
               </p>
             </CardContent>
           </Card>
@@ -317,7 +321,7 @@ const Dashboard = () => {
               <Star className="h-3.5 md:h-4 w-3.5 md:w-4 text-warning" />
             </CardHeader>
             <CardContent className="p-4 md:p-6 pt-0">
-              <div className="text-xl md:text-2xl font-bold">{metrics.satisfaction}</div>
+              <div className="text-xl md:text-2xl font-bold">{displayMetrics.satisfaction}</div>
               <p className="text-[10px] md:text-xs text-success flex items-center mt-1">
                 <TrendingUp className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                 Rating promedio
@@ -331,7 +335,7 @@ const Dashboard = () => {
               <Timer className="h-3.5 md:h-4 w-3.5 md:w-4 text-success" />
             </CardHeader>
             <CardContent className="p-4 md:p-6 pt-0">
-              <div className="text-xl md:text-2xl font-bold">{metrics.response_time}m</div>
+              <div className="text-xl md:text-2xl font-bold">{displayMetrics.response_time}m</div>
               <p className="text-[10px] md:text-xs text-success flex items-center mt-1">
                 <CheckCircle className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
                 Bajo objetivo
@@ -465,11 +469,11 @@ const Dashboard = () => {
                 </div>
               ))}
 
-              {metrics.pending_followups > 0 && (
+              {displayMetrics.pending_followups > 0 && (
                 <div className="pt-2 border-t">
                   <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
                     <Briefcase className="h-3.5 md:h-4 w-3.5 md:w-4 mr-2" />
-                    Ver {metrics.pending_followups} seguimientos pendientes
+                    Ver {displayMetrics.pending_followups} seguimientos pendientes
                   </Button>
                 </div>
               )}
