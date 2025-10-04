@@ -67,26 +67,39 @@ const Dashboard = () => {
     );
   }
 
-  // Mock metrics for demo purposes (fallback if real metrics not available)
-  const mockMetrics = {
-    conversations_today: 23,
-    quotes_generated: 12,
-    pdfs_created: 8,
-    leads_won: 3,
-    leads_lost: 2,
-    conversion_rate: 60,
-    response_time: 4.2, // minutos promedio
-    satisfaction: 4.8, // rating promedio
-    monthly_revenue: 156000,
+  // Map real metrics from useReports to Dashboard display format
+  const displayMetrics = metrics ? {
+    conversations_today: metrics.totalConversations || 0,
+    quotes_generated: Math.floor((metrics.totalLeads || 0) * 0.5), // Estimate: 50% of leads get quotes
+    pdfs_created: Math.floor((metrics.totalLeads || 0) * 0.3), // Estimate: 30% get PDFs
+    leads_won: metrics.leadsWon || 0,
+    leads_lost: metrics.leadsLost || 0,
+    conversion_rate: Math.round(metrics.conversionRate || 0),
+    response_time: 4.2, // TODO: Calculate from real data
+    satisfaction: 4.8, // TODO: Calculate from real data
+    monthly_revenue: Math.round(metrics.totalRevenue || 0),
+    monthly_goal: 200000, // TODO: Get from settings
+    active_integrations: 6, // TODO: Get from integrations table
+    total_integrations: 8, // TODO: Get from integrations table
+    pending_followups: Math.floor((metrics.totalLeads || 0) * 0.2), // Estimate
+    urgent_leads: 3 // TODO: Calculate from leads with urgent status
+  } : {
+    // Fallback mock metrics when no real data
+    conversations_today: 0,
+    quotes_generated: 0,
+    pdfs_created: 0,
+    leads_won: 0,
+    leads_lost: 0,
+    conversion_rate: 0,
+    response_time: 0,
+    satisfaction: 0,
+    monthly_revenue: 0,
     monthly_goal: 200000,
-    active_integrations: 6,
-    total_integrations: 8,
-    pending_followups: 12,
-    urgent_leads: 3
+    active_integrations: 0,
+    total_integrations: 0,
+    pending_followups: 0,
+    urgent_leads: 0
   };
-
-  // Use real metrics if available, otherwise use mock
-  const displayMetrics = metrics || mockMetrics;
 
   const teamPerformance = [
     { name: 'María García', leads: 18, conversions: 12, revenue: 45600, rating: 4.9, status: 'online' },
