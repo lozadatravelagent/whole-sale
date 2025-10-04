@@ -33,15 +33,17 @@ export function useAuth() {
 export function useConversations() {
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const mockAgencyId = '00000000-0000-0000-0000-000000000001';
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
     try {
+      // RLS policies will automatically filter conversations based on user role
+      // OWNER: sees all conversations
+      // SUPERADMIN: sees conversations in their tenant
+      // ADMIN/SELLER: sees conversations in their agency
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
-        .eq('agency_id', mockAgencyId)
         .order('last_message_at', { ascending: false });
 
       if (error) throw error;
@@ -52,7 +54,7 @@ export function useConversations() {
     } finally {
       setLoading(false);
     }
-  }, [mockAgencyId]);
+  }, []);
 
   // Subscribe to real-time conversation updates
   useEffect(() => {
@@ -71,8 +73,8 @@ export function useConversations() {
         {
           event: '*',
           schema: 'public',
-          table: 'conversations',
-          filter: `agency_id=eq.${mockAgencyId}`
+          table: 'conversations'
+          // No filter - RLS policies handle authorization
         },
         (payload) => {
           console.log('🔔 [REALTIME] Conversation event:', payload.eventType, payload.new);
@@ -107,7 +109,7 @@ export function useConversations() {
       console.log('🔴 [REALTIME] Unsubscribing from conversations channel');
       supabase.removeChannel(channel);
     };
-  }, [loadConversations, mockAgencyId]);
+  }, [loadConversations]);
 
   const createConversation = async (params?: {
     title?: string;
@@ -120,15 +122,26 @@ export function useConversations() {
     console.log('📋 Parameters received:', params);
 
     try {
-      const mockAgencyId = '00000000-0000-0000-0000-000000000001';
-      const mockTenantId = '00000000-0000-0000-0000-000000000001';
+      // Get current user's agency_id and tenant_id
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('agency_id, tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!userData?.agency_id) {
+        throw new Error('User has no agency assigned');
+      }
 
       const newConversation = {
         external_key: `chat-${Date.now()}`,
         channel: (params?.channel === 'whatsapp' ? 'wa' : params?.channel || 'web') as 'web' | 'wa',
         state: (params?.status || 'active') as 'active' | 'closed' | 'pending',
-        agency_id: mockAgencyId,
-        tenant_id: mockTenantId,
+        agency_id: userData.agency_id,
+        tenant_id: userData.tenant_id,
         last_message_at: new Date().toISOString()
         // Note: meta field doesn't exist in database schema, removed
       };
