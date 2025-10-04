@@ -128,11 +128,15 @@ export function useConversations() {
 
       const { data: userData } = await supabase
         .from('users')
-        .select('agency_id, tenant_id')
+        .select('agency_id, tenant_id, role')
         .eq('id', user.id)
         .single();
 
-      if (!userData?.agency_id) {
+      // OWNER role doesn't require agency_id (they oversee all tenants)
+      // For OWNER creating conversations, we'll use null agency_id
+      const isOwner = userData?.role === 'OWNER';
+
+      if (!isOwner && !userData?.agency_id) {
         throw new Error('User has no agency assigned');
       }
 
@@ -140,8 +144,8 @@ export function useConversations() {
         external_key: `chat-${Date.now()}`,
         channel: (params?.channel === 'whatsapp' ? 'wa' : params?.channel || 'web') as 'web' | 'wa',
         state: (params?.status || 'active') as 'active' | 'closed' | 'pending',
-        agency_id: userData.agency_id,
-        tenant_id: userData.tenant_id,
+        agency_id: userData.agency_id || null, // Allow null for OWNER
+        tenant_id: userData.tenant_id || null, // Allow null for OWNER
         created_by: user.id, // Set conversation owner
         last_message_at: new Date().toISOString()
         // Note: meta field doesn't exist in database schema, removed
