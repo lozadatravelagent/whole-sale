@@ -16,14 +16,23 @@ import {
 
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
-import { Plus, Star, Lock } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Plus, Star, Lock, Info, Filter } from 'lucide-react';
 import { TrelloColumn } from '@/components/crm/TrelloColumn';
 import { TrelloCard } from '@/components/crm/TrelloCard';
 import { LeadDialog } from '@/components/crm/LeadDialog';
 import { useLeads } from '@/hooks/useLeads';
+import { useAuthUser } from '@/hooks/useAuthUser';
 import { Lead, Section } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 // Dummy data for initial testing
 const DUMMY_TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -38,6 +47,7 @@ export default function CRM() {
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [selectedSectionForNewLead, setSelectedSectionForNewLead] = useState<string | null>(null);
+  const [filterSeller, setFilterSeller] = useState<string>('all');
 
   const {
     sections,
@@ -55,6 +65,30 @@ export default function CRM() {
   } = useLeads();
 
   const { toast } = useToast();
+  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
+
+  // Filtrar leads según rol y filtro seleccionado
+  const getFilteredLeads = (sectionLeads: Lead[]) => {
+    let filtered = sectionLeads;
+
+    // SELLER: Solo ve sus leads asignados
+    if (isSeller && user) {
+      filtered = filtered.filter(lead => lead.assigned_user_id === user.id);
+    }
+
+    // ADMIN/SUPERADMIN/OWNER: Pueden filtrar por vendedor
+    if ((isAdmin || isSuperAdmin || isOwner) && filterSeller !== 'all') {
+      filtered = filtered.filter(lead => lead.assigned_user_id === filterSeller);
+    }
+
+    return filtered;
+  };
+
+  // Calcular total de leads visibles
+  const totalVisibleLeads = sections.reduce((sum, section) => {
+    const sectionLeads = leadsBySection[section.id] || [];
+    return sum + getFilteredLeads(sectionLeads).length;
+  }, 0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -184,6 +218,16 @@ export default function CRM() {
         {/* Background decoration */}
         <div className="absolute inset-0 opacity-10 bg-white/5"></div>
 
+        {/* Banner contextual para SELLER */}
+        {isSeller && (
+          <div className="relative z-10 bg-blue-50 dark:bg-blue-950/20 border-b border-blue-200 dark:border-blue-800 p-3">
+            <div className="flex items-center gap-2 text-sm text-blue-900 dark:text-blue-100">
+              <Info className="h-4 w-4 flex-shrink-0" />
+              <span>Viendo solo tus leads asignados ({totalVisibleLeads})</span>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 md:p-4 bg-card border-b border-border">
           <div className="flex items-center gap-2 md:gap-3">
@@ -207,11 +251,29 @@ export default function CRM() {
             </Button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filtro por vendedor (solo para ADMIN, SUPERADMIN, OWNER) */}
+            {(isAdmin || isSuperAdmin || isOwner) && sellers.length > 0 && (
+              <Select value={filterSeller} onValueChange={setFilterSeller}>
+                <SelectTrigger className="w-[180px] h-9 text-xs md:text-sm">
+                  <Filter className="h-3.5 w-3.5 mr-2" />
+                  <SelectValue placeholder="Todos los vendedores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los vendedores</SelectItem>
+                  {sellers.map((seller) => (
+                    <SelectItem key={seller.id} value={seller.id}>
+                      {seller.name || seller.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
             <Button
               onClick={handleNewSection}
               variant="ghost"
-              className="text-muted-foreground hover:bg-muted gap-2 text-xs md:text-sm w-full sm:w-auto"
+              className="text-muted-foreground hover:bg-muted gap-2 text-xs md:text-sm"
             >
               <Plus className="h-3.5 md:h-4 w-3.5 md:w-4" />
               Agregar otra lista
@@ -232,17 +294,22 @@ export default function CRM() {
                 items={sections.map(s => s.id)}
                 strategy={horizontalListSortingStrategy}
               >
-                {sections.map((section) => (
-                  <TrelloColumn
-                    key={section.id}
-                    section={section}
-                    leads={leadsBySection[section.id] || []}
-                    onEdit={handleEditLead}
-                    onAddCard={() => handleNewLead(section.id)}
-                    onDeleteSection={handleDeleteSection}
-                    isOver={overId === section.id}
-                  />
-                ))}
+                {sections.map((section) => {
+                  const sectionLeads = leadsBySection[section.id] || [];
+                  const filteredLeads = getFilteredLeads(sectionLeads);
+
+                  return (
+                    <TrelloColumn
+                      key={section.id}
+                      section={section}
+                      leads={filteredLeads}
+                      onEdit={handleEditLead}
+                      onAddCard={() => handleNewLead(section.id)}
+                      onDeleteSection={handleDeleteSection}
+                      isOver={overId === section.id}
+                    />
+                  );
+                })}
               </SortableContext>
 
               {/* Add new list button */}

@@ -156,14 +156,31 @@ const Dashboard = () => {
     }
   };
 
+  // Títulos y descripciones contextuales por rol
+  const getDashboardTitle = () => {
+    if (isOwner) return 'Dashboard Global (OWNER)';
+    if (isSuperAdmin) return 'Dashboard del Mayorista';
+    if (isAdmin) return 'Dashboard de la Agencia';
+    if (isSeller) return 'Mi Dashboard Personal';
+    return 'Dashboard';
+  };
+
+  const getDashboardDescription = () => {
+    if (isOwner) return 'Vista completa de todos los tenants y agencias del sistema';
+    if (isSuperAdmin) return 'Gestión y supervisión de todas tus agencias';
+    if (isAdmin) return 'Supervisión del equipo de vendedores y métricas de agencia';
+    if (isSeller) return 'Tus leads asignados y métricas personales de rendimiento';
+    return 'Overview of your travel agency performance';
+  };
+
   return (
     <MainLayout userRole="ADMIN">
       <div className="h-full overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dashboard</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{getDashboardTitle()}</h1>
             <p className="text-sm md:text-base text-muted-foreground mt-1">
-              Overview of your travel agency performance
+              {getDashboardDescription()}
             </p>
           </div>
           <Badge variant="outline" className="h-6 text-xs md:text-sm w-fit">

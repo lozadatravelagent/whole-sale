@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuthUser } from '@/hooks/useAuthUser';
+import { UserProfileHeader } from '@/components/layout/UserProfileHeader';
 
 import {
   LayoutDashboard,
@@ -13,12 +16,14 @@ import {
   BarChart3,
   Settings,
   LogOut,
-  Building,
-  Phone,
   ChevronLeft,
   ChevronRight,
   Menu,
-  X
+  X,
+  Crown,
+  Shield,
+  UserCog,
+  User as UserIcon
 } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -36,15 +41,12 @@ const navigation = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
-const adminNavigation = [
-  { name: 'Licenses', href: '/admin/licenses', icon: Building },
-  { name: 'WhatsApp', href: '/admin/whatsapp', icon: Phone },
-];
 
 export default function MainLayout({ children, userRole, sidebarExtra }: MainLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -78,6 +80,36 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
 
   const [chatOpen, setChatOpen] = useState(location.pathname.startsWith('/chat'));
 
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case 'OWNER':
+        return <Crown className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-500" />;
+      case 'SUPERADMIN':
+        return <Shield className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />;
+      case 'ADMIN':
+        return <UserCog className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />;
+      case 'SELLER':
+        return <UserIcon className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />;
+      default:
+        return <UserIcon className="h-3.5 w-3.5" />;
+    }
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'OWNER':
+        return 'Owner';
+      case 'SUPERADMIN':
+        return 'Super Admin';
+      case 'ADMIN':
+        return 'Administrador';
+      case 'SELLER':
+        return 'Vendedor';
+      default:
+        return role;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile Header */}
@@ -85,14 +117,17 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
         <div className="text-xl font-bold text-primary">
           VIBOOK
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="text-foreground"
-        >
-          {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </Button>
+        <div className="flex items-center gap-2">
+          {user && <UserProfileHeader user={user} onLogout={handleLogout} />}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="text-foreground"
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </Button>
+        </div>
       </div>
 
       {/* Backdrop for mobile menu */}
@@ -105,15 +140,15 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
 
       {/* Sidebar */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-gradient-card border-r border-border flex flex-col transform transition-transform duration-300",
+        "fixed inset-y-0 left-0 z-50 w-64 bg-gradient-card border-r border-border flex flex-col transition-transform duration-300",
+        // Mobile behavior (siempre oculto por defecto)
+        "-translate-x-full",
+        mobileMenuOpen && "translate-x-0",
+        "top-16 lg:top-0",
         // Desktop behavior
-        "lg:translate-x-0",
-        sidebarHidden && "lg:-translate-x-full",
-        // Mobile behavior
-        "lg:top-0",
-        mobileMenuOpen ? "translate-x-0 top-16" : "-translate-x-full lg:translate-x-0 top-16 lg:top-0"
+        !sidebarHidden ? "lg:translate-x-0" : "lg:-translate-x-full"
       )}>
-        <div className="hidden lg:flex h-16 items-center px-6 justify-between">
+        <div className="hidden lg:flex h-16 items-center px-6 justify-between border-b border-border">
           <div className="text-xl font-bold text-primary">
             VIBOOK
           </div>
@@ -122,7 +157,20 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
           </Button>
         </div>
 
-        <nav className="px-4 pb-4 space-y-1">
+        {/* Role Badge en Sidebar */}
+        {user && (
+          <div className="px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-primary/5">
+              {getRoleIcon(user.role)}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{getRoleLabel(user.role)}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{user.email}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <nav className="flex-1 px-4 pb-4 pt-2 space-y-1 overflow-y-auto">
           {navigation.map((item) => {
             const isActive = location.pathname === item.href;
             if (item.name === 'Chat') {
@@ -166,35 +214,9 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
               </Link>
             );
           })}
-
-          {userRole === 'SUPERADMIN' && (
-            <>
-              <div className="h-px bg-border my-4" />
-              <div className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Admin
-              </div>
-              {adminNavigation.map((item) => {
-                const isActive = location.pathname === item.href;
-                return (
-                  <Link key={item.name} to={item.href}>
-                    <Button
-                      variant={isActive ? "secondary" : "ghost"}
-                      className={cn(
-                        "w-full justify-start gap-3 h-10",
-                        isActive && "bg-primary/10 text-primary"
-                      )}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.name}
-                    </Button>
-                  </Link>
-                );
-              })}
-            </>
-          )}
         </nav>
 
-        <div className="p-4 border-t border-border">
+        <div className="mt-auto p-4 border-t border-border">
           <Button
             variant="ghost"
             onClick={handleLogout}
