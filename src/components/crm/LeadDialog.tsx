@@ -50,11 +50,11 @@ const leadSchema = z.object({
     type: z.enum(['hotel', 'flight', 'package']),
     city: z.string().min(1, 'Ciudad requerida'),
     dates: z.object({
-      checkin: z.string().min(1, 'Fecha de entrada requerida'),
-      checkout: z.string().min(1, 'Fecha de salida requerida')
+      checkin: z.string().optional(),
+      checkout: z.string().optional()
     }),
-    adults: z.number().min(1, 'Mínimo 1 adulto'),
-    children: z.number().min(0, 'No puede ser negativo')
+    adults: z.number().min(1, 'Mínimo 1 adulto').optional(),
+    children: z.number().min(0, 'No puede ser negativo').optional()
   }),
   status: z.enum(['new', 'quoted', 'negotiating', 'won', 'lost']).optional(),
   section_id: z.string().optional(),
@@ -119,7 +119,7 @@ export function LeadDialog({
         children: 0
       },
       status: 'new',
-      budget: 0,
+      budget: undefined,
       description: '',
       due_date: ''
     }
@@ -200,16 +200,29 @@ export function LeadDialog({
     if (!data.section_id && sections.length > 0) {
       data.section_id = sections[0].id;
     }
-    
+
     // Convert budget string to number if it's a valid number
+    let processedBudget: number | undefined = undefined;
+    if (data.budget !== undefined && data.budget !== null) {
+      if (typeof data.budget === 'string') {
+        const trimmed = (data.budget as string).trim();
+        if (trimmed !== '') {
+          const parsed = parseFloat(trimmed);
+          if (!isNaN(parsed)) {
+            processedBudget = parsed;
+          }
+        }
+      } else if (typeof data.budget === 'number') {
+        processedBudget = data.budget;
+      }
+    }
+
     const processedData = {
       ...data,
-      budget: typeof data.budget === 'string' && data.budget.trim() !== '' 
-        ? parseFloat(data.budget) || undefined 
-        : data.budget,
-      checklist 
+      budget: processedBudget,
+      checklist
     };
-    
+
     onSave(processedData);
   };
 
@@ -494,7 +507,11 @@ export function LeadDialog({
                     Transferir Owner
                   </Button>
                 )}
-                <Button type="submit" className="w-full">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={Object.keys(errors).length > 0}
+                >
                   {isEditing ? 'Guardar Cambios' : 'Crear Lead'}
                 </Button>
                 <Button

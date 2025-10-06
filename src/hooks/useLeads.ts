@@ -166,6 +166,7 @@ export function useLeads(selectedAgencyId?: string | 'all') {
         return updatedLead;
       }
     } catch (error) {
+      console.error('useLeads editLead error:', error);
       toast({
         variant: "destructive",
         title: "Error",

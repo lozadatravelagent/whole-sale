@@ -69,7 +69,6 @@ export function useAgencies() {
 
     setLoading(true);
     try {
-      console.log('[AGENCIES] Loading agencies for role:', user.role);
 
       // Load agencies with tenant information
       const { data, error } = await supabase
@@ -91,7 +90,6 @@ export function useAgencies() {
       }));
 
       setAgencies(agenciesWithDetails);
-      console.log('[AGENCIES] Loaded', agenciesWithDetails.length, 'agencies');
     } catch (error) {
       console.error('[AGENCIES] Error loading agencies:', error);
       toast({
@@ -111,7 +109,6 @@ export function useAgencies() {
     if (!canCreateAgencies) return;
 
     try {
-      console.log('[AGENCIES] Loading tenants');
 
       const { data, error } = await supabase
         .from('tenants')
@@ -122,7 +119,6 @@ export function useAgencies() {
       if (error) throw error;
 
       setTenants(data || []);
-      console.log('[AGENCIES] Loaded', data?.length || 0, 'tenants');
     } catch (error) {
       console.error('[AGENCIES] Error loading tenants:', error);
       // Don't show error toast for tenants as it's supplementary data
@@ -143,7 +139,6 @@ export function useAgencies() {
     }
 
     try {
-      console.log('[AGENCIES] Creating agency:', input.name);
 
       const { data, error } = await supabase
         .from('agencies')
@@ -173,7 +168,6 @@ export function useAgencies() {
         description: `Agencia ${input.name} creada correctamente`
       });
 
-      console.log('[AGENCIES] Agency created successfully:', data);
 
       // Bootstrap default CRM sections for this new agency
       try {
@@ -181,7 +175,6 @@ export function useAgencies() {
         for (const name of defaultSections) {
           await createSection(data.id, name);
         }
-        console.log('[AGENCIES] Default CRM sections created for agency');
       } catch (e) {
         console.warn('[AGENCIES] Could not create default sections for agency:', e);
       }
@@ -215,7 +208,6 @@ export function useAgencies() {
     }
 
     try {
-      console.log('[AGENCIES] Updating agency:', input.id);
 
       const updateData: any = {};
       if (input.name !== undefined) updateData.name = input.name;
@@ -238,7 +230,6 @@ export function useAgencies() {
         description: 'Agencia actualizada correctamente'
       });
 
-      console.log('[AGENCIES] Agency updated successfully');
 
       // Reload agencies list
       await loadAgencies();
@@ -269,7 +260,6 @@ export function useAgencies() {
     }
 
     try {
-      console.log('[AGENCIES] Toggling agency status:', agencyId, newStatus);
 
       const { data, error } = await supabase
         .from('agencies')
@@ -285,7 +275,6 @@ export function useAgencies() {
         description: `Agencia ${newStatus === 'active' ? 'activada' : 'suspendida'} correctamente`
       });
 
-      console.log('[AGENCIES] Agency status toggled successfully');
 
       // Reload agencies list
       await loadAgencies();
@@ -316,7 +305,6 @@ export function useAgencies() {
     }
 
     try {
-      console.log('[AGENCIES] Deleting agency:', agencyId);
 
       // Check if agency has users
       const { data: usersCheck, error: usersError } = await supabase
@@ -367,7 +355,6 @@ export function useAgencies() {
         description: 'Agencia eliminada correctamente'
       });
 
-      console.log('[AGENCIES] Agency deleted successfully');
 
       // Reload agencies list
       await loadAgencies();

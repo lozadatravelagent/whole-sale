@@ -188,6 +188,7 @@ export default function CRM() {
       setIsDialogOpen(false);
       setSelectedSectionForNewLead(null);
     } catch (error) {
+      console.error('Error in handleSaveLead:', error);
       toast({
         title: "Error",
         description: "No se pudo guardar la tarjeta. Inténtalo de nuevo.",
