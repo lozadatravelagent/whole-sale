@@ -23,7 +23,9 @@ import {
   Crown,
   Shield,
   UserCog,
-  User as UserIcon
+  User as UserIcon,
+  Building,
+  Building2
 } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -32,12 +34,15 @@ interface MainLayoutProps {
   sidebarExtra?: React.ReactNode;
 }
 
-const navigation = [
+const baseNavigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Chat', href: '/chat', icon: MessageSquare },
   { name: 'CRM', href: '/crm', icon: Users },
   { name: 'Marketplace', href: '/marketplace', icon: Store },
   { name: 'Reports', href: '/reports', icon: BarChart3 },
+  { name: 'Users', href: '/users', icon: UserCog, roles: ['OWNER', 'SUPERADMIN', 'ADMIN'] },
+  { name: 'Agencies', href: '/agencies', icon: Building, roles: ['OWNER', 'SUPERADMIN'] },
+  { name: 'Tenants', href: '/tenants', icon: Building2, roles: ['OWNER'] },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -79,6 +84,12 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
   };
 
   const [chatOpen, setChatOpen] = useState(location.pathname.startsWith('/chat'));
+
+  // Filter navigation based on user role
+  const navigation = baseNavigation.filter(item => {
+    if (!item.roles) return true; // Show items without role restrictions
+    return item.roles.includes(user?.role || '');
+  });
 
   const getRoleIcon = (role: string) => {
     switch (role) {

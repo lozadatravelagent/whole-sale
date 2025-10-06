@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,9 +20,11 @@ import {
   Luggage
 } from 'lucide-react';
 import BaggageIcon from '@/components/ui/BaggageIcon';
+import { supabase } from '@/integrations/supabase/client';
 
 interface FlightSelectorProps {
   flights: FlightData[];
+  conversationId?: string; // Add conversation ID to get agency_id
   onPdfGenerated?: (pdfUrl: string) => void;
 }
 
@@ -63,11 +65,34 @@ const getBaggageInfoFromLeg = (leg: any) => {
 
 const FlightSelector: React.FC<FlightSelectorProps> = ({
   flights,
+  conversationId,
   onPdfGenerated
 }) => {
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [agencyId, setAgencyId] = useState<string | undefined>(undefined);
   const { toast } = useToast();
+
+  // Load agency_id from conversation
+  useEffect(() => {
+    if (conversationId) {
+      supabase
+        .from('conversations')
+        .select('agency_id')
+        .eq('id', conversationId)
+        .single()
+        .then(({ data, error }) => {
+          if (error) {
+            console.warn('[PDF] Could not fetch agency_id from conversation:', error);
+            return;
+          }
+          if (data?.agency_id) {
+            setAgencyId(data.agency_id);
+            console.log('[PDF] Loaded agency_id for PDF generation:', data.agency_id);
+          }
+        });
+    }
+  }, [conversationId]);
 
 
 
@@ -108,7 +133,8 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
         flight.id && selectedFlights.includes(flight.id)
       );
 
-      const result = await generateFlightPdf(flightsToGenerate);
+      console.log('✈️ Generating FLIGHT PDF with agency:', agencyId);
+      const result = await generateFlightPdf(flightsToGenerate, agencyId);
 
       if (result.success && result.document_url) {
         toast({

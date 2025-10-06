@@ -236,6 +236,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
               <div className="space-y-3">
                 <CombinedTravelSelector
                   combinedData={memoizedCombinedData!}
+                  conversationId={msg.conversation_id}
                   onPdfGenerated={onPdfGenerated}
                 />
               </div>

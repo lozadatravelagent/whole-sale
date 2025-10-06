@@ -17,12 +17,13 @@ import {
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Star, Lock, Info, Filter } from 'lucide-react';
+import { Plus, Star, Lock, Info, Filter, Building } from 'lucide-react';
 import { TrelloColumn } from '@/components/crm/TrelloColumn';
 import { TrelloCard } from '@/components/crm/TrelloCard';
 import { LeadDialog } from '@/components/crm/LeadDialog';
 import { useLeads } from '@/hooks/useLeads';
 import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAgencies } from '@/hooks/useAgencies';
 import { Lead, Section } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -48,6 +49,7 @@ export default function CRM() {
   const [overId, setOverId] = useState<string | null>(null);
   const [selectedSectionForNewLead, setSelectedSectionForNewLead] = useState<string | null>(null);
   const [filterSeller, setFilterSeller] = useState<string>('all');
+  const [filterAgency, setFilterAgency] = useState<string>('all');
 
   const {
     sections,
@@ -64,6 +66,8 @@ export default function CRM() {
     leads
   } = useLeads();
 
+  const { agencies, loading: agenciesLoading } = useAgencies();
+
   const { toast } = useToast();
   const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
 
@@ -74,6 +78,11 @@ export default function CRM() {
     // SELLER: Solo ve sus leads asignados
     if (isSeller && user) {
       filtered = filtered.filter(lead => lead.assigned_user_id === user.id);
+    }
+
+    // OWNER/SUPERADMIN: Pueden filtrar por agencia
+    if ((isOwner || isSuperAdmin) && filterAgency !== 'all') {
+      filtered = filtered.filter(lead => lead.agency_id === filterAgency);
     }
 
     // ADMIN/SUPERADMIN/OWNER: Pueden filtrar por vendedor
@@ -231,9 +240,27 @@ export default function CRM() {
         {/* Header */}
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 md:p-4 bg-card border-b border-border">
           <div className="flex items-center gap-2 md:gap-3">
-            <h1 className="text-lg md:text-xl font-semibold text-foreground truncate">
-              Lozada Madero
-            </h1>
+            {/* Selector de agencia para OWNER y SUPERADMIN, o nombre fijo para otros roles */}
+            {(isOwner || isSuperAdmin) && agencies.length > 0 ? (
+              <Select value={filterAgency} onValueChange={setFilterAgency}>
+                <SelectTrigger className="w-[200px] md:w-[250px] h-9 border-none shadow-none font-semibold text-base md:text-lg">
+                  <SelectValue placeholder="Todas las agencias" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las agencias</SelectItem>
+                  {agencies.map((agency) => (
+                    <SelectItem key={agency.id} value={agency.id}>
+                      {agency.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <h1 className="text-lg md:text-xl font-semibold text-foreground truncate">
+                {user?.agency_id ? agencies.find(a => a.id === user.agency_id)?.name || 'Mi Agencia' : 'CRM'}
+              </h1>
+            )}
+
             <Button
               variant="ghost"
               size="sm"
@@ -365,6 +392,10 @@ export default function CRM() {
           onOpenChange={setIsDialogOpen}
           lead={selectedLead}
           onSave={handleSaveLead}
+          onTransferComplete={() => {
+            // Reload leads after transfer
+            window.location.reload();
+          }}
           isEditing={isEditing}
           sections={sections}
           sellers={sellers}

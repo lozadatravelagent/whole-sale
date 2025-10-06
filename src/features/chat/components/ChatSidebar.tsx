@@ -8,8 +8,16 @@ import type { Database } from '@/integrations/supabase/types';
 
 type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 
+// Extended type to include agency data from the view
+interface ConversationWithAgency extends ConversationRow {
+  agency_name?: string;
+  tenant_name?: string;
+  creator_email?: string;
+  creator_role?: string;
+}
+
 interface ChatSidebarProps {
-  conversations: ConversationRow[];
+  conversations: ConversationWithAgency[];
   selectedConversation: string | null;
   activeTab: string;
   sidebarLimit: number;
@@ -77,13 +85,20 @@ const ChatSidebar = React.memo(({
                         <h4 className="font-medium text-xs md:text-sm truncate">
                           {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
                         </h4>
-                        <div className="flex items-center mt-1 text-[10px] md:text-xs text-muted-foreground">
-                          {conversation.channel === 'wa' ? (
-                            <Phone className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
-                          ) : (
-                            <Globe className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
+                        <div className="flex items-center gap-2 mt-1 text-[10px] md:text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            {conversation.channel === 'wa' ? (
+                              <Phone className="h-2.5 md:h-3 w-2.5 md:w-3" />
+                            ) : (
+                              <Globe className="h-2.5 md:h-3 w-2.5 md:w-3" />
+                            )}
+                            <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
+                          </div>
+                          {conversation.agency_name && (
+                            <Badge variant="outline" className="text-[10px] md:text-xs px-1.5 py-0.5">
+                              {conversation.agency_name}
+                            </Badge>
                           )}
-                          <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
                         </div>
                       </div>
                       <Badge variant="secondary" className="ml-2 text-[10px] md:text-xs px-1.5 md:px-2">
@@ -114,9 +129,16 @@ const ChatSidebar = React.memo(({
                         <h4 className="font-medium text-xs md:text-sm truncate">
                           {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
                         </h4>
-                        <div className="flex items-center mt-1 text-[10px] md:text-xs text-muted-foreground">
-                          <Archive className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
-                          <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] md:text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Archive className="h-2.5 md:h-3 w-2.5 md:w-3" />
+                            <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
+                          </div>
+                          {conversation.agency_name && (
+                            <Badge variant="outline" className="text-[10px] md:text-xs px-1.5 py-0.5">
+                              {conversation.agency_name}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                       <Badge variant="outline" className="ml-2 text-[10px] md:text-xs px-1.5 md:px-2">

@@ -12,6 +12,9 @@ import CRM from "./pages/CRM";
 import Marketplace from "./pages/Marketplace";
 import Settings from "./pages/Settings";
 import Reports from "./pages/Reports";
+import Users from "./pages/Users";
+import Agencies from "./pages/Agencies";
+import Tenants from "./pages/Tenants";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,7 +24,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/login" element={<Login />} />
@@ -65,13 +68,37 @@ const App = () => (
               </ProtectedRoute>
             } 
           />
-          <Route 
-            path="/reports" 
+          <Route
+            path="/reports"
             element={
               <ProtectedRoute>
                 <Reports />
               </ProtectedRoute>
-            } 
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute>
+                <Users />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/agencies"
+            element={
+              <ProtectedRoute>
+                <Agencies />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tenants"
+            element={
+              <ProtectedRoute>
+                <Tenants />
+              </ProtectedRoute>
+            }
           />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

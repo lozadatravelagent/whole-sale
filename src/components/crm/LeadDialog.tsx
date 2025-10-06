@@ -1,5 +1,6 @@
 import React from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   CalendarDays,
   MapPin,
@@ -21,12 +23,22 @@ import {
   MessageSquare,
   Trash2,
   Plus,
-  Calendar
+  Calendar,
+  UserPlus
 } from 'lucide-react';
 import { Lead, LeadStatus, Section, Seller, ChecklistItem } from '@/types';
+import { TransferOwnerDialog } from './TransferOwnerDialog';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+
+// Helper function to format date to YYYY-MM-DD without timezone issues
+const formatDateToString = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const leadSchema = z.object({
   contact: z.object({
@@ -46,8 +58,8 @@ const leadSchema = z.object({
   }),
   status: z.enum(['new', 'quoted', 'negotiating', 'won', 'lost']).optional(),
   section_id: z.string().optional(),
-  seller_id: z.string().optional(),
-  budget: z.number().min(0).optional(),
+  assigned_user_id: z.string().optional(),
+  budget: z.number().optional(),
   description: z.string().optional(),
   due_date: z.string().optional()
 });
@@ -59,6 +71,7 @@ interface LeadDialogProps {
   onOpenChange: (open: boolean) => void;
   lead?: Lead | null;
   onSave: (data: LeadFormData & { checklist?: ChecklistItem[] }) => void;
+  onTransferComplete?: () => void;
   isEditing?: boolean;
   sections?: Section[];
   sellers?: Seller[];
@@ -69,12 +82,14 @@ export function LeadDialog({
   onOpenChange,
   lead,
   onSave,
+  onTransferComplete,
   isEditing = false,
   sections = [],
   sellers = []
 }: LeadDialogProps) {
   const [checklist, setChecklist] = React.useState<ChecklistItem[]>([]);
   const [newChecklistItem, setNewChecklistItem] = React.useState('');
+  const [showTransferDialog, setShowTransferDialog] = React.useState(false);
 
   const {
     register,
@@ -90,7 +105,7 @@ export function LeadDialog({
       trip: lead.trip,
       status: lead.status,
       section_id: lead.section_id,
-      seller_id: lead.seller_id,
+      assigned_user_id: lead.assigned_user_id,
       budget: lead.budget,
       description: lead.description || '',
       due_date: lead.due_date || ''
@@ -112,8 +127,10 @@ export function LeadDialog({
 
   const watchedType = watch('trip.type');
   const watchedSectionId = watch('section_id');
-  const watchedSellerId = watch('seller_id');
+  const watchedAssignedUserId = watch('assigned_user_id');
   const watchedDueDate = watch('due_date');
+  const watchedCheckinDate = watch('trip.dates.checkin');
+  const watchedCheckoutDate = watch('trip.dates.checkout');
 
   React.useEffect(() => {
     if (lead && isEditing) {
@@ -122,7 +139,7 @@ export function LeadDialog({
         trip: lead.trip,
         status: lead.status,
         section_id: lead.section_id || '',
-        seller_id: lead.seller_id || '',
+        assigned_user_id: lead.assigned_user_id || '',
         budget: lead.budget,
         description: lead.description || '',
         due_date: lead.due_date || ''
@@ -142,7 +159,7 @@ export function LeadDialog({
         },
         status: 'new',
         section_id: defaultSectionId,
-        seller_id: '',
+        assigned_user_id: '',
         budget: 0,
         description: '',
         due_date: ''
@@ -192,6 +209,12 @@ export function LeadDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden p-0">
+        <VisuallyHidden>
+          <DialogTitle>{isEditing ? 'Editar Lead' : 'Nuevo Lead'}</DialogTitle>
+          <DialogDescription>
+            {isEditing ? 'Modifica la información del lead' : 'Completa la información para crear un nuevo lead'}
+          </DialogDescription>
+        </VisuallyHidden>
         <form onSubmit={handleSubmit(onSubmit)} className="flex h-[95vh]">
           {/* Main Content - Left Side */}
           <div className="flex-1 overflow-y-auto">
@@ -206,12 +229,12 @@ export function LeadDialog({
                 />
 
                 {/* Action Buttons - Updated according to user specs */}
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex flex-wrap items-center gap-3 mb-4">
                   {/* Sección Dropdown */}
                   <div className="flex items-center gap-2">
-                    <Label className="text-sm">Sección:</Label>
+                    <Label className="text-sm whitespace-nowrap">Sección:</Label>
                     <Select value={watchedSectionId} onValueChange={(value: string) => setValue('section_id', value)}>
-                      <SelectTrigger className="w-32">
+                      <SelectTrigger className="w-36">
                         <SelectValue placeholder="Sección" />
                       </SelectTrigger>
                       <SelectContent>
@@ -226,9 +249,9 @@ export function LeadDialog({
 
                   {/* Vendedor */}
                   <div className="flex items-center gap-2">
-                    <Label className="text-sm">Vendedor:</Label>
-                    <Select value={watchedSellerId} onValueChange={(value: string) => setValue('seller_id', value)}>
-                      <SelectTrigger className="w-32">
+                    <Label className="text-sm whitespace-nowrap">Vendedor:</Label>
+                    <Select value={watchedAssignedUserId} onValueChange={(value: string) => setValue('assigned_user_id', value)}>
+                      <SelectTrigger className="w-36">
                         <SelectValue placeholder="Vendedor" />
                       </SelectTrigger>
                       <SelectContent>
@@ -243,11 +266,12 @@ export function LeadDialog({
 
                   {/* Due Date */}
                   <div className="flex items-center gap-2">
-                    <Label className="text-sm">Fecha límite:</Label>
-                    <Input
-                      type="date"
-                      {...register('due_date')}
-                      className="w-auto text-sm"
+                    <Label className="text-sm whitespace-nowrap">Fecha límite:</Label>
+                    <DatePicker
+                      date={watchedDueDate ? new Date(watchedDueDate + 'T00:00:00') : undefined}
+                      onDateChange={(date) => setValue('due_date', date ? formatDateToString(date) : '')}
+                      placeholder="Seleccionar fecha"
+                      className="w-[200px]"
                     />
                   </div>
                 </div>
@@ -390,17 +414,23 @@ export function LeadDialog({
                   <Calendar className="h-4 w-4" />
                   Fechas
                 </Label>
-                <div className="space-y-2">
-                  <Input
-                    type="date"
-                    {...register('trip.dates.checkin')}
-                    placeholder="Fecha de ida"
-                  />
-                  <Input
-                    type="date"
-                    {...register('trip.dates.checkout')}
-                    placeholder="Fecha de vuelta"
-                  />
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Fecha de ida</Label>
+                    <DatePicker
+                      date={watchedCheckinDate ? new Date(watchedCheckinDate + 'T00:00:00') : undefined}
+                      onDateChange={(date) => setValue('trip.dates.checkin', date ? formatDateToString(date) : '')}
+                      placeholder="Seleccionar fecha de ida"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Fecha de vuelta</Label>
+                    <DatePicker
+                      date={watchedCheckoutDate ? new Date(watchedCheckoutDate + 'T00:00:00') : undefined}
+                      onDateChange={(date) => setValue('trip.dates.checkout', date ? formatDateToString(date) : '')}
+                      placeholder="Seleccionar fecha de vuelta"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -444,6 +474,17 @@ export function LeadDialog({
 
               {/* Actions */}
               <div className="pt-6 space-y-2">
+                {isEditing && lead && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => setShowTransferDialog(true)}
+                  >
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Transferir Owner
+                  </Button>
+                )}
                 <Button type="submit" className="w-full">
                   {isEditing ? 'Guardar Cambios' : 'Crear Lead'}
                 </Button>
@@ -460,6 +501,23 @@ export function LeadDialog({
           </div>
         </form>
       </DialogContent>
+
+      {/* Transfer Owner Dialog */}
+      {isEditing && lead && (
+        <TransferOwnerDialog
+          open={showTransferDialog}
+          onOpenChange={setShowTransferDialog}
+          leadId={lead.id}
+          leadName={lead.contact.name}
+          currentOwnerEmail={sellers.find(s => s.id === lead.assigned_user_id)?.email || 'Sin asignar'}
+          onTransferComplete={() => {
+            setShowTransferDialog(false);
+            if (onTransferComplete) {
+              onTransferComplete();
+            }
+          }}
+        />
+      )}
     </Dialog>
   );
 }

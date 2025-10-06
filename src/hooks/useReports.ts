@@ -22,6 +22,10 @@ export interface ReportsMetrics {
   leadsWon: number;
   leadsLost: number;
 
+  // Leads pendientes de seguimiento (con fechas vencidas o próximas)
+  pendingFollowups: number;
+  urgentLeads: number;
+
   // Por sección
   leadsBySection: { [key: string]: number };
   budgetBySection: { [key: string]: number };
@@ -43,12 +47,40 @@ export interface ReportsMetrics {
   // Tipos de viaje
   tripTypes: Array<{ type: string; count: number; percentage: number }>;
 
+  // Análisis de pérdidas
+  lossAnalysis: Array<{ reason: string; count: number; percentage: number }>;
+
   // ✅ NEW: Métricas por rol
   tenantsPerformance?: TenantWithMetrics[]; // For OWNER
   agenciesPerformance?: AgencyPerformance[]; // For OWNER/SUPERADMIN
   teamPerformance?: SellerPerformance[]; // For ADMIN
   personalMetrics?: SellerPersonalMetrics; // For SELLER
 }
+
+// Helper function to infer loss reason from lead data
+const inferLossReason = (lead: any): string => {
+  // If no budget, likely didn't engage
+  if (!lead.budget || lead.budget === 0) {
+    return 'No respondió';
+  }
+
+  // Check if budget is very high (might be price objection)
+  if (lead.budget > 10000) {
+    return 'Precio muy alto';
+  }
+
+  // Check if lead has been inactive for a while
+  const daysSinceUpdate = lead.updated_at
+    ? Math.floor((new Date().getTime() - new Date(lead.updated_at).getTime()) / (1000 * 60 * 60 * 24))
+    : 0;
+
+  if (daysSinceUpdate > 30) {
+    return 'No respondió';
+  }
+
+  // Default reason
+  return 'Otros motivos';
+};
 
 export function useReports(dateFrom?: Date, dateTo?: Date) {
   const [metrics, setMetrics] = useState<ReportsMetrics | null>(null);
@@ -180,6 +212,30 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
       const leadsLost = filteredLeads.filter(lead => lead.status === 'lost').length;
       const conversionRate = totalLeads > 0 ? (leadsWon / totalLeads) * 100 : 0;
 
+      // === PENDING FOLLOWUPS Y URGENT LEADS ===
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = today.toISOString().split('T')[0];
+      const in7Days = new Date(today);
+      in7Days.setDate(in7Days.getDate() + 7);
+      const in7DaysStr = in7Days.toISOString().split('T')[0];
+
+      // Leads pendientes: tienen due_date y no están ganados ni perdidos
+      const pendingFollowups = filteredLeads.filter(lead =>
+        lead.due_date &&
+        lead.status !== 'won' &&
+        lead.status !== 'lost' &&
+        lead.due_date <= in7DaysStr // Vencen en los próximos 7 días
+      ).length;
+
+      // Leads urgentes: vencen hoy o ya vencieron
+      const urgentLeads = filteredLeads.filter(lead =>
+        lead.due_date &&
+        lead.status !== 'won' &&
+        lead.status !== 'lost' &&
+        lead.due_date <= todayStr
+      ).length;
+
       // === POR SECCIÓN ===
       const leadsBySection: { [key: string]: number } = {};
       const budgetBySection: { [key: string]: number } = {};
@@ -277,6 +333,22 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
         percentage: totalLeads > 0 ? (count / totalLeads) * 100 : 0
       }));
 
+      // === ANÁLISIS DE PÉRDIDAS ===
+      const lostLeads = filteredLeads.filter(lead => lead.status === 'lost');
+      const lossReasonStats: { [key: string]: number } = {};
+
+      lostLeads.forEach(lead => {
+        // Check if lead has loss_reason field, otherwise infer from data
+        const reason = (lead as any).loss_reason || inferLossReason(lead);
+        lossReasonStats[reason] = (lossReasonStats[reason] || 0) + 1;
+      });
+
+      const lossAnalysis = Object.entries(lossReasonStats).map(([reason, count]) => ({
+        reason,
+        count,
+        percentage: lostLeads.length > 0 ? (count / lostLeads.length) * 100 : 0
+      })).sort((a, b) => b.count - a.count);
+
       // ✅ === MÉTRICAS ESPECÍFICAS POR ROL ===
       const calculatedMetrics: ReportsMetrics = {
         totalLeads,
@@ -286,12 +358,15 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
         conversionRate,
         leadsWon,
         leadsLost,
+        pendingFollowups,
+        urgentLeads,
         leadsBySection,
         budgetBySection,
         topDestinations,
         channelMetrics,
         leadsOverTime,
-        tripTypes
+        tripTypes,
+        lossAnalysis
       };
 
       // OWNER: Agregar comparativa de tenants
@@ -310,12 +385,19 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
               const agencyLeads = leads.filter((l: any) => l.agency_id === agency.id);
               const wonLeads = agencyLeads.filter((l: any) => l.status === 'won');
 
+              // Count sellers in this agency
+              const { data: sellers, error: sellersError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('agency_id', agency.id)
+                .eq('role', 'SELLER');
+
               return {
                 agency_id: agency.id,
                 agency_name: agency.name,
                 tenant_id: agency.tenant_id,
                 tenant_name: agency.tenants?.name,
-                sellers_count: 0, // TODO: Count sellers
+                sellers_count: sellers?.length || 0,
                 leads_count: agencyLeads.length,
                 revenue: wonLeads.reduce((sum: number, l: any) => sum + (l.budget || 0), 0),
                 conversion_rate: agencyLeads.length > 0 ? (wonLeads.length / agencyLeads.length) * 100 : 0,
@@ -339,10 +421,17 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
               const agencyLeads = leads.filter((l: any) => l.agency_id === agency.id);
               const wonLeads = agencyLeads.filter((l: any) => l.status === 'won');
 
+              // Count sellers in this agency
+              const { data: sellers, error: sellersError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('agency_id', agency.id)
+                .eq('role', 'SELLER');
+
               return {
                 agency_id: agency.id,
                 agency_name: agency.name,
-                sellers_count: 0, // TODO: Count sellers
+                sellers_count: sellers?.length || 0,
                 leads_count: agencyLeads.length,
                 revenue: wonLeads.reduce((sum: number, l: any) => sum + (l.budget || 0), 0),
                 conversion_rate: agencyLeads.length > 0 ? (wonLeads.length / agencyLeads.length) * 100 : 0,

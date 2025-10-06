@@ -36,9 +36,11 @@ import {
 } from 'lucide-react';
 import { formatTime } from '@/features/chat/utils/messageHelpers';
 import BaggageIcon from '@/components/ui/BaggageIcon';
+import { supabase } from '@/integrations/supabase/client';
 
 interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
+  conversationId?: string; // Add conversation ID to get agency_id
   onPdfGenerated?: (pdfUrl: string, selectedFlights: FlightData[], selectedHotels: HotelData[]) => Promise<void>;
 }
 
@@ -251,12 +253,14 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
 
 const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   combinedData,
+  conversationId,
   onPdfGenerated
 }) => {
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [selectedHotels, setSelectedHotels] = useState<string[]>([]);
   const [selectedRooms, setSelectedRooms] = useState<Record<string, string>>({});
   const [isGenerating, setIsGenerating] = useState(false);
+  const [agencyId, setAgencyId] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState(
     combinedData.requestType === 'combined' ? 'flights' :
       combinedData.requestType === 'flights-only' ? 'flights' : 'hotels'
@@ -264,17 +268,26 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
 
-  // Removed logging to prevent performance issues and focus loss
-  // useEffect(() => {
-  //   if (!hasLoggedData.current) {
-  //     console.log('🌟 CombinedTravelSelector initialized with data:', {
-  //       requestType: combinedData.requestType,
-  //       flightsCount: combinedData.flights?.length || 0,
-  //       hotelsCount: combinedData.hotels?.length || 0
-  //     });
-  //     hasLoggedData.current = true;
-  //   }
-  // }, []);
+  // Load agency_id from conversation
+  useEffect(() => {
+    if (conversationId) {
+      supabase
+        .from('conversations')
+        .select('agency_id')
+        .eq('id', conversationId)
+        .single()
+        .then(({ data, error }) => {
+          if (error) {
+            console.warn('[PDF] Could not fetch agency_id from conversation:', error);
+            return;
+          }
+          if (data?.agency_id) {
+            setAgencyId(data.agency_id);
+            console.log('[PDF] Loaded agency_id for PDF generation:', data.agency_id);
+          }
+        });
+    }
+  }, [conversationId]);
 
   const handleFlightToggle = (flightId: string) => {
     setSelectedFlights(prev => {
@@ -390,16 +403,16 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       // Determine which PDF type to generate
       if (selectedFlightData.length > 0 && selectedHotelDataWithRooms.length > 0) {
         // Combined travel PDF (flights + hotels)
-        console.log('🌟 Generating COMBINED travel PDF');
-        pdfUrl = await generateCombinedTravelPdf(selectedFlightData, selectedHotelDataWithRooms);
+        console.log('🌟 Generating COMBINED travel PDF with agency:', agencyId);
+        pdfUrl = await generateCombinedTravelPdf(selectedFlightData, selectedHotelDataWithRooms, agencyId);
       } else if (selectedFlightData.length > 0) {
         // Flight-only PDF (existing functionality)
-        console.log('✈️ Generating FLIGHT-only PDF');
-        pdfUrl = await generateFlightPdf(selectedFlightData);
+        console.log('✈️ Generating FLIGHT-only PDF with agency:', agencyId);
+        pdfUrl = await generateFlightPdf(selectedFlightData, agencyId);
       } else if (selectedHotelDataWithRooms.length > 0) {
         // Hotel-only PDF (use combined template with empty flights)
-        console.log('🏨 Generating HOTEL-only PDF');
-        pdfUrl = await generateCombinedTravelPdf([], selectedHotelDataWithRooms);
+        console.log('🏨 Generating HOTEL-only PDF with agency:', agencyId);
+        pdfUrl = await generateCombinedTravelPdf([], selectedHotelDataWithRooms, agencyId);
       }
 
       if (pdfUrl?.document_url && onPdfGenerated) {

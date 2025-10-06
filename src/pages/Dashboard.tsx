@@ -7,8 +7,10 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { useReports } from '@/hooks/useReports';
+import { useActivities } from '@/hooks/useActivities';
 import { TeamPerformanceCard } from '@/components/dashboard/TeamPerformanceCard';
 import { PersonalMetricsCard } from '@/components/dashboard/PersonalMetricsCard';
+import { SellerUrgentLeadsCard } from '@/components/dashboard/SellerUrgentLeadsCard';
 import {
   MessageSquare,
   FileText,
@@ -41,34 +43,10 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user, isOwner, isSuperAdmin, isAdmin, isSeller, loading: authLoading } = useAuthUser();
   const { metrics, loading: metricsLoading } = useReports();
-
-  // Show loading state
-  if (authLoading || metricsLoading) {
-    return (
-      <MainLayout>
-        <div className="flex h-96 items-center justify-center">
-          <div className="text-center">
-            <Activity className="mx-auto h-8 w-8 animate-spin text-primary" />
-            <p className="mt-2 text-sm text-muted-foreground">Cargando dashboard...</p>
-          </div>
-        </div>
-      </MainLayout>
-    );
-  }
-
-  // No user logged in
-  if (!user) {
-    return (
-      <MainLayout>
-        <div className="flex h-96 items-center justify-center">
-          <p className="text-muted-foreground">Por favor, inicia sesión para ver el dashboard</p>
-        </div>
-      </MainLayout>
-    );
-  }
+  const { activities, loading: activitiesLoading } = useActivities(4);
 
   // Map real metrics from useReports to Dashboard display format
-  const displayMetrics = metrics ? {
+  const displayMetrics = React.useMemo(() => metrics ? {
     conversations_today: metrics.totalConversations || 0,
     quotes_generated: Math.floor((metrics.totalLeads || 0) * 0.5), // Estimate: 50% of leads get quotes
     pdfs_created: Math.floor((metrics.totalLeads || 0) * 0.3), // Estimate: 30% get PDFs
@@ -81,8 +59,8 @@ const Dashboard = () => {
     monthly_goal: 200000, // TODO: Get from settings
     active_integrations: 6, // TODO: Get from integrations table
     total_integrations: 8, // TODO: Get from integrations table
-    pending_followups: Math.floor((metrics.totalLeads || 0) * 0.2), // Estimate
-    urgent_leads: 3 // TODO: Calculate from leads with urgent status
+    pending_followups: metrics.pendingFollowups || 0,
+    urgent_leads: metrics.urgentLeads || 0
   } : {
     // Fallback mock metrics when no real data
     conversations_today: 0,
@@ -99,26 +77,67 @@ const Dashboard = () => {
     total_integrations: 0,
     pending_followups: 0,
     urgent_leads: 0
-  };
+  }, [metrics]);
 
-  const teamPerformance = [
-    { name: 'María García', leads: 18, conversions: 12, revenue: 45600, rating: 4.9, status: 'online' },
-    { name: 'Carlos López', leads: 15, conversions: 8, revenue: 38200, rating: 4.7, status: 'online' },
-    { name: 'Ana Martín', leads: 12, conversions: 9, revenue: 42800, rating: 4.8, status: 'away' },
-    { name: 'Luis Rodriguez', leads: 10, conversions: 6, revenue: 29400, rating: 4.6, status: 'offline' }
-  ];
+  // Real team performance from useReports (for ADMIN)
+  const teamPerformance = metrics?.teamPerformance || [];
 
-  const upcomingDeadlines = [
-    { client: 'Familia Pérez', destination: 'Europa', days: 2, type: 'payment', amount: 8500 },
-    { client: 'Empresa TechCorp', destination: 'Miami', days: 5, type: 'confirmation', amount: 12300 },
-    { client: 'Grupo Aventura', destination: 'Cancún', days: 7, type: 'documents', amount: 15600 }
-  ];
+  // Real upcoming deadlines from useReports (for SELLER)
+  const upcomingDeadlines = React.useMemo(() => {
+    if (!metrics?.personalMetrics?.upcoming_deadlines) return [];
 
-  const alerts = [
-    { type: 'urgent', message: '3 leads sin respuesta por más de 4 horas', action: 'Ver leads', icon: AlertTriangle },
-    { type: 'warning', message: 'Integración Eurovips con errores', action: 'Revisar', icon: Zap },
-    { type: 'info', message: '12 seguimientos programados para hoy', action: 'Ver agenda', icon: Clock }
-  ];
+    return metrics.personalMetrics.upcoming_deadlines.map(deadline => {
+      const dueDate = new Date(deadline.due_date);
+      const today = new Date();
+      const diffTime = dueDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      return {
+        client: deadline.contact_name,
+        destination: deadline.destination,
+        days: diffDays,
+        type: 'followup',
+        amount: 0 // We don't have budget in deadline info
+      };
+    });
+  }, [metrics?.personalMetrics?.upcoming_deadlines]);
+
+  // Generate real alerts based on actual data
+  const alerts = React.useMemo(() => {
+    const alertList = [];
+
+    // Urgent: Check for pending followups
+    if (displayMetrics.pending_followups > 0) {
+      alertList.push({
+        type: 'urgent',
+        message: `${displayMetrics.pending_followups} leads pendientes de seguimiento`,
+        action: 'Ver leads',
+        icon: AlertTriangle
+      });
+    }
+
+    // Info: Show today's tasks for sellers
+    if (isSeller && upcomingDeadlines.length > 0) {
+      alertList.push({
+        type: 'info',
+        message: `${upcomingDeadlines.length} seguimientos programados próximamente`,
+        action: 'Ver agenda',
+        icon: Clock
+      });
+    }
+
+    // Default alert if no real data
+    if (alertList.length === 0) {
+      alertList.push({
+        type: 'info',
+        message: 'Todo al día. ¡Buen trabajo!',
+        action: 'Ver CRM',
+        icon: CheckCircle
+      });
+    }
+
+    return alertList;
+  }, [displayMetrics.pending_followups, isSeller, upcomingDeadlines.length]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -173,6 +192,31 @@ const Dashboard = () => {
     return 'Overview of your travel agency performance';
   };
 
+  // Show loading state
+  if (authLoading || metricsLoading) {
+    return (
+      <MainLayout>
+        <div className="flex h-96 items-center justify-center">
+          <div className="text-center">
+            <Activity className="mx-auto h-8 w-8 animate-spin text-primary" />
+            <p className="mt-2 text-sm text-muted-foreground">Cargando dashboard...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // No user logged in
+  if (!user) {
+    return (
+      <MainLayout>
+        <div className="flex h-96 items-center justify-center">
+          <p className="text-muted-foreground">Por favor, inicia sesión para ver el dashboard</p>
+        </div>
+      </MainLayout>
+    );
+  }
+
   return (
     <MainLayout userRole="ADMIN">
       <div className="h-full overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
@@ -225,99 +269,44 @@ const Dashboard = () => {
         )}
 
         {/* Objetivos y Rendimiento General */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-          <Card className="shadow-card lg:col-span-2">
-            <CardHeader className="p-4 md:p-6">
-              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                <Target className="h-4 md:h-5 w-4 md:w-5 text-primary" />
-                Objetivos del Mes
-              </CardTitle>
-              <CardDescription className="text-xs md:text-sm">Progreso hacia las metas establecidas</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6">
-              <div>
-                <div className="flex items-center justify-between mb-2 gap-2">
-                  <span className="font-medium text-sm md:text-base">Ingresos Mensuales</span>
-                  <span className="text-xs md:text-sm text-muted-foreground">
-                    ${displayMetrics.monthly_revenue.toLocaleString()} / ${displayMetrics.monthly_goal.toLocaleString()}
-                  </span>
-                </div>
-                <Progress value={(displayMetrics.monthly_revenue / displayMetrics.monthly_goal) * 100} className="h-2 md:h-3" />
-                <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
-                  {((displayMetrics.monthly_revenue / displayMetrics.monthly_goal) * 100).toFixed(1)}% completado
-                </p>
+        <Card className="shadow-card">
+          <CardHeader className="p-4 md:p-6">
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <Target className="h-4 md:h-5 w-4 md:w-5 text-primary" />
+              Objetivos del Mes
+            </CardTitle>
+            <CardDescription className="text-xs md:text-sm">Progreso hacia las metas establecidas</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6">
+            <div>
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <span className="font-medium text-sm md:text-base">Ingresos Mensuales</span>
+                <span className="text-lg md:text-xl font-bold text-success">
+                  ${displayMetrics.monthly_revenue.toLocaleString()}
+                </span>
               </div>
+              <p className="text-[10px] md:text-xs text-muted-foreground">
+                De {displayMetrics.leads_won} leads ganados este mes
+              </p>
+            </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-2 gap-2">
-                  <span className="font-medium text-sm md:text-base">Tasa de Conversión</span>
-                  <span className="text-xs md:text-sm text-muted-foreground">{displayMetrics.conversion_rate}% / 70%</span>
-                </div>
-                <Progress value={displayMetrics.conversion_rate} className="h-2 md:h-3" />
-                <p className="text-[10px] md:text-xs text-muted-foreground mt-1">Objetivo: 70%</p>
+            <div>
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <span className="font-medium text-sm md:text-base">Tasa de Conversión</span>
+                <span className="text-lg md:text-xl font-bold text-primary">
+                  {displayMetrics.conversion_rate}%
+                </span>
               </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2 gap-2">
-                  <span className="font-medium text-sm md:text-base">Tiempo de Respuesta</span>
-                  <span className="text-xs md:text-sm text-muted-foreground">{displayMetrics.response_time} min / 5 min</span>
-                </div>
-                <Progress value={(5 - displayMetrics.response_time) * 20} className="h-2 md:h-3" />
-                <p className="text-[10px] md:text-xs text-success mt-1">
-                  <CheckCircle className="inline h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
-                  Bajo el objetivo
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-card">
-            <CardHeader className="p-4 md:p-6">
-              <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-                <Zap className="h-4 md:h-5 w-4 md:w-5 text-accent" />
-                Integraciones
-              </CardTitle>
-              <CardDescription className="text-xs md:text-sm">Estado de conexiones</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6">
-              <div className="text-center">
-                <div className="text-xl md:text-2xl font-bold text-success">{displayMetrics.active_integrations}</div>
-                <p className="text-xs md:text-sm text-muted-foreground">de {displayMetrics.total_integrations} activas</p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Building className="h-3.5 md:h-4 w-3.5 md:w-4 text-success" />
-                    <span className="text-xs md:text-sm">Eurovips</span>
-                  </div>
-                  <Badge variant="outline" className="text-success text-xs">Activo</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Plane className="h-3.5 md:h-4 w-3.5 md:w-4 text-success" />
-                    <span className="text-xs md:text-sm">Starlings</span>
-                  </div>
-                  <Badge variant="outline" className="text-success text-xs">Activo</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Building className="h-3.5 md:h-4 w-3.5 md:w-4 text-destructive" />
-                    <span className="text-xs md:text-sm">Delfos</span>
-                  </div>
-                  <Badge variant="destructive" className="text-xs">Error</Badge>
-                </div>
-              </div>
-
-              <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
-                Ver Todas
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+              <Progress value={displayMetrics.conversion_rate} className="h-2 md:h-3" />
+              <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
+                {displayMetrics.leads_won} ganados de {displayMetrics.leads_won + displayMetrics.leads_lost} leads cerrados
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Métricas Clave Mejoradas */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 lg:gap-6">
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 md:p-6">
               <CardTitle className="text-xs md:text-sm font-medium">Conversaciones Hoy</CardTitle>
@@ -344,39 +333,14 @@ const Dashboard = () => {
               </p>
             </CardContent>
           </Card>
-
-          <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 md:p-6">
-              <CardTitle className="text-xs md:text-sm font-medium">Satisfacción</CardTitle>
-              <Star className="h-3.5 md:h-4 w-3.5 md:w-4 text-warning" />
-            </CardHeader>
-            <CardContent className="p-4 md:p-6 pt-0">
-              <div className="text-xl md:text-2xl font-bold">{displayMetrics.satisfaction}</div>
-              <p className="text-[10px] md:text-xs text-success flex items-center mt-1">
-                <TrendingUp className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
-                Rating promedio
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 md:p-6">
-              <CardTitle className="text-xs md:text-sm font-medium">Tiempo Respuesta</CardTitle>
-              <Timer className="h-3.5 md:h-4 w-3.5 md:w-4 text-success" />
-            </CardHeader>
-            <CardContent className="p-4 md:p-6 pt-0">
-              <div className="text-xl md:text-2xl font-bold">{displayMetrics.response_time}m</div>
-              <p className="text-[10px] md:text-xs text-success flex items-center mt-1">
-                <CheckCircle className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
-                Bajo objetivo
-              </p>
-            </CardContent>
-          </Card>
         </div>
 
         {/* ✅ DASHBOARDS PERSONALIZADOS POR ROL */}
         {isSeller && metrics?.personalMetrics && (
-          <PersonalMetricsCard metrics={metrics.personalMetrics} />
+          <>
+            <SellerUrgentLeadsCard urgentLeads={metrics.personalMetrics.upcoming_deadlines || []} />
+            <PersonalMetricsCard metrics={metrics.personalMetrics} />
+          </>
         )}
 
         {isAdmin && metrics?.teamPerformance && (
@@ -395,18 +359,38 @@ const Dashboard = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 md:p-6">
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {metrics.agenciesPerformance.slice(0, 5).map((agency) => (
-                  <div key={agency.agency_id} className="flex items-center justify-between p-3 rounded-lg bg-gradient-card">
-                    <div>
-                      <p className="font-medium">{agency.agency_name}</p>
-                      {agency.tenant_name && (
-                        <p className="text-xs text-muted-foreground">{agency.tenant_name}</p>
-                      )}
+                  <div key={agency.agency_id} className="p-4 rounded-lg bg-gradient-card border border-border">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-base">{agency.agency_name}</h4>
+                        {agency.tenant_name && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{agency.tenant_name}</p>
+                        )}
+                      </div>
+                      <Badge variant="outline" className="ml-2">
+                        {agency.conversion_rate.toFixed(1)}% conversión
+                      </Badge>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold">${agency.revenue.toLocaleString()}</p>
-                      <p className="text-xs text-muted-foreground">{agency.conversion_rate.toFixed(1)}% conv.</p>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Ingresos</p>
+                        <p className="font-bold text-success">${agency.revenue.toLocaleString()}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Leads</p>
+                        <p className="font-semibold">{agency.leads_count}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Conversaciones</p>
+                        <p className="font-semibold">{agency.active_conversations}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Vendedores</p>
+                        <p className="font-semibold">{agency.sellers_count || 0}</p>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -519,63 +503,67 @@ const Dashboard = () => {
               <CardDescription className="text-xs md:text-sm">Últimas interacciones importantes</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6">
-              {[
-                {
-                  type: 'lead_won',
-                  customer: 'María González',
-                  action: 'Confirmó viaje a París',
-                  amount: '$8,500',
-                  time: '2 min ago',
-                  icon: CheckCircle,
-                  color: 'text-success'
-                },
-                {
-                  type: 'quote_sent',
-                  customer: 'Carlos Ruiz',
-                  action: 'Cotización enviada - Cancún',
-                  amount: '$3,200',
-                  time: '15 min ago',
-                  icon: FileText,
-                  color: 'text-accent'
-                },
-                {
-                  type: 'lead_lost',
-                  customer: 'Ana López',
-                  action: 'Declinó propuesta - Europa',
-                  amount: '$12,400',
-                  time: '1 hour ago',
-                  icon: XCircle,
-                  color: 'text-destructive'
-                },
-                {
-                  type: 'new_lead',
-                  customer: 'Roberto Silva',
-                  action: 'Nueva consulta - Miami',
-                  amount: 'Pendiente',
-                  time: '2 hours ago',
-                  icon: Users,
-                  color: 'text-primary'
-                },
-              ].map((activity, index) => {
-                const IconComponent = activity.icon;
-                return (
-                  <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 md:p-3 rounded-lg bg-gradient-card">
-                    <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
-                      <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-background flex items-center justify-center flex-shrink-0">
-                        <IconComponent className={`h-3.5 md:h-4 w-3.5 md:w-4 ${activity.color}`} />
+              {activitiesLoading ? (
+                <div className="text-center text-muted-foreground text-sm">Cargando actividades...</div>
+              ) : activities.length === 0 ? (
+                <div className="text-center text-muted-foreground text-sm">No hay actividades recientes</div>
+              ) : (
+                activities.map((activity, index) => {
+                  // Map activity type to icon and color
+                  const getActivityIcon = (type: string) => {
+                    switch (type) {
+                      case 'lead_won': return { icon: CheckCircle, color: 'text-success' };
+                      case 'lead_lost': return { icon: XCircle, color: 'text-destructive' };
+                      case 'lead_created': return { icon: Users, color: 'text-primary' };
+                      case 'quote_sent': return { icon: FileText, color: 'text-accent' };
+                      case 'message_sent': return { icon: MessageSquare, color: 'text-blue-500' };
+                      case 'status_changed': return { icon: Activity, color: 'text-orange-500' };
+                      default: return { icon: Activity, color: 'text-muted-foreground' };
+                    }
+                  };
+
+                  const { icon: IconComponent, color } = getActivityIcon(activity.activity_type);
+
+                  // Format time ago
+                  const timeAgo = (dateStr: string) => {
+                    const date = new Date(dateStr);
+                    const now = new Date();
+                    const diffMs = now.getTime() - date.getTime();
+                    const diffMins = Math.floor(diffMs / 60000);
+                    const diffHours = Math.floor(diffMs / 3600000);
+                    const diffDays = Math.floor(diffMs / 86400000);
+
+                    if (diffMins < 1) return 'Justo ahora';
+                    if (diffMins < 60) return `${diffMins} min`;
+                    if (diffHours < 24) return `${diffHours} hora${diffHours > 1 ? 's' : ''}`;
+                    return `${diffDays} día${diffDays > 1 ? 's' : ''}`;
+                  };
+
+                  return (
+                    <div key={activity.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 md:p-3 rounded-lg bg-gradient-card">
+                      <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+                        <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-background flex items-center justify-center flex-shrink-0">
+                          <IconComponent className={`h-3.5 md:h-4 w-3.5 md:w-4 ${color}`} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm md:text-base truncate">{activity.description}</p>
+                          <p className="text-xs md:text-sm text-muted-foreground truncate">
+                            {activity.metadata?.destination ? `Destino: ${activity.metadata.destination}` : ''}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm md:text-base truncate">{activity.customer}</p>
-                        <p className="text-xs md:text-sm text-muted-foreground truncate">{activity.action}</p>
+                      <div className="text-left sm:text-right">
+                        {activity.metadata?.budget && (
+                          <p className={`font-semibold text-sm md:text-base ${color}`}>
+                            ${activity.metadata.budget.toLocaleString()}
+                          </p>
+                        )}
+                        <p className="text-xs text-muted-foreground">{timeAgo(activity.created_at)}</p>
                       </div>
                     </div>
-                    <div className="text-left sm:text-right">
-                      <p className={`font-semibold text-sm md:text-base ${activity.color}`}>{activity.amount}</p>
-                      <p className="text-xs text-muted-foreground">{activity.time}</p>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </CardContent>
           </Card>
         </div>

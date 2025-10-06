@@ -1,11 +1,27 @@
 import { FlightData, HotelData, HotelDataWithSelectedRoom, PdfMonkeyResponse } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
 
 // PdfMonkey API configuration
 const PDFMONKEY_API_BASE = 'https://api.pdfmonkey.io/api/v1/documents';
 const PDFMONKEY_SYNC_BASE = 'https://api.pdfmonkey.io/api/v1/documents/sync';
-const FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376';
-const COMBINED_TEMPLATE_ID = '3E8394AC-84D4-4286-A1CD-A12D1AB001D5';
-const FLIGHTS_TEMPLATE_ID = '30B142BF-1DD9-432D-8261-5287556DC9FC';
+
+// Default template IDs (fallback when no custom template exists)
+const DEFAULT_FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376';
+const DEFAULT_COMBINED_TEMPLATE_ID = '3E8394AC-84D4-4286-A1CD-A12D1AB001D5';
+const DEFAULT_FLIGHTS_TEMPLATE_ID = '30B142BF-1DD9-432D-8261-5287556DC9FC';
+
+// Default template IDs map for cloning
+export const DEFAULT_TEMPLATE_IDS = {
+  combined: DEFAULT_COMBINED_TEMPLATE_ID,
+  flights: DEFAULT_FLIGHT_TEMPLATE_ID,
+  flights2: DEFAULT_FLIGHTS_TEMPLATE_ID,
+  hotels: DEFAULT_COMBINED_TEMPLATE_ID // Hotels use combined template
+} as const;
+
+// Legacy exports for backward compatibility
+const FLIGHT_TEMPLATE_ID = DEFAULT_FLIGHT_TEMPLATE_ID;
+const COMBINED_TEMPLATE_ID = DEFAULT_COMBINED_TEMPLATE_ID;
+const FLIGHTS_TEMPLATE_ID = DEFAULT_FLIGHTS_TEMPLATE_ID;
 
 // Get API key from environment variables
 const getApiKey = (): string => {
@@ -21,10 +37,60 @@ const getApiKey = (): string => {
   return apiKey.trim();
 };
 
+/**
+ * Get custom template ID for an agency, with fallback to default
+ * @param agencyId - The agency ID to lookup
+ * @param templateType - Type of template: 'combined', 'flights', 'flights2', 'hotels'
+ * @param defaultTemplateId - Default template ID to use if no custom template exists
+ * @returns Promise<string> - Template ID to use
+ */
+async function getTemplateId(
+  agencyId: string | undefined,
+  templateType: 'combined' | 'flights' | 'flights2' | 'hotels',
+  defaultTemplateId: string
+): Promise<string> {
+  // If no agency ID provided, use default template
+  if (!agencyId) {
+    console.log(`ℹ️ [PDF] No agencyId provided, using default ${templateType} template`);
+    return defaultTemplateId;
+  }
+
+  try {
+    // Fetch agency's custom template IDs
+    const { data: agency, error } = await supabase
+      .from('agencies')
+      .select('custom_template_ids')
+      .eq('id', agencyId)
+      .single();
+
+    if (error) {
+      console.warn(`⚠️ [PDF] Error fetching agency templates:`, error.message);
+      console.log(`ℹ️ [PDF] Falling back to default ${templateType} template`);
+      return defaultTemplateId;
+    }
+
+    // Check if agency has a custom template for this type
+    const customTemplateId = agency?.custom_template_ids?.[templateType];
+
+    if (customTemplateId) {
+      console.log(`✅ [PDF] Using custom ${templateType} template for agency ${agencyId}:`, customTemplateId);
+      return customTemplateId;
+    } else {
+      console.log(`ℹ️ [PDF] No custom ${templateType} template for agency ${agencyId}, using default`);
+      return defaultTemplateId;
+    }
+  } catch (error) {
+    console.error(`❌ [PDF] Unexpected error fetching agency template:`, error);
+    console.log(`ℹ️ [PDF] Falling back to default ${templateType} template`);
+    return defaultTemplateId;
+  }
+}
+
 // New function for combined travel PDF (flights + hotels)
 export async function generateCombinedTravelPdf(
   selectedFlights: FlightData[],
-  selectedHotels: HotelData[] | HotelDataWithSelectedRoom[]
+  selectedHotels: HotelData[] | HotelDataWithSelectedRoom[],
+  agencyId?: string
 ): Promise<PdfMonkeyResponse> {
   try {
     if (selectedFlights.length === 0 && selectedHotels.length === 0) {
@@ -41,15 +107,19 @@ export async function generateCombinedTravelPdf(
     console.log('🔍 SELECTED HOTELS:', selectedHotels.length);
     console.log('🔍 PREPARED COMBINED PDF DATA:', JSON.stringify(pdfData, null, 2));
 
+    // Get template ID (custom or default)
+    const templateId = await getTemplateId(agencyId, 'combined', DEFAULT_COMBINED_TEMPLATE_ID);
+
     // Use combined template ID
     const request = {
       document: {
-        document_template_id: COMBINED_TEMPLATE_ID,
+        document_template_id: templateId,
         status: "pending",
         payload: pdfData,
         meta: {
           _filename: `viaje-combinado-cotizacion-${Date.now()}.pdf`,
-          generated_by: "wholesale-connect-ai"
+          generated_by: "wholesale-connect-ai",
+          agency_id: agencyId || 'default'
         }
       }
     };
@@ -67,7 +137,7 @@ export async function generateCombinedTravelPdf(
   }
 }
 
-export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<PdfMonkeyResponse> {
+export async function generateFlightPdf(selectedFlights: FlightData[], agencyId?: string): Promise<PdfMonkeyResponse> {
   try {
     if (selectedFlights.length === 0) {
       return {
@@ -84,8 +154,12 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
     }
 
     // Select appropriate template based on number of flights
-    const templateId = selectedFlights.length === 2 ? FLIGHTS_TEMPLATE_ID : FLIGHT_TEMPLATE_ID;
+    const templateType = selectedFlights.length === 2 ? 'flights2' : 'flights';
+    const defaultTemplateId = selectedFlights.length === 2 ? DEFAULT_FLIGHTS_TEMPLATE_ID : DEFAULT_FLIGHT_TEMPLATE_ID;
     const templateName = selectedFlights.length === 2 ? 'flights2.html' : 'flights.html';
+
+    // Get template ID (custom or default)
+    const templateId = await getTemplateId(agencyId, templateType, defaultTemplateId);
 
     console.log(`🎯 Using template: ${templateName} (${templateId}) for ${selectedFlights.length} flight(s)`);
 
@@ -103,7 +177,8 @@ export async function generateFlightPdf(selectedFlights: FlightData[]): Promise<
         payload: pdfData,
         meta: {
           _filename: `vuelos-cotizacion-${Date.now()}.pdf`,
-          generated_by: "wholesale-connect-ai"
+          generated_by: "wholesale-connect-ai",
+          agency_id: agencyId || 'default'
         }
       }
     };

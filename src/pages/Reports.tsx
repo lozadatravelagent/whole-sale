@@ -8,6 +8,14 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { DateRange } from 'react-day-picker';
 import { useReports } from '@/hooks/useReports';
+import { useAuthUser } from '@/hooks/useAuthUser';
+import * as XLSX from 'xlsx';
+import { TenantsPerformanceTable } from '@/components/reports/TenantsPerformanceTable';
+import { AgenciesPerformanceTable } from '@/components/reports/AgenciesPerformanceTable';
+import { TeamPerformanceTable } from '@/components/reports/TeamPerformanceTable';
+import { TrendsChart } from '@/components/reports/TrendsChart';
+import { ChannelsChart } from '@/components/reports/ChannelsChart';
+import { TripTypesChart } from '@/components/reports/TripTypesChart';
 import {
   Download,
   TrendingUp,
@@ -46,6 +54,7 @@ const Reports = () => {
 
   // Usar datos reales del sistema
   const { metrics, loading, refresh } = useReports(dateRange?.from, dateRange?.to);
+  const { isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-ES', {
@@ -65,7 +74,34 @@ const Reports = () => {
     }
   };
 
-  // Datos adicionales para análisis más profundos
+  // Calculated metrics from real data
+  const seasonalTrends = React.useMemo(() => {
+    if (!metrics?.leadsOverTime) return [];
+
+    // Group by month and calculate totals
+    const monthlyData: { [key: string]: { leads: number; revenue: number; won: number } } = {};
+
+    metrics.leadsOverTime.forEach(item => {
+      const date = new Date(item.date);
+      const monthKey = date.toLocaleDateString('es-ES', { month: 'short' });
+
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { leads: 0, revenue: 0, won: 0 };
+      }
+
+      monthlyData[monthKey].leads += item.count;
+      monthlyData[monthKey].revenue += item.revenue || 0;
+    });
+
+    return Object.entries(monthlyData).map(([month, data]) => ({
+      month,
+      leads: data.leads,
+      revenue: data.revenue,
+      conversion: data.leads > 0 ? ((data.won / data.leads) * 100) : 0
+    })).slice(-6); // Last 6 months
+  }, [metrics?.leadsOverTime]);
+
+  // Mock data that will be replaced with real data from backend
   const extendedMetrics = {
     responseTimeAnalysis: [
       { range: '0-2 min', count: 45, percentage: 62.5, target: true },
@@ -84,50 +120,6 @@ const Reports = () => {
         { stars: 1, count: 2, percentage: 0.7 }
       ]
     },
-    lossAnalysis: [
-      { reason: 'Precio muy alto', count: 12, percentage: 40.0 },
-      { reason: 'No disponibilidad fechas', count: 8, percentage: 26.7 },
-      { reason: 'Decidió otra agencia', count: 5, percentage: 16.7 },
-      { reason: 'Canceló el viaje', count: 3, percentage: 10.0 },
-      { reason: 'No respondió', count: 2, percentage: 6.7 }
-    ],
-    seasonalTrends: [
-      { month: 'Oct', leads: 89, revenue: 142500, conversion: 24.7 },
-      { month: 'Nov', leads: 156, revenue: 289600, conversion: 28.2 },
-      { month: 'Dic', leads: 203, revenue: 445800, conversion: 31.5 },
-      { month: 'Ene', leads: 167, revenue: 298400, conversion: 29.3 },
-      { month: 'Feb', leads: 134, revenue: 234700, conversion: 26.9 },
-      { month: 'Mar', leads: 178, revenue: 356200, conversion: 32.1 }
-    ],
-    teamComparison: [
-      {
-        name: 'María García',
-        leads: 45,
-        conversions: 28,
-        revenue: 89600,
-        avgResponseTime: 2.3,
-        satisfaction: 4.9,
-        avgDealSize: 3200
-      },
-      {
-        name: 'Carlos López',
-        leads: 38,
-        conversions: 21,
-        revenue: 67400,
-        avgResponseTime: 3.1,
-        satisfaction: 4.7,
-        avgDealSize: 3210
-      },
-      {
-        name: 'Ana Martín',
-        leads: 42,
-        conversions: 25,
-        revenue: 78300,
-        avgResponseTime: 2.8,
-        satisfaction: 4.8,
-        avgDealSize: 3132
-      }
-    ],
     integrationPerformance: [
       {
         provider: 'Eurovips',
@@ -159,24 +151,82 @@ const Reports = () => {
   const handleExport = () => {
     if (!metrics) return;
 
-    const reportData = {
-      generatedAt: new Date().toISOString(),
-      dateRange: {
-        from: dateRange?.from?.toISOString(),
-        to: dateRange?.to?.toISOString()
-      },
-      metrics
-    };
+    // Create workbook
+    const wb = XLSX.utils.book_new();
 
-    const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `travel-report-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Sheet 1: Summary
+    const summaryData = [
+      ['Reporte Generado:', new Date().toLocaleDateString()],
+      ['Período:', `${dateRange?.from?.toLocaleDateString()} - ${dateRange?.to?.toLocaleDateString()}`],
+      [''],
+      ['Métrica', 'Valor'],
+      ['Total Leads', metrics.totalLeads],
+      ['Leads Ganados', metrics.leadsWon],
+      ['Leads Perdidos', metrics.leadsLost],
+      ['Tasa de Conversión', `${metrics.conversionRate.toFixed(2)}%`],
+      ['Revenue Total', `$${metrics.totalRevenue.toLocaleString()}`],
+      ['Presupuesto Promedio', `$${metrics.averageBudget.toLocaleString()}`],
+      ['Total Conversaciones', metrics.totalConversations],
+    ];
+    const ws1 = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
+
+    // Sheet 2: Team Performance (if ADMIN)
+    if (isAdmin && metrics.teamPerformance && metrics.teamPerformance.length > 0) {
+      const teamData = metrics.teamPerformance.map(seller => ({
+        'Vendedor': seller.seller_name,
+        'Leads': seller.leads_count,
+        'Ganados': seller.won_count,
+        'Perdidos': seller.lost_count,
+        'Revenue': seller.revenue,
+        'Conversión (%)': seller.conversion_rate.toFixed(2),
+        'Ticket Promedio': seller.avg_budget.toFixed(2)
+      }));
+      const ws2 = XLSX.utils.json_to_sheet(teamData);
+      XLSX.utils.book_append_sheet(wb, ws2, 'Equipo');
+    }
+
+    // Sheet 3: Agencies Performance (if OWNER/SUPERADMIN)
+    if ((isOwner || isSuperAdmin) && metrics.agenciesPerformance && metrics.agenciesPerformance.length > 0) {
+      const agenciesData = metrics.agenciesPerformance.map(agency => ({
+        'Agencia': agency.agency_name,
+        ...(isOwner && { 'Tenant': agency.tenant_name || '-' }),
+        'Sellers': agency.sellers_count,
+        'Leads': agency.leads_count,
+        'Revenue': agency.revenue,
+        'Conversión (%)': agency.conversion_rate.toFixed(2),
+        'Conversaciones Activas': agency.active_conversations
+      }));
+      const ws3 = XLSX.utils.json_to_sheet(agenciesData);
+      XLSX.utils.book_append_sheet(wb, ws3, 'Agencias');
+    }
+
+    // Sheet 4: Destinations
+    if (metrics.topDestinations && metrics.topDestinations.length > 0) {
+      const destinationsData = metrics.topDestinations.map(dest => ({
+        'Destino': dest.destination,
+        'Leads': dest.count,
+        'Revenue': dest.revenue
+      }));
+      const ws4 = XLSX.utils.json_to_sheet(destinationsData);
+      XLSX.utils.book_append_sheet(wb, ws4, 'Destinos');
+    }
+
+    // Sheet 5: Channels
+    if (metrics.channelMetrics && metrics.channelMetrics.length > 0) {
+      const channelsData = metrics.channelMetrics.map(channel => ({
+        'Canal': channel.channel,
+        'Conversaciones': channel.conversations,
+        'Leads': channel.leads,
+        'Conversión (%)': channel.conversion.toFixed(2)
+      }));
+      const ws5 = XLSX.utils.json_to_sheet(channelsData);
+      XLSX.utils.book_append_sheet(wb, ws5, 'Canales');
+    }
+
+    // Export to file
+    const fileName = `reporte-${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   };
 
   if (loading) {
@@ -295,170 +345,131 @@ const Reports = () => {
           </Card>
         </div>
 
-        {/* Análisis de Tiempo de Respuesta */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Timer className="h-5 w-5 text-primary" />
-              Análisis de Tiempo de Respuesta
-            </CardTitle>
-            <CardDescription>Distribución de tiempos de respuesta al cliente</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {extendedMetrics.responseTimeAnalysis.map((range, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{range.range}</span>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={range.target ? "default" : "secondary"}>
-                      {range.count} leads
-                    </Badge>
-                    {range.target && <Target className="h-4 w-4 text-success" />}
+        {/* Role-specific Performance Tables */}
+        {isOwner && metrics.tenantsPerformance && metrics.tenantsPerformance.length > 0 && (
+          <TenantsPerformanceTable tenants={metrics.tenantsPerformance} />
+        )}
+
+        {isOwner && metrics.agenciesPerformance && metrics.agenciesPerformance.length > 0 && (
+          <AgenciesPerformanceTable agencies={metrics.agenciesPerformance} showTenant={true} />
+        )}
+
+        {isSuperAdmin && metrics.agenciesPerformance && metrics.agenciesPerformance.length > 0 && (
+          <AgenciesPerformanceTable agencies={metrics.agenciesPerformance} showTenant={false} />
+        )}
+
+        {isAdmin && metrics.teamPerformance && metrics.teamPerformance.length > 0 && (
+          <TeamPerformanceTable team={metrics.teamPerformance} />
+        )}
+
+        {/* Charts Section */}
+        {metrics.leadsOverTime && metrics.leadsOverTime.length > 0 && (
+          <TrendsChart data={metrics.leadsOverTime} />
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {metrics.channelMetrics && metrics.channelMetrics.length > 0 && (
+            <ChannelsChart data={metrics.channelMetrics} />
+          )}
+
+          {metrics.tripTypes && metrics.tripTypes.length > 0 && (
+            <TripTypesChart data={metrics.tripTypes} />
+          )}
+        </div>
+
+
+        {/* Análisis de Pérdidas - DATOS REALES */}
+        {metrics.lossAnalysis && metrics.lossAnalysis.length > 0 && (
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                Análisis de Pérdidas
+              </CardTitle>
+              <CardDescription>Principales razones por las que se pierden leads ({metrics.leadsLost} perdidos)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {metrics.lossAnalysis.map((reason, index) => (
+                <div key={index} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm">{reason.reason}</span>
+                    <Badge variant="outline">{reason.count} casos</Badge>
                   </div>
+                  <Progress value={reason.percentage} className="h-2" />
+                  <p className="text-xs text-muted-foreground">{reason.percentage.toFixed(1)}% de las pérdidas</p>
                 </div>
-                <Progress value={range.percentage} className="h-2" />
-                <p className="text-xs text-muted-foreground">
-                  {range.percentage}% del total {range.target && '(Dentro del objetivo)'}
-                </p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Satisfacción del Cliente */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Star className="h-5 w-5 text-warning" />
-              Satisfacción del Cliente
-            </CardTitle>
-            <CardDescription>Basado en {extendedMetrics.customerSatisfaction.totalResponses} respuestas</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-warning">{extendedMetrics.customerSatisfaction.average}</div>
-              <div className="flex items-center justify-center gap-1 mt-1">
-                {[...Array(5)].map((_, i) => (
-                  <Star
-                    key={i}
-                    className={`h-4 w-4 ${i < Math.floor(extendedMetrics.customerSatisfaction.average) ? 'text-warning fill-warning' : 'text-muted'}`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {extendedMetrics.customerSatisfaction.distribution.map((item) => (
-                <div key={item.stars} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{item.stars}</span>
-                    <Star className="h-3 w-3 text-warning" />
+        {/* Tendencias Estacionales - DATOS REALES */}
+        {seasonalTrends.length > 0 && (
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-accent" />
+                Tendencias Estacionales
+              </CardTitle>
+              <CardDescription>Últimos 6 meses - Leads, ingresos y conversión</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {seasonalTrends.map((month, index) => (
+                <div key={index} className="p-3 rounded-lg bg-gradient-card">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium">{month.month}</span>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-success">{formatCurrency(month.revenue)}</div>
+                      <div className="text-xs text-muted-foreground">{month.leads} leads</div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 flex-1 ml-4">
-                    <Progress value={item.percentage} className="h-1 flex-1" />
-                    <span className="text-xs text-muted-foreground w-12 text-right">
-                      {item.count}
-                    </span>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Conversión: {month.conversion.toFixed(1)}%</span>
+                    <Progress value={month.conversion} className="h-1 w-20" />
                   </div>
                 </div>
               ))}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Análisis de Pérdidas */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Análisis de Pérdidas
-            </CardTitle>
-            <CardDescription>Principales razones por las que se pierden leads</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {extendedMetrics.lossAnalysis.map((reason, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm">{reason.reason}</span>
-                  <Badge variant="outline">{reason.count} casos</Badge>
-                </div>
-                <Progress value={reason.percentage} className="h-2" />
-                <p className="text-xs text-muted-foreground">{reason.percentage}% de las pérdidas</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        {/* Comparativa del Equipo - DATOS REALES */}
+        {isAdmin && metrics?.teamPerformance && metrics.teamPerformance.length > 0 && (
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="h-5 w-5 text-primary" />
+                Comparativa del Equipo
+              </CardTitle>
+              <CardDescription>Performance detallada de cada vendedor</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {metrics.teamPerformance.map((member, index) => (
+                <div key={index} className="p-4 rounded-lg bg-gradient-card">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium">{member.seller_name}</h4>
+                    <Badge variant="outline">{member.conversion_rate.toFixed(1)}% conversión</Badge>
+                  </div>
 
-        {/* Tendencias Estacionales */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-accent" />
-              Tendencias Estacionales
-            </CardTitle>
-            <CardDescription>Últimos 6 meses - Leads, ingresos y conversión</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {extendedMetrics.seasonalTrends.map((month, index) => (
-              <div key={index} className="p-3 rounded-lg bg-gradient-card">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">{month.month}</span>
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-success">{formatCurrency(month.revenue)}</div>
-                    <div className="text-xs text-muted-foreground">{month.leads} leads</div>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Conversión: {month.conversion}%</span>
-                  <Progress value={month.conversion} className="h-1 w-20" />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Comparativa del Equipo */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Award className="h-5 w-5 text-primary" />
-              Comparativa del Equipo
-            </CardTitle>
-            <CardDescription>Performance detallada de cada vendedor</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {extendedMetrics.teamComparison.map((member, index) => (
-              <div key={index} className="p-4 rounded-lg bg-gradient-card">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-medium">{member.name}</h4>
-                  <Badge variant="outline">{((member.conversions / member.leads) * 100).toFixed(1)}% conversión</Badge>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Ingresos</p>
-                    <p className="font-semibold text-success">{formatCurrency(member.revenue)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Ticket Promedio</p>
-                    <p className="font-semibold">{formatCurrency(member.avgDealSize)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Tiempo Respuesta</p>
-                    <p className="font-semibold">{member.avgResponseTime}m</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Satisfacción</p>
-                    <div className="flex items-center gap-1">
-                      <Star className="h-3 w-3 text-warning fill-warning" />
-                      <span className="font-semibold">{member.satisfaction}</span>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Ingresos</p>
+                      <p className="font-semibold text-success">{formatCurrency(member.revenue || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Ticket Promedio</p>
+                      <p className="font-semibold">{formatCurrency(member.avg_budget || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Leads</p>
+                      <p className="font-semibold">{member.leads_count} ({member.won_count} ganados)</p>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Rendimiento de Integraciones */}
         <Card className="shadow-card">
@@ -509,64 +520,6 @@ const Reports = () => {
             ))}
           </CardContent>
         </Card>
-
-        {/* Reportes existentes mejorados */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle>Rendimiento por Canal</CardTitle>
-              <CardDescription>Conversiones por canal de comunicación</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {metrics.channelMetrics.map((channel) => (
-                <div key={channel.channel} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{channel.channel}</span>
-                    <Badge variant="outline">{channel.conversion.toFixed(1)}% conversión</Badge>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
-                    <div>
-                      <MessageSquare className="inline h-3 w-3 mr-1" />
-                      {channel.conversations} conversaciones
-                    </div>
-                    <div>
-                      <Users className="inline h-3 w-3 mr-1" />
-                      {channel.leads} leads
-                    </div>
-                  </div>
-                  <Progress value={channel.conversion} className="h-2" />
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle>Tipos de Viaje</CardTitle>
-              <CardDescription>Distribución por tipo de servicio</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {metrics.tripTypes.map((trip) => {
-                const IconComponent = getTripTypeIcon(trip.type);
-                return (
-                  <div key={trip.type} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <IconComponent className="h-4 w-4 text-primary" />
-                        <span className="font-medium">{trip.type}</span>
-                      </div>
-                      <Badge variant="secondary">{trip.count} leads</Badge>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {trip.percentage.toFixed(1)}% del total
-                    </div>
-                    <Progress value={trip.percentage} className="h-2" />
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </div>
 
         {/* Leads por Sección - DATOS REALES */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

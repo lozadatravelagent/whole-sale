@@ -31,19 +31,20 @@ export function useAuth() {
 }
 
 export function useConversations() {
-  const [conversations, setConversations] = useState<ConversationRow[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
     try {
-      // RLS policies will automatically filter conversations based on user role
+      // Use RPC function that applies RLS policies correctly
+      // This function filters conversations based on user role:
       // OWNER: sees all conversations
-      // SUPERADMIN: sees conversations in their tenant
-      // ADMIN/SELLER: sees conversations in their agency
+      // SUPERADMIN: sees conversations in their tenant (all agencies)
+      // ADMIN: sees conversations in their agency
+      // SELLER: sees only their conversations (created_by = user)
       const { data, error } = await supabase
-        .from('conversations')
-        .select('*')
+        .rpc('get_conversations_with_agency')
         .order('last_message_at', { ascending: false });
 
       if (error) throw error;
@@ -79,20 +80,9 @@ export function useConversations() {
         (payload) => {
           console.log('🔔 [REALTIME] Conversation event:', payload.eventType, payload.new);
 
-          if (payload.eventType === 'INSERT') {
-            const newConversation = payload.new as ConversationRow;
-            setConversations(prev => {
-              const exists = prev.some(conv => conv.id === newConversation.id);
-              if (exists) return prev;
-              return [newConversation, ...prev];
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedConversation = payload.new as ConversationRow;
-            setConversations(prev =>
-              prev
-                .map(conv => conv.id === updatedConversation.id ? updatedConversation : conv)
-                .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
-            );
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            // Reload all conversations to get enriched data from view
+            loadConversations();
           }
         }
       )
@@ -132,23 +122,31 @@ export function useConversations() {
         .eq('id', user.id)
         .single();
 
-      // OWNER role doesn't require agency_id (they oversee all tenants)
-      // For OWNER creating conversations, we'll use null agency_id
-      const isOwner = userData?.role === 'OWNER';
+      const userRole = userData?.role;
 
-      if (!isOwner && !userData?.agency_id) {
+      // OWNER and SUPERADMIN can have null agency_id (they manage multiple agencies)
+      // SUPERADMIN: has tenant_id but agency_id = NULL (manages all agencies in tenant)
+      // OWNER: both tenant_id and agency_id = NULL (manages everything)
+      const canHaveNullAgency = userRole === 'OWNER' || userRole === 'SUPERADMIN';
+
+      // ADMIN and SELLER MUST have agency_id
+      if (!canHaveNullAgency && !userData?.agency_id) {
         throw new Error('User has no agency assigned');
+      }
+
+      // SUPERADMIN must have tenant_id even if agency_id is null
+      if (userRole === 'SUPERADMIN' && !userData?.tenant_id) {
+        throw new Error('SUPERADMIN must have tenant assigned');
       }
 
       const newConversation = {
         external_key: `chat-${Date.now()}`,
         channel: (params?.channel === 'whatsapp' ? 'wa' : params?.channel || 'web') as 'web' | 'wa',
         state: (params?.status || 'active') as 'active' | 'closed' | 'pending',
-        agency_id: userData.agency_id || null, // Allow null for OWNER
-        tenant_id: userData.tenant_id || null, // Allow null for OWNER
+        agency_id: userData.agency_id || null, // NULL for OWNER and SUPERADMIN
+        tenant_id: userData.tenant_id || null, // NULL for OWNER, required for SUPERADMIN
         created_by: user.id, // Set conversation owner
         last_message_at: new Date().toISOString()
-        // Note: meta field doesn't exist in database schema, removed
       };
 
       console.log('📤 [SUPABASE] About to INSERT into conversations table');

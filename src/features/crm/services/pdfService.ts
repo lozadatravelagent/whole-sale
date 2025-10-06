@@ -10,14 +10,15 @@ export class PdfService {
       name: string;
       email?: string;
       phone: string;
-    }
+    },
+    agencyId?: string
   ): Promise<string | null> {
     try {
       if (selectedFlights.length === 0) {
         throw new Error('No flights selected for PDF generation');
       }
 
-      const pdfUrl = await generateFlightPdf(selectedFlights);
+      const pdfUrl = await generateFlightPdf(selectedFlights, agencyId);
       return pdfUrl;
     } catch (error) {
       console.error('Error generating flight PDF:', error);
@@ -33,14 +34,15 @@ export class PdfService {
       name: string;
       email?: string;
       phone: string;
-    }
+    },
+    agencyId?: string
   ): Promise<string | null> {
     try {
       if (selectedFlights.length === 0 && selectedHotels.length === 0) {
         throw new Error('No flights or hotels selected for PDF generation');
       }
 
-      const pdfUrl = await generateCombinedTravelPdf(selectedFlights, selectedHotels);
+      const pdfUrl = await generateCombinedTravelPdf(selectedFlights, selectedHotels, agencyId);
       return pdfUrl;
     } catch (error) {
       console.error('Error generating combined PDF:', error);
@@ -55,7 +57,8 @@ export class PdfService {
       name: string;
       email?: string;
       phone: string;
-    }
+    },
+    agencyId?: string
   ): Promise<string | null> {
     try {
       if (selectedHotels.length === 0) {
@@ -63,7 +66,7 @@ export class PdfService {
       }
 
       // For now, use combined PDF with empty flights array
-      const pdfUrl = await generateCombinedTravelPdf([], selectedHotels);
+      const pdfUrl = await generateCombinedTravelPdf([], selectedHotels, agencyId);
       return pdfUrl;
     } catch (error) {
       console.error('Error generating hotel PDF:', error);

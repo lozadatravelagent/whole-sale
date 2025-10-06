@@ -22,6 +22,8 @@ serve(async (req) => {
       );
     }
 
+    console.log('🔑 [ADD-MESSAGE] Auth header received:', authHeader.substring(0, 20) + '...');
+
     const { id, conversationId, role, content, meta } = await req.json();
     console.log('🆔 [ADD-MESSAGE] Received custom ID:', id);
 
@@ -40,27 +42,36 @@ serve(async (req) => {
 
     // Create Supabase client with user's JWT (respects RLS)
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY'); // ← Use ANON_KEY instead of SERVICE_ROLE
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          authorization: authHeader // ← Pass user's JWT
-        }
-      }
-    });
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    // ✅ Validate user authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Create admin client to verify JWT
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    // ✅ Validate JWT token
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
 
     if (authError || !user) {
       console.error('❌ [ADD-MESSAGE] Invalid authentication:', authError);
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Unauthorized', details: authError?.message }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     console.log('👤 [ADD-MESSAGE] Authenticated user:', user.id);
+
+    // Create user-scoped client for RLS
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      global: {
+        headers: {
+          authorization: authHeader
+        }
+      },
+      auth: {
+        persistSession: false
+      }
+    });
 
     // ✅ Validate conversation access (RLS will handle this automatically)
     const { data: conversation, error: convError } = await supabase
