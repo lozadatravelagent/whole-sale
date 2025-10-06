@@ -160,6 +160,7 @@ const Dashboard = () => {
   const handleAlertAction = (action: string) => {
     switch (action) {
       case 'Ver leads':
+      case 'Ver CRM':
         navigate('/crm');
         break;
       case 'Ver agenda':
@@ -417,37 +418,37 @@ const Dashboard = () => {
             <CardContent className="p-4 md:p-6">
               <div className="space-y-3 md:space-y-4">
                 {teamPerformance.map((member, index) => (
-                <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 md:p-4 rounded-lg bg-gradient-card">
-                  <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
-                    <div className="relative flex-shrink-0">
-                      <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Users className="h-4 md:h-5 w-4 md:w-5 text-primary" />
+                  <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 md:p-4 rounded-lg bg-gradient-card">
+                    <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+                      <div className="relative flex-shrink-0">
+                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Users className="h-4 md:h-5 w-4 md:w-5 text-primary" />
+                        </div>
+                        <div className={`absolute -bottom-1 -right-1 w-2.5 md:w-3 h-2.5 md:h-3 rounded-full border-2 border-background bg-success`} />
                       </div>
-                      <div className={`absolute -bottom-1 -right-1 w-2.5 md:w-3 h-2.5 md:h-3 rounded-full border-2 border-background ${getStatusColor(member.status)}`} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm md:text-base truncate">{member.name}</p>
-                      <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[10px] md:text-xs text-muted-foreground">
-                        <span>{member.leads} leads</span>
-                        <span>{member.conversions} conversiones</span>
-                        <div className="flex items-center gap-1">
-                          <Star className="h-2.5 md:h-3 w-2.5 md:w-3 text-warning" />
-                          {member.rating}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm md:text-base truncate">{member.seller_name}</p>
+                        <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[10px] md:text-xs text-muted-foreground">
+                          <span>{member.leads_count} leads</span>
+                          <span>{member.won_count} ganados</span>
+                          <div className="flex items-center gap-1">
+                            <Star className="h-2.5 md:h-3 w-2.5 md:w-3 text-warning" />
+                            {member.conversion_rate.toFixed(1)}%
+                          </div>
                         </div>
                       </div>
                     </div>
+                    <div className="text-left sm:text-right">
+                      <p className="font-bold text-success text-sm md:text-base">${member.revenue.toLocaleString()}</p>
+                      <p className="text-[10px] md:text-xs text-muted-foreground">
+                        {member.conversion_rate.toFixed(1)}% conversión
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-left sm:text-right">
-                    <p className="font-bold text-success text-sm md:text-base">${member.revenue.toLocaleString()}</p>
-                    <p className="text-[10px] md:text-xs text-muted-foreground">
-                      {((member.conversions / member.leads) * 100).toFixed(1)}% conversión
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Próximos Vencimientos */}
