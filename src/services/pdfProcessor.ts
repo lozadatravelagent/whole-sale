@@ -158,7 +158,10 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
 
     // Determine which template was used based on content
     const isCombinedTemplate = content.includes('PRESUPUESTO DE VIAJE') || content.includes('Hotel Recomendado');
-    const isFlightsOnlyTemplate = content.includes('DETALLE DEL VUELO') && !isCombinedTemplate;
+
+    // More flexible detection for flights template - look for flight-related patterns
+    const hasFlightPatterns = /Vuelo de (ida|regreso)|adultos.*niños|USD.*Precio total|Escala en|Tiempo de espera/i.test(content);
+    const isFlightsOnlyTemplate = hasFlightPatterns && !isCombinedTemplate;
 
     console.log('📋 Template type detected:', isCombinedTemplate ? 'Combined (both.html)' : isFlightsOnlyTemplate ? 'Flights only (flights.html)' : 'Unknown');
 
@@ -345,18 +348,19 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
  */
 function generateManualDataEntryPrompt(): string {
     return `📄 **PDF Analizado - Datos Manuales Requeridos**\n\n` +
-        `No pude extraer automáticamente los datos del PDF, pero puedo ayudarte de varias maneras:\n\n` +
+        `He analizado tu PDF pero no pude extraer automáticamente los datos estructurados (el PDF está comprimido). Sin embargo, puedo ayudarte de varias maneras:\n\n` +
         `💰 **Para cambiar precios:**\n` +
         `• Dime el precio total actual y el nuevo precio que quieres\n` +
-        `• Ejemplo: "El PDF tiene un total de $1200, quiero cambiarlo a $1000"\n\n` +
+        `• Ejemplo: "El PDF tiene un total de $1200, quiero cambiarlo a $1000"\n` +
+        `• Ejemplo: "Cambiar precio a $800"\n\n` +
         `📋 **Para análisis completo:**\n` +
         `• Comparte los detalles principales: origen, destino, fechas, pasajeros\n` +
         `• Ejemplo: "Vuelo EZE-MAD del 15/11 al 22/11 para 2 personas, precio $1200"\n\n` +
         `🔄 **Opciones disponibles:**\n` +
-        `• "Cambiar precio a $[cantidad]" - Genero un nuevo PDF con ese precio\n` +
+        `• "Cambiar precio a $[cantidad]" - Genero un nuevo PDF profesional con ese precio\n` +
         `• "Buscar alternativas más baratas" - Busco opciones similares\n` +
         `• "Regenerar PDF con precio $[cantidad]" - Creo un PDF completamente nuevo\n\n` +
-        `💡 **¿Qué información tienes del PDF?**`;
+        `💡 **¿Qué información tienes del PDF o qué precio quieres?**`;
 }
 
 /**
@@ -539,26 +543,30 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
             }
         }
 
+        // Generate realistic flight data
+        const flightPrice = Math.round(flight.price * priceRatio);
+        const isRealisticData = flight.airline !== 'Aerolínea' && flight.route !== 'Origen - Destino';
+
         return {
             id: `regenerated-${Date.now()}-${index}`,
             airline: {
                 code: airlineCode,
-                name: flight.airline
+                name: isRealisticData ? flight.airline : 'Aerolínea Principal'
             },
             price: {
-                amount: Math.round(flight.price * priceRatio),
+                amount: flightPrice,
                 currency: analysis.content?.currency || 'USD',
                 breakdown: {
-                    fareAmount: Math.round(flight.price * priceRatio * 0.75),
-                    taxAmount: Math.round(flight.price * priceRatio * 0.25),
+                    fareAmount: Math.round(flightPrice * 0.75),
+                    taxAmount: Math.round(flightPrice * 0.25),
                     serviceAmount: 0,
                     commissionAmount: 0
                 }
             },
             adults: analysis.content?.passengers || 1,
             childrens: 0,
-            departure_date: datesParsed.departureDate,
-            return_date: datesParsed.returnDate,
+            departure_date: isRealisticData ? datesParsed.departureDate : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            return_date: isRealisticData ? datesParsed.returnDate : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             departure_time: (flight as any).departureTime || '08:00',
             arrival_time: (flight as any).arrivalTime || '18:00',
             duration: { formatted: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h' },
@@ -570,7 +578,20 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
                 validatingCarrier: airlineCode,
                 fareType: 'P'
             },
-            legs: legs
+            legs: legs.length > 0 ? legs : [{
+                departure: {
+                    city_code: 'EZE',
+                    city_name: 'Buenos Aires',
+                    time: '08:00'
+                },
+                arrival: {
+                    city_code: 'MAD',
+                    city_name: 'Madrid',
+                    time: '18:00'
+                },
+                duration: '10h',
+                flight_type: 'outbound'
+            }]
         };
     });
 }
@@ -764,6 +785,12 @@ export async function generateModifiedPdf(
         });
 
         // Generate the modified PDF using our existing PdfMonkey service
+        console.log('📄 Generating PDF with:', {
+            flights: adjustedFlights.length,
+            hotels: adjustedHotels.length,
+            totalPrice: newPrice
+        });
+
         const pdfResult = await generateCombinedTravelPdf(adjustedFlights, adjustedHotels);
 
         if (pdfResult.success && pdfResult.document_url) {
@@ -810,18 +837,37 @@ export async function processPriceChangeRequest(
 
             if (!analysis.success || !analysis.content || !analysis.content.totalPrice) {
                 console.log('📋 Creating basic analysis from request...');
+
+                // Try to extract some basic info from the original request if available
+                const lowerRequest = request.toLowerCase();
+                const hasFlight = lowerRequest.includes('vuelo') || lowerRequest.includes('flight');
+                const hasHotel = lowerRequest.includes('hotel') || lowerRequest.includes('alojamiento');
+                const isCombined = hasFlight && hasHotel;
+
+                // Create realistic flight data
+                const flights = [{
+                    airline: 'Aerolínea',
+                    route: 'Origen - Destino',
+                    price: isCombined ? Math.round(requestedPrice * 0.7) : requestedPrice,
+                    dates: 'Fecha de viaje'
+                }];
+
+                // Create hotel data if it's a combined request
+                const hotels = isCombined ? [{
+                    name: 'Hotel Recomendado',
+                    location: 'Destino',
+                    price: Math.round(requestedPrice * 0.3 / 7), // Assume 7 nights
+                    nights: 7
+                }] : [];
+
                 effectiveAnalysis = {
                     success: true,
                     content: {
-                        totalPrice: requestedPrice, // Use requested price as base
+                        totalPrice: requestedPrice,
                         currency: 'USD',
                         passengers: 1,
-                        flights: [{
-                            airline: 'Aerolínea',
-                            route: 'Origen - Destino',
-                            price: requestedPrice,
-                            dates: 'Fecha de viaje'
-                        }],
+                        flights,
+                        hotels,
                         extractedFromPdfMonkey: false
                     }
                 };
@@ -1701,41 +1747,59 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
 }> {
     const flights = [];
 
-    // Extract airline name - looking for patterns from our templates
-    const airlineMatch = content.match(/Vuelos\s+([^$\n]+)/i);
+    // Extract airline name - more flexible pattern matching
+    const airlineMatch = content.match(/([A-Z\s]+(?:AIRLINES|AIRLINE|GROUP|AEROLINEAS|AEROLINEA)[A-Z\s]*)/i) ||
+        content.match(/Vuelos\s+([^$\n]+)/i);
     const airline = airlineMatch ? airlineMatch[1].trim() : 'Aerolínea no especificada';
 
-    // Extract route information from airport codes in template
-    const routeMatches = content.match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/g);
+    // Extract route information - look for airport codes and city names
+    const routeMatches = content.match(/([A-Z]{3})\s+([^0-9]+?)\s+(\d{1,2}:\d{2})\s+([A-Z]{3})\s+([^0-9]+?)\s+(\d{1,2}:\d{2})/);
     let route = 'Ruta no especificada';
     let originCode = '';
     let destinationCode = '';
+    let departureTime = '';
+    let arrivalTime = '';
 
-    if (routeMatches && routeMatches.length > 0) {
-        const routeMatch = routeMatches[0].match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/);
-        if (routeMatch) {
-            originCode = routeMatch[1];
-            destinationCode = routeMatch[2];
-            route = `${originCode} → ${destinationCode}`;
+    if (routeMatches) {
+        originCode = routeMatches[1];
+        destinationCode = routeMatches[4];
+        departureTime = routeMatches[3];
+        arrivalTime = routeMatches[6];
+        route = `${originCode} → ${destinationCode}`;
+    } else {
+        // Fallback: look for any airport codes
+        const simpleRouteMatches = content.match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/g);
+        if (simpleRouteMatches && simpleRouteMatches.length > 0) {
+            const routeMatch = simpleRouteMatches[0].match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/);
+            if (routeMatch) {
+                originCode = routeMatch[1];
+                destinationCode = routeMatch[2];
+                route = `${originCode} → ${destinationCode}`;
+            }
         }
     }
 
-    // Extract dates from template
-    const dateMatch = content.match(/(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})/);
+    // Extract dates - look for date patterns
+    const dateMatch = content.match(/(\d{4}-\d{2}-\d{2})/);
     let dates = 'Fechas no especificadas';
     if (dateMatch) {
-        dates = `${dateMatch[1]} / ${dateMatch[2]}`;
+        dates = dateMatch[1];
     }
 
-    // Extract flight times from template
-    const timeMatches = content.match(/(\d{1,2}:\d{2})/g);
-    const departureTime = timeMatches ? timeMatches[0] : undefined;
-    const arrivalTime = timeMatches && timeMatches.length > 1 ? timeMatches[1] : undefined;
+    // Extract flight times if not already extracted
+    if (!departureTime || !arrivalTime) {
+        const timeMatches = content.match(/(\d{1,2}:\d{2})/g);
+        if (timeMatches) {
+            departureTime = timeMatches[0];
+            arrivalTime = timeMatches[1] || timeMatches[0];
+        }
+    }
 
-    // Extract price from template - looking for currency patterns
-    const priceMatches = content.match(/\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi);
+    // Extract price - look for price patterns with USD
+    const priceMatches = content.match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*USD/i) ||
+        content.match(/\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi);
     let price = 0;
-    if (priceMatches && priceMatches.length > 0) {
+    if (priceMatches) {
         const priceStr = priceMatches[0].match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/);
         if (priceStr) {
             price = parseFloat(priceStr[1].replace(/,/g, ''));
@@ -1747,8 +1811,8 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         route,
         price,
         dates,
-        departureTime,
-        arrivalTime,
+        departureTime: departureTime || undefined,
+        arrivalTime: arrivalTime || undefined,
         originCode,
         destinationCode,
         originCity: mapCodeToCity(originCode),
