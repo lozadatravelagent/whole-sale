@@ -170,7 +170,7 @@ export function TrelloCard({ lead, onClick, isDragging }: TrelloCardProps) {
                     <div className="flex items-center gap-1 mb-1">
                         <Building className="h-3 w-3 text-muted-foreground" />
                         <span className="text-[10px] text-muted-foreground truncate max-w-[220px]">
-                            {agencies.find(a => a.id === lead.agency_id)?.name || lead.agency_id}
+                            {agencies.find(a => a.id === lead.agency_id)?.name || 'Agencia'}
                         </span>
                     </div>
                 )}

@@ -139,6 +139,21 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
           .eq('agencies.tenant_id', user.tenant_id!);
         sections = tenantSections || [];
 
+        // Fallback: si no hay secciones, obtener todas las secciones del tenant
+        if (sections.length === 0) {
+          const { data: allTenantSections } = await supabase
+            .from('sections')
+            .select('*')
+            .in('agency_id',
+              (await supabase
+                .from('agencies')
+                .select('id')
+                .eq('tenant_id', user.tenant_id!)
+              ).data?.map(a => a.id) || []
+            );
+          sections = allTenantSections || [];
+        }
+
       } else if (isAdmin) {
         // ADMIN: Ver solo su agencia
         leads = await getLeads(); // Ya filtra por agency_id en RLS
@@ -415,7 +430,7 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
                 .from('users')
                 .select('id')
                 .eq('agency_id', agency.id)
-                .eq('role', 'SELLER');
+                .eq('role', 'SELLER' as any);
 
               return {
                 agency_id: agency.id,
@@ -451,7 +466,7 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
                 .from('users')
                 .select('id')
                 .eq('agency_id', agency.id)
-                .eq('role', 'SELLER');
+                .eq('role', 'SELLER' as any);
 
               return {
                 agency_id: agency.id,
@@ -473,7 +488,7 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
           .from('users')
           .select('id, name, email')
           .eq('agency_id', user.agency_id!)
-          .eq('role', 'SELLER');
+          .eq('role', 'SELLER' as any);
 
         if (sellers) {
           calculatedMetrics.teamPerformance = sellers.map((seller: any) => {
