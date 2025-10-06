@@ -44,7 +44,7 @@ const leadSchema = z.object({
   contact: z.object({
     name: z.string().min(1, 'Nombre requerido'),
     phone: z.string().min(1, 'Teléfono requerido'),
-    email: z.string().email('Email inválido').optional().or(z.literal(''))
+    email: z.string().optional().or(z.literal(''))
   }),
   trip: z.object({
     type: z.enum(['hotel', 'flight', 'package']),
@@ -53,8 +53,8 @@ const leadSchema = z.object({
       checkin: z.string().optional(),
       checkout: z.string().optional()
     }),
-    adults: z.number().min(1, 'Mínimo 1 adulto').optional(),
-    children: z.number().min(0, 'No puede ser negativo').optional()
+    adults: z.number().optional(),
+    children: z.number().optional()
   }),
   status: z.enum(['new', 'quoted', 'negotiating', 'won', 'lost']).optional(),
   section_id: z.string().optional(),
@@ -90,6 +90,7 @@ export function LeadDialog({
   const [checklist, setChecklist] = React.useState<ChecklistItem[]>([]);
   const [newChecklistItem, setNewChecklistItem] = React.useState('');
   const [showTransferDialog, setShowTransferDialog] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const {
     register,
@@ -195,35 +196,49 @@ export function LeadDialog({
     setChecklist(checklist.filter(item => item.id !== id));
   };
 
-  const onSubmit = (data: LeadFormData) => {
-    // Ensure section_id is set for new leads
-    if (!data.section_id && sections.length > 0) {
-      data.section_id = sections[0].id;
-    }
-
-    // Convert budget string to number if it's a valid number
-    let processedBudget: number | undefined = undefined;
-    if (data.budget !== undefined && data.budget !== null) {
-      if (typeof data.budget === 'string') {
-        const trimmed = (data.budget as string).trim();
-        if (trimmed !== '') {
-          const parsed = parseFloat(trimmed);
-          if (!isNaN(parsed)) {
-            processedBudget = parsed;
-          }
-        }
-      } else if (typeof data.budget === 'number') {
-        processedBudget = data.budget;
+  const onSubmit = async (data: LeadFormData) => {
+    console.log('LeadDialog onSubmit called, isSubmitting:', isSubmitting);
+    if (isSubmitting) return; // Prevent double submission
+    
+    setIsSubmitting(true);
+    console.log('LeadDialog starting submission...');
+    try {
+      // Ensure section_id is set for new leads
+      if (!data.section_id && sections.length > 0) {
+        data.section_id = sections[0].id;
       }
+      
+      // Convert budget string to number if it's a valid number
+      let processedBudget: number | undefined = undefined;
+      if (data.budget !== undefined && data.budget !== null) {
+        if (typeof data.budget === 'string') {
+          const trimmed = (data.budget as string).trim();
+          if (trimmed !== '') {
+            const parsed = parseFloat(trimmed);
+            if (!isNaN(parsed)) {
+              processedBudget = parsed;
+            }
+          }
+        } else if (typeof data.budget === 'number') {
+          processedBudget = data.budget;
+        }
+      }
+      
+      const processedData = {
+        ...data,
+        budget: processedBudget,
+        checklist 
+      };
+      
+      console.log('LeadDialog calling onSave with:', processedData);
+      await onSave(processedData);
+      console.log('LeadDialog onSave completed successfully');
+    } catch (error) {
+      console.error('LeadDialog onSubmit error:', error);
+    } finally {
+      console.log('LeadDialog setting isSubmitting to false');
+      setIsSubmitting(false);
     }
-
-    const processedData = {
-      ...data,
-      budget: processedBudget,
-      checklist
-    };
-
-    onSave(processedData);
   };
 
   const completedTasks = checklist.filter(item => item.completed).length;
@@ -510,9 +525,9 @@ export function LeadDialog({
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={Object.keys(errors).length > 0}
+                  disabled={isSubmitting}
                 >
-                  {isEditing ? 'Guardar Cambios' : 'Crear Lead'}
+                  {isSubmitting ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Crear Lead')}
                 </Button>
                 <Button
                   type="button"

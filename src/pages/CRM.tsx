@@ -159,6 +159,10 @@ export default function CRM() {
   };
 
   const handleSaveLead = async (data: any) => {
+    console.log('CRM handleSaveLead called with data:', data);
+    console.log('CRM isEditing:', isEditing);
+    console.log('CRM selectedLead:', selectedLead);
+    
     try {
       // Use selected section for new lead or first section as fallback
       if (!data.section_id) {
@@ -166,25 +170,30 @@ export default function CRM() {
       }
 
       if (isEditing && selectedLead) {
-        await editLead({
+        console.log('CRM updating lead with ID:', selectedLead.id);
+        const result = await editLead({
           id: selectedLead.id,
           ...data
         });
+        console.log('CRM editLead result:', result);
         toast({
           title: "Tarjeta actualizada",
           description: "Los cambios se han guardado correctamente.",
         });
       } else {
-        await addLead({
+        console.log('CRM creating new lead');
+        const result = await addLead({
           ...data,
           tenant_id: user?.tenant_id || DUMMY_TENANT_ID,
           agency_id: (isOwner || isSuperAdmin) && filterAgency !== 'all' ? filterAgency : (user?.agency_id || DUMMY_AGENCY_ID)
         });
+        console.log('CRM addLead result:', result);
         toast({
           title: "Nueva tarjeta creada",
           description: "La tarjeta se ha agregado correctamente.",
         });
       }
+      console.log('CRM closing dialog');
       setIsDialogOpen(false);
       setSelectedSectionForNewLead(null);
     } catch (error) {
