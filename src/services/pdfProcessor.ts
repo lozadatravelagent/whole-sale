@@ -442,25 +442,32 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
             // Use detailed leg information from PDF
             const pdfLegs = (flight as any).legs;
 
-            // Add outbound legs
+            console.log('🔍 Processing PDF legs:', pdfLegs.map((leg: any, i: number) => ({
+                index: i,
+                departure: leg.departure,
+                arrival: leg.arrival,
+                layovers: leg.layovers?.length || 0
+            })));
+
+            // Process each leg from PDF
             pdfLegs.forEach((leg: any, legIndex: number) => {
-                if (legIndex < pdfLegs.length / 2 || pdfLegs.length <= 2) {
-                    legs.push({
-                        departure: {
-                            city_code: leg.from || routeInfo.origin,
-                            city_name: mapCodeToCity(leg.from || routeInfo.origin),
-                            time: leg.departureTime || (flight as any).departureTime || '08:00'
-                        },
-                        arrival: {
-                            city_code: leg.to || routeInfo.destination,
-                            city_name: mapCodeToCity(leg.to || routeInfo.destination),
-                            time: leg.arrivalTime || (flight as any).arrivalTime || '18:00'
-                        },
-                        duration: calculateFlightDuration(leg.departureTime, leg.arrivalTime) || '10h',
-                        flight_type: 'outbound',
-                        flight_number: leg.flightNumber
-                    });
-                }
+                const legData = {
+                    departure: {
+                        city_code: leg.departure?.city_code || routeInfo.origin,
+                        city_name: leg.departure?.city_name || mapCodeToCity(leg.departure?.city_code || routeInfo.origin),
+                        time: leg.departure?.time || (flight as any).departureTime || '08:00'
+                    },
+                    arrival: {
+                        city_code: leg.arrival?.city_code || routeInfo.destination,
+                        city_name: leg.arrival?.city_name || mapCodeToCity(leg.arrival?.city_code || routeInfo.destination),
+                        time: leg.arrival?.time || (flight as any).arrivalTime || '18:00'
+                    },
+                    duration: leg.duration || calculateFlightDuration(leg.departure?.time, leg.arrival?.time) || '10h',
+                    flight_type: leg.flight_type || (legIndex === 0 ? 'outbound' : 'return'),
+                    layovers: leg.layovers || []
+                };
+
+                legs.push(legData);
             });
 
             // Add return legs for round trip
@@ -799,8 +806,8 @@ export async function generateModifiedPdf(
             console.log('📄 Using combined PDF generation (flights + hotels)');
             pdfResult = await generateCombinedTravelPdf(adjustedFlights, adjustedHotels);
         } else {
-            // Flights-only PDF
-            console.log('📄 Using flights-only PDF generation');
+            // Flights-only PDF - let generateFlightPdf decide the best template
+            console.log('📄 Using flights-only PDF generation with intelligent template selection');
             pdfResult = await generateFlightPdf(adjustedFlights);
         }
 
@@ -1754,7 +1761,18 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     originCode?: string,
     destinationCode?: string,
     originCity?: string,
-    destinationCity?: string
+    destinationCity?: string,
+    legs?: Array<{
+        departure: { city_code: string, city_name: string, time: string },
+        arrival: { city_code: string, city_name: string, time: string },
+        duration: string,
+        flight_type: string,
+        layovers?: Array<{
+            destination_city: string,
+            destination_code: string,
+            waiting_time: string
+        }>
+    }>
 }> {
     const flights = [];
 
@@ -1763,29 +1781,94 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         content.match(/Vuelos\s+([^$\n]+)/i);
     const airline = airlineMatch ? airlineMatch[1].trim() : 'Aerolínea no especificada';
 
-    // Extract route information - look for airport codes and city names
-    const routeMatches = content.match(/([A-Z]{3})\s+([^0-9]+?)\s+(\d{1,2}:\d{2})\s+([A-Z]{3})\s+([^0-9]+?)\s+(\d{1,2}:\d{2})/);
-    let route = 'Ruta no especificada';
+    // Extract all airport codes and times from the content
+    const airportPattern = /([A-Z]{3})\s+([^0-9]+?)\s+(\d{1,2}:\d{2})/g;
+    const airportMatches = [...content.matchAll(airportPattern)];
+
+    console.log('🔍 Found airport matches:', airportMatches.map(m => ({
+        code: m[1],
+        city: m[2].trim(),
+        time: m[3]
+    })));
+
+    // Extract layover information
+    const layoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
+    const layoverMatches = [...content.matchAll(layoverPattern)];
+
+    console.log('🔍 Found layover matches:', layoverMatches.map(m => ({
+        city: m[1].trim(),
+        waiting_time: m[2].trim(),
+        code: m[3],
+        full_city: m[4].trim()
+    })));
+
+    // Build flight legs with layovers
+    const legs = [];
     let originCode = '';
     let destinationCode = '';
     let departureTime = '';
     let arrivalTime = '';
 
-    if (routeMatches) {
-        originCode = routeMatches[1];
-        destinationCode = routeMatches[4];
-        departureTime = routeMatches[3];
-        arrivalTime = routeMatches[6];
-        route = `${originCode} → ${destinationCode}`;
+    if (airportMatches.length >= 2) {
+        // First leg: origin to first layover or destination
+        originCode = airportMatches[0][1];
+        departureTime = airportMatches[0][3];
+
+        // Last leg: last layover or origin to destination
+        destinationCode = airportMatches[airportMatches.length - 1][1];
+        arrivalTime = airportMatches[airportMatches.length - 1][3];
+
+        // Create main leg (origin to destination)
+        const mainLeg = {
+            departure: {
+                city_code: originCode,
+                city_name: mapCodeToCity(originCode),
+                time: departureTime
+            },
+            arrival: {
+                city_code: destinationCode,
+                city_name: mapCodeToCity(destinationCode),
+                time: arrivalTime
+            },
+            duration: calculateFlightDuration(departureTime, arrivalTime) || '10h',
+            flight_type: 'outbound',
+            layovers: []
+        };
+
+        // Add layovers if found
+        if (layoverMatches.length > 0) {
+            mainLeg.layovers = layoverMatches.map(layover => ({
+                destination_city: layover[4].trim(),
+                destination_code: layover[3],
+                waiting_time: layover[2].trim()
+            }));
+        }
+
+        legs.push(mainLeg);
     } else {
-        // Fallback: look for any airport codes
+        // Fallback: look for simple route patterns
         const simpleRouteMatches = content.match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/g);
         if (simpleRouteMatches && simpleRouteMatches.length > 0) {
             const routeMatch = simpleRouteMatches[0].match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/);
             if (routeMatch) {
                 originCode = routeMatch[1];
                 destinationCode = routeMatch[2];
-                route = `${originCode} → ${destinationCode}`;
+
+                legs.push({
+                    departure: {
+                        city_code: originCode,
+                        city_name: mapCodeToCity(originCode),
+                        time: departureTime || '08:00'
+                    },
+                    arrival: {
+                        city_code: destinationCode,
+                        city_name: mapCodeToCity(destinationCode),
+                        time: arrivalTime || '18:00'
+                    },
+                    duration: '10h',
+                    flight_type: 'outbound',
+                    layovers: []
+                });
             }
         }
     }
@@ -1795,15 +1878,6 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     let dates = 'Fechas no especificadas';
     if (dateMatch) {
         dates = dateMatch[1];
-    }
-
-    // Extract flight times if not already extracted
-    if (!departureTime || !arrivalTime) {
-        const timeMatches = content.match(/(\d{1,2}:\d{2})/g);
-        if (timeMatches) {
-            departureTime = timeMatches[0];
-            arrivalTime = timeMatches[1] || timeMatches[0];
-        }
     }
 
     // Extract price - look for price patterns with USD
@@ -1817,6 +1891,8 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         }
     }
 
+    const route = originCode && destinationCode ? `${originCode} → ${destinationCode}` : 'Ruta no especificada';
+
     flights.push({
         airline,
         route,
@@ -1827,7 +1903,8 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         originCode,
         destinationCode,
         originCity: mapCodeToCity(originCode),
-        destinationCity: mapCodeToCity(destinationCode)
+        destinationCity: mapCodeToCity(destinationCode),
+        legs: legs.length > 0 ? legs : undefined
     });
 
     console.log('✈️ Extracted flights from PdfMonkey template:', flights);

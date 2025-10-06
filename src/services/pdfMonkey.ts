@@ -159,10 +159,11 @@ export async function generateFlightPdf(selectedFlights: FlightData[], agencyId?
       };
     }
 
-    // Select appropriate template based on number of flights
-    const templateType = selectedFlights.length === 2 ? 'flights2' : 'flights';
-    const defaultTemplateId = selectedFlights.length === 2 ? DEFAULT_FLIGHTS_TEMPLATE_ID : DEFAULT_FLIGHT_TEMPLATE_ID;
-    const templateName = selectedFlights.length === 2 ? 'flights2.html' : 'flights.html';
+    // Analyze flight structure to determine appropriate template
+    const flightAnalysis = analyzeFlightStructure(selectedFlights);
+    const templateType = flightAnalysis.templateType;
+    const defaultTemplateId = flightAnalysis.defaultTemplateId;
+    const templateName = flightAnalysis.templateName;
 
     // Get template ID (custom or default)
     const templateId = await getTemplateId(agencyId, templateType, defaultTemplateId);
@@ -202,6 +203,105 @@ export async function generateFlightPdf(selectedFlights: FlightData[], agencyId?
   }
 }
 
+/**
+ * Analyze flight structure to determine the appropriate template
+ */
+function analyzeFlightStructure(flights: FlightData[]): {
+  templateType: 'flights' | 'flights2';
+  defaultTemplateId: string;
+  templateName: string;
+  description: string;
+} {
+  console.log('🔍 ANALYZING FLIGHT STRUCTURE:', {
+    flights_count: flights.length,
+    flights_details: flights.map(f => ({
+      departure_date: f.departure_date,
+      return_date: f.return_date,
+      legs_count: f.legs?.length || 0,
+      is_round_trip: f.departure_date !== f.return_date,
+      has_multiple_legs: (f.legs?.length || 0) > 1
+    }))
+  });
+
+  // Case 1: Multiple separate flights (2 different flight objects)
+  if (flights.length === 2) {
+    const [flight1, flight2] = flights;
+    const differentDates = flight1.departure_date !== flight2.departure_date;
+    const differentRoutes = flight1.legs?.[0]?.departure?.city_code !== flight2.legs?.[0]?.departure?.city_code;
+
+    if (differentDates || differentRoutes) {
+      console.log('📋 MULTIPLE SEPARATE FLIGHTS detected');
+      return {
+        templateType: 'flights2',
+        defaultTemplateId: DEFAULT_FLIGHTS_TEMPLATE_ID,
+        templateName: 'flights2.html',
+        description: 'Multiple separate flights (different dates/routes)'
+      };
+    }
+  }
+
+  // Case 2: Single flight analysis
+  if (flights.length === 1) {
+    const flight = flights[0];
+    const isRoundTrip = flight.departure_date !== flight.return_date;
+    const hasMultipleLegs = (flight.legs?.length || 0) > 1;
+
+    // Check if it's a complex multi-leg journey (like EZE → GRU → DOH → SVO)
+    const isComplexJourney = hasMultipleLegs && flight.legs.some(leg =>
+      leg.departure.city_code !== flight.legs[0].departure.city_code ||
+      leg.arrival.city_code !== flight.legs[flight.legs.length - 1].arrival.city_code
+    );
+
+    // Check if flight has layovers (escalas)
+    const hasLayovers = flight.legs.some(leg => leg.layovers && leg.layovers.length > 0);
+
+    console.log('🔍 Flight complexity analysis:', {
+      isRoundTrip,
+      hasMultipleLegs,
+      isComplexJourney,
+      hasLayovers,
+      legs_count: flight.legs?.length || 0,
+      total_layovers: flight.legs?.reduce((sum, leg) => sum + (leg.layovers?.length || 0), 0) || 0
+    });
+
+    if (isRoundTrip || hasMultipleLegs) {
+      console.log('📋 COMPLEX SINGLE FLIGHT detected:', {
+        isRoundTrip,
+        hasMultipleLegs,
+        isComplexJourney,
+        legs: flight.legs?.length || 0
+      });
+
+      // For complex journeys, use flights2 template for better layout
+      if (isComplexJourney || hasMultipleLegs || hasLayovers) {
+        return {
+          templateType: 'flights2',
+          defaultTemplateId: DEFAULT_FLIGHTS_TEMPLATE_ID,
+          templateName: 'flights2.html',
+          description: 'Complex single flight (round trip, multi-leg, or with layovers)'
+        };
+      }
+    }
+
+    console.log('📋 SIMPLE SINGLE FLIGHT detected');
+    return {
+      templateType: 'flights',
+      defaultTemplateId: DEFAULT_FLIGHT_TEMPLATE_ID,
+      templateName: 'flights.html',
+      description: 'Simple single flight (one-way or simple round trip)'
+    };
+  }
+
+  // Default fallback
+  console.log('📋 DEFAULT TEMPLATE (fallback)');
+  return {
+    templateType: 'flights',
+    defaultTemplateId: DEFAULT_FLIGHT_TEMPLATE_ID,
+    templateName: 'flights.html',
+    description: 'Default template (fallback)'
+  };
+}
+
 function preparePdfData(flights: FlightData[]) {
   console.log('🔧 PREPARING PDF DATA - Input flights count:', flights.length);
 
@@ -215,25 +315,37 @@ function preparePdfData(flights: FlightData[]) {
     });
 
     // Process legs and ensure we have proper outbound/return structure
-    const processedLegs = flight.legs.map((leg, legIndex) => ({
-      departure: {
-        city_code: leg.departure.city_code,
-        city_name: leg.departure.city_name,
-        time: leg.departure.time
-      },
-      arrival: {
-        city_code: leg.arrival.city_code,
-        city_name: leg.arrival.city_name,
-        time: leg.arrival.time
-      },
-      duration: leg.duration,
-      flight_type: leg.flight_type || (legIndex === 0 ? 'outbound' : 'return'),
-      layovers: leg.layovers?.map(layover => ({
-        waiting_time: layover.waiting_time,
-        destination_city: layover.destination_city,
-        destination_code: layover.destination_code
-      })) || []
-    }));
+    const processedLegs = flight.legs.map((leg, legIndex) => {
+      console.log(`🔧 Processing leg ${legIndex + 1}:`, {
+        departure: leg.departure,
+        arrival: leg.arrival,
+        layovers: leg.layovers?.length || 0,
+        flight_type: leg.flight_type
+      });
+
+      return {
+        departure: {
+          city_code: leg.departure.city_code,
+          city_name: leg.departure.city_name,
+          time: leg.departure.time
+        },
+        arrival: {
+          city_code: leg.arrival.city_code,
+          city_name: leg.arrival.city_name,
+          time: leg.arrival.time
+        },
+        duration: leg.duration,
+        flight_type: leg.flight_type || (legIndex === 0 ? 'outbound' : 'return'),
+        layovers: leg.layovers?.map(layover => {
+          console.log('🔧 Processing layover:', layover);
+          return {
+            waiting_time: layover.waiting_time,
+            destination_city: layover.destination_city,
+            destination_code: layover.destination_code
+          };
+        }) || []
+      };
+    });
 
     // Ensure we have at least 2 legs for round trip flights
     // If we only have 1 leg but have a return_date, create a placeholder return leg
@@ -274,7 +386,7 @@ function preparePdfData(flights: FlightData[]) {
       childrens: flight.childrens,
       legs: finalLegs,
       price: {
-        amount: flight.price.amount.toFixed(2),
+        amount: flight.price.amount.toString(),
         currency: flight.price.currency
       },
       // Optional fields for template compatibility
