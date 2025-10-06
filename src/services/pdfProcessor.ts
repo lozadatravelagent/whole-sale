@@ -1218,7 +1218,7 @@ function extractFlightInfo(text: string): Array<{
     // Enhanced patterns for prices
     const pricePatterns = [
         /(?:USD|US\$|\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
-        /(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi
+        /(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi
     ];
 
     // Extract airlines
@@ -1454,15 +1454,15 @@ function extractTotalPrice(text: string): number {
     // Enhanced patterns for total price extraction
     const totalPatterns = [
         // Spanish patterns
-        /(?:total|precio total|total price|grand total|total general|precio final|monto total|importe total)\s*:?\s*(?:USD|US\$|\$)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
-        /(?:USD|US\$|\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:total|precio total|total price|grand total)/gi,
+        /(?:total|precio total|total price|grand total|total general|precio final|monto total|importe total)\s*:?\s*(?:USD|US\$|\$)?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/gi,
+        /(?:USD|US\$|\$)\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:total|precio total|total price|grand total)/gi,
 
         // Direct price patterns
-        /\$\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|usd)?/gi,
-        /(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi,
+        /\$\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|usd)?/gi,
+        /(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi,
 
         // Price at end of line or paragraph
-        /(?:precio|price|total|costo|cost)\s*:?\s*\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
+        /(?:precio|price|total|costo|cost)\s*:?\s*\$?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/gi,
 
         // Currency patterns
         /(?:USD|US\$|\$)\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/gi
@@ -1796,11 +1796,11 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     }
 
     // Extract price - look for price patterns with USD
-    const priceMatches = content.match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*USD/i) ||
-        content.match(/\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi);
+    const priceMatches = content.match(/(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*USD/i) ||
+        content.match(/\$?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi);
     let price = 0;
     if (priceMatches) {
-        const priceStr = priceMatches[0].match(/(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/);
+        const priceStr = priceMatches[0].match(/(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/);
         if (priceStr) {
             price = parseFloat(priceStr[1].replace(/,/g, ''));
         }
@@ -1872,8 +1872,8 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
 function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
     // Look for total price patterns in our templates
     const totalPatterns = [
-        /\$(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*USD/g,
-        /(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*USD/g
+        /\$(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*USD/g,
+        /(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*USD/g
     ];
 
     const allPrices = [];
