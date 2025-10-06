@@ -65,26 +65,45 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
       // Check session first; avoid global scope signOut from client
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        navigate('/login', { replace: true });
+        // Hard redirect to avoid any in-app redirects
+        window.location.replace('/login');
         return;
       }
 
       // Prefer default signOut; some backends reject scoped signOut from browsers
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      // Proactively clear any lingering Supabase auth tokens in localStorage
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!key) continue;
+          if (key.startsWith('sb-') || key.toLowerCase().includes('supabase')) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch { }
 
-      toast({
-        title: "Logout exitoso",
-        description: "Sesión cerrada correctamente.",
-      });
-
-      navigate('/login', { replace: true });
+      window.location.replace('/login');
     } catch (error: any) {
       // If backend returns 401/403 or AuthSessionMissingError, proceed to client-side redirect
       const msg = (error?.message || '').toString();
       const isAuthMissing = msg.includes('Auth session missing') || msg.includes('401') || msg.includes('403');
       if (isAuthMissing) {
-        navigate('/login', { replace: true });
+        try {
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!key) continue;
+            if (key.startsWith('sb-') || key.toLowerCase().includes('supabase')) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(k => localStorage.removeItem(k));
+        } catch { }
+        window.location.replace('/login');
         return;
       }
       console.error('Error during logout:', error);
