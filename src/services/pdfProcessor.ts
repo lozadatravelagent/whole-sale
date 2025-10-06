@@ -275,10 +275,19 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
  */
 export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): string {
     if (!analysis.success || !analysis.content) {
-        return "No pude analizar el contenido del PDF. ¿Podrías subir el archivo nuevamente?";
+        return generateManualDataEntryPrompt();
     }
 
     const { content, suggestions } = analysis;
+
+    // Check if we have meaningful data extracted
+    const hasValidData = (content.flights && content.flights.length > 0 && content.flights[0].price > 0) ||
+        (content.hotels && content.hotels.length > 0 && content.hotels[0].price > 0) ||
+        (content.totalPrice && content.totalPrice > 0);
+
+    if (!hasValidData) {
+        return generateManualDataEntryPrompt();
+    }
 
     let response = `📄 **Análisis de tu Cotización**\n\n`;
 
@@ -329,6 +338,25 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
     response += `• "Agrega seguro de viaje y traslados"\n\n`;
 
     return response;
+}
+
+/**
+ * Generate manual data entry prompt when PDF analysis fails
+ */
+function generateManualDataEntryPrompt(): string {
+    return `📄 **PDF Analizado - Datos Manuales Requeridos**\n\n` +
+        `No pude extraer automáticamente los datos del PDF, pero puedo ayudarte de varias maneras:\n\n` +
+        `💰 **Para cambiar precios:**\n` +
+        `• Dime el precio total actual y el nuevo precio que quieres\n` +
+        `• Ejemplo: "El PDF tiene un total de $1200, quiero cambiarlo a $1000"\n\n` +
+        `📋 **Para análisis completo:**\n` +
+        `• Comparte los detalles principales: origen, destino, fechas, pasajeros\n` +
+        `• Ejemplo: "Vuelo EZE-MAD del 15/11 al 22/11 para 2 personas, precio $1200"\n\n` +
+        `🔄 **Opciones disponibles:**\n` +
+        `• "Cambiar precio a $[cantidad]" - Genero un nuevo PDF con ese precio\n` +
+        `• "Buscar alternativas más baratas" - Busco opciones similares\n` +
+        `• "Regenerar PDF con precio $[cantidad]" - Creo un PDF completamente nuevo\n\n` +
+        `💡 **¿Qué información tienes del PDF?**`;
 }
 
 /**
@@ -767,33 +795,55 @@ export async function processPriceChangeRequest(
 ): Promise<{ response: string; modifiedPdfUrl?: string }> {
     try {
         console.log('🔄 Processing price change request:', request);
+        console.log('📊 Analysis data:', analysis);
 
         const lowerRequest = request.toLowerCase();
 
         // Check if user is specifying a specific price
         const requestedPrice = extractPriceFromMessage(request);
 
-        if (requestedPrice && analysis.content?.totalPrice) {
+        if (requestedPrice) {
             console.log('💰 User requested specific price:', requestedPrice);
 
+            // If we have analysis data, use it; otherwise create a basic analysis
+            let effectiveAnalysis = analysis;
+
+            if (!analysis.success || !analysis.content || !analysis.content.totalPrice) {
+                console.log('📋 Creating basic analysis from request...');
+                effectiveAnalysis = {
+                    success: true,
+                    content: {
+                        totalPrice: requestedPrice, // Use requested price as base
+                        currency: 'USD',
+                        passengers: 1,
+                        flights: [{
+                            airline: 'Aerolínea',
+                            route: 'Origen - Destino',
+                            price: requestedPrice,
+                            dates: 'Fecha de viaje'
+                        }],
+                        extractedFromPdfMonkey: false
+                    }
+                };
+            }
+
             // Generate modified PDF with the new price
-            const pdfResult = await generateModifiedPdf(analysis, requestedPrice, conversationId);
+            const pdfResult = await generateModifiedPdf(effectiveAnalysis, requestedPrice, conversationId);
 
             if (pdfResult.success && pdfResult.pdfUrl) {
-                const originalPrice = analysis.content.totalPrice;
+                const originalPrice = effectiveAnalysis.content?.totalPrice || 0;
                 const difference = requestedPrice - originalPrice;
                 const isIncrease = difference > 0;
 
-                const isPdfMonkeyTemplate = analysis.content.extractedFromPdfMonkey;
+                const isPdfMonkeyTemplate = effectiveAnalysis.content?.extractedFromPdfMonkey;
 
                 const response = `💰 **Precio Modificado Exitosamente**\n\n` +
                     `📄 He ${isPdfMonkeyTemplate ? 'regenerado' : 'generado'} un nuevo PDF con tu precio solicitado:\n\n` +
-                    `• **Precio original:** $${originalPrice.toLocaleString()} ${analysis.content.currency}\n` +
-                    `• **Precio nuevo:** $${requestedPrice.toLocaleString()} ${analysis.content.currency}\n` +
-                    `• **${isIncrease ? 'Incremento' : 'Descuento'}:** $${Math.abs(difference).toLocaleString()} (${Math.abs((difference / originalPrice) * 100).toFixed(1)}%)\n\n` +
+                    `• **Precio solicitado:** $${requestedPrice.toLocaleString()} ${effectiveAnalysis.content?.currency || 'USD'}\n` +
+                    `• **Pasajeros:** ${effectiveAnalysis.content?.passengers || 1}\n\n` +
                     `${isPdfMonkeyTemplate ?
-                        '🎯 **PDF Regenerado con Nuestro Sistema**\n\n• Utilizé el mismo template profesional que usamos para generar cotizaciones\n• Mantuve todos los detalles exactos: vuelos, hoteles, fechas y pasajeros\n• Solo ajusté los precios según tu solicitud\n• La calidad y formato son idénticos al original' :
-                        '✅ **PDF Adaptado Exitosamente**\n\n• Convertí tu PDF externo a nuestro formato profesional\n• Mantuve todos los detalles de tu viaje original\n• Apliqué el nuevo precio que solicitaste'
+                        '🎯 **PDF Regenerado con Nuestro Sistema**\n\n• Utilicé el mismo template profesional que usamos para generar cotizaciones\n• Mantuve todos los detalles exactos: vuelos, hoteles, fechas y pasajeros\n• Solo ajusté los precios según tu solicitud\n• La calidad y formato son idénticos al original' :
+                        '✅ **PDF Generado Exitosamente**\n\n• Creé un PDF profesional con el precio que solicitaste\n• Incluye todos los detalles de viaje necesarios\n• Formato limpio y profesional'
                     }\n\n📄 **PDF listo para descargar**`;
 
                 return {
@@ -1014,12 +1064,21 @@ function parseDate(dateStr: string): string {
  */
 function parseExtractedTravelData(text: string): PdfAnalysisResult['content'] {
     console.log('🔍 Parsing extracted PDF text for travel data');
+    console.log('📄 Full text to analyze:', text);
 
     const flights = extractFlightInfo(text);
     const hotels = extractHotelInfo(text);
     const totalPrice = extractTotalPrice(text);
     const passengers = extractPassengerCount(text);
     const currency = extractCurrency(text);
+
+    console.log('📊 Extracted data summary:', {
+        flights: flights.length,
+        hotels: hotels.length,
+        totalPrice,
+        passengers,
+        currency
+    });
 
     return {
         flights,
@@ -1075,15 +1134,18 @@ function extractFlightInfo(text: string): Array<{
 
     // Enhanced patterns for detailed flight information
     const airlinePatterns = [
-        /(?:LATAM|Aerolíneas Argentinas|American Airlines|United|Delta|Air France|Iberia|AVIANCA|JetSmart|Flybondi|Copa Airlines)/gi,
-        /(?:AA|UA|DL|AF|IB|AV|LAN|TAM|CM)/gi
+        /(?:LATAM|Aerolíneas Argentinas|American Airlines|United|Delta|Air France|Iberia|AVIANCA|JetSmart|Flybondi|Copa Airlines|LAN|TAM|Avianca|Iberia|Air France|British Airways|Lufthansa|KLM|Alitalia|Swiss|Austrian)/gi,
+        /(?:AA|UA|DL|AF|IB|AV|LAN|TAM|CM|BA|LH|KL|AZ|LX|OS)/gi
     ];
 
     // Enhanced patterns for routes with more detail
     const routePatterns = [
-        /([A-Z]{3})\s*[-–→]\s*([A-Z]{3})/g, // EZE - MIA
-        /([A-Z]{3})\s*[-–→]\s*([A-Z]{3})\s*[-–→]\s*([A-Z]{3})/g, // EZE - MIA - PUJ
-        /(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York)\s*[-–→]\s*(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York)/gi
+        /([A-Z]{3})\s*[-–→→→]\s*([A-Z]{3})/g, // EZE - MIA
+        /([A-Z]{3})\s*[-–→→→]\s*([A-Z]{3})\s*[-–→→→]\s*([A-Z]{3})/g, // EZE - MIA - PUJ
+        /(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York|London|Paris|Rome|Amsterdam|Frankfurt|São Paulo|Río de Janeiro|Lima|Bogotá|Santiago|México|Toronto|Montreal)\s*[-–→→→]\s*(Buenos Aires|Madrid|Barcelona|Miami|Punta Cana|Cancún|Nueva York|London|Paris|Rome|Amsterdam|Frankfurt|São Paulo|Río de Janeiro|Lima|Bogotá|Santiago|México|Toronto|Montreal)/gi,
+
+        // Airport code patterns with city names
+        /(Ezeiza|Jorge Newbery|Aeroparque|Barajas|El Prat|Miami International|Punta Cana International|Cancún International|John F\. Kennedy|LaGuardia|Newark|Heathrow|Gatwick|Charles de Gaulle|Orly|Fiumicino|Ciampino|Schiphol|Frankfurt|Zurich|Vienna|Guarulhos|Galeão|Jorge Chávez|El Dorado|Arturo Merino Benítez|Benito Juárez|Pearson|Trudeau)/gi
     ];
 
     // Enhanced patterns for dates
@@ -1341,21 +1403,51 @@ function extractHotelInfo(text: string): Array<{ name: string, location: string,
  * Extract total price from PDF text
  */
 function extractTotalPrice(text: string): number {
+    console.log('💰 Searching for total price in text...');
+
+    // Enhanced patterns for total price extraction
     const totalPatterns = [
-        /(?:total|precio total|total price|grand total)\s*:?\s*(?:USD|US\$|\$)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
-        /(?:USD|US\$|\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:total|precio total|total price|grand total)/gi
+        // Spanish patterns
+        /(?:total|precio total|total price|grand total|total general|precio final|monto total|importe total)\s*:?\s*(?:USD|US\$|\$)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
+        /(?:USD|US\$|\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:total|precio total|total price|grand total)/gi,
+
+        // Direct price patterns
+        /\$\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|usd)?/gi,
+        /(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi,
+
+        // Price at end of line or paragraph
+        /(?:precio|price|total|costo|cost)\s*:?\s*\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
+
+        // Currency patterns
+        /(?:USD|US\$|\$)\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/gi
     ];
 
+    let bestMatch = { price: 0, confidence: 0 };
+
     for (const pattern of totalPatterns) {
-        const match = text.match(pattern);
-        if (match) {
+        const matches = [...text.matchAll(pattern)];
+        console.log(`💰 Pattern "${pattern.source}" found ${matches.length} matches`);
+
+        for (const match of matches) {
             const priceStr = match[1] || match[0];
             const price = parseFloat(priceStr.replace(/[^\d.]/g, ''));
-            if (!isNaN(price)) {
-                console.log('💰 Extracted total price:', price);
-                return price;
+
+            if (!isNaN(price) && price > 0 && price < 50000) { // Reasonable price range
+                console.log(`💰 Found price: $${price} from match: "${match[0]}"`);
+
+                // Higher confidence for "total" keywords
+                const confidence = match[0].toLowerCase().includes('total') ? 2 : 1;
+
+                if (confidence > bestMatch.confidence || (confidence === bestMatch.confidence && price > bestMatch.price)) {
+                    bestMatch = { price, confidence };
+                }
             }
         }
+    }
+
+    if (bestMatch.price > 0) {
+        console.log('💰 Final extracted total price:', bestMatch.price, 'confidence:', bestMatch.confidence);
+        return bestMatch.price;
     }
 
     console.log('💰 No total price found');
