@@ -56,7 +56,7 @@ async function getTemplateId(
   }
 
   try {
-    // Fetch agency's custom template IDs
+    // Fetch agency's custom template IDs (with fallback if column doesn't exist)
     const { data: agency, error } = await supabase
       .from('agencies')
       .select('custom_template_ids')
@@ -65,12 +65,18 @@ async function getTemplateId(
 
     if (error) {
       console.warn(`⚠️ [PDF] Error fetching agency templates:`, error.message);
-      console.log(`ℹ️ [PDF] Falling back to default ${templateType} template`);
+
+      // Check if error is due to missing column
+      if (error.message.includes('custom_template_ids') || error.message.includes('column')) {
+        console.log(`ℹ️ [PDF] Custom templates column not available, using default ${templateType} template`);
+      } else {
+        console.log(`ℹ️ [PDF] Database error, falling back to default ${templateType} template`);
+      }
       return defaultTemplateId;
     }
 
     // Check if agency has a custom template for this type
-    const customTemplateId = agency?.custom_template_ids?.[templateType];
+    const customTemplateId = (agency as any)?.custom_template_ids?.[templateType];
 
     if (customTemplateId) {
       console.log(`✅ [PDF] Using custom ${templateType} template for agency ${agencyId}:`, customTemplateId);
@@ -302,28 +308,18 @@ function preparePdfData(flights: FlightData[]) {
     return multiFlightData;
   }
 
-  // For single flight, use flights.html template structure (original behavior)
-  console.log('🎯 USING FLIGHTS.HTML TEMPLATE STRUCTURE - Sending flight data at root level');
+  // For single flight, use flights.html template structure (template expects selected_flights array)
+  console.log('🎯 USING FLIGHTS.HTML TEMPLATE STRUCTURE - Sending selected_flights array');
 
-  const firstFlight = selected_flights[0];
   const singleFlightData = {
-    // Direct flight data for template access
-    airline: firstFlight.airline,
-    price: firstFlight.price,
-    adults: firstFlight.adults,
-    childrens: firstFlight.childrens,
-    departure_date: firstFlight.departure_date,
-    return_date: firstFlight.return_date,
-    luggage: firstFlight.luggage,
-    legs: firstFlight.legs,
-    travel_assistance: firstFlight.travel_assistance,
-    transfers: firstFlight.transfers
+    selected_flights: selected_flights
   };
 
-  console.log('🎯 SENDING SINGLE FLIGHT DATA AT ROOT LEVEL:', {
+  console.log('🎯 SENDING SINGLE FLIGHT DATA AS ARRAY:', {
     template: 'flights.html',
-    legs_count: singleFlightData.legs.length,
-    legs_preview: singleFlightData.legs.map((leg, i) => ({
+    flights_count: singleFlightData.selected_flights.length,
+    legs_count: singleFlightData.selected_flights[0].legs.length,
+    legs_preview: singleFlightData.selected_flights[0].legs.map((leg, i) => ({
       index: i,
       type: leg.flight_type,
       route: `${leg.departure.city_code} → ${leg.arrival.city_code}`
