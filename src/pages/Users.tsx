@@ -59,12 +59,24 @@ const Users = () => {
 
   const { agencies } = useAgencies();
   const { tenants } = useTenants();
+  // Agency filter (for OWNER / SUPERADMIN)
+  const [filterAgency, setFilterAgency] = useState<string>('all');
+
 
   // BUSINESS RULE: Filter OWNER users - only OWNER can see other OWNERs
   const visibleUsers = React.useMemo(() => {
     if (isOwner) return users; // OWNER sees all users
     return users.filter(u => u.role !== 'OWNER'); // Others don't see OWNER users
   }, [users, isOwner]);
+
+  const filteredUsers = React.useMemo(() => {
+    // OWNER/SUPERADMIN can filter by agency
+    if ((isOwner || isSuperAdmin) && filterAgency !== 'all') {
+      return visibleUsers.filter(u => u.agency_id === filterAgency);
+    }
+    // ADMIN sees only their agency via hook; keep visibleUsers
+    return visibleUsers;
+  }, [visibleUsers, isOwner, isSuperAdmin, filterAgency]);
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -210,17 +222,27 @@ const Users = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">User Management</h1>
-            <p className="text-sm md:text-base text-muted-foreground mt-1">
-              Create and manage system users
-            </p>
+            <p className="text-sm md:text-base text-muted-foreground mt-1">Create and manage system users</p>
           </div>
-          <Button
-            onClick={() => setShowCreateDialog(true)}
-            className="bg-gradient-hero shadow-primary"
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            Create User
-          </Button>
+          <div className="flex items-center gap-2">
+            {(isOwner || isSuperAdmin) && agencies.length > 0 && (
+              <Select value={filterAgency} onValueChange={setFilterAgency}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="All agencies" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All agencies</SelectItem>
+                  {agencies.map((agency) => (
+                    <SelectItem key={agency.id} value={agency.id}>{agency.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button onClick={() => setShowCreateDialog(true)} className="bg-gradient-hero shadow-primary">
+              <UserPlus className="h-4 w-4 mr-2" />
+              Create User
+            </Button>
+          </div>
         </div>
 
         {/* Users Table */}
@@ -228,8 +250,8 @@ const Users = () => {
           <CardHeader>
             <CardTitle>Users List</CardTitle>
             <CardDescription>
-              {visibleUsers.length} user{visibleUsers.length !== 1 ? 's' : ''} visible
-              {!isOwner && users.length > visibleUsers.length && (
+              {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''} visible
+              {!isOwner && users.length > filteredUsers.length && (
                 <span className="text-xs text-muted-foreground ml-2">
                   (OWNER users hidden)
                 </span>
@@ -241,7 +263,7 @@ const Users = () => {
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-            ) : visibleUsers.length === 0 ? (
+            ) : filteredUsers.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 No users found
               </div>
@@ -259,7 +281,7 @@ const Users = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {visibleUsers.map((user) => (
+                    {filteredUsers.map((user) => (
                       <TableRow key={user.id}>
                         <TableCell className="font-medium">
                           {user.name || '-'}

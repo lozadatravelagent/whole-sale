@@ -68,14 +68,20 @@ export function useUsers() {
     try {
       console.log('[USERS] Loading users for role:', user.role);
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('users_with_details')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      setUsers((data || []) as UserWithDetails[]);
+      let rows = (data || []) as UserWithDetails[];
+      // Enforce agency scoping for ADMIN on client side (in addition to RLS)
+      if (isAdmin && user.agency_id) {
+        rows = rows.filter(u => u.agency_id === user.agency_id);
+      }
+
+      setUsers(rows);
       console.log('[USERS] Loaded', data?.length || 0, 'users');
     } catch (error) {
       console.error('[USERS] Error loading users:', error);
@@ -96,7 +102,7 @@ export function useUsers() {
     if (!canManageUsers) return;
 
     try {
-      const { data, error } = await supabase.rpc('get_allowed_roles_for_creation');
+      const { data, error } = await (supabase as any).rpc('get_allowed_roles_for_creation');
 
       if (error) throw error;
 
