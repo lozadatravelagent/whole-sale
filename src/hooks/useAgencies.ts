@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { createSection } from '@/lib/supabase-leads';
 import { useAuthUser } from './useAuthUser';
 import type { Agency } from '@/types';
 
@@ -173,6 +174,17 @@ export function useAgencies() {
       });
 
       console.log('[AGENCIES] Agency created successfully:', data);
+
+      // Bootstrap default CRM sections for this new agency
+      try {
+        const defaultSections = ['Nuevos', 'En progreso', 'Cotizado', 'Negociación', 'Ganado', 'Perdido'];
+        for (const name of defaultSections) {
+          await createSection(data.id, name);
+        }
+        console.log('[AGENCIES] Default CRM sections created for agency');
+      } catch (e) {
+        console.warn('[AGENCIES] Could not create default sections for agency:', e);
+      }
 
       // Reload agencies list
       await loadAgencies();

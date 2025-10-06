@@ -182,33 +182,43 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
         role: user.role
       });
 
-      // Filtrar por fechas si se especifican
-      let filteredLeads = leads;
-      if (dateFrom && dateTo) {
-        filteredLeads = leads.filter(lead => {
-          const leadDate = new Date(lead.created_at);
-          return leadDate >= dateFrom && leadDate <= dateTo;
-        });
-      }
+      // Ventana temporal: si se pasa dateFrom/dateTo usarla; de lo contrario, mes actual
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const monthEnd = new Date(monthStart);
+      monthEnd.setMonth(monthEnd.getMonth() + 1);
+      monthEnd.setMilliseconds(-1);
+
+      const periodStart = dateFrom || monthStart;
+      const periodEnd = dateTo || monthEnd;
+
+      // Filtrar leads por ventana seleccionada
+      const filteredLeads = leads.filter(lead => {
+        const leadDate = new Date(lead.created_at);
+        return leadDate >= periodStart && leadDate <= periodEnd;
+      });
 
       // === MÉTRICAS BÁSICAS ===
       const totalLeads = filteredLeads.length;
       const totalConversations = conversations.length;
-      
-      // Calcular ingresos totales sumando presupuestos de la sección "Ganados"
-      const ganadosSection = sections.find(section => section.name === 'Ganados');
-      const totalRevenue = ganadosSection 
-        ? filteredLeads
-            .filter(lead => lead.section_id === ganadosSection.id)
-            .reduce((sum, lead) => sum + (lead.budget || 0), 0)
-        : 0;
-        
-      const averageBudget = filteredLeads.length > 0 
-        ? filteredLeads.reduce((sum, lead) => sum + (lead.budget || 0), 0) / filteredLeads.length 
+
+      // Calcular ingresos del periodo: status === 'won' (fallback por sección nombre 'Ganado/Ganados')
+      const sectionIdToName = new Map(sections.map(s => [s.id, s.name] as [string, string]));
+      const isWonByFallbackSection = (lead: any) => {
+        const secName = sectionIdToName.get(lead.section_id);
+        return secName === 'Ganado' || secName === 'Ganados';
+      };
+      const totalRevenue = filteredLeads
+        .filter(lead => lead.status === 'won' || isWonByFallbackSection(lead))
+        .reduce((sum, lead) => sum + (lead.budget || 0), 0);
+
+      const averageBudget = filteredLeads.length > 0
+        ? filteredLeads.reduce((sum, lead) => sum + (lead.budget || 0), 0) / filteredLeads.length
         : 0;
 
       // === CONVERSIÓN ===
-      const leadsWon = filteredLeads.filter(lead => lead.status === 'won').length;
+      const leadsWon = filteredLeads.filter(lead => lead.status === 'won' || isWonByFallbackSection(lead)).length;
       const leadsLost = filteredLeads.filter(lead => lead.status === 'lost').length;
       const conversionRate = totalLeads > 0 ? (leadsWon / totalLeads) * 100 : 0;
 
@@ -236,14 +246,29 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
         lead.due_date <= todayStr
       ).length;
 
-      // === POR SECCIÓN ===
+      // === POR SECCIÓN (normalizado para evitar duplicados singular/plural) ===
+      const normalizeSectionName = (name: string): string => {
+        const key = (name || '').trim().toLowerCase();
+        if (key === 'nuevo' || key === 'nuevos') return 'Nuevos';
+        if (key === 'en progreso') return 'En progreso';
+        if (key === 'cotizado' || key === 'cotizados') return 'Cotizados';
+        if (key === 'negociacion' || key === 'negociación' || key === 'negociando') return 'Negociación';
+        if (key === 'ganado' || key === 'ganados') return 'Ganados';
+        if (key === 'perdido' || key === 'perdidos') return 'Perdidos';
+        // default: Title Case original
+        return name;
+      };
+
       const leadsBySection: { [key: string]: number } = {};
       const budgetBySection: { [key: string]: number } = {};
-      
+
       sections.forEach(section => {
+        const canonical = normalizeSectionName(section.name);
         const sectionLeads = filteredLeads.filter(lead => lead.section_id === section.id);
-        leadsBySection[section.name] = sectionLeads.length;
-        budgetBySection[section.name] = sectionLeads.reduce((sum, lead) => sum + (lead.budget || 0), 0);
+        const count = sectionLeads.length;
+        const budget = sectionLeads.reduce((sum, lead) => sum + (lead.budget || 0), 0);
+        leadsBySection[canonical] = (leadsBySection[canonical] || 0) + count;
+        budgetBySection[canonical] = (budgetBySection[canonical] || 0) + budget;
       });
 
       // === DESTINOS POPULARES ===
@@ -270,7 +295,7 @@ export function useReports(dateFrom?: Date, dateTo?: Date) {
 
       // === MÉTRICAS POR CANAL ===
       const channelStats: { [key: string]: { conversations: number; leads: number } } = {};
-      
+
       conversations.forEach(conv => {
         const channel = conv.channel === 'wa' ? 'WhatsApp' : 'Web';
         if (!channelStats[channel]) {

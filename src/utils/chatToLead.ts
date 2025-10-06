@@ -7,9 +7,50 @@ import type { FlightData, HotelData } from '@/types';
 type MessageRow = Database['public']['Tables']['messages']['Row'];
 type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 
-// Dummy data para el demo - en producción vendrían del usuario autenticado
-const DUMMY_TENANT_ID = '00000000-0000-0000-0000-000000000001';
-const DUMMY_AGENCY_ID = '00000000-0000-0000-0000-000000000002';
+// IDs are resolved dynamically from conversation/user context. Do not hardcode.
+
+async function resolveContextIds(conversation: ConversationRow): Promise<{ tenantId: string; agencyId: string }> {
+  // Prefer IDs present in the conversation row
+  const conversationTenantId = (conversation as any)?.tenant_id as string | null | undefined;
+  const conversationAgencyId = (conversation as any)?.agency_id as string | null | undefined;
+
+  let tenantId = conversationTenantId || '';
+  let agencyId = conversationAgencyId || '';
+
+  // If missing, fallback to authenticated user's profile
+  if (!tenantId || !agencyId) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData?.session?.user?.id;
+    if (userId) {
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('tenant_id, agency_id')
+        .eq('id', userId)
+        .single();
+      tenantId = tenantId || (userRow?.tenant_id as string | undefined) || '';
+      agencyId = agencyId || (userRow?.agency_id as string | undefined) || '';
+    }
+  }
+
+  // If tenant still missing but we have agency, fetch agency to get tenant
+  if (!tenantId && agencyId) {
+    const { data: agencyRow } = await supabase
+      .from('agencies')
+      .select('tenant_id')
+      .eq('id', agencyId)
+      .single();
+    tenantId = (agencyRow?.tenant_id as string | undefined) || tenantId;
+  }
+
+  if (!agencyId) {
+    throw new Error('No se pudo resolver agency_id para crear el lead');
+  }
+  if (!tenantId) {
+    throw new Error('No se pudo resolver tenant_id para crear el lead');
+  }
+
+  return { tenantId, agencyId };
+}
 
 export interface ExtractedTravelInfo {
   destination?: string;
@@ -389,7 +430,8 @@ export async function createLeadFromChat(
     console.log('Extracted travel info:', travelInfo);
 
     // Obtener la primera sección (Nuevos) para asignar el lead
-    const sections = await getSections(DUMMY_AGENCY_ID);
+    const { agencyId } = await resolveContextIds(conversation);
+    const sections = await getSections(agencyId);
     const firstSectionId = sections.length > 0 ? sections[0].id : undefined;
 
     console.log('Target section ID:', firstSectionId);
@@ -428,8 +470,8 @@ export async function createLeadFromChat(
         adults: safeInfo.adults,
         children: safeInfo.children
       },
-      tenant_id: DUMMY_TENANT_ID,
-      agency_id: DUMMY_AGENCY_ID,
+      tenant_id: (await resolveContextIds(conversation)).tenantId,
+      agency_id: (await resolveContextIds(conversation)).agencyId,
       status: 'new' as const,
       section_id: firstSectionId,
       budget: safeInfo.budget,
@@ -763,7 +805,8 @@ export async function createComprehensiveLeadFromChat(
     });
 
     // Obtener la primera sección (Nuevos) para asignar el lead
-    const sections = await getSections(DUMMY_AGENCY_ID);
+    const { tenantId, agencyId } = await resolveContextIds(conversation);
+    const sections = await getSections(agencyId);
     const firstSectionId = sections.length > 0 ? sections[0].id : undefined;
 
     // Generar nombre descriptivo del contacto
@@ -876,8 +919,8 @@ export async function createComprehensiveLeadFromChat(
         adults: safeInfo.adults,
         children: safeInfo.children
       },
-      tenant_id: DUMMY_TENANT_ID,
-      agency_id: DUMMY_AGENCY_ID,
+      tenant_id: tenantId,
+      agency_id: agencyId,
       status: 'new' as const,
       section_id: firstSectionId,
       budget: safeInfo.budget,

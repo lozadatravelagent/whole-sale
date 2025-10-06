@@ -97,7 +97,7 @@ export async function getLeads(agencyId?: string): Promise<Lead[]> {
 // Create a new lead  
 export async function createLead(input: CreateLeadInput): Promise<Lead | null> {
   try {
-    // Convert empty strings to null for UUID fields and dates
+    // Convert empty strings to null for UUID fields and dates. Keep JSON fields as objects/arrays (no manual stringify)
     const processedInput = {
       ...input,
       due_date: input.due_date && input.due_date.trim() !== '' ? input.due_date : null,
@@ -114,18 +114,30 @@ export async function createLead(input: CreateLeadInput): Promise<Lead | null> {
           checkin: input.trip.dates.checkin && input.trip.dates.checkin.trim() !== '' ? input.trip.dates.checkin : null,
           checkout: input.trip.dates.checkout && input.trip.dates.checkout.trim() !== '' ? input.trip.dates.checkout : null,
         }
-      }
+      },
+      // Ensure JSONB fields are proper JSON values
+      checklist: Array.isArray(input.checklist) ? input.checklist : [],
+      attachments: Array.isArray(input.attachments) ? input.attachments : [],
+      // Always send an array for pdf_urls
+      pdf_urls: Array.isArray((input as any).pdf_urls) ? (input as any).pdf_urls : []
     };
+
+    const insertData = {
+      tenant_id: processedInput.tenant_id,
+      agency_id: processedInput.agency_id,
+      contact: processedInput.contact,
+      trip: processedInput.trip,
+      status: (processedInput.status || 'new') as LeadStatus,
+      budget: processedInput.budget ?? 0,
+      description: processedInput.description ?? '',
+      conversation_id: (input as any).conversation_id || null,
+      section_id: processedInput.section_id || null,
+      // Leave checklist, attachments, pdf_urls, section_id, due_date to defaults
+    } as any;
 
     const { data, error } = await supabase
       .from('leads')
-      .insert({
-        ...processedInput,
-        status: processedInput.status || 'new',
-        pdf_urls: [],
-        checklist: processedInput.checklist ? JSON.stringify(processedInput.checklist) : JSON.stringify([]),
-        attachments: processedInput.attachments ? JSON.stringify(processedInput.attachments) : JSON.stringify([]),
-      })
+      .insert(insertData)
       .select()
       .single();
 
@@ -152,9 +164,32 @@ export async function createLead(input: CreateLeadInput): Promise<Lead | null> {
 export async function updateLead(input: UpdateLeadInput): Promise<Lead | null> {
   try {
     const { id, checklist, attachments, ...otherData } = input;
-    
+
     const updateData: any = { ...otherData };
-    
+
+    // Normalize UUID fields: convert empty strings to null
+    const normalizeUuid = (v: any) => (typeof v === 'string' && v.trim() === '' ? null : v);
+    if ('section_id' in updateData) updateData.section_id = normalizeUuid(updateData.section_id);
+    if ('assigned_user_id' in updateData) updateData.assigned_user_id = normalizeUuid(updateData.assigned_user_id);
+    if ('seller_id' in updateData) {
+      // Remove deprecated field if present
+      delete updateData.seller_id;
+    }
+    if ('due_date' in updateData) {
+      updateData.due_date = updateData.due_date && (updateData.due_date as string).trim() !== ''
+        ? updateData.due_date
+        : null;
+    }
+    if ('trip' in updateData && updateData.trip?.dates) {
+      updateData.trip = {
+        ...updateData.trip,
+        dates: {
+          checkin: updateData.trip.dates.checkin && (updateData.trip.dates.checkin as string).trim() !== '' ? updateData.trip.dates.checkin : null,
+          checkout: updateData.trip.dates.checkout && (updateData.trip.dates.checkout as string).trim() !== '' ? updateData.trip.dates.checkout : null,
+        }
+      };
+    }
+
     // Convert complex types to JSON for database storage
     if (checklist !== undefined) {
       updateData.checklist = JSON.stringify(checklist);
@@ -162,7 +197,7 @@ export async function updateLead(input: UpdateLeadInput): Promise<Lead | null> {
     if (attachments !== undefined) {
       updateData.attachments = JSON.stringify(attachments);
     }
-    
+
     const { data, error } = await supabase
       .from('leads')
       .update(updateData)
@@ -285,8 +320,8 @@ export async function createSection(agencyId: string, name: string, color?: stri
       .order('position', { ascending: false })
       .limit(1);
 
-    const nextPosition = existingSections && existingSections.length > 0 
-      ? existingSections[0].position + 1 
+    const nextPosition = existingSections && existingSections.length > 0
+      ? existingSections[0].position + 1
       : 1;
 
     const { data, error } = await supabase

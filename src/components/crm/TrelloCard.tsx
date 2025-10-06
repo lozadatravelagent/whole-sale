@@ -7,7 +7,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Lead } from '@/types';
-import { Calendar, MapPin, Users, DollarSign, Phone, Mail } from 'lucide-react';
+import { Calendar, MapPin, Users, DollarSign, Phone, Mail, Building } from 'lucide-react';
+import { useAgencies } from '@/hooks/useAgencies';
 
 interface TrelloCardProps {
     lead: Lead;
@@ -16,6 +17,7 @@ interface TrelloCardProps {
 }
 
 export function TrelloCard({ lead, onClick, isDragging }: TrelloCardProps) {
+    const { agencies } = useAgencies();
     const {
         attributes,
         listeners,
@@ -163,6 +165,15 @@ export function TrelloCard({ lead, onClick, isDragging }: TrelloCardProps) {
             onClick={() => onClick(lead)}
         >
             <CardContent className="p-3">
+                {/* Agencia */}
+                {lead.agency_id && (
+                    <div className="flex items-center gap-1 mb-1">
+                        <Building className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground truncate max-w-[220px]">
+                            {agencies.find(a => a.id === lead.agency_id)?.name || lead.agency_id}
+                        </span>
+                    </div>
+                )}
                 {/* Título: Vuelo/Hotel/Paquete (Origen, Destino, precio) */}
                 <h3 className="font-semibold text-sm mb-2 text-foreground">
                     {getTripTitle()}

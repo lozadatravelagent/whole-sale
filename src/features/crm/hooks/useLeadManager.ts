@@ -5,6 +5,7 @@ import type { Lead, LeadStatus, Section, Seller } from '@/types';
 import type { LeadFormData, LeadFilters, LeadSortOptions } from '../types/lead';
 import { LeadService } from '../services/leadService';
 import { getLeads, getSellers, getSections } from '@/lib/supabase-leads';
+import { useAuthUser } from '@/hooks/useAuthUser';
 
 export function useLeadManager() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -20,6 +21,10 @@ export function useLeadManager() {
   });
 
   const { toast } = useToast();
+  const { user, isOwner, isSuperAdmin } = useAuthUser();
+
+  const DEFAULT_SECTION_NAMES = ['Nuevos', 'En progreso', 'Cotizado', 'Negociación', 'Ganado', 'Perdido'];
+  const isUuid = (v: string) => /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i.test(v);
 
   // Fetch all leads
   const fetchLeads = useCallback(async () => {
@@ -138,6 +143,15 @@ export function useLeadManager() {
   const createNewLead = useCallback(async (data: LeadFormData): Promise<boolean> => {
     setActionLoading(true);
     try {
+      // If section_id is a default name (e.g., from 'all' board), resolve to real section_id for the target agency
+      if (data.section_id && !isUuid(data.section_id) && DEFAULT_SECTION_NAMES.includes(data.section_id)) {
+        if (!data.agency_id) {
+          throw new Error('agency_id requerido para crear el lead con sección');
+        }
+        const agencySections = await getSections(data.agency_id);
+        const target = agencySections.find(s => s.name === data.section_id);
+        data.section_id = target ? target.id : undefined as any;
+      }
       const newLead = await LeadService.createLead(data);
       if (newLead) {
         await fetchLeads();
@@ -167,6 +181,19 @@ export function useLeadManager() {
   ): Promise<boolean> => {
     setActionLoading(true);
     try {
+      // If updating section_id from 'all' board (name-based), map to real section id for the lead's agency
+      if (updates.section_id && !isUuid(updates.section_id) && DEFAULT_SECTION_NAMES.includes(updates.section_id)) {
+        const lead = leads.find(l => l.id === id);
+        const agencyId = updates.agency_id || lead?.agency_id;
+        if (agencyId) {
+          const agencySections = await getSections(agencyId);
+          const target = agencySections.find(s => s.name === updates.section_id);
+          updates.section_id = target ? target.id : undefined;
+        } else {
+          // If no agency context, drop section update to avoid invalid uuid
+          delete (updates as any).section_id;
+        }
+      }
       const updated = await LeadService.updateLead(id, updates);
       if (updated) {
         await fetchLeads();
@@ -221,7 +248,16 @@ export function useLeadManager() {
     newSectionId: string
   ): Promise<boolean> => {
     try {
-      const moved = await LeadService.moveLeadToSection(leadId, newSectionId);
+      let targetSectionId = newSectionId;
+      if (!isUuid(newSectionId) && DEFAULT_SECTION_NAMES.includes(newSectionId)) {
+        const lead = leads.find(l => l.id === leadId);
+        if (lead?.agency_id) {
+          const agencySections = await getSections(lead.agency_id);
+          const target = agencySections.find(s => s.name === newSectionId);
+          if (target) targetSectionId = target.id;
+        }
+      }
+      const moved = await LeadService.moveLeadToSection(leadId, targetSectionId);
       if (moved) {
         await fetchLeads();
         return true;

@@ -51,6 +51,11 @@ export default function CRM() {
   const [filterSeller, setFilterSeller] = useState<string>('all');
   const [filterAgency, setFilterAgency] = useState<string>('all');
 
+  const { agencies, loading: agenciesLoading } = useAgencies();
+
+  const { toast } = useToast();
+  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
+
   const {
     sections,
     sellers,
@@ -64,12 +69,7 @@ export default function CRM() {
     addSection,
     removeSection,
     leads
-  } = useLeads();
-
-  const { agencies, loading: agenciesLoading } = useAgencies();
-
-  const { toast } = useToast();
-  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
+  } = useLeads((isOwner || isSuperAdmin) ? (filterAgency as any) : undefined);
 
   // Filtrar leads según rol y filtro seleccionado
   const getFilteredLeads = (sectionLeads: Lead[]) => {
@@ -177,8 +177,8 @@ export default function CRM() {
       } else {
         await addLead({
           ...data,
-          tenant_id: DUMMY_TENANT_ID,
-          agency_id: DUMMY_AGENCY_ID
+          tenant_id: user?.tenant_id || DUMMY_TENANT_ID,
+          agency_id: (isOwner || isSuperAdmin) && filterAgency !== 'all' ? filterAgency : (user?.agency_id || DUMMY_AGENCY_ID)
         });
         toast({
           title: "Nueva tarjeta creada",
@@ -197,7 +197,8 @@ export default function CRM() {
   };
 
   const handleNewSection = async () => {
-    await addSection(DUMMY_AGENCY_ID, `Nueva Lista ${sections.length + 1}`);
+    const targetAgencyId = (isOwner || isSuperAdmin) && filterAgency !== 'all' ? filterAgency : (user?.agency_id || DUMMY_AGENCY_ID);
+    await addSection(targetAgencyId, `Nueva Lista ${sections.length + 1}`);
   };
 
   const handleDeleteSection = (section: Section) => {
