@@ -62,10 +62,15 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
 
   const handleLogout = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        throw error;
+      // Check session first; avoid global scope signOut from client
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate('/login', { replace: true });
+        return;
       }
+
+      const { error } = await supabase.auth.signOut({ scope: 'local' } as any);
+      if (error) throw error;
 
       toast({
         title: "Logout exitoso",
