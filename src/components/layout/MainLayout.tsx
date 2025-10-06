@@ -69,7 +69,8 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
         return;
       }
 
-      const { error } = await supabase.auth.signOut({ scope: 'local' } as any);
+      // Prefer default signOut; some backends reject scoped signOut from browsers
+      const { error } = await supabase.auth.signOut();
       if (error) throw error;
 
       toast({
@@ -78,11 +79,18 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
       });
 
       navigate('/login', { replace: true });
-    } catch (error) {
+    } catch (error: any) {
+      // If backend returns 401/403 or AuthSessionMissingError, proceed to client-side redirect
+      const msg = (error?.message || '').toString();
+      const isAuthMissing = msg.includes('Auth session missing') || msg.includes('401') || msg.includes('403');
+      if (isAuthMissing) {
+        navigate('/login', { replace: true });
+        return;
+      }
       console.error('Error during logout:', error);
       toast({
         title: "Error al cerrar sesión",
-        description: (error as Error)?.message || "Hubo un problema cerrando la sesión.",
+        description: msg || "Hubo un problema cerrando la sesión.",
         variant: "destructive",
       });
     }
