@@ -59,7 +59,7 @@ const leadSchema = z.object({
   status: z.enum(['new', 'quoted', 'negotiating', 'won', 'lost']).optional(),
   section_id: z.string().optional(),
   assigned_user_id: z.string().optional(),
-  budget: z.number().optional(),
+  budget: z.union([z.number(), z.string().transform(val => val === '' ? undefined : Number(val))]).optional(),
   description: z.string().optional(),
   due_date: z.string().optional()
 });
@@ -200,7 +200,17 @@ export function LeadDialog({
     if (!data.section_id && sections.length > 0) {
       data.section_id = sections[0].id;
     }
-    onSave({ ...data, checklist });
+    
+    // Convert budget string to number if it's a valid number
+    const processedData = {
+      ...data,
+      budget: typeof data.budget === 'string' && data.budget.trim() !== '' 
+        ? parseFloat(data.budget) || undefined 
+        : data.budget,
+      checklist 
+    };
+    
+    onSave(processedData);
   };
 
   const completedTasks = checklist.filter(item => item.completed).length;
@@ -359,10 +369,9 @@ export function LeadDialog({
                   Presupuesto
                 </Label>
                 <Input
-                  type="number"
-                  min="0"
-                  {...register('budget', { valueAsNumber: true })}
-                  placeholder="Monto en USD"
+                  type="text"
+                  {...register('budget')}
+                  placeholder="Monto en USD (ej: 1000, 1500.50)"
                 />
               </div>
 
