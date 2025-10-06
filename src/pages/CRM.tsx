@@ -162,7 +162,7 @@ export default function CRM() {
     console.log('CRM handleSaveLead called with data:', data);
     console.log('CRM isEditing:', isEditing);
     console.log('CRM selectedLead:', selectedLead);
-    
+
     try {
       // Use selected section for new lead or first section as fallback
       if (!data.section_id) {

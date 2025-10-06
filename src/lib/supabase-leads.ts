@@ -190,12 +190,12 @@ export async function updateLead(input: UpdateLeadInput): Promise<Lead | null> {
       };
     }
 
-    // Convert complex types to JSON for database storage
+    // Include checklist and attachments in updateData (they're already in the correct format for JSONB)
     if (checklist !== undefined) {
-      updateData.checklist = JSON.stringify(checklist);
+      updateData.checklist = checklist;
     }
     if (attachments !== undefined) {
-      updateData.attachments = JSON.stringify(attachments);
+      updateData.attachments = attachments;
     }
 
     const { data, error } = await supabase

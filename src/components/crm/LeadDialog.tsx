@@ -199,7 +199,7 @@ export function LeadDialog({
   const onSubmit = async (data: LeadFormData) => {
     console.log('LeadDialog onSubmit called, isSubmitting:', isSubmitting);
     if (isSubmitting) return; // Prevent double submission
-    
+
     setIsSubmitting(true);
     console.log('LeadDialog starting submission...');
     try {
@@ -207,7 +207,7 @@ export function LeadDialog({
       if (!data.section_id && sections.length > 0) {
         data.section_id = sections[0].id;
       }
-      
+
       // Convert budget string to number if it's a valid number
       let processedBudget: number | undefined = undefined;
       if (data.budget !== undefined && data.budget !== null) {
@@ -223,13 +223,13 @@ export function LeadDialog({
           processedBudget = data.budget;
         }
       }
-      
+
       const processedData = {
         ...data,
         budget: processedBudget,
-        checklist 
+        checklist
       };
-      
+
       console.log('LeadDialog calling onSave with:', processedData);
       await onSave(processedData);
       console.log('LeadDialog onSave completed successfully');
@@ -506,6 +506,19 @@ export function LeadDialog({
                   type="tel"
                   {...register('contact.phone')}
                   placeholder="Número de WhatsApp"
+                />
+              </div>
+
+              {/* Email */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  Email
+                </Label>
+                <Input
+                  type="email"
+                  {...register('contact.email')}
+                  placeholder="Correo electrónico"
                 />
               </div>
 
