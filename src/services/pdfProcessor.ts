@@ -643,8 +643,8 @@ export async function generateModifiedPdf(
         console.log('🔄 Generating modified PDF with new price:', newPrice);
         console.log('🎯 PDF source:', analysis.content?.extractedFromPdfMonkey ? 'PdfMonkey Template' : 'External PDF');
 
-        // Import the PDF generation service
-        const { generateCombinedTravelPdf } = await import('./pdfMonkey');
+        // Import the PDF generation services
+        const { generateCombinedTravelPdf, generateFlightPdf } = await import('./pdfMonkey');
 
         if (!analysis.content) {
             throw new Error('No content available from PDF analysis');
@@ -784,14 +784,25 @@ export async function generateModifiedPdf(
             targetTotal: newPrice
         });
 
-        // Generate the modified PDF using our existing PdfMonkey service
+        // Generate the modified PDF using the appropriate service based on content
         console.log('📄 Generating PDF with:', {
             flights: adjustedFlights.length,
             hotels: adjustedHotels.length,
             totalPrice: newPrice
         });
 
-        const pdfResult = await generateCombinedTravelPdf(adjustedFlights, adjustedHotels);
+        let pdfResult;
+
+        // Use the appropriate PDF generation service based on content type
+        if (adjustedHotels.length > 0) {
+            // Combined PDF (flights + hotels)
+            console.log('📄 Using combined PDF generation (flights + hotels)');
+            pdfResult = await generateCombinedTravelPdf(adjustedFlights, adjustedHotels);
+        } else {
+            // Flights-only PDF
+            console.log('📄 Using flights-only PDF generation');
+            pdfResult = await generateFlightPdf(adjustedFlights);
+        }
 
         if (pdfResult.success && pdfResult.document_url) {
             console.log('✅ Modified PDF generated successfully:', pdfResult.document_url);
