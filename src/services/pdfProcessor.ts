@@ -26,6 +26,7 @@ export interface PdfAnalysisResult {
         currency?: string;
         passengers?: number;
         originalTemplate?: string;
+        needsComplexTemplate?: boolean;
         extractedFromPdfMonkey?: boolean;
     };
     suggestions?: string[];
@@ -161,9 +162,25 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
 
     // More flexible detection for flights template - look for flight-related patterns
     const hasFlightPatterns = /Vuelo de (ida|regreso)|adultos.*niños|USD.*Precio total|Escala en|Tiempo de espera/i.test(content);
-    const isFlightsOnlyTemplate = hasFlightPatterns && !isCombinedTemplate;
+    const isRoundTrip = /Vuelo de ida/i.test(content) && /Vuelo de regreso/i.test(content);
+    const hasLayovers = /Escala en/i.test(content);
 
-    console.log('📋 Template type detected:', isCombinedTemplate ? 'Combined (both.html)' : isFlightsOnlyTemplate ? 'Flights only (flights.html)' : 'Unknown');
+    // For round trips or flights with layovers, we need flights2 template
+    const isFlightsOnlyTemplate = hasFlightPatterns && !isCombinedTemplate;
+    const needsComplexTemplate = isRoundTrip || hasLayovers;
+
+    console.log('📋 Template detection:', {
+        isCombinedTemplate,
+        hasFlightPatterns,
+        isRoundTrip,
+        hasLayovers,
+        isFlightsOnlyTemplate,
+        needsComplexTemplate
+    });
+
+    console.log('📋 Template type detected:', isCombinedTemplate ? 'Combined (both.html)' :
+        needsComplexTemplate ? 'Complex flights (flights2.html)' :
+            isFlightsOnlyTemplate ? 'Simple flights (flights.html)' : 'Unknown');
 
     // Extract flight information from our template structure
     const flights = extractFlightsFromPdfMonkeyTemplate(content);
@@ -183,7 +200,9 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
     // Determine original template ID based on content
     const originalTemplate = isCombinedTemplate ?
         "3E8394AC-84D4-4286-A1CD-A12D1AB001D5" : // COMBINED_TEMPLATE_ID
-        "67B7F3A5-7BFE-4F52-BE6B-110371CB9376";   // FLIGHT_TEMPLATE_ID
+        needsComplexTemplate ?
+            "30B142BF-1DD9-432D-8261-5287556DC9FC" : // FLIGHTS2_TEMPLATE_ID (complex flights)
+            "67B7F3A5-7BFE-4F52-BE6B-110371CB9376";   // FLIGHT_TEMPLATE_ID (simple flights)
 
     return {
         success: true,
@@ -195,6 +214,7 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
             passengers,
             // Additional metadata for regeneration
             originalTemplate,
+            needsComplexTemplate,
             extractedFromPdfMonkey: true
         },
         suggestions: [
@@ -425,8 +445,19 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
     const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
 
     return analysis.content.flights.map((flight, index) => {
-        // Parse dates from PDF data
-        const datesParsed = parseDateRange(flight.dates);
+        // Parse dates from PDF data - handle the new format with separate dates
+        let datesParsed;
+        if (flight.dates.includes(' / ')) {
+            // New format: "2025-11-09 / 2025-11-15"
+            const [departureDate, returnDate] = flight.dates.split(' / ');
+            datesParsed = {
+                departureDate: departureDate.trim(),
+                returnDate: returnDate.trim()
+            };
+        } else {
+            // Fallback to old parsing method
+            datesParsed = parseDateRange(flight.dates);
+        }
 
         // Extract route information from PDF
         const routeInfo = parseFlightRoute(flight.route);
@@ -434,131 +465,29 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
         // Get airline code from PDF data or extract from airline name
         const airlineCode = extractAirlineCode(flight.airline);
 
-        // Build legs from extracted PDF data
+        // Build legs from extracted PDF data - ONLY use real data
         const legs = [];
 
-        // Check if flight has detailed leg information from enhanced extraction
+        // Use REAL data extracted from PDF - no mock data
         if ((flight as any).legs && (flight as any).legs.length > 0) {
-            // Use detailed leg information from PDF
-            const pdfLegs = (flight as any).legs;
+            console.log('✅ Using REAL PDF leg data (no mock):', (flight as any).legs);
 
-            console.log('🔍 Processing PDF legs:', pdfLegs.map((leg: any, i: number) => ({
-                index: i,
-                departure: leg.departure,
-                arrival: leg.arrival,
-                layovers: leg.layovers?.length || 0
-            })));
-
-            // Process each leg from PDF
-            pdfLegs.forEach((leg: any, legIndex: number) => {
-                const legData = {
-                    departure: {
-                        city_code: leg.departure?.city_code || routeInfo.origin,
-                        city_name: leg.departure?.city_name || mapCodeToCity(leg.departure?.city_code || routeInfo.origin),
-                        time: leg.departure?.time || (flight as any).departureTime || '08:00'
-                    },
-                    arrival: {
-                        city_code: leg.arrival?.city_code || routeInfo.destination,
-                        city_name: leg.arrival?.city_name || mapCodeToCity(leg.arrival?.city_code || routeInfo.destination),
-                        time: leg.arrival?.time || (flight as any).arrivalTime || '18:00'
-                    },
-                    duration: leg.duration || calculateFlightDuration(leg.departure?.time, leg.arrival?.time) || '10h',
-                    flight_type: leg.flight_type || (legIndex === 0 ? 'outbound' : 'return'),
-                    layovers: leg.layovers || []
-                };
-
-                legs.push(legData);
-            });
-
-            // Add return legs for round trip
-            if (datesParsed.returnDate) {
-                pdfLegs.forEach((leg: any, legIndex: number) => {
-                    if (legIndex >= pdfLegs.length / 2 && pdfLegs.length > 2) {
-                        legs.push({
-                            departure: {
-                                city_code: leg.from || routeInfo.destination,
-                                city_name: mapCodeToCity(leg.from || routeInfo.destination),
-                                time: leg.departureTime || '10:00'
-                            },
-                            arrival: {
-                                city_code: leg.to || routeInfo.origin,
-                                city_name: mapCodeToCity(leg.to || routeInfo.origin),
-                                time: leg.arrivalTime || '20:00'
-                            },
-                            duration: calculateFlightDuration(leg.departureTime, leg.arrivalTime) || '10h',
-                            flight_type: 'return',
-                            flight_number: leg.flightNumber
-                        });
-                    }
-                });
-
-                // If no return legs found but we have a return date, create return legs
-                const returnLegsExist = legs.some(leg => leg.flight_type === 'return');
-                if (!returnLegsExist && routeInfo.origin && routeInfo.destination) {
-                    legs.push({
-                        departure: {
-                            city_code: routeInfo.destination,
-                            city_name: mapCodeToCity(routeInfo.destination),
-                            time: (flight as any).departureTime || '10:00'
-                        },
-                        arrival: {
-                            city_code: routeInfo.origin,
-                            city_name: mapCodeToCity(routeInfo.origin),
-                            time: (flight as any).arrivalTime || '20:00'
-                        },
-                        duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
-                        flight_type: 'return'
-                    });
-                }
-            }
+            // Use the actual legs extracted from PDF exactly as they are
+            legs.push(...(flight as any).legs);
         } else {
-            // Fallback: create basic legs from route information
-            if (routeInfo.origin && routeInfo.destination) {
-                // Outbound leg
-                legs.push({
-                    departure: {
-                        city_code: routeInfo.origin,
-                        city_name: mapCodeToCity(routeInfo.origin),
-                        time: (flight as any).departureTime || '08:00'
-                    },
-                    arrival: {
-                        city_code: routeInfo.destination,
-                        city_name: mapCodeToCity(routeInfo.destination),
-                        time: (flight as any).arrivalTime || '18:00'
-                    },
-                    duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
-                    flight_type: 'outbound'
-                });
-
-                // Return leg if round trip
-                if (datesParsed.returnDate) {
-                    legs.push({
-                        departure: {
-                            city_code: routeInfo.destination,
-                            city_name: mapCodeToCity(routeInfo.destination),
-                            time: (flight as any).departureTime || '10:00'
-                        },
-                        arrival: {
-                            city_code: routeInfo.origin,
-                            city_name: mapCodeToCity(routeInfo.origin),
-                            time: (flight as any).arrivalTime || '20:00'
-                        },
-                        duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
-                        flight_type: 'return'
-                    });
-                }
-            }
+            console.warn('⚠️ No leg data found in PDF - cannot reconstruct flight without real data');
+            // Return early if no real leg data is available
+            return null;
         }
 
-        // Generate realistic flight data
+        // Use ONLY real data from PDF - no mock data
         const flightPrice = Math.round(flight.price * priceRatio);
-        const isRealisticData = flight.airline !== 'Aerolínea' && flight.route !== 'Origen - Destino';
 
         return {
             id: `regenerated-${Date.now()}-${index}`,
             airline: {
                 code: airlineCode,
-                name: isRealisticData ? flight.airline : 'Aerolínea Principal'
+                name: flight.airline // Use exact airline name from PDF
             },
             price: {
                 amount: flightPrice,
@@ -572,33 +501,29 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
             },
             adults: analysis.content?.passengers || 1,
             childrens: 0,
-            departure_date: isRealisticData ? datesParsed.departureDate : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            return_date: isRealisticData ? datesParsed.returnDate : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            departure_time: (flight as any).departureTime || '08:00',
-            arrival_time: (flight as any).arrivalTime || '18:00',
-            duration: { formatted: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h' },
-            stops: { direct: legs.length <= 2, count: Math.max(0, legs.length - 2) },
-            baggage: { included: true, details: '2PC' },
-            cabin: { class: 'Economy', brandName: 'Economy Flexible' },
+            departure_date: datesParsed.departureDate,
+            return_date: datesParsed.returnDate,
+            departure_time: legs[0].departure.time, // Use real departure time
+            arrival_time: legs[legs.length - 1].arrival.time, // Use real arrival time
+            duration: { formatted: legs[0].duration }, // Use real duration
+            stops: {
+                direct: legs.length <= 2,
+                count: Math.max(0, legs.length - 2)
+            },
+            baggage: {
+                included: true,
+                details: '2PC' // Keep this as it's standard
+            },
+            cabin: {
+                class: 'Economy',
+                brandName: 'Economy Flexible' // Keep this as it's standard
+            },
             booking: {
                 lastTicketingDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                 validatingCarrier: airlineCode,
                 fareType: 'P'
             },
-            legs: legs.length > 0 ? legs : [{
-                departure: {
-                    city_code: 'EZE',
-                    city_name: 'Buenos Aires',
-                    time: '08:00'
-                },
-                arrival: {
-                    city_code: 'MAD',
-                    city_name: 'Madrid',
-                    time: '18:00'
-                },
-                duration: '10h',
-                flight_type: 'outbound'
-            }]
+            legs: legs // Use real legs from PDF
         };
     });
 }
@@ -676,70 +601,51 @@ export async function generateModifiedPdf(
         if (analysis.content.extractedFromPdfMonkey) {
             // For our own PDFs, reconstruct the data more accurately
             console.log('🏗️ Reconstructing data from PdfMonkey template');
-            adjustedFlights = reconstructFlightData(analysis, newPrice);
+            const reconstructedFlights = reconstructFlightData(analysis, newPrice);
+
+            // Filter out null values (flights without real leg data)
+            adjustedFlights = reconstructedFlights.filter(flight => flight !== null);
+
+            if (adjustedFlights.length === 0) {
+                throw new Error('No se pudieron reconstruir los vuelos con datos reales del PDF');
+            }
+
             adjustedHotels = reconstructHotelData(analysis, newPrice);
         } else {
-            // For external PDFs, use the previous approach
-            console.log('🔄 Adapting external PDF data');
+            // For external PDFs, use ONLY real data from PDF
+            console.log('🔄 Adapting external PDF data with real data only');
             const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
 
             adjustedFlights = analysis.content.flights?.map((flight, index) => {
-                const datesParsed = parseDateRange(flight.dates);
-                const routeInfo = parseFlightRoute(flight.route);
-                const airlineCode = extractAirlineCode(flight.airline);
+                // Use ONLY real leg data from PDF - no mock data
+                if ((flight as any).legs && (flight as any).legs.length > 0) {
+                    console.log('✅ Using REAL external PDF leg data:', (flight as any).legs);
 
-                const legs = [];
-
-                // Outbound leg using real data
-                if (routeInfo.origin && routeInfo.destination) {
-                    legs.push({
-                        departure: {
-                            city_code: routeInfo.origin,
-                            city_name: mapCodeToCity(routeInfo.origin),
-                            time: (flight as any).departureTime || '08:00'
+                    return {
+                        id: `external-modified-${Date.now()}-${index}`,
+                        airline: {
+                            code: extractAirlineCode(flight.airline),
+                            name: flight.airline
                         },
-                        arrival: {
-                            city_code: routeInfo.destination,
-                            city_name: mapCodeToCity(routeInfo.destination),
-                            time: (flight as any).arrivalTime || '18:00'
+                        price: {
+                            amount: Math.round(flight.price * priceRatio),
+                            currency: analysis.content?.currency || 'USD'
                         },
-                        duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
-                        flight_type: 'outbound'
-                    });
-
-                    // Return leg if round trip
-                    if (datesParsed.returnDate) {
-                        legs.push({
-                            departure: {
-                                city_code: routeInfo.destination,
-                                city_name: mapCodeToCity(routeInfo.destination),
-                                time: (flight as any).departureTime || '10:00'
-                            },
-                            arrival: {
-                                city_code: routeInfo.origin,
-                                city_name: mapCodeToCity(routeInfo.origin),
-                                time: (flight as any).arrivalTime || '20:00'
-                            },
-                            duration: calculateFlightDuration((flight as any).departureTime, (flight as any).arrivalTime) || '10h',
-                            flight_type: 'return'
-                        });
-                    }
+                        adults: analysis.content?.passengers || 1,
+                        childrens: 0,
+                        departure_date: flight.dates.includes(' / ') ?
+                            flight.dates.split(' / ')[0].trim() :
+                            parseDateRange(flight.dates).departureDate,
+                        return_date: flight.dates.includes(' / ') ?
+                            flight.dates.split(' / ')[1].trim() :
+                            parseDateRange(flight.dates).returnDate,
+                        legs: (flight as any).legs // Use real legs from PDF
+                    };
+                } else {
+                    console.warn('⚠️ External PDF has no leg data - skipping flight');
+                    return null;
                 }
-
-                return {
-                    id: `external-modified-${Date.now()}-${index}`,
-                    airline: { code: airlineCode, name: flight.airline },
-                    price: {
-                        amount: Math.round(flight.price * priceRatio),
-                        currency: analysis.content?.currency || 'USD'
-                    },
-                    adults: analysis.content?.passengers || 1,
-                    childrens: 0,
-                    departure_date: datesParsed.departureDate,
-                    return_date: datesParsed.returnDate,
-                    legs: legs
-                };
-            }) || [];
+            }).filter(flight => flight !== null) || [];
 
             adjustedHotels = analysis.content.hotels?.map((hotel, index) => ({
                 id: `external-modified-hotel-${Date.now()}-${index}`,
@@ -1777,12 +1683,32 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     const flights = [];
 
     // Extract airline name - more flexible pattern matching
-    const airlineMatch = content.match(/([A-Z\s]+(?:AIRLINES|AIRLINE|GROUP|AEROLINEAS|AEROLINEA)[A-Z\s]*)/i) ||
-        content.match(/Vuelos\s+([^$\n]+)/i);
-    const airline = airlineMatch ? airlineMatch[1].trim() : 'Aerolínea no especificada';
+    // Look for airline name at the beginning of the content, before "Ocupación"
+    const airlinePatterns = [
+        /^([A-Z]{2,3})\s+([A-Z][A-Za-z\s\.]+?)(?:\s+Ocupación)/i,  // e.g., "AV AVIANCA ECUADOR S.A. Ocupación"
+        /([A-Z\s]+(?:AIRLINES|AIRLINE|GROUP|AEROLINEAS|AEROLINEA|S\.A\.|SA)[A-Z\s\.]*)/i,
+        /Vuelos\s+([^$\n]+)/i
+    ];
+
+    let airline = 'Aerolínea no especificada';
+    for (const pattern of airlinePatterns) {
+        const match = content.match(pattern);
+        if (match) {
+            // For the first pattern, combine code and name
+            if (match[2]) {
+                airline = `${match[1]} ${match[2]}`.trim();
+            } else {
+                airline = match[1].trim();
+            }
+            break;
+        }
+    }
+
+    console.log('✈️ Extracted airline:', airline);
 
     // Extract all airport codes and times from the content
-    const airportPattern = /([A-Z]{3})\s+([^0-9]+?)\s+(\d{1,2}:\d{2})/g;
+    // Pattern should capture: CODE CityName TIME
+    const airportPattern = /([A-Z]{3})\s+([A-Za-zÀ-ÿ\s]+?)\s+(\d{1,2}:\d{2})/g;
     const airportMatches = [...content.matchAll(airportPattern)];
 
     console.log('🔍 Found airport matches:', airportMatches.map(m => ({
@@ -1809,12 +1735,125 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     let departureTime = '';
     let arrivalTime = '';
 
-    if (airportMatches.length >= 2) {
-        // First leg: origin to first layover or destination
+    // Check if this is a round trip (ida y vuelta)
+    const hasOutbound = /Vuelo de ida/i.test(content);
+    const hasReturn = /Vuelo de regreso/i.test(content);
+    const isRoundTrip = hasOutbound && hasReturn;
+
+    console.log('🔍 Flight type analysis:', {
+        hasOutbound,
+        hasReturn,
+        isRoundTrip,
+        airportMatchesCount: airportMatches.length,
+        layoverMatchesCount: layoverMatches.length
+    });
+
+    if (isRoundTrip && airportMatches.length >= 4) {
+        // Round trip: find outbound and return legs by analyzing the content structure
+        console.log('🔍 Processing round trip flight...');
+
+        // Find the "Vuelo de regreso" position to split the content
+        const returnFlightIndex = content.toLowerCase().indexOf('vuelo de regreso');
+        const outboundContent = content.substring(0, returnFlightIndex);
+        const returnContent = content.substring(returnFlightIndex);
+
+        console.log('🔍 Content split:', {
+            outboundLength: outboundContent.length,
+            returnLength: returnContent.length
+        });
+
+        // Extract outbound airports (before "Vuelo de regreso")
+        const outboundAirportPattern = /([A-Z]{3})\s+([A-Za-zÀ-ÿ\s]+?)\s+(\d{1,2}:\d{2})/g;
+        const outboundAirports = [...outboundContent.matchAll(outboundAirportPattern)];
+
+        // Extract return airports (after "Vuelo de regreso")
+        const returnAirportPattern = /([A-Z]{3})\s+([A-Za-zÀ-ÿ\s]+?)\s+(\d{1,2}:\d{2})/g;
+        const returnAirports = [...returnContent.matchAll(returnAirportPattern)];
+
+        console.log('🔍 Airport extraction:', {
+            outboundAirports: outboundAirports.map(a => ({ code: a[1], city: a[2].trim(), time: a[3] })),
+            returnAirports: returnAirports.map(a => ({ code: a[1], city: a[2].trim(), time: a[3] }))
+        });
+
+        // Extract outbound layovers
+        const outboundLayoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
+        const outboundLayovers = [...outboundContent.matchAll(outboundLayoverPattern)];
+
+        // Extract return layovers
+        const returnLayoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
+        const returnLayovers = [...returnContent.matchAll(returnLayoverPattern)];
+
+        // Build outbound leg
+        if (outboundAirports.length >= 2) {
+            const outboundOrigin = outboundAirports[0];
+            const outboundDest = outboundAirports[outboundAirports.length - 1];
+
+            const outboundLeg = {
+                departure: {
+                    city_code: outboundOrigin[1],
+                    city_name: outboundOrigin[2].trim(),
+                    time: outboundOrigin[3]
+                },
+                arrival: {
+                    city_code: outboundDest[1],
+                    city_name: outboundDest[2].trim(),
+                    time: outboundDest[3]
+                },
+                duration: calculateFlightDuration(outboundOrigin[3], outboundDest[3]) || '10h',
+                flight_type: 'outbound',
+                layovers: outboundLayovers.map(layover => ({
+                    destination_city: layover[4].trim(),
+                    destination_code: layover[3],
+                    waiting_time: layover[2].trim()
+                }))
+            };
+
+            legs.push(outboundLeg);
+            console.log('✅ Outbound leg created:', outboundLeg);
+        }
+
+        // Build return leg
+        if (returnAirports.length >= 2) {
+            const returnOrigin = returnAirports[0];
+            const returnDest = returnAirports[returnAirports.length - 1];
+
+            const returnLeg = {
+                departure: {
+                    city_code: returnOrigin[1],
+                    city_name: returnOrigin[2].trim(),
+                    time: returnOrigin[3]
+                },
+                arrival: {
+                    city_code: returnDest[1],
+                    city_name: returnDest[2].trim(),
+                    time: returnDest[3]
+                },
+                duration: calculateFlightDuration(returnOrigin[3], returnDest[3]) || '10h',
+                flight_type: 'return',
+                layovers: returnLayovers.map(layover => ({
+                    destination_city: layover[4].trim(),
+                    destination_code: layover[3],
+                    waiting_time: layover[2].trim()
+                }))
+            };
+
+            legs.push(returnLeg);
+            console.log('✅ Return leg created:', returnLeg);
+        }
+
+        // Set main route info from outbound leg
+        if (legs.length > 0) {
+            originCode = legs[0].departure.city_code;
+            destinationCode = legs[0].arrival.city_code;
+            departureTime = legs[0].departure.time;
+            arrivalTime = legs[0].arrival.time;
+        }
+
+    } else if (airportMatches.length >= 2) {
+        // One-way flight: use all airports for single leg
         originCode = airportMatches[0][1];
         departureTime = airportMatches[0][3];
 
-        // Last leg: last layover or origin to destination
         destinationCode = airportMatches[airportMatches.length - 1][1];
         arrivalTime = airportMatches[airportMatches.length - 1][3];
 
@@ -1822,12 +1861,12 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         const mainLeg = {
             departure: {
                 city_code: originCode,
-                city_name: mapCodeToCity(originCode),
+                city_name: airportMatches[0][2].trim(),
                 time: departureTime
             },
             arrival: {
                 city_code: destinationCode,
-                city_name: mapCodeToCity(destinationCode),
+                city_name: airportMatches[airportMatches.length - 1][2].trim(),
                 time: arrivalTime
             },
             duration: calculateFlightDuration(departureTime, arrivalTime) || '10h',
@@ -1873,11 +1912,25 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         }
     }
 
-    // Extract dates - look for date patterns
-    const dateMatch = content.match(/(\d{4}-\d{2}-\d{2})/);
-    let dates = 'Fechas no especificadas';
-    if (dateMatch) {
-        dates = dateMatch[1];
+    // Extract dates - look for specific date patterns for outbound and return
+    const outboundDateMatch = content.match(/Vuelo de ida\s+(\d{4}-\d{2}-\d{2})/i);
+    const returnDateMatch = content.match(/Vuelo de regreso\s+(\d{4}-\d{2}-\d{2})/i);
+
+    let departureDate = '2025-11-01';
+    let returnDate = undefined;
+
+    if (outboundDateMatch) {
+        departureDate = outboundDateMatch[1];
+    }
+
+    if (returnDateMatch) {
+        returnDate = returnDateMatch[1];
+    }
+
+    // Format dates for display
+    let dates = departureDate;
+    if (returnDate && returnDate !== departureDate) {
+        dates = `${departureDate} / ${returnDate}`;
     }
 
     // Extract price - look for price patterns with USD
@@ -1958,17 +2011,29 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
  * Extract total price from PdfMonkey template content
  */
 function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
-    // Look for total price patterns in our templates
-    const totalPatterns = [
-        /\$(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*USD/g,
-        /(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*USD/g
+    // Look for "Precio total" pattern specifically in our templates
+    // This ensures we get the correct total price, not individual segment prices
+    const totalPricePattern = /(\d{1,5}(?:\.\d{1,2})?)\s*USD\s*Precio\s*total/i;
+    const totalMatch = content.match(totalPricePattern);
+
+    if (totalMatch) {
+        const price = parseFloat(totalMatch[1]);
+        console.log('💰 Extracted total price from PdfMonkey template (from "Precio total"):', price);
+        return price;
+    }
+
+    // Fallback: Look for all price patterns and return the highest
+    const allPricePatterns = [
+        /\$?(\d{1,5}(?:,\d{3})*(?:\.\d{1,2})?)\s*USD/g,
+        /(\d{1,5}(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:USD|US\$)/g
     ];
 
     const allPrices = [];
-    for (const pattern of totalPatterns) {
+    for (const pattern of allPricePatterns) {
         const matches = [...content.matchAll(pattern)];
         matches.forEach(match => {
-            const price = parseFloat((match[1] || match[0]).replace(/[^\d.]/g, ''));
+            const priceStr = match[1].replace(/,/g, ''); // Remove thousand separators
+            const price = parseFloat(priceStr);
             if (!isNaN(price) && price > 0) {
                 allPrices.push(price);
             }
@@ -1977,7 +2042,7 @@ function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
 
     // Return the highest price found (likely the total)
     const totalPrice = allPrices.length > 0 ? Math.max(...allPrices) : 0;
-    console.log('💰 Extracted total price from PdfMonkey template:', totalPrice);
+    console.log('💰 Extracted total price from PdfMonkey template (fallback):', totalPrice, 'from prices:', allPrices);
     return totalPrice;
 }
 

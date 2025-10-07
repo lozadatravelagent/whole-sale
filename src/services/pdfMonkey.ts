@@ -6,7 +6,8 @@ const PDFMONKEY_API_BASE = 'https://api.pdfmonkey.io/api/v1/documents';
 const PDFMONKEY_SYNC_BASE = 'https://api.pdfmonkey.io/api/v1/documents/sync';
 
 // Default template IDs (fallback when no custom template exists)
-const DEFAULT_FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376';
+const DEFAULT_FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376'; // flights.html
+const DEBUG_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376'; // Same ID for now
 const DEFAULT_COMBINED_TEMPLATE_ID = '3E8394AC-84D4-4286-A1CD-A12D1AB001D5';
 const DEFAULT_FLIGHTS_TEMPLATE_ID = '30B142BF-1DD9-432D-8261-5287556DC9FC';
 
@@ -264,23 +265,25 @@ function analyzeFlightStructure(flights: FlightData[]): {
       total_layovers: flight.legs?.reduce((sum, leg) => sum + (leg.layovers?.length || 0), 0) || 0
     });
 
-    if (isRoundTrip || hasMultipleLegs) {
+    // Check if this is a complex flight that needs flights2 template
+    const isComplexFlight = isRoundTrip || hasMultipleLegs || hasLayovers || isComplexJourney;
+
+    if (isComplexFlight) {
       console.log('📋 COMPLEX SINGLE FLIGHT detected:', {
         isRoundTrip,
         hasMultipleLegs,
         isComplexJourney,
-        legs: flight.legs?.length || 0
+        hasLayovers,
+        legs: flight.legs?.length || 0,
+        totalLayovers: flight.legs?.reduce((sum, leg) => sum + (leg.layovers?.length || 0), 0) || 0
       });
 
-      // For complex journeys, use flights2 template for better layout
-      if (isComplexJourney || hasMultipleLegs || hasLayovers) {
-        return {
-          templateType: 'flights2',
-          defaultTemplateId: DEFAULT_FLIGHTS_TEMPLATE_ID,
-          templateName: 'flights2.html',
-          description: 'Complex single flight (round trip, multi-leg, or with layovers)'
-        };
-      }
+      return {
+        templateType: 'flights2',
+        defaultTemplateId: DEFAULT_FLIGHTS_TEMPLATE_ID, // Use flights2.html template ID for complex flights
+        templateName: 'flights2.html',
+        description: 'Complex single flight (round trip, multi-leg, or with layovers)'
+      };
     }
 
     console.log('📋 SIMPLE SINGLE FLIGHT detected');
