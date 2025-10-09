@@ -157,8 +157,17 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
     <div className="min-h-screen bg-background">
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 bg-gradient-card border-b border-border flex items-center justify-between px-4">
-        <div className="text-xl font-bold text-primary">
-          VIBOOK
+        <div>
+          <img
+            src="/vibook-white.png"
+            alt="Vibook"
+            className="h-6 dark:hidden"
+          />
+          <img
+            src="/vibook-white.png"
+            alt="Vibook"
+            className="h-6 hidden dark:block"
+          />
         </div>
         <div className="flex items-center gap-2">
           {user && <UserProfileHeader user={user} onLogout={handleLogout} />}
@@ -192,9 +201,16 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
         !sidebarHidden ? "lg:translate-x-0" : "lg:-translate-x-full"
       )}>
         <div className="hidden lg:flex h-16 items-center px-6 justify-between border-b border-border">
-          <div className="text-xl font-bold text-primary">
-            VIBOOK
-          </div>
+          <img
+            src="/vibook-white.png"
+            alt="Vibook"
+            className="h-8 dark:hidden"
+          />
+          <img
+            src="/vibook-white.png"
+            alt="Vibook"
+            className="h-8 hidden dark:block"
+          />
           <Button variant="ghost" size="icon" onClick={() => setSidebarHidden(true)} className="text-muted-foreground">
             <ChevronLeft className="h-4 w-4" />
           </Button>

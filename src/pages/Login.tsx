@@ -98,15 +98,16 @@ const Login = () => {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex items-center justify-center mb-8">
-          <div className="w-12 h-12 bg-gradient-hero rounded-xl flex items-center justify-center shadow-primary">
-            <Plane className="h-6 w-6 text-white" />
-          </div>
-          <div className="ml-3">
-            <h1 className="text-2xl font-bold bg-gradient-hero bg-clip-text text-transparent">
-              VIBOOK
-            </h1>
-            <p className="text-sm text-muted-foreground">Travel SaaS Platform</p>
-          </div>
+          <img
+            src="/vibook-black.png"
+            alt="Vibook"
+            className="h-12 dark:hidden"
+          />
+          <img
+            src="/vibook-white.png"
+            alt="Vibook"
+            className="h-12 hidden dark:block"
+          />
         </div>
 
         <Card className="shadow-card">
