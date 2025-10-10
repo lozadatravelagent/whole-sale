@@ -34,10 +34,12 @@ const Index = () => {
             </div>
 
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-4 md:mb-6">
-              <span className="bg-clip-text text-transparent">
-                VIBOOK
-              </span>
-              <br />
+              <img
+                src="/vibook-white.png"
+                alt="VIBOOK"
+                className="h-12 sm:h-16 md:h-20 lg:h-24 mx-auto mb-4"
+              />
+
               Travel SaaS Platform
             </h1>
 
