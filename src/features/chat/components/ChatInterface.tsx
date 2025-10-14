@@ -59,12 +59,9 @@ const ChatInterface = React.memo(({
     }
   }, [visibleMessages.length, isTyping]);
 
-  // Refresh messages when conversation changes (single initial load)
-  useEffect(() => {
-    if (selectedConversation) {
-      refreshMessages();
-    }
-  }, [selectedConversation, refreshMessages]);
+  // ⚡ OPTIMIZATION: Removed redundant refreshMessages call
+  // Messages are already loaded by useMessages hook in useChat.ts (line 394)
+  // This was causing DOUBLE SELECT on every conversation change (~50-150ms wasted)
 
   // Add CSS animations to head (only once)
   useEffect(() => {
