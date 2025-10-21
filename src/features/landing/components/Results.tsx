@@ -19,8 +19,8 @@ export function Results() {
       title: 'más cotizaciones por día',
       description: 'Emilia responde en minutos, no en horas. Cada consulta se convierte en oportunidad.',
       icon: TrendingUp,
-      iconBg: 'bg-gradient-accent',
-      shadow: 'shadow-accent',
+      iconBg: 'bg-gradient-hero',
+      shadow: 'shadow-primary',
     },
     {
       value: '+60%',

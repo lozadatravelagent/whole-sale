@@ -21,9 +21,9 @@ export function HowItWorks() {
     {
       step: 2,
       icon: Sparkles,
-      iconBg: 'bg-gradient-accent',
-      shadow: 'shadow-accent',
-      color: 'text-accent',
+      iconBg: 'bg-gradient-hero',
+      shadow: 'shadow-primary',
+      color: 'text-primary',
       title: 'La IA trabaja por vos',
       description: 'Emilia busca opciones, compara precios y arma propuestas personalizadas',
     },
