@@ -7,6 +7,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { UserProfileHeader } from '@/components/layout/UserProfileHeader';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { useTheme } from '@/components/theme-provider';
 
 import {
   LayoutDashboard,
@@ -52,6 +54,7 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
   const location = useLocation();
   const { toast } = useToast();
   const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
+  const { theme } = useTheme();
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -159,17 +162,13 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 bg-gradient-card border-b border-border flex items-center justify-between px-4">
         <div>
           <img
-            src="/vibook-white.png"
+            src={theme === 'dark' ? '/vibook-white.png' : '/vibook-black.png'}
             alt="Vibook"
-            className="h-6 dark:hidden"
-          />
-          <img
-            src="/vibook-white.png"
-            alt="Vibook"
-            className="h-6 hidden dark:block"
+            className="h-6"
           />
         </div>
         <div className="flex items-center gap-2">
+          <ThemeToggle variant="minimal" />
           {user && <UserProfileHeader user={user} onLogout={handleLogout} />}
           <Button
             variant="ghost"
@@ -202,14 +201,9 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
       )}>
         <div className="hidden lg:flex h-16 items-center px-6 justify-between border-b border-border">
           <img
-            src="/vibook-white.png"
+            src={theme === 'dark' ? '/vibook-white.png' : '/vibook-black.png'}
             alt="Vibook"
-            className="h-8 dark:hidden"
-          />
-          <img
-            src="/vibook-white.png"
-            alt="Vibook"
-            className="h-8 hidden dark:block"
+            className="h-8"
           />
           <Button variant="ghost" size="icon" onClick={() => setSidebarHidden(true)} className="text-muted-foreground">
             <ChevronLeft className="h-4 w-4" />
@@ -275,7 +269,8 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
           })}
         </nav>
 
-        <div className="mt-auto p-4 border-t border-border">
+        <div className="mt-auto p-4 border-t border-border space-y-2">
+          <ThemeToggle variant="default" className="w-full justify-center" showLabel />
           <Button
             variant="ghost"
             onClick={handleLogout}
