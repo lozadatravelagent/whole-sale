@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { Clock, TrendingUp, Target } from 'lucide-react';
 import { useIntersectionObserver } from '@/hooks/useIntersectionObserver';
 
 export function Results() {
@@ -9,16 +10,25 @@ export function Results() {
       value: '80%',
       title: 'menos tiempo operativo',
       description: 'La IA se encarga del trabajo repetitivo. Vos te enfocás en cerrar ventas.',
+      icon: Clock,
+      iconBg: 'bg-gradient-hero',
+      shadow: 'shadow-primary',
     },
     {
       value: '4×',
       title: 'más cotizaciones por día',
       description: 'Emilia responde en minutos, no en horas. Cada consulta se convierte en oportunidad.',
+      icon: TrendingUp,
+      iconBg: 'bg-gradient-accent',
+      shadow: 'shadow-accent',
     },
     {
       value: '+60%',
       title: 'más cierres',
       description: 'Responder rápido marca la diferencia. Con ViBook, siempre llegás primero.',
+      icon: Target,
+      iconBg: 'bg-gradient-hero',
+      shadow: 'shadow-primary',
     },
   ];
 
@@ -43,13 +53,25 @@ export function Results() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
-          {metrics.map((metric, index) => (
-            <div key={index} className="space-y-4 transition-smooth hover:scale-105">
-              <div className="text-5xl font-bold bg-gradient-hero bg-clip-text text-transparent">{metric.value}</div>
-              <div className="text-xl font-semibold">{metric.title}</div>
-              <p className="text-muted-foreground">{metric.description}</p>
-            </div>
-          ))}
+          {metrics.map((metric, index) => {
+            const Icon = metric.icon;
+            return (
+              <div key={index} className="space-y-6 text-center transition-smooth hover:scale-105">
+                <div
+                  className={`w-16 h-16 mx-auto rounded-2xl ${metric.iconBg} flex items-center justify-center ${metric.shadow}`}
+                >
+                  <Icon className="h-8 w-8 text-white" />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-5xl font-bold bg-gradient-hero bg-clip-text text-transparent">
+                    {metric.value}
+                  </div>
+                  <div className="text-xl font-semibold">{metric.title}</div>
+                  <p className="text-muted-foreground">{metric.description}</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Testimonial */}
