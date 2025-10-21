@@ -63,7 +63,7 @@ export function Results() {
                   <Icon className="h-8 w-8 text-white" />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-5xl font-bold bg-gradient-hero bg-clip-text text-transparent">
+                  <div className="text-5xl font-bold">
                     {metric.value}
                   </div>
                   <div className="text-xl font-semibold">{metric.title}</div>
