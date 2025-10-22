@@ -163,32 +163,32 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
         const arrivalDate = leg.arrival_next_day ? addDays(baseDate, 1) : baseDate;
 
         return (
-          <div key={legIndex} className="border border-black rounded-lg p-3 bg-black">
+          <div key={legIndex} className="border border-border rounded-lg p-3 bg-background">
             <div className="flex items-center space-x-2 mb-3">
-              {React.cloneElement(legIcon, { className: "h-4 w-4 text-white" })}
-              <span className="font-semibold text-sm text-white">{legType}</span>
+              {React.cloneElement(legIcon, { className: "h-4 w-4 text-foreground" })}
+              <span className="font-semibold text-sm text-foreground">{legType}</span>
               <BaggageIcon
                 {...getBaggageInfoFromLeg(leg)}
                 size="sm"
                 showTooltip={true}
-                className="text-white"
+                className="text-foreground"
               />
               {/* Mostrar texto del equipaje al lado */}
-              <span className="text-sm text-white font-bold">
+              <span className="text-sm text-foreground font-bold">
                 {getBaggageTextFromLeg(leg, flight.airline.code)}
               </span>
             </div>
 
             {/* Simplified display for current FlightLeg structure */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between bg-gray-900 rounded-lg p-3 border border-gray-800">
+              <div className="flex items-center justify-between bg-muted/50 rounded-lg p-3 border border-border">
                 <div className="flex items-center space-x-3">
-                  <div className="bg-gray-800 p-2 rounded-full">
-                    <Navigation className="h-4 w-4 text-white" />
+                  <div className="bg-muted p-2 rounded-full">
+                    <Navigation className="h-4 w-4 text-foreground" />
                   </div>
                   <div>
-                    <div className="font-medium text-sm text-white">Vuelo {legType}</div>
-                    <div className="text-xs text-gray-300">
+                    <div className="font-medium text-sm text-foreground">Vuelo {legType}</div>
+                    <div className="text-xs text-muted-foreground">
                       {leg.duration}
                     </div>
                   </div>
@@ -197,28 +197,28 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
 
               <div className="flex items-center justify-between px-3">
                 <div className="text-center">
-                  <div className="font-bold text-lg text-white">{leg.departure.city_code}</div>
-                  <div className="text-sm font-medium text-white">{leg.departure.time}</div>
-                  <div className="text-[10px] text-gray-300">{formatDate(baseDate)}</div>
-                  <div className="text-xs text-gray-300">{leg.departure.city_name}</div>
+                  <div className="font-bold text-lg text-foreground">{leg.departure.city_code}</div>
+                  <div className="text-sm font-medium text-foreground">{leg.departure.time}</div>
+                  <div className="text-[10px] text-muted-foreground">{formatDate(baseDate)}</div>
+                  <div className="text-xs text-muted-foreground">{leg.departure.city_name}</div>
                 </div>
 
                 <div className="flex-1 flex items-center justify-center">
-                  <div className="h-0.5 bg-gradient-to-r from-gray-600 to-gray-700 flex-1"></div>
-                  <Plane className="h-5 w-5 mx-2 text-white" />
-                  <div className="h-0.5 bg-gradient-to-r from-gray-600 to-gray-700 flex-1"></div>
+                  <div className="h-0.5 bg-gradient-to-r from-muted to-muted-foreground flex-1"></div>
+                  <Plane className="h-5 w-5 mx-2 text-foreground" />
+                  <div className="h-0.5 bg-gradient-to-r from-muted-foreground to-muted flex-1"></div>
                 </div>
 
                 <div className="text-center">
-                  <div className="font-bold text-lg text-white">{leg.arrival.city_code}</div>
-                  <div className="text-sm font-medium text-white flex items-center justify-center space-x-1">
+                  <div className="font-bold text-lg text-foreground">{leg.arrival.city_code}</div>
+                  <div className="text-sm font-medium text-foreground flex items-center justify-center space-x-1">
                     <span>{formatTime(leg.arrival.time)}</span>
                     {leg.arrival_next_day && (
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-black text-white border border-orange-500">+1</span>
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-background text-foreground border border-orange-500">+1</span>
                     )}
                   </div>
-                  <div className="text-[10px] text-gray-300">{formatDate(arrivalDate)}</div>
-                  <div className="text-xs text-gray-300">{leg.arrival.city_name}</div>
+                  <div className="text-[10px] text-muted-foreground">{formatDate(arrivalDate)}</div>
+                  <div className="text-xs text-muted-foreground">{leg.arrival.city_name}</div>
                 </div>
               </div>
 
@@ -227,16 +227,16 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                 <div className="space-y-2">
                   {leg.layovers.map((layover, layoverIndex) => (
                     <div key={layoverIndex} className="flex justify-center">
-                      <div className="bg-black border border-orange-500 rounded-lg p-2 min-w-[200px]">
+                      <div className="bg-background border border-orange-500 rounded-lg p-2 min-w-[200px]">
                         <div className="text-center">
                           <div className="flex items-center justify-center space-x-1 mb-1">
                             <Timer className="h-3 w-3 text-orange-500" />
-                            <span className="text-xs font-medium text-white">CONEXIÓN</span>
+                            <span className="text-xs font-medium text-foreground">CONEXIÓN</span>
                           </div>
-                          <div className="text-sm font-bold text-white">
+                          <div className="text-sm font-bold text-foreground">
                             {layover.destination_code} - {layover.waiting_time}
                           </div>
-                          <div className="text-xs text-gray-300">Cambio de terminal/puerta</div>
+                          <div className="text-xs text-muted-foreground">Cambio de terminal/puerta</div>
                         </div>
                       </div>
                     </div>
