@@ -47,6 +47,7 @@ export interface LeadDialogProps {
   onOpenChange: (open: boolean) => void;
   lead?: Lead | null;
   onSave: (data: LeadFormData & { checklist?: ChecklistItem[] }) => void;
+  onDelete?: (leadId: string) => void;
   isEditing?: boolean;
   sections?: any[];
   sellers?: any[];

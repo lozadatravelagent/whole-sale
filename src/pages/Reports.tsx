@@ -485,35 +485,20 @@ const Reports = () => {
               <div key={index} className="p-4 rounded-lg bg-gradient-card">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-medium">{integration.provider}</h4>
-                  <Badge variant={
-                    integration.status === 'excellent' ? 'default' :
-                      integration.status === 'good' ? 'secondary' : 'destructive'
-                  }>
-                    {integration.successRate}% éxito
-                  </Badge>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Requests</p>
-                    <p className="font-semibold">{integration.requests.toLocaleString()}</p>
+                    <p className="font-semibold">{integration.requests?.toLocaleString() || 0}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Tiempo Respuesta</p>
-                    <p className="font-semibold">{integration.avgResponseTime}s</p>
+                    <p className="font-semibold">{integration.avgResponseTime || 0}s</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Ingresos</p>
-                    <p className="font-semibold text-success">{formatCurrency(integration.revenue)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Estado</p>
-                    <div className="flex items-center gap-1">
-                      {integration.status === 'excellent' && <CheckCircle className="h-3 w-3 text-success" />}
-                      {integration.status === 'good' && <Clock className="h-3 w-3 text-warning" />}
-                      {integration.status === 'needs_attention' && <AlertTriangle className="h-3 w-3 text-destructive" />}
-                      <span className="font-semibold capitalize">{integration.status.replace('_', ' ')}</span>
-                    </div>
+                    <p className="font-semibold text-success">{formatCurrency(integration.revenue || 0)}</p>
                   </div>
                 </div>
               </div>

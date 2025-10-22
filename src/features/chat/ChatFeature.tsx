@@ -113,6 +113,38 @@ const ChatFeature = () => {
     handleSendMessageRaw(message);
   }, [message, isLoading, handleSendMessageRaw]);
 
+  // Handle Archive conversation
+  const handleArchiveConversation = useCallback(async (conversationId: string, currentState: 'active' | 'closed') => {
+    try {
+      // Toggle state: if active -> archive (closed), if closed -> restore (active)
+      const newState = currentState === 'active' ? 'closed' : 'active';
+
+      await updateConversationState(conversationId, newState);
+
+      toast({
+        title: currentState === 'active' ? "Conversación archivada" : "Conversación restaurada",
+        description: currentState === 'active'
+          ? "La conversación ha sido archivada exitosamente"
+          : "La conversación ha sido restaurada exitosamente",
+      });
+
+      // Switch to the appropriate tab after archiving/restoring
+      setActiveTab(currentState === 'active' ? 'archived' : 'active');
+
+      // If we archived the currently selected conversation, deselect it
+      if (conversationId === selectedConversation && currentState === 'active') {
+        setSelectedConversation(null);
+      }
+    } catch (error) {
+      console.error('❌ [ARCHIVE] Error archiving/restoring conversation:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo archivar/restaurar la conversación",
+        variant: "destructive"
+      });
+    }
+  }, [selectedConversation, updateConversationState, toast, setActiveTab, setSelectedConversation]);
+
   // Handle Add to CRM button click
   const handleAddToCRM = useCallback(async () => {
     if (!selectedConversation || !messages.length) {
@@ -492,6 +524,7 @@ const ChatFeature = () => {
             onSelectConversation={setSelectedConversation}
             onCreateNewChat={createNewChat}
             onTabChange={setActiveTab}
+            onArchiveConversation={handleArchiveConversation}
           />
         </div>
 

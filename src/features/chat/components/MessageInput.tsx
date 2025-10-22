@@ -10,6 +10,7 @@ interface MessageInputProps {
   disabled: boolean;
   isUploadingPdf: boolean;
   onPdfUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  selectedConversation?: string | null;
 }
 
 // Message input component - memoized to prevent unnecessary re-renders
@@ -19,10 +20,21 @@ const MessageInput = React.memo(({
   onSend,
   disabled,
   isUploadingPdf,
-  onPdfUpload
+  onPdfUpload,
+  selectedConversation
 }: MessageInputProps) => {
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus when a conversation is selected or when component mounts
+  React.useEffect(() => {
+    if (selectedConversation && messageInputRef.current && !disabled) {
+      // Small delay to ensure the component is fully rendered
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
+    }
+  }, [selectedConversation, disabled]);
 
   // Auto-focus when component mounts or when user starts typing
   React.useEffect(() => {

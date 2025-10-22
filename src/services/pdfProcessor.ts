@@ -338,27 +338,9 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
         response += `👥 **Pasajeros:** ${content.passengers || 1}\n\n`;
     }
 
-    // Suggestions
-    if (suggestions && suggestions.length > 0) {
-        response += `🔄 **Sugerencias de Mejora:**\n\n`;
-        suggestions.forEach((suggestion, index) => {
-            response += `${suggestion}\n\n`;
-        });
-
-        // Add cheaper flights option if there are flights in the PDF
-        if (content.flights && content.flights.length > 0) {
-            response += `💡 **Opciones adicionales:**\n\n`;
-            response += `• Escribe "buscar vuelos más baratos" para encontrar alternativas más económicas\n`;
-            response += `• Escribe "cambiar precio a $[cantidad]" para modificar el presupuesto\n\n`;
-        }
-    }
-
     response += `💬 **¿Qué te gustaría modificar?**\n\n`;
     response += `Puedes pedirme:\n\n`;
-    response += `• "Busca vuelos más baratos para las mismas fechas"\n\n`;
-    response += `• "Encuentra hoteles de 4 estrellas en vez de 5"\n\n`;
-    response += `• "Cambia las fechas a la segunda quincena de noviembre"\n\n`;
-    response += `• "Agrega seguro de viaje y traslados"\n\n`;
+    response += `• "Quiero modificarle el precio a [cantidad]"\n\n`;
 
     return response;
 }
@@ -801,20 +783,10 @@ export async function processPriceChangeRequest(
             const pdfResult = await generateModifiedPdf(effectiveAnalysis, requestedPrice, conversationId);
 
             if (pdfResult.success && pdfResult.pdfUrl) {
-                const originalPrice = effectiveAnalysis.content?.totalPrice || 0;
-                const difference = requestedPrice - originalPrice;
-                const isIncrease = difference > 0;
-
-                const isPdfMonkeyTemplate = effectiveAnalysis.content?.extractedFromPdfMonkey;
-
                 const response = `💰 **Precio Modificado Exitosamente**\n\n` +
-                    `📄 He ${isPdfMonkeyTemplate ? 'regenerado' : 'generado'} un nuevo PDF con tu precio solicitado:\n\n` +
+                    `📄 He generado un nuevo PDF con tu precio solicitado:\n\n` +
                     `• **Precio solicitado:** $${requestedPrice.toLocaleString()} ${effectiveAnalysis.content?.currency || 'USD'}\n` +
-                    `• **Pasajeros:** ${effectiveAnalysis.content?.passengers || 1}\n\n` +
-                    `${isPdfMonkeyTemplate ?
-                        '🎯 **PDF Regenerado con Nuestro Sistema**\n\n• Utilicé el mismo template profesional que usamos para generar cotizaciones\n• Mantuve todos los detalles exactos: vuelos, hoteles, fechas y pasajeros\n• Solo ajusté los precios según tu solicitud\n• La calidad y formato son idénticos al original' :
-                        '✅ **PDF Generado Exitosamente**\n\n• Creé un PDF profesional con el precio que solicitaste\n• Incluye todos los detalles de viaje necesarios\n• Formato limpio y profesional'
-                    }\n\n📄 **PDF listo para descargar**`;
+                    `• **Pasajeros:** ${effectiveAnalysis.content?.passengers || 1}`;
 
                 return {
                     response,

@@ -31,6 +31,7 @@ export function LeadDialog({
   onOpenChange,
   lead,
   onSave,
+  onDelete,
   isEditing = false,
   sections = [],
   sellers = []
@@ -90,9 +91,31 @@ export function LeadDialog({
     onOpenChange(false);
   };
 
+  // Handle delete
+  const handleDelete = () => {
+    if (!lead || !onDelete) return;
+
+    const confirmDelete = window.confirm(
+      `¿Estás seguro de que quieres eliminar el lead de "${lead.contact.name}"?\n\nEsta acción no se puede deshacer.`
+    );
+
+    if (confirmDelete) {
+      onDelete(lead.id);
+      onOpenChange(false);
+    }
+  };
+
   // Calculate progress
   const progressPercentage = getChecklistProgress();
   const allErrors = getAllErrors();
+
+  // Debug
+  console.log('LeadDialog Props:', {
+    isEditing,
+    hasOnDelete: !!onDelete,
+    hasLead: !!lead,
+    leadId: lead?.id
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -218,9 +241,8 @@ export function LeadDialog({
                 {/* Progress Bar */}
                 <div className="w-full bg-muted rounded-full h-2">
                   <div
-                    className={`h-2 rounded-full transition-all duration-300 ${
-                      progressPercentage === 100 ? 'bg-green-600' : 'bg-blue-600'
-                    }`}
+                    className={`h-2 rounded-full transition-all duration-300 ${progressPercentage === 100 ? 'bg-green-600' : 'bg-blue-600'
+                      }`}
                     style={{ width: `${progressPercentage}%` }}
                   />
                 </div>
@@ -267,7 +289,7 @@ export function LeadDialog({
 
           {/* Right Sidebar - Business Fields */}
           <div className="w-80 border-l bg-muted/20 p-6 overflow-y-auto">
-            <h3 className="font-semibold text-lg mb-6">Información del viaje</h3>
+            <h3 className="font-semibold text-lg mb-6 text-red-600">🔴 VERSIÓN ACTUALIZADA - Información del viaje</h3>
             <div className="space-y-6">
 
               {/* Presupuesto */}
@@ -420,6 +442,16 @@ export function LeadDialog({
 
               {/* Actions */}
               <div className="pt-6 space-y-2">
+                {isEditing && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    disabled={isSubmitting}
+                  >
+                    Transferir Owner
+                  </Button>
+                )}
                 <Button
                   type="submit"
                   className="w-full"
@@ -433,6 +465,16 @@ export function LeadDialog({
                   ) : (
                     isEditing ? 'Guardar Cambios' : 'Crear Lead'
                   )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="w-full"
+                  onClick={handleDelete}
+                  disabled={isSubmitting || !onDelete || !lead || !isEditing}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Eliminar Tarjeta
                 </Button>
                 <Button
                   type="button"

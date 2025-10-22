@@ -1,10 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageItem from './MessageItem';
 import TypingIndicator from './TypingIndicator';
 import type { MessageRow } from '../types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
+import { FileUp } from 'lucide-react';
 
 interface ChatInterfaceProps {
   selectedConversation: string | null;
@@ -43,6 +44,7 @@ const ChatInterface = React.memo(({
 }: ChatInterfaceProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Filter out system contextual memory messages
   const visibleMessages = messages.filter((m: MessageRow) => {
@@ -91,8 +93,57 @@ const ChatInterface = React.memo(({
     };
   }, []);
 
+  // Handle drag and drop for PDF files
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDraggingOver) {
+      setIsDraggingOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set to false if we're leaving the main container
+    if (e.currentTarget === e.target) {
+      setIsDraggingOver(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+
+      // Check if it's a PDF
+      if (file.type === 'application/pdf') {
+        // Create a synthetic event to match the expected type
+        const syntheticEvent = {
+          target: {
+            files: files
+          }
+        } as React.ChangeEvent<HTMLInputElement>;
+
+        onPdfUpload(syntheticEvent);
+      } else {
+        // You could show a toast here for invalid file type
+        console.warn('Only PDF files are supported');
+      }
+    }
+  };
+
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div
+      className="flex-1 flex flex-col h-full relative"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <ChatHeader
         isTyping={isTyping}
         isAddingToCRM={isAddingToCRM}
@@ -101,6 +152,17 @@ const ChatInterface = React.memo(({
         onAddToCRM={onAddToCRM}
         onBackToList={onBackToList}
       />
+
+      {/* Drag and Drop Overlay */}
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary rounded-lg flex items-center justify-center">
+          <div className="text-center">
+            <FileUp className="h-16 w-16 text-primary mx-auto mb-4 animate-bounce" />
+            <p className="text-xl font-semibold text-primary">Suelta el PDF aquí</p>
+            <p className="text-sm text-muted-foreground mt-2">Solo archivos PDF (máx. 10MB)</p>
+          </div>
+        </div>
+      )}
 
       {/* Messages area - scrollable with fixed height */}
       <div
@@ -152,6 +214,7 @@ const ChatInterface = React.memo(({
           disabled={isLoading}
           isUploadingPdf={isUploadingPdf}
           onPdfUpload={onPdfUpload}
+          selectedConversation={selectedConversation}
         />
       </div>
     </div>

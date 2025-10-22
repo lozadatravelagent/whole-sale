@@ -11,9 +11,17 @@ import {
   Settings,
   Plus,
   Filter,
-  Download
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { exportLeadsToCSV, exportLeadsToDetailedCSV } from '@/utils/csvExport';
 
 // Import CRM components
 import { KanbanBoard } from './components/kanban';
@@ -110,6 +118,24 @@ export function CrmFeature({
     }
   };
 
+  const handleDeleteLead = async (leadId: string) => {
+    try {
+      const success = await deleteLead(leadId);
+      if (success) {
+        setShowLeadDialog(false);
+        setSelectedLead(null);
+        await refreshLeads();
+      }
+    } catch (error) {
+      console.error('Error deleting lead:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo eliminar el lead."
+      });
+    }
+  };
+
   const handleLeadMove = async (leadId: string, newSectionId: string) => {
     await moveLeadToSection(leadId, newSectionId);
   };
@@ -123,6 +149,45 @@ export function CrmFeature({
   const handleSectionDelete = async (sectionId: string) => {
     // Implementation for section deletion
     console.log('Delete section:', sectionId);
+  };
+
+  // Handle CSV export
+  const handleExportCSV = (detailed: boolean = false) => {
+    try {
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `crm-export-${timestamp}.csv`;
+
+      if (detailed) {
+        exportLeadsToDetailedCSV({
+          leads,
+          sellers,
+          sections,
+          filename
+        });
+        toast({
+          title: "Exportación Completa",
+          description: `${leads.length} leads exportados con detalles a CSV.`
+        });
+      } else {
+        exportLeadsToCSV({
+          leads,
+          sellers,
+          sections,
+          filename
+        });
+        toast({
+          title: "Exportación Completa",
+          description: `${leads.length} leads exportados a CSV.`
+        });
+      }
+    } catch (error) {
+      console.error('Error exporting to CSV:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo exportar los datos a CSV."
+      });
+    }
   };
 
   // Handle travel PDF generation
@@ -161,10 +226,26 @@ export function CrmFeature({
             <Filter className="h-4 w-4" />
             Filtros
           </Button>
-          <Button variant="outline" size="sm" className="flex items-center gap-2">
-            <Download className="h-4 w-4" />
-            Exportar
-          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                Exportar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExportCSV(false)}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Exportar CSV Simple
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportCSV(true)}>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                Exportar CSV Detallado
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button onClick={handleAddLead} className="flex items-center gap-2">
             <Plus className="h-4 w-4" />
             Nuevo Lead
@@ -219,7 +300,7 @@ export function CrmFeature({
       </div>
 
       {/* Main Content Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'kanban' | 'travel' | 'analytics')} className="space-y-4">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="kanban" className="flex items-center gap-2">
             <LayoutDashboard className="h-4 w-4" />
@@ -313,6 +394,7 @@ export function CrmFeature({
         onOpenChange={setShowLeadDialog}
         lead={selectedLead}
         onSave={handleSaveLead}
+        onDelete={handleDeleteLead}
         isEditing={isEditingLead}
         sections={sections}
         sellers={sellers}

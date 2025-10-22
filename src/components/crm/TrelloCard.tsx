@@ -99,13 +99,13 @@ export function TrelloCard({ lead, onClick, isDragging }: TrelloCardProps) {
         // Add destination and price to title
         if (destination) {
             if (price > 0) {
-                return `${title} (${destination}, €${price.toFixed(1)})`;
+                return `${title} (${destination}, $${price.toFixed(1)})`;
             } else {
                 return `${title} (${destination})`;
             }
         } else {
             if (price > 0) {
-                return `${title} (€${price.toFixed(1)})`;
+                return `${title} ($${price.toFixed(1)})`;
             } else {
                 return title;
             }

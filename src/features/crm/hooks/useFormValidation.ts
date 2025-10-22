@@ -102,10 +102,9 @@ export function useFormValidation(initialData?: Partial<LeadFormData>) {
   }, [form, checklist, performCustomValidation]);
 
   // Real-time validation on field changes
-  const validateField = useCallback((fieldName: keyof LeadFormValidationData, value: any) => {
+  const validateField = useCallback((fieldName: string, value: any) => {
     try {
       const currentValues = form.getValues();
-      const updatedValues = { ...currentValues, [fieldName]: value };
 
       // Validate specific field combinations
       if (fieldName === 'trip.dates.checkin' || fieldName === 'trip.dates.checkout') {
@@ -183,7 +182,7 @@ export function useFormValidation(initialData?: Partial<LeadFormData>) {
 
     // Simple comparison - could be enhanced for deep comparison
     return JSON.stringify(currentValues) !== JSON.stringify(defaultValues) ||
-           checklist.length > 0;
+      checklist.length > 0;
   }, [form, checklist]);
 
   // Get all validation errors (form + custom)

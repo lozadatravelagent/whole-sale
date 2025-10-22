@@ -406,7 +406,7 @@ function generateLeadName(travelInfo: ExtractedTravelInfo, parsedRequest?: Parse
 
   // Agregar precio si está disponible
   if (price > 0) {
-    leadName += `, €${price.toLocaleString()}`;
+    leadName += `, $${price.toLocaleString()}`;
   }
 
   leadName += ')';

@@ -196,11 +196,11 @@ const Settings = () => {
       <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Settings</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Configuración</h1>
             <p className="text-sm md:text-base text-muted-foreground mt-1">
               {canEditAgencySettings
-                ? 'Customize your agency branding and preferences'
-                : 'Manage your personal account settings'}
+                ? 'Personaliza el branding y preferencias de tu agencia'
+                : 'Gestiona la configuración de tu cuenta personal'}
             </p>
           </div>
         </div>
@@ -219,17 +219,17 @@ const Settings = () => {
         {needsAgencySelector && agencies.length > 0 && (
           <Card className="shadow-card">
             <CardHeader>
-              <CardTitle className="text-lg">Select Agency</CardTitle>
+              <CardTitle className="text-lg">Seleccionar Agencia</CardTitle>
               <CardDescription>
                 {isOwner
-                  ? 'Choose which agency you want to configure'
-                  : 'Choose an agency from your tenant'}
+                  ? 'Elige qué agencia quieres configurar'
+                  : 'Elige una agencia de tu tenant'}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Select value={selectedAgencyId || ''} onValueChange={setSelectedAgencyId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select an agency..." />
+                  <SelectValue placeholder="Selecciona una agencia..." />
                 </SelectTrigger>
                 <SelectContent>
                   {agencies.map((agency) => (
@@ -245,7 +245,7 @@ const Settings = () => {
         )}
 
         <Tabs defaultValue={canEditAgencySettings ? "branding" : "account"} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 h-auto">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger
               value="branding"
               className="text-xs md:text-sm"
@@ -258,17 +258,10 @@ const Settings = () => {
               className="text-xs md:text-sm"
               disabled={!canEditAgencySettings}
             >
-              Contact Info
-            </TabsTrigger>
-            <TabsTrigger
-              value="templates"
-              className="text-xs md:text-sm"
-              disabled={!canEditAgencySettings}
-            >
-              PDF Templates
+              Información de Contacto
             </TabsTrigger>
             <TabsTrigger value="account" className="text-xs md:text-sm">
-              Account
+              Cuenta
             </TabsTrigger>
           </TabsList>
 
@@ -278,9 +271,9 @@ const Settings = () => {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Agency Branding</CardTitle>
-                    <CardDescription>
-                      Customize your agency's appearance in quotes and communications
+                    <CardTitle>Branding de la Agencia</CardTitle>
+                    <CardDescription className="mt-2">
+                      Personaliza la apariencia de tu agencia en cotizaciones y comunicaciones
                     </CardDescription>
                   </div>
                   <Button
@@ -289,9 +282,9 @@ const Settings = () => {
                     className="bg-gradient-hero shadow-primary"
                   >
                     {saving ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Guardando...</>
                     ) : (
-                      <><Save className="h-4 w-4 mr-2" /> Save Changes</>
+                      <><Save className="h-4 w-4 mr-2" /> Guardar Cambios</>
                     )}
                   </Button>
                 </div>
@@ -299,7 +292,7 @@ const Settings = () => {
               <CardContent className="space-y-6">
                 {/* Logo Upload */}
                 <div className="space-y-2">
-                  <Label>Agency Logo</Label>
+                  <Label>Logo de la Agencia</Label>
                   <div className="flex items-center space-x-4">
                     <div className="w-20 h-20 bg-gradient-card rounded-lg flex items-center justify-center border-2 border-dashed border-border overflow-hidden">
                       {editedBranding?.logoUrl ? (
@@ -321,21 +314,21 @@ const Settings = () => {
                       disabled={uploadingLogo}
                     >
                       {uploadingLogo ? (
-                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Uploading...</>
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Subiendo...</>
                       ) : (
-                        <><Upload className="h-4 w-4 mr-2" /> Upload Logo</>
+                        <><Upload className="h-4 w-4 mr-2" /> Subir Logo</>
                       )}
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Recommended size: 200x200px, PNG or JPG format (max 2MB)
+                    Tamaño recomendado: 200x200px, formato PNG o JPG (máx 2MB)
                   </p>
                 </div>
 
                 {/* Color Scheme */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="primaryColor">Primary Color</Label>
+                    <Label htmlFor="primaryColor">Color Primario</Label>
                     <div className="flex items-center space-x-3">
                       <div
                         className="w-10 h-10 rounded-lg border"
@@ -358,7 +351,7 @@ const Settings = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="secondaryColor">Secondary Color</Label>
+                    <Label htmlFor="secondaryColor">Color Secundario</Label>
                     <div className="flex items-center space-x-3">
                       <div
                         className="w-10 h-10 rounded-lg border"
@@ -383,7 +376,7 @@ const Settings = () => {
 
                 {/* Preview */}
                 <div className="space-y-2">
-                  <Label>Preview</Label>
+                  <Label>Vista Previa</Label>
                   <div className="p-6 border rounded-lg space-y-4" style={{
                     background: `linear-gradient(135deg, ${editedBranding?.primaryColor || '#3b82f6'}10, ${editedBranding?.secondaryColor || '#1e40af'}10)`,
                     borderColor: (editedBranding?.primaryColor || '#3b82f6') + '20'
@@ -398,9 +391,9 @@ const Settings = () => {
                       </div>
                       <div>
                         <h3 className="font-semibold" style={{ color: editedBranding?.primaryColor || '#3b82f6' }}>
-                          {editedBranding?.contact?.name || 'Your Agency'}
+                          {editedBranding?.contact?.name || 'Tu Agencia'}
                         </h3>
-                        <p className="text-sm text-muted-foreground">Travel Quote Preview</p>
+                        <p className="text-sm text-muted-foreground">Vista Previa de Cotización</p>
                       </div>
                     </div>
                     <Button
@@ -410,87 +403,14 @@ const Settings = () => {
                       }}
                       className="text-white"
                     >
-                      Book Now
+                      Reservar Ahora
                     </Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
 
-          {/* CONTACT INFO TAB */}
-          <TabsContent value="contact" className="space-y-6">
-            <Card className="shadow-card">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Contact Information</CardTitle>
-                    <CardDescription>
-                      This information will appear in your quotes and communications
-                    </CardDescription>
-                  </div>
-                  <Button
-                    onClick={handleSaveBranding}
-                    disabled={saving || !editedBranding}
-                    className="bg-gradient-hero shadow-primary"
-                  >
-                    {saving ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
-                    ) : (
-                      <><Save className="h-4 w-4 mr-2" /> Save Changes</>
-                    )}
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="agencyName">Agency Name</Label>
-                  <div className="relative">
-                    <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="agencyName"
-                      value={editedBranding?.contact?.name || ''}
-                      onChange={(e) => handleContactChange('name', e.target.value)}
-                      className="pl-10"
-                      placeholder="Your Travel Agency"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Contact Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      value={editedBranding?.contact?.email || ''}
-                      onChange={(e) => handleContactChange('email', e.target.value)}
-                      className="pl-10"
-                      placeholder="contact@youragency.com"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="phone"
-                      value={editedBranding?.contact?.phone || ''}
-                      onChange={(e) => handleContactChange('phone', e.target.value)}
-                      className="pl-10"
-                      placeholder="+1 (555) 123-4567"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* PDF TEMPLATES TAB */}
-          <TabsContent value="templates" className="space-y-6">
+            {/* PDF TEMPLATES SECTION */}
             {selectedAgencyId && agency ? (
               <SimplePdfTemplateManager
                 agencyId={selectedAgencyId}
@@ -502,12 +422,83 @@ const Settings = () => {
                   <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-muted-foreground">
                     {needsAgencySelector
-                      ? 'Please select an agency to manage PDF templates'
-                      : 'Loading agency information...'}
+                      ? 'Por favor selecciona una agencia para gestionar las plantillas PDF'
+                      : 'Cargando información de la agencia...'}
                   </p>
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* CONTACT INFO TAB */}
+          <TabsContent value="contact" className="space-y-6">
+            <Card className="shadow-card">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Información de Contacto</CardTitle>
+                    <CardDescription>
+                      Esta información aparecerá en tus cotizaciones y comunicaciones
+                    </CardDescription>
+                  </div>
+                  <Button
+                    onClick={handleSaveBranding}
+                    disabled={saving || !editedBranding}
+                    className="bg-gradient-hero shadow-primary"
+                  >
+                    {saving ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Guardando...</>
+                    ) : (
+                      <><Save className="h-4 w-4 mr-2" /> Guardar Cambios</>
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="agencyName">Nombre de la Agencia</Label>
+                  <div className="relative">
+                    <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="agencyName"
+                      value={editedBranding?.contact?.name || ''}
+                      onChange={(e) => handleContactChange('name', e.target.value)}
+                      className="pl-10"
+                      placeholder="Tu Agencia de Viajes"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email de Contacto</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="email"
+                      type="email"
+                      value={editedBranding?.contact?.email || ''}
+                      onChange={(e) => handleContactChange('email', e.target.value)}
+                      className="pl-10"
+                      placeholder="contacto@tuagencia.com"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Número de Teléfono</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="phone"
+                      value={editedBranding?.contact?.phone || ''}
+                      onChange={(e) => handleContactChange('phone', e.target.value)}
+                      className="pl-10"
+                      placeholder="+34 123 456 789"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ACCOUNT TAB */}
@@ -515,8 +506,8 @@ const Settings = () => {
             {/* Role Badge */}
             <Card className="shadow-card">
               <CardHeader>
-                <CardTitle>Account Information</CardTitle>
-                <CardDescription>Your role and permissions in the system</CardDescription>
+                <CardTitle>Información de la Cuenta</CardTitle>
+                <CardDescription>Tu rol y permisos en el sistema</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-4 bg-gradient-card rounded-lg">
@@ -525,10 +516,10 @@ const Settings = () => {
                     <div>
                       <p className="font-medium">{profile?.email || user?.email}</p>
                       <p className="text-sm text-muted-foreground">
-                        {isOwner && 'Platform Owner - Access to all tenants'}
-                        {isSuperAdmin && 'Tenant Administrator - Access to all agencies in tenant'}
-                        {isAdmin && 'Agency Administrator - Manage your agency'}
-                        {isSeller && 'Sales Agent - Manage assigned leads'}
+                        {isOwner && 'Propietario de la Plataforma - Acceso a todos los tenants'}
+                        {isSuperAdmin && 'Administrador de Tenant - Acceso a todas las agencias del tenant'}
+                        {isAdmin && 'Administrador de Agencia - Gestiona tu agencia'}
+                        {isSeller && 'Agente de Ventas - Gestiona leads asignados'}
                       </p>
                     </div>
                   </div>
@@ -544,8 +535,8 @@ const Settings = () => {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Personal Profile</CardTitle>
-                    <CardDescription>Update your personal information</CardDescription>
+                    <CardTitle>Perfil Personal</CardTitle>
+                    <CardDescription>Actualiza tu información personal</CardDescription>
                   </div>
                   <Button
                     onClick={handleSaveProfile}
@@ -553,33 +544,33 @@ const Settings = () => {
                     className="bg-gradient-hero shadow-primary"
                   >
                     {saving ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Guardando...</>
                     ) : (
-                      <><Save className="h-4 w-4 mr-2" /> Save Profile</>
+                      <><Save className="h-4 w-4 mr-2" /> Guardar Perfil</>
                     )}
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="userName">Display Name</Label>
+                  <Label htmlFor="userName">Nombre para Mostrar</Label>
                   <Input
                     id="userName"
                     value={editedName}
                     onChange={(e) => setEditedName(e.target.value)}
-                    placeholder="Your Name"
+                    placeholder="Tu Nombre"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Email Address</Label>
+                  <Label>Dirección de Email</Label>
                   <Input
                     value={profile?.email || user?.email || ''}
                     disabled
                     className="bg-muted"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Email cannot be changed. Contact support if needed.
+                    El email no se puede cambiar. Contacta a soporte si lo necesitas.
                   </p>
                 </div>
               </CardContent>
@@ -588,12 +579,12 @@ const Settings = () => {
             {/* Password Change */}
             <Card className="shadow-card">
               <CardHeader>
-                <CardTitle>Change Password</CardTitle>
-                <CardDescription>Update your password for security</CardDescription>
+                <CardTitle>Cambiar Contraseña</CardTitle>
+                <CardDescription>Actualiza tu contraseña por seguridad</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="newPassword">New Password</Label>
+                  <Label htmlFor="newPassword">Nueva Contraseña</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -608,7 +599,7 @@ const Settings = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -628,9 +619,9 @@ const Settings = () => {
                   className="w-full"
                 >
                   {saving ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Updating...</>
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Actualizando...</>
                   ) : (
-                    <>Update Password</>
+                    <>Actualizar Contraseña</>
                   )}
                 </Button>
               </CardContent>

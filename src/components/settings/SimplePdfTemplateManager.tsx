@@ -15,27 +15,27 @@ interface SimplePdfTemplateManagerProps {
 const TEMPLATE_TYPES = [
   {
     type: 'combined' as const,
-    title: 'Combined Travel',
-    description: 'Template for quotes with both flights and hotels',
-    badge: 'Flights + Hotels'
+    title: 'Viaje Combinado',
+    description: 'Plantilla para cotizaciones con vuelos y hoteles',
+    badge: 'Vuelos + Hoteles'
   },
   {
     type: 'flights' as const,
-    title: 'Flights Only',
-    description: 'Template for single flight quotes',
-    badge: '1 Flight'
+    title: 'Solo Vuelos',
+    description: 'Plantilla para cotizaciones de un solo vuelo',
+    badge: '1 Vuelo'
   },
   {
     type: 'flights2' as const,
-    title: 'Multiple Flights',
-    description: 'Template for quotes with 2 flights',
-    badge: '2 Flights'
+    title: 'Vuelos Múltiples',
+    description: 'Plantilla para cotizaciones con 2 vuelos',
+    badge: '2 Vuelos'
   },
   {
     type: 'hotels' as const,
-    title: 'Hotels Only',
-    description: 'Template for hotel-only quotes',
-    badge: 'Hotels'
+    title: 'Solo Hoteles',
+    description: 'Plantilla para cotizaciones solo de hotel',
+    badge: 'Hoteles'
   }
 ];
 
@@ -64,13 +64,13 @@ const SimplePdfTemplateManager: React.FC<SimplePdfTemplateManagerProps> = ({
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          <strong>How to customize your PDF templates:</strong>
+          <strong>Cómo personalizar tus plantillas PDF:</strong>
           <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
-            <li>Create a custom background image with your agency's header and footer design</li>
-            <li>Recommended size: 800x1132px (A4 portrait format)</li>
-            <li>Use PNG format with transparency for best results</li>
-            <li>Upload the image above - it will automatically create a custom template</li>
-            <li>Your PDFs will use the custom background immediately</li>
+            <li>Crea una imagen de fondo personalizada con el encabezado y pie de página de tu agencia</li>
+            <li>Tamaño recomendado: 800x1132px (formato A4 vertical)</li>
+            <li>Usa formato PNG con transparencia para mejores resultados</li>
+            <li>Sube la imagen arriba - se creará automáticamente una plantilla personalizada</li>
+            <li>Tus PDFs usarán el fondo personalizado inmediatamente</li>
           </ul>
         </AlertDescription>
       </Alert>
@@ -80,48 +80,48 @@ const SimplePdfTemplateManager: React.FC<SimplePdfTemplateManagerProps> = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Code className="h-5 w-5" />
-            Design Guidelines
+            Guía de Diseño
           </CardTitle>
           <CardDescription>
-            Tips for creating effective PDF backgrounds
+            Consejos para crear fondos PDF efectivos
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
-              <h4 className="font-semibold mb-2">Header Area (Top 180px)</h4>
+              <h4 className="font-semibold mb-2">Área de Encabezado (Superior 180px)</h4>
               <ul className="space-y-1 text-xs text-muted-foreground">
-                <li>• Place your agency logo and branding</li>
-                <li>• Use your brand colors</li>
-                <li>• Keep text minimal (content is dynamic)</li>
-                <li>• Leave space for document title</li>
+                <li>• Coloca el logo y branding de tu agencia</li>
+                <li>• Usa los colores de tu marca</li>
+                <li>• Mantén el texto mínimo (el contenido es dinámico)</li>
+                <li>• Deja espacio para el título del documento</li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-2">Content Area (Middle)</h4>
+              <h4 className="font-semibold mb-2">Área de Contenido (Centro)</h4>
               <ul className="space-y-1 text-xs text-muted-foreground">
-                <li>• Keep background light or transparent</li>
-                <li>• Avoid busy patterns (text goes here)</li>
-                <li>• Subtle watermarks are OK</li>
-                <li>• Maintain good contrast</li>
+                <li>• Mantén el fondo claro o transparente</li>
+                <li>• Evita patrones complejos (aquí va el texto)</li>
+                <li>• Las marcas de agua sutiles están bien</li>
+                <li>• Mantén un buen contraste</li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-2">Footer Area (Bottom 80px)</h4>
+              <h4 className="font-semibold mb-2">Área de Pie de Página (Inferior 80px)</h4>
               <ul className="space-y-1 text-xs text-muted-foreground">
-                <li>• Add contact information</li>
-                <li>• Social media icons</li>
-                <li>• Website URL</li>
-                <li>• Legal disclaimers</li>
+                <li>• Añade información de contacto</li>
+                <li>• Iconos de redes sociales</li>
+                <li>• URL del sitio web</li>
+                <li>• Avisos legales</li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold mb-2">Best Practices</h4>
+              <h4 className="font-semibold mb-2">Mejores Prácticas</h4>
               <ul className="space-y-1 text-xs text-muted-foreground">
-                <li>• Use high-resolution images</li>
-                <li>• Test with sample PDFs first</li>
-                <li>• Optimize file size (under 1MB)</li>
-                <li>• Consider mobile viewing</li>
+                <li>• Usa imágenes de alta resolución</li>
+                <li>• Prueba primero con PDFs de muestra</li>
+                <li>• Optimiza el tamaño del archivo (menos de 1MB)</li>
+                <li>• Considera la visualización móvil</li>
               </ul>
             </div>
           </div>

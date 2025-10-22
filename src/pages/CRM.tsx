@@ -17,7 +17,7 @@ import {
 import MainLayout from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Star, Lock, Info, Filter, Building } from 'lucide-react';
+import { Plus, Star, Lock, Info, Filter, Building, Download } from 'lucide-react';
 import { TrelloColumn } from '@/components/crm/TrelloColumn';
 import { TrelloCard } from '@/components/crm/TrelloCard';
 import { LeadDialog } from '@/components/crm/LeadDialog';
@@ -222,6 +222,95 @@ export default function CRM() {
     }
   };
 
+  const handleExportCSV = () => {
+    // Get all visible leads based on filters
+    const allVisibleLeads = sections.flatMap(section => {
+      const sectionLeads = leadsBySection[section.id] || [];
+      return getFilteredLeads(sectionLeads);
+    });
+
+    if (allVisibleLeads.length === 0) {
+      toast({
+        title: "No hay datos para exportar",
+        description: "No hay leads visibles con los filtros actuales.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // CSV Headers
+    const headers = [
+      'Cliente',
+      'Email',
+      'Teléfono',
+      'Tipo de Viaje',
+      'Destino',
+      'Fecha Check-in',
+      'Fecha Check-out',
+      'Adultos',
+      'Niños',
+      'Presupuesto',
+      'Estado',
+      'Sección',
+      'Vendedor',
+      'Agencia',
+      'Fecha de Creación',
+      'Descripción'
+    ];
+
+    // Convert leads to CSV rows
+    const rows = allVisibleLeads.map(lead => {
+      const section = sections.find(s => s.id === lead.section_id);
+      const seller = sellers.find(s => s.id === lead.assigned_user_id);
+      const agency = agencies.find(a => a.id === lead.agency_id);
+
+      return [
+        lead.contact?.name || '',
+        lead.contact?.email || '',
+        lead.contact?.phone || '',
+        lead.trip?.type || '',
+        lead.trip?.city || '',
+        lead.trip?.dates?.checkin || '',
+        lead.trip?.dates?.checkout || '',
+        lead.trip?.adults || '0',
+        lead.trip?.children || '0',
+        lead.budget || '0',
+        lead.status || '',
+        section?.name || '',
+        seller?.name || seller?.email || '',
+        agency?.name || '',
+        new Date(lead.created_at).toLocaleDateString('es-ES'),
+        (lead.description || '').replace(/"/g, '""') // Escape quotes
+      ];
+    });
+
+    // Build CSV content
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    // Create and download file
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `crm-leads-${timestamp}.csv`;
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Exportación exitosa",
+      description: `Se exportaron ${allVisibleLeads.length} leads a ${filename}`,
+    });
+  };
+
   if (loading) {
     return (
       <MainLayout>
@@ -307,6 +396,16 @@ export default function CRM() {
                 </SelectContent>
               </Select>
             )}
+
+            <Button
+              onClick={handleExportCSV}
+              variant="outline"
+              size="sm"
+              className="gap-2 text-xs md:text-sm"
+            >
+              <Download className="h-3.5 md:h-4 w-3.5 md:w-4" />
+              Exportar CSV
+            </Button>
 
             <Button
               onClick={handleNewSection}
@@ -403,6 +502,14 @@ export default function CRM() {
           onOpenChange={setIsDialogOpen}
           lead={selectedLead}
           onSave={handleSaveLead}
+          onDelete={async (leadId) => {
+            await removeLead(leadId);
+            setIsDialogOpen(false);
+            toast({
+              title: "Tarjeta eliminada",
+              description: "La tarjeta se ha eliminado correctamente.",
+            });
+          }}
           onTransferComplete={() => {
             // Reload leads after transfer
             window.location.reload();

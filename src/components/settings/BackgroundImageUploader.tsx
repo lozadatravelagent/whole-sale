@@ -75,8 +75,8 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
     if (!file.type.startsWith('image/')) {
       toast({
         variant: 'destructive',
-        title: 'Invalid file type',
-        description: 'Please upload an image file (PNG, JPG, etc.)'
+        title: 'Tipo de archivo inválido',
+        description: 'Por favor sube un archivo de imagen (PNG, JPG, etc.)'
       });
       return;
     }
@@ -85,8 +85,8 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
     if (file.size > 5 * 1024 * 1024) {
       toast({
         variant: 'destructive',
-        title: 'File too large',
-        description: 'Image must be less than 5MB'
+        title: 'Archivo muy grande',
+        description: 'La imagen debe ser menor a 5MB'
       });
       return;
     }
@@ -159,8 +159,8 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
       setCustomTemplateId(newTemplate.id);
 
       toast({
-        title: 'Background uploaded successfully',
-        description: `Your custom ${templateType} PDF background is now active`
+        title: 'Fondo subido exitosamente',
+        description: `Tu fondo PDF personalizado para ${templateType} está activo`
       });
 
       // Clear file input
@@ -171,8 +171,8 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
       console.error('Error uploading background:', error);
       toast({
         variant: 'destructive',
-        title: 'Upload failed',
-        description: error instanceof Error ? error.message : 'Unknown error occurred'
+        title: 'Fallo al subir',
+        description: error instanceof Error ? error.message : 'Ocurrió un error desconocido'
       });
     } finally {
       setUploading(false);
@@ -180,7 +180,7 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
   };
 
   const handleRemoveBackground = async () => {
-    if (!confirm('Are you sure you want to remove this custom background? The default template will be used instead.')) {
+    if (!confirm('¿Estás seguro de que quieres eliminar este fondo personalizado? Se usará la plantilla predeterminada en su lugar.')) {
       return;
     }
 
@@ -217,15 +217,15 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
       setCustomTemplateId(null);
 
       toast({
-        title: 'Background removed',
-        description: 'Now using default PDF template'
+        title: 'Fondo eliminado',
+        description: 'Ahora usando la plantilla PDF predeterminada'
       });
     } catch (error) {
       console.error('Error removing background:', error);
       toast({
         variant: 'destructive',
-        title: 'Failed to remove background',
-        description: error instanceof Error ? error.message : 'Unknown error'
+        title: 'Error al eliminar el fondo',
+        description: error instanceof Error ? error.message : 'Error desconocido'
       });
     }
   };
@@ -258,7 +258,7 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
           <div className="border rounded-lg overflow-hidden bg-muted">
             <img
               src={backgroundUrl}
-              alt="PDF Background Preview"
+              alt="Vista previa del fondo PDF"
               className="w-full h-48 object-cover"
             />
           </div>
@@ -266,14 +266,14 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
 
         {/* Status */}
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Status:</span>
+          <span className="text-sm font-medium">Estado:</span>
           {customTemplateId ? (
             <Badge variant="default" className="gap-1">
               <Check className="h-3 w-3" />
-              Custom Background Active
+              Fondo Personalizado Activo
             </Badge>
           ) : (
-            <Badge variant="outline">Using Default</Badge>
+            <Badge variant="outline">Usando Predeterminado</Badge>
           )}
         </div>
 
@@ -298,12 +298,12 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
             {uploading ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Uploading...
+                Subiendo...
               </>
             ) : (
               <>
                 <Upload className="h-4 w-4 mr-2" />
-                {backgroundUrl ? 'Change Background' : 'Upload Background'}
+                {backgroundUrl ? 'Cambiar Fondo' : 'Subir Fondo'}
               </>
             )}
           </Button>
@@ -314,7 +314,7 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => window.open(backgroundUrl, '_blank')}
-                title="View full size"
+                title="Ver tamaño completo"
               >
                 <Eye className="h-4 w-4" />
               </Button>
@@ -322,7 +322,7 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={handleRemoveBackground}
-                title="Remove custom background"
+                title="Eliminar fondo personalizado"
               >
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
@@ -332,7 +332,7 @@ const BackgroundImageUploader: React.FC<BackgroundImageUploaderProps> = ({
 
         {/* Recommended size */}
         <p className="text-xs text-muted-foreground">
-          Recommended: 800x1132px (A4 portrait), PNG with transparency preferred
+          Recomendado: 800x1132px (A4 vertical), PNG con transparencia preferido
         </p>
       </CardContent>
     </Card>

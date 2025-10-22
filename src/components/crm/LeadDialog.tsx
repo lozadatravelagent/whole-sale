@@ -1,5 +1,6 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,6 +72,7 @@ interface LeadDialogProps {
   onOpenChange: (open: boolean) => void;
   lead?: Lead | null;
   onSave: (data: LeadFormData & { checklist?: ChecklistItem[] }) => void;
+  onDelete?: (leadId: string) => void;
   onTransferComplete?: () => void;
   isEditing?: boolean;
   sections?: Section[];
@@ -82,6 +84,7 @@ export function LeadDialog({
   onOpenChange,
   lead,
   onSave,
+  onDelete,
   onTransferComplete,
   isEditing = false,
   sections = [],
@@ -90,6 +93,7 @@ export function LeadDialog({
   const [checklist, setChecklist] = React.useState<ChecklistItem[]>([]);
   const [newChecklistItem, setNewChecklistItem] = React.useState('');
   const [showTransferDialog, setShowTransferDialog] = React.useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const {
@@ -542,6 +546,18 @@ export function LeadDialog({
                 >
                   {isSubmitting ? 'Guardando...' : (isEditing ? 'Guardar Cambios' : 'Crear Lead')}
                 </Button>
+                {isEditing && lead && onDelete && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="w-full"
+                    onClick={() => setShowDeleteDialog(true)}
+                    disabled={isSubmitting}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar Tarjeta
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -572,6 +588,38 @@ export function LeadDialog({
           }}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar esta tarjeta?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Estás a punto de eliminar el lead de <span className="font-semibold text-foreground">"{lead?.contact.name}"</span>.
+              </p>
+              <p className="text-destructive font-medium">
+                Esta acción no se puede deshacer.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (lead && onDelete) {
+                  onDelete(lead.id);
+                  onOpenChange(false);
+                }
+                setShowDeleteDialog(false);
+              }}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Eliminar Tarjeta
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
