@@ -181,8 +181,8 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
             <Card
               key={hotel.id}
               className={`transition-all cursor-pointer ${isSelected
-                  ? 'ring-2 ring-primary bg-primary/5'
-                  : 'hover:bg-muted/50'
+                ? 'ring-2 ring-primary bg-primary/5'
+                : 'hover:bg-muted/50'
                 }`}
               onClick={() => handleHotelToggle(hotel.id)}
             >
@@ -234,11 +234,11 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
 
                   <div className="text-right">
                     <div className="text-2xl font-bold text-primary">
-                      {formatPrice(selectedRoom?.total_price || 0, selectedRoom?.currency || 'USD')}
+                      {formatPrice(selectedRoom?.price_per_night || 0, selectedRoom?.currency || 'USD')}
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {selectedRoom?.price_per_night && (
-                        <div>{formatPrice(selectedRoom.price_per_night, selectedRoom.currency)} por noche</div>
+                      {selectedRoom?.total_price && (
+                        <div>{formatPrice(selectedRoom.total_price, selectedRoom.currency)} total</div>
                       )}
                     </div>
                   </div>

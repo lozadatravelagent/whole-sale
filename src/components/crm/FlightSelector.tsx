@@ -102,11 +102,11 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
         return prev.filter(id => id !== flightId);
       }
 
-      // Limit to maximum 2 flights
-      if (prev.length >= 2) {
+      // Limit to maximum 4 flights
+      if (prev.length >= 4) {
         toast({
           title: "Límite alcanzado",
-          description: "Solo puedes seleccionar máximo 2 vuelos para el PDF.",
+          description: "Solo puedes seleccionar máximo 4 vuelos para el PDF.",
           variant: "destructive",
         });
         return prev;

@@ -210,7 +210,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                     <div className="flex items-center space-x-2">
                                                         <Bed className="h-4 w-4 text-muted-foreground" />
                                                         <span className="font-medium text-sm">
-                                                            {formatPrice(room.total_price, room.currency)}
+                                                            {formatPrice(room.price_per_night, room.currency)}
                                                         </span>
                                                     </div>
 
@@ -260,9 +260,9 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                     )}
                                                 </div>
 
-                                                {room.price_per_night && room.price_per_night !== room.total_price && (
+                                                {room.total_price && room.price_per_night !== room.total_price && (
                                                     <div className="text-xs text-muted-foreground">
-                                                        {formatPrice(room.price_per_night, room.currency)} por noche
+                                                        {formatPrice(room.total_price, room.currency)} total
                                                     </div>
                                                 )}
                                             </div>

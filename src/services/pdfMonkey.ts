@@ -153,10 +153,10 @@ export async function generateFlightPdf(selectedFlights: FlightData[], agencyId?
       };
     }
 
-    if (selectedFlights.length > 2) {
+    if (selectedFlights.length > 4) {
       return {
         success: false,
-        error: 'Maximum 2 flights can be selected for PDF generation'
+        error: 'Maximum 4 flights can be selected for PDF generation'
       };
     }
 
@@ -224,21 +224,16 @@ function analyzeFlightStructure(flights: FlightData[]): {
     }))
   });
 
-  // Case 1: Multiple separate flights (2 different flight objects)
-  if (flights.length === 2) {
-    const [flight1, flight2] = flights;
-    const differentDates = flight1.departure_date !== flight2.departure_date;
-    const differentRoutes = flight1.legs?.[0]?.departure?.city_code !== flight2.legs?.[0]?.departure?.city_code;
-
-    if (differentDates || differentRoutes) {
-      console.log('📋 MULTIPLE SEPARATE FLIGHTS detected');
-      return {
-        templateType: 'flights2',
-        defaultTemplateId: DEFAULT_FLIGHTS_TEMPLATE_ID,
-        templateName: 'flights2.html',
-        description: 'Multiple separate flights (different dates/routes)'
-      };
-    }
+  // Case 1: Multiple separate flights (2 or more different flight objects)
+  // When user selects 2+ flights, ALWAYS use flights2 template regardless of dates/routes
+  if (flights.length >= 2) {
+    console.log(`📋 MULTIPLE FLIGHTS detected (${flights.length} flights) - using flights2 template`);
+    return {
+      templateType: 'flights2',
+      defaultTemplateId: DEFAULT_FLIGHTS_TEMPLATE_ID,
+      templateName: 'flights2.html',
+      description: `Multiple flights (${flights.length} flight options selected)`
+    };
   }
 
   // Case 2: Single flight analysis
@@ -400,9 +395,9 @@ function preparePdfData(flights: FlightData[]) {
 
   console.log('✅ PREPARED SELECTED FLIGHTS:', selected_flights.length, 'flights');
 
-  // For multiple flights (2), use flights2.html template structure
-  if (flights.length === 2) {
-    console.log('🎯 USING FLIGHTS2.HTML TEMPLATE STRUCTURE - Sending selected_flights array');
+  // For multiple flights (2-4), use flights2.html template structure
+  if (flights.length >= 2) {
+    console.log(`🎯 USING FLIGHTS2.HTML TEMPLATE STRUCTURE - Sending ${flights.length} flights`);
 
     const multiFlightData = {
       selected_flights: selected_flights
