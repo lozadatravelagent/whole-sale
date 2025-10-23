@@ -457,9 +457,7 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
             // Use the actual legs extracted from PDF exactly as they are
             legs.push(...(flight as any).legs);
         } else {
-            console.warn('⚠️ No leg data found in PDF - cannot reconstruct flight without real data');
-            // Return early if no real leg data is available
-            return null;
+            throw new Error('No leg data found in PDF for flight reconstruction');
         }
 
         // Use ONLY real data from PDF - no mock data
@@ -583,13 +581,16 @@ export async function generateModifiedPdf(
         if (analysis.content.extractedFromPdfMonkey) {
             // For our own PDFs, reconstruct the data more accurately
             console.log('🏗️ Reconstructing data from PdfMonkey template');
-            const reconstructedFlights = reconstructFlightData(analysis, newPrice);
-
-            // Filter out null values (flights without real leg data)
-            adjustedFlights = reconstructedFlights.filter(flight => flight !== null);
-
-            if (adjustedFlights.length === 0) {
-                throw new Error('No se pudieron reconstruir los vuelos con datos reales del PDF');
+            try {
+                const reconstructedFlights = reconstructFlightData(analysis, newPrice);
+                // Filter out null values (flights without real leg data)
+                adjustedFlights = reconstructedFlights.filter(flight => flight !== null);
+                if (adjustedFlights.length === 0) {
+                    throw new Error('No se pudieron reconstruir los vuelos con datos reales del PDF');
+                }
+            } catch (error) {
+                console.error('❌ Error reconstructing flight data:', error);
+                return { success: false, error: 'No se pudo reconstruir la información del vuelo desde el PDF.' };
             }
 
             adjustedHotels = reconstructHotelData(analysis, newPrice);
@@ -785,7 +786,7 @@ export async function processPriceChangeRequest(
             if (pdfResult.success && pdfResult.pdfUrl) {
                 const response = `💰 **Precio Modificado Exitosamente**\n\n` +
                     `📄 He generado un nuevo PDF con tu precio solicitado:\n\n` +
-                    `• **Precio solicitado:** $${requestedPrice.toLocaleString()} ${effectiveAnalysis.content?.currency || 'USD'}\n` +
+                    `• **Precio solicitado:** ${requestedPrice.toLocaleString()} ${effectiveAnalysis.content?.currency || 'USD'}\n` +
                     `• **Pasajeros:** ${effectiveAnalysis.content?.passengers || 1}`;
 
                 return {
@@ -794,7 +795,7 @@ export async function processPriceChangeRequest(
                 };
             } else {
                 return {
-                    response: `❌ **Error generando PDF modificado**\n\nNo pude generar el PDF con el nuevo precio de $${requestedPrice}. Error: ${pdfResult.error}\n\n¿Podrías intentar nuevamente?`
+                    response: `❌ **Error generando PDF modificado**\n\nNo pude generar el PDF con el nuevo precio de ${requestedPrice}. Error: ${pdfResult.error}\n\n¿Podrías intentar nuevamente?`
                 };
             }
         }

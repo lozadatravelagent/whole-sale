@@ -208,61 +208,62 @@ const useMessageHandler = (
     if (isPriceChangeRequest(currentMessage)) {
       console.log('💰 [PRICE CHANGE] Detected price change request for previous PDF');
 
-      setIsLoading(true);
+      // Clear the input immediately
+      setMessage('');
 
-      try {
-        // Add user message
-        await addMessageViaSupabase({
-          conversation_id: selectedConversation,
-          role: 'user' as const,
-          content: { text: currentMessage.trim() },
-          meta: { status: 'sent', messageType: 'price_change_request' }
-        });
-
-        const result = await handlePriceChangeRequest(currentMessage);
-
-        if (result) {
-          // Add assistant response
+      // Run the price change process in the background
+      (async () => {
+        setIsLoading(true);
+        try {
+          // Add user message
           await addMessageViaSupabase({
             conversation_id: selectedConversation,
-            role: 'assistant' as const,
-            content: {
-              text: result.response,
-              pdfUrl: result.modifiedPdfUrl,
-              metadata: {
-                type: 'price_change_response',
-                hasModifiedPdf: !!result.modifiedPdfUrl
-              }
-            },
-            meta: {
-              status: 'sent',
-              messageType: result.modifiedPdfUrl ? 'pdf_generated' : 'price_change_response'
-            }
+            role: 'user' as const,
+            content: { text: currentMessage.trim() },
+            meta: { status: 'sent', messageType: 'price_change_request' }
           });
 
-          if (result.modifiedPdfUrl) {
-            toast({
-              title: "PDF Modificado Generado",
-              description: "He creado un nuevo PDF con el precio que solicitaste.",
+          const result = await handlePriceChangeRequest(currentMessage);
+
+          if (result) {
+            // Add assistant response
+            await addMessageViaSupabase({
+              conversation_id: selectedConversation,
+              role: 'assistant' as const,
+              content: {
+                text: result.response,
+                pdfUrl: result.modifiedPdfUrl,
+                metadata: {
+                  type: 'price_change_response',
+                  hasModifiedPdf: !!result.modifiedPdfUrl
+                }
+              },
+              meta: {
+                status: 'sent',
+                messageType: result.modifiedPdfUrl ? 'pdf_generated' : 'price_change_response'
+              }
             });
+
+            if (result.modifiedPdfUrl) {
+              toast({
+                title: "PDF Modificado Generado",
+                description: "He creado un nuevo PDF con el precio que solicitaste.",
+              });
+            }
           }
+        } catch (error) {
+          console.error('❌ Error processing price change request:', error);
+          toast({
+            title: "Error",
+            description: "No pude procesar tu solicitud de cambio de precio.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoading(false);
         }
+      })();
 
-        setMessage('');
-        return; // Exit early, don't continue with normal flow
-
-      } catch (error) {
-        console.error('❌ Error processing price change request:', error);
-        toast({
-          title: "Error",
-          description: "No pude procesar tu solicitud de cambio de precio.",
-          variant: "destructive",
-        });
-        setMessage('');
-        return;
-      } finally {
-        setIsLoading(false);
-      }
+      return; // Exit early, don't continue with normal flow
     }
 
     setMessage('');
