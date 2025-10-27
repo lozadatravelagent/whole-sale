@@ -1,0 +1,74 @@
+# AI Context - Documentation Guide
+
+This file helps AI assistants (Claude Code, Cursor, etc.) understand and navigate the documentation structure.
+
+## Documentation Organization
+
+All project documentation is organized in `/docs` with the following structure:
+
+```
+docs/
+├── README.md                    # Main documentation index
+├── api/                         # External API integrations
+├── architecture/                # System design & performance
+├── guides/                      # User-facing documentation
+├── business-rules/              # Business logic & permissions
+├── implementation/              # Setup & migration guides
+└── archive/                     # Historical/resolved issues
+```
+
+## Context Loading Strategy
+
+### When asked about USER MANAGEMENT or PERMISSIONS:
+- Load: `docs/business-rules/USER_MANAGEMENT_BUSINESS_RULES.md`
+- Load: `docs/implementation/IMPLEMENTATION_SUMMARY.md`
+- Reference role hierarchy: OWNER > SUPERADMIN > ADMIN > SELLER
+
+### When asked about API INTEGRATION or TRAVEL SEARCHES:
+- Load: `docs/api/Softur - API GUIDE.md`
+- Load: `docs/architecture/ASYNC_SEARCH_GUIDE.md`
+- Check EUROVIPS/SOFTUR workflows
+- Reference: `docs/api/examples/` for real API responses
+
+### When asked about PDF GENERATION or CUSTOMIZATION:
+- Load: `docs/guides/CUSTOM_PDF_TEMPLATES_GUIDE.md`
+- Load: `docs/guides/BACKGROUND_IMAGE_SYSTEM_GUIDE.md`
+
+### When asked about PERFORMANCE or OPTIMIZATION:
+- Load: `docs/architecture/ASYNC_SEARCH_GUIDE.md`
+- Load: `docs/architecture/RATE_LIMITING_SUMMARY.md`
+- Check async search implementation
+
+## Quick Reference Map
+
+| User Query Topic | Primary Docs | Secondary Docs |
+|-----------------|--------------|----------------|
+| "user roles" | business-rules/USER_MANAGEMENT_BUSINESS_RULES.md | implementation/IMPLEMENTATION_SUMMARY.md |
+| "hotel search" | api/Softur - API GUIDE.md | architecture/ASYNC_SEARCH_GUIDE.md |
+| "pdf template" | guides/CUSTOM_PDF_TEMPLATES_GUIDE.md | guides/BACKGROUND_IMAGE_SYSTEM_GUIDE.md |
+| "slow searches" | architecture/ASYNC_SEARCH_GUIDE.md | architecture/RATE_LIMITING_SUMMARY.md |
+| "permissions error" | business-rules/USER_MANAGEMENT_BUSINESS_RULES.md | - |
+| "API error" | api/Softur - API GUIDE.md | - |
+| "test flight parser" | api/examples/flight-responses/ | - |
+| "mock API response" | api/examples/README.md | - |
+
+## Important Context Notes
+
+1. **CLAUDE.md in root**: Primary development guidelines (DO NOT MOVE)
+2. **Archive folder**: Historical docs for resolved issues (reference only)
+3. **Implementation guides**: Show what's already built (avoid rebuilding)
+4. **Business rules**: Enforce at database, API, and UI levels
+
+## File Naming Convention
+
+- UPPERCASE.md = Major documentation files
+- lowercase.md = Supporting or archive files
+- Spaces in filenames = Legacy API docs (e.g., "Softur - API GUIDE.md")
+
+## Documentation Status Indicators
+
+- ✅ Current = Active and up-to-date
+- 🔄 In Progress = Being updated
+- 📦 Historical = Archived but preserved
+- ❌ Deprecated = Outdated, do not use
+

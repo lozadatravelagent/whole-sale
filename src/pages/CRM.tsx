@@ -24,6 +24,7 @@ import { LeadDialog } from '@/components/crm/LeadDialog';
 import { useLeads } from '@/hooks/useLeads';
 import { useAuthUser } from '@/hooks/useAuthUser';
 import { useAgencies } from '@/hooks/useAgencies';
+import { CRMSkeleton } from '@/components/skeletons/CRMSkeleton';
 import { Lead, Section } from '@/types';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -312,13 +313,7 @@ export default function CRM() {
   };
 
   if (loading) {
-    return (
-      <MainLayout>
-        <div className="h-full flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      </MainLayout>
-    );
+    return <CRMSkeleton />;
   }
 
   return (

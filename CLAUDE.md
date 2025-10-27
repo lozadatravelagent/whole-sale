@@ -125,6 +125,26 @@ The project uses a comprehensive design system with:
 ### Testing
 - No specific test framework is configured - determine testing approach by examining the codebase if adding tests
 
+## Documentation
+
+All project documentation is organized in the `/docs` folder by category:
+
+- **[docs/api/](docs/api/)** - External API integration guides (EUROVIPS, SOFTUR)
+- **[docs/architecture/](docs/architecture/)** - System design, async search, rate limiting
+- **[docs/guides/](docs/guides/)** - User guides for PDF templates, searches
+- **[docs/business-rules/](docs/business-rules/)** - Permissions, role hierarchy
+- **[docs/implementation/](docs/implementation/)** - Setup guides, migration status
+- **[docs/archive/](docs/archive/)** - Historical docs for resolved issues
+
+See **[docs/README.md](docs/README.md)** for complete documentation index and navigation guide.
+
+### Quick Documentation Reference
+
+- **User Management & Permissions**: [docs/business-rules/USER_MANAGEMENT_BUSINESS_RULES.md](docs/business-rules/USER_MANAGEMENT_BUSINESS_RULES.md)
+- **Async Search System**: [docs/architecture/ASYNC_SEARCH_GUIDE.md](docs/architecture/ASYNC_SEARCH_GUIDE.md)
+- **API Integration**: [docs/api/Softur - API GUIDE.md](docs/api/Softur%20-%20API%20GUIDE.md)
+- **PDF Customization**: [docs/guides/CUSTOM_PDF_TEMPLATES_GUIDE.md](docs/guides/CUSTOM_PDF_TEMPLATES_GUIDE.md)
+
 ## EUROVIPS WebService Integration
 
 ### Servicios Combinados - Flujos de Trabajo

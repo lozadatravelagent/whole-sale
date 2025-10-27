@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Debug</title>
+</head>
+
+<body>
+    {% for flight in selected_flights %}
+    <div class="page">
+        <h1>DEBUG FLIGHT DATA</h1>
+
+        <h2>Flight Info:</h2>
+        <p><strong>Airline:</strong> {{ flight.airline.name }}</p>
+        <p><strong>Price:</strong> {{ flight.price.amount }} {{ flight.price.currency }}</p>
+        <p><strong>Passengers:</strong> {{ flight.adults }} adultos {{ flight.childrens }} niños</p>
+        <p><strong>Departure Date:</strong> {{ flight.departure_date }}</p>
+        <p><strong>Return Date:</strong> {{ flight.return_date }}</p>
+
+        <h2>Legs ({{ flight.legs.size }}):</h2>
+        {% for leg in flight.legs %}
+        <div style="border: 1px solid #ccc; margin: 10px; padding: 10px;">
+            <h3>Leg {{ forloop.index }}</h3>
+            <p><strong>Departure:</strong> {{ leg.departure.city_code }} {{ leg.departure.city_name }} {{
+                leg.departure.time }}</p>
+            <p><strong>Arrival:</strong> {{ leg.arrival.city_code }} {{ leg.arrival.city_name }} {{ leg.arrival.time }}
+            </p>
+            <p><strong>Duration:</strong> {{ leg.duration }}</p>
+            <p><strong>Flight Type:</strong> {{ leg.flight_type }}</p>
+
+            {% if leg.layovers and leg.layovers.size > 0 %}
+            <h4>Layovers ({{ leg.layovers.size }}):</h4>
+            {% for layover in leg.layovers %}
+            <p>- Escala en {{ layover.destination_city }} ({{ layover.destination_code }}) - Espera: {{
+                layover.waiting_time }}</p>
+            {% endfor %}
+            {% else %}
+            <p>No layovers</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+</body>
+
+</html>

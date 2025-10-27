@@ -6,10 +6,11 @@ const PDFMONKEY_API_BASE = 'https://api.pdfmonkey.io/api/v1/documents';
 const PDFMONKEY_SYNC_BASE = 'https://api.pdfmonkey.io/api/v1/documents/sync';
 
 // Default template IDs (fallback when no custom template exists)
-const DEFAULT_FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376'; // flights.html
+// Template files: src/templates/pdf/
+const DEFAULT_FLIGHT_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376'; // flights-simple.html (single flight)
 const DEBUG_TEMPLATE_ID = '67B7F3A5-7BFE-4F52-BE6B-110371CB9376'; // Same ID for now
-const DEFAULT_COMBINED_TEMPLATE_ID = '3E8394AC-84D4-4286-A1CD-A12D1AB001D5';
-const DEFAULT_FLIGHTS_TEMPLATE_ID = '30B142BF-1DD9-432D-8261-5287556DC9FC';
+const DEFAULT_COMBINED_TEMPLATE_ID = '3E8394AC-84D4-4286-A1CD-A12D1AB001D5'; // combined-flight-hotel.html
+const DEFAULT_FLIGHTS_TEMPLATE_ID = '30B142BF-1DD9-432D-8261-5287556DC9FC'; // flights-multiple.html (2-4 flights)
 
 // Default template IDs map for cloning
 export const DEFAULT_TEMPLATE_IDS = {
@@ -231,7 +232,7 @@ function analyzeFlightStructure(flights: FlightData[]): {
     return {
       templateType: 'flights2',
       defaultTemplateId: DEFAULT_FLIGHTS_TEMPLATE_ID,
-      templateName: 'flights2.html',
+      templateName: 'flights-multiple.html',
       description: `Multiple flights (${flights.length} flight options selected)`
     };
   }
@@ -275,8 +276,8 @@ function analyzeFlightStructure(flights: FlightData[]): {
 
       return {
         templateType: 'flights2',
-        defaultTemplateId: DEFAULT_FLIGHTS_TEMPLATE_ID, // Use flights2.html template ID for complex flights
-        templateName: 'flights2.html',
+        defaultTemplateId: DEFAULT_FLIGHTS_TEMPLATE_ID, // Use flights-multiple.html template for complex flights
+        templateName: 'flights-multiple.html',
         description: 'Complex single flight (round trip, multi-leg, or with layovers)'
       };
     }
@@ -285,7 +286,7 @@ function analyzeFlightStructure(flights: FlightData[]): {
     return {
       templateType: 'flights',
       defaultTemplateId: DEFAULT_FLIGHT_TEMPLATE_ID,
-      templateName: 'flights.html',
+      templateName: 'flights-simple.html',
       description: 'Simple single flight (one-way or simple round trip)'
     };
   }
@@ -295,7 +296,7 @@ function analyzeFlightStructure(flights: FlightData[]): {
   return {
     templateType: 'flights',
     defaultTemplateId: DEFAULT_FLIGHT_TEMPLATE_ID,
-    templateName: 'flights.html',
+    templateName: 'flights-simple.html',
     description: 'Default template (fallback)'
   };
 }
@@ -395,16 +396,16 @@ function preparePdfData(flights: FlightData[]) {
 
   console.log('✅ PREPARED SELECTED FLIGHTS:', selected_flights.length, 'flights');
 
-  // For multiple flights (2-4), use flights2.html template structure
+  // For multiple flights (2-4), use flights-multiple.html template structure
   if (flights.length >= 2) {
-    console.log(`🎯 USING FLIGHTS2.HTML TEMPLATE STRUCTURE - Sending ${flights.length} flights`);
+    console.log(`🎯 USING FLIGHTS-MULTIPLE.HTML TEMPLATE STRUCTURE - Sending ${flights.length} flights`);
 
     const multiFlightData = {
       selected_flights: selected_flights
     };
 
     console.log('🎯 SENDING MULTI-FLIGHT DATA:', {
-      template: 'flights2.html',
+      template: 'flights-multiple.html',
       flights_count: multiFlightData.selected_flights.length,
       flights_preview: multiFlightData.selected_flights.map((flight, i) => ({
         index: i,
@@ -418,15 +419,15 @@ function preparePdfData(flights: FlightData[]) {
     return multiFlightData;
   }
 
-  // For single flight, use flights.html template structure (template expects selected_flights array)
-  console.log('🎯 USING FLIGHTS.HTML TEMPLATE STRUCTURE - Sending selected_flights array');
+  // For single flight, use flights-simple.html template structure (template expects selected_flights array)
+  console.log('🎯 USING FLIGHTS-SIMPLE.HTML TEMPLATE STRUCTURE - Sending selected_flights array');
 
   const singleFlightData = {
     selected_flights: selected_flights
   };
 
   console.log('🎯 SENDING SINGLE FLIGHT DATA AS ARRAY:', {
-    template: 'flights.html',
+    template: 'flights-simple.html',
     flights_count: singleFlightData.selected_flights.length,
     legs_count: singleFlightData.selected_flights[0].legs.length,
     legs_preview: singleFlightData.selected_flights[0].legs.map((leg, i) => ({

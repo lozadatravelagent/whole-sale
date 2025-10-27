@@ -40,10 +40,10 @@ CREATE TABLE IF NOT EXISTS rate_limit_usage (
 );
 
 -- Indexes for fast lookups
-CREATE INDEX idx_rate_limit_usage_user_action ON rate_limit_usage(user_id, action, window_start);
-CREATE INDEX idx_rate_limit_usage_tenant_action ON rate_limit_usage(tenant_id, action, window_start);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_usage_user_action ON rate_limit_usage(user_id, action, window_start);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_usage_tenant_action ON rate_limit_usage(tenant_id, action, window_start);
 -- Index without predicate to avoid IMMUTABLE issue
-CREATE INDEX idx_rate_limit_usage_window ON rate_limit_usage(window_start);
+CREATE INDEX IF NOT EXISTS idx_rate_limit_usage_window ON rate_limit_usage(window_start);
 
 -- Function to check if user is within rate limit
 CREATE OR REPLACE FUNCTION check_rate_limit(

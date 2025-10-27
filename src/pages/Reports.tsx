@@ -16,6 +16,7 @@ import { TeamPerformanceTable } from '@/components/reports/TeamPerformanceTable'
 import { TrendsChart } from '@/components/reports/TrendsChart';
 import { ChannelsChart } from '@/components/reports/ChannelsChart';
 import { TripTypesChart } from '@/components/reports/TripTypesChart';
+import { ReportsSkeleton } from '@/components/skeletons/ReportsSkeleton';
 import {
   Download,
   TrendingUp,
@@ -230,16 +231,7 @@ const Reports = () => {
   };
 
   if (loading) {
-    return (
-      <MainLayout userRole="ADMIN">
-        <div className="p-8 flex items-center justify-center">
-          <div className="flex items-center gap-2">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <span>Cargando reportes...</span>
-          </div>
-        </div>
-      </MainLayout>
-    );
+    return <ReportsSkeleton />;
   }
 
   if (!metrics) {

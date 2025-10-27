@@ -50,7 +50,7 @@ const ChatInterface = React.memo(({
   const visibleMessages = messages.filter((m: MessageRow) => {
     const meta = (m as any).meta;
     // Hide system memory/context messages
-    if (m.role === 'system' && meta && meta.messageType === 'contextual_memory') return false;
+    if (m.role === 'system' && meta && (meta.messageType === 'contextual_memory' || meta.messageType === 'context_state')) return false;
     return true;
   });
 
@@ -170,13 +170,28 @@ const ChatInterface = React.memo(({
         className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0"
       >
         <div className="space-y-3 md:space-y-4">
-          {visibleMessages.map((msg) => (
-            <MessageItem
-              key={msg.id}
-              msg={msg}
-              onPdfGenerated={onPdfGenerated}
-            />
-          ))}
+          {/* Inline skeleton while loading messages - only for existing conversations */}
+          {isLoading && visibleMessages.length === 0 && selectedConversation && !selectedConversation.startsWith('temp-') ? (
+            <div className="space-y-4" aria-busy="true" aria-label="Cargando mensajes">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className="h-8 w-8 bg-muted/50 animate-pulse rounded-full" />
+                  <div className={`flex-1 space-y-2 ${i % 2 === 0 ? 'ml-auto max-w-[75%]' : 'max-w-[75%]'}`}>
+                    <div className="h-16 bg-muted/50 animate-pulse rounded-lg" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              {visibleMessages.map((msg) => (
+                <MessageItem
+                  key={msg.id}
+                  msg={msg}
+                  onPdfGenerated={onPdfGenerated}
+                />
+              ))}</>
+          )}
 
           {isTyping && (
             <div className="flex items-start gap-2 md:gap-3 animate-in fade-in duration-300">

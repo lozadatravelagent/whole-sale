@@ -16,7 +16,7 @@
           <div class="airline-info">
             <div class="airline-logo">{{ flight.airline.code }}</div>
             <div class="airline-name">
-              <div class="price-amount">{{ flight.airline.name }}</div>
+              <div class="airline-name">{{ flight.airline.name }}</div>
               <div class="detail-row">
                 <span class="detail-label">Ocupación:</span>
                 <span class="detail-value">{{ flight.adults }} adultos {{ flight.childrens }} niños</span>
@@ -29,41 +29,50 @@
           </div>
         </div>
 
-        <!-- Outbound Flight -->
+        <!-- Flight Legs -->
+        {% for leg in flight.legs %}
         <div class="flight-leg">
           <div class="leg-header">
-            <div class="leg-title">Vuelo de ida <span class="flight-type">{{ flight.departure_date }}</span></div>
+            <div class="leg-title">
+              {% if leg.flight_type == 'outbound' %}
+              Vuelo de ida <span class="flight-type">{{ flight.departure_date }}</span>
+              {% elsif leg.flight_type == 'return' %}
+              Vuelo de regreso <span class="flight-type">{{ flight.return_date }}</span>
+              {% else %}
+              Vuelo <span class="flight-type">{{ flight.departure_date }}</span>
+              {% endif %}
+            </div>
             <div class="leg-header">
               {% if flight.luggage %}
               <div class="flight-type">Equipaje de bodega incluido</div>
               {% else %}
               <div class="flight-type">Carry On incluido</div>
               {% endif %}
-              <div class="flight-type">{{ flight.legs[0].flight_type }}</div>
+              <div class="flight-type">{{ leg.flight_type }}</div>
             </div>
           </div>
           <div class="flight-route">
             <div class="airport-info">
-              <div class="airport-code">{{ flight.legs[0].departure.city_code }}</div>
-              <div class="airport-name">{{ flight.legs[0].departure.city_name }}</div>
-              <div class="time">{{ flight.legs[0].departure.time }}</div>
+              <div class="airport-code">{{ leg.departure.city_code }}</div>
+              <div class="airport-name">{{ leg.departure.city_name }}</div>
+              <div class="time">{{ leg.departure.time }}</div>
             </div>
             <div class="flight-arrow">
               <div class="arrow-line">
                 <div class="arrow-head"></div>
-                <div class="duration-info">{{ flight.legs[0].duration }}</div>
+                <div class="duration-info">{{ leg.duration }}</div>
               </div>
             </div>
             <div class="airport-info">
-              <div class="airport-code">{{ flight.legs[0].arrival.city_code }}</div>
-              <div class="airport-name">{{ flight.legs[0].arrival.city_name }}</div>
-              <div class="time">{{ flight.legs[0].arrival.time }}</div>
+              <div class="airport-code">{{ leg.arrival.city_code }}</div>
+              <div class="airport-name">{{ leg.arrival.city_name }}</div>
+              <div class="time">{{ leg.arrival.time }}</div>
             </div>
           </div>
 
-          {% if flight.legs[0].layovers and flight.legs[0].layovers.size > 0 %}
+          {% if leg.layovers and leg.layovers.size > 0 %}
           <div class="layover-info">
-            {% for layover in flight.legs[0].layovers %}
+            {% for layover in leg.layovers %}
             <div class="layover-title">Escala en {{ layover.destination_city }}</div>
             <div class="layover-details">
               Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{
@@ -73,53 +82,8 @@
           </div>
           {% endif %}
         </div>
+        {% endfor %}
 
-        {% if flight.legs.size > 1 %}
-        <!-- Return Flight -->
-        <div class="flight-leg">
-          <div class="leg-header">
-            <div class="leg-title">Vuelo de regreso <span class="flight-type">{{ flight.return_date }}</span></div>
-            <div class="leg-header">
-              {% if flight.luggage %}
-              <div class="flight-type">Equipaje de bodega incluido</div>
-              {% else %}
-              <div class="flight-type">Carry On incluido</div>
-              {% endif %}
-              <div class="flight-type">{{ flight.legs[1].flight_type }}</div>
-            </div>
-          </div>
-          <div class="flight-route">
-            <div class="airport-info">
-              <div class="airport-code">{{ flight.legs[1].departure.city_code }}</div>
-              <div class="airport-name">{{ flight.legs[1].departure.city_name }}</div>
-              <div class="time">{{ flight.legs[1].departure.time }}</div>
-            </div>
-            <div class="flight-arrow">
-              <div class="arrow-line">
-                <div class="arrow-head"></div>
-                <div class="duration-info">{{ flight.legs[1].duration }}</div>
-              </div>
-            </div>
-            <div class="airport-info">
-              <div class="airport-code">{{ flight.legs[1].arrival.city_code }}</div>
-              <div class="airport-name">{{ flight.legs[1].arrival.city_name }}</div>
-              <div class="time">{{ flight.legs[1].arrival.time }}</div>
-            </div>
-          </div>
-
-          {% if flight.legs[1].layovers and flight.legs[1].layovers.size > 0 %}
-          <div class="layover-info">
-            {% for layover in flight.legs[1].layovers %}
-            <div class="layover-title">Escala en {{ layover.destination_city }}</div>
-            <div class="layover-details">
-              Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{
-              layover.destination_city }})
-            </div>
-            {% endfor %}
-          </div>
-          {% endif %}
-        </div>
-        {% endif %}
 
         {% assign travel_assistance_amount = flight.travel_assistance | default: 0 | plus: 0 %}
         {% if travel_assistance_amount > 0 %}

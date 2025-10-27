@@ -126,13 +126,13 @@ function isPdfMonkeyTemplate(fileName: string, content?: string): boolean {
 function isPdfMonkeyTemplateByContent(content: string): boolean {
     // Patterns that are unique to our templates
     const templateIndicators = [
-        // From both.html template
+        // From combined-flight-hotel.html template
         /PRESUPUESTO DE VIAJE/i,
         /Para confirmar tu reserva.*contactanos por WhatsApp/i,
         /Documentación y requisitos de ingreso.*responsabilidad del pasajero/i,
         /Tarifa sujeta a disponibilidad al momento de reservar/i,
 
-        // From flights.html template  
+        // From flights-simple.html and flights-multiple.html templates
         /DETALLE DEL VUELO/i,
         /Vuelo de ida.*Vuelo de regreso/i,
         /Equipaje de bodega incluido.*Carry On incluido/i,
@@ -165,7 +165,7 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
     const isRoundTrip = /Vuelo de ida/i.test(content) && /Vuelo de regreso/i.test(content);
     const hasLayovers = /Escala en/i.test(content);
 
-    // For round trips or flights with layovers, we need flights2 template
+    // For round trips or flights with layovers, we need flights-multiple template
     const isFlightsOnlyTemplate = hasFlightPatterns && !isCombinedTemplate;
     const needsComplexTemplate = isRoundTrip || hasLayovers;
 
@@ -178,9 +178,9 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
         needsComplexTemplate
     });
 
-    console.log('📋 Template type detected:', isCombinedTemplate ? 'Combined (both.html)' :
-        needsComplexTemplate ? 'Complex flights (flights2.html)' :
-            isFlightsOnlyTemplate ? 'Simple flights (flights.html)' : 'Unknown');
+    console.log('📋 Template type detected:', isCombinedTemplate ? 'Combined (combined-flight-hotel.html)' :
+        needsComplexTemplate ? 'Complex flights (flights-multiple.html)' :
+            isFlightsOnlyTemplate ? 'Simple flights (flights-simple.html)' : 'Unknown');
 
     // Extract flight information from our template structure
     const flights = extractFlightsFromPdfMonkeyTemplate(content);

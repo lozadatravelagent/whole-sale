@@ -11,6 +11,7 @@ import { useActivities } from '@/hooks/useActivities';
 import { TeamPerformanceCard } from '@/components/dashboard/TeamPerformanceCard';
 import { PersonalMetricsCard } from '@/components/dashboard/PersonalMetricsCard';
 import { SellerUrgentLeadsCard } from '@/components/dashboard/SellerUrgentLeadsCard';
+import { DashboardSkeleton } from '@/components/skeletons/DashboardSkeleton';
 import {
   MessageSquare,
   FileText,
@@ -195,16 +196,7 @@ const Dashboard = () => {
 
   // Show loading state
   if (authLoading || metricsLoading) {
-    return (
-      <MainLayout>
-        <div className="flex h-96 items-center justify-center">
-          <div className="text-center">
-            <Activity className="mx-auto h-8 w-8 animate-spin text-primary" />
-            <p className="mt-2 text-sm text-muted-foreground">Cargando dashboard...</p>
-          </div>
-        </div>
-      </MainLayout>
-    );
+    return <DashboardSkeleton />;
   }
 
   // No user logged in

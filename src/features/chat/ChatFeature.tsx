@@ -52,6 +52,7 @@ const ChatFeature = () => {
 
   const {
     messages,
+    loading: messagesLoading,
     updateMessageStatus,
     loadMessages,
     refreshMessages,

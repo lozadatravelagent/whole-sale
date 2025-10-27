@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import React, { useMemo, Suspense, lazy } from 'react';
 import { Button } from '@/components/ui/button';
 import { User, Bot, FileText, Download, Clock, Check, CheckCheck } from 'lucide-react';
-import CombinedTravelSelector from '@/components/crm/CombinedTravelSelector';
+
+// Lazy load heavy components
+const ReactMarkdown = lazy(() => import('react-markdown'));
+const CombinedTravelSelector = lazy(() => import('@/components/crm/CombinedTravelSelector'));
 import type { MessageRow, LocalCombinedTravelResults } from '../types/chat';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import { getMessageContent, getMessageStatusIconType, formatTime } from '../utils/messageHelpers';
@@ -14,6 +15,26 @@ interface MessageItemProps {
   msg: MessageRow;
   onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
 }
+
+// Markdown wrapper component that lazy loads remarkGfm
+const MarkdownContent = ({ content }: { content: string }) => {
+  const [remarkGfm, setRemarkGfm] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    import('remark-gfm').then((module) => setRemarkGfm(() => module.default));
+  }, []);
+
+  if (!remarkGfm) {
+    // Fallback while loading remarkGfm plugin
+    return <div className="whitespace-pre-wrap">{content}</div>;
+  }
+
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      {content}
+    </ReactMarkdown>
+  );
+};
 
 // Memoized message component to prevent unnecessary re-renders
 const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
@@ -234,17 +255,23 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
             {/* Interactive selectors */}
             {hasCombinedTravel && combinedTravelData ? (
               <div className="space-y-3">
-                <CombinedTravelSelector
-                  combinedData={memoizedCombinedData!}
-                  conversationId={msg.conversation_id}
-                  onPdfGenerated={onPdfGenerated}
-                />
+                <Suspense fallback={
+                  <div className="h-64 bg-muted/30 animate-pulse rounded-lg flex items-center justify-center">
+                    <p className="text-sm text-muted-foreground">Cargando selector...</p>
+                  </div>
+                }>
+                  <CombinedTravelSelector
+                    combinedData={memoizedCombinedData!}
+                    conversationId={msg.conversation_id}
+                    onPdfGenerated={onPdfGenerated}
+                  />
+                </Suspense>
               </div>
             ) : (
               <>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {messageText}
-                </ReactMarkdown>
+                <Suspense fallback={<div className="whitespace-pre-wrap text-muted-foreground">{messageText}</div>}>
+                  <MarkdownContent content={messageText} />
+                </Suspense>
 
                 {/* PDF Download Button */}
                 {hasPdf && pdfUrl && (

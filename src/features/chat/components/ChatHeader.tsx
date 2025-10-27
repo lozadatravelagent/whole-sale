@@ -37,7 +37,7 @@ const ChatHeader = React.memo(({
         )}
         <Bot className="h-6 w-6 md:h-8 md:w-8 text-accent flex-shrink-0" />
         <div className="min-w-0">
-          <h2 className="font-semibold text-sm md:text-base truncate">Emilia - Asistente de Viajes</h2>
+          <h2 className="font-semibold text-sm md:text-base truncate">Emilia</h2>
           <p className="text-xs md:text-sm text-muted-foreground">
             {isTyping ? 'Escribiendo...' : 'En línea'}
           </p>

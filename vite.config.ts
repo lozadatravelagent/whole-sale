@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -79,14 +78,67 @@ export default defineConfig(({ mode }) => ({
     host: "0.0.0.0",
     port: process.env.PORT ? parseInt(process.env.PORT) : 5173,
   },
-  plugins: [
-    react(),
-    mode === 'development' &&
-    componentTagger(),
-  ].filter(Boolean),
+  plugins: [react()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Vendor: React ecosystem
+          'vendor-react': [
+            'react',
+            'react-dom',
+            'react-router-dom',
+          ],
+          // Vendor: Radix UI components
+          'vendor-radix': [
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-select',
+            '@radix-ui/react-tabs',
+            '@radix-ui/react-toast',
+            '@radix-ui/react-label',
+            '@radix-ui/react-checkbox',
+            '@radix-ui/react-switch',
+            '@radix-ui/react-avatar',
+            '@radix-ui/react-alert-dialog',
+            '@radix-ui/react-slot',
+            '@radix-ui/react-popover',
+            '@radix-ui/react-accordion',
+            '@radix-ui/react-progress',
+            '@radix-ui/react-separator',
+          ],
+          // Vendor: Data management
+          'vendor-data': [
+            '@tanstack/react-query',
+            '@supabase/supabase-js',
+          ],
+          // Vendor: Charts (heavy!)
+          'vendor-charts': [
+            'recharts',
+          ],
+          // Vendor: Forms & Validation
+          'vendor-forms': [
+            'react-hook-form',
+            '@hookform/resolvers',
+            'zod',
+          ],
+          // Vendor: Utilities
+          'vendor-utils': [
+            'date-fns',
+            'lucide-react',
+            'clsx',
+            'tailwind-merge',
+            'class-variance-authority',
+          ],
+        },
+      },
+    },
+    // Aumentar límite de advertencia de chunk size
+    chunkSizeWarningLimit: 600,
   },
 }));

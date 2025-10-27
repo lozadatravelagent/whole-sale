@@ -802,11 +802,6 @@ const useMessageHandler = (
       // 5. Save response with structured data
       console.log('📤 [MESSAGE FLOW] Step 13: About to save assistant message (Supabase INSERT)');
 
-      // Hide typing indicator RIGHT BEFORE saving - Realtime will show the message immediately after
-      setIsTyping(false);
-      setIsLoading(false);
-      console.log('✅ [TYPING] Hiding typing indicator before saving message');
-
       // Save assistant message to database
       await addMessageViaSupabase({
         conversation_id: selectedConversation,
@@ -819,6 +814,11 @@ const useMessageHandler = (
       });
 
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
+
+      // Hide typing indicator AFTER saving - Realtime will show the message shortly
+      setIsTyping(false);
+      setIsLoading(false);
+      console.log('✅ [TYPING] Hiding typing indicator after saving message');
 
       // 6. Lead generation disabled - Only manual creation via button
       console.log('📋 [MESSAGE FLOW] Step 15: Automatic lead generation disabled - only manual creation available');

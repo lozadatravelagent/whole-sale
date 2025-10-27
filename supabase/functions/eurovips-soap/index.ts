@@ -809,85 +809,85 @@ serve(async (req) => {
             .eq('id', jobId);
         }
 
-    // Actions that should be cached (heavy API calls)
-    const cacheableActions = ['searchHotels', 'searchFlights', 'searchPackages', 'searchServices'];
-    const shouldCache = cacheableActions.includes(action);
+        // Actions that should be cached (heavy API calls)
+        const cacheableActions = ['searchHotels', 'searchFlights', 'searchPackages', 'searchServices'];
+        const shouldCache = cacheableActions.includes(action);
 
-    let results;
-    let cacheHit = false;
+        let results;
+        let cacheHit = false;
 
-    // Try to get from cache first (with smart TTL)
-    if (shouldCache && data) {
-      const cached = await getCachedSearch(supabase, action, data);
-      if (cached) {
-        console.log(`✅ Cache HIT for ${action} - Status: ${cached.status}`);
-        results = cached.results;
-        cacheHit = true;
+        // Try to get from cache first (with smart TTL)
+        if (shouldCache && data) {
+          const cached = await getCachedSearch(supabase, action, data);
+          if (cached) {
+            console.log(`✅ Cache HIT for ${action} - Status: ${cached.status}`);
+            results = cached.results;
+            cacheHit = true;
 
-        // If cache is STALE, trigger background refresh (fire-and-forget)
-        if (cached.needsRefresh && !req.url.includes('_background_refresh')) {
-          console.log(`🔄 Cache is STALE - triggering background refresh for ${action}`);
-          const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/eurovips-soap`;
-          triggerBackgroundRefresh(supabase, action, data, functionUrl);
+            // If cache is STALE, trigger background refresh (fire-and-forget)
+            if (cached.needsRefresh && !req.url.includes('_background_refresh')) {
+              console.log(`🔄 Cache is STALE - triggering background refresh for ${action}`);
+              const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/eurovips-soap`;
+              triggerBackgroundRefresh(supabase, action, data, functionUrl);
+            }
+          } else {
+            console.log(`❌ Cache MISS for ${action}`);
+          }
         }
-      } else {
-        console.log(`❌ Cache MISS for ${action}`);
-      }
-    }
 
-    // If not cached, call the API
-    if (!cacheHit) {
-      const client = new EurovipsSOAPClient();
+        // If not cached, call the API
+        if (!cacheHit) {
+          const client = new EurovipsSOAPClient();
 
-      switch (action) {
-        case 'getCountryList':
-          results = await client.getCountryList(data);
-          break;
-        case 'getAirlineList':
-          results = await client.getAirlineList();
-          break;
-        case 'searchHotels':
-          if (!data) throw new Error('Hotel search data is required');
-          results = await client.searchHotels(data);
-          break;
-        case 'searchFlights':
-          if (!data) throw new Error('Flight search data is required');
-          results = await client.searchFlights(data);
-          break;
-        case 'searchPackages':
-          if (!data) throw new Error('Package search data is required');
-          results = await client.searchPackages(data);
-          break;
-        case 'searchServices':
-          if (!data) throw new Error('Service search data is required');
-          results = await client.searchServices(data);
-          break;
-        default:
-          throw new Error(`Unknown action: ${action}`);
-      }
+          switch (action) {
+            case 'getCountryList':
+              results = await client.getCountryList(data);
+              break;
+            case 'getAirlineList':
+              results = await client.getAirlineList();
+              break;
+            case 'searchHotels':
+              if (!data) throw new Error('Hotel search data is required');
+              results = await client.searchHotels(data);
+              break;
+            case 'searchFlights':
+              if (!data) throw new Error('Flight search data is required');
+              results = await client.searchFlights(data);
+              break;
+            case 'searchPackages':
+              if (!data) throw new Error('Package search data is required');
+              results = await client.searchPackages(data);
+              break;
+            case 'searchServices':
+              if (!data) throw new Error('Service search data is required');
+              results = await client.searchServices(data);
+              break;
+            default:
+              throw new Error(`Unknown action: ${action}`);
+          }
 
-      // Store in cache for future requests
-      if (shouldCache && data && results) {
-        await setCachedSearch(supabase, action, data, results);
-        console.log(`💾 Cached results for ${action}`);
-      }
-    }
+          // Store in cache for future requests
+          if (shouldCache && data && results) {
+            await setCachedSearch(supabase, action, data, results);
+            console.log(`💾 Cached results for ${action}`);
+          }
+        }
 
-    // If jobId exists, update job with results (async mode)
-    if (jobId) {
-      console.log(`✅ Async mode: Completing job ${jobId}`);
-      await supabase
-        .from('search_jobs')
-        .update({
-          status: 'completed',
-          results: results,
-          cache_hit: cacheHit,
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', jobId);
+        // If jobId exists, update job with results (async mode)
+        if (jobId) {
+          console.log(`✅ Async mode: Completing job ${jobId}`);
+          await supabase
+            .from('search_jobs')
+            .update({
+              status: 'completed',
+              results: results,
+              cache_hit: cacheHit,
+              completed_at: new Date().toISOString()
+            })
+            .eq('id', jobId);
 
-      console.log(`🔔 Job ${jobId} updated - Realtime will notify frontend`);
-    }
+          console.log(`🔔 Job ${jobId} updated - Realtime will notify frontend`);
+        }
 
         return new Response(JSON.stringify({
           success: true,
