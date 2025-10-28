@@ -16,6 +16,7 @@ import { addMessageViaSupabase } from './services/messageService';
 import { generateChatTitle } from './utils/messageHelpers';
 import { parseMessageWithAI } from '@/services/aiMessageParser';
 import { handleFlightSearch, handleHotelSearch, handlePackageSearch, handleServiceSearch, handleCombinedSearch, handleGeneralQuery } from './services/searchHandlers';
+import { v4 as uuidv4 } from 'uuid';
 
 const ChatFeature = () => {
   const {
@@ -472,7 +473,6 @@ const ChatFeature = () => {
         console.log('📤 [NEW CHAT] Sending initial message...');
 
         // ✅ FIX: Generate client_id for idempotency (same as in useMessageHandler)
-        const { v4: uuidv4 } = await import('uuid');
         const clientId = uuidv4();
         console.log('🔑 [NEW CHAT] Generated client_id for idempotency:', clientId);
 
