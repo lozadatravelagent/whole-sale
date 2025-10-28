@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -260,6 +260,14 @@ export function useMessages(conversationId: string | null) {
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // ✅ Track current conversation to prevent stale event handlers
+  const currentConversationRef = useRef<string | null>(conversationId);
+
+  // Update ref when conversation changes
+  useEffect(() => {
+    currentConversationRef.current = conversationId;
+  }, [conversationId]);
+
   const loadMessages = useCallback(async () => {
     if (!conversationId) {
       setMessages([]);
@@ -297,12 +305,33 @@ export function useMessages(conversationId: string | null) {
         const merged = [...dbMessages];
 
         optimisticMessages.forEach(optMsg => {
+          const optClientId = (optMsg.meta as any)?.client_id;
+
+          // ✅ STEP 1: Check by client_id (strongest de-dupe)
+          if (optClientId) {
+            const existsByClientId = dbMessages.some(dbMsg =>
+              (dbMsg.meta as any)?.client_id === optClientId
+            );
+            if (existsByClientId) {
+              console.log('🔒 [LOAD] Optimistic message already exists in DB (matched by client_id), skipping:', optClientId);
+              return; // Skip this optimistic message
+            }
+          }
+
+          // ✅ STEP 2: Fallback heuristic matching (for legacy messages without client_id)
           // Only keep optimistic message if DB doesn't have a similar one
           const existsInDb = dbMessages.some(dbMsg =>
+            dbMsg.role === optMsg.role &&
+            typeof dbMsg.content === 'object' && typeof optMsg.content === 'object' &&
+            (dbMsg.content as any).text === (optMsg.content as any).text &&
             Math.abs(new Date(dbMsg.created_at).getTime() - new Date(optMsg.created_at).getTime()) < 5000
           );
+
           if (!existsInDb) {
             merged.push(optMsg);
+            console.log('⚡ [LOAD] Keeping optimistic message (no match in DB):', optMsg.id);
+          } else {
+            console.log('🔒 [LOAD] Optimistic message matched in DB (heuristic), skipping:', optMsg.id);
           }
         });
 
@@ -399,8 +428,10 @@ export function useMessages(conversationId: string | null) {
 
   // Load messages initially and subscribe to real-time updates
   useEffect(() => {
+    // ✅ ALWAYS clear messages first when conversation changes (prevents stale data)
+    setMessages([]);
+
     if (!conversationId) {
-      setMessages([]);
       return;
     }
 
@@ -454,8 +485,8 @@ export function useMessages(conversationId: string | null) {
       const { payload } = customEvent.detail;
       const message = payload.new as MessageRow;
 
-      // Filter for this conversation only
-      if (message.conversation_id !== conversationId) {
+      // ✅ Filter for CURRENT conversation only (use ref to avoid stale closures)
+      if (message.conversation_id !== currentConversationRef.current) {
         return;
       }
 
@@ -463,15 +494,49 @@ export function useMessages(conversationId: string | null) {
 
       if (payload.eventType === 'INSERT') {
         setMessages(prev => {
+          const messageMeta = message.meta as any;
+
+          // ✅ STEP 1: Check if message with this client_id already exists (strongest de-dupe)
+          if (messageMeta?.client_id) {
+            const existsByClientId = prev.some(msg => {
+              const msgMeta = (msg.meta as any);
+              return msgMeta?.client_id === messageMeta.client_id;
+            });
+            if (existsByClientId) {
+              console.log('🔒 [REALTIME] Message with client_id already exists, skipping:', messageMeta.client_id);
+              return prev;
+            }
+          }
+
+          // ✅ STEP 2: Check by message id (prevents duplicate real messages)
           const exists = prev.some(msg => msg.id === message.id);
           if (exists) {
-            console.log('⚠️ [REALTIME] Message already exists, skipping');
+            console.log('⚠️ [REALTIME] Message with same id already exists, skipping');
             return prev;
           }
 
+          // ✅ STEP 3: Reconcile optimistic message with real one using client_id (PRIORITY)
+          let optimisticIndex = -1;
+          if (messageMeta?.client_id) {
+            optimisticIndex = prev.findIndex(msg => {
+              const msgMeta = (msg.meta as any);
+              return msg.id.startsWith('temp-') &&
+                msgMeta?.client_id === messageMeta.client_id;
+            });
+
+            if (optimisticIndex !== -1) {
+              console.log('🔄 [REALTIME] Replacing optimistic message with real one (matched by client_id)');
+              const updated = [...prev];
+              updated[optimisticIndex] = message;
+              return updated.sort((a, b) =>
+                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              );
+            }
+          }
+
+          // ✅ STEP 4: Fallback heuristic matching (for legacy messages without client_id)
           // Check if there's an optimistic message with the same role, content, and similar timestamp
-          // This handles replacing optimistic user messages with real ones from DB
-          const optimisticIndex = prev.findIndex(msg =>
+          optimisticIndex = prev.findIndex(msg =>
             msg.id.startsWith('temp-') &&
             msg.role === message.role &&
             !msg.id.startsWith('temp-thinking-') && // Don't remove thinking messages
@@ -481,7 +546,7 @@ export function useMessages(conversationId: string | null) {
           );
 
           if (optimisticIndex !== -1) {
-            console.log('🔄 [REALTIME] Replacing optimistic message with real one');
+            console.log('🔄 [REALTIME] Replacing optimistic message with real one (matched by heuristic)');
             const updated = [...prev];
             updated[optimisticIndex] = message;
             return updated.sort((a, b) =>
@@ -489,6 +554,7 @@ export function useMessages(conversationId: string | null) {
             );
           }
 
+          // ✅ STEP 5: Add as new message (only if no match found)
           console.log('✅ [REALTIME] Adding new message to state');
           return [...prev, message].sort((a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()

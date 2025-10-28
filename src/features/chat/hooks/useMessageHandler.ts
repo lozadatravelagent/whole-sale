@@ -8,6 +8,7 @@ import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from 
 import type { MessageRow } from '../types/chat';
 import { useMessages } from '@/hooks/useChat';
 import { translateBaggage } from '../utils/translations';
+import { v4 as uuidv4 } from 'uuid';
 
 const useMessageHandler = (
   selectedConversation: string | null,
@@ -275,14 +276,18 @@ const useMessageHandler = (
     console.log('📨 Processing message:', currentMessage);
 
     try {
-      // 1. Optimistic UI update - add user message to UI immediately (without waiting for DB)
+      // 1. Generate unique client_id for idempotency (prevents duplicates)
+      const clientId = uuidv4();
+      console.log('🔑 [IDEMPOTENCY] Generated client_id:', clientId);
+
+      // 2. Optimistic UI update - add user message to UI immediately (without waiting for DB)
       console.log('⚡ [OPTIMISTIC UI] Adding user message to UI instantly');
       const optimisticUserMessage = {
-        id: `temp-${Date.now()}-${Math.random()}`,
+        id: `temp-${clientId}`, // Use client_id in temp ID for easier reconciliation
         conversation_id: selectedConversation,
         role: 'user' as const,
         content: { text: currentMessage },
-        meta: { status: 'sending' },
+        meta: { status: 'sending', client_id: clientId }, // Include client_id for de-dupe
         created_at: new Date().toISOString()
       };
 
@@ -296,7 +301,7 @@ const useMessageHandler = (
         conversation_id: selectedConversation,
         role: 'user' as const,
         content: { text: currentMessage },
-        meta: { status: 'sent' } // Already 'sent' - no need for UPDATE
+        meta: { status: 'sent', client_id: clientId } // Include client_id for DB idempotency
       });
 
       console.log('✅ [MESSAGE FLOW] Step 3: User message saved successfully with ID:', userMessage.id);
@@ -357,18 +362,59 @@ const useMessageHandler = (
       setTypingMessage('Analizando tu mensaje...');
 
       // Prepare full conversation history for better context understanding
-      const conversationHistory = messages?.map(msg => ({
-        role: msg.role,
-        content: typeof msg.content === 'string'
-          ? msg.content
-          : typeof msg.content === 'object' && msg.content !== null
-            ? (msg.content as { text?: string }).text || ''
-            : '',
-        timestamp: msg.created_at
-      })) || [];
+      // ✅ FIX: Filter out optimistic messages (temp-*) to prevent sending duplicates to AI
+      // Also filter duplicates by client_id to ensure unique messages only
+      const seenClientIds = new Set<string>();
+      const conversationHistory = (messages || [])
+        .filter(msg => {
+          // Skip optimistic messages (they will be replaced by real ones)
+          if (msg.id.toString().startsWith('temp-')) {
+            const clientId = (msg.meta as any)?.client_id;
+            if (clientId && seenClientIds.has(clientId)) {
+              return false; // Skip duplicate optimistic message
+            }
+            if (clientId) {
+              seenClientIds.add(clientId);
+            }
+            // Check if there's a real message with same client_id already
+            const hasRealMessage = messages?.some(realMsg =>
+              !realMsg.id.toString().startsWith('temp-') &&
+              (realMsg.meta as any)?.client_id === clientId
+            );
+            if (hasRealMessage) {
+              console.log('🔒 [HISTORY] Skipping optimistic message, real message exists:', clientId);
+              return false; // Skip optimistic if real message exists
+            }
+            // Keep optimistic only if no real message found
+            return true;
+          }
+
+          // For real messages, check for duplicates by client_id
+          const clientId = (msg.meta as any)?.client_id;
+          if (clientId) {
+            if (seenClientIds.has(clientId)) {
+              console.log('🔒 [HISTORY] Skipping duplicate message by client_id:', clientId);
+              return false;
+            }
+            seenClientIds.add(clientId);
+          }
+
+          return true;
+        })
+        .map(msg => ({
+          role: msg.role,
+          content: typeof msg.content === 'string'
+            ? msg.content
+            : typeof msg.content === 'object' && msg.content !== null
+              ? (msg.content as { text?: string }).text || ''
+              : '',
+          timestamp: msg.created_at
+        }));
 
       console.log('📚 [CONTEXT] Sending full conversation history to AI parser:', {
         messageCount: conversationHistory.length,
+        originalMessageCount: messages?.length || 0,
+        filtered: (messages?.length || 0) - conversationHistory.length,
         previousContext: contextToUse ? 'Yes' : 'No'
       });
 

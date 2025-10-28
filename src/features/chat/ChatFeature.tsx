@@ -471,12 +471,17 @@ const ChatFeature = () => {
         // Send the message directly using the same flow as handleSendMessage
         console.log('📤 [NEW CHAT] Sending initial message...');
 
-        // Add user message
+        // ✅ FIX: Generate client_id for idempotency (same as in useMessageHandler)
+        const { v4: uuidv4 } = await import('uuid');
+        const clientId = uuidv4();
+        console.log('🔑 [NEW CHAT] Generated client_id for idempotency:', clientId);
+
+        // Add user message with client_id
         const userMessage = await addMessageViaSupabase({
           conversation_id: newConversation.id,
           role: 'user' as const,
           content: { text: messageToSend },
-          meta: { status: 'sending' }
+          meta: { status: 'sent', client_id: clientId }
         });
 
         console.log('✅ [NEW CHAT] User message saved:', userMessage.id);
