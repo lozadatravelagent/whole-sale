@@ -16,7 +16,6 @@ import { addMessageViaSupabase } from './services/messageService';
 import { generateChatTitle } from './utils/messageHelpers';
 import { parseMessageWithAI } from '@/services/aiMessageParser';
 import { handleFlightSearch, handleHotelSearch, handlePackageSearch, handleServiceSearch, handleCombinedSearch, handleGeneralQuery } from './services/searchHandlers';
-import { v4 as uuidv4 } from 'uuid';
 
 const ChatFeature = () => {
   const {
@@ -472,8 +471,8 @@ const ChatFeature = () => {
         // Send the message directly using the same flow as handleSendMessage
         console.log('📤 [NEW CHAT] Sending initial message...');
 
-        // ✅ FIX: Generate client_id for idempotency (same as in useMessageHandler)
-        const clientId = uuidv4();
+        // ✅ FIX: Generate client_id for idempotency (using crypto.randomUUID() - native, no deps)
+        const clientId = crypto.randomUUID();
         console.log('🔑 [NEW CHAT] Generated client_id for idempotency:', clientId);
 
         // Add user message with client_id

@@ -8,7 +8,6 @@ import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from 
 import type { MessageRow } from '../types/chat';
 import { useMessages } from '@/hooks/useChat';
 import { translateBaggage } from '../utils/translations';
-import { v4 as uuidv4 } from 'uuid';
 
 const useMessageHandler = (
   selectedConversation: string | null,
@@ -277,7 +276,8 @@ const useMessageHandler = (
 
     try {
       // 1. Generate unique client_id for idempotency (prevents duplicates)
-      const clientId = uuidv4();
+      // Using crypto.randomUUID() - native browser/Node API, no external deps needed
+      const clientId = crypto.randomUUID();
       console.log('🔑 [IDEMPOTENCY] Generated client_id:', clientId);
 
       // 2. Optimistic UI update - add user message to UI immediately (without waiting for DB)
