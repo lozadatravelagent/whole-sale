@@ -5,10 +5,11 @@ export const addMessageViaSupabase = async (messageData: {
   conversation_id: string;
   role: 'user' | 'assistant' | 'system';
   content: { text?: string; cards?: unknown[]; pdfUrl?: string; metadata?: Record<string, unknown>; };
-  meta?: { status?: string;[key: string]: unknown; };
+  meta?: { status?: string; client_id?: string; [key: string]: unknown; };
 }) => {
   console.log('📤 [SUPABASE FUNCTION] About to call add-message function');
   console.log('📋 Message data:', messageData);
+  console.log('🔑 [IDEMPOTENCY] client_id:', messageData.meta?.client_id);
 
   try {
     // Get the current session to ensure we have a valid JWT
