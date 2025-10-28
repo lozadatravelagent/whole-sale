@@ -263,9 +263,14 @@ export function useMessages(conversationId: string | null) {
   // ✅ Track current conversation to prevent stale event handlers
   const currentConversationRef = useRef<string | null>(conversationId);
 
+  // ✅ Track processed message IDs to prevent duplicate processing (race condition protection)
+  const processedMessageIdsRef = useRef<Set<string>>(new Set());
+
   // Update ref when conversation changes
   useEffect(() => {
     currentConversationRef.current = conversationId;
+    // Clear processed IDs when conversation changes
+    processedMessageIdsRef.current.clear();
   }, [conversationId]);
 
   const loadMessages = useCallback(async () => {
@@ -493,6 +498,17 @@ export function useMessages(conversationId: string | null) {
       console.log('📨 [REALTIME] Message for this conversation:', payload.eventType, message);
 
       if (payload.eventType === 'INSERT') {
+        // ✅ STEP 0: Check if this exact message ID was already processed (race condition protection)
+        // This MUST be outside setMessages to prevent the same event from being processed twice
+        if (processedMessageIdsRef.current.has(message.id)) {
+          console.log('🔒 [REALTIME] Message ID already processed (race condition), skipping:', message.id);
+          return;
+        }
+
+        // Mark as processed immediately to prevent concurrent processing
+        processedMessageIdsRef.current.add(message.id);
+        console.log('🔒 [REALTIME] Marked message as processed:', message.id);
+
         setMessages(prev => {
           const messageMeta = message.meta as any;
 
@@ -508,10 +524,10 @@ export function useMessages(conversationId: string | null) {
             }
           }
 
-          // ✅ STEP 2: Check by message id (prevents duplicate real messages)
+          // ✅ STEP 2: Check by message id (prevents duplicate real messages - double check)
           const exists = prev.some(msg => msg.id === message.id);
           if (exists) {
-            console.log('⚠️ [REALTIME] Message with same id already exists, skipping');
+            console.log('⚠️ [REALTIME] Message with same id already exists in state, skipping');
             return prev;
           }
 
@@ -556,6 +572,15 @@ export function useMessages(conversationId: string | null) {
 
           // ✅ STEP 5: Add as new message (only if no match found)
           console.log('✅ [REALTIME] Adding new message to state');
+
+          // Clean up old processed IDs periodically (keep only last 100 to prevent memory leak)
+          // Note: This cleanup happens outside the state update for better performance
+          if (processedMessageIdsRef.current.size > 100) {
+            const idsArray = Array.from(processedMessageIdsRef.current);
+            processedMessageIdsRef.current = new Set(idsArray.slice(-50));
+            console.log('🧹 [REALTIME] Cleaned up processed message IDs, kept last 50');
+          }
+
           return [...prev, message].sort((a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
@@ -573,6 +598,7 @@ export function useMessages(conversationId: string | null) {
       console.log('🔴 [REALTIME] Removing message listener for conversation:', conversationId);
       window.removeEventListener('supabase-message', handleMessage);
       // Don't remove the channel, it's shared across all conversations
+      // Note: processedMessageIdsRef is cleared when conversationId changes (see useEffect above)
     };
   }, [conversationId]);
 
