@@ -8,6 +8,11 @@ type MessageRow = Database['public']['Tables']['messages']['Row'];
 // ✅ Global Set to track processed message IDs across ALL instances (prevents duplicates from multiple listeners)
 const globalProcessedMessageIds = new Set<string>();
 
+// ✅ Global Set to track pending optimistic client_ids (prevents Realtime from adding duplicates)
+// When optimistic message is added: globalPendingOptimisticClientIds.add(clientId)
+// When Realtime finds the optimistic message: globalPendingOptimisticClientIds.delete(clientId)
+const globalPendingOptimisticClientIds = new Set<string>();
+
 // ✅ Helper function to get client_id from message (checks direct column first, then meta)
 function getClientId(message: MessageRow | any): string | null | undefined {
   // Try direct column first (after migration 20251028000001)
@@ -695,39 +700,76 @@ export function useMessages(conversationId: string | null) {
         setMessages(prev => {
           const messageClientId = getClientId(message);
 
-          // ✅ STEP 1: Check if message with this client_id already exists (strongest de-dupe)
-          if (messageClientId) {
-            const existsByClientId = prev.some(msg => getClientId(msg) === messageClientId);
-            if (existsByClientId) {
-              console.log('🔒 [REALTIME] Message with client_id already exists, skipping:', messageClientId);
-              return prev;
-            }
+          console.log('🔍 [REALTIME DEDUP] Starting deduplication checks:', {
+            incoming_message_id: message.id,
+            incoming_client_id: messageClientId,
+            current_state_size: prev.length,
+            optimistic_messages_in_state: prev.filter(m => m.id.startsWith('temp-')).length,
+            pending_optimistic_client_ids: Array.from(globalPendingOptimisticClientIds)
+          });
+
+          // 🔥 CRITICAL FIX: STEP 0 - Check global pending set FIRST (eliminates race condition)
+          // This check happens BEFORE looking at React state, so it works even if state update hasn't propagated yet
+          if (messageClientId && globalPendingOptimisticClientIds.has(messageClientId)) {
+            console.log('🔐 [REALTIME DEDUP] STEP 0 - Found pending optimistic client_id in global set!');
+            console.log('🔐 [REALTIME DEDUP] This is an optimistic message echo, will search and replace in state');
+
+            // Remove from pending set (message is now confirmed from DB)
+            globalPendingOptimisticClientIds.delete(messageClientId);
+            console.log('🔐 [REALTIME DEDUP] Removed client_id from pending set:', messageClientId);
           }
 
-          // ✅ STEP 2: Check by message id (prevents duplicate real messages - double check)
-          const exists = prev.some(msg => msg.id === message.id);
-          if (exists) {
-            console.log('⚠️ [REALTIME] Message with same id already exists in state, skipping');
-            return prev;
-          }
-
-          // ✅ STEP 3: Reconcile optimistic message with real one using client_id (PRIORITY)
+          // 🔥 FIX: STEP 1 - First try to REPLACE optimistic message (HIGHEST PRIORITY)
+          // This prevents race conditions where we check for existing messages before the optimistic update completes
           let optimisticIndex = -1;
           if (messageClientId) {
             optimisticIndex = prev.findIndex(msg => {
-              return msg.id.startsWith('temp-') &&
-                getClientId(msg) === messageClientId;
+              const msgClientId = getClientId(msg);
+              const matches = msg.id.startsWith('temp-') && msgClientId === messageClientId;
+              if (matches) {
+                console.log('🎯 [REALTIME DEDUP] Found optimistic message to replace:', {
+                  optimistic_id: msg.id,
+                  client_id: msgClientId,
+                  will_replace_with: message.id
+                });
+              }
+              return matches;
             });
 
             if (optimisticIndex !== -1) {
-              console.log('🔄 [REALTIME] Replacing optimistic message with real one (matched by client_id)');
+              console.log('🔄 [REALTIME] ✅ Replacing optimistic message with real one (matched by client_id)');
               const updated = [...prev];
               updated[optimisticIndex] = message;
               return updated.sort((a, b) =>
                 new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
               );
             }
+            console.log('⚠️ [REALTIME DEDUP] STEP 1 - No optimistic message found with matching client_id');
+          } else {
+            console.log('⚠️ [REALTIME DEDUP] No client_id found in incoming message!');
           }
+
+          // ✅ STEP 2: Check if message with this client_id already exists (strong de-dupe)
+          if (messageClientId) {
+            const existingWithClientId = prev.find(msg => getClientId(msg) === messageClientId);
+            if (existingWithClientId) {
+              console.log('🔒 [REALTIME] Message with client_id already exists (non-optimistic), skipping:', {
+                client_id: messageClientId,
+                existing_msg_id: existingWithClientId.id,
+                existing_is_optimistic: existingWithClientId.id.startsWith('temp-')
+              });
+              return prev;
+            }
+            console.log('✅ [REALTIME DEDUP] STEP 2 passed - no message with this client_id exists');
+          }
+
+          // ✅ STEP 3: Check by message id (prevents duplicate real messages - double check)
+          const exists = prev.some(msg => msg.id === message.id);
+          if (exists) {
+            console.log('⚠️ [REALTIME] Message with same id already exists in state, skipping:', message.id);
+            return prev;
+          }
+          console.log('✅ [REALTIME DEDUP] STEP 3 passed - message id is unique');
 
           // ✅ STEP 4: Fallback heuristic matching (for legacy messages without client_id)
           // Check if there's an optimistic message with the same role, content, and similar timestamp
@@ -749,8 +791,24 @@ export function useMessages(conversationId: string | null) {
             );
           }
 
+          console.log('⚠️ [REALTIME DEDUP] STEP 4 - No optimistic message found by heuristic match');
+
+          // 🔥 CRITICAL: If we reached here with a client_id that's in pending set,
+          // it means optimistic message was added but not yet in React state
+          // Clean up the pending set to prevent memory leak
+          if (messageClientId && globalPendingOptimisticClientIds.has(messageClientId)) {
+            console.log('🧹 [REALTIME DEDUP] Cleaning up orphaned pending client_id (optimistic message not found in state):', messageClientId);
+            globalPendingOptimisticClientIds.delete(messageClientId);
+          }
+
           // ✅ STEP 5: Add as new message (only if no match found)
-          console.log('✅ [REALTIME] Adding new message to state');
+          console.log('🚨 [REALTIME] ⚠️ ADDING NEW MESSAGE TO STATE - This may cause duplication!', {
+            message_id: message.id,
+            client_id: messageClientId,
+            role: message.role,
+            content_preview: typeof message.content === 'object' ? (message.content as any).text?.substring(0, 50) : String(message.content).substring(0, 50),
+            all_current_ids: prev.map(m => ({ id: m.id, client_id: getClientId(m) }))
+          });
 
           return [...prev, message].sort((a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -833,10 +891,38 @@ export function useMessages(conversationId: string | null) {
 
   // Add a function to add optimistic message (before saving to DB)
   const addOptimisticMessage = useCallback((message: any) => {
+    console.log('🔵 [OPTIMISTIC] addOptimisticMessage called with:', {
+      id: message.id,
+      client_id: getClientId(message),
+      content_preview: typeof message.content === 'object' ? message.content.text?.substring(0, 50) : String(message.content).substring(0, 50)
+    });
+
+    // 🔥 CRITICAL FIX: Register client_id GLOBALLY before adding to state
+    // This ensures Realtime handler will ALWAYS see it, even if state update hasn't propagated yet
+    const messageClientId = getClientId(message);
+    if (messageClientId) {
+      globalPendingOptimisticClientIds.add(messageClientId);
+      console.log('🔐 [OPTIMISTIC] Registered pending optimistic client_id globally:', messageClientId);
+    }
+
     setMessages(prev => {
-      // Check if message already exists
+      // Check if message already exists by ID
       const exists = prev.some(msg => msg.id === message.id);
-      if (exists) return prev;
+      if (exists) {
+        console.log('🔒 [OPTIMISTIC] Message ID already exists in state, skipping:', message.id);
+        return prev;
+      }
+
+      // 🔥 FIX: Check if message with same client_id already exists
+      if (messageClientId) {
+        const existsByClientId = prev.some(msg => getClientId(msg) === messageClientId);
+        if (existsByClientId) {
+          console.log('🔒 [OPTIMISTIC] Message with client_id already exists, skipping:', messageClientId);
+          return prev;
+        }
+      }
+
+      console.log('✅ [OPTIMISTIC] Adding message to state. Current state size:', prev.length);
 
       // Add and sort by created_at
       return [...prev, message].sort((a, b) =>
