@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import type React from 'react';
 import { parseMessageWithAI, combineWithPreviousRequest, validateFlightRequiredFields, validateHotelRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery } from '../services/searchHandlers';
@@ -11,6 +12,7 @@ import { translateBaggage } from '../utils/translations';
 
 const useMessageHandler = (
   selectedConversation: string | null,
+  selectedConversationRef: React.MutableRefObject<string | null>,
   previousParsedRequest: ParsedTravelRequest | null,
   setPreviousParsedRequest: (request: ParsedTravelRequest | null) => void,
   loadContextualMemory: (conversationId: string) => Promise<ParsedTravelRequest | null>,
@@ -64,9 +66,13 @@ const useMessageHandler = (
   const handleSendMessage = useCallback(async (currentMessage: string) => {
     console.log('🚀 [MESSAGE FLOW] Starting handleSendMessage process');
     console.log('📝 Message content:', currentMessage);
-    console.log('💬 Selected conversation:', selectedConversation);
 
-    if (!currentMessage.trim() || !selectedConversation) {
+    // ✅ Use ref to get the CURRENT conversation ID (not the closure value)
+    // This ensures we always have the latest value, even if called immediately after setSelectedConversation
+    const currentConversationId = selectedConversationRef.current;
+    console.log('💬 Selected conversation (from ref):', currentConversationId);
+
+    if (!currentMessage.trim() || !currentConversationId) {
       console.warn('❌ [MESSAGE FLOW] Validation failed - aborting send');
       return;
     }
@@ -83,7 +89,7 @@ const useMessageHandler = (
         if (responseMessage) {
           // Send response message
           await addMessageViaSupabase({
-            conversation_id: selectedConversation,
+            conversation_id: currentConversationId,
             role: 'assistant' as const,
             content: {
               text: responseMessage,
@@ -106,7 +112,7 @@ const useMessageHandler = (
         console.error('❌ Error searching for cheaper flights:', error);
 
         await addMessageViaSupabase({
-          conversation_id: selectedConversation,
+          conversation_id: currentConversationId,
           role: 'assistant' as const,
           content: {
             text: `❌ **Error en la búsqueda de vuelos**\n\nNo pude buscar vuelos alternativos en este momento. Esto puede deberse a:\n\n• Problemas temporales con el servicio de búsqueda\n• El PDF no contiene información de vuelos válida\n• Error de conectividad\n\n¿Podrías intentarlo nuevamente o proporcionarme manualmente los detalles del vuelo?`
@@ -125,7 +131,7 @@ const useMessageHandler = (
     // If user asks to add a hotel for same dates after flight results, coerce to combined using last flight context
     if (isAddHotelRequest(currentMessage)) {
       // Load persistent context state first, then fallback to other sources
-      const persistentState = await loadContextState(selectedConversation);
+      const persistentState = await loadContextState(currentConversationId);
       const flightCtx = persistentState?.flights || (previousParsedRequest?.flights ? {
         origin: previousParsedRequest.flights.origin,
         destination: previousParsedRequest.flights.destination,
@@ -142,7 +148,7 @@ const useMessageHandler = (
         try {
           // Save user's intent message into conversation before executing
           await addMessageViaSupabase({
-            conversation_id: selectedConversation!,
+            conversation_id: currentConversationId,
             role: 'user' as const,
             content: { text: currentMessage.trim() },
             meta: { status: 'sent', messageType: 'add_hotel_intent' }
@@ -174,13 +180,13 @@ const useMessageHandler = (
 
           // Persist context for follow-ups
           setPreviousParsedRequest(hotelsParsed);
-          await saveContextualMemory(selectedConversation, hotelsParsed);
+          await saveContextualMemory(currentConversationId, hotelsParsed);
 
           // Run HOTELS search only
           const hotelResult = await handleHotelSearch(hotelsParsed);
 
           await addMessageViaSupabase({
-            conversation_id: selectedConversation,
+            conversation_id: currentConversationId,
             role: 'assistant' as const,
             content: { text: hotelResult.response },
             meta: hotelResult.data ? { ...hotelResult.data } : {}
@@ -217,7 +223,7 @@ const useMessageHandler = (
         try {
           // Add user message
           await addMessageViaSupabase({
-            conversation_id: selectedConversation,
+            conversation_id: currentConversationId,
             role: 'user' as const,
             content: { text: currentMessage.trim() },
             meta: { status: 'sent', messageType: 'price_change_request' }
@@ -228,7 +234,7 @@ const useMessageHandler = (
           if (result) {
             // Add assistant response
             await addMessageViaSupabase({
-              conversation_id: selectedConversation,
+              conversation_id: currentConversationId,
               role: 'assistant' as const,
               content: {
                 text: result.response,
@@ -268,11 +274,45 @@ const useMessageHandler = (
 
     setMessage('');
     setIsLoading(true);
-    setIsTyping(true);
-    setTypingMessage('Chequeando tu pedido...');
+
+    // ✅ CAPTURE conversation ID at the start - this ensures typing state is updated for THIS conversation
+    // even if user switches to another conversation while this search is running
+    const conversationIdForThisSearch = currentConversationId;
+
+    setIsTyping(true, conversationIdForThisSearch);
+    setTypingMessage('Chequeando tu pedido...', conversationIdForThisSearch);
 
     console.log('✅ [MESSAGE FLOW] Step 1: Message validation passed');
     console.log('📨 Processing message:', currentMessage);
+    console.log('🔑 [CONVERSATION] Captured conversation ID for this search:', conversationIdForThisSearch);
+
+    // ✅ WAIT FOR REAL CONVERSATION ID: If conversation is temporary, wait for it to be created
+    let finalConversationId = currentConversationId;
+    if (currentConversationId.startsWith('temp-')) {
+      console.log('⏳ [CONVERSATION] Waiting for temporary conversation to be created:', currentConversationId);
+
+      // Poll until conversation ID is real (max 5 seconds)
+      const maxWaitTime = 5000; // 5 seconds max
+      const pollInterval = 50; // Check every 50ms
+      const startTime = Date.now();
+
+      // Poll the ref until it's not a temp ID
+      while (
+        selectedConversationRef.current?.startsWith('temp-') &&
+        Date.now() - startTime < maxWaitTime
+      ) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+
+      if (selectedConversationRef.current?.startsWith('temp-')) {
+        console.error('❌ [CONVERSATION] Timeout waiting for conversation creation');
+        throw new Error('Timeout esperando la creación de la conversación');
+      }
+
+      // Update local variable with real ID
+      finalConversationId = selectedConversationRef.current!;
+      console.log('✅ [CONVERSATION] Got real conversation ID:', finalConversationId);
+    }
 
     try {
       // 1. Generate unique client_id for idempotency (prevents duplicates)
@@ -284,7 +324,7 @@ const useMessageHandler = (
       console.log('⚡ [OPTIMISTIC UI] Adding user message to UI instantly');
       const optimisticUserMessage = {
         id: `temp-${clientId}`, // Use client_id in temp ID for easier reconciliation
-        conversation_id: selectedConversation,
+        conversation_id: finalConversationId,
         role: 'user' as const,
         content: { text: currentMessage },
         meta: { status: 'sending', client_id: clientId }, // Include client_id for de-dupe
@@ -298,7 +338,7 @@ const useMessageHandler = (
 
       // Save to database with final 'sent' status (single write, no update needed)
       const userMessage = await addMessageViaSupabase({
-        conversation_id: selectedConversation,
+        conversation_id: finalConversationId,
         role: 'user' as const,
         content: { text: currentMessage },
         meta: { status: 'sent', client_id: clientId } // Include client_id for DB idempotency
@@ -317,7 +357,7 @@ const useMessageHandler = (
 
         try {
           console.log('📤 [MESSAGE FLOW] About to update conversation title (Supabase UPDATE)');
-          await updateConversationTitle(selectedConversation, title);
+          await updateConversationTitle(finalConversationId, title);
           console.log(`✅ [MESSAGE FLOW] Step 7: Conversation title updated to: "${title}"`);
         } catch (titleError) {
           console.error('❌ [MESSAGE FLOW] Error updating conversation title:', titleError);
@@ -327,12 +367,12 @@ const useMessageHandler = (
 
       // 3. Load contextual memory before parsing
       console.log('🧠 [MESSAGE FLOW] Step 7.5: Loading contextual memory before parsing');
-      console.log('🔍 [DEBUG] Selected conversation:', selectedConversation);
+      console.log('🔍 [DEBUG] Selected conversation:', finalConversationId);
       console.log('🔍 [DEBUG] Previous parsed request from state:', previousParsedRequest);
 
       // Load context from DB and state first
-      const contextFromDB = await loadContextualMemory(selectedConversation);
-      const persistentState = await loadContextState(selectedConversation);
+      const contextFromDB = await loadContextualMemory(finalConversationId);
+      const persistentState = await loadContextState(finalConversationId);
       console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
       console.log('🔍 [DEBUG] Persistent context state:', persistentState);
 
@@ -359,7 +399,14 @@ const useMessageHandler = (
       console.log('📤 [MESSAGE FLOW] About to call AI message parser (Supabase Edge Function)');
       console.log('🧠 Message to parse:', currentMessage);
 
-      setTypingMessage('Analizando tu mensaje...');
+      setTypingMessage('Analizando tu mensaje...', conversationIdForThisSearch);
+
+      // ✅ Helper to get client_id from message (checks direct column first, then meta)
+      const getClientId = (msg: any): string | null | undefined => {
+        if (msg.client_id) return msg.client_id;
+        const meta = msg.meta as any;
+        return meta?.client_id;
+      };
 
       // Prepare full conversation history for better context understanding
       // ✅ FIX: Filter out optimistic messages (temp-*) to prevent sending duplicates to AI
@@ -369,7 +416,7 @@ const useMessageHandler = (
         .filter(msg => {
           // Skip optimistic messages (they will be replaced by real ones)
           if (msg.id.toString().startsWith('temp-')) {
-            const clientId = (msg.meta as any)?.client_id;
+            const clientId = getClientId(msg);
             if (clientId && seenClientIds.has(clientId)) {
               return false; // Skip duplicate optimistic message
             }
@@ -379,7 +426,7 @@ const useMessageHandler = (
             // Check if there's a real message with same client_id already
             const hasRealMessage = messages?.some(realMsg =>
               !realMsg.id.toString().startsWith('temp-') &&
-              (realMsg.meta as any)?.client_id === clientId
+              getClientId(realMsg) === clientId
             );
             if (hasRealMessage) {
               console.log('🔒 [HISTORY] Skipping optimistic message, real message exists:', clientId);
@@ -390,7 +437,7 @@ const useMessageHandler = (
           }
 
           // For real messages, check for duplicates by client_id
-          const clientId = (msg.meta as any)?.client_id;
+          const clientId = getClientId(msg);
           if (clientId) {
             if (seenClientIds.has(clientId)) {
               console.log('🔒 [HISTORY] Skipping duplicate message by client_id:', clientId);
@@ -528,7 +575,7 @@ const useMessageHandler = (
         if (missingAny) {
           // Persist context
           setPreviousParsedRequest(parsedRequest);
-          await saveContextualMemory(selectedConversation, parsedRequest);
+          await saveContextualMemory(finalConversationId, parsedRequest);
 
           // Build aggregated message
           let parts: string[] = [];
@@ -545,7 +592,7 @@ const useMessageHandler = (
           const missingInfoMessage = parts.join('\n\n');
 
           await addMessageViaSupabase({
-            conversation_id: selectedConversation,
+            conversation_id: finalConversationId,
             role: 'assistant' as const,
             content: { text: missingInfoMessage },
             meta: {
@@ -563,7 +610,7 @@ const useMessageHandler = (
 
         console.log('✅ [VALIDATION] Combined: all required fields present');
         setPreviousParsedRequest(null);
-        await clearContextualMemory(selectedConversation);
+        await clearContextualMemory(finalConversationId);
       } else if (parsedRequest.requestType === 'flights') {
         // Validate flight fields
         console.log('✈️ [VALIDATION] Validating flight required fields');
@@ -580,7 +627,7 @@ const useMessageHandler = (
 
           // Store the current parsed request for future combination
           setPreviousParsedRequest(parsedRequest);
-          await saveContextualMemory(selectedConversation, parsedRequest);
+          await saveContextualMemory(finalConversationId, parsedRequest);
 
           // Generate message asking for missing information
           const missingInfoMessage = generateMissingInfoMessage(
@@ -592,7 +639,7 @@ const useMessageHandler = (
 
           // Add assistant message with missing info request
           await addMessageViaSupabase({
-            conversation_id: selectedConversation,
+            conversation_id: finalConversationId,
             role: 'assistant' as const,
             content: { text: missingInfoMessage },
             meta: {
@@ -655,7 +702,7 @@ const useMessageHandler = (
             } else {
               // Store the current parsed request for future combination
               setPreviousParsedRequest(parsedRequest);
-              await saveContextualMemory(selectedConversation, parsedRequest);
+              await saveContextualMemory(finalConversationId, parsedRequest);
 
               const missingInfoMessage = generateMissingInfoMessage(
                 reval.missingFieldsSpanish,
@@ -663,7 +710,7 @@ const useMessageHandler = (
               );
 
               await addMessageViaSupabase({
-                conversation_id: selectedConversation,
+                conversation_id: finalConversationId,
                 role: 'assistant' as const,
                 content: { text: missingInfoMessage },
                 meta: {
@@ -680,7 +727,7 @@ const useMessageHandler = (
             console.log('⚠️ [VALIDATION] Missing hotel required fields and no flight context available');
             // Store the current parsed request for future combination
             setPreviousParsedRequest(parsedRequest);
-            await saveContextualMemory(selectedConversation, parsedRequest);
+            await saveContextualMemory(finalConversationId, parsedRequest);
 
             const missingInfoMessage = generateMissingInfoMessage(
               validation.missingFieldsSpanish,
@@ -688,7 +735,7 @@ const useMessageHandler = (
             );
 
             await addMessageViaSupabase({
-              conversation_id: selectedConversation,
+              conversation_id: finalConversationId,
               role: 'assistant' as const,
               content: { text: missingInfoMessage },
               meta: {
@@ -706,7 +753,7 @@ const useMessageHandler = (
         console.log('✅ [VALIDATION] All hotel required fields present, proceeding with search');
         // Clear previous request since we have all required fields
         setPreviousParsedRequest(null);
-        await clearContextualMemory(selectedConversation);
+        await clearContextualMemory(finalConversationId);
       }
 
       // 6. Execute searches based on type (WITHOUT N8N)
@@ -735,7 +782,7 @@ const useMessageHandler = (
         }
         case 'flights': {
           console.log('✈️ [MESSAGE FLOW] Step 12b: Processing flight search');
-          setTypingMessage('Buscando los mejores vuelos...');
+          setTypingMessage('Buscando los mejores vuelos...', conversationIdForThisSearch);
           const flightResult = await handleFlightSearch(parsedRequest);
           assistantResponse = flightResult.response;
           structuredData = flightResult.data;
@@ -744,7 +791,7 @@ const useMessageHandler = (
         }
         case 'hotels': {
           console.log('🏨 [MESSAGE FLOW] Step 12c: Processing hotel search');
-          setTypingMessage('Buscando los mejores hoteles...');
+          setTypingMessage('Buscando los mejores hoteles...', conversationIdForThisSearch);
           const hotelResult = await handleHotelSearch(parsedRequest);
           assistantResponse = hotelResult.response;
           structuredData = hotelResult.data;
@@ -770,7 +817,7 @@ const useMessageHandler = (
           // Respect domain lock: if user intent was hotel-only turn, prioritize hotels; else run combined
           if (activeDomain === 'hotels') {
             console.log('🏨 [MESSAGE FLOW] Step 12f: Domain locked to hotels, skipping flights');
-            setTypingMessage('Buscando los mejores hoteles...');
+            setTypingMessage('Buscando los mejores hoteles...', conversationIdForThisSearch);
             const hotelResult = await handleHotelSearch({
               ...parsedRequest,
               requestType: 'hotels'
@@ -779,7 +826,7 @@ const useMessageHandler = (
             structuredData = hotelResult.data;
           } else {
             console.log('🌟 [MESSAGE FLOW] Step 12f: Processing combined search');
-            setTypingMessage('Buscando las mejores opciones de viaje...');
+            setTypingMessage('Buscando las mejores opciones de viaje...', conversationIdForThisSearch);
             const combinedResult = await handleCombinedSearch(parsedRequest);
             assistantResponse = combinedResult.response;
             structuredData = combinedResult.data;
@@ -804,7 +851,7 @@ const useMessageHandler = (
           if (flightsCount > 0) {
             // We have usable results, clear context
             setPreviousParsedRequest(null);
-            await clearContextualMemory(selectedConversation);
+            await clearContextualMemory(finalConversationId);
 
             // Extract actual dates from the first flight found
             const firstFlight = (structuredData as any)?.combinedData?.flights?.[0];
@@ -825,10 +872,10 @@ const useMessageHandler = (
               original: parsedRequest.flights?.departureDate,
               actual: actualDepartureDate
             });
-            await saveContextState(selectedConversation, state);
+            await saveContextState(finalConversationId, state);
           } else {
             // No results (e.g., no direct flights). Preserve context so follow-up like "con escalas" can merge.
-            await saveContextualMemory(selectedConversation, parsedRequest);
+            await saveContextualMemory(finalConversationId, parsedRequest);
             setPreviousParsedRequest(parsedRequest);
           }
         } else if (parsedRequest.requestType === 'hotels') {
@@ -838,7 +885,7 @@ const useMessageHandler = (
               hotels: parsedRequest.hotels,
               domain: 'hotels'
             };
-            await saveContextState(selectedConversation, state);
+            await saveContextState(finalConversationId, state);
           }
         }
       } catch (memErr) {
@@ -850,7 +897,7 @@ const useMessageHandler = (
 
       // Save assistant message to database
       await addMessageViaSupabase({
-        conversation_id: selectedConversation,
+        conversation_id: finalConversationId,
         role: 'assistant' as const,
         content: { text: assistantResponse },
         meta: structuredData ? {
@@ -861,10 +908,10 @@ const useMessageHandler = (
 
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
 
-      // Hide typing indicator AFTER saving - Realtime will show the message shortly
-      setIsTyping(false);
+      // ✅ Hide typing indicator for THIS conversation (not the current one, in case user switched)
+      setIsTyping(false, conversationIdForThisSearch);
       setIsLoading(false);
-      console.log('✅ [TYPING] Hiding typing indicator after saving message');
+      console.log('✅ [TYPING] Hiding typing indicator for conversation:', conversationIdForThisSearch);
 
       // 6. Lead generation disabled - Only manual creation via button
       console.log('📋 [MESSAGE FLOW] Step 15: Automatic lead generation disabled - only manual creation available');
@@ -874,9 +921,10 @@ const useMessageHandler = (
     } catch (error) {
       console.error('❌ [MESSAGE FLOW] Error in handleSendMessage process:', error);
 
-      // Hide indicators on error
+      // ✅ Hide indicators for THIS conversation (not the current one)
       setIsLoading(false);
-      setIsTyping(false);
+      setIsTyping(false, conversationIdForThisSearch);
+      console.log('❌ [TYPING] Hiding typing indicator due to error for conversation:', conversationIdForThisSearch);
 
       toast({
         title: "Error",

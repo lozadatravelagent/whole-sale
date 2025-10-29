@@ -25,23 +25,27 @@ const MessageInput = React.memo(({
 }: MessageInputProps) => {
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previousConversationRef = useRef<string | null>(null);
 
-  // Auto-focus when a conversation is selected or when component mounts
+  // ✅ Auto-focus only when conversation FIRST changes (not on temp → real ID transitions)
   React.useEffect(() => {
-    if (selectedConversation && messageInputRef.current && !disabled) {
-      // Small delay to ensure the component is fully rendered
-      setTimeout(() => {
-        messageInputRef.current?.focus();
-      }, 100);
+    // Don't re-focus if just transitioning from temp to real ID
+    const isTransitioningFromTemp =
+      previousConversationRef.current?.startsWith('temp-') &&
+      selectedConversation &&
+      !selectedConversation.startsWith('temp-');
+
+    if (!isTransitioningFromTemp && selectedConversation && messageInputRef.current && !disabled) {
+      // Check if input is NOT already focused to avoid re-focus
+      if (document.activeElement !== messageInputRef.current) {
+        setTimeout(() => {
+          messageInputRef.current?.focus();
+        }, 100);
+      }
     }
+
+    previousConversationRef.current = selectedConversation;
   }, [selectedConversation, disabled]);
-
-  // Auto-focus when component mounts or when user starts typing
-  React.useEffect(() => {
-    if (value.length > 0 && messageInputRef.current && !disabled) {
-      messageInputRef.current.focus();
-    }
-  }, [value.length > 0, disabled]);
 
   return (
     <div className="border-t bg-background p-2 md:p-4 shadow-lg">
@@ -65,14 +69,7 @@ const MessageInput = React.memo(({
             }
           }}
           onBlur={(e) => {
-            // Prevent blur if user is still typing
-            if (value.length > 0 && !disabled) {
-              setTimeout(() => {
-                if (messageInputRef.current && value.length > 0) {
-                  messageInputRef.current.focus();
-                }
-              }, 50);
-            }
+            // ✅ Removed auto-refocus on blur - was causing focus loops
           }}
           className="flex-1 min-h-[50px] md:min-h-[60px] resize-y text-sm md:text-base"
           autoComplete="off"

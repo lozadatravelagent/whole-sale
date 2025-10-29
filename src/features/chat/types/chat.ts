@@ -236,7 +236,8 @@ export interface ChatState {
   lastPdfAnalysis: any;
   showInspirationText: boolean;
   activeTab: string;
-  isTyping: boolean;
+  // ✅ Typing state per conversation (not global)
+  typingByConversation: Record<string, { isTyping: boolean; message: string }>;
   sidebarLimit: number;
   previousParsedRequest: ParsedTravelRequest | null;
   isAddingToCRM: boolean;

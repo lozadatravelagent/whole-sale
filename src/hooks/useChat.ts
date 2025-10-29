@@ -5,6 +5,20 @@ import type { Database } from '@/integrations/supabase/types';
 type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 type MessageRow = Database['public']['Tables']['messages']['Row'];
 
+// ✅ Global Set to track processed message IDs across ALL instances (prevents duplicates from multiple listeners)
+const globalProcessedMessageIds = new Set<string>();
+
+// ✅ Helper function to get client_id from message (checks direct column first, then meta)
+function getClientId(message: MessageRow | any): string | null | undefined {
+  // Try direct column first (after migration 20251028000001)
+  if (message.client_id) {
+    return message.client_id;
+  }
+  // Fallback to meta (for backwards compatibility)
+  const meta = message.meta as any;
+  return meta?.client_id;
+}
+
 export function useAuth() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -28,6 +42,14 @@ export function useAuth() {
   }, []);
 
   return { user, loading };
+}
+
+// ✅ Global callback to refresh messages when conversation is updated
+// This allows useConversations to notify useMessages when a conversation update should trigger message refresh
+let globalRefreshMessagesCallback: ((conversationId: string) => void) | null = null;
+
+export function setRefreshMessagesCallback(callback: ((conversationId: string) => void) | null) {
+  globalRefreshMessagesCallback = callback;
 }
 
 export function useConversations() {
@@ -98,6 +120,13 @@ export function useConversations() {
             // For updates, only reload if it affects visible data
             console.log('🔄 [REALTIME] Conversation updated, reloading to get enriched data');
             loadConversations();
+
+            // ✅ If global refresh callback exists, also refresh messages for this conversation
+            // This ensures messages are reloaded when conversation metadata changes (e.g., title, last_message_at)
+            if (globalRefreshMessagesCallback && payload.new?.id) {
+              console.log('🔄 [REALTIME] Triggering message refresh for updated conversation:', payload.new.id);
+              globalRefreshMessagesCallback(payload.new.id);
+            }
           }
         }
       )
@@ -263,14 +292,21 @@ export function useMessages(conversationId: string | null) {
   // ✅ Track current conversation to prevent stale event handlers
   const currentConversationRef = useRef<string | null>(conversationId);
 
-  // ✅ Track processed message IDs to prevent duplicate processing (race condition protection)
-  const processedMessageIdsRef = useRef<Set<string>>(new Set());
+  // ✅ Track active listener handler to prevent duplicates
+  const listenerHandlerRef = useRef<((event: Event) => void) | null>(null);
+
+  // ✅ Track if effect is currently active to prevent race conditions
+  const isActiveRef = useRef(false);
+
+  // ✅ Track reconnect timeout to prevent multiple simultaneous reconnects
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ✅ Track if reconnect is already in progress (global across all useMessages instances)
+  const reconnectInProgressRef = useRef(false);
 
   // Update ref when conversation changes
   useEffect(() => {
     currentConversationRef.current = conversationId;
-    // Clear processed IDs when conversation changes
-    processedMessageIdsRef.current.clear();
   }, [conversationId]);
 
   const loadMessages = useCallback(async () => {
@@ -301,42 +337,73 @@ export function useMessages(conversationId: string | null) {
       console.log(`📨 [MESSAGES] SELECT completed in ${elapsed}ms, found`, data?.length || 0, 'messages');
       if (error) throw error;
 
-      // Preserve optimistic messages (temp IDs) when loading from DB
+      // Merge DB messages with existing messages (preserve messages already in state from Realtime)
       setMessages(prev => {
         const optimisticMessages = prev.filter(msg => msg.id.toString().startsWith('temp-'));
+        const realMessages = prev.filter(msg => !msg.id.toString().startsWith('temp-'));
         const dbMessages = data || [];
 
-        // Merge: DB messages + optimistic messages that haven't been replaced
+        // Start with DB messages as source of truth
         const merged = [...dbMessages];
 
-        optimisticMessages.forEach(optMsg => {
-          const optClientId = (optMsg.meta as any)?.client_id;
+        // ✅ STEP 1: Preserve real messages that came via Realtime but aren't in DB yet (race condition protection)
+        // This handles the case where Realtime INSERT arrives before the SELECT completes
+        realMessages.forEach(realMsg => {
+          const existsInDb = dbMessages.some(dbMsg => dbMsg.id === realMsg.id);
+          if (!existsInDb) {
+            // Check if this is a duplicate by client_id
+            const realClientId = getClientId(realMsg);
+            if (realClientId) {
+              const existsByClientId = dbMessages.some(dbMsg => getClientId(dbMsg) === realClientId);
+              if (existsByClientId) {
+                console.log('🔒 [LOAD] Realtime message already exists in DB (matched by client_id), skipping:', realClientId);
+                return;
+              }
+            }
+            // Check if this is a duplicate by content and time (fallback)
+            const existsSimilar = dbMessages.some(dbMsg =>
+              dbMsg.role === realMsg.role &&
+              typeof dbMsg.content === 'object' && typeof realMsg.content === 'object' &&
+              (dbMsg.content as any).text === (realMsg.content as any).text &&
+              Math.abs(new Date(dbMsg.created_at).getTime() - new Date(realMsg.created_at).getTime()) < 5000
+            );
+            if (!existsSimilar) {
+              merged.push(realMsg);
+              console.log('⚡ [LOAD] Preserving Realtime message not yet in DB:', realMsg.id);
+            }
+          }
+        });
 
-          // ✅ STEP 1: Check by client_id (strongest de-dupe)
+        // ✅ STEP 2: Preserve optimistic messages that haven't been replaced
+        optimisticMessages.forEach(optMsg => {
+          const optClientId = getClientId(optMsg);
+
+          // Check by client_id (strongest de-dupe)
           if (optClientId) {
-            const existsByClientId = dbMessages.some(dbMsg =>
-              (dbMsg.meta as any)?.client_id === optClientId
+            const existsByClientId = merged.some(msg =>
+              !msg.id.toString().startsWith('temp-') &&
+              getClientId(msg) === optClientId
             );
             if (existsByClientId) {
-              console.log('🔒 [LOAD] Optimistic message already exists in DB (matched by client_id), skipping:', optClientId);
+              console.log('🔒 [LOAD] Optimistic message already exists (matched by client_id), skipping:', optClientId);
               return; // Skip this optimistic message
             }
           }
 
-          // ✅ STEP 2: Fallback heuristic matching (for legacy messages without client_id)
-          // Only keep optimistic message if DB doesn't have a similar one
-          const existsInDb = dbMessages.some(dbMsg =>
-            dbMsg.role === optMsg.role &&
-            typeof dbMsg.content === 'object' && typeof optMsg.content === 'object' &&
-            (dbMsg.content as any).text === (optMsg.content as any).text &&
-            Math.abs(new Date(dbMsg.created_at).getTime() - new Date(optMsg.created_at).getTime()) < 5000
+          // Fallback heuristic matching (for legacy messages without client_id)
+          const existsInMerged = merged.some(msg =>
+            !msg.id.toString().startsWith('temp-') &&
+            msg.role === optMsg.role &&
+            typeof msg.content === 'object' && typeof optMsg.content === 'object' &&
+            (msg.content as any).text === (optMsg.content as any).text &&
+            Math.abs(new Date(msg.created_at).getTime() - new Date(optMsg.created_at).getTime()) < 5000
           );
 
-          if (!existsInDb) {
+          if (!existsInMerged) {
             merged.push(optMsg);
-            console.log('⚡ [LOAD] Keeping optimistic message (no match in DB):', optMsg.id);
+            console.log('⚡ [LOAD] Keeping optimistic message (no match):', optMsg.id);
           } else {
-            console.log('🔒 [LOAD] Optimistic message matched in DB (heuristic), skipping:', optMsg.id);
+            console.log('🔒 [LOAD] Optimistic message matched, skipping:', optMsg.id);
           }
         });
 
@@ -442,15 +509,29 @@ export function useMessages(conversationId: string | null) {
 
     console.log('🔄 [MESSAGES] Loading messages for conversation:', conversationId);
     loadMessages();
-  }, [conversationId, loadMessages]);
+    // ✅ REMOVED loadMessages from dependencies to prevent duplicate executions
+    // loadMessages is stable (only depends on conversationId) and we want to call it only when conversationId changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
 
   // Separate effect for Realtime subscription (global channel, reused across conversations)
   useEffect(() => {
     if (!conversationId) {
+      isActiveRef.current = false;
       return;
     }
 
+    // ✅ Mark effect as active
+    isActiveRef.current = true;
+
     console.log('🔄 [REALTIME] Setting up message listener for conversation:', conversationId);
+
+    // ✅ Clean up previous listener if exists
+    if (listenerHandlerRef.current) {
+      console.log('🧹 [REALTIME] Cleaning up previous listener');
+      window.removeEventListener('supabase-message', listenerHandlerRef.current);
+      listenerHandlerRef.current = null;
+    }
 
     // Use a single global channel for all messages
     const channelName = 'global-messages';
@@ -481,45 +562,144 @@ export function useMessages(conversationId: string | null) {
         )
         .subscribe((status) => {
           console.log('📡 [REALTIME] Global messages channel status:', status);
+
+          // ✅ AUTO-RECONNECT: Handle channel errors and disconnections
+          if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+            console.error('❌ [REALTIME] Channel error detected - preparing to reconnect');
+
+            // ✅ Prevent multiple simultaneous reconnect attempts
+            if (reconnectInProgressRef.current) {
+              console.log('⏭️ [REALTIME] Reconnect already in progress, skipping duplicate attempt');
+              return;
+            }
+
+            reconnectInProgressRef.current = true;
+
+            // ✅ Clear any existing reconnect timeout
+            if (reconnectTimeoutRef.current) {
+              clearTimeout(reconnectTimeoutRef.current);
+            }
+
+            // ✅ Wait 2 seconds before reconnecting (allow network to stabilize)
+            reconnectTimeoutRef.current = setTimeout(() => {
+              console.log('🔄 [REALTIME] Attempting to reconnect channel...');
+
+              try {
+                // Remove broken channel
+                supabase.removeChannel(channel);
+                console.log('🗑️ [REALTIME] Removed broken channel');
+
+                // Reset reconnect flag
+                reconnectInProgressRef.current = false;
+
+                // Refresh messages to sync any that were missed during disconnect
+                console.log('🔄 [REALTIME] Refreshing messages after reconnect...');
+                loadMessages();
+
+                console.log('✅ [REALTIME] Reconnect completed - subscription will be recreated on next effect run');
+              } catch (reconnectError) {
+                console.error('❌ [REALTIME] Error during reconnect:', reconnectError);
+                reconnectInProgressRef.current = false;
+
+                // Retry reconnect after another 5 seconds if it failed
+                reconnectTimeoutRef.current = setTimeout(() => {
+                  console.log('🔄 [REALTIME] Retrying reconnect after failure...');
+                  reconnectInProgressRef.current = false;
+                  supabase.removeChannel(channel);
+                  loadMessages();
+                }, 5000);
+              }
+            }, 2000);
+          }
+
+          // ✅ Reset reconnect flag when successfully subscribed
+          if (status === 'SUBSCRIBED') {
+            console.log('✅ [REALTIME] Successfully subscribed to messages channel');
+            reconnectInProgressRef.current = false;
+
+            // Clear any pending reconnect timeouts
+            if (reconnectTimeoutRef.current) {
+              clearTimeout(reconnectTimeoutRef.current);
+              reconnectTimeoutRef.current = null;
+            }
+          }
         });
     }
 
-    // Listen for messages via custom events (filtered by conversation)
+    // ✅ Create handler with stable reference
     const handleMessage = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { payload } = customEvent.detail;
-      const message = payload.new as MessageRow;
-
-      // ✅ Filter for CURRENT conversation only (use ref to avoid stale closures)
-      if (message.conversation_id !== currentConversationRef.current) {
-        return;
-      }
-
-      console.log('📨 [REALTIME] Message for this conversation:', payload.eventType, message);
-
-      if (payload.eventType === 'INSERT') {
-        // ✅ STEP 0: Check if this exact message ID was already processed (race condition protection)
-        // This MUST be outside setMessages to prevent the same event from being processed twice
-        if (processedMessageIdsRef.current.has(message.id)) {
-          console.log('🔒 [REALTIME] Message ID already processed (race condition), skipping:', message.id);
+      try {
+        // ✅ Double-check effect is still active (prevent stale handlers)
+        if (!isActiveRef.current) {
+          console.log('⏭️ [REALTIME] Effect no longer active, ignoring message event');
           return;
         }
 
-        // Mark as processed immediately to prevent concurrent processing
-        processedMessageIdsRef.current.add(message.id);
-        console.log('🔒 [REALTIME] Marked message as processed:', message.id);
+        const customEvent = event as CustomEvent;
+        const { payload } = customEvent.detail;
+
+        // ✅ Validate payload structure before processing
+        if (!payload || !payload.new || typeof payload.new !== 'object') {
+          console.warn('⚠️ [REALTIME] Invalid payload structure, skipping:', payload);
+          return;
+        }
+
+        const message = payload.new as MessageRow;
+
+        // ✅ Validate required message fields
+        if (!message.id || !message.conversation_id || !message.role) {
+          console.warn('⚠️ [REALTIME] Message missing required fields, skipping:', message);
+          return;
+        }
+
+        // ✅ Filter for CURRENT conversation only (use ref to avoid stale closures)
+        const currentConv = currentConversationRef.current;
+        if (!currentConv || message.conversation_id !== currentConv) {
+          return;
+        }
+
+        console.log('📨 [REALTIME] Message for this conversation:', payload.eventType, message);
+
+      if (payload.eventType === 'INSERT') {
+        // ✅ STEP 0: Check if this exact message ID was already processed (race condition protection)
+        // Use GLOBAL Set (not ref) to prevent multiple listeners from processing same event
+        // ATOMIC operation: Check and add in one step to prevent race conditions
+        // If the ID already exists, Set.add() returns false (didn't add because already present)
+        // If the ID doesn't exist, Set.add() returns true (successfully added)
+        const wasAlreadyProcessed = !globalProcessedMessageIds.add(message.id);
+
+        if (wasAlreadyProcessed) {
+          console.log('🔒 [REALTIME] Message ID already processed globally (by another listener), skipping:', message.id);
+          return;
+        }
+
+        console.log('🔒 [REALTIME] Marked message as processed globally:', message.id);
+
+        // Clean up old processed IDs periodically (keep only last 1000 to prevent memory leak)
+        // Note: This cleanup is safe even if multiple listeners run it simultaneously
+        if (globalProcessedMessageIds.size > 1000) {
+          const idsArray = Array.from(globalProcessedMessageIds);
+          // Keep only the most recent 500 IDs
+          const recentIds = idsArray.slice(-500);
+          globalProcessedMessageIds.clear();
+          recentIds.forEach(id => globalProcessedMessageIds.add(id));
+          console.log('🧹 [REALTIME] Cleaned up global processed message IDs, kept last 500');
+        }
+
+        // ✅ Double-check effect is still active before updating state
+        if (!isActiveRef.current) {
+          console.log('⏭️ [REALTIME] Effect no longer active, skipping state update');
+          return;
+        }
 
         setMessages(prev => {
-          const messageMeta = message.meta as any;
+          const messageClientId = getClientId(message);
 
           // ✅ STEP 1: Check if message with this client_id already exists (strongest de-dupe)
-          if (messageMeta?.client_id) {
-            const existsByClientId = prev.some(msg => {
-              const msgMeta = (msg.meta as any);
-              return msgMeta?.client_id === messageMeta.client_id;
-            });
+          if (messageClientId) {
+            const existsByClientId = prev.some(msg => getClientId(msg) === messageClientId);
             if (existsByClientId) {
-              console.log('🔒 [REALTIME] Message with client_id already exists, skipping:', messageMeta.client_id);
+              console.log('🔒 [REALTIME] Message with client_id already exists, skipping:', messageClientId);
               return prev;
             }
           }
@@ -533,11 +713,10 @@ export function useMessages(conversationId: string | null) {
 
           // ✅ STEP 3: Reconcile optimistic message with real one using client_id (PRIORITY)
           let optimisticIndex = -1;
-          if (messageMeta?.client_id) {
+          if (messageClientId) {
             optimisticIndex = prev.findIndex(msg => {
-              const msgMeta = (msg.meta as any);
               return msg.id.startsWith('temp-') &&
-                msgMeta?.client_id === messageMeta.client_id;
+                getClientId(msg) === messageClientId;
             });
 
             if (optimisticIndex !== -1) {
@@ -573,32 +752,55 @@ export function useMessages(conversationId: string | null) {
           // ✅ STEP 5: Add as new message (only if no match found)
           console.log('✅ [REALTIME] Adding new message to state');
 
-          // Clean up old processed IDs periodically (keep only last 100 to prevent memory leak)
-          // Note: This cleanup happens outside the state update for better performance
-          if (processedMessageIdsRef.current.size > 100) {
-            const idsArray = Array.from(processedMessageIdsRef.current);
-            processedMessageIdsRef.current = new Set(idsArray.slice(-50));
-            console.log('🧹 [REALTIME] Cleaned up processed message IDs, kept last 50');
-          }
-
           return [...prev, message].sort((a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
         });
       } else if (payload.eventType === 'UPDATE') {
+        // ✅ Double-check effect is still active before updating state
+        if (!isActiveRef.current) {
+          return;
+        }
         setMessages(prev =>
           prev.map(msg => msg.id === message.id ? message : msg)
         );
       }
+      } catch (error) {
+        // ✅ ERROR BOUNDARY: Prevent handler crashes from breaking Realtime subscription
+        // This ensures the subscription stays alive even if message processing fails
+        console.error('❌ [REALTIME] Handler error - subscription will continue:', error);
+        console.error('❌ [REALTIME] Error details:', {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorStack: error instanceof Error ? error.stack : undefined,
+          conversationId: currentConversationRef.current
+        });
+
+        // Don't throw - allow subscription to continue processing future messages
+        // User will see existing messages and can refresh if needed
+      }
     };
 
+    // ✅ Store handler reference for cleanup
+    listenerHandlerRef.current = handleMessage;
     window.addEventListener('supabase-message', handleMessage);
 
     return () => {
       console.log('🔴 [REALTIME] Removing message listener for conversation:', conversationId);
-      window.removeEventListener('supabase-message', handleMessage);
+      isActiveRef.current = false;
+      if (listenerHandlerRef.current) {
+        window.removeEventListener('supabase-message', listenerHandlerRef.current);
+        listenerHandlerRef.current = null;
+      }
+
+      // ✅ Cleanup reconnect timeout on unmount
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+        console.log('🧹 [REALTIME] Cleaned up reconnect timeout');
+      }
+
       // Don't remove the channel, it's shared across all conversations
-      // Note: processedMessageIdsRef is cleared when conversationId changes (see useEffect above)
+      // Note: globalProcessedMessageIds is shared across all instances and is cleaned up automatically
     };
   }, [conversationId]);
 
@@ -606,6 +808,28 @@ export function useMessages(conversationId: string | null) {
   const refreshMessages = useCallback(() => {
     loadMessages();
   }, [loadMessages]);
+
+  // ✅ Register refresh callback globally so useConversations can trigger message refresh
+  useEffect(() => {
+    if (!conversationId) {
+      setRefreshMessagesCallback(null);
+      return;
+    }
+
+    const refreshCallback = (updatedConversationId: string) => {
+      // Only refresh if this is the currently selected conversation
+      if (updatedConversationId === conversationId) {
+        console.log('🔄 [MESSAGES] Conversation updated, refreshing messages');
+        loadMessages();
+      }
+    };
+
+    setRefreshMessagesCallback(refreshCallback);
+
+    return () => {
+      setRefreshMessagesCallback(null);
+    };
+  }, [conversationId, loadMessages]);
 
   // Add a function to add optimistic message (before saving to DB)
   const addOptimisticMessage = useCallback((message: any) => {

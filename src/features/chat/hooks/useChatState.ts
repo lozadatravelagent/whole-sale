@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ChatState } from '../types/chat';
@@ -15,13 +15,20 @@ const useChatState = () => {
     lastPdfAnalysis: null,
     showInspirationText: false,
     activeTab: 'active',
-    isTyping: false,
+    // ✅ Typing state per conversation (not global)
+    typingByConversation: {},
     sidebarLimit: 50,
     previousParsedRequest: null,
     isAddingToCRM: false
   });
 
-  const [typingMessage, setTypingMessage] = useState<string>('');
+  // ✅ Ref that always has the current conversation ID (for async operations)
+  const selectedConversationRef = useRef(chatState.selectedConversation);
+
+  // Update ref when conversation changes
+  useEffect(() => {
+    selectedConversationRef.current = chatState.selectedConversation;
+  }, [chatState.selectedConversation]);
 
   const { user } = useAuth();
   const authUser = useAuthUser(); // ⚡ OPTIMIZATION: Cached user data with agency_id, tenant_id, role
@@ -57,9 +64,45 @@ const useChatState = () => {
     updateChatState({ isLoading });
   }, [updateChatState]);
 
-  const setIsTyping = useCallback((isTyping: boolean) => {
-    updateChatState({ isTyping });
-  }, [updateChatState]);
+  // ✅ Setters for typing state per conversation (using functional updates to avoid stale closures)
+  // Can optionally specify conversationId to update a different conversation (not the current one)
+  const setIsTyping = useCallback((isTyping: boolean, conversationId?: string | null) => {
+    setChatState(prev => {
+      const targetConversation = conversationId || prev.selectedConversation;
+      if (!targetConversation) return prev;
+
+      return {
+        ...prev,
+        typingByConversation: {
+          ...prev.typingByConversation,
+          [targetConversation]: {
+            ...(prev.typingByConversation[targetConversation] || { isTyping: false, message: '' }),
+            isTyping
+          }
+        }
+      };
+    });
+  }, []);
+
+  const setTypingMessage = useCallback((message: string, conversationId?: string | null) => {
+    setChatState(prev => {
+      const targetConversation = conversationId || prev.selectedConversation;
+      if (!targetConversation) return prev;
+
+      const currentState = prev.typingByConversation[targetConversation] || { isTyping: false, message: '' };
+
+      return {
+        ...prev,
+        typingByConversation: {
+          ...prev.typingByConversation,
+          [targetConversation]: {
+            isTyping: currentState.isTyping, // Preserve current isTyping state
+            message
+          }
+        }
+      };
+    });
+  }, []);
 
   const setActiveTab = useCallback((activeTab: string) => {
     updateChatState({ activeTab });
@@ -169,23 +212,30 @@ const useChatState = () => {
   // Typing indicator is now controlled manually in useMessageHandler
   // No automatic timeout needed
 
-  // Reset loading state when conversation changes
+  // Reset loading state when conversation changes (but NOT typing - it's per conversation now)
   useEffect(() => {
     if (chatState.selectedConversation) {
       setIsLoading(false);
-      setIsTyping(false);
+      // ✅ Removed setIsTyping(false) - typing state is now per conversation and persists
     }
-  }, [chatState.selectedConversation, setIsLoading, setIsTyping]);
+  }, [chatState.selectedConversation, setIsLoading]);
 
   // Show inspiration text for new conversations - DISABLED
   useEffect(() => {
     updateChatState({ showInspirationText: false });
   }, [chatState.selectedConversation, updateChatState]);
 
+  // ✅ Get typing state for current conversation
+  const currentTypingState = chatState.selectedConversation
+    ? (chatState.typingByConversation[chatState.selectedConversation] || { isTyping: false, message: '' })
+    : { isTyping: false, message: '' };
+
   return {
     // State
     ...chatState,
-    typingMessage,
+    // ✅ Expose current conversation's typing state (backwards compatible)
+    isTyping: currentTypingState.isTyping,
+    typingMessage: currentTypingState.message,
 
     // Related data
     conversations,
@@ -207,6 +257,9 @@ const useChatState = () => {
     loadConversations,
     updateConversationState,
     updateConversationTitle,
+
+    // ✅ Ref for async operations that need current conversation ID
+    selectedConversationRef,
 
     // Utils
     toast
