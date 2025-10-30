@@ -25,10 +25,10 @@ const useMessageHandler = (
   handleCheaperFlightsSearch: (message: string) => Promise<string | null>,
   handlePriceChangeRequest: (message: string) => Promise<{ response: string; modifiedPdfUrl?: string } | null>,
   setIsLoading: (loading: boolean) => void,
-  setIsTyping: (typing: boolean) => void,
+  setIsTyping: (typing: boolean, conversationId?: string | null) => void,
   setMessage: (message: string) => void,
   toast: any,
-  setTypingMessage: (message: string) => void,
+  setTypingMessage: (message: string, conversationId?: string | null) => void,
   addOptimisticMessage: (message: any) => void,
   updateOptimisticMessage: (messageId: string, updates: Partial<any>) => void,
   removeOptimisticMessage: (messageId: string) => void
@@ -81,51 +81,81 @@ const useMessageHandler = (
     if (isCheaperFlightRequest(currentMessage)) {
       console.log('✈️ [CHEAPER FLIGHTS] Detected cheaper flights search request for previous PDF');
 
-      setIsLoading(true);
+      // Clear the input immediately
+      setMessage('');
 
-      try {
-        const responseMessage = await handleCheaperFlightsSearch(currentMessage);
+      // Run the cheaper flights search in the background
+      (async () => {
+        setIsLoading(true);
+        try {
+          // Generate unique client_id for idempotency
+          const clientId = crypto.randomUUID();
+          console.log('🔑 [CHEAPER FLIGHTS] Generated client_id:', clientId);
 
-        if (responseMessage) {
-          // Send response message
+          // ⚡ Optimistic UI update - add user message to UI immediately
+          const optimisticUserMessage = {
+            id: `temp-${clientId}`,
+            conversation_id: currentConversationId,
+            role: 'user' as const,
+            content: { text: currentMessage.trim() },
+            meta: { status: 'sending', client_id: clientId, messageType: 'cheaper_flights_request' },
+            created_at: new Date().toISOString()
+          };
+
+          // Add to local messages immediately (Realtime will replace with real message from DB)
+          addOptimisticMessage(optimisticUserMessage as any);
+
+          // Add user message to database (in background)
+          await addMessageViaSupabase({
+            conversation_id: currentConversationId,
+            role: 'user' as const,
+            content: { text: currentMessage.trim() },
+            meta: { status: 'sent', messageType: 'cheaper_flights_request', client_id: clientId }
+          });
+
+          const responseMessage = await handleCheaperFlightsSearch(currentMessage);
+
+          if (responseMessage) {
+            // Send response message
+            await addMessageViaSupabase({
+              conversation_id: currentConversationId,
+              role: 'assistant' as const,
+              content: {
+                text: responseMessage,
+                metadata: {
+                  type: 'cheaper_flights_search',
+                  originalRequest: currentMessage
+                }
+              },
+              meta: {
+                status: 'sent',
+                messageType: 'cheaper_flights_response'
+              }
+            });
+          }
+
+          setIsLoading(false);
+
+        } catch (error) {
+          console.error('❌ Error searching for cheaper flights:', error);
+
           await addMessageViaSupabase({
             conversation_id: currentConversationId,
             role: 'assistant' as const,
             content: {
-              text: responseMessage,
-              metadata: {
-                type: 'cheaper_flights_search',
-                originalRequest: currentMessage
-              }
+              text: `❌ **Error en la búsqueda de vuelos**\n\nNo pude buscar vuelos alternativos en este momento. Esto puede deberse a:\n\n• Problemas temporales con el servicio de búsqueda\n• El PDF no contiene información de vuelos válida\n• Error de conectividad\n\n¿Podrías intentarlo nuevamente o proporcionarme manualmente los detalles del vuelo?`
             },
             meta: {
               status: 'sent',
-              messageType: 'cheaper_flights_response'
+              messageType: 'error_response'
             }
           });
+
+          setIsLoading(false);
         }
+      })();
 
-        setIsLoading(false);
-        return; // Exit early, don't process as regular message
-
-      } catch (error) {
-        console.error('❌ Error searching for cheaper flights:', error);
-
-        await addMessageViaSupabase({
-          conversation_id: currentConversationId,
-          role: 'assistant' as const,
-          content: {
-            text: `❌ **Error en la búsqueda de vuelos**\n\nNo pude buscar vuelos alternativos en este momento. Esto puede deberse a:\n\n• Problemas temporales con el servicio de búsqueda\n• El PDF no contiene información de vuelos válida\n• Error de conectividad\n\n¿Podrías intentarlo nuevamente o proporcionarme manualmente los detalles del vuelo?`
-          },
-          meta: {
-            status: 'sent',
-            messageType: 'error_response'
-          }
-        });
-
-        setIsLoading(false);
-        return;
-      }
+      return; // Exit early, don't process as regular message
     }
 
     // If user asks to add a hotel for same dates after flight results, coerce to combined using last flight context
@@ -144,14 +174,32 @@ const useMessageHandler = (
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
         console.log('🏨 [INTENT] Flight context:', flightCtx);
         console.log('🏨 [INTENT] Persistent state:', persistentState);
+        setMessage('');
         setIsLoading(true);
         try {
-          // Save user's intent message into conversation before executing
+          // Generate unique client_id for idempotency
+          const clientId = crypto.randomUUID();
+          console.log('🔑 [ADD HOTEL] Generated client_id:', clientId);
+
+          // ⚡ Optimistic UI update - add user message to UI immediately
+          const optimisticUserMessage = {
+            id: `temp-${clientId}`,
+            conversation_id: currentConversationId,
+            role: 'user' as const,
+            content: { text: currentMessage.trim() },
+            meta: { status: 'sending', client_id: clientId, messageType: 'add_hotel_intent' },
+            created_at: new Date().toISOString()
+          };
+
+          // Add to local messages immediately (Realtime will replace with real message from DB)
+          addOptimisticMessage(optimisticUserMessage as any);
+
+          // Save user's intent message into conversation (in background)
           await addMessageViaSupabase({
             conversation_id: currentConversationId,
             role: 'user' as const,
             content: { text: currentMessage.trim() },
-            meta: { status: 'sent', messageType: 'add_hotel_intent' }
+            meta: { status: 'sent', messageType: 'add_hotel_intent', client_id: clientId }
           });
 
           // Build a hotels-only request using flight context (city/dates/pax inferred)
@@ -221,12 +269,29 @@ const useMessageHandler = (
       (async () => {
         setIsLoading(true);
         try {
-          // Add user message
+          // Generate unique client_id for idempotency
+          const clientId = crypto.randomUUID();
+          console.log('🔑 [PRICE CHANGE] Generated client_id:', clientId);
+
+          // ⚡ Optimistic UI update - add user message to UI immediately
+          const optimisticUserMessage = {
+            id: `temp-${clientId}`,
+            conversation_id: currentConversationId,
+            role: 'user' as const,
+            content: { text: currentMessage.trim() },
+            meta: { status: 'sending', client_id: clientId, messageType: 'price_change_request' },
+            created_at: new Date().toISOString()
+          };
+
+          // Add to local messages immediately (Realtime will replace with real message from DB)
+          addOptimisticMessage(optimisticUserMessage as any);
+
+          // Add user message to database (in background)
           await addMessageViaSupabase({
             conversation_id: currentConversationId,
             role: 'user' as const,
             content: { text: currentMessage.trim() },
-            meta: { status: 'sent', messageType: 'price_change_request' }
+            meta: { status: 'sent', messageType: 'price_change_request', client_id: clientId }
           });
 
           const result = await handlePriceChangeRequest(currentMessage);

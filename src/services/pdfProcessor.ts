@@ -188,8 +188,33 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
     // Extract hotel information (only for combined template)
     const hotels = isCombinedTemplate ? extractHotelsFromPdfMonkeyTemplate(content) : [];
 
-    // Extract total price
-    const totalPrice = extractTotalPriceFromPdfMonkeyTemplate(content);
+    // Calculate total price from individual flight prices
+    let calculatedFlightPrice = 0;
+    if (flights && flights.length > 0) {
+        calculatedFlightPrice = flights.reduce((sum, flight) => sum + (flight.price || 0), 0);
+        console.log('💰 Calculated flight price from individual flights:', calculatedFlightPrice);
+    }
+
+    // Calculate hotel total
+    let calculatedHotelPrice = 0;
+    if (hotels && hotels.length > 0) {
+        calculatedHotelPrice = hotels.reduce((sum, hotel) => sum + (hotel.price * hotel.nights), 0);
+        console.log('💰 Calculated hotel price:', calculatedHotelPrice);
+    }
+
+    // Extract total price from PDF (fallback)
+    const extractedTotalPrice = extractTotalPriceFromPdfMonkeyTemplate(content);
+
+    // Use calculated price if available, otherwise use extracted price
+    const totalPrice = (calculatedFlightPrice > 0 || calculatedHotelPrice > 0)
+        ? calculatedFlightPrice + calculatedHotelPrice
+        : extractedTotalPrice;
+
+    console.log('💰 Final total price:', totalPrice, {
+        flightPrice: calculatedFlightPrice,
+        hotelPrice: calculatedHotelPrice,
+        extractedPrice: extractedTotalPrice
+    });
 
     // Extract passenger information
     const passengers = extractPassengersFromPdfMonkeyTemplate(content);
@@ -317,10 +342,19 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
     // Flight information
     if (content.flights && content.flights.length > 0) {
         response += `✈️ **Vuelos Encontrados:**\n\n`;
+
         content.flights.forEach((flight, index) => {
-            response += `${flight.airline} - ${flight.route}\n`;
-            response += `📅 ${flight.dates} | 💰 $${flight.price} ${content.currency}\n\n`;
+            // Airline, route and date on the same line
+            response += `${flight.airline} - ${flight.route} 📅 ${flight.dates}\n\n`;
+
+            // Add extra blank line after every pair of flights (odd indices: 1, 3, 5...)
+            if (index % 2 === 1) {
+                response += `\n`;
+            }
         });
+
+        // Add final line break after all flights
+        response += `\n`;
     }
 
     // Hotel information
@@ -332,15 +366,16 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
         });
     }
 
-    // Total price
+    // Total price - this should be the sum of all components
     if (content.totalPrice) {
-        response += `💰 **Precio Total:** $${content.totalPrice} ${content.currency || 'USD'}\n`;
+        response += `💰 **Precio Total:** $${content.totalPrice} ${content.currency || 'USD'}  \n`;
         response += `👥 **Pasajeros:** ${content.passengers || 1}\n\n`;
     }
 
     response += `💬 **¿Qué te gustaría modificar?**\n\n`;
     response += `Puedes pedirme:\n\n`;
-    response += `• "Quiero modificarle el precio a [cantidad]"\n\n`;
+    response += `• "Quiero modificarle el precio a [cantidad]"  \n`;
+    response += `• "Cambia el precio del primer vuelo a [cantidad] y el segundo a [cantidad]"\n\n`;
 
     return response;
 }
@@ -418,6 +453,126 @@ function extractPriceFromMessage(message: string): number | null {
 }
 
 /**
+ * Extract multiple prices with positions from message
+ * Detects patterns like: "primer precio a $1500 segundo a $2000" or "precio 1: $1800, precio 2: $2200"
+ */
+function extractMultiplePricesFromMessage(message: string): Array<{ position: number, price: number }> | null {
+    console.log('🔍 [MULTIPLE PRICES V6] Extracting multiple prices from:', message);
+    const normalizedMessage = message.toLowerCase();
+    const priceChanges: Array<{ position: number, price: number }> = [];
+
+    const positionMapping: Record<string, number> = {
+        'primer': 1, 'primera': 1, 'primero': 1,
+        'segund': 2, 'segundo': 2, 'segunda': 2,
+        'tercer': 3, 'tercera': 3, 'tercero': 3,
+        'cuart': 4, 'cuarto': 4, 'cuarta': 4,
+        '1': 1, '2': 2, '3': 3, '4': 4
+    };
+
+    // Strategy 1: Look for explicit "al [position] [price]" patterns
+    // Examples: "al primer 1000", "al segundo 2000", "al 1 1000", "al 2 2000"
+    const explicitPattern = /al\s+(primer[ao]?|primero|segundo?[ao]?|tercer[ao]?|tercero|cuarto?[ao]?|[1-4])\s+(?:vuelo\s+)?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi;
+    let explicitMatches = [...normalizedMessage.matchAll(explicitPattern)];
+
+    console.log('🔍 [EXPLICIT PATTERN] Found matches:', explicitMatches.length);
+
+    for (const match of explicitMatches) {
+        console.log(`🔍 [EXPLICIT] Processing match: "${match[0]}"`, match);
+        const positionStr = match[1].toLowerCase().replace(/[ao]$/, '');
+        const position = positionMapping[positionStr] || parseInt(positionStr);
+        const priceStr = match[2];
+
+        console.log(`🔍 [EXPLICIT] Parsed - position: ${position}, priceStr: "${priceStr}"`);
+
+        if (position > 0 && priceStr) {
+            const price = parseFloat(priceStr.replace(/,/g, ''));
+            console.log(`🔍 [EXPLICIT] Price value: ${price}, valid range: ${price >= 100 && price <= 50000}`);
+
+            if (price >= 100 && price <= 50000) {
+                const existingIndex = priceChanges.findIndex(pc => pc.position === position);
+                console.log(`🔍 [EXPLICIT] Existing index for position ${position}: ${existingIndex}`);
+
+                if (existingIndex === -1) {
+                    priceChanges.push({ position, price });
+                    console.log(`💰 [EXPLICIT] Position ${position}: $${price} from "${match[0]}"`);
+                } else {
+                    console.log(`⚠️ [EXPLICIT] Skipped duplicate position ${position}`);
+                }
+            } else {
+                console.log(`⚠️ [EXPLICIT] Price ${price} out of range [100, 50000]`);
+            }
+        } else {
+            console.log(`⚠️ [EXPLICIT] Invalid position (${position}) or priceStr ("${priceStr}")`);
+        }
+    }
+
+    // Strategy 2: Look for "precio [position] [price]" patterns
+    // Examples: "precio 1 1000", "precio al segundo 2000"
+    const pricePositionPattern = /precio\s+(?:al\s+)?(primer[ao]?|primero|segundo?[ao]?|tercer[ao]?|tercero|cuarto?[ao]?|[1-4])\s+(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi;
+    let pricePositionMatches = [...normalizedMessage.matchAll(pricePositionPattern)];
+
+    console.log('🔍 [PRICE POSITION PATTERN] Found matches:', pricePositionMatches.length);
+
+    for (const match of pricePositionMatches) {
+        const positionStr = match[1].toLowerCase().replace(/[ao]$/, '');
+        const position = positionMapping[positionStr] || parseInt(positionStr);
+        const priceStr = match[2];
+
+        if (position > 0 && priceStr) {
+            const price = parseFloat(priceStr.replace(/,/g, ''));
+            if (price >= 100 && price <= 50000) {
+                const existingIndex = priceChanges.findIndex(pc => pc.position === position);
+                if (existingIndex === -1) {
+                    priceChanges.push({ position, price });
+                    console.log(`💰 [PRICE POSITION] Position ${position}: $${price} from "${match[0]}"`);
+                }
+            }
+        }
+    }
+
+    // Strategy 3: Original clause-based pattern (fallback)
+    const clauses = normalizedMessage.split(/\s+y\s+|,\s*/);
+    console.log('🔍 [CLAUSE SPLIT] Clauses:', clauses);
+
+    const clausePattern = /(primer[ao]?|primero|segundo?[ao]?|tercer[ao]?|tercero|cuarto?[ao]?|[1-4]).*?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/i;
+
+    for (const rawClause of clauses) {
+        const clause = rawClause.trim();
+        if (!clause) continue;
+
+        const match = clause.match(clausePattern);
+
+        if (match) {
+            const positionStr = match[1].toLowerCase().replace(/[ao]$/, '');
+            const position = positionMapping[positionStr] || parseInt(positionStr);
+            const priceStr = match[2];
+
+            if (position > 0 && priceStr) {
+                const price = parseFloat(priceStr.replace(/,/g, ''));
+                if (price >= 100 && price <= 50000) {
+                    const existingIndex = priceChanges.findIndex(pc => pc.position === position);
+                    if (existingIndex === -1) {
+                        priceChanges.push({ position, price });
+                        console.log(`💰 [CLAUSE] Position ${position}: $${price} from clause "${clause}"`);
+                    }
+                }
+            }
+        }
+    }
+
+    // Sort by position to ensure correct order
+    priceChanges.sort((a, b) => a.position - b.position);
+
+    if (priceChanges.length > 0) {
+        console.log('✅ [MULTIPLE PRICES] Total extracted:', priceChanges.length, priceChanges);
+        return priceChanges;
+    }
+
+    console.log('❌ [MULTIPLE PRICES] No positional prices found');
+    return null;
+}
+
+/**
  * Reconstruct FlightData from extracted PDF data
  */
 function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): any[] {
@@ -425,85 +580,110 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
 
     const originalPrice = analysis.content.totalPrice || 0;
     const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
+    const flights = analysis.content.flights;
 
-    return analysis.content.flights.map((flight, index) => {
-        // Parse dates from PDF data - handle the new format with separate dates
-        let datesParsed;
-        if (flight.dates.includes(' / ')) {
-            // New format: "2025-11-09 / 2025-11-15"
-            const [departureDate, returnDate] = flight.dates.split(' / ');
-            datesParsed = {
-                departureDate: departureDate.trim(),
-                returnDate: returnDate.trim()
-            };
+    // Group flights into pairs (same airline, consecutive in array)
+    const flightGroups: any[][] = [];
+    for (let i = 0; i < flights.length; i += 2) {
+        if (i + 1 < flights.length && flights[i].airline === flights[i + 1].airline) {
+            // Pair: ida + vuelta
+            flightGroups.push([flights[i], flights[i + 1]]);
         } else {
-            // Fallback to old parsing method
-            datesParsed = parseDateRange(flight.dates);
+            // Single flight (solo ida)
+            flightGroups.push([flights[i]]);
         }
+    }
 
-        // Extract route information from PDF
-        const routeInfo = parseFlightRoute(flight.route);
+    console.log(`📦 Grouped ${flights.length} flights into ${flightGroups.length} option(s)`);
 
-        // Get airline code from PDF data or extract from airline name
-        const airlineCode = extractAirlineCode(flight.airline);
+    return flightGroups.map((group, groupIndex) => {
+        const firstFlight = group[0];
+        const hasReturn = group.length === 2;
 
-        // Build legs from extracted PDF data - ONLY use real data
-        const legs = [];
+        // Calculate total price for this group
+        const groupOriginalPrice = group.reduce((sum, f) => sum + f.price, 0);
+        const groupNewPrice = Math.round(groupOriginalPrice * priceRatio);
 
-        // Use REAL data extracted from PDF - no mock data
-        if ((flight as any).legs && (flight as any).legs.length > 0) {
-            console.log('✅ Using REAL PDF leg data (no mock):', (flight as any).legs);
+        console.log(`✈️ Group ${groupIndex + 1}: ${firstFlight.airline} - ${group.length} flight(s), price: $${groupNewPrice}`);
 
-            // Use the actual legs extracted from PDF exactly as they are
-            legs.push(...(flight as any).legs);
-        } else {
+        // Collect all legs from both outbound and return
+        const allLegs: any[] = [];
+        group.forEach(flight => {
+            if ((flight as any).legs && (flight as any).legs.length > 0) {
+                allLegs.push(...(flight as any).legs);
+            }
+        });
+
+        if (allLegs.length === 0) {
             throw new Error('No leg data found in PDF for flight reconstruction');
         }
 
-        // Use ONLY real data from PDF - no mock data
-        const flightPrice = Math.round(flight.price * priceRatio);
+        // Parse dates
+        const flight = group[0];
+        const lastFlight = group[group.length - 1];
+
+        let departureDate, returnDate;
+        if (flight.dates.includes(' / ')) {
+            const [dep, ret] = flight.dates.split(' / ');
+            departureDate = dep.trim();
+            returnDate = ret.trim();
+        } else {
+            const parsed = parseDateRange(flight.dates);
+            departureDate = parsed.departureDate;
+            returnDate = parsed.returnDate;
+        }
+
+        // If we have a return flight, use its date
+        if (hasReturn && lastFlight.dates) {
+            if (lastFlight.dates.includes(' / ')) {
+                returnDate = lastFlight.dates.split(' / ')[0].trim();
+            }
+        }
+
+        // Get airline code
+        const airlineCode = extractAirlineCode(firstFlight.airline);
 
         return {
-            id: `regenerated-${Date.now()}-${index}`,
+            id: `regenerated-${Date.now()}-${groupIndex}`,
             airline: {
                 code: airlineCode,
-                name: flight.airline // Use exact airline name from PDF
+                name: firstFlight.airline
             },
             price: {
-                amount: flightPrice,
+                amount: groupNewPrice,
                 currency: analysis.content?.currency || 'USD',
                 breakdown: {
-                    fareAmount: Math.round(flightPrice * 0.75),
-                    taxAmount: Math.round(flightPrice * 0.25),
+                    fareAmount: Math.round(groupNewPrice * 0.75),
+                    taxAmount: Math.round(groupNewPrice * 0.25),
                     serviceAmount: 0,
                     commissionAmount: 0
                 }
             },
             adults: analysis.content?.passengers || 1,
             childrens: 0,
-            departure_date: datesParsed.departureDate,
-            return_date: datesParsed.returnDate,
-            departure_time: legs[0].departure.time, // Use real departure time
-            arrival_time: legs[legs.length - 1].arrival.time, // Use real arrival time
-            duration: { formatted: legs[0].duration }, // Use real duration
+            departure_date: departureDate,
+            return_date: returnDate,
+            departure_time: allLegs[0].departure.time,
+            arrival_time: allLegs[allLegs.length - 1].arrival.time,
+            duration: { formatted: allLegs[0].duration },
             stops: {
-                direct: legs.length <= 2,
-                count: Math.max(0, legs.length - 2)
+                direct: allLegs.length <= 2,
+                count: Math.max(0, allLegs.length - 2)
             },
             baggage: {
                 included: true,
-                details: '2PC' // Keep this as it's standard
+                details: '2PC'
             },
             cabin: {
                 class: 'Economy',
-                brandName: 'Economy Flexible' // Keep this as it's standard
+                brandName: 'Economy Flexible'
             },
             booking: {
                 lastTicketingDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                 validatingCarrier: airlineCode,
                 fareType: 'P'
             },
-            legs: legs // Use real legs from PDF
+            legs: allLegs // All legs from ida + vuelta
         };
     });
 }
@@ -544,6 +724,151 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number): an
 }
 
 /**
+ * Generate modified PDF with individual flight prices
+ */
+export async function generateModifiedPdfWithIndividualPrices(
+    analysis: PdfAnalysisResult,
+    priceChanges: Array<{ position: number, price: number }>,
+    conversationId: string
+): Promise<{ success: boolean; pdfUrl?: string; error?: string }> {
+    try {
+        console.log('🔄 Generating modified PDF with individual prices:', priceChanges);
+
+        // Import the PDF generation services
+        const { generateCombinedTravelPdf, generateFlightPdf } = await import('./pdfMonkey');
+
+        if (!analysis.content) {
+            throw new Error('No content available from PDF analysis');
+        }
+
+        // Get original flights
+        const originalFlights = analysis.content.flights || [];
+
+        if (originalFlights.length === 0) {
+            throw new Error('No flights found in PDF analysis');
+        }
+
+        console.log(`📊 Original flights count: ${originalFlights.length}`);
+
+        // Group flights into pairs (outbound + return by airline/dates)
+        const flightPairs: Array<{ outbound: any, return: any, originalPrice: number }> = [];
+
+        for (let i = 0; i < originalFlights.length; i += 2) {
+            if (i + 1 < originalFlights.length) {
+                const outbound = originalFlights[i];
+                const returnFlight = originalFlights[i + 1];
+                const pairPrice = outbound.price + returnFlight.price;
+
+                flightPairs.push({
+                    outbound,
+                    return: returnFlight,
+                    originalPrice: pairPrice
+                });
+
+                console.log(`🔗 Pair ${flightPairs.length}: ${outbound.airline} (${outbound.route}) + (${returnFlight.route}) = $${pairPrice}`);
+            }
+        }
+
+        console.log(`📊 Flight pairs detected: ${flightPairs.length}`);
+
+        // Validate positions against pairs (not individual flights)
+        for (const change of priceChanges) {
+            if (change.position < 1 || change.position > flightPairs.length) {
+                throw new Error(`Invalid position: ${change.position}. PDF only has ${flightPairs.length} flight option(s).`);
+            }
+        }
+
+        // Apply price changes to pairs
+        let newTotalPrice = 0;
+        const modifiedFlights: any[] = [];
+
+        flightPairs.forEach((pair, pairIndex) => {
+            const pairPosition = pairIndex + 1; // 1-based position
+            const priceChange = priceChanges.find(pc => pc.position === pairPosition);
+
+            if (priceChange) {
+                // User specified a new price for this pair
+                const newPairPrice = priceChange.price;
+
+                // Divide price 50/50 between outbound and return for internal calculation
+                const halfPrice = newPairPrice / 2;
+
+                modifiedFlights.push({
+                    ...pair.outbound,
+                    price: halfPrice
+                });
+
+                modifiedFlights.push({
+                    ...pair.return,
+                    price: halfPrice
+                });
+
+                newTotalPrice += newPairPrice;
+
+                console.log(`✏️ Modifying pair ${pairPosition}: ${pair.outbound.airline} - New total: $${newPairPrice} (split: $${halfPrice} each)`);
+            } else {
+                // Keep original prices
+                modifiedFlights.push({ ...pair.outbound });
+                modifiedFlights.push({ ...pair.return });
+
+                newTotalPrice += pair.originalPrice;
+
+                console.log(`➡️ Keeping pair ${pairPosition}: ${pair.outbound.airline} - Original total: $${pair.originalPrice}`);
+            }
+        });
+
+        console.log(`💰 New total price: $${newTotalPrice}`);
+
+        // Create modified analysis with updated flights and total
+        const modifiedAnalysis: PdfAnalysisResult = {
+            ...analysis,
+            content: {
+                ...analysis.content!,
+                flights: modifiedFlights,
+                totalPrice: newTotalPrice
+            }
+        };
+
+        // Use reconstructFlightData to transform to full structure
+        // Pass the same total as the analysis to get ratio = 1 (no price adjustment)
+        const reconstructedFlights = reconstructFlightData(modifiedAnalysis, modifiedAnalysis.content!.totalPrice!);
+
+        // Get hotels if any
+        const hotels = analysis.content.hotels || [];
+        const reconstructedHotels = hotels.length > 0 ? reconstructHotelData(analysis, newTotalPrice) : [];
+
+        // Generate PDF based on what content we have
+        let pdfResult: { success: boolean; document_url?: string; error?: string };
+
+        if (reconstructedHotels.length > 0) {
+            console.log('🏨 Generating combined PDF (flights + hotels)');
+            pdfResult = await generateCombinedTravelPdf(reconstructedFlights, reconstructedHotels);
+        } else {
+            console.log('✈️ Generating flights-only PDF');
+            pdfResult = await generateFlightPdf(reconstructedFlights);
+        }
+
+        if (!pdfResult.success || !pdfResult.document_url) {
+            throw new Error(pdfResult.error || 'Failed to generate PDF');
+        }
+
+        console.log('✅ Modified PDF generated successfully:', pdfResult.document_url);
+
+        return {
+            success: true,
+            pdfUrl: pdfResult.document_url
+        };
+
+    } catch (error) {
+        console.error('❌ Error generating modified PDF with individual prices:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
  * Generate modified PDF with new price
  */
 export async function generateModifiedPdf(
@@ -579,20 +904,9 @@ export async function generateModifiedPdf(
         let adjustedHotels: any[];
 
         if (analysis.content.extractedFromPdfMonkey) {
-            // For our own PDFs, reconstruct the data more accurately
-            console.log('🏗️ Reconstructing data from PdfMonkey template');
-            try {
-                const reconstructedFlights = reconstructFlightData(analysis, newPrice);
-                // Filter out null values (flights without real leg data)
-                adjustedFlights = reconstructedFlights.filter(flight => flight !== null);
-                if (adjustedFlights.length === 0) {
-                    throw new Error('No se pudieron reconstruir los vuelos con datos reales del PDF');
-                }
-            } catch (error) {
-                console.error('❌ Error reconstructing flight data:', error);
-                return { success: false, error: 'No se pudo reconstruir la información del vuelo desde el PDF.' };
-            }
-
+            // For our own PDFs, use reconstructFlightData which maintains the original template structure
+            console.log('🏗️ Reconstructing flight data from PdfMonkey template');
+            adjustedFlights = reconstructFlightData(analysis, newPrice);
             adjustedHotels = reconstructHotelData(analysis, newPrice);
         } else {
             // For external PDFs, use ONLY real data from PDF
@@ -733,7 +1047,75 @@ export async function processPriceChangeRequest(
 
         const lowerRequest = request.toLowerCase();
 
-        // Check if user is specifying a specific price
+        // First, check if user is specifying multiple individual prices
+        const multiplePrices = extractMultiplePricesFromMessage(request);
+
+        if (multiplePrices && multiplePrices.length > 0) {
+            console.log('💰💰 User requested multiple individual prices:', multiplePrices);
+
+            // Validate that we have PDF analysis with flights
+            if (!analysis.success || !analysis.content || !analysis.content.flights || analysis.content.flights.length === 0) {
+                return {
+                    response: '❌ No puedo modificar precios individuales porque no hay un PDF con vuelos analizados en esta conversación. Por favor, primero envía o arrastra un PDF con cotización de vuelos.'
+                };
+            }
+
+            // Generate PDF with individual price changes
+            const result = await generateModifiedPdfWithIndividualPrices(analysis, multiplePrices, conversationId);
+
+            if (result.success && result.pdfUrl) {
+                // Build response message showing pairs
+                const changesDescription = multiplePrices.map(pc => {
+                    // Get the pair info (each position represents a pair now)
+                    const pairIndex = (pc.position - 1) * 2;
+                    if (pairIndex < analysis.content!.flights!.length) {
+                        const outboundFlight = analysis.content!.flights![pairIndex];
+                        return `• Opción ${pc.position} (${outboundFlight.airline}): $${pc.price.toFixed(2)} USD`;
+                    }
+                    return `• Opción ${pc.position}: $${pc.price.toFixed(2)} USD`;
+                }).join('\n');
+
+                // Calculate final total considering pairs
+                // The priceChanges array already has the new prices per position (pair)
+                // We need to sum all new prices from priceChanges + unchanged pairs from original
+                let finalTotal = 0;
+
+                // Count how many pairs we have in the original flights
+                const totalPairs = Math.floor((analysis.content!.flights || []).length / 2);
+
+                for (let pairIndex = 1; pairIndex <= totalPairs; pairIndex++) {
+                    const priceChange = multiplePrices.find(pc => pc.position === pairIndex);
+
+                    if (priceChange) {
+                        // Use the new price specified by user
+                        finalTotal += priceChange.price;
+                        console.log(`💰 Adding modified price for pair ${pairIndex}: $${priceChange.price}`);
+                    } else {
+                        // Use original price from flights (sum of outbound + return)
+                        const outboundIndex = (pairIndex - 1) * 2;
+                        const returnIndex = outboundIndex + 1;
+                        const originalFlights = analysis.content!.flights || [];
+
+                        if (returnIndex < originalFlights.length) {
+                            const pairOriginalPrice = originalFlights[outboundIndex].price + originalFlights[returnIndex].price;
+                            finalTotal += pairOriginalPrice;
+                            console.log(`💰 Adding original price for pair ${pairIndex}: $${pairOriginalPrice}`);
+                        }
+                    }
+                }
+
+                return {
+                    response: `✅ He modificado los precios de las opciones de vuelo seleccionadas:\n\n${changesDescription}\n\n💰 **Precio Total Actualizado**: $${finalTotal.toFixed(2)} USD\n\n📄 Puedes descargar el PDF actualizado desde el archivo adjunto.`,
+                    modifiedPdfUrl: result.pdfUrl
+                };
+            } else {
+                return {
+                    response: `❌ No pude generar el PDF modificado: ${result.error || 'Error desconocido'}`
+                };
+            }
+        }
+
+        // If no multiple prices, check for single total price (existing behavior)
         const requestedPrice = extractPriceFromMessage(request);
 
         if (requestedPrice) {
@@ -1646,6 +2028,8 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         arrival: { city_code: string, city_name: string, time: string },
         duration: string,
         flight_type: string,
+        airline?: string,
+        price?: number,
         layovers?: Array<{
             destination_city: string,
             destination_code: string,
@@ -1655,29 +2039,27 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
 }> {
     const flights = [];
 
-    // Extract airline name - more flexible pattern matching
-    // Look for airline name at the beginning of the content, before "Ocupación"
-    const airlinePatterns = [
-        /^([A-Z]{2,3})\s+([A-Z][A-Za-z\s\.]+?)(?:\s+Ocupación)/i,  // e.g., "AV AVIANCA ECUADOR S.A. Ocupación"
-        /([A-Z\s]+(?:AIRLINES|AIRLINE|GROUP|AEROLINEAS|AEROLINEA|S\.A\.|SA)[A-Z\s\.]*)/i,
-        /Vuelos\s+([^$\n]+)/i
-    ];
+    // Helper function to extract airline name from section content
+    const extractAirlineName = (sectionContent: string): string => {
+        const airlinePatterns = [
+            /^([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s+Ocupación)/im,  // e.g., "AM Aeroméxico Ocupación"
+            /([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s+Ocupación)/i,
+            /([A-Z\s]+(?:AIRLINES|AIRLINE|GROUP|AEROLINEAS|AEROLINEA|S\.A\.|SA)[A-Z\s\.]*)/i,
+        ];
 
-    let airline = 'Aerolínea no especificada';
-    for (const pattern of airlinePatterns) {
-        const match = content.match(pattern);
-        if (match) {
-            // For the first pattern, combine code and name
-            if (match[2]) {
-                airline = `${match[1]} ${match[2]}`.trim();
-            } else {
-                airline = match[1].trim();
+        for (const pattern of airlinePatterns) {
+            const match = sectionContent.match(pattern);
+            if (match) {
+                // For patterns with two capture groups, combine code and name
+                if (match[2]) {
+                    return `${match[1]} ${match[2]}`.trim();
+                } else {
+                    return match[1].trim();
+                }
             }
-            break;
         }
-    }
-
-    console.log('✈️ Extracted airline:', airline);
+        return 'Aerolínea no especificada';
+    };
 
     // Extract all airport codes and times from the content
     // Pattern should capture: CODE CityName TIME
@@ -1721,105 +2103,202 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         layoverMatchesCount: layoverMatches.length
     });
 
-    if (isRoundTrip && airportMatches.length >= 4) {
-        // Round trip: find outbound and return legs by analyzing the content structure
-        console.log('🔍 Processing round trip flight...');
+    // Check if we have multiple flight options (multiple "Precio total" markers)
+    const priceMarkerPattern = /(\d{1,5}(?:[.,]\d{1,2})?)\s*USD\s*Precio\s*total/gi;
+    const priceMarkerMatches = [...content.matchAll(priceMarkerPattern)];
 
-        // Find the "Vuelo de regreso" position to split the content
-        const returnFlightIndex = content.toLowerCase().indexOf('vuelo de regreso');
-        const outboundContent = content.substring(0, returnFlightIndex);
-        const returnContent = content.substring(returnFlightIndex);
+    console.log('🔍 Found flight options (Precio total markers):', priceMarkerMatches.length);
+    priceMarkerMatches.forEach((match, i) => {
+        console.log(`  Match ${i + 1}: "${match[0]}" at position ${match.index}`);
+    });
 
-        console.log('🔍 Content split:', {
-            outboundLength: outboundContent.length,
-            returnLength: returnContent.length
-        });
+    if (priceMarkerMatches.length >= 2 || (isRoundTrip && airportMatches.length >= 4)) {
+        // Multiple flight options: process each section separately
+        console.log('🔍 Processing multiple flight option(s)...');
+        console.log('  isRoundTrip:', isRoundTrip, 'priceMarkers:', priceMarkerMatches.length);
 
-        // Extract outbound airports (before "Vuelo de regreso")
-        const outboundAirportPattern = /([A-Z]{3})\s+([A-Za-zÀ-ÿ\s]+?)\s+(\d{1,2}:\d{2})/g;
-        const outboundAirports = [...outboundContent.matchAll(outboundAirportPattern)];
+        // Build sections: each section includes the price and goes until the next price marker
+        const flightSections = [];
 
-        // Extract return airports (after "Vuelo de regreso")
-        const returnAirportPattern = /([A-Z]{3})\s+([A-Za-zÀ-ÿ\s]+?)\s+(\d{1,2}:\d{2})/g;
-        const returnAirports = [...returnContent.matchAll(returnAirportPattern)];
+        for (let i = 0; i < priceMarkerMatches.length; i++) {
+            // Start from the previous "Precio total" (or beginning) to capture airline name
+            // Airline name appears before the price, so we need to look back
+            let sectionStart: number;
+            if (i === 0) {
+                // First section: start from beginning
+                sectionStart = 0;
+            } else {
+                // Other sections: start from after the previous "Vuelo de ida" to capture the airline
+                // Look for the airline name which appears before the price
+                const previousMatchEnd = priceMarkerMatches[i - 1].index! + priceMarkerMatches[i - 1][0].length;
+                sectionStart = previousMatchEnd;
+            }
 
-        console.log('🔍 Airport extraction:', {
-            outboundAirports: outboundAirports.map(a => ({ code: a[1], city: a[2].trim(), time: a[3] })),
-            returnAirports: returnAirports.map(a => ({ code: a[1], city: a[2].trim(), time: a[3] }))
-        });
+            // End at the start of the next price pattern (or end of content)
+            const sectionEnd = priceMarkerMatches[i + 1]?.index || content.length;
 
-        // Extract outbound layovers
-        const outboundLayoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
-        const outboundLayovers = [...outboundContent.matchAll(outboundLayoverPattern)];
+            const fullSection = content.substring(sectionStart, sectionEnd);
 
-        // Extract return layovers
-        const returnLayoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
-        const returnLayovers = [...returnContent.matchAll(returnLayoverPattern)];
+            // Split this section into outbound and return parts
+            const returnFlightIndex = fullSection.toLowerCase().indexOf('vuelo de regreso');
 
-        // Build outbound leg
-        if (outboundAirports.length >= 2) {
-            const outboundOrigin = outboundAirports[0];
-            const outboundDest = outboundAirports[outboundAirports.length - 1];
-
-            const outboundLeg = {
-                departure: {
-                    city_code: outboundOrigin[1],
-                    city_name: outboundOrigin[2].trim(),
-                    time: outboundOrigin[3]
-                },
-                arrival: {
-                    city_code: outboundDest[1],
-                    city_name: outboundDest[2].trim(),
-                    time: outboundDest[3]
-                },
-                duration: calculateFlightDuration(outboundOrigin[3], outboundDest[3]) || '10h',
-                flight_type: 'outbound',
-                layovers: outboundLayovers.map(layover => ({
-                    destination_city: layover[4].trim(),
-                    destination_code: layover[3],
-                    waiting_time: layover[2].trim()
-                }))
-            };
-
-            legs.push(outboundLeg);
-            console.log('✅ Outbound leg created:', outboundLeg);
+            if (returnFlightIndex > 0) {
+                // Section has both outbound and return
+                flightSections.push({
+                    fullContent: fullSection,
+                    outboundContent: fullSection.substring(0, returnFlightIndex),
+                    returnContent: fullSection.substring(returnFlightIndex)
+                });
+            } else {
+                // Section has only outbound (one-way flight)
+                flightSections.push({
+                    fullContent: fullSection,
+                    outboundContent: fullSection,
+                    returnContent: ''
+                });
+            }
         }
 
-        // Build return leg
-        if (returnAirports.length >= 2) {
-            const returnOrigin = returnAirports[0];
-            const returnDest = returnAirports[returnAirports.length - 1];
+        console.log('🔍 Processing', flightSections.length, 'flight section(s)');
 
-            const returnLeg = {
-                departure: {
-                    city_code: returnOrigin[1],
-                    city_name: returnOrigin[2].trim(),
-                    time: returnOrigin[3]
-                },
-                arrival: {
-                    city_code: returnDest[1],
-                    city_name: returnDest[2].trim(),
-                    time: returnDest[3]
-                },
-                duration: calculateFlightDuration(returnOrigin[3], returnDest[3]) || '10h',
-                flight_type: 'return',
-                layovers: returnLayovers.map(layover => ({
-                    destination_city: layover[4].trim(),
-                    destination_code: layover[3],
-                    waiting_time: layover[2].trim()
-                }))
-            };
+        // Store leg prices for each section
+        const legPrices: number[] = [];
 
-            legs.push(returnLeg);
-            console.log('✅ Return leg created:', returnLeg);
-        }
+        // Process each section
+        flightSections.forEach((section, sectionIndex) => {
+            console.log(`🔍 Processing section ${sectionIndex + 1}/${flightSections.length}`);
 
-        // Set main route info from outbound leg
+            // Extract the total price for this entire flight option (at the beginning, before "Vuelo de ida")
+            // Pattern: "XXX.XX USD Precio total" or "XXX.XX USD\s*Precio total"
+            // The text might have: "1429.86 USD Precio total" or "1429.86 USDPrecio total"
+            const totalPricePattern = /(\d{1,5}(?:[.,]\d{1,2})?)\s*USD\s*Precio\s*total/i;
+            const totalPriceMatch = section.fullContent.match(totalPricePattern);
+            let sectionTotalPrice = 0;
+
+            console.log(`🔍 Section ${sectionIndex + 1} fullContent preview:`, section.fullContent.substring(0, 150));
+
+            if (totalPriceMatch) {
+                sectionTotalPrice = parseFloat(totalPriceMatch[1].replace(/,/g, ''));
+                console.log(`💰 Section ${sectionIndex + 1} total price (ida + vuelta):`, sectionTotalPrice, 'from match:', totalPriceMatch[0]);
+            } else {
+                console.warn(`⚠️ Section ${sectionIndex + 1}: Could not find price with pattern. Trying alternative...`);
+
+                // Fallback: buscar cualquier número antes de "Precio total"
+                const fallbackPattern = /(\d{1,5}(?:[.,]\d{1,2})?)\s*USD/i;
+                const fallbackMatch = section.fullContent.match(fallbackPattern);
+                if (fallbackMatch) {
+                    sectionTotalPrice = parseFloat(fallbackMatch[1].replace(/,/g, ''));
+                    console.log(`💰 Section ${sectionIndex + 1} total price (fallback):`, sectionTotalPrice);
+                }
+            }
+
+            // Extract airline name for this section
+            const sectionAirline = extractAirlineName(section.fullContent);
+            console.log(`✈️ Section ${sectionIndex + 1} airline:`, sectionAirline);
+
+            // Determine if this section has both outbound and return
+            const sectionHasReturn = section.returnContent.trim().length > 0;
+
+            // Split price only if section has both outbound and return
+            const outboundPrice = sectionHasReturn ? sectionTotalPrice / 2 : sectionTotalPrice;
+            const returnPrice = sectionHasReturn ? sectionTotalPrice / 2 : 0;
+
+            console.log(`💰 Price for section ${sectionIndex + 1}: ${sectionHasReturn ? 'split' : 'full'} - outbound=$${outboundPrice}, return=$${returnPrice}`);
+
+            // Extract outbound airports
+            const outboundAirportPattern = /([A-Z]{3})\s+([A-Za-zÀ-ÿ\s]+?)\s+(\d{1,2}:\d{2})/g;
+            const outboundAirports = [...section.outboundContent.matchAll(outboundAirportPattern)];
+
+            // Extract return airports
+            const returnAirportPattern = /([A-Z]{3})\s+([A-Za-zÀ-ÿ\s]+?)\s+(\d{1,2}:\d{2})/g;
+            const returnAirports = [...section.returnContent.matchAll(returnAirportPattern)];
+
+            console.log('🔍 Section airports:', {
+                outbound: outboundAirports.map(a => ({ code: a[1], city: a[2].trim(), time: a[3] })),
+                return: returnAirports.map(a => ({ code: a[1], city: a[2].trim(), time: a[3] }))
+            });
+
+            // Extract layovers for this section
+            const outboundLayoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
+            const outboundLayovers = [...section.outboundContent.matchAll(outboundLayoverPattern)];
+
+            const returnLayoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
+            const returnLayovers = [...section.returnContent.matchAll(returnLayoverPattern)];
+
+            // Build outbound leg for this section
+            if (outboundAirports.length >= 2) {
+                const outboundOrigin = outboundAirports[0];
+                const outboundDest = outboundAirports[outboundAirports.length - 1];
+
+                const outboundLeg = {
+                    departure: {
+                        city_code: outboundOrigin[1],
+                        city_name: outboundOrigin[2].trim(),
+                        time: outboundOrigin[3]
+                    },
+                    arrival: {
+                        city_code: outboundDest[1],
+                        city_name: outboundDest[2].trim(),
+                        time: outboundDest[3]
+                    },
+                    duration: calculateFlightDuration(outboundOrigin[3], outboundDest[3]) || '10h',
+                    flight_type: 'outbound',
+                    price: outboundPrice,
+                    airline: sectionAirline, // Add airline to leg
+                    layovers: outboundLayovers.map(layover => ({
+                        destination_city: layover[4].trim(),
+                        destination_code: layover[3],
+                        waiting_time: layover[2].trim()
+                    }))
+                };
+
+                legs.push(outboundLeg);
+                legPrices.push(outboundPrice);
+                console.log(`✅ Outbound leg ${sectionIndex + 1} created: ${sectionAirline} - $${outboundPrice}`);
+            }
+
+            // Build return leg for this section
+            if (returnAirports.length >= 2) {
+                const returnOrigin = returnAirports[0];
+                const returnDest = returnAirports[returnAirports.length - 1];
+
+                const returnLeg = {
+                    departure: {
+                        city_code: returnOrigin[1],
+                        city_name: returnOrigin[2].trim(),
+                        time: returnOrigin[3]
+                    },
+                    arrival: {
+                        city_code: returnDest[1],
+                        city_name: returnDest[2].trim(),
+                        time: returnDest[3]
+                    },
+                    duration: calculateFlightDuration(returnOrigin[3], returnDest[3]) || '10h',
+                    flight_type: 'return',
+                    price: returnPrice,
+                    airline: sectionAirline, // Add airline to leg
+                    layovers: returnLayovers.map(layover => ({
+                        destination_city: layover[4].trim(),
+                        destination_code: layover[3],
+                        waiting_time: layover[2].trim()
+                    }))
+                };
+
+                legs.push(returnLeg);
+                legPrices.push(returnPrice);
+                console.log(`✅ Return leg ${sectionIndex + 1} created: ${sectionAirline} - $${returnPrice}`);
+            }
+        });
+
+        // Set main route info from first outbound leg
         if (legs.length > 0) {
-            originCode = legs[0].departure.city_code;
-            destinationCode = legs[0].arrival.city_code;
-            departureTime = legs[0].departure.time;
-            arrivalTime = legs[0].arrival.time;
+            const firstOutboundLeg = legs.find(leg => leg.flight_type === 'outbound');
+            if (firstOutboundLeg) {
+                originCode = firstOutboundLeg.departure.city_code;
+                destinationCode = firstOutboundLeg.arrival.city_code;
+                departureTime = firstOutboundLeg.departure.time;
+                arrivalTime = firstOutboundLeg.arrival.time;
+            }
         }
 
     } else if (airportMatches.length >= 2) {
@@ -1900,12 +2379,6 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         returnDate = returnDateMatch[1];
     }
 
-    // Format dates for display
-    let dates = departureDate;
-    if (returnDate && returnDate !== departureDate) {
-        dates = `${departureDate} / ${returnDate}`;
-    }
-
     // Extract price - look for price patterns with USD
     const priceMatches = content.match(/(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*USD/i) ||
         content.match(/\$?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi);
@@ -1917,21 +2390,101 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         }
     }
 
-    const route = originCode && destinationCode ? `${originCode} → ${destinationCode}` : 'Ruta no especificada';
+    // If we have legs, create separate flight objects for each leg
+    if (legs.length > 0) {
+        const outboundLegs = legs.filter(leg => leg.flight_type === 'outbound');
+        const returnLegs = legs.filter(leg => leg.flight_type === 'return');
 
-    flights.push({
-        airline,
-        route,
-        price,
-        dates,
-        departureTime: departureTime || undefined,
-        arrivalTime: arrivalTime || undefined,
-        originCode,
-        destinationCode,
-        originCity: mapCodeToCity(originCode),
-        destinationCity: mapCodeToCity(destinationCode),
-        legs: legs.length > 0 ? legs : undefined
-    });
+        console.log('🔍 Creating flight objects:', {
+            outboundLegs: outboundLegs.length,
+            returnLegs: returnLegs.length,
+            isRoundTrip
+        });
+
+        if (isRoundTrip && returnLegs.length > 0) {
+            // Round trip: pair each outbound with its corresponding return leg
+            const maxPairs = Math.max(outboundLegs.length, returnLegs.length);
+
+            for (let i = 0; i < maxPairs; i++) {
+                // Add outbound flight
+                if (i < outboundLegs.length) {
+                    const outboundLeg = outboundLegs[i];
+                    flights.push({
+                        airline: outboundLeg.airline || 'Aerolínea no especificada',
+                        route: `${outboundLeg.departure.city_code} → ${outboundLeg.arrival.city_code}`,
+                        price: outboundLeg.price || 0,
+                        dates: departureDate,
+                        departureTime: outboundLeg.departure.time,
+                        arrivalTime: outboundLeg.arrival.time,
+                        originCode: outboundLeg.departure.city_code,
+                        destinationCode: outboundLeg.arrival.city_code,
+                        originCity: outboundLeg.departure.city_name,
+                        destinationCity: outboundLeg.arrival.city_name,
+                        legs: [outboundLeg]
+                    });
+                    console.log(`✅ Created outbound flight ${i + 1}: ${outboundLeg.airline} - $${outboundLeg.price || 0}`);
+                }
+
+                // Add return flight immediately after its outbound
+                if (i < returnLegs.length) {
+                    const returnLeg = returnLegs[i];
+                    flights.push({
+                        airline: returnLeg.airline || 'Aerolínea no especificada',
+                        route: `${returnLeg.departure.city_code} → ${returnLeg.arrival.city_code}`,
+                        price: returnLeg.price || 0,
+                        dates: returnDate || departureDate,
+                        departureTime: returnLeg.departure.time,
+                        arrivalTime: returnLeg.arrival.time,
+                        originCode: returnLeg.departure.city_code,
+                        destinationCode: returnLeg.arrival.city_code,
+                        originCity: returnLeg.departure.city_name,
+                        destinationCity: returnLeg.arrival.city_name,
+                        legs: [returnLeg]
+                    });
+                    console.log(`✅ Created return flight ${i + 1}: ${returnLeg.airline} - $${returnLeg.price || 0}`);
+                }
+            }
+        } else {
+            // One-way flights: create a flight object for each outbound leg
+            outboundLegs.forEach((outboundLeg, i) => {
+                flights.push({
+                    airline: outboundLeg.airline || 'Aerolínea no especificada',
+                    route: `${outboundLeg.departure.city_code} → ${outboundLeg.arrival.city_code}`,
+                    price: outboundLeg.price || 0,
+                    dates: departureDate,
+                    departureTime: outboundLeg.departure.time,
+                    arrivalTime: outboundLeg.arrival.time,
+                    originCode: outboundLeg.departure.city_code,
+                    destinationCode: outboundLeg.arrival.city_code,
+                    originCity: outboundLeg.departure.city_name,
+                    destinationCity: outboundLeg.arrival.city_name,
+                    legs: [outboundLeg]
+                });
+                console.log(`✅ Created one-way flight ${i + 1}: ${outboundLeg.airline} - $${outboundLeg.price || 0}`);
+            });
+        }
+    } else {
+        // Single flight or one-way
+        const route = originCode && destinationCode ? `${originCode} → ${destinationCode}` : 'Ruta no especificada';
+        const dates = returnDate && returnDate !== departureDate ? `${departureDate} / ${returnDate}` : departureDate;
+
+        // Get airline from first leg if available
+        const airlineName = legs.length > 0 && legs[0].airline ? legs[0].airline : 'Aerolínea no especificada';
+
+        flights.push({
+            airline: airlineName,
+            route,
+            price,
+            dates,
+            departureTime: departureTime || undefined,
+            arrivalTime: arrivalTime || undefined,
+            originCode,
+            destinationCode,
+            originCity: mapCodeToCity(originCode),
+            destinationCity: mapCodeToCity(destinationCode),
+            legs: legs.length > 0 ? legs : undefined
+        });
+    }
 
     console.log('✈️ Extracted flights from PdfMonkey template:', flights);
     return flights;
@@ -1984,15 +2537,20 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
  * Extract total price from PdfMonkey template content
  */
 function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
-    // Look for "Precio total" pattern specifically in our templates
-    // This ensures we get the correct total price, not individual segment prices
-    const totalPricePattern = /(\d{1,5}(?:\.\d{1,2})?)\s*USD\s*Precio\s*total/i;
-    const totalMatch = content.match(totalPricePattern);
+    // Look for ALL "Precio total" patterns in case there are multiple flight options
+    const totalPricePattern = /(\d{1,5}(?:[.,]\d{1,2})?)\s*USD\s*Precio\s*total/gi;
+    const totalMatches = [...content.matchAll(totalPricePattern)];
 
-    if (totalMatch) {
-        const price = parseFloat(totalMatch[1]);
-        console.log('💰 Extracted total price from PdfMonkey template (from "Precio total"):', price);
-        return price;
+    if (totalMatches.length > 0) {
+        // Sum all prices found
+        const totalPrice = totalMatches.reduce((sum, match) => {
+            const price = parseFloat(match[1].replace(/,/g, ''));
+            return sum + price;
+        }, 0);
+
+        console.log('💰 Extracted total price from PdfMonkey template (from "Precio total"):', totalPrice,
+                    `(${totalMatches.length} price(s) found)`);
+        return totalPrice;
     }
 
     // Fallback: Look for all price patterns and return the highest

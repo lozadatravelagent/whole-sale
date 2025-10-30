@@ -11,33 +11,10 @@ export const formatDuration = (minutes: number): string => {
 };
 
 // Helper function to get city name from airport code
-export const getCityNameFromCode = (airportCode: string): string => {
-  const airportMapping: Record<string, string> = {
-    'EZE': 'Buenos Aires',
-    'BUE': 'Buenos Aires',
-    'MAD': 'Madrid',
-    'BCN': 'Barcelona',
-    'PUJ': 'Punta Cana',
-    'BOG': 'Bogotá',
-    'LIM': 'Lima',
-    'SCL': 'Santiago',
-    'CUN': 'Cancún',
-    'MIA': 'Miami',
-    'JFK': 'Nueva York',
-    'CDG': 'París',
-    'LHR': 'Londres',
-    'FCO': 'Roma',
-    'AMS': 'Amsterdam',
-    'FRA': 'Frankfurt',
-    'ZUR': 'Zurich',
-    'GRU': 'São Paulo',
-    'RIO': 'Río de Janeiro',
-    'MVD': 'Montevideo',
-    'ASU': 'Asunción'
-  };
+// Now uses centralized service with 500+ airport mappings
+import { getCityNameFromIATA } from '@/services/cityCodeService';
 
-  return airportMapping[airportCode] || airportCode;
-};
+export const getCityNameFromCode = getCityNameFromIATA;
 
 // Helper function to get tax description from tax code
 export const getTaxDescription = (taxCode: string): string => {

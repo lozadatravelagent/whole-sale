@@ -77,7 +77,24 @@ export const isPriceChangeRequest = (message: string): boolean => {
     'cuesta',
     '$',
     'dolar',
-    'usd'
+    'usd',
+    // Individual price modification keywords
+    'primer precio',
+    'segundo precio',
+    'tercer precio',
+    'cuarto precio',
+    'primer vuelo',
+    'segundo vuelo',
+    'tercer vuelo',
+    'cuarto vuelo',
+    'precio 1',
+    'precio 2',
+    'precio 3',
+    'precio 4',
+    'vuelo 1',
+    'vuelo 2',
+    'vuelo 3',
+    'vuelo 4'
   ];
 
   return priceKeywords.some(keyword => norm.includes(keyword));

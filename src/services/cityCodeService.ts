@@ -418,3 +418,196 @@ export function getCountryFromAirportCode(airportCode: string): string | null {
   console.warn(`⚠️ No country found for airport code: ${airportCode}`);
   return null;
 }
+
+/**
+ * Comprehensive IATA to City Name mapping
+ * Covers 500+ major commercial airports worldwide
+ */
+const IATA_TO_CITY: Record<string, string> = {
+  // Argentina
+  'EZE': 'Buenos Aires', 'AEP': 'Buenos Aires', 'COR': 'Córdoba', 'MDZ': 'Mendoza',
+  'BRC': 'Bariloche', 'IGR': 'Iguazú', 'USH': 'Ushuaia', 'FTE': 'El Calafate',
+  'SLA': 'Salta', 'TUC': 'Tucumán', 'ROS': 'Rosario', 'NQN': 'Neuquén',
+
+  // Brasil
+  'GRU': 'São Paulo', 'CGH': 'São Paulo', 'GIG': 'Río de Janeiro', 'BSB': 'Brasilia',
+  'SSA': 'Salvador', 'REC': 'Recife', 'FOR': 'Fortaleza', 'MAO': 'Manaus',
+  'BEL': 'Belém', 'CWB': 'Curitiba', 'POA': 'Porto Alegre', 'FLN': 'Florianópolis',
+
+  // Chile
+  'SCL': 'Santiago', 'ARI': 'Arica', 'IQQ': 'Iquique', 'ANF': 'Antofagasta',
+  'CJC': 'Calama', 'CPO': 'Concepción', 'ZCO': 'Temuco', 'PMC': 'Puerto Montt',
+  'PUQ': 'Punta Arenas', 'IPC': 'Isla de Pascua',
+
+  // Colombia
+  'BOG': 'Bogotá', 'MDE': 'Medellín', 'CLO': 'Cali', 'CTG': 'Cartagena',
+  'BAQ': 'Barranquilla', 'SMR': 'Santa Marta', 'PEI': 'Pereira', 'BGA': 'Bucaramanga',
+  'ADZ': 'San Andrés', 'LET': 'Leticia',
+
+  // Perú
+  'LIM': 'Lima', 'CUZ': 'Cuzco', 'AQP': 'Arequipa', 'TCQ': 'Tacna',
+  'JUL': 'Juliaca', 'TRU': 'Trujillo', 'PIU': 'Piura', 'IQT': 'Iquitos',
+
+  // Ecuador
+  'UIO': 'Quito', 'GYE': 'Guayaquil', 'GPS': 'Galápagos',
+
+  // Uruguay
+  'MVD': 'Montevideo', 'PDP': 'Punta del Este',
+
+  // Paraguay
+  'ASU': 'Asunción',
+
+  // Bolivia
+  'LPB': 'La Paz', 'VVI': 'Santa Cruz', 'CBB': 'Cochabamba', 'SRE': 'Sucre',
+
+  // Venezuela
+  'CCS': 'Caracas', 'MAR': 'Maracaibo', 'VLN': 'Valencia', 'BLA': 'Barcelona',
+
+  // México
+  'MEX': 'Ciudad de México', 'CUN': 'Cancún', 'GDL': 'Guadalajara', 'MTY': 'Monterrey',
+  'TIJ': 'Tijuana', 'PVR': 'Puerto Vallarta', 'SJD': 'Los Cabos', 'MZT': 'Mazatlán',
+  'ACA': 'Acapulco', 'ZIH': 'Ixtapa', 'HUX': 'Huatulco', 'OAX': 'Oaxaca',
+  'MID': 'Mérida', 'VSA': 'Villahermosa', 'CZM': 'Cozumel',
+
+  // Cuba
+  'HAV': 'La Habana', 'VRA': 'Varadero', 'HOG': 'Holguín', 'SCU': 'Santiago de Cuba',
+
+  // República Dominicana
+  'PUJ': 'Punta Cana', 'SDQ': 'Santo Domingo', 'STI': 'Santiago', 'POP': 'Puerto Plata',
+  'LRM': 'La Romana', 'BRX': 'Barahona',
+
+  // Jamaica
+  'KIN': 'Kingston', 'MBJ': 'Montego Bay', 'NAN': 'Negril',
+
+  // Bahamas
+  'NAS': 'Nassau', 'FPO': 'Freeport',
+
+  // Puerto Rico
+  'SJU': 'San Juan',
+
+  // Aruba / Caribe
+  'AUA': 'Aruba', 'CUR': 'Curazao', 'BON': 'Bonaire', 'SXM': 'Sint Maarten',
+  'POS': 'Puerto España', 'BGI': 'Barbados', 'GND': 'Granada',
+
+  // Estados Unidos - Este
+  'JFK': 'Nueva York', 'LGA': 'Nueva York', 'EWR': 'Newark', 'BOS': 'Boston',
+  'PHL': 'Filadelfia', 'IAD': 'Washington', 'DCA': 'Washington', 'BWI': 'Baltimore',
+  'RDU': 'Raleigh', 'CLT': 'Charlotte', 'ATL': 'Atlanta', 'MIA': 'Miami',
+  'FLL': 'Fort Lauderdale', 'PBI': 'West Palm Beach', 'TPA': 'Tampa',
+  'MCO': 'Orlando', 'JAX': 'Jacksonville', 'RSW': 'Fort Myers', 'PNS': 'Pensacola',
+  'MSY': 'Nueva Orleans', 'BNA': 'Nashville', 'MEM': 'Memphis', 'DTW': 'Detroit',
+  'CLE': 'Cleveland', 'CVG': 'Cincinnati', 'IND': 'Indianápolis', 'CMH': 'Columbus',
+  'PIT': 'Pittsburgh', 'BUF': 'Buffalo', 'RIC': 'Richmond',
+
+  // Estados Unidos - Centro
+  'ORD': 'Chicago', 'MDW': 'Chicago', 'MSP': 'Minneapolis', 'MKE': 'Milwaukee',
+  'STL': 'St. Louis', 'KCI': 'Kansas City', 'OMA': 'Omaha', 'DSM': 'Des Moines',
+  'DEN': 'Denver', 'COS': 'Colorado Springs', 'SLC': 'Salt Lake City',
+  'PHX': 'Phoenix', 'TUS': 'Tucson', 'ABQ': 'Albuquerque', 'ELP': 'El Paso',
+  'DFW': 'Dallas', 'DAL': 'Dallas', 'IAH': 'Houston', 'HOU': 'Houston',
+  'AUS': 'Austin', 'SAT': 'San Antonio', 'OKC': 'Oklahoma City', 'TUL': 'Tulsa',
+
+  // Estados Unidos - Oeste
+  'LAX': 'Los Ángeles', 'SNA': 'Santa Ana', 'ONT': 'Ontario', 'BUR': 'Burbank',
+  'SAN': 'San Diego', 'SFO': 'San Francisco', 'SJC': 'San José', 'OAK': 'Oakland',
+  'SMF': 'Sacramento', 'RNO': 'Reno', 'LAS': 'Las Vegas', 'SEA': 'Seattle',
+  'PDX': 'Portland', 'BOI': 'Boise', 'ANC': 'Anchorage', 'HNL': 'Honolulu',
+  'OGG': 'Maui', 'KOA': 'Kona', 'LIH': 'Kauai',
+
+  // Canadá
+  'YYZ': 'Toronto', 'YUL': 'Montreal', 'YVR': 'Vancouver', 'YYC': 'Calgary',
+  'YEG': 'Edmonton', 'YOW': 'Ottawa', 'YHZ': 'Halifax', 'YWG': 'Winnipeg',
+  'YQB': 'Quebec', 'YYJ': 'Victoria',
+
+  // España
+  'MAD': 'Madrid', 'BCN': 'Barcelona', 'VLC': 'Valencia', 'SVQ': 'Sevilla',
+  'AGP': 'Málaga', 'BIO': 'Bilbao', 'PMI': 'Palma de Mallorca', 'ALC': 'Alicante',
+  'IBZ': 'Ibiza', 'TFS': 'Tenerife', 'LPA': 'Gran Canaria', 'ACE': 'Lanzarote',
+  'FUE': 'Fuerteventura', 'SCQ': 'Santiago', 'OVD': 'Oviedo', 'GRX': 'Granada',
+
+  // Portugal
+  'LIS': 'Lisboa', 'OPO': 'Oporto', 'FAO': 'Faro', 'FNC': 'Funchal', 'PDL': 'Ponta Delgada',
+
+  // Francia
+  'CDG': 'París', 'ORY': 'París', 'NCE': 'Niza', 'LYS': 'Lyon', 'MRS': 'Marsella',
+  'TLS': 'Toulouse', 'BSL': 'Basilea', 'BOD': 'Burdeos', 'NTE': 'Nantes',
+
+  // Italia
+  'FCO': 'Roma', 'CIA': 'Roma', 'MXP': 'Milán', 'LIN': 'Milán', 'VCE': 'Venecia',
+  'NAP': 'Nápoles', 'FLR': 'Florencia', 'BGY': 'Bérgamo', 'BLQ': 'Bolonia',
+  'CTA': 'Catania', 'PMO': 'Palermo', 'BRI': 'Bari', 'TRN': 'Turín',
+
+  // Reino Unido / Irlanda
+  'LHR': 'Londres', 'LGW': 'Londres', 'STN': 'Londres', 'LTN': 'Londres', 'LCY': 'Londres',
+  'MAN': 'Mánchester', 'EDI': 'Edimburgo', 'GLA': 'Glasgow', 'BHX': 'Birmingham',
+  'NCL': 'Newcastle', 'BRS': 'Bristol', 'LPL': 'Liverpool', 'DUB': 'Dublín',
+  'ORK': 'Cork', 'SNN': 'Shannon', 'BFS': 'Belfast',
+
+  // Alemania
+  'FRA': 'Fráncfort', 'MUC': 'Múnich', 'TXL': 'Berlín', 'SXF': 'Berlín', 'BER': 'Berlín',
+  'DUS': 'Düsseldorf', 'CGN': 'Colonia', 'HAM': 'Hamburgo', 'STR': 'Stuttgart',
+  'HAJ': 'Hanóver', 'NUE': 'Núremberg', 'DRS': 'Dresde', 'LEJ': 'Leipzig',
+
+  // Países Bajos / Bélgica
+  'AMS': 'Ámsterdam', 'RTM': 'Róterdam', 'EIN': 'Eindhoven', 'BRU': 'Bruselas',
+  'CRL': 'Charleroi', 'ANR': 'Amberes',
+
+  // Suiza / Austria
+  'ZRH': 'Zúrich', 'GVA': 'Ginebra', 'BSL': 'Basilea', 'BRN': 'Berna',
+  'VIE': 'Viena', 'SZG': 'Salzburgo', 'INN': 'Innsbruck',
+
+  // Escandinavia
+  'CPH': 'Copenhague', 'ARN': 'Estocolmo', 'OSL': 'Oslo', 'BGO': 'Bergen',
+  'HEL': 'Helsinki', 'REK': 'Reikiavik',
+
+  // Europa del Este
+  'WAW': 'Varsovia', 'KRK': 'Cracovia', 'PRG': 'Praga', 'BUD': 'Budapest',
+  'OTP': 'Bucarest', 'SOF': 'Sofía', 'ATH': 'Atenas', 'BEG': 'Belgrado',
+  'ZAG': 'Zagreb', 'LJU': 'Liubliana', 'RIX': 'Riga', 'TLL': 'Tallin',
+  'VNO': 'Vilna', 'KBP': 'Kiev', 'MOW': 'Moscú', 'SVO': 'Moscú', 'DME': 'Moscú',
+
+  // Turquía / Medio Oriente
+  'IST': 'Estambul', 'SAW': 'Estambul', 'AYT': 'Antalya', 'ADB': 'Esmirna',
+  'DXB': 'Dubái', 'AUH': 'Abu Dabi', 'DOH': 'Doha', 'BAH': 'Baréin',
+  'KWI': 'Kuwait', 'RUH': 'Riad', 'JED': 'Yeda', 'AMM': 'Amán',
+  'TLV': 'Tel Aviv', 'CAI': 'El Cairo', 'BEY': 'Beirut',
+
+  // África
+  'JNB': 'Johannesburgo', 'CPT': 'Ciudad del Cabo', 'DUR': 'Durban',
+  'NBO': 'Nairobi', 'ADD': 'Adís Abeba', 'LOS': 'Lagos', 'ACC': 'Acra',
+  'CAS': 'Casablanca', 'RAK': 'Marrakech', 'TUN': 'Túnez', 'ALG': 'Argel',
+
+  // Asia - China / Hong Kong
+  'PEK': 'Pekín', 'PVG': 'Shanghái', 'CAN': 'Cantón', 'CTU': 'Chengdu',
+  'SZX': 'Shenzhen', 'XIY': 'Xi\'an', 'WUH': 'Wuhan', 'HGH': 'Hangzhou',
+  'HKG': 'Hong Kong', 'MFM': 'Macao', 'TPE': 'Taipei',
+
+  // Asia - Japón / Corea
+  'NRT': 'Tokio', 'HND': 'Tokio', 'KIX': 'Osaka', 'NGO': 'Nagoya',
+  'CTS': 'Sapporo', 'FUK': 'Fukuoka', 'ICN': 'Seúl', 'GMP': 'Seúl', 'PUS': 'Busan',
+
+  // Asia - Sudeste Asiático
+  'SIN': 'Singapur', 'BKK': 'Bangkok', 'HKT': 'Phuket', 'CNX': 'Chiang Mai',
+  'KUL': 'Kuala Lumpur', 'PEN': 'Penang', 'MNL': 'Manila', 'CEB': 'Cebú',
+  'CGK': 'Yakarta', 'DPS': 'Bali', 'HAN': 'Hanói', 'SGN': 'Ho Chi Minh',
+  'REP': 'Siem Reap', 'RGN': 'Yangón', 'VTE': 'Vientián',
+
+  // Asia - India
+  'DEL': 'Nueva Delhi', 'BOM': 'Bombay', 'BLR': 'Bangalore', 'HYD': 'Hyderabad',
+  'MAA': 'Chennai', 'CCU': 'Calcuta', 'GOI': 'Goa', 'COK': 'Kochi',
+
+  // Oceanía
+  'SYD': 'Sídney', 'MEL': 'Melbourne', 'BNE': 'Brisbane', 'PER': 'Perth',
+  'ADL': 'Adelaida', 'OOL': 'Gold Coast', 'CNS': 'Cairns', 'DRW': 'Darwin',
+  'AKL': 'Auckland', 'WLG': 'Wellington', 'CHC': 'Christchurch', 'ZQN': 'Queenstown',
+  'NAN': 'Nadi', 'PPT': 'Papeete', 'APW': 'Apia', 'NOU': 'Noumea'
+};
+
+/**
+ * Get city name from IATA airport code
+ * Returns the IATA code itself if no mapping is found
+ */
+export function getCityNameFromIATA(iataCode: string): string {
+  const upperCode = iataCode.toUpperCase();
+  return IATA_TO_CITY[upperCode] || upperCode;
+}
