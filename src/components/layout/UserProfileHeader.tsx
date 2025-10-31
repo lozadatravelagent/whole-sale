@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Crown, Shield, UserCog, User } from 'lucide-react';
-import type { AuthUser } from '@/hooks/useAuthUser';
+import type { AuthUser } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
 interface UserProfileHeaderProps {

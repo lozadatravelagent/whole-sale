@@ -27,6 +27,7 @@ export interface LeadFormData {
   status?: LeadStatus;
   section_id?: string;
   seller_id?: string;
+  agency_id?: string;
   budget?: number;
   description?: string;
   due_date?: string;

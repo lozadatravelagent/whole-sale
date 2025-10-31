@@ -42,11 +42,11 @@ import {
 import { useUsers } from '@/hooks/useUsers';
 import { useAgencies } from '@/hooks/useAgencies';
 import { useTenants } from '@/hooks/useTenants';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Role } from '@/types';
 
 const Users = () => {
-  const { user: currentUser, isOwner, isSuperAdmin, isAdmin } = useAuthUser();
+  const { user: currentUser, isOwner, isSuperAdmin, isAdmin } = useAuth();
   const {
     users,
     loading,

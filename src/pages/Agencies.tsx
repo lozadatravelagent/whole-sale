@@ -46,11 +46,11 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { useAgencies } from '@/hooks/useAgencies';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
 const Agencies = () => {
-  const { user: currentUser, isOwner, isSuperAdmin } = useAuthUser();
+  const { user: currentUser, isOwner, isSuperAdmin } = useAuth();
   const {
     agencies,
     tenants,

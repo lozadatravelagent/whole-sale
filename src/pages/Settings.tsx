@@ -33,11 +33,11 @@ import {
   X
 } from 'lucide-react';
 import { useSettings } from '@/hooks/useSettings';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
 import SimplePdfTemplateManager from '@/components/settings/SimplePdfTemplateManager';
 
 const Settings = () => {
-  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
+  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuth();
   const {
     agency,
     branding,

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
 import { useReports } from '@/hooks/useReports';
 import { useActivities } from '@/hooks/useActivities';
 import { TeamPerformanceCard } from '@/components/dashboard/TeamPerformanceCard';
@@ -42,7 +42,7 @@ import {
 const Dashboard = () => {
   const [timeRange, setTimeRange] = useState('today');
   const navigate = useNavigate();
-  const { user, isOwner, isSuperAdmin, isAdmin, isSeller, loading: authLoading } = useAuthUser();
+  const { user, isOwner, isSuperAdmin, isAdmin, isSeller, loading: authLoading } = useAuth();
   const { metrics, loading: metricsLoading } = useReports();
   const { activities, loading: activitiesLoading } = useActivities(4);
 

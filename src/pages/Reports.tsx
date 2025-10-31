@@ -8,7 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { DateRange } from 'react-day-picker';
 import { useReports } from '@/hooks/useReports';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
 import * as XLSX from 'xlsx';
 import { TenantsPerformanceTable } from '@/components/reports/TenantsPerformanceTable';
 import { AgenciesPerformanceTable } from '@/components/reports/AgenciesPerformanceTable';
@@ -55,7 +55,7 @@ const Reports = () => {
 
   // Usar datos reales del sistema
   const { metrics, loading, refresh } = useReports(dateRange?.from, dateRange?.to);
-  const { isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
+  const { isOwner, isSuperAdmin, isAdmin, isSeller } = useAuth();
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-ES', {

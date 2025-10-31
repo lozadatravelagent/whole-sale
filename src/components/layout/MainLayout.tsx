@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
 import { UserProfileHeader } from '@/components/layout/UserProfileHeader';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useTheme } from '@/components/theme-provider';
@@ -53,7 +53,7 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
+  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuth();
   const { theme } = useTheme();
   const [sidebarHidden, setSidebarHidden] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

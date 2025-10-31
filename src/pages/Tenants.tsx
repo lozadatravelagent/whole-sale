@@ -37,10 +37,10 @@ import {
 } from 'lucide-react';
 import { useTenants } from '@/hooks/useTenants';
 import { useAgencies } from '@/hooks/useAgencies';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Tenants = () => {
-  const { user: currentUser, isOwner, isSuperAdmin } = useAuthUser();
+  const { user: currentUser, isOwner, isSuperAdmin } = useAuth();
   const {
     tenants,
     loading,

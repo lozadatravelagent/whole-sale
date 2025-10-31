@@ -5,7 +5,10 @@ import type { Lead, LeadStatus, Section, Seller } from '@/types';
 import type { LeadFormData, LeadFilters, LeadSortOptions } from '../types/lead';
 import { LeadService } from '../services/leadService';
 import { getLeads, getSellers, getSections } from '@/lib/supabase-leads';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
+
+const DEFAULT_SECTION_NAMES = ['Nuevos', 'En progreso', 'Cotizado', 'Negociación', 'Ganado', 'Perdido'];
+const isUuid = (v: string) => /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i.test(v);
 
 export function useLeadManager() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -21,42 +24,7 @@ export function useLeadManager() {
   });
 
   const { toast } = useToast();
-  const { user, isOwner, isSuperAdmin } = useAuthUser();
-
-  const DEFAULT_SECTION_NAMES = ['Nuevos', 'En progreso', 'Cotizado', 'Negociación', 'Ganado', 'Perdido'];
-  const isUuid = (v: string) => /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i.test(v);
-
-  // Fetch all leads
-  const fetchLeads = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getLeads();
-      setLeads(data);
-      applyFiltersAndSort(data, filters, sortOptions);
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "No se pudieron cargar los leads."
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [filters, sortOptions, toast]);
-
-  // Fetch sellers and sections
-  const fetchSupportingData = useCallback(async () => {
-    try {
-      const [sellersData, sectionsData] = await Promise.all([
-        getSellers(),
-        getSections()
-      ]);
-      setSellers(sellersData);
-      setSections(sectionsData);
-    } catch (error) {
-      console.error('Error fetching supporting data:', error);
-    }
-  }, []);
+  const { user, isOwner, isSuperAdmin } = useAuth();
 
   // Apply filters and sorting
   const applyFiltersAndSort = useCallback((
@@ -106,7 +74,8 @@ export function useLeadManager() {
 
     // Apply sorting
     filtered.sort((a, b) => {
-      let aValue: any, bValue: any;
+      let aValue: number | string;
+      let bValue: number | string;
 
       switch (currentSort.field) {
         case 'created_at':
@@ -139,6 +108,44 @@ export function useLeadManager() {
     setFilteredLeads(filtered);
   }, []);
 
+  // Fetch all leads
+  const fetchLeads = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getLeads();
+      setLeads(data);
+      applyFiltersAndSort(data, filters, sortOptions);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudieron cargar los leads."
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, sortOptions, toast, applyFiltersAndSort]);
+
+  // Fetch sellers and sections
+  const fetchSupportingData = useCallback(async () => {
+    try {
+      const sellersData = await getSellers();
+      setSellers(sellersData);
+
+      // For sections: if user has agency_id, fetch sections for that agency
+      // Otherwise, sections will be populated from leads themselves
+      if (user?.agency_id) {
+        const sectionsData = await getSections(user.agency_id);
+        setSections(sectionsData);
+      } else {
+        // For OWNER/SUPERADMIN viewing all agencies, extract unique sections from leads
+        setSections([]);
+      }
+    } catch (error) {
+      console.error('Error fetching supporting data:', error);
+    }
+  }, [user?.agency_id]);
+
   // Create new lead
   const createNewLead = useCallback(async (data: LeadFormData): Promise<boolean> => {
     setActionLoading(true);
@@ -150,7 +157,7 @@ export function useLeadManager() {
         }
         const agencySections = await getSections(data.agency_id);
         const target = agencySections.find(s => s.name === data.section_id);
-        data.section_id = target ? target.id : undefined as any;
+        data.section_id = target ? target.id : undefined;
       }
       const newLead = await LeadService.createLead(data);
       if (newLead) {
@@ -191,7 +198,9 @@ export function useLeadManager() {
           updates.section_id = target ? target.id : undefined;
         } else {
           // If no agency context, drop section update to avoid invalid uuid
-          delete (updates as any).section_id;
+          const { section_id, ...rest } = updates;
+          Object.assign(updates, rest);
+          updates.section_id = undefined;
         }
       }
       const updated = await LeadService.updateLead(id, updates);
@@ -214,7 +223,7 @@ export function useLeadManager() {
     } finally {
       setActionLoading(false);
     }
-  }, [fetchLeads, toast]);
+  }, [fetchLeads, toast, leads]);
 
   // Delete lead
   const deleteLead = useCallback(async (id: string): Promise<boolean> => {
@@ -267,7 +276,7 @@ export function useLeadManager() {
       console.error('Error moving lead:', error);
       return false;
     }
-  }, [fetchLeads]);
+  }, [fetchLeads, leads]);
 
   // Update lead status
   const updateLeadStatus = useCallback(async (

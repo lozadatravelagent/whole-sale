@@ -15,7 +15,7 @@ import {
   UpdateLeadInput
 } from '@/lib/supabase-leads';
 import { useToast } from '@/hooks/use-toast';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
 
 export function useLeads(selectedAgencyId?: string | 'all') {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -23,7 +23,7 @@ export function useLeads(selectedAgencyId?: string | 'all') {
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-  const { user } = useAuthUser();
+  const { user } = useAuth();
   const isUuid = (v: string) => typeof v === 'string' && /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i.test(v);
   const DEFAULT_SECTION_NAMES = ['Nuevos', 'En progreso', 'Cotizado', 'Negociación', 'Ganado', 'Perdido'];
 

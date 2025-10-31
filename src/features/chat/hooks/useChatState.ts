@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ChatState } from '../types/chat';
 import { useAuth, useConversations } from '@/hooks/useChat';
-import { useAuthUser } from '@/hooks/useAuthUser'; // ⚡ OPTIMIZATION: Use cached user data
+import { useAuth as useAuthContext } from '@/contexts/AuthContext'; // ⚡ OPTIMIZATION: Use cached user data
 import { useToast } from '@/hooks/use-toast';
 
 const useChatState = () => {
@@ -31,7 +31,7 @@ const useChatState = () => {
   }, [chatState.selectedConversation]);
 
   const { user } = useAuth();
-  const authUser = useAuthUser(); // ⚡ OPTIMIZATION: Cached user data with agency_id, tenant_id, role
+  const authUser = useAuthContext(); // ⚡ OPTIMIZATION: Cached user data with agency_id, tenant_id, role
   const {
     conversations,
     loadConversations,

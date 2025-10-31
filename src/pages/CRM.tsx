@@ -22,7 +22,7 @@ import { TrelloColumn } from '@/components/crm/TrelloColumn';
 import { TrelloCard } from '@/components/crm/TrelloCard';
 import { LeadDialog } from '@/components/crm/LeadDialog';
 import { useLeads } from '@/hooks/useLeads';
-import { useAuthUser } from '@/hooks/useAuthUser';
+import { useAuth } from '@/contexts/AuthContext';
 import { useAgencies } from '@/hooks/useAgencies';
 import { CRMSkeleton } from '@/components/skeletons/CRMSkeleton';
 import { Lead, Section } from '@/types';
@@ -55,7 +55,7 @@ export default function CRM() {
   const { agencies, loading: agenciesLoading } = useAgencies();
 
   const { toast } = useToast();
-  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuthUser();
+  const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuth();
 
   const {
     sections,
