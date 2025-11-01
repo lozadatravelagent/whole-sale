@@ -12,14 +12,28 @@ function analyzeFlightType(fare: any) {
   const legAnalysis = legs.map((leg: any) => {
     const options = leg.Options || [];
 
-    // Para cada option, contar segmentos
+    // Para cada option, contar segmentos Y escalas técnicas
     const optionAnalysis = options.map((option: any) => {
       const segments = option.Segments || [];
+
+      // Contar conexiones entre segmentos
+      const segmentConnections = Math.max(0, segments.length - 1);
+
+      // Contar escalas técnicas DENTRO de cada segmento
+      const technicalStops = segments.reduce((total: number, segment: any) => {
+        return total + (segment.Stops?.length || 0);
+      }, 0);
+
+      // Total de conexiones = conexiones entre segmentos + escalas técnicas
+      const totalConnections = segmentConnections + technicalStops;
+
       return {
         optionId: option.FlightOptionID,
         segmentCount: segments.length,
-        isDirect: segments.length === 1,
-        connections: Math.max(0, segments.length - 1)
+        isDirect: segments.length === 1 && technicalStops === 0,
+        connections: totalConnections,
+        segmentConnections: segmentConnections,
+        technicalStops: technicalStops
       };
     });
 
@@ -660,6 +674,16 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
   const transformedFlights = filteredFlights
     .sort((a, b) => (a.price.amount || 0) - (b.price.amount || 0))
     .slice(0, 5);
+
+  // DEBUG: Log the final flights connections
+  console.log(`🔍 [DEBUG] Final 5 flights connections:`);
+  transformedFlights.forEach(flight => {
+    const fareData = fares.find(f => f.FareID === flight.id);
+    if (fareData) {
+      const analysis = analyzeFlightType(fareData);
+      console.log(`   Flight ${flight.id}: connections per leg ${analysis.classification.perLegConnections.minPerLeg}-${analysis.classification.perLegConnections.maxPerLeg}`);
+    }
+  });
 
   // Final flights summary
   console.log(`🎯 Final flights: ${transformedFlights.length} flights with stops returned`);
