@@ -260,7 +260,7 @@ export async function getSellers(agencyId?: string): Promise<Seller[]> {
     let query = supabase
       .from('users')
       .select('id, email, created_at')
-      .eq('role', 'SELLER' as any) // Type assertion needed - Supabase schema outdated
+      .eq('role', 'SELLER')
       .order('email', { ascending: true });
 
     if (agencyId) {

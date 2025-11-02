@@ -14,12 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
+      activities: {
+        Row: {
+          activity_type: string
+          agency_id: string
+          created_at: string | null
+          deleted_at: string | null
+          description: string
+          id: string
+          lead_id: string | null
+          metadata: Json | null
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          activity_type: string
+          agency_id: string
+          created_at?: string | null
+          deleted_at?: string | null
+          description: string
+          id?: string
+          lead_id?: string | null
+          metadata?: Json | null
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          activity_type?: string
+          agency_id?: string
+          created_at?: string | null
+          deleted_at?: string | null
+          description?: string
+          id?: string
+          lead_id?: string | null
+          metadata?: Json | null
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activities_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agencies: {
         Row: {
           branding: Json
           created_at: string
+          custom_template_ids: Json | null
           id: string
           name: string
+          pdf_backgrounds: Json | null
           phones: string[]
           status: string
           tenant_id: string
@@ -28,8 +105,10 @@ export type Database = {
         Insert: {
           branding?: Json
           created_at?: string
+          custom_template_ids?: Json | null
           id?: string
           name: string
+          pdf_backgrounds?: Json | null
           phones?: string[]
           status?: string
           tenant_id: string
@@ -38,8 +117,10 @@ export type Database = {
         Update: {
           branding?: Json
           created_at?: string
+          custom_template_ids?: Json | null
           id?: string
           name?: string
+          pdf_backgrounds?: Json | null
           phones?: string[]
           status?: string
           tenant_id?: string
@@ -87,37 +168,40 @@ export type Database = {
       }
       conversations: {
         Row: {
-          agency_id: string
+          agency_id: string | null
           channel: Database["public"]["Enums"]["conversation_channel"]
           created_at: string
+          created_by: string
           external_key: string
           id: string
           last_message_at: string
           phone_number_id: string | null
           state: Database["public"]["Enums"]["conversation_state"]
-          tenant_id: string
+          tenant_id: string | null
         }
         Insert: {
-          agency_id: string
+          agency_id?: string | null
           channel: Database["public"]["Enums"]["conversation_channel"]
           created_at?: string
+          created_by: string
           external_key: string
           id?: string
           last_message_at?: string
           phone_number_id?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
-          tenant_id: string
+          tenant_id?: string | null
         }
         Update: {
-          agency_id?: string
+          agency_id?: string | null
           channel?: Database["public"]["Enums"]["conversation_channel"]
           created_at?: string
+          created_by?: string
           external_key?: string
           id?: string
           last_message_at?: string
           phone_number_id?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
-          tenant_id?: string
+          tenant_id?: string | null
         }
         Relationships: [
           {
@@ -125,6 +209,20 @@ export type Database = {
             columns: ["agency_id"]
             isOneToOne: false
             referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
             referencedColumns: ["id"]
           },
           {
@@ -190,9 +288,9 @@ export type Database = {
           description: string | null
           due_date: string | null
           id: string
+          loss_reason: string | null
           pdf_urls: string[]
           section_id: string | null
-          seller_id: string | null
           status: Database["public"]["Enums"]["lead_status"]
           tenant_id: string
           trip: Json
@@ -210,9 +308,9 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          loss_reason?: string | null
           pdf_urls?: string[]
           section_id?: string | null
-          seller_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tenant_id: string
           trip: Json
@@ -230,9 +328,9 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          loss_reason?: string | null
           pdf_urls?: string[]
           section_id?: string | null
-          seller_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
           tenant_id?: string
           trip?: Json
@@ -254,6 +352,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "leads_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "leads_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -268,13 +373,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "leads_seller_id_fkey"
-            columns: ["seller_id"]
-            isOneToOne: false
-            referencedRelation: "sellers"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "leads_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -285,6 +383,7 @@ export type Database = {
       }
       messages: {
         Row: {
+          client_id: string | null
           content: Json
           conversation_id: string
           created_at: string
@@ -293,6 +392,7 @@ export type Database = {
           role: string
         }
         Insert: {
+          client_id?: string | null
           content?: Json
           conversation_id: string
           created_at?: string
@@ -301,6 +401,7 @@ export type Database = {
           role: string
         }
         Update: {
+          client_id?: string | null
           content?: Json
           conversation_id?: string
           created_at?: string
@@ -487,6 +588,56 @@ export type Database = {
         }
         Relationships: []
       }
+      search_jobs: {
+        Row: {
+          cache_hit: boolean | null
+          completed_at: string | null
+          conversation_id: string | null
+          created_at: string | null
+          error: string | null
+          id: string
+          params: Json
+          provider: string
+          results: Json | null
+          search_type: string
+          status: string | null
+        }
+        Insert: {
+          cache_hit?: boolean | null
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          params: Json
+          provider: string
+          results?: Json | null
+          search_type: string
+          status?: string | null
+        }
+        Update: {
+          cache_hit?: boolean | null
+          completed_at?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          params?: Json
+          provider?: string
+          results?: Json | null
+          search_type?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "search_jobs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sections: {
         Row: {
           agency_id: string
@@ -571,6 +722,7 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          name: string | null
           provider: Database["public"]["Enums"]["auth_provider"]
           role: Database["public"]["Enums"]["user_role"]
           tenant_id: string | null
@@ -580,6 +732,7 @@ export type Database = {
           created_at?: string
           email: string
           id: string
+          name?: string | null
           provider?: Database["public"]["Enums"]["auth_provider"]
           role?: Database["public"]["Enums"]["user_role"]
           tenant_id?: string | null
@@ -589,6 +742,7 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          name?: string | null
           provider?: Database["public"]["Enums"]["auth_provider"]
           role?: Database["public"]["Enums"]["user_role"]
           tenant_id?: string | null
@@ -650,9 +804,49 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      users_with_details: {
+        Row: {
+          agency_id: string | null
+          agency_name: string | null
+          agency_status: string | null
+          created_at: string | null
+          email: string | null
+          id: string | null
+          name: string | null
+          provider: Database["public"]["Enums"]["auth_provider"] | null
+          role: Database["public"]["Enums"]["user_role"] | null
+          tenant_id: string | null
+          tenant_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "users_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "users_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      can_create_agency: { Args: never; Returns: boolean }
+      can_create_user_with_role: {
+        Args: { target_role: Database["public"]["Enums"]["user_role"] }
+        Returns: boolean
+      }
+      can_manage_agency: {
+        Args: { target_agency_id: string }
+        Returns: boolean
+      }
+      can_manage_user: { Args: { target_user_id: string }; Returns: boolean }
       check_rate_limit: {
         Args: {
           p_action: string
@@ -662,26 +856,40 @@ export type Database = {
         }
         Returns: Json
       }
-      clean_expired_cache: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
+      clean_expired_cache: { Args: never; Returns: undefined }
+      cleanup_old_rate_limit_usage: { Args: never; Returns: undefined }
+      cleanup_old_search_jobs: { Args: never; Returns: undefined }
+      get_allowed_roles_for_creation: {
+        Args: never
+        Returns: Database["public"]["Enums"]["user_role"][]
       }
-      cleanup_old_rate_limit_usage: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
+      get_conversations_with_agency: {
+        Args: never
+        Returns: {
+          agency_id: string
+          agency_name: string
+          channel: Database["public"]["Enums"]["conversation_channel"]
+          created_at: string
+          created_by: string
+          creator_email: string
+          creator_role: Database["public"]["Enums"]["user_role"]
+          external_key: string
+          id: string
+          last_message_at: string
+          phone_number_id: string
+          state: Database["public"]["Enums"]["conversation_state"]
+          tenant_id: string
+          tenant_name: string
+        }[]
       }
-      is_same_agency: {
-        Args: { _agency_id: string }
-        Returns: boolean
-      }
-      is_same_tenant: {
-        Args: { _tenant_id: string }
-        Returns: boolean
-      }
-      is_superadmin: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      get_user_agency_id: { Args: never; Returns: string }
+      get_user_role: { Args: never; Returns: string }
+      get_user_tenant_id: { Args: never; Returns: string }
+      is_assigned_to_lead: { Args: { _lead_id: string }; Returns: boolean }
+      is_owner: { Args: never; Returns: boolean }
+      is_same_agency: { Args: { _agency_id: string }; Returns: boolean }
+      is_same_tenant: { Args: { _tenant_id: string }; Returns: boolean }
+      is_superadmin: { Args: never; Returns: boolean }
       record_rate_limit_usage: {
         Args: {
           p_action: string
@@ -701,7 +909,7 @@ export type Database = {
       message_role: "user" | "assistant" | "system"
       provider_code: "EUROVIPS" | "LOZADA" | "DELFOS" | "ICARO" | "STARLING"
       quality_state: "GREEN" | "YELLOW" | "RED"
-      user_role: "SUPERADMIN" | "ADMIN"
+      user_role: "SUPERADMIN" | "ADMIN" | "OWNER" | "SELLER"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -837,9 +1045,7 @@ export const Constants = {
       message_role: ["user", "assistant", "system"],
       provider_code: ["EUROVIPS", "LOZADA", "DELFOS", "ICARO", "STARLING"],
       quality_state: ["GREEN", "YELLOW", "RED"],
-      user_role: ["SUPERADMIN", "ADMIN"],
+      user_role: ["SUPERADMIN", "ADMIN", "OWNER", "SELLER"],
     },
   },
 } as const
-A new version of Supabase CLI is available: v2.48.3 (currently installed v2.40.7)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
