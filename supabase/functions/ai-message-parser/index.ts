@@ -86,6 +86,14 @@ CONVERSATION CONTEXT RULES:
 - Build upon ALL previous information - never lose context between messages
 - Only ask for fields NEVER mentioned in any previous message
 - If user contradicts earlier info, use most recent statement
+
+🚨 CRITICAL CONTEXT EXTRACTION RULES:
+- When user says "esas fechas" / "those dates" → Extract dates from LAST flight/hotel search in conversation
+- When user says "mismo destino" / "same destination" → Extract destination from LAST search
+- When user mentions ONLY a city name (e.g., "miami", "barcelona") → Check if that city was mentioned in previous flights as destination, if so, extract ALL flight details (dates, passengers)
+- When user requests "hotel para X adultos" → Check conversation for ANY previous flight search and auto-fill: city (from destination), checkinDate (from departureDate), checkoutDate (from returnDate), adults, children
+- ALWAYS prioritize extracting complete context from conversation history over asking for missing fields
+- If you find ANY flight details in previous messages, include them in hotels search even if user doesn't explicitly mention them
 ` : ''}
 
 ${previousContext ? `PREVIOUS CONTEXT:
@@ -328,7 +336,58 @@ User: "Quiero viajar"
   "confidence": 0.3
 }
 
-Analyze this message and respond with JSON only:`;
+Example 5 - Hotel request with context from previous flight search (CRITICAL PATTERN):
+🚨 PATTERN: When user says "esas fechas" or "those dates", you MUST extract from conversation history:
+- Previous flight destination → becomes hotel city
+- Previous flight departureDate → becomes hotel checkinDate
+- Previous flight returnDate → becomes hotel checkoutDate
+- Previous flight adults/children → becomes hotel adults/children
+
+Structure:
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "[EXTRACT from previous flight DESTINATION]",
+    "checkinDate": "[EXTRACT from previous flight DEPARTURE DATE]",
+    "checkoutDate": "[EXTRACT from previous flight RETURN DATE]",
+    "adults": "[EXTRACT from current message OR previous flight]",
+    "children": "[EXTRACT from current message OR previous flight OR 0]",
+    "roomType": "doble",
+    "mealPlan": "desayuno"
+  },
+  "confidence": 0.95
+}
+
+Example 6 - Hotel request mentioning city from previous flight (CRITICAL PATTERN):
+🚨 PATTERN: When user mentions a city that appeared in previous flight search, you MUST:
+1. Extract ALL flight details from that previous message (dates, passengers)
+2. Use flight destination as hotel city
+3. Use flight dates as hotel dates
+4. Use flight passenger count as hotel passenger count
+
+Structure:
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "[CITY mentioned by user]",
+    "checkinDate": "[EXTRACT from previous flight to this city]",
+    "checkoutDate": "[EXTRACT from previous flight to this city]",
+    "adults": "[EXTRACT from previous flight]",
+    "children": "[EXTRACT from previous flight OR 0]",
+    "roomType": "doble",
+    "mealPlan": "desayuno"
+  },
+  "confidence": 0.9
+}
+
+🚨 CRITICAL FINAL INSTRUCTION:
+- The examples above show PATTERNS and STRUCTURES only
+- You MUST extract actual values from the REAL conversation history provided above, NOT from the examples
+- NEVER use example cities (Miami, Punta Cana) or example dates unless they appear in the ACTUAL conversation
+- Always use [EXTRACT from X] placeholders as instructions to extract from REAL conversation history
+- Your response must reflect the ACTUAL user request and ACTUAL conversation context
+
+Now analyze this ACTUAL message and respond with JSON only:`;
     const userPrompt = message;
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

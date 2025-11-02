@@ -220,12 +220,8 @@ function validateAndFormatDate(dateStr: string): string {
 
 async function getCityCode(cityName: string): Promise<string> {
   try {
-    // Get the country list first
-    const countries = await getCountryList();
-
-    if (countries.length === 0) {
-      // Fallback to static mapping if WebService fails
-      const FALLBACK_CITY_CODES: Record<string, string> = {
+    // Define static mapping FIRST for priority lookup
+    const STATIC_CITY_CODES: Record<string, string> = {
         // España
         'madrid': 'MAD',
         'barcelona': 'BCN',
@@ -367,12 +363,24 @@ async function getCityCode(cityName: string): Promise<string> {
         'seul': 'ICN'
       };
 
-      const city = cityName.toLowerCase().trim();
-      return FALLBACK_CITY_CODES[city] || city.substring(0, 3).toUpperCase();
+    // PRIORITY 1: Check static mapping first (most reliable, fast)
+    const cityLower = cityName.toLowerCase().trim();
+    if (STATIC_CITY_CODES[cityLower]) {
+      console.log(`✅ [STATIC MAP] Found city code: ${cityName} -> ${STATIC_CITY_CODES[cityLower]}`);
+      return STATIC_CITY_CODES[cityLower];
     }
 
-    // Search for the city in the WebService response
-    const cityLower = cityName.toLowerCase().trim();
+    // PRIORITY 2: Get the country list from WebService (may have more cities)
+    const countries = await getCountryList();
+
+    if (countries.length === 0) {
+      // WebService failed, use first 3 letters as last resort
+      const fallbackCode = cityName.substring(0, 3).toUpperCase();
+      console.log(`⚠️ [FALLBACK] WebService empty, using: ${cityName} -> ${fallbackCode}`);
+      return fallbackCode;
+    }
+
+    // PRIORITY 3: Search for the city in the WebService response
 
     // Try exact match first
     let foundCountry = countries.find(country =>

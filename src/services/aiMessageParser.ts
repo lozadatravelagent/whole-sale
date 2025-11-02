@@ -379,13 +379,24 @@ export async function parseMessageWithAI(
                 'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
             };
             const mesNum = meses[mes] || '10';
-            const año = '2024';
+
+            // Dynamic year calculation: if month has already passed this year, use next year
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1; // 0-indexed
+            const requestedMonth = parseInt(mesNum, 10);
+            const año = requestedMonth < currentMonth ? (currentYear + 1).toString() : currentYear.toString();
+
             quick.flights.departureDate = `${año}-${mesNum}-${fechaMatch[1].padStart(2, '0')}`;
 
             if (fechaMatch[3] && fechaMatch[4]) {
                 const mes2 = fechaMatch[4].toLowerCase();
                 const mes2Num = meses[mes2] || '11';
-                quick.flights.returnDate = `${año}-${mes2Num}-${fechaMatch[3].padStart(2, '0')}`;
+                const requestedMonth2 = parseInt(mes2Num, 10);
+                // For return date, compare with current month and consider if it wraps to next year
+                const año2 = requestedMonth2 < currentMonth ? (currentYear + 1).toString() :
+                            (requestedMonth2 < requestedMonth ? (parseInt(año) + 1).toString() : año);
+                quick.flights.returnDate = `${año2}-${mes2Num}-${fechaMatch[3].padStart(2, '0')}`;
             }
         }
 
