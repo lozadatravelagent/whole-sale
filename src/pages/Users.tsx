@@ -178,7 +178,7 @@ const Users = () => {
 
   const openEditDialog = (user: any) => {
     setSelectedUser(user);
-    setEditName(user.name || '');
+    setEditName(user.email.split('@')[0] || '');
     setEditRole(user.role);
     setEditAgencyId(user.agency_id || 'none');
     setEditTenantId(user.tenant_id || 'none');
@@ -202,7 +202,7 @@ const Users = () => {
 
   if (!canManageUsers) {
     return (
-      <MainLayout userRole={currentUser?.role || 'SELLER'}>
+      <MainLayout>
         <div className="p-8">
           <Alert>
             <AlertCircle className="h-4 w-4" />
@@ -216,7 +216,7 @@ const Users = () => {
   }
 
   return (
-    <MainLayout userRole={currentUser?.role || 'ADMIN'}>
+    <MainLayout>
       <div className="p-4 md:p-6 lg:p-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -284,7 +284,7 @@ const Users = () => {
                     {filteredUsers.map((user) => (
                       <TableRow key={user.id}>
                         <TableCell className="font-medium">
-                          {user.name || '-'}
+                          {user.email.split('@')[0]}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">

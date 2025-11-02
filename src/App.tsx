@@ -31,7 +31,16 @@ const PageLoader = () => (
   </div>
 );
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      refetchOnReconnect: false,
+      staleTime: 5 * 60 * 1000, // 5 minutos
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

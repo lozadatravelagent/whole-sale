@@ -47,14 +47,9 @@ export function LeadCard({ lead, onClick, isDragging, sectionName }: LeadCardPro
   };
 
   const getUserInitials = (user: User) => {
-    if (user.name) {
-      const parts = user.name.split(' ');
-      if (parts.length >= 2) {
-        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-      }
-      return user.name.substring(0, 2).toUpperCase();
-    }
-    return user.email.substring(0, 2).toUpperCase();
+    // Get initials from email (first 2 characters before @)
+    const emailName = user.email.split('@')[0];
+    return emailName.substring(0, 2).toUpperCase();
   };
 
   return (

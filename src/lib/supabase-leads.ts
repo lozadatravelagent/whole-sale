@@ -259,9 +259,9 @@ export async function getSellers(agencyId?: string): Promise<Seller[]> {
   try {
     let query = supabase
       .from('users')
-      .select('id, name, email, created_at')
-      .eq('role', 'SELLER')
-      .order('name', { ascending: true });
+      .select('id, email, created_at')
+      .eq('role', 'SELLER' as any) // Type assertion needed - Supabase schema outdated
+      .order('email', { ascending: true });
 
     if (agencyId) {
       query = query.eq('agency_id', agencyId);
@@ -277,7 +277,7 @@ export async function getSellers(agencyId?: string): Promise<Seller[]> {
     // Map User to Seller interface for backward compatibility
     return (data || []).map(user => ({
       id: user.id,
-      name: user.name || user.email,
+      name: user.email.split('@')[0], // Use email username as name
       email: user.email,
       created_at: user.created_at,
       updated_at: user.created_at, // users table doesn't have updated_at

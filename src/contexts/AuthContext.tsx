@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Role } from '@/types';
 
@@ -8,7 +8,6 @@ export interface AuthUser {
   role: Role;
   tenant_id: string | null;
   agency_id: string | null;
-  name?: string;
 }
 
 interface AuthContextType {
@@ -41,13 +40,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasInitiallyLoadedRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
 
-    async function loadUser() {
+    async function loadUser(showSpinner = false) {
       try {
-        setLoading(true);
+        // Only show loading spinner if explicitly requested AND it's the first load
+        if (showSpinner && !hasInitiallyLoadedRef.current) {
+          setLoading(true);
+        }
         setError(null);
 
         // Get authenticated session
@@ -66,7 +69,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // Fetch user data from public.users table (with role info)
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('id, email, role, tenant_id, agency_id, name')
+          .select('id, email, role, tenant_id, agency_id')
           .eq('id', session.user.id)
           .single();
 
@@ -82,9 +85,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
             email: userData.email,
             role: userData.role as Role,
             tenant_id: userData.tenant_id,
-            agency_id: userData.agency_id,
-            name: userData.name
+            agency_id: userData.agency_id
           });
+          hasInitiallyLoadedRef.current = true; // Mark as loaded
           setLoading(false);
         }
       } catch (err) {
@@ -97,7 +100,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     }
 
-    loadUser();
+    loadUser(true); // Initial load with spinner
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -105,10 +108,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (event === 'SIGNED_OUT') {
           if (mounted) {
             setUser(null);
+            hasInitiallyLoadedRef.current = false;
             setLoading(false);
           }
         } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          loadUser();
+          // Silent update - don't show spinner after initial load
+          loadUser(false);
         }
       }
     );

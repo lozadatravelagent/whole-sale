@@ -96,14 +96,9 @@ export function UserProfileHeader({ user, onLogout }: UserProfileHeaderProps) {
   };
 
   const getUserInitials = () => {
-    if (user.name) {
-      const parts = user.name.split(' ');
-      if (parts.length >= 2) {
-        return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-      }
-      return user.name.substring(0, 2).toUpperCase();
-    }
-    return user.email.substring(0, 2).toUpperCase();
+    // Get initials from email (first 2 characters before @)
+    const emailName = user.email.split('@')[0];
+    return emailName.substring(0, 2).toUpperCase();
   };
 
   return (
@@ -133,7 +128,7 @@ export function UserProfileHeader({ user, onLogout }: UserProfileHeaderProps) {
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 {getRoleIcon(user.role)}
-                <p className="text-sm font-medium">{user.name || 'Usuario'}</p>
+                <p className="text-sm font-medium">{user.email.split('@')[0]}</p>
               </div>
               <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               <div className="mt-1 pt-1 border-t">
