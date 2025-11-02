@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '@/hooks/useChat';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -46,8 +46,7 @@ const Login = () => {
           title: "Login exitoso",
           description: "¡Bienvenido a VIBOOK!",
         });
-        const from = (location.state as any)?.from?.pathname || '/dashboard';
-        navigate(from, { replace: true });
+        // Navigation will be handled automatically by useEffect when user state updates
       }
     } catch (error: any) {
       toast({
