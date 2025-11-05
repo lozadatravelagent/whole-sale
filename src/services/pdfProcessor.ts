@@ -602,7 +602,7 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
 
         // Calculate total price for this group
         const groupOriginalPrice = group.reduce((sum, f) => sum + f.price, 0);
-        const groupNewPrice = Math.round(groupOriginalPrice * priceRatio);
+        const groupNewPrice = parseFloat((groupOriginalPrice * priceRatio).toFixed(2));
 
         console.log(`✈️ Group ${groupIndex + 1}: ${firstFlight.airline} - ${group.length} flight(s), price: $${groupNewPrice}`);
 
@@ -650,11 +650,11 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
                 name: firstFlight.airline
             },
             price: {
-                amount: groupNewPrice,
+                amount: parseFloat(groupNewPrice.toFixed(2)),
                 currency: analysis.content?.currency || 'USD',
                 breakdown: {
-                    fareAmount: Math.round(groupNewPrice * 0.75),
-                    taxAmount: Math.round(groupNewPrice * 0.25),
+                    fareAmount: parseFloat((groupNewPrice * 0.75).toFixed(2)),
+                    taxAmount: parseFloat((groupNewPrice * 0.25).toFixed(2)),
                     serviceAmount: 0,
                     commissionAmount: 0
                 }
@@ -698,8 +698,8 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number): an
     const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
 
     return analysis.content.hotels.map((hotel, index) => {
-        const adjustedNightlyPrice = Math.round((hotel.price * priceRatio));
-        const adjustedTotalPrice = adjustedNightlyPrice * hotel.nights;
+        const adjustedNightlyPrice = parseFloat((hotel.price * priceRatio).toFixed(2));
+        const adjustedTotalPrice = parseFloat((adjustedNightlyPrice * hotel.nights).toFixed(2));
 
         return {
             id: `regenerated-hotel-${Date.now()}-${index}`,
@@ -925,7 +925,7 @@ export async function generateModifiedPdf(
                             name: flight.airline
                         },
                         price: {
-                            amount: Math.round(flight.price * priceRatio),
+                            amount: parseFloat((flight.price * priceRatio).toFixed(2)),
                             currency: analysis.content?.currency || 'USD'
                         },
                         adults: analysis.content?.passengers || 1,
@@ -954,7 +954,7 @@ export async function generateModifiedPdf(
                 rooms: [{
                     type: 'Standard',
                     description: 'Habitación estándar modificada',
-                    total_price: Math.round(hotel.price * hotel.nights * priceRatio),
+                    total_price: parseFloat((hotel.price * hotel.nights * priceRatio).toFixed(2)),
                     currency: analysis.content?.currency || 'USD',
                     availability: 5,
                     occupancy_id: `external-room-${index}`
@@ -966,18 +966,18 @@ export async function generateModifiedPdf(
         const currentFlightsTotal = adjustedFlights.reduce((sum, f) => sum + (f.price?.amount || 0), 0);
         const currentHotelsTotal = adjustedHotels.reduce((sum, h) => sum + (h.rooms?.[0]?.total_price || 0), 0);
         const currentTotal = currentFlightsTotal + currentHotelsTotal;
-        const deltaToTarget = Math.round(newPrice - currentTotal);
+        const deltaToTarget = parseFloat((newPrice - currentTotal).toFixed(2));
 
         if (deltaToTarget !== 0) {
             // Prefer adjusting hotels (room total) to keep flight fares intact; otherwise adjust last flight amount
             if (adjustedHotels.length > 0 && adjustedHotels[adjustedHotels.length - 1]?.rooms?.[0]) {
                 const lastHotel = adjustedHotels[adjustedHotels.length - 1];
                 const room = lastHotel.rooms[0];
-                const newTotalPrice = Math.max(0, (room.total_price || 0) + deltaToTarget);
+                const newTotalPrice = parseFloat(Math.max(0, (room.total_price || 0) + deltaToTarget).toFixed(2));
                 room.total_price = newTotalPrice;
             } else if (adjustedFlights.length > 0) {
                 const lastFlight = adjustedFlights[adjustedFlights.length - 1];
-                const newAmount = Math.max(0, (lastFlight.price?.amount || 0) + deltaToTarget);
+                const newAmount = parseFloat(Math.max(0, (lastFlight.price?.amount || 0) + deltaToTarget).toFixed(2));
                 lastFlight.price = {
                     ...(lastFlight.price || {}),
                     amount: newAmount,
@@ -1137,7 +1137,7 @@ export async function processPriceChangeRequest(
                 const flights = [{
                     airline: 'Aerolínea',
                     route: 'Origen - Destino',
-                    price: isCombined ? Math.round(requestedPrice * 0.7) : requestedPrice,
+                    price: isCombined ? parseFloat((requestedPrice * 0.7).toFixed(2)) : parseFloat(requestedPrice.toFixed(2)),
                     dates: 'Fecha de viaje'
                 }];
 
@@ -1145,7 +1145,7 @@ export async function processPriceChangeRequest(
                 const hotels = isCombined ? [{
                     name: 'Hotel Recomendado',
                     location: 'Destino',
-                    price: Math.round(requestedPrice * 0.3 / 7), // Assume 7 nights
+                    price: parseFloat((requestedPrice * 0.3 / 7).toFixed(2)), // Assume 7 nights
                     nights: 7
                 }] : [];
 

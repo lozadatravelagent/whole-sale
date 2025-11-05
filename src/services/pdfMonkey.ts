@@ -385,7 +385,7 @@ function preparePdfData(flights: FlightData[]) {
       childrens: flight.childrens,
       legs: finalLegs,
       price: {
-        amount: flight.price.amount.toString(),
+        amount: formatPriceForTemplate(flight.price.amount),
         currency: flight.price.currency
       },
       // Optional fields for template compatibility
