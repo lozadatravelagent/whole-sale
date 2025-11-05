@@ -54,6 +54,71 @@ export interface CheaperFlightSearchResult {
 }
 
 /**
+ * Smart price parser that handles both US and EU/Latino number formats
+ * US Format: 2,549.32 (comma = thousands, dot = decimal)
+ * EU/Latino Format: 2.549,32 (dot = thousands, comma = decimal)
+ *
+ * @param priceStr - The price string to parse (e.g., "2.549,32" or "2,549.32" or "2549.32")
+ * @returns The parsed number as a float
+ */
+function parsePrice(priceStr: string): number {
+    if (!priceStr) return 0;
+
+    // Remove currency symbols and whitespace
+    let cleaned = priceStr.replace(/[^\d.,]/g, '');
+
+    if (!cleaned) return 0;
+
+    // Count dots and commas to determine format
+    const dotCount = (cleaned.match(/\./g) || []).length;
+    const commaCount = (cleaned.match(/,/g) || []).length;
+    const lastDotIndex = cleaned.lastIndexOf('.');
+    const lastCommaIndex = cleaned.lastIndexOf(',');
+
+    // No separators - simple case
+    if (dotCount === 0 && commaCount === 0) {
+        return parseFloat(cleaned);
+    }
+
+    // Only dots - check if it's decimal or thousands separator
+    if (dotCount > 0 && commaCount === 0) {
+        // If dot is in the last 3 positions and there's more than one dot, it's decimal
+        // Otherwise if there's only one dot and it's in last 3 chars, it's decimal
+        // Otherwise dots are thousands separators
+        if (lastDotIndex >= cleaned.length - 3 && dotCount === 1) {
+            // Single dot in last 3 positions = decimal separator
+            return parseFloat(cleaned);
+        } else {
+            // Multiple dots or dot not in decimal position = thousands separator
+            return parseFloat(cleaned.replace(/\./g, ''));
+        }
+    }
+
+    // Only commas - check if it's decimal or thousands separator
+    if (commaCount > 0 && dotCount === 0) {
+        // If comma is in the last 3 positions and there's only one comma, it's decimal
+        if (lastCommaIndex >= cleaned.length - 3 && commaCount === 1) {
+            // Single comma in last 3 positions = decimal separator (EU format)
+            return parseFloat(cleaned.replace(',', '.'));
+        } else {
+            // Multiple commas or comma not in decimal position = thousands separator (US)
+            return parseFloat(cleaned.replace(/,/g, ''));
+        }
+    }
+
+    // Both dots and commas present - determine which comes last
+    if (lastCommaIndex > lastDotIndex) {
+        // Comma comes after dot = EU/Latino format (2.549,32)
+        // Dots are thousands, comma is decimal
+        return parseFloat(cleaned.replace(/\./g, '').replace(',', '.'));
+    } else {
+        // Dot comes after comma = US format (2,549.32)
+        // Commas are thousands, dot is decimal
+        return parseFloat(cleaned.replace(/,/g, ''));
+    }
+}
+
+/**
  * Upload PDF file to Supabase storage
  */
 export async function uploadPdfFile(file: File, conversationId: string): Promise<PdfUploadResult> {
@@ -402,16 +467,18 @@ function generateManualDataEntryPrompt(): string {
 
 /**
  * Extract price from user message
+ * Supports both US format (2,549.32) and EU/Latino format (2.549,32)
  */
 function extractPriceFromMessage(message: string): number | null {
-    // Look for patterns like: $1200, 1200 USD, 1200 dólares, etc.
+    // Look for patterns like: $1200, 1200 USD, 1200 dólares, 2.549,32 USD, etc.
+    // Updated regex to capture complete numbers with flexible separators
     const pricePatterns = [
-        /\$\s*(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/g,
-        /(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|usd|dólares?|dolares?)/gi,
-        /precio.*?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi,
-        /total.*?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi,
-        /cambia.*?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi,
-        /por\s+(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi
+        /\$\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/g,
+        /(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*(?:USD|usd|dólares?|dolares?)/gi,
+        /precio.*?(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        /total.*?(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        /cambia.*?(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        /por\s+(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi
     ];
 
     // First try to find numbers with context (more specific patterns)
@@ -419,11 +486,11 @@ function extractPriceFromMessage(message: string): number | null {
         const matches = message.match(pattern);
         if (matches) {
             for (const match of matches) {
-                const numberMatch = match.match(/(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/);
+                const numberMatch = match.match(/(\d{1,10}(?:[.,]\d{1,3})+|\d+)/);
                 if (numberMatch) {
-                    const price = parseFloat(numberMatch[1].replace(/,/g, ''));
+                    const price = parsePrice(numberMatch[1]);
                     if (price > 0 && price < 100000) { // Reasonable price range
-                        console.log('💰 [PRICE EXTRACTION] Found price with context:', price, 'from match:', match);
+                        console.log('💰 [PRICE EXTRACTION] Found price with context:', price, 'from match:', match, 'raw:', numberMatch[1]);
                         return price;
                     }
                 }
@@ -471,7 +538,8 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
 
     // Strategy 1: Look for explicit "al [position] [price]" patterns
     // Examples: "al primer 1000", "al segundo 2000", "al 1 1000", "al 2 2000"
-    const explicitPattern = /al\s+(primer[ao]?|primero|segundo?[ao]?|tercer[ao]?|tercero|cuarto?[ao]?|[1-4])\s+(?:vuelo\s+)?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi;
+    // Updated regex to capture complete numbers with flexible separators
+    const explicitPattern = /al\s+(primer[ao]?|primero|segundo?[ao]?|tercer[ao]?|tercero|cuarto?[ao]?|[1-4])\s+(?:vuelo\s+)?(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi;
     let explicitMatches = [...normalizedMessage.matchAll(explicitPattern)];
 
     console.log('🔍 [EXPLICIT PATTERN] Found matches:', explicitMatches.length);
@@ -485,7 +553,7 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
         console.log(`🔍 [EXPLICIT] Parsed - position: ${position}, priceStr: "${priceStr}"`);
 
         if (position > 0 && priceStr) {
-            const price = parseFloat(priceStr.replace(/,/g, ''));
+            const price = parsePrice(priceStr);
             console.log(`🔍 [EXPLICIT] Price value: ${price}, valid range: ${price >= 100 && price <= 50000}`);
 
             if (price >= 100 && price <= 50000) {
@@ -508,7 +576,7 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
 
     // Strategy 2: Look for "precio [position] [price]" patterns
     // Examples: "precio 1 1000", "precio al segundo 2000"
-    const pricePositionPattern = /precio\s+(?:al\s+)?(primer[ao]?|primero|segundo?[ao]?|tercer[ao]?|tercero|cuarto?[ao]?|[1-4])\s+(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/gi;
+    const pricePositionPattern = /precio\s+(?:al\s+)?(primer[ao]?|primero|segundo?[ao]?|tercer[ao]?|tercero|cuarto?[ao]?|[1-4])\s+(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi;
     let pricePositionMatches = [...normalizedMessage.matchAll(pricePositionPattern)];
 
     console.log('🔍 [PRICE POSITION PATTERN] Found matches:', pricePositionMatches.length);
@@ -519,7 +587,7 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
         const priceStr = match[2];
 
         if (position > 0 && priceStr) {
-            const price = parseFloat(priceStr.replace(/,/g, ''));
+            const price = parsePrice(priceStr);
             if (price >= 100 && price <= 50000) {
                 const existingIndex = priceChanges.findIndex(pc => pc.position === position);
                 if (existingIndex === -1) {
@@ -534,7 +602,7 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
     const clauses = normalizedMessage.split(/\s+y\s+|,\s*/);
     console.log('🔍 [CLAUSE SPLIT] Clauses:', clauses);
 
-    const clausePattern = /(primer[ao]?|primero|segundo?[ao]?|tercer[ao]?|tercero|cuarto?[ao]?|[1-4]).*?(\d{1,6}(?:,\d{3})*(?:\.\d{2})?)/i;
+    const clausePattern = /(primer[ao]?|primero|segundo?[ao]?|tercer[ao]?|tercero|cuarto?[ao]?|[1-4]).*?(\d{1,10}(?:[.,]\d{1,3})+|\d+)/i;
 
     for (const rawClause of clauses) {
         const clause = rawClause.trim();
@@ -548,7 +616,7 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
             const priceStr = match[2];
 
             if (position > 0 && priceStr) {
-                const price = parseFloat(priceStr.replace(/,/g, ''));
+                const price = parsePrice(priceStr);
                 if (price >= 100 && price <= 50000) {
                     const existingIndex = priceChanges.findIndex(pc => pc.position === position);
                     if (existingIndex === -1) {
@@ -1494,10 +1562,10 @@ function extractFlightInfo(text: string): Array<{
         /([A-Z]{2}\s?\d{2,4})/g // AA 1234 or AA1234
     ];
 
-    // Enhanced patterns for prices
+    // Enhanced patterns for prices with flexible number formats
     const pricePatterns = [
-        /(?:USD|US\$|\$)\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/gi,
-        /(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi
+        /(?:USD|US\$|\$)\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        /(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*(?:USD|US\$|\$)/gi
     ];
 
     // Extract airlines
@@ -1569,13 +1637,15 @@ function extractFlightInfo(text: string): Array<{
         flightNumbers.push(...matches.map(m => m[1] || m[0]));
     }
 
-    // Extract prices
+    // Extract prices using smart parser
     const prices = [];
     for (const pattern of pricePatterns) {
         const matches = [...text.matchAll(pattern)];
         prices.push(...matches.map(m => {
             const priceStr = m[1] || m[0];
-            return parseFloat(priceStr.replace(/,/g, ''));
+            const price = parsePrice(priceStr);
+            console.log(`💰 [FLIGHT INFO PARSE] "${priceStr}" → ${price}`);
+            return price;
         }));
     }
 
@@ -1730,21 +1800,21 @@ function extractHotelInfo(text: string): Array<{ name: string, location: string,
 function extractTotalPrice(text: string): number {
     console.log('💰 Searching for total price in text...');
 
-    // Enhanced patterns for total price extraction
+    // Enhanced patterns for total price extraction with flexible number formats
     const totalPatterns = [
         // Spanish patterns
-        /(?:total|precio total|total price|grand total|total general|precio final|monto total|importe total)\s*:?\s*(?:USD|US\$|\$)?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/gi,
-        /(?:USD|US\$|\$)\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:total|precio total|total price|grand total)/gi,
+        /(?:total|precio total|total price|grand total|total general|precio final|monto total|importe total)\s*:?\s*(?:USD|US\$|\$)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        /(?:USD|US\$|\$)\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*(?:total|precio total|total price|grand total)/gi,
 
         // Direct price patterns
-        /\$\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|usd)?/gi,
-        /(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi,
+        /\$\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*(?:USD|usd)?/gi,
+        /(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*(?:USD|US\$|\$)/gi,
 
         // Price at end of line or paragraph
-        /(?:precio|price|total|costo|cost)\s*:?\s*\$?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/gi,
+        /(?:precio|price|total|costo|cost)\s*:?\s*\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
 
         // Currency patterns
-        /(?:USD|US\$|\$)\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/gi
+        /(?:USD|US\$|\$)\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi
     ];
 
     let bestMatch = { price: 0, confidence: 0 };
@@ -1755,10 +1825,10 @@ function extractTotalPrice(text: string): number {
 
         for (const match of matches) {
             const priceStr = match[1] || match[0];
-            const price = parseFloat(priceStr.replace(/[^\d.]/g, ''));
+            const price = parsePrice(priceStr);
 
             if (!isNaN(price) && price > 0 && price < 50000) { // Reasonable price range
-                console.log(`💰 Found price: $${price} from match: "${match[0]}"`);
+                console.log(`💰 [EXTERNAL PDF PARSE] "${priceStr}" → ${price} from match: "${match[0]}"`);
 
                 // Higher confidence for "total" keywords
                 const confidence = match[0].toLowerCase().includes('total') ? 2 : 1;
@@ -2104,7 +2174,8 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     });
 
     // Check if we have multiple flight options (multiple "Precio total" markers)
-    const priceMarkerPattern = /(\d{1,5}(?:[.,]\d{1,2})?)\s*USD\s*Precio\s*total/gi;
+    // Updated regex to capture complete numbers with flexible separators
+    const priceMarkerPattern = /(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD\s*Precio\s*total/gi;
     const priceMarkerMatches = [...content.matchAll(priceMarkerPattern)];
 
     console.log('🔍 Found flight options (Precio total markers):', priceMarkerMatches.length);
@@ -2171,24 +2242,25 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
             // Extract the total price for this entire flight option (at the beginning, before "Vuelo de ida")
             // Pattern: "XXX.XX USD Precio total" or "XXX.XX USD\s*Precio total"
             // The text might have: "1429.86 USD Precio total" or "1429.86 USDPrecio total"
-            const totalPricePattern = /(\d{1,5}(?:[.,]\d{1,2})?)\s*USD\s*Precio\s*total/i;
+            // Updated regex to capture complete numbers with flexible separators
+            const totalPricePattern = /(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD\s*Precio\s*total/i;
             const totalPriceMatch = section.fullContent.match(totalPricePattern);
             let sectionTotalPrice = 0;
 
             console.log(`🔍 Section ${sectionIndex + 1} fullContent preview:`, section.fullContent.substring(0, 150));
 
             if (totalPriceMatch) {
-                sectionTotalPrice = parseFloat(totalPriceMatch[1].replace(/,/g, ''));
-                console.log(`💰 Section ${sectionIndex + 1} total price (ida + vuelta):`, sectionTotalPrice, 'from match:', totalPriceMatch[0]);
+                sectionTotalPrice = parsePrice(totalPriceMatch[1]);
+                console.log(`💰 [SECTION PRICE PARSE] Section ${sectionIndex + 1} "${totalPriceMatch[1]}" → ${sectionTotalPrice} (ida + vuelta) from: "${totalPriceMatch[0]}"`);
             } else {
                 console.warn(`⚠️ Section ${sectionIndex + 1}: Could not find price with pattern. Trying alternative...`);
 
                 // Fallback: buscar cualquier número antes de "Precio total"
-                const fallbackPattern = /(\d{1,5}(?:[.,]\d{1,2})?)\s*USD/i;
+                const fallbackPattern = /(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i;
                 const fallbackMatch = section.fullContent.match(fallbackPattern);
                 if (fallbackMatch) {
-                    sectionTotalPrice = parseFloat(fallbackMatch[1].replace(/,/g, ''));
-                    console.log(`💰 Section ${sectionIndex + 1} total price (fallback):`, sectionTotalPrice);
+                    sectionTotalPrice = parsePrice(fallbackMatch[1]);
+                    console.log(`💰 [SECTION FALLBACK PARSE] Section ${sectionIndex + 1} "${fallbackMatch[1]}" → ${sectionTotalPrice}`);
                 }
             }
 
@@ -2380,13 +2452,15 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     }
 
     // Extract price - look for price patterns with USD
-    const priceMatches = content.match(/(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*USD/i) ||
-        content.match(/\$?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|US\$|\$)/gi);
+    // Updated regex to capture complete numbers with flexible separators
+    const priceMatches = content.match(/(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i) ||
+        content.match(/\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*(?:USD|US\$|\$)/gi);
     let price = 0;
     if (priceMatches) {
-        const priceStr = priceMatches[0].match(/(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/);
+        const priceStr = priceMatches[0].match(/(\d{1,10}(?:[.,]\d{1,3})+|\d+)/);
         if (priceStr) {
-            price = parseFloat(priceStr[1].replace(/,/g, ''));
+            price = parsePrice(priceStr[1]);
+            console.log(`💰 [FLIGHT LEG PRICE PARSE] "${priceStr[1]}" → ${price}`);
         }
     }
 
@@ -2516,10 +2590,11 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
     const nights = nightsMatch ? parseInt(nightsMatch[1]) : 0;
 
     // Extract hotel price - this might be tricky, look for patterns around hotel section
-    const hotelPriceMatches = content.match(/Hotel[^$]*?\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)/i);
+    const hotelPriceMatches = content.match(/Hotel[^$]*?\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/i);
     let hotelPrice = 0;
     if (hotelPriceMatches) {
-        hotelPrice = parseFloat(hotelPriceMatches[1].replace(/,/g, ''));
+        hotelPrice = parsePrice(hotelPriceMatches[1]);
+        console.log(`🏨 [HOTEL PRICE PARSE] "${hotelPriceMatches[1]}" → ${hotelPrice}`);
     }
 
     hotels.push({
@@ -2538,13 +2613,15 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
  */
 function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
     // Look for ALL "Precio total" patterns in case there are multiple flight options
-    const totalPricePattern = /(\d{1,5}(?:[.,]\d{1,2})?)\s*USD\s*Precio\s*total/gi;
+    // Updated regex to capture complete numbers with flexible separators
+    const totalPricePattern = /(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD\s*Precio\s*total/gi;
     const totalMatches = [...content.matchAll(totalPricePattern)];
 
     if (totalMatches.length > 0) {
-        // Sum all prices found
+        // Sum all prices found using smart parser
         const totalPrice = totalMatches.reduce((sum, match) => {
-            const price = parseFloat(match[1].replace(/,/g, ''));
+            const price = parsePrice(match[1]);
+            console.log(`💰 [PRICE PARSE] "${match[1]}" → ${price}`);
             return sum + price;
         }, 0);
 
@@ -2555,17 +2632,17 @@ function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
 
     // Fallback: Look for all price patterns and return the highest
     const allPricePatterns = [
-        /\$?(\d{1,5}(?:,\d{3})*(?:\.\d{1,2})?)\s*USD/g,
-        /(\d{1,5}(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:USD|US\$)/g
+        /\$?(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/g,
+        /(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*(?:USD|US\$)/g
     ];
 
     const allPrices = [];
     for (const pattern of allPricePatterns) {
         const matches = [...content.matchAll(pattern)];
         matches.forEach(match => {
-            const priceStr = match[1].replace(/,/g, ''); // Remove thousand separators
-            const price = parseFloat(priceStr);
+            const price = parsePrice(match[1]);
             if (!isNaN(price) && price > 0) {
+                console.log(`💰 [FALLBACK PARSE] "${match[1]}" → ${price}`);
                 allPrices.push(price);
             }
         });
