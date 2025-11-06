@@ -2576,25 +2576,55 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
     const hotels = [];
 
     // Extract hotel name from template
-    const hotelNameMatch = content.match(/Hotel Recomendado[^$]*?([^\n]+(?:Hotel|Resort|Aparthotel)[^\n]*)/i) ||
-        content.match(/([^\n]+(?:Hotel|Resort|Aparthotel)[^\n]*)/i);
+    const hotelNameMatch = content.match(/Hotel Recomendado[^$]*?([^\n]+(?:Hotel|Resort|Aparthotel|APARTHOTEL)[^\n]*)/i) ||
+        content.match(/([^\n]+(?:Hotel|Resort|Aparthotel|APARTHOTEL)[^\n]*)/i);
     const hotelName = hotelNameMatch ? hotelNameMatch[1].trim() : 'Hotel no especificado';
 
-    // Extract location
-    const locationMatch = content.match(/(\d+)\s*estrellas[^$]*?([^\n]+(?:Cana|Aires|Madrid|Barcelona|Miami)[^\n]*)/i) ||
-        content.match(/([^\n]+(?:Cana|Aires|Madrid|Barcelona|Miami)[^\n]*)/i);
+    // Extract location - more flexible pattern
+    const locationMatch = content.match(/(\d+)\s*estrellas[^$]*?([^\n]+(?:Cana|CANA|Aires|AIRES|Madrid|Barcelona|Miami|República Dominicana)[^\n]*)/i) ||
+        content.match(/([^\n]+(?:Cana|CANA|Aires|AIRES|Madrid|Barcelona|Miami|República Dominicana)[^\n]*)/i);
     const location = locationMatch ? (locationMatch[2] || locationMatch[1]).trim() : 'Ubicación no especificada';
 
     // Extract nights duration
     const nightsMatch = content.match(/(\d+)\s*(?:Noche|Noches|noche|noches)/i);
     const nights = nightsMatch ? parseInt(nightsMatch[1]) : 0;
 
-    // Extract hotel price - this might be tricky, look for patterns around hotel section
-    const hotelPriceMatches = content.match(/Hotel[^$]*?\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/i);
+    // Extract hotel price - try multiple patterns
     let hotelPrice = 0;
-    if (hotelPriceMatches) {
-        hotelPrice = parsePrice(hotelPriceMatches[1]);
-        console.log(`🏨 [HOTEL PRICE PARSE] "${hotelPriceMatches[1]}" → ${hotelPrice}`);
+
+    // Pattern 1: Look for "Precio: $XXX USD" near Hotel section
+    const pricePattern1 = /Precio:\s*\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i;
+    const priceMatch1 = content.match(pricePattern1);
+    if (priceMatch1) {
+        hotelPrice = parsePrice(priceMatch1[1]);
+        console.log(`🏨 [HOTEL PRICE PARSE - Pattern 1] "${priceMatch1[1]}" → ${hotelPrice}`);
+    }
+
+    // Pattern 2: Look for price after hotel name in the hotel section
+    if (hotelPrice === 0) {
+        const hotelSection = content.match(/Hotel Recomendado[\s\S]{0,500}?(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i);
+        if (hotelSection) {
+            hotelPrice = parsePrice(hotelSection[1]);
+            console.log(`🏨 [HOTEL PRICE PARSE - Pattern 2] "${hotelSection[1]}" → ${hotelPrice}`);
+        }
+    }
+
+    // Pattern 3: If still not found, look for any USD price that's not the total
+    if (hotelPrice === 0) {
+        const allPrices = [...content.matchAll(/(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/gi)];
+        console.log(`🏨 [HOTEL PRICE PARSE - Pattern 3] Found ${allPrices.length} USD prices in document`);
+
+        // Filter out the total price (usually the largest one or marked as "Precio total")
+        const prices = allPrices
+            .map(m => ({ text: m[1], value: parsePrice(m[1]) }))
+            .filter(p => p.value > 0 && p.value < 100000); // Reasonable range
+
+        if (prices.length >= 2) {
+            // If we have multiple prices, the hotel is likely the smaller one (not the total)
+            prices.sort((a, b) => a.value - b.value);
+            hotelPrice = prices[0].value; // Take the smallest (likely hotel per night or total)
+            console.log(`🏨 [HOTEL PRICE PARSE - Pattern 3] Using smallest price: ${hotelPrice}`);
+        }
     }
 
     hotels.push({
