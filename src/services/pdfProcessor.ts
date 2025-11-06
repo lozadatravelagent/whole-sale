@@ -797,9 +797,9 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number): an
         const adjustedNightlyPrice = parseFloat((hotel.price * priceRatio).toFixed(2));
         const adjustedTotalPrice = parseFloat((adjustedNightlyPrice * hotel.nights).toFixed(2));
 
-        // Extract check-in and check-out dates from flights
-        let checkIn = '2025-11-01';
-        let checkOut = '2025-11-15';
+        // Extract check-in and check-out dates from flights - NO MOCK DATA
+        let checkIn = '';
+        let checkOut = '';
 
         if (analysis.content?.flights && analysis.content.flights.length > 0) {
             const firstFlight = analysis.content.flights[0];
@@ -819,14 +819,14 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number): an
             // Get check-out date from last flight
             if (lastFlight.dates && analysis.content.flights.length > 1) {
                 if (lastFlight.dates.includes(' / ')) {
-                    checkOut = lastFlight.dates.split(' / ')[1]?.trim() || lastFlight.dates.split(' / ')[0].trim();
+                    checkOut = lastFlight.dates.split(' / ')[1]?.trim() || '';
                 } else if (lastFlight.dates.includes(' | ')) {
                     checkOut = lastFlight.dates.split(' | ')[0].replace('📅', '').trim();
                 } else {
                     checkOut = lastFlight.dates.replace('📅', '').trim();
                 }
-            } else if (hotel.nights > 0) {
-                // Calculate check-out based on nights
+            } else if (hotel.nights > 0 && checkIn) {
+                // Calculate check-out based on nights only if we have checkIn
                 const checkInDate = new Date(checkIn);
                 checkInDate.setDate(checkInDate.getDate() + hotel.nights);
                 checkOut = checkInDate.toISOString().split('T')[0];
