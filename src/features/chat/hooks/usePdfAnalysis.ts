@@ -66,7 +66,8 @@ const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRo
           },
           meta: {
             status: 'sent',
-            messageType: 'pdf_analysis'
+            messageType: 'pdf_analysis',
+            client_id: crypto.randomUUID() // Add client_id for idempotency
           }
         });
 
@@ -95,7 +96,8 @@ const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRo
         },
         meta: {
           status: 'sent',
-          messageType: 'error'
+          messageType: 'error',
+          client_id: crypto.randomUUID() // Add client_id for idempotency
         }
       });
     }
@@ -162,7 +164,8 @@ const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRo
         },
         meta: {
           status: 'sent',
-          messageType: 'pdf_upload'
+          messageType: 'pdf_upload',
+          client_id: crypto.randomUUID() // Add client_id for idempotency
         }
       });
 
