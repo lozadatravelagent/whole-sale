@@ -115,6 +115,7 @@ serve(async (req) => {
 
         } catch (parseError) {
             console.error('❌ pdf-parse error:', parseError);
+            console.error('Error details:', parseError.message, parseError.stack);
 
             // Fallback to simple text extraction
             console.log('📄 Falling back to simple text extraction...');
@@ -124,44 +125,82 @@ serve(async (req) => {
                 const textDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: false });
                 const rawText = textDecoder.decode(uint8Array);
 
+                console.log('📄 Raw text length:', rawText.length);
+
                 // Extract readable text by filtering out binary data
                 let readableText = rawText
                     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ' ') // Remove control characters
                     .replace(/\s+/g, ' ') // Normalize whitespace
                     .trim();
 
-                // Try to extract text from PDF structure
-                const pdfTextMatches = rawText.match(/\((.*?)\)/g);
-                if (pdfTextMatches) {
+                console.log('📄 Readable text after cleanup:', readableText.substring(0, 500));
+
+                // Try to extract text from PDF structure - more aggressive pattern
+                // This captures text between parentheses in PDF text objects
+                const pdfTextMatches = rawText.match(/\(((?:[^()\\]|\\[()])*)\)/g);
+                if (pdfTextMatches && pdfTextMatches.length > 0) {
+                    console.log('📄 Found PDF text matches:', pdfTextMatches.length);
                     const extractedPdfText = pdfTextMatches
-                        .map(match => match.replace(/[()]/g, ''))
-                        .filter(text => text.length > 2 && /[A-Za-z]/.test(text))
+                        .map(match => {
+                            // Remove parentheses and unescape special chars
+                            let text = match.slice(1, -1);
+                            text = text.replace(/\\([()\\])/g, '$1'); // Unescape \( \) \\
+                            text = text.replace(/\\n/g, '\n'); // Unescape newlines
+                            text = text.replace(/\\r/g, '\r'); // Unescape carriage returns
+                            text = text.replace(/\\t/g, '\t'); // Unescape tabs
+                            return text;
+                        })
+                        .filter(text => text.length > 0 && /[A-Za-z0-9]/.test(text))
                         .join(' ');
+
+                    console.log('📄 Extracted PDF text length:', extractedPdfText.length);
+                    console.log('📄 Sample extracted text:', extractedPdfText.substring(0, 500));
 
                     if (extractedPdfText.length > readableText.length) {
                         readableText = extractedPdfText;
                     }
                 }
 
-                // Also try to extract from PDF streams
-                const streamMatches = rawText.match(/stream\s+(.*?)\s+endstream/g);
-                if (streamMatches) {
-                    for (const stream of streamMatches) {
-                        const streamText = stream
-                            .replace(/stream\s+/, '')
-                            .replace(/\s+endstream/, '')
-                            .replace(/[^\x20-\x7E]/g, ' ')
-                            .trim();
+                // Try to extract from TJ/Tj operators (PDF text showing operators)
+                const tjMatches = rawText.match(/\[(.*?)\]\s*TJ|(?:\(((?:[^()\\]|\\[()])*)\))\s*Tj/g);
+                if (tjMatches && tjMatches.length > 0) {
+                    console.log('📄 Found TJ/Tj operator matches:', tjMatches.length);
+                    const tjText = tjMatches
+                        .map(match => {
+                            // Extract text from array or single string
+                            const arrayMatch = match.match(/\[(.*?)\]/);
+                            const stringMatch = match.match(/\(((?:[^()\\]|\\[()])*)\)/);
 
-                        if (streamText.length > 10) {
-                            readableText += ' ' + streamText;
-                        }
+                            if (arrayMatch) {
+                                // TJ operator with array
+                                return arrayMatch[1].replace(/\(((?:[^()\\]|\\[()])*)\)/g, (_, text) => {
+                                    return text.replace(/\\([()\\])/g, '$1');
+                                });
+                            } else if (stringMatch) {
+                                // Tj operator with string
+                                return stringMatch[1].replace(/\\([()\\])/g, '$1');
+                            }
+                            return '';
+                        })
+                        .filter(text => text.length > 0)
+                        .join(' ');
+
+                    console.log('📄 TJ/Tj extracted text length:', tjText.length);
+                    if (tjText.length > readableText.length) {
+                        readableText = tjText;
                     }
                 }
 
+                // Normalize whitespace in final text
+                readableText = readableText.replace(/\s+/g, ' ').trim();
+
                 if (readableText.length < 10) {
+                    console.error('⚠️ Insufficient text extracted:', readableText.length, 'chars');
                     throw new Error('PDF text extraction resulted in insufficient content. The PDF may be image-based or corrupted.');
                 }
+
+                console.log('✅ Fallback extraction successful, text length:', readableText.length);
+                console.log('📄 Final extracted text preview:', readableText.substring(0, 1000));
 
                 return new Response(JSON.stringify({
                     success: true,
@@ -184,6 +223,7 @@ serve(async (req) => {
 
             } catch (fallbackError) {
                 console.error('❌ Fallback extraction error:', fallbackError);
+                console.error('Fallback error details:', fallbackError.message, fallbackError.stack);
                 throw new Error(`PDF text extraction failed with both pdf-parse and fallback methods: ${parseError.message}`);
             }
         }
