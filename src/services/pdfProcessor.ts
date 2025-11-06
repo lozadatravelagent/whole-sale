@@ -2668,6 +2668,48 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
         }
     }
 
+    // Pattern 4: Calculate hotel price from total - flight price (FALLBACK CALCULATION)
+    // This is useful when the PDF has total price but not individual hotel price
+    if (hotelPrice === 0) {
+        console.log(`🏨 [HOTEL PRICE PARSE - Pattern 4] Attempting calculation from total - flight`);
+
+        // Extract total price from the main price display (usually at the top)
+        const totalPriceMatch = content.match(/\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/);
+        if (totalPriceMatch) {
+            const totalPrice = parsePrice(totalPriceMatch[1]);
+            console.log(`💰 [TOTAL PRICE] Found total: ${totalPrice}`);
+
+            // Try to find flight prices to subtract from total
+            // Look for patterns that indicate flight pricing
+            const flightPricePatterns = [
+                // After "Vuelos" section or airline name
+                /(?:Vuelos|✈️)[^\d]*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i,
+                // In breakdown sections
+                /(?:Vuelo|Flight|Aéreo)[^\d]*\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/i
+            ];
+
+            let flightPrice = 0;
+            for (const pattern of flightPricePatterns) {
+                const match = content.match(pattern);
+                if (match) {
+                    flightPrice = parsePrice(match[1]);
+                    console.log(`✈️ [FLIGHT PRICE] Found flight price: ${flightPrice}`);
+                    break;
+                }
+            }
+
+            // If we found both total and flight price, calculate hotel price
+            if (totalPrice > 0 && flightPrice > 0 && totalPrice > flightPrice) {
+                hotelPrice = totalPrice - flightPrice;
+                console.log(`🏨 [HOTEL PRICE CALC] Calculated hotel price: ${totalPrice} - ${flightPrice} = ${hotelPrice}`);
+            } else if (totalPrice > 0 && flightPrice === 0) {
+                // If no flight price found, assume total might be for hotel only (or 50/50 split as fallback)
+                // This is a very rough estimate - use with caution
+                console.log(`⚠️ [HOTEL PRICE] No flight price found, cannot calculate hotel price reliably`);
+            }
+        }
+    }
+
     hotels.push({
         name: hotelName,
         location,
