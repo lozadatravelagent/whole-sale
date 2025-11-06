@@ -427,7 +427,10 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
         response += `🏨 **Hoteles Encontrados:**\n\n`;
         content.hotels.forEach((hotel, index) => {
             response += `${hotel.name} - ${hotel.location}\n`;
-            response += `🌙 ${hotel.nights} noches | 💰 $${hotel.price}/noche\n\n`;
+            // hotel.price is the TOTAL price for all nights, calculate per-night if needed
+            const pricePerNight = hotel.nights > 0 ? (hotel.price / hotel.nights).toFixed(2) : hotel.price.toFixed(2);
+            const totalPrice = hotel.price.toFixed(2);
+            response += `🌙 ${hotel.nights} ${hotel.nights === 1 ? 'noche' : 'noches'} | 💰 $${totalPrice} total ($${pricePerNight}/noche)\n\n`;
         });
     }
 
@@ -2575,15 +2578,43 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
 }> {
     const hotels = [];
 
-    // Extract hotel name from template
-    const hotelNameMatch = content.match(/Hotel Recomendado[^$]*?([^\n]+(?:Hotel|Resort|Aparthotel|APARTHOTEL)[^\n]*)/i) ||
-        content.match(/([^\n]+(?:Hotel|Resort|Aparthotel|APARTHOTEL)[^\n]*)/i);
-    const hotelName = hotelNameMatch ? hotelNameMatch[1].trim() : 'Hotel no especificado';
+    // Extract hotel name from template - multiple patterns
+    let hotelName = 'Hotel no especificado';
+
+    // Pattern 1: Look for hotel name after "Hotel Recomendado"
+    const hotelNamePattern1 = /HotelRecomendado([A-Z][A-Za-z\s]+?)(?:\d+estrellas|Precio:|$)/i;
+    const hotelNameMatch1 = content.match(hotelNamePattern1);
+    if (hotelNameMatch1) {
+        hotelName = hotelNameMatch1[1].trim();
+        console.log(`🏨 [HOTEL NAME - Pattern 1] "${hotelName}"`);
+    } else {
+        // Fallback: original pattern
+        const hotelNameMatch = content.match(/Hotel\s*Recomendado[^$]*?([^\n]+(?:Hotel|Resort|Aparthotel|APARTHOTEL)[^\n]*)/i) ||
+            content.match(/([^\n]+(?:Hotel|Resort|Aparthotel|APARTHOTEL)[^\n]*)/i);
+        if (hotelNameMatch) {
+            hotelName = hotelNameMatch[1].trim();
+            console.log(`🏨 [HOTEL NAME - Fallback] "${hotelName}"`);
+        }
+    }
 
     // Extract location - more flexible pattern
-    const locationMatch = content.match(/(\d+)\s*estrellas[^$]*?([^\n]+(?:Cana|CANA|Aires|AIRES|Madrid|Barcelona|Miami|República Dominicana)[^\n]*)/i) ||
-        content.match(/([^\n]+(?:Cana|CANA|Aires|AIRES|Madrid|Barcelona|Miami|República Dominicana)[^\n]*)/i);
-    const location = locationMatch ? (locationMatch[2] || locationMatch[1]).trim() : 'Ubicación no especificada';
+    let location = 'Ubicación no especificada';
+
+    // Pattern 1: After stars rating
+    const locationPattern1 = /(\d+)\s*estrellas\s*([A-Za-zÀ-ÿ\s,]+?)(?:Precio:|DETALLE|$)/i;
+    const locationMatch1 = content.match(locationPattern1);
+    if (locationMatch1) {
+        location = locationMatch1[2].trim();
+        console.log(`🏨 [LOCATION - Pattern 1] "${location}"`);
+    } else {
+        // Fallback: original pattern
+        const locationMatch = content.match(/(\d+)\s*estrellas[^$]*?([^\n]+(?:Cana|CANA|Aires|AIRES|Madrid|Barcelona|Miami|República Dominicana)[^\n]*)/i) ||
+            content.match(/([^\n]+(?:Cana|CANA|Aires|AIRES|Madrid|Barcelona|Miami|República Dominicana|Caldes|Montbui)[^\n]*)/i);
+        if (locationMatch) {
+            location = (locationMatch[2] || locationMatch[1]).trim();
+            console.log(`🏨 [LOCATION - Fallback] "${location}"`);
+        }
+    }
 
     // Extract nights duration
     const nightsMatch = content.match(/(\d+)\s*(?:Noche|Noches|noche|noches)/i);
@@ -2592,12 +2623,22 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
     // Extract hotel price - try multiple patterns
     let hotelPrice = 0;
 
-    // Pattern 1: Look for "Precio: $XXX USD" near Hotel section
+    // Pattern 1: Look for "Precio: $XXX USD" near Hotel section (with flexible spacing)
     const pricePattern1 = /Precio:\s*\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i;
     const priceMatch1 = content.match(pricePattern1);
     if (priceMatch1) {
         hotelPrice = parsePrice(priceMatch1[1]);
         console.log(`🏨 [HOTEL PRICE PARSE - Pattern 1] "${priceMatch1[1]}" → ${hotelPrice}`);
+    }
+
+    // Pattern 1b: Try without spaces (for when PDF text is concatenated)
+    if (hotelPrice === 0) {
+        const pricePattern1b = /Precio:\$?(\d{1,10}(?:[.,]\d{1,3})+|\d+)USD/i;
+        const priceMatch1b = content.match(pricePattern1b);
+        if (priceMatch1b) {
+            hotelPrice = parsePrice(priceMatch1b[1]);
+            console.log(`🏨 [HOTEL PRICE PARSE - Pattern 1b No Spaces] "${priceMatch1b[1]}" → ${hotelPrice}`);
+        }
     }
 
     // Pattern 2: Look for price after hotel name in the hotel section
