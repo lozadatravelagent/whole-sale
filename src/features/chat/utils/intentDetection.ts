@@ -94,8 +94,54 @@ export const isPriceChangeRequest = (message: string): boolean => {
     'vuelo 1',
     'vuelo 2',
     'vuelo 3',
-    'vuelo 4'
+    'vuelo 4',
+    // Hotel price keywords
+    'precio del hotel',
+    'precio de hotel',
+    'hotel a',
+    'hotel cueste',
+    'hotel por'
   ];
 
   return priceKeywords.some(keyword => norm.includes(keyword));
+};
+
+// Extract price change target (total, hotel, or flight)
+export const extractPriceChangeTarget = (message: string): 'total' | 'hotel' | 'flights' | 'unknown' => {
+  const norm = normalizeText(message);
+
+  // Check for hotel-specific price change
+  if (norm.includes('precio del hotel') ||
+      norm.includes('precio de hotel') ||
+      norm.includes('hotel a') ||
+      norm.includes('hotel cueste') ||
+      norm.includes('hotel por')) {
+    return 'hotel';
+  }
+
+  // Check for flight-specific price change
+  if (norm.includes('precio del vuelo') ||
+      norm.includes('precio de vuelo') ||
+      norm.includes('vuelo a') ||
+      norm.includes('vuelo cueste') ||
+      norm.includes('primer vuelo') ||
+      norm.includes('segundo vuelo')) {
+    return 'flights';
+  }
+
+  // Check for total/package price change
+  if (norm.includes('precio total') ||
+      norm.includes('total a') ||
+      norm.includes('paquete a') ||
+      norm.includes('todo a') ||
+      norm.includes('que cueste')) {
+    return 'total';
+  }
+
+  // Default to total if just "cambia el precio"
+  if (norm.includes('cambia el precio') || norm.includes('cambiar precio')) {
+    return 'total';
+  }
+
+  return 'unknown';
 };

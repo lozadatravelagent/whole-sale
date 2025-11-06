@@ -468,8 +468,25 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
 
     response += `💬 **¿Qué te gustaría modificar?**\n\n`;
     response += `Puedes pedirme:\n\n`;
-    response += `• "Quiero modificarle el precio a [cantidad]"  \n`;
-    response += `• "Cambia el precio del primer vuelo a [cantidad] y el segundo a [cantidad]"\n\n`;
+
+    // Show different options based on content type
+    const hasFlights = content.flights && content.flights.length > 0;
+    const hasHotels = content.hotels && content.hotels.length > 0;
+
+    if (hasFlights && hasHotels) {
+        // Combined package
+        response += `• "Cambia el precio total a [cantidad]" - Ajusta el precio del paquete completo\n`;
+        response += `• "Cambia el precio del hotel a [cantidad]" - Modifica solo el precio del hotel\n`;
+        response += `• "Cambia el precio del primer vuelo a [cantidad] y el segundo a [cantidad]" - Ajusta precios de vuelos\n\n`;
+    } else if (hasFlights) {
+        // Flights only
+        response += `• "Quiero modificarle el precio a [cantidad]"  \n`;
+        response += `• "Cambia el precio del primer vuelo a [cantidad] y el segundo a [cantidad]"\n\n`;
+    } else if (hasHotels) {
+        // Hotels only
+        response += `• "Cambia el precio total a [cantidad]"  \n`;
+        response += `• "Cambia el precio del hotel a [cantidad]"\n\n`;
+    }
 
     return response;
 }
@@ -966,6 +983,123 @@ export async function generateModifiedPdfWithIndividualPrices(
 }
 
 /**
+ * Generate modified PDF with new hotel price (keeping flight prices unchanged)
+ */
+export async function generateModifiedPdfWithHotelPrice(
+    analysis: PdfAnalysisResult,
+    newHotelPrice: number,
+    conversationId: string
+): Promise<{ success: boolean; pdfUrl?: string; totalPrice?: number; error?: string }> {
+    try {
+        console.log('🏨 Generating modified PDF with new hotel price:', newHotelPrice);
+
+        const { generateCombinedTravelPdf } = await import('./pdfMonkey');
+
+        if (!analysis.content) {
+            throw new Error('No content available from PDF analysis');
+        }
+
+        if (!analysis.content.hotels || analysis.content.hotels.length === 0) {
+            throw new Error('No hotel information available');
+        }
+
+        // Keep flight prices unchanged
+        const adjustedFlights = analysis.content.flights?.map((flight, index) => {
+            if ((flight as any).legs && (flight as any).legs.length > 0) {
+                return {
+                    id: `hotel-modified-${Date.now()}-${index}`,
+                    airline: {
+                        code: extractAirlineCode(flight.airline),
+                        name: flight.airline
+                    },
+                    price: {
+                        amount: flight.price, // Keep original flight price
+                        currency: analysis.content?.currency || 'USD'
+                    },
+                    adults: analysis.content?.passengers || 1,
+                    childrens: 0,
+                    departure_date: flight.dates.includes(' / ') ?
+                        flight.dates.split(' / ')[0].trim() :
+                        parseDateRange(flight.dates).departureDate,
+                    return_date: flight.dates.includes(' / ') ?
+                        flight.dates.split(' / ')[1].trim() :
+                        parseDateRange(flight.dates).returnDate,
+                    legs: (flight as any).legs
+                };
+            }
+            return null;
+        }).filter(flight => flight !== null) || [];
+
+        // Update hotel price
+        const adjustedHotels = analysis.content.hotels?.map((hotel, index) => ({
+            id: `hotel-price-modified-${Date.now()}-${index}`,
+            name: hotel.name,
+            city: hotel.location,
+            address: hotel.location,
+            category: '5', // Default category
+            check_in: analysis.content?.flights?.[0]?.dates.split(' / ')[0] || '2025-11-01',
+            check_out: analysis.content?.flights?.[0]?.dates.split(' / ')[1] || '2025-11-15',
+            nights: hotel.nights || 7,
+            rooms: [{
+                type: 'Standard',
+                description: 'Habitación estándar - precio modificado',
+                price_per_night: parseFloat((newHotelPrice / (hotel.nights || 7)).toFixed(2)),
+                total_price: newHotelPrice, // New hotel price
+                currency: analysis.content?.currency || 'USD',
+                availability: 5,
+                occupancy_id: `room-${index}`
+            }],
+            selectedRoom: {
+                type: 'Standard',
+                description: 'Habitación estándar - precio modificado',
+                price_per_night: parseFloat((newHotelPrice / (hotel.nights || 7)).toFixed(2)),
+                total_price: newHotelPrice,
+                currency: analysis.content?.currency || 'USD',
+                availability: 5,
+                occupancy_id: `room-${index}`
+            }
+        })) || [];
+
+        // Calculate new total (flights + modified hotel)
+        const flightsTotal = adjustedFlights.reduce((sum, f) => sum + (f.price?.amount || 0), 0);
+        const hotelsTotal = newHotelPrice;
+        const newTotalPrice = flightsTotal + hotelsTotal;
+
+        console.log('💰 Price breakdown:', {
+            flightsTotal,
+            hotelsTotal: newHotelPrice,
+            newTotalPrice
+        });
+
+        // Generate PDF with combined travel data
+        const result = await generateCombinedTravelPdf(
+            adjustedFlights,
+            adjustedHotels,
+            conversationId
+        );
+
+        if (result.success && result.pdfUrl) {
+            return {
+                success: true,
+                pdfUrl: result.pdfUrl,
+                totalPrice: newTotalPrice
+            };
+        } else {
+            return {
+                success: false,
+                error: result.error || 'Failed to generate modified PDF'
+            };
+        }
+    } catch (error) {
+        console.error('❌ Error generating modified PDF with hotel price:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
  * Generate modified PDF with new price
  */
 export async function generateModifiedPdf(
@@ -1144,6 +1278,13 @@ export async function processPriceChangeRequest(
 
         const lowerRequest = request.toLowerCase();
 
+        // Import the extractPriceChangeTarget function
+        const { extractPriceChangeTarget } = await import('../features/chat/utils/intentDetection');
+
+        // Detect what type of price change the user wants
+        const changeTarget = extractPriceChangeTarget(request);
+        console.log('🎯 Price change target detected:', changeTarget);
+
         // First, check if user is specifying multiple individual prices
         const multiplePrices = extractMultiplePricesFromMessage(request);
 
@@ -1212,11 +1353,47 @@ export async function processPriceChangeRequest(
             }
         }
 
-        // If no multiple prices, check for single total price (existing behavior)
+        // If no multiple prices, check for single price change
         const requestedPrice = extractPriceFromMessage(request);
 
         if (requestedPrice) {
-            console.log('💰 User requested specific price:', requestedPrice);
+            console.log('💰 User requested specific price:', requestedPrice, 'for target:', changeTarget);
+
+            // Handle hotel-specific price change
+            if (changeTarget === 'hotel') {
+                console.log('🏨 Processing hotel-specific price change');
+
+                // Validate that we have hotels in the analysis
+                if (!analysis.success || !analysis.content || !analysis.content.hotels || analysis.content.hotels.length === 0) {
+                    return {
+                        response: '❌ No puedo modificar el precio del hotel porque no hay información de hotel en el PDF analizado. Por favor, asegúrate de que el PDF contenga información de hotel.'
+                    };
+                }
+
+                // Generate modified PDF with new hotel price
+                const result = await generateModifiedPdfWithHotelPrice(analysis, requestedPrice, conversationId);
+
+                if (result.success && result.pdfUrl) {
+                    const hotel = analysis.content.hotels[0];
+                    const nights = hotel.nights || 7;
+                    const pricePerNight = (requestedPrice / nights).toFixed(2);
+
+                    return {
+                        response: `✅ **Precio del Hotel Modificado**\n\n` +
+                            `🏨 **Hotel:** ${hotel.name}\n` +
+                            `📍 **Ubicación:** ${hotel.location}\n` +
+                            `💰 **Nuevo precio total:** $${requestedPrice.toFixed(2)} USD (${nights} ${nights === 1 ? 'noche' : 'noches'})\n` +
+                            `💵 **Precio por noche:** $${pricePerNight} USD\n\n` +
+                            `📄 **Precio total del paquete:** $${result.totalPrice.toFixed(2)} USD\n\n` +
+                            `Puedes descargar el PDF actualizado desde el archivo adjunto.`,
+                        modifiedPdfUrl: result.pdfUrl
+                    };
+                } else {
+                    return {
+                        response: `❌ **Error generando PDF modificado**\n\nNo pude generar el PDF con el nuevo precio del hotel de ${requestedPrice}. Error: ${result.error}\n\n¿Podrías intentar nuevamente?`
+                    };
+                }
+            }
 
             // If we have analysis data, use it; otherwise create a basic analysis
             let effectiveAnalysis = analysis;
