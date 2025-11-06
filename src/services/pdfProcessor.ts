@@ -468,25 +468,7 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
 
     response += `💬 **¿Qué te gustaría modificar?**\n\n`;
     response += `Puedes pedirme:\n\n`;
-
-    // Show different options based on content type
-    const hasFlights = content.flights && content.flights.length > 0;
-    const hasHotels = content.hotels && content.hotels.length > 0;
-
-    if (hasFlights && hasHotels) {
-        // Combined package
-        response += `• "Cambia el precio total a [cantidad]" - Ajusta el precio del paquete completo\n`;
-        response += `• "Cambia el precio del hotel a [cantidad]" - Modifica solo el precio del hotel\n`;
-        response += `• "Cambia el precio del primer vuelo a [cantidad] y el segundo a [cantidad]" - Ajusta precios de vuelos\n\n`;
-    } else if (hasFlights) {
-        // Flights only
-        response += `• "Quiero modificarle el precio a [cantidad]"  \n`;
-        response += `• "Cambia el precio del primer vuelo a [cantidad] y el segundo a [cantidad]"\n\n`;
-    } else if (hasHotels) {
-        // Hotels only
-        response += `• "Cambia el precio total a [cantidad]"  \n`;
-        response += `• "Cambia el precio del hotel a [cantidad]"\n\n`;
-    }
+    response += `• "Cambia el precio total a [cantidad]"\n\n`;
 
     return response;
 }
@@ -815,6 +797,42 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number): an
         const adjustedNightlyPrice = parseFloat((hotel.price * priceRatio).toFixed(2));
         const adjustedTotalPrice = parseFloat((adjustedNightlyPrice * hotel.nights).toFixed(2));
 
+        // Extract check-in and check-out dates from flights - NO MOCK DATA
+        let checkIn = '';
+        let checkOut = '';
+
+        if (analysis.content?.flights && analysis.content.flights.length > 0) {
+            const firstFlight = analysis.content.flights[0];
+            const lastFlight = analysis.content.flights[analysis.content.flights.length - 1];
+
+            // Get check-in date from first flight
+            if (firstFlight.dates) {
+                if (firstFlight.dates.includes(' / ')) {
+                    checkIn = firstFlight.dates.split(' / ')[0].trim();
+                } else if (firstFlight.dates.includes(' | ')) {
+                    checkIn = firstFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                } else {
+                    checkIn = firstFlight.dates.replace('📅', '').trim();
+                }
+            }
+
+            // Get check-out date from last flight
+            if (lastFlight.dates && analysis.content.flights.length > 1) {
+                if (lastFlight.dates.includes(' / ')) {
+                    checkOut = lastFlight.dates.split(' / ')[1]?.trim() || '';
+                } else if (lastFlight.dates.includes(' | ')) {
+                    checkOut = lastFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                } else {
+                    checkOut = lastFlight.dates.replace('📅', '').trim();
+                }
+            } else if (hotel.nights > 0 && checkIn) {
+                // Calculate check-out based on nights only if we have checkIn
+                const checkInDate = new Date(checkIn);
+                checkInDate.setDate(checkInDate.getDate() + hotel.nights);
+                checkOut = checkInDate.toISOString().split('T')[0];
+            }
+        }
+
         return {
             id: `regenerated-hotel-${Date.now()}-${index}`,
             name: hotel.name,
@@ -822,8 +840,8 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number): an
             address: hotel.location,
             category: "4",
             nights: hotel.nights,
-            check_in: analysis.content?.flights?.[0]?.dates.split(' / ')[0] || '2025-11-01',
-            check_out: analysis.content?.flights?.[0]?.dates.split(' / ')[1] || '2025-11-15',
+            check_in: checkIn,
+            check_out: checkOut,
             rooms: [{
                 type: 'Standard',
                 description: 'Habitación estándar',
@@ -1031,34 +1049,72 @@ export async function generateModifiedPdfWithHotelPrice(
         }).filter(flight => flight !== null) || [];
 
         // Update hotel price
-        const adjustedHotels = analysis.content.hotels?.map((hotel, index) => ({
-            id: `hotel-price-modified-${Date.now()}-${index}`,
-            name: hotel.name,
-            city: hotel.location,
-            address: hotel.location,
-            category: '5', // Default category
-            check_in: analysis.content?.flights?.[0]?.dates.split(' / ')[0] || '2025-11-01',
-            check_out: analysis.content?.flights?.[0]?.dates.split(' / ')[1] || '2025-11-15',
-            nights: hotel.nights || 7,
-            rooms: [{
-                type: 'Standard',
-                description: 'Habitación estándar - precio modificado',
-                price_per_night: parseFloat((newHotelPrice / (hotel.nights || 7)).toFixed(2)),
-                total_price: newHotelPrice, // New hotel price
-                currency: analysis.content?.currency || 'USD',
-                availability: 5,
-                occupancy_id: `room-${index}`
-            }],
-            selectedRoom: {
-                type: 'Standard',
-                description: 'Habitación estándar - precio modificado',
-                price_per_night: parseFloat((newHotelPrice / (hotel.nights || 7)).toFixed(2)),
-                total_price: newHotelPrice,
-                currency: analysis.content?.currency || 'USD',
-                availability: 5,
-                occupancy_id: `room-${index}`
+        const adjustedHotels = analysis.content.hotels?.map((hotel, index) => {
+            // Extract check-in and check-out dates from flights
+            let checkIn = '2025-11-01';
+            let checkOut = '2025-11-15';
+
+            if (analysis.content?.flights && analysis.content.flights.length > 0) {
+                const firstFlight = analysis.content.flights[0];
+                const lastFlight = analysis.content.flights[analysis.content.flights.length - 1];
+
+                // Get check-in date from first flight
+                if (firstFlight.dates) {
+                    if (firstFlight.dates.includes(' / ')) {
+                        checkIn = firstFlight.dates.split(' / ')[0].trim();
+                    } else if (firstFlight.dates.includes(' | ')) {
+                        checkIn = firstFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                    } else {
+                        checkIn = firstFlight.dates.replace('📅', '').trim();
+                    }
+                }
+
+                // Get check-out date from last flight
+                if (lastFlight.dates && analysis.content.flights.length > 1) {
+                    if (lastFlight.dates.includes(' / ')) {
+                        checkOut = lastFlight.dates.split(' / ')[1]?.trim() || lastFlight.dates.split(' / ')[0].trim();
+                    } else if (lastFlight.dates.includes(' | ')) {
+                        checkOut = lastFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                    } else {
+                        checkOut = lastFlight.dates.replace('📅', '').trim();
+                    }
+                } else if (hotel.nights > 0) {
+                    // Calculate check-out based on nights
+                    const checkInDate = new Date(checkIn);
+                    checkInDate.setDate(checkInDate.getDate() + hotel.nights);
+                    checkOut = checkInDate.toISOString().split('T')[0];
+                }
             }
-        })) || [];
+
+            return {
+                id: `hotel-price-modified-${Date.now()}-${index}`,
+                name: hotel.name,
+                city: hotel.location,
+                address: hotel.location,
+                category: '5', // Default category
+                check_in: checkIn,
+                check_out: checkOut,
+                nights: hotel.nights || 7,
+                rooms: [{
+                    type: 'Standard',
+                    description: 'Habitación estándar - precio modificado',
+                    price_per_night: parseFloat((newHotelPrice / (hotel.nights || 7)).toFixed(2)),
+                    total_price: newHotelPrice, // New hotel price
+                    currency: analysis.content?.currency || 'USD',
+                    availability: 5,
+                    occupancy_id: `room-${index}`
+                }],
+                selectedRoom: {
+                    type: 'Standard',
+                    description: 'Habitación estándar - precio modificado',
+                    price_per_night: parseFloat((newHotelPrice / (hotel.nights || 7)).toFixed(2)),
+                    total_price: newHotelPrice,
+                    currency: analysis.content?.currency || 'USD',
+                    availability: 5,
+                    occupancy_id: `room-${index}`
+                }
+            };
+        }) || [];
 
         // Calculate new total (flights + modified hotel)
         const flightsTotal = adjustedFlights.reduce((sum, f) => sum + (f.price?.amount || 0), 0);
@@ -1175,22 +1231,62 @@ export async function generateModifiedPdf(
                 }
             }).filter(flight => flight !== null) || [];
 
-            adjustedHotels = analysis.content.hotels?.map((hotel, index) => ({
-                id: `external-modified-hotel-${Date.now()}-${index}`,
-                name: hotel.name,
-                city: hotel.location,
-                address: hotel.location,
-                check_in: analysis.content?.flights?.[0]?.dates.split(' / ')[0] || '2025-11-01',
-                check_out: analysis.content?.flights?.[0]?.dates.split(' / ')[1] || '2025-11-15',
-                rooms: [{
-                    type: 'Standard',
-                    description: 'Habitación estándar modificada',
-                    total_price: parseFloat((hotel.price * hotel.nights * priceRatio).toFixed(2)),
-                    currency: analysis.content?.currency || 'USD',
-                    availability: 5,
-                    occupancy_id: `external-room-${index}`
-                }]
-            })) || [];
+            adjustedHotels = analysis.content.hotels?.map((hotel, index) => {
+                // Extract check-in and check-out dates from flights
+                let checkIn = '2025-11-01';
+                let checkOut = '2025-11-15';
+
+                if (analysis.content?.flights && analysis.content.flights.length > 0) {
+                    const firstFlight = analysis.content.flights[0];
+                    const lastFlight = analysis.content.flights[analysis.content.flights.length - 1];
+
+                    // Get check-in date from first flight (outbound)
+                    if (firstFlight.dates) {
+                        if (firstFlight.dates.includes(' / ')) {
+                            checkIn = firstFlight.dates.split(' / ')[0].trim();
+                        } else if (firstFlight.dates.includes(' | ')) {
+                            checkIn = firstFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                        } else {
+                            checkIn = firstFlight.dates.replace('📅', '').trim();
+                        }
+                    }
+
+                    // Get check-out date from last flight (return)
+                    if (lastFlight.dates && analysis.content.flights.length > 1) {
+                        if (lastFlight.dates.includes(' / ')) {
+                            checkOut = lastFlight.dates.split(' / ')[1]?.trim() || lastFlight.dates.split(' / ')[0].trim();
+                        } else if (lastFlight.dates.includes(' | ')) {
+                            checkOut = lastFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                        } else {
+                            checkOut = lastFlight.dates.replace('📅', '').trim();
+                        }
+                    } else if (hotel.nights > 0) {
+                        // Calculate check-out based on nights
+                        const checkInDate = new Date(checkIn);
+                        checkInDate.setDate(checkInDate.getDate() + hotel.nights);
+                        checkOut = checkInDate.toISOString().split('T')[0];
+                    }
+                }
+
+                console.log(`🏨 Hotel dates: check_in=${checkIn}, check_out=${checkOut}, nights=${hotel.nights}`);
+
+                return {
+                    id: `external-modified-hotel-${Date.now()}-${index}`,
+                    name: hotel.name,
+                    city: hotel.location,
+                    address: hotel.location,
+                    check_in: checkIn,
+                    check_out: checkOut,
+                    rooms: [{
+                        type: 'Standard',
+                        description: 'Habitación estándar modificada',
+                        total_price: parseFloat((hotel.price * hotel.nights * priceRatio).toFixed(2)),
+                        currency: analysis.content?.currency || 'USD',
+                        availability: 5,
+                        occupancy_id: `external-room-${index}`
+                    }]
+                };
+            }) || [];
         }
 
         // Ensure exact total equals the requested newPrice by applying a final delta adjustment
