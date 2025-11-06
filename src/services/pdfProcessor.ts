@@ -2140,17 +2140,14 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
 
     // Helper function to extract airline name from section content
     const extractAirlineName = (sectionContent: string): string => {
+        // Only use location-specific patterns - don't use generic airline name patterns
         const airlinePatterns = [
-            // Pattern 1: Airline code + name (e.g., "CM Copa Airlines")
-            /(?:DETALLE\s+DEL\s+VUELO\s+)?([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s*Ocupación|$)/im,
-            // Pattern 2: Just after "DETALLE DEL VUELO"
-            /DETALLE\s+DEL\s+VUELO\s+([A-Z]{2,3}\s+[A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s*Ocupación|$)/i,
-            // Pattern 3: Airline code + name with flexible spacing
-            /([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s*\n\s*Ocupación)/i,
-            // Pattern 4: Known airline names
-            /([A-Z\s]*(?:Copa\s+Airlines|COPA\s+AIRLINES|Aerolíneas\s+Argentinas|LATAM|Avianca|United|American|Delta)[A-Z\s]*)/i,
-            // Pattern 5: Generic airline patterns
-            /([A-Z\s]+(?:AIRLINES|AIRLINE|GROUP|AEROLINEAS|AEROLINEA|S\.A\.|SA)[A-Z\s\.]*)/i,
+            // Pattern 1: DETALLE DEL VUELO followed by code + name (most specific)
+            /DETALLE\s+DEL\s+VUELO\s+([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s+Ocupación)/i,
+            // Pattern 2: Code + name just before Ocupación
+            /\n\s*([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)\s+Ocupación/i,
+            // Pattern 3: After DETALLE with any spacing until Ocupación
+            /DETALLE\s+DEL\s+VUELO[^\n]*\n\s*([A-Z]{2,3})\s+([A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)\s+Ocupación/im,
         ];
 
         for (const pattern of airlinePatterns) {
@@ -2158,8 +2155,10 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
             if (match) {
                 // For patterns with two capture groups, combine code and name
                 if (match[2]) {
-                    return `${match[1]} ${match[2]}`.trim();
-                } else {
+                    const code = match[1].trim();
+                    const name = match[2].trim();
+                    return `${code} ${name}`;
+                } else if (match[1]) {
                     return match[1].trim();
                 }
             }
@@ -2219,50 +2218,73 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         console.log(`  Match ${i + 1}: "${match[0]}" at position ${match.index}`);
     });
 
-    if (priceMarkerMatches.length >= 2 || (isRoundTrip && airportMatches.length >= 4)) {
-        // Multiple flight options: process each section separately
-        console.log('🔍 Processing multiple flight option(s)...');
-        console.log('  isRoundTrip:', isRoundTrip, 'priceMarkers:', priceMarkerMatches.length);
+    // Process round trips with structured flight details
+    // This handles both: multiple flight options (2+ prices) OR single round trip with 4+ airports
+    if (priceMarkerMatches.length >= 2 || (isRoundTrip && airportMatches.length >= 4) || (isRoundTrip && airportMatches.length >= 2)) {
+        // Multiple flight options OR round trip with airport details
+        console.log('🔍 Processing round trip with flight details...');
+        console.log('  isRoundTrip:', isRoundTrip, 'priceMarkers:', priceMarkerMatches.length, 'airports:', airportMatches.length);
 
         // Build sections: each section includes the price and goes until the next price marker
         const flightSections = [];
 
-        for (let i = 0; i < priceMarkerMatches.length; i++) {
-            // Start from the previous "Precio total" (or beginning) to capture airline name
-            // Airline name appears before the price, so we need to look back
-            let sectionStart: number;
-            if (i === 0) {
-                // First section: start from beginning
-                sectionStart = 0;
-            } else {
-                // Other sections: start from after the previous "Vuelo de ida" to capture the airline
-                // Look for the airline name which appears before the price
-                const previousMatchEnd = priceMarkerMatches[i - 1].index! + priceMarkerMatches[i - 1][0].length;
-                sectionStart = previousMatchEnd;
-            }
-
-            // End at the start of the next price pattern (or end of content)
-            const sectionEnd = priceMarkerMatches[i + 1]?.index || content.length;
-
-            const fullSection = content.substring(sectionStart, sectionEnd);
-
-            // Split this section into outbound and return parts
-            const returnFlightIndex = fullSection.toLowerCase().indexOf('vuelo de regreso');
+        // If no price markers but is round trip, treat entire content as one section
+        if (priceMarkerMatches.length === 0 && isRoundTrip) {
+            console.log('🔍 No price markers found, using entire content as single section');
+            const returnFlightIndex = content.toLowerCase().indexOf('vuelo de regreso');
 
             if (returnFlightIndex > 0) {
-                // Section has both outbound and return
                 flightSections.push({
-                    fullContent: fullSection,
-                    outboundContent: fullSection.substring(0, returnFlightIndex),
-                    returnContent: fullSection.substring(returnFlightIndex)
+                    fullContent: content,
+                    outboundContent: content.substring(0, returnFlightIndex),
+                    returnContent: content.substring(returnFlightIndex)
                 });
             } else {
-                // Section has only outbound (one-way flight)
                 flightSections.push({
-                    fullContent: fullSection,
-                    outboundContent: fullSection,
+                    fullContent: content,
+                    outboundContent: content,
                     returnContent: ''
                 });
+            }
+        } else {
+            // Process each price marker as a separate section
+            for (let i = 0; i < priceMarkerMatches.length; i++) {
+                // Start from the previous "Precio total" (or beginning) to capture airline name
+                // Airline name appears before the price, so we need to look back
+                let sectionStart: number;
+                if (i === 0) {
+                    // First section: start from beginning
+                    sectionStart = 0;
+                } else {
+                    // Other sections: start from after the previous "Vuelo de ida" to capture the airline
+                    // Look for the airline name which appears before the price
+                    const previousMatchEnd = priceMarkerMatches[i - 1].index! + priceMarkerMatches[i - 1][0].length;
+                    sectionStart = previousMatchEnd;
+                }
+
+                // End at the start of the next price pattern (or end of content)
+                const sectionEnd = priceMarkerMatches[i + 1]?.index || content.length;
+
+                const fullSection = content.substring(sectionStart, sectionEnd);
+
+                // Split this section into outbound and return parts
+                const returnFlightIndex = fullSection.toLowerCase().indexOf('vuelo de regreso');
+
+                if (returnFlightIndex > 0) {
+                    // Section has both outbound and return
+                    flightSections.push({
+                        fullContent: fullSection,
+                        outboundContent: fullSection.substring(0, returnFlightIndex),
+                        returnContent: fullSection.substring(returnFlightIndex)
+                    });
+                } else {
+                    // Section has only outbound (one-way flight)
+                    flightSections.push({
+                        fullContent: fullSection,
+                        outboundContent: fullSection,
+                        returnContent: ''
+                    });
+                }
             }
         }
 
@@ -2445,30 +2467,41 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
 
         legs.push(mainLeg);
     } else {
-        // Fallback: look for simple route patterns
-        const simpleRouteMatches = content.match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/g);
-        if (simpleRouteMatches && simpleRouteMatches.length > 0) {
-            const routeMatch = simpleRouteMatches[0].match(/([A-Z]{3})\s*(?:--|-|→|⇄)\s*([A-Z]{3})/);
-            if (routeMatch) {
-                originCode = routeMatch[1];
-                destinationCode = routeMatch[2];
+        // Fallback: look for simple route patterns (e.g., "EZE -- PUJ" or "EZE → PUJ")
+        // This is common in summary sections like "DESTINO EZE -- PUJ"
+        console.log('🔍 Using fallback route extraction...');
 
-                legs.push({
-                    departure: {
-                        city_code: originCode,
-                        city_name: mapCodeToCity(originCode),
-                        time: departureTime || '08:00'
-                    },
-                    arrival: {
-                        city_code: destinationCode,
-                        city_name: mapCodeToCity(destinationCode),
-                        time: arrivalTime || '18:00'
-                    },
-                    duration: '10h',
-                    flight_type: 'outbound',
-                    layovers: []
-                });
-            }
+        const simpleRouteMatch = content.match(/([A-Z]{3})\s*(?:--|->|→|⇄)\s*([A-Z]{3})/);
+        if (simpleRouteMatch) {
+            originCode = simpleRouteMatch[1];
+            destinationCode = simpleRouteMatch[2];
+
+            console.log(`🔍 Found simple route pattern: ${originCode} → ${destinationCode}`);
+
+            // Try to extract times from the first two airport mentions
+            const firstAirportTime = content.match(new RegExp(`${originCode}[^\\d]+(\\d{1,2}:\\d{2})`));
+            const secondAirportTime = content.match(new RegExp(`${destinationCode}[^\\d]+(\\d{1,2}:\\d{2})`));
+
+            if (firstAirportTime) departureTime = firstAirportTime[1];
+            if (secondAirportTime) arrivalTime = secondAirportTime[1];
+
+            legs.push({
+                departure: {
+                    city_code: originCode,
+                    city_name: mapCodeToCity(originCode),
+                    time: departureTime || '08:00'
+                },
+                arrival: {
+                    city_code: destinationCode,
+                    city_name: mapCodeToCity(destinationCode),
+                    time: arrivalTime || '18:00'
+                },
+                duration: calculateFlightDuration(departureTime, arrivalTime) || '10h',
+                flight_type: 'outbound',
+                layovers: []
+            });
+
+            console.log(`✅ Created fallback route: ${originCode} → ${destinationCode}`);
         }
     }
 
