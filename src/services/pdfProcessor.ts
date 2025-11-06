@@ -2140,7 +2140,8 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
 
     // Helper function to extract airline name from section content
     const extractAirlineName = (sectionContent: string): string => {
-        // Only use location-specific patterns - don't use generic airline name patterns
+        console.log('🔍 [AIRLINE EXTRACTION] Starting airline extraction...');
+
         const airlinePatterns = [
             // Pattern 1: DETALLE DEL VUELO followed by code + name (most specific)
             /DETALLE\s+DEL\s+VUELO\s+([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s+Ocupación)/i,
@@ -2148,21 +2149,31 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
             /\n\s*([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)\s+Ocupación/i,
             // Pattern 3: After DETALLE with any spacing until Ocupación
             /DETALLE\s+DEL\s+VUELO[^\n]*\n\s*([A-Z]{2,3})\s+([A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)\s+Ocupación/im,
+            // Pattern 4: Fallback - look for airline code followed by capitalized name near start
+            /^[^\n]{0,200}?([A-Z]{2,3})\s+([A-Z][A-Za-z\s]+)(?:\s+Ocupación|\s+\d+\s+adultos)/im,
         ];
 
-        for (const pattern of airlinePatterns) {
-            const match = sectionContent.match(pattern);
+        for (let i = 0; i < airlinePatterns.length; i++) {
+            const match = sectionContent.match(airlinePatterns[i]);
             if (match) {
+                console.log(`✅ [AIRLINE EXTRACTION] Pattern ${i + 1} matched`);
                 // For patterns with two capture groups, combine code and name
                 if (match[2]) {
                     const code = match[1].trim();
                     const name = match[2].trim();
-                    return `${code} ${name}`;
+                    const fullName = `${code} ${name}`;
+                    console.log(`✅ [AIRLINE EXTRACTION] Found: "${fullName}"`);
+                    return fullName;
                 } else if (match[1]) {
+                    console.log(`✅ [AIRLINE EXTRACTION] Found (code only): "${match[1].trim()}"`);
                     return match[1].trim();
                 }
+            } else {
+                console.log(`❌ [AIRLINE EXTRACTION] Pattern ${i + 1} did not match`);
             }
         }
+
+        console.warn('⚠️ [AIRLINE EXTRACTION] No patterns matched, returning default');
         return 'Aerolínea no especificada';
     };
 
@@ -2469,21 +2480,35 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     } else {
         // Fallback: look for simple route patterns (e.g., "EZE -- PUJ" or "EZE → PUJ")
         // This is common in summary sections like "DESTINO EZE -- PUJ"
-        console.log('🔍 Using fallback route extraction...');
+        console.log('🔍 [ROUTE EXTRACTION] Using fallback route extraction...');
+        console.log('🔍 [ROUTE EXTRACTION] No structured airport+time matches found');
+        console.log('🔍 [ROUTE EXTRACTION] Looking for simple route patterns (XXX -- XXX)');
 
         const simpleRouteMatch = content.match(/([A-Z]{3})\s*(?:--|->|→|⇄)\s*([A-Z]{3})/);
         if (simpleRouteMatch) {
             originCode = simpleRouteMatch[1];
             destinationCode = simpleRouteMatch[2];
 
-            console.log(`🔍 Found simple route pattern: ${originCode} → ${destinationCode}`);
+            console.log(`✅ [ROUTE EXTRACTION] Found simple route pattern: ${originCode} → ${destinationCode}`);
 
             // Try to extract times from the first two airport mentions
+            console.log(`🔍 [ROUTE EXTRACTION] Looking for departure time for ${originCode}...`);
             const firstAirportTime = content.match(new RegExp(`${originCode}[^\\d]+(\\d{1,2}:\\d{2})`));
-            const secondAirportTime = content.match(new RegExp(`${destinationCode}[^\\d]+(\\d{1,2}:\\d{2})`));
+            if (firstAirportTime) {
+                departureTime = firstAirportTime[1];
+                console.log(`✅ [ROUTE EXTRACTION] Found departure time: ${departureTime}`);
+            } else {
+                console.log(`⚠️ [ROUTE EXTRACTION] No departure time found for ${originCode}`);
+            }
 
-            if (firstAirportTime) departureTime = firstAirportTime[1];
-            if (secondAirportTime) arrivalTime = secondAirportTime[1];
+            console.log(`🔍 [ROUTE EXTRACTION] Looking for arrival time for ${destinationCode}...`);
+            const secondAirportTime = content.match(new RegExp(`${destinationCode}[^\\d]+(\\d{1,2}:\\d{2})`));
+            if (secondAirportTime) {
+                arrivalTime = secondAirportTime[1];
+                console.log(`✅ [ROUTE EXTRACTION] Found arrival time: ${arrivalTime}`);
+            } else {
+                console.log(`⚠️ [ROUTE EXTRACTION] No arrival time found for ${destinationCode}`);
+            }
 
             legs.push({
                 departure: {
@@ -2501,7 +2526,10 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
                 layovers: []
             });
 
-            console.log(`✅ Created fallback route: ${originCode} → ${destinationCode}`);
+            console.log(`✅ [ROUTE EXTRACTION] Created fallback route: ${originCode} → ${destinationCode}`);
+        } else {
+            console.error('❌ [ROUTE EXTRACTION] No route patterns found in content');
+            console.log('📄 [ROUTE EXTRACTION] Content preview:', content.substring(0, 500));
         }
     }
 
@@ -2651,23 +2679,39 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
 }> {
     const hotels = [];
 
-    // Extract hotel name from template - multiple patterns
+    // Extract hotel name from template - multiple patterns with fallbacks
     let hotelName = 'Hotel no especificado';
 
-    // Pattern 1: Look for hotel name after "Hotel Recomendado" or "🏨 Hotel Recomendado"
-    // Match everything until we find digits (like "5 estrellas") or certain keywords
+    // Pattern 1: After "Hotel Recomendado" or "🏨 Hotel Recomendado" (UPPERCASE names)
     const hotelNamePattern1 = /(?:🏨\s*)?Hotel\s*Recomendado\s+([A-Z][A-Z\s]+?)(?=\s*\d+\s*estrellas|DETALLE|Precio:|🏨\s*Hotel|📍|⭐)/i;
     const hotelNameMatch1 = content.match(hotelNamePattern1);
     if (hotelNameMatch1) {
         hotelName = hotelNameMatch1[1].trim();
-        console.log(`🏨 [HOTEL NAME - Pattern 1] "${hotelName}"`);
+        console.log(`🏨 [HOTEL NAME - Pattern 1 UPPERCASE] "${hotelName}"`);
     } else {
-        // Pattern 2: Look for text containing "Hotel", "Resort", "Aparthotel" that appears before "estrellas"
-        const hotelNamePattern2 = /([A-Z][A-Z\s]*(?:HOTEL|RESORT|APARTHOTEL|INN|SUITES)[A-Z\s]*?)(?=\s*\d+\s*estrellas|DETALLE|🏨\s*Hotel|📍)/i;
+        // Pattern 2: After "Hotel Recomendado" (mixed case - more flexible)
+        // Captures until we hit digits (stars) or specific keywords
+        const hotelNamePattern2 = /(?:🏨\s*)?Hotel\s*Recomendado\s+([A-Z][A-Za-z\s\-\'\.]+?)(?=\s*\d+\s*estrellas|DETALLE|Precio:|🏨|📍|⭐)/i;
         const hotelNameMatch2 = content.match(hotelNamePattern2);
         if (hotelNameMatch2) {
             hotelName = hotelNameMatch2[1].trim();
-            console.log(`🏨 [HOTEL NAME - Pattern 2] "${hotelName}"`);
+            console.log(`🏨 [HOTEL NAME - Pattern 2 Mixed Case] "${hotelName}"`);
+        } else {
+            // Pattern 3: Look for hotel keywords (HOTEL, RESORT, etc) before "estrellas"
+            const hotelNamePattern3 = /([A-Z][A-Za-z\s\-\']*(?:HOTEL|Hotel|RESORT|Resort|APARTHOTEL|Aparthotel|INN|Inn|SUITES|Suites)[A-Za-z\s\-\']*?)(?=\s*\d+\s*estrellas|DETALLE|🏨|📍)/i;
+            const hotelNameMatch3 = content.match(hotelNamePattern3);
+            if (hotelNameMatch3) {
+                hotelName = hotelNameMatch3[1].trim();
+                console.log(`🏨 [HOTEL NAME - Pattern 3 Keywords] "${hotelName}"`);
+            } else {
+                // Pattern 4: Capture any capitalized text before "X estrellas"
+                const hotelNamePattern4 = /([A-Z][A-Za-z\s\-\'\.,]+?)\s+(\d+)\s*estrellas/i;
+                const hotelNameMatch4 = content.match(hotelNamePattern4);
+                if (hotelNameMatch4) {
+                    hotelName = hotelNameMatch4[1].trim();
+                    console.log(`🏨 [HOTEL NAME - Pattern 4 Before Stars] "${hotelName}"`);
+                }
+            }
         }
     }
 
