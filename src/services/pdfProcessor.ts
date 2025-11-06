@@ -2141,8 +2141,15 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     // Helper function to extract airline name from section content
     const extractAirlineName = (sectionContent: string): string => {
         const airlinePatterns = [
-            /^([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s+Ocupación)/im,  // e.g., "AM Aeroméxico Ocupación"
-            /([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s+Ocupación)/i,
+            // Pattern 1: Airline code + name (e.g., "CM Copa Airlines")
+            /(?:DETALLE\s+DEL\s+VUELO\s+)?([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s*Ocupación|$)/im,
+            // Pattern 2: Just after "DETALLE DEL VUELO"
+            /DETALLE\s+DEL\s+VUELO\s+([A-Z]{2,3}\s+[A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s*Ocupación|$)/i,
+            // Pattern 3: Airline code + name with flexible spacing
+            /([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s*\n\s*Ocupación)/i,
+            // Pattern 4: Known airline names
+            /([A-Z\s]*(?:Copa\s+Airlines|COPA\s+AIRLINES|Aerolíneas\s+Argentinas|LATAM|Avianca|United|American|Delta)[A-Z\s]*)/i,
+            // Pattern 5: Generic airline patterns
             /([A-Z\s]+(?:AIRLINES|AIRLINE|GROUP|AEROLINEAS|AEROLINEA|S\.A\.|SA)[A-Z\s\.]*)/i,
         ];
 
@@ -2571,8 +2578,15 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         const route = originCode && destinationCode ? `${originCode} → ${destinationCode}` : 'Ruta no especificada';
         const dates = returnDate && returnDate !== departureDate ? `${departureDate} / ${returnDate}` : departureDate;
 
-        // Get airline from first leg if available
-        const airlineName = legs.length > 0 && legs[0].airline ? legs[0].airline : 'Aerolínea no especificada';
+        // Get airline from first leg if available, otherwise extract from content
+        let airlineName = 'Aerolínea no especificada';
+        if (legs.length > 0 && legs[0].airline) {
+            airlineName = legs[0].airline;
+        } else {
+            // Try to extract airline from content
+            airlineName = extractAirlineName(content);
+            console.log('🔍 Extracted airline for single flight:', airlineName);
+        }
 
         flights.push({
             airline: airlineName,
@@ -2607,38 +2621,39 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
     // Extract hotel name from template - multiple patterns
     let hotelName = 'Hotel no especificado';
 
-    // Pattern 1: Look for hotel name after "Hotel Recomendado"
-    const hotelNamePattern1 = /HotelRecomendado([A-Z][A-Za-z\s]+?)(?:\d+estrellas|Precio:|$)/i;
+    // Pattern 1: Look for hotel name after "Hotel Recomendado" or "🏨 Hotel Recomendado"
+    // Match everything until we find digits (like "5 estrellas") or certain keywords
+    const hotelNamePattern1 = /(?:🏨\s*)?Hotel\s*Recomendado\s+([A-Z][A-Z\s]+?)(?=\s*\d+\s*estrellas|DETALLE|Precio:|🏨\s*Hotel|📍|⭐)/i;
     const hotelNameMatch1 = content.match(hotelNamePattern1);
     if (hotelNameMatch1) {
         hotelName = hotelNameMatch1[1].trim();
         console.log(`🏨 [HOTEL NAME - Pattern 1] "${hotelName}"`);
     } else {
-        // Fallback: original pattern
-        const hotelNameMatch = content.match(/Hotel\s*Recomendado[^$]*?([^\n]+(?:Hotel|Resort|Aparthotel|APARTHOTEL)[^\n]*)/i) ||
-            content.match(/([^\n]+(?:Hotel|Resort|Aparthotel|APARTHOTEL)[^\n]*)/i);
-        if (hotelNameMatch) {
-            hotelName = hotelNameMatch[1].trim();
-            console.log(`🏨 [HOTEL NAME - Fallback] "${hotelName}"`);
+        // Pattern 2: Look for text containing "Hotel", "Resort", "Aparthotel" that appears before "estrellas"
+        const hotelNamePattern2 = /([A-Z][A-Z\s]*(?:HOTEL|RESORT|APARTHOTEL|INN|SUITES)[A-Z\s]*?)(?=\s*\d+\s*estrellas|DETALLE|🏨\s*Hotel|📍)/i;
+        const hotelNameMatch2 = content.match(hotelNamePattern2);
+        if (hotelNameMatch2) {
+            hotelName = hotelNameMatch2[1].trim();
+            console.log(`🏨 [HOTEL NAME - Pattern 2] "${hotelName}"`);
         }
     }
 
     // Extract location - more flexible pattern
     let location = 'Ubicación no especificada';
 
-    // Pattern 1: After stars rating
-    const locationPattern1 = /(\d+)\s*estrellas\s*([A-Za-zÀ-ÿ\s,]+?)(?:Precio:|DETALLE|$)/i;
+    // Pattern 1: After stars rating, look for location until we hit keywords that indicate end of location
+    const locationPattern1 = /(\d+)\s*estrellas\s*([A-Za-zÀ-ÿ\s,]+?)(?=\s*(?:DETALLE|Precio:|🏨|📍|⭐|👥|Tarifa|Para confirmar|Ocupación))/i;
     const locationMatch1 = content.match(locationPattern1);
     if (locationMatch1) {
         location = locationMatch1[2].trim();
         console.log(`🏨 [LOCATION - Pattern 1] "${location}"`);
     } else {
-        // Fallback: original pattern
-        const locationMatch = content.match(/(\d+)\s*estrellas[^$]*?([^\n]+(?:Cana|CANA|Aires|AIRES|Madrid|Barcelona|Miami|República Dominicana)[^\n]*)/i) ||
-            content.match(/([^\n]+(?:Cana|CANA|Aires|AIRES|Madrid|Barcelona|Miami|República Dominicana|Caldes|Montbui)[^\n]*)/i);
-        if (locationMatch) {
-            location = (locationMatch[2] || locationMatch[1]).trim();
-            console.log(`🏨 [LOCATION - Fallback] "${location}"`);
+        // Pattern 2: Look for specific known locations
+        const knownLocations = /([A-ZÀ-Ÿ][A-Za-zÀ-ÿ\s,]*(?:Punta\s+Cana|PUNTA\s+CANA|Buenos\s+Aires|BUENOS\s+AIRES|Madrid|Barcelona|Miami|Cancún|CANCÚN|República\s+Dominicana)[A-Za-zÀ-ÿ\s,]*?)(?=\s*(?:DETALLE|Precio:|🏨|📍|⭐|👥|Tarifa|Ocupación))/i;
+        const locationMatch2 = content.match(knownLocations);
+        if (locationMatch2) {
+            location = locationMatch2[1].trim();
+            console.log(`🏨 [LOCATION - Pattern 2] "${location}"`);
         }
     }
 
