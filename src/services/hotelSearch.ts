@@ -558,6 +558,7 @@ async function buildHotelSearchRequest(params: HotelSearchParams): Promise<strin
         <clave>${WS_CONFIG.password}</clave>
       </pos>
       <currency xmlns="">${WS_CONFIG.currency}</currency>
+      <OtherBroker xmlns="">true</OtherBroker>
     </searchHotelFaresRQ1>
   </soap:Body>
 </soap:Envelope>`;
