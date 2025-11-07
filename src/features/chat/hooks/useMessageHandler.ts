@@ -7,12 +7,12 @@ import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
 import type { MessageRow } from '../types/chat';
-import { useMessages } from '@/hooks/useChat';
 import { translateBaggage } from '../utils/translations';
 
 const useMessageHandler = (
   selectedConversation: string | null,
   selectedConversationRef: React.MutableRefObject<string | null>,
+  messages: MessageRow[], // ✅ Pass messages directly instead of calling useMessages again
   previousParsedRequest: ParsedTravelRequest | null,
   setPreviousParsedRequest: (request: ParsedTravelRequest | null) => void,
   loadContextualMemory: (conversationId: string) => Promise<ParsedTravelRequest | null>,
@@ -33,8 +33,7 @@ const useMessageHandler = (
   updateOptimisticMessage: (messageId: string, updates: Partial<any>) => void,
   removeOptimisticMessage: (messageId: string) => void
 ) => {
-  // Get messages from the shared hook instance (passed from ChatFeature)
-  const { messages } = useMessages(selectedConversation);
+  // ✅ Messages are now passed as parameter - no need for second useMessages call
 
   // Track active domain for this conversation to avoid cross responses
   let activeDomain: 'flights' | 'hotels' | null = null;
