@@ -544,6 +544,19 @@ async function buildHotelSearchRequest(params: HotelSearchParams): Promise<strin
     nameFilter = '';
   }
 
+  // Build occupancy based on adults/children (matching production Edge Function)
+  const adults = params.adults || 1; // Default to 1 adult
+  const children = params.children || 0;
+
+  // Create occupants XML
+  let occupantsXml = '';
+  for (let i = 0; i < adults; i++) {
+    occupantsXml += '        <Occupants type="ADT" />\n';
+  }
+  for (let i = 0; i < children; i++) {
+    occupantsXml += '        <Occupants type="CHD" />\n';
+  }
+
   // Build request with working format discovered from testing
   return `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
@@ -559,6 +572,11 @@ async function buildHotelSearchRequest(params: HotelSearchParams): Promise<strin
       </pos>
       <currency xmlns="">${WS_CONFIG.currency}</currency>
       <OtherBroker xmlns="">true</OtherBroker>
+      <FareTypeSelectionList xmlns="http://www.softur.com.ar/wsbridge/budget.xsd">
+        <FareTypeSelection OccupancyId="1">1</FareTypeSelection>
+        <Ocuppancy OccupancyId="1">
+${occupantsXml}        </Ocuppancy>
+      </FareTypeSelectionList>
     </searchHotelFaresRQ1>
   </soap:Body>
 </soap:Envelope>`;
