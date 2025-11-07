@@ -73,8 +73,10 @@ export const isPriceChangeRequest = (message: string): boolean => {
     'quiero que el precio',
     'modifica el precio',
     'ajusta el precio',
-    'precio a',
-    'cuesta',
+    'precio a $',
+    'precio a usd',
+    'cuesta $',
+    'cuesta usd',
     '$',
     'dolar',
     'usd',
@@ -98,9 +100,11 @@ export const isPriceChangeRequest = (message: string): boolean => {
     // Hotel price keywords
     'precio del hotel',
     'precio de hotel',
-    'hotel a',
+    'hotel a $',
+    'hotel a usd',
     'hotel cueste',
-    'hotel por'
+    'hotel por $',
+    'hotel por usd'
   ];
 
   return priceKeywords.some(keyword => norm.includes(keyword));
@@ -113,16 +117,19 @@ export const extractPriceChangeTarget = (message: string): 'total' | 'hotel' | '
   // Check for hotel-specific price change
   if (norm.includes('precio del hotel') ||
       norm.includes('precio de hotel') ||
-      norm.includes('hotel a') ||
+      norm.includes('hotel a $') ||
+      norm.includes('hotel a usd') ||
       norm.includes('hotel cueste') ||
-      norm.includes('hotel por')) {
+      norm.includes('hotel por $') ||
+      norm.includes('hotel por usd')) {
     return 'hotel';
   }
 
   // Check for flight-specific price change
   if (norm.includes('precio del vuelo') ||
       norm.includes('precio de vuelo') ||
-      norm.includes('vuelo a') ||
+      norm.includes('vuelo a $') ||
+      norm.includes('vuelo a usd') ||
       norm.includes('vuelo cueste') ||
       norm.includes('primer vuelo') ||
       norm.includes('segundo vuelo')) {
@@ -131,9 +138,12 @@ export const extractPriceChangeTarget = (message: string): 'total' | 'hotel' | '
 
   // Check for total/package price change
   if (norm.includes('precio total') ||
-      norm.includes('total a') ||
-      norm.includes('paquete a') ||
-      norm.includes('todo a') ||
+      norm.includes('total a $') ||
+      norm.includes('total a usd') ||
+      norm.includes('paquete a $') ||
+      norm.includes('paquete a usd') ||
+      norm.includes('todo a $') ||
+      norm.includes('todo a usd') ||
       norm.includes('que cueste')) {
     return 'total';
   }
