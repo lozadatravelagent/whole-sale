@@ -139,7 +139,7 @@ const useChatState = () => {
       const tempId = `temp-${Date.now()}`;
       const optimisticConversation = {
         id: tempId,
-        external_key: `chat-${Date.now()}`,
+        external_key: initialTitle || defaultTitle,
         channel: 'web' as const,
         state: 'active' as const,
         agency_id: authUser.user?.agency_id || null,

@@ -197,8 +197,12 @@ export function useConversations() {
         throw new Error('SUPERADMIN must have tenant assigned');
       }
 
+      // Generate user-friendly title
+      const currentTime = new Date();
+      const defaultTitle = `Chat ${currentTime.toLocaleDateString('es-ES')} ${currentTime.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+
       const newConversation = {
-        external_key: `chat-${Date.now()}`,
+        external_key: params?.title || defaultTitle,
         channel: (params?.channel === 'whatsapp' ? 'wa' : params?.channel || 'web') as 'web' | 'wa',
         state: (params?.status || 'active') as 'active' | 'closed' | 'pending',
         agency_id: userData.agency_id || null, // NULL for OWNER and SUPERADMIN
