@@ -192,16 +192,16 @@ const sortHotelRooms = (rooms: LocalHotelData['rooms']) => {
   const getRoomTypePriority = (description: string): { type: string; priority: number } => {
     const desc = description.toLowerCase();
 
-    // Identificar tipo de habitación
-    if (desc.includes('single') || desc.includes('sgl')) {
+    // Identificar tipo de habitación (English and Spanish)
+    if (desc.includes('single') || desc.includes('sgl') || desc.includes('individual')) {
       return { type: 'SGL', priority: 1 };
-    } else if (desc.includes('double') && desc.includes('single use')) {
+    } else if ((desc.includes('double') || desc.includes('doble')) && (desc.includes('single use') || desc.includes('uso individual'))) {
       return { type: 'DUS', priority: 2 };
-    } else if (desc.includes('double')) {
+    } else if (desc.includes('double') || desc.includes('doble') || desc.includes('dbl')) {
       return { type: 'DBL', priority: 3 };
     } else if (desc.includes('triple')) {
       return { type: 'TPL', priority: 4 };
-    } else if (desc.includes('quad') || desc.includes('family')) {
+    } else if (desc.includes('quad') || desc.includes('cuádruple') || desc.includes('cuadruple') || desc.includes('family') || desc.includes('familiar')) {
       return { type: 'QUA', priority: 5 };
     } else {
       return { type: 'OTHER', priority: 6 };
@@ -265,17 +265,19 @@ const groupRoomsByType = (rooms: LocalHotelData['rooms']) => {
 
   rooms.forEach(room => {
     const desc = (room.description || '').toLowerCase();
+    const type = (room.type || '').toLowerCase();
     let groupKey = 'OTHER';
 
-    if (desc.includes('single') || desc.includes('sgl')) {
+    // Check both description and type field, support English and Spanish
+    if (desc.includes('single') || desc.includes('sgl') || desc.includes('individual') || type.includes('sgl')) {
       groupKey = 'SGL';
-    } else if (desc.includes('double') && desc.includes('single use')) {
+    } else if ((desc.includes('double') || desc.includes('doble')) && (desc.includes('single use') || desc.includes('uso individual'))) {
       groupKey = 'DUS';
-    } else if (desc.includes('double')) {
+    } else if (desc.includes('double') || desc.includes('doble') || desc.includes('dbl') || type.includes('dbl') || type.includes('dwl')) {
       groupKey = 'DBL';
-    } else if (desc.includes('triple')) {
+    } else if (desc.includes('triple') || type.includes('tpl')) {
       groupKey = 'TPL';
-    } else if (desc.includes('quad') || desc.includes('family')) {
+    } else if (desc.includes('quad') || desc.includes('cuádruple') || desc.includes('cuadruple') || desc.includes('family') || desc.includes('familiar') || type.includes('qua')) {
       groupKey = 'QUA';
     }
 
@@ -303,8 +305,8 @@ export const formatHotelResponse = (hotels: LocalHotelData[], requestedRoomType?
     let filteredRooms = hotel.rooms;
     if (requestedRoomType) {
       const typeMap: { [key: string]: string[] } = {
-        'single': ['sgl', 'single'],
-        'double': ['dwl', 'dbl', 'double'],
+        'single': ['sgl', 'single', 'individual'],
+        'double': ['dwl', 'dbl', 'double', 'doble'],
         'triple': ['tpl', 'triple']
       };
 
