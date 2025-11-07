@@ -149,10 +149,12 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
   // Learn airline mappings from API response FIRST
   airlineResolver.processApiResponse(tvcData);
 
-  // Filter by preferred airline BEFORE transformation for efficiency
+  // ✈️ POST-FILTER (Backup): Filter by preferred airline AFTER API response
+  // This acts as a backup in case STARLING API doesn't filter correctly
+  // or if the API doesn't support the Airlines parameter
   if (parsedRequest?.flights?.preferredAirline) {
     const airlinePreference = parsedRequest.flights.preferredAirline;
-    console.log(`✈️ [PRE-FILTER] Filtering ${fares.length} fares by preferred airline: ${airlinePreference}`);
+    console.log(`✈️ [POST-FILTER] Filtering ${fares.length} fares by preferred airline: ${airlinePreference} (backup filter)`);
 
     // Use the airline resolver to get the correct code
     const resolvedAirline = await airlineResolver.resolveAirline(airlinePreference);
@@ -181,7 +183,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       return false;
     });
 
-    console.log(`✈️ [PRE-FILTER] After airline filtering: ${fares.length} fares remain`);
+    console.log(`✈️ [POST-FILTER] After airline filtering: ${fares.length} fares remain`);
   }
 
   // First transform all flights (using Promise.all for async mapping)
