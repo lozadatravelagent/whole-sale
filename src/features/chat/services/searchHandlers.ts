@@ -5,6 +5,7 @@ import type { SearchResult, LocalHotelData, LocalPackageData, LocalServiceData }
 import { transformStarlingResults } from './flightTransformer';
 import { formatFlightResponse, formatHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse } from './responseFormatters';
 import { getCityCode } from './messageService';
+import { airlineResolver } from './airlineResolver';
 
 // Helper function to calculate layover hours between two flight segments
 function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
@@ -49,6 +50,26 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     const starlingParams = formatForStarling(parsed);
     console.log('📊 Starling parameters:', starlingParams);
 
+    // ✈️ PRE-FILTER: Add airline filter to STARLING request if user specified preferredAirline
+    if (parsed?.flights?.preferredAirline) {
+      console.log(`✈️ [PRE-FILTER] Resolving preferred airline: ${parsed.flights.preferredAirline}`);
+
+      try {
+        const resolvedAirline = await airlineResolver.resolveAirline(parsed.flights.preferredAirline);
+        const airlineCode = resolvedAirline.code;
+
+        // Add Airlines filter to STARLING API request
+        (starlingParams as any).Airlines = [airlineCode];
+
+        console.log(`✅ [PRE-FILTER] Added airline filter to STARLING: ${airlineCode} (${resolvedAirline.name})`);
+        console.log(`📊 [PRE-FILTER] Updated starlingParams:`, starlingParams);
+      } catch (error) {
+        console.warn(`⚠️ [PRE-FILTER] Could not resolve airline code, will rely on POST-filter:`, error);
+      }
+    } else {
+      console.log(`ℹ️ [PRE-FILTER] No preferred airline specified, searching all airlines`);
+    }
+
     console.log('📤 [FLIGHT SEARCH] Step 2: About to call Starling API (Supabase Edge Function)');
     const response = await supabase.functions.invoke('starling-flights', {
       body: {
@@ -77,12 +98,17 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       console.log(`⏰ [FLIGHT SEARCH] User requested layovers <= ${parsed.flights.maxLayoverHours} hours - doing expanded search`);
 
       // For layover filtering, we need to search with "any" stops to get more options
+      // IMPORTANT: Keep airline filter if it was set
       const expandedStarlingParams = {
         ...starlingParams,
         stops: 'any' as any // Force expanded search to get more layover options
+        // Airlines filter is preserved from starlingParams (if it was set)
       };
 
       console.log(`🔍 [LAYOVER FILTER] Doing expanded search with stops: any to find more layover options`);
+      if ((expandedStarlingParams as any).Airlines) {
+        console.log(`✈️ [LAYOVER FILTER] Airline filter preserved: ${(expandedStarlingParams as any).Airlines}`);
+      }
 
       try {
         // Do a new search with expanded parameters using the same Starling API
