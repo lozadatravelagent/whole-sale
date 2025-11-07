@@ -2454,6 +2454,8 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         console.log('🔍 [AIRLINE EXTRACTION] Starting airline extraction...');
 
         const airlinePatterns = [
+            // Pattern 0: "Vuelos [CODE] [FULL NAME]" format (HIGHEST PRIORITY - extracts name from PDF as-is)
+            /Vuelos\s+([A-Z0-9]{2,3})\s+([A-Z][A-Z\s\.]+?)$/im,
             // Pattern 1: DETALLE DEL VUELO followed by code + name (most specific)
             /DETALLE\s+DEL\s+VUELO\s+([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s+Ocupación)/i,
             // Pattern 2: Code + name just before Ocupación
@@ -2472,6 +2474,14 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
                 if (match[2]) {
                     const code = match[1].trim();
                     const name = match[2].trim();
+
+                    // Pattern 0 (Vuelos format): Return ONLY the name as-is from PDF
+                    if (i === 0) {
+                        console.log(`✅ [AIRLINE EXTRACTION] Found from "Vuelos" format: "${name}"`);
+                        return name;
+                    }
+
+                    // Other patterns: Combine code + name
                     const fullName = `${code} ${name}`;
                     console.log(`✅ [AIRLINE EXTRACTION] Found: "${fullName}"`);
                     return fullName;
