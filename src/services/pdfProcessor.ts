@@ -2455,8 +2455,8 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
 
         const airlinePatterns = [
             // Pattern 0: "✈Vuelos [CODE] [FULL NAME]" format (HIGHEST PRIORITY - extracts name from PDF as-is)
-            // Supports optional ✈ emoji before "Vuelos", stops before city names or airport codes
-            /✈?\s*Vuelos\s+([A-Z0-9]{2,3})\s+([A-Z][A-Z\s\.]+?)(?=\s+[A-Z][a-z]|\s+[A-Z]{3}\s|$)/im,
+            // Stops before Title Case words (Buenos), airport codes (EZE), or lowercase words (outbound)
+            /✈?\s*[Vv]uelos\s+([A-Z0-9]{2,3})\s+([A-Z][A-Za-z\s\.]+?)(?=\s+[A-Z][a-z]+|\s+[a-z]+|$)/m,
             // Pattern 1: DETALLE DEL VUELO followed by code + name (most specific)
             /DETALLE\s+DEL\s+VUELO\s+([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s+Ocupación)/i,
             // Pattern 2: Code + name just before Ocupación
