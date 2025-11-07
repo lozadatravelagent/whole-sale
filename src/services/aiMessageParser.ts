@@ -448,36 +448,72 @@ export async function parseMessageWithAI(
 
         // 🛡️ AIRLINE DETECTOR (Fallback for AI): Detect common airline names
         // This ensures airline filtering works even if AI Edge Function fails to detect
-        const commonAirlines = [
-            'emirates', 'latam', 'american airlines', 'american', 'united', 'delta',
-            'iberia', 'lufthansa', 'air france', 'klm', 'british airways',
-            'aerolíneas argentinas', 'aerolineas argentinas', 'aerolineas', 'aerolíneas',
-            'qatar', 'turkish', 'avianca', 'copa', 'gol', 'azul', 'tam',
-            'alitalia', 'tap', 'swiss', 'singapore', 'cathay', 'ana', 'jal',
-            'etihad', 'korean air', 'air canada', 'aeroméxico', 'aeromexico'
-        ];
-
         const normalizedLower = normalized.toLowerCase();
 
-        // Try to find airline mentions with common patterns
-        for (const airline of commonAirlines) {
-            // Patterns: "con [airline]", "aerolínea [airline]", "de [airline]", "en [airline]",
-            // "[airline] a [destino]", "vuelo [airline]", "prefiero [airline]"
-            const patterns = [
-                new RegExp(`\\b(?:con|aerolinea|aerolínea|de|en|vuelo|prefiero|operado por)\\s+${airline}\\b`, 'i'),
-                new RegExp(`\\b${airline}\\s+(?:a|hacia|para|desde)\\b`, 'i'),
-                new RegExp(`\\b${airline}\\s+(?:class|business|economy|primera)\\b`, 'i')
-            ];
+        // Strategy 1: Flexible pattern - captures 1-3 words after "aerolinea/aerolínea/airline"
+        // This catches ANY airline mentioned after these keywords, even if not in our predefined list
+        const flexibleAirlineMatch = normalizedLower.match(
+            /\b(?:aerolinea|aerolínea|airline|con\s+la\s+aerolinea|con\s+la\s+aerolínea)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+){0,2})/i
+        );
 
-            for (const pattern of patterns) {
-                if (pattern.test(normalizedLower)) {
-                    quick.flights = { ...(quick.flights || ({} as any)), preferredAirline: airline } as any;
-                    console.log(`🛡️ [QUICK PRE-PARSER] Detected airline: ${airline}`);
-                    break;
-                }
+        if (flexibleAirlineMatch && flexibleAirlineMatch[1]) {
+            let detectedAirline = flexibleAirlineMatch[1].trim();
+
+            // Remove everything after (and including) stop words
+            // Stop words indicate the airline name has ended
+            const stopWords = ['a', 'hacia', 'para', 'desde', 'saliendo', 'regresando', 'directo',
+                              'con', 'business', 'economy', 'class', 'primera', 'el', 'la', 'los', 'las',
+                              'de', 'en', 'por', 'del', 'al'];
+
+            // Split and find the first stop word, keep only words before it
+            const words = detectedAirline.split(/\s+/);
+            const stopWordIndex = words.findIndex(word => stopWords.includes(word));
+
+            if (stopWordIndex !== -1) {
+                // Found a stop word - keep only words before it
+                detectedAirline = words.slice(0, stopWordIndex).join(' ');
+            } else {
+                // No stop word found - keep all words (already 1-3 words due to regex)
+                detectedAirline = words.join(' ');
             }
 
-            if (quick.flights?.preferredAirline) break;
+            if (detectedAirline.length > 2) { // At least 2 characters to avoid false positives
+                quick.flights = { ...(quick.flights || ({} as any)), preferredAirline: detectedAirline } as any;
+                console.log(`🛡️ [QUICK PRE-PARSER] Detected airline (flexible pattern): "${detectedAirline}"`);
+            }
+        }
+
+        // Strategy 2: Predefined list with specific patterns (fallback if flexible didn't match)
+        if (!quick.flights?.preferredAirline) {
+            const commonAirlines = [
+                'emirates', 'latam', 'american airlines', 'american', 'united', 'delta',
+                'iberia', 'lufthansa', 'air france', 'klm', 'british airways',
+                'aerolíneas argentinas', 'aerolineas argentinas', 'aerolineas', 'aerolíneas',
+                'qatar', 'turkish', 'avianca', 'copa', 'gol', 'azul', 'tam',
+                'alitalia', 'tap', 'swiss', 'singapore', 'cathay', 'ana', 'jal',
+                'etihad', 'korean air', 'air canada', 'aeroméxico', 'aeromexico'
+            ];
+
+            // Try to find airline mentions with common patterns
+            for (const airline of commonAirlines) {
+                // Patterns: "con [airline]", "de [airline]", "en [airline]",
+                // "[airline] a [destino]", "vuelo [airline]", "prefiero [airline]"
+                const patterns = [
+                    new RegExp(`\\b(?:con|de|en|vuelo|prefiero|operado por)\\s+${airline}\\b`, 'i'),
+                    new RegExp(`\\b${airline}\\s+(?:a|hacia|para|desde)\\b`, 'i'),
+                    new RegExp(`\\b${airline}\\s+(?:class|business|economy|primera)\\b`, 'i')
+                ];
+
+                for (const pattern of patterns) {
+                    if (pattern.test(normalizedLower)) {
+                        quick.flights = { ...(quick.flights || ({} as any)), preferredAirline: airline } as any;
+                        console.log(`🛡️ [QUICK PRE-PARSER] Detected airline (predefined list): "${airline}"`);
+                        break;
+                    }
+                }
+
+                if (quick.flights?.preferredAirline) break;
+            }
         }
     } catch (e) {
         console.warn('Quick pre-parse failed:', e);
