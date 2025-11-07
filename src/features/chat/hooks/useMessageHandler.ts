@@ -749,8 +749,8 @@ const useMessageHandler = (
               checkoutDate: parsedRequest.hotels?.checkoutDate || (flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0]),
               adults: parsedRequest.hotels?.adults || flightCtx.adults,
               children: parsedRequest.hotels?.children ?? flightCtx.children ?? 0,
-              roomType: parsedRequest.hotels?.roomType || 'doble',
-              mealPlan: parsedRequest.hotels?.mealPlan || 'desayuno'
+              roomType: parsedRequest.hotels?.roomType,
+              mealPlan: parsedRequest.hotels?.mealPlan
             } as any;
 
             const reval = validateHotelRequiredFields(parsedRequest.hotels);

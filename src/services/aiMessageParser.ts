@@ -127,15 +127,15 @@ export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels
     if (!hotels) {
         return {
             isValid: false,
-            missingFields: ['city', 'checkinDate', 'checkoutDate', 'adults', 'roomType', 'mealPlan'],
-            missingFieldsSpanish: ['destino', 'fecha de entrada', 'fecha de salida', 'cantidad de pasajeros', 'tipo de habitación', 'modalidad de alimentación']
+            missingFields: ['city', 'checkinDate', 'checkoutDate', 'adults'],
+            missingFieldsSpanish: ['destino', 'fecha de entrada', 'fecha de salida', 'cantidad de pasajeros']
         };
     }
 
     const missingFields: string[] = [];
     const missingFieldsSpanish: string[] = [];
 
-    // Validar campos requeridos
+    // Validar campos requeridos (roomType y mealPlan son OPCIONALES)
     if (!hotels.city) {
         missingFields.push('city');
         missingFieldsSpanish.push('destino');
@@ -152,14 +152,7 @@ export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels
         missingFields.push('adults');
         missingFieldsSpanish.push('cantidad de pasajeros');
     }
-    if (!hotels.roomType) {
-        missingFields.push('roomType');
-        missingFieldsSpanish.push('tipo de habitación (single, double, triple)');
-    }
-    if (!hotels.mealPlan) {
-        missingFields.push('mealPlan');
-        missingFieldsSpanish.push('modalidad de alimentación (all inclusive, desayuno, media pensión)');
-    }
+    // roomType y mealPlan son OPCIONALES - no validamos
 
     return {
         isValid: missingFields.length === 0,
@@ -517,7 +510,7 @@ export function validateParsedRequest(parsed: ParsedTravelRequest): boolean {
 
         case 'hotels':
             return !!(parsed.hotels?.city && parsed.hotels?.checkinDate && parsed.hotels?.checkoutDate &&
-                parsed.hotels?.adults && parsed.hotels?.roomType && parsed.hotels?.mealPlan);
+                parsed.hotels?.adults);
 
         case 'packages':
             return !!(parsed.packages?.destination && parsed.packages?.dateFrom && parsed.packages?.dateTo);
