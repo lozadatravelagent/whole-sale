@@ -779,15 +779,16 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
     const fareList = fareEl.closest('FareList');
     const currency = fareList?.getAttribute('currency') || 'USD';
 
-    // Get the actual room description from Offer element
-    const offer = getTextContent(fareEl, 'Offer') || '';
+    // Get the actual room description
+    // For external brokers (EUROVIPS, etc.), the room info is in <Description>
+    // For internal BackOffice fares, it may be in <Offer> (for promotions)
+    const description = getTextContent(fareEl, 'Description') ||
+                        getTextContent(fareEl, 'Offer') ||
+                        defaultRoomType || '';
 
-    // Determine room type from the offer description, not from fare type
-    // The fare type (SGL, DWL, etc.) is the passenger type, not the room type
-    const roomType = extractRoomTypeFromDescription(offer, defaultRoomType);
-
-    // Use the offer as the description (it contains the real room info)
-    const description = offer || roomType;
+    // Determine room type from the description, not from fare type
+    // The fare type (SGL, DWL, etc.) represents passenger type, not room type
+    const roomType = extractRoomTypeFromDescription(description, defaultRoomType);
 
     if (totalPrice <= 0) {
       console.warn(`⚠️ Fare ${fareType} has no valid price`);
