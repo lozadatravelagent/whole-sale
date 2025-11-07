@@ -284,7 +284,9 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     }
 
     console.log('📝 [HOTEL SEARCH] Step 6: Formatting response text');
-    const formattedResponse = formatHotelResponse(hotels);
+    const requestedRoomType = enrichedParsed.hotels?.roomType;
+    console.log('🛏️ [HOTEL SEARCH] Requested room type:', requestedRoomType || 'none (showing all)');
+    const formattedResponse = formatHotelResponse(hotels, requestedRoomType);
 
     const result = {
       response: formattedResponse,

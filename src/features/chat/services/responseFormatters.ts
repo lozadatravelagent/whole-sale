@@ -288,7 +288,7 @@ const groupRoomsByType = (rooms: LocalHotelData['rooms']) => {
   return groups;
 };
 
-export const formatHotelResponse = (hotels: LocalHotelData[]) => {
+export const formatHotelResponse = (hotels: LocalHotelData[], requestedRoomType?: 'single' | 'double' | 'triple') => {
   if (hotels.length === 0) {
     return '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.';
   }
@@ -298,7 +298,30 @@ export const formatHotelResponse = (hotels: LocalHotelData[]) => {
 
   hotels.slice(0, 5).forEach((hotel, index) => {
     const minPrice = Math.min(...hotel.rooms.map((r) => r.total_price));
-    const sortedRooms = sortHotelRooms(hotel.rooms);
+
+    // Filter rooms by requested type if specified
+    let filteredRooms = hotel.rooms;
+    if (requestedRoomType) {
+      const typeMap: { [key: string]: string[] } = {
+        'single': ['sgl', 'single'],
+        'double': ['dwl', 'dbl', 'double'],
+        'triple': ['tpl', 'triple']
+      };
+
+      const targetTypes = typeMap[requestedRoomType] || [];
+      filteredRooms = hotel.rooms.filter(room => {
+        const desc = (room.description || '').toLowerCase();
+        const type = (room.type || '').toLowerCase();
+        return targetTypes.some(t => desc.includes(t) || type.includes(t));
+      });
+
+      // If no rooms match the filter, skip this hotel
+      if (filteredRooms.length === 0) {
+        return;
+      }
+    }
+
+    const sortedRooms = sortHotelRooms(filteredRooms);
     const roomGroups = groupRoomsByType(sortedRooms);
 
     response += `---\n\n`;
