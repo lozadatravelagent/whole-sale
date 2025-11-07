@@ -445,6 +445,40 @@ export async function parseMessageWithAI(
             // "con escala" o "una escala" = específicamente 1 escala
             quick.flights = { ...(quick.flights || ({} as any)), stops: 'one_stop' as any } as any;
         }
+
+        // 🛡️ AIRLINE DETECTOR (Fallback for AI): Detect common airline names
+        // This ensures airline filtering works even if AI Edge Function fails to detect
+        const commonAirlines = [
+            'emirates', 'latam', 'american airlines', 'american', 'united', 'delta',
+            'iberia', 'lufthansa', 'air france', 'klm', 'british airways',
+            'aerolíneas argentinas', 'aerolineas argentinas', 'aerolineas', 'aerolíneas',
+            'qatar', 'turkish', 'avianca', 'copa', 'gol', 'azul', 'tam',
+            'alitalia', 'tap', 'swiss', 'singapore', 'cathay', 'ana', 'jal',
+            'etihad', 'korean air', 'air canada', 'aeroméxico', 'aeromexico'
+        ];
+
+        const normalizedLower = normalized.toLowerCase();
+
+        // Try to find airline mentions with common patterns
+        for (const airline of commonAirlines) {
+            // Patterns: "con [airline]", "aerolínea [airline]", "de [airline]", "en [airline]",
+            // "[airline] a [destino]", "vuelo [airline]", "prefiero [airline]"
+            const patterns = [
+                new RegExp(`\\b(?:con|aerolinea|aerolínea|de|en|vuelo|prefiero|operado por)\\s+${airline}\\b`, 'i'),
+                new RegExp(`\\b${airline}\\s+(?:a|hacia|para|desde)\\b`, 'i'),
+                new RegExp(`\\b${airline}\\s+(?:class|business|economy|primera)\\b`, 'i')
+            ];
+
+            for (const pattern of patterns) {
+                if (pattern.test(normalizedLower)) {
+                    quick.flights = { ...(quick.flights || ({} as any)), preferredAirline: airline } as any;
+                    console.log(`🛡️ [QUICK PRE-PARSER] Detected airline: ${airline}`);
+                    break;
+                }
+            }
+
+            if (quick.flights?.preferredAirline) break;
+        }
     } catch (e) {
         console.warn('Quick pre-parse failed:', e);
     }
@@ -477,11 +511,12 @@ export async function parseMessageWithAI(
             throw new Error('No parsed result from AI service');
         }
 
-        // Merge quick pre-parse hints if AI missed them (e.g., max layover hours, stops)
+        // Merge quick pre-parse hints if AI missed them (e.g., max layover hours, stops, preferredAirline)
         const mergedFlights = {
             ...(parsedResult.flights || {}),
             ...(quick.flights?.stops && !parsedResult.flights?.stops ? { stops: quick.flights.stops } : {}),
-            ...(quick.flights?.maxLayoverHours && !parsedResult.flights?.maxLayoverHours ? { maxLayoverHours: quick.flights.maxLayoverHours } : {})
+            ...(quick.flights?.maxLayoverHours && !parsedResult.flights?.maxLayoverHours ? { maxLayoverHours: quick.flights.maxLayoverHours } : {}),
+            ...(quick.flights?.preferredAirline && !parsedResult.flights?.preferredAirline ? { preferredAirline: quick.flights.preferredAirline } : {})
         } as any;
 
         const mergedResult = {
