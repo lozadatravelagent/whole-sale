@@ -78,6 +78,7 @@ const ChatFeature = () => {
   const { handleSendMessage: handleSendMessageRaw } = useMessageHandler(
     selectedConversation,
     selectedConversationRef,
+    messages, // ✅ Pass messages from useMessages hook above (prevents duplicate hook calls)
     previousParsedRequest,
     setPreviousParsedRequest,
     loadContextualMemory,
