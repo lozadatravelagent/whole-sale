@@ -668,16 +668,15 @@ export function useMessages(conversationId: string | null) {
       if (payload.eventType === 'INSERT') {
         // ✅ STEP 0: Check if this exact message ID was already processed (race condition protection)
         // Use GLOBAL Set (not ref) to prevent multiple listeners from processing same event
-        // ATOMIC operation: Check and add in one step to prevent race conditions
-        // If the ID already exists, Set.add() returns false (didn't add because already present)
-        // If the ID doesn't exist, Set.add() returns true (successfully added)
-        const wasAlreadyProcessed = !globalProcessedMessageIds.add(message.id);
+        const wasAlreadyProcessed = globalProcessedMessageIds.has(message.id);
 
         if (wasAlreadyProcessed) {
           console.log('🔒 [REALTIME] Message ID already processed globally (by another listener), skipping:', message.id);
           return;
         }
 
+        // Add to global set AFTER checking to prevent race conditions
+        globalProcessedMessageIds.add(message.id);
         console.log('🔒 [REALTIME] Marked message as processed globally:', message.id);
 
         // Clean up old processed IDs periodically (keep only last 1000 to prevent memory leak)

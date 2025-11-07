@@ -432,7 +432,7 @@ const ChatFeature = () => {
             activeTab={activeTab}
             sidebarLimit={sidebarLimit}
             onSelectConversation={setSelectedConversation}
-            onCreateNewChat={createNewChat}
+            onCreateNewChat={() => createNewChat()}
             onTabChange={setActiveTab}
             onArchiveConversation={handleArchiveConversation}
           />
