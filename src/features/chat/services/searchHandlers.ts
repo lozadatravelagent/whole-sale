@@ -4,7 +4,7 @@ import { formatForStarling, formatForEurovips } from '@/services/aiMessageParser
 import type { SearchResult, LocalHotelData, LocalPackageData, LocalServiceData } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
 import { formatFlightResponse, formatHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse } from './responseFormatters';
-import { getCityCode } from './messageService';
+import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 
 // Helper function to calculate layover hours between two flight segments
@@ -244,12 +244,12 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     const eurovipsParams = formatForEurovips(enrichedParsed);
     console.log('📊 EUROVIPS parameters:', eurovipsParams);
 
-    // Get city code first
-    console.log('📍 [HOTEL SEARCH] Step 2: Getting city code for location');
-    console.log('🔍 Looking up city:', eurovipsParams.hotelParams.cityCode);
+    // Get city code from new optimized mapping service
+    console.log('📍 [HOTEL SEARCH] Step 2: Resolving city code');
+    console.log('🔍 Looking up city:', enrichedParsed.hotels?.city);
 
-    const cityCode = await getCityCode(eurovipsParams.hotelParams.cityCode);
-    console.log('✅ [HOTEL SEARCH] City code resolved:', cityCode);
+    const cityCode = await getCityCode(enrichedParsed.hotels?.city || '');
+    console.log('✅ [HOTEL SEARCH] City code resolved:', `"${enrichedParsed.hotels?.city}" → ${cityCode}`);
 
     const requestBody = {
       action: 'searchHotels',
@@ -332,6 +332,15 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     return result;
   } catch (error) {
     console.error('❌ [HOTEL SEARCH] Error in hotel search process:', error);
+
+    // Handle city not found error specifically
+    if (error instanceof Error && error.message.includes('Ciudad no encontrada')) {
+      return {
+        response: `❌ **Ciudad no encontrada**\n\nNo pude encontrar "${enrichedParsed.hotels?.city}" en la base de datos de EUROVIPS.\n\n🔍 **Verifica que el nombre esté bien escrito:**\n- Ejemplos: "Punta Cana", "Cancún", "Madrid", "Barcelona"\n- Puedes escribir con o sin acentos\n\n💡 **¿Buscabas otra ciudad cercana?**\nIntenta con el nombre de la ciudad principal del destino.`,
+        data: null
+      };
+    }
+
     return {
       response: '❌ **Servicio de hoteles temporalmente no disponible**\n\nNuestros servicios de búsqueda de hoteles están siendo configurados. Mientras tanto:\n\n🏨 **Puedo ayudarte con:**\n- Recomendaciones generales de destinos\n- Información sobre ciudades\n- Planificación de viajes\n\n📞 **Para reservas de hoteles:**\nNuestro equipo puede asistirte con cotizaciones personalizadas.',
       data: null
@@ -342,7 +351,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
 export const handlePackageSearch = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
   try {
     const eurovipsParams = formatForEurovips(parsed);
-    const cityCode = await getCityCode(eurovipsParams.packageParams.cityCode);
+    const cityCode = await getCityCode(parsed.packages?.destination || '');
 
     const response = await supabase.functions.invoke('eurovips-soap', {
       body: {
@@ -375,7 +384,7 @@ export const handlePackageSearch = async (parsed: ParsedTravelRequest): Promise<
 export const handleServiceSearch = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
   try {
     const eurovipsParams = formatForEurovips(parsed);
-    const cityCode = await getCityCode(eurovipsParams.serviceParams.cityCode);
+    const cityCode = await getCityCode(parsed.services?.city || '');
 
     const response = await supabase.functions.invoke('eurovips-soap', {
       body: {
