@@ -770,18 +770,6 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
     const fareType = fareEl.getAttribute('type') || 'STD';
     const availability = parseInt(fareEl.getAttribute('Availability') || '1');
 
-    // Map fare type to room description
-    const roomTypeMap: Record<string, string> = {
-      'SGL': 'Habitación Individual',
-      'DWL': 'Habitación Doble',
-      'TPL': 'Habitación Triple',
-      'CHD': 'Habitación para Niños',
-      'INF': 'Habitación con Bebé',
-      'STD': 'Habitación Estándar'
-    };
-
-    const roomType = roomTypeMap[fareType] || defaultRoomType || `Habitación ${fareType}`;
-
     // Extract pricing information
     const basePrice = parseFloat(getTextContent(fareEl, 'Base') || '0');
     const taxPrice = parseFloat(getTextContent(fareEl, 'Tax') || '0');
@@ -791,8 +779,16 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
     const fareList = fareEl.closest('FareList');
     const currency = fareList?.getAttribute('currency') || 'USD';
 
-    const offer = getTextContent(fareEl, 'Offer') || '';
-    const description = offer ? `${roomType} - ${offer}` : roomType;
+    // Get the actual room description
+    // For external brokers (EUROVIPS, etc.), the room info is in <Description>
+    // For internal BackOffice fares, it may be in <Offer> (for promotions)
+    const description = getTextContent(fareEl, 'Description') ||
+                        getTextContent(fareEl, 'Offer') ||
+                        defaultRoomType || '';
+
+    // Determine room type from the description, not from fare type
+    // The fare type (SGL, DWL, etc.) represents passenger type, not room type
+    const roomType = extractRoomTypeFromDescription(description, defaultRoomType);
 
     if (totalPrice <= 0) {
       console.warn(`⚠️ Fare ${fareType} has no valid price`);
@@ -813,6 +809,58 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
     console.error('❌ Error parsing fare element:', error);
     return null;
   }
+}
+
+// Helper function to extract room type from description
+function extractRoomTypeFromDescription(description: string, fallback: string): string {
+  if (!description) return fallback || 'Habitación Estándar';
+
+  const desc = description.toLowerCase();
+
+  // Check for specific room types in the description
+  // Order matters: check more specific patterns first
+  if (desc.includes('apartment three bedroom') || desc.includes('three bedroom')) {
+    return 'Apartamento 3 Dormitorios';
+  }
+  if (desc.includes('apartment two bedroom') || desc.includes('two bedroom')) {
+    return 'Apartamento 2 Dormitorios';
+  }
+  if (desc.includes('apartment one bedroom') || desc.includes('one bedroom')) {
+    return 'Apartamento 1 Dormitorio';
+  }
+  if (desc.includes('apartment')) {
+    return 'Apartamento';
+  }
+  if (desc.includes('junior suite')) {
+    return 'Junior Suite';
+  }
+  if (desc.includes('suite')) {
+    return 'Suite';
+  }
+  if (desc.includes('triple')) {
+    return 'Habitación Triple';
+  }
+  if (desc.includes('cuadruple') || desc.includes('quad')) {
+    return 'Habitación Cuádruple';
+  }
+  if (desc.includes('doble') || desc.includes('double')) {
+    return 'Habitación Doble';
+  }
+  if (desc.includes('individual') || desc.includes('single')) {
+    return 'Habitación Individual';
+  }
+  if (desc.includes('deluxe')) {
+    return 'Habitación Deluxe';
+  }
+  if (desc.includes('superior')) {
+    return 'Habitación Superior';
+  }
+  if (desc.includes('tropical')) {
+    return 'Habitación Tropical';
+  }
+
+  // If no specific type found, return a generic name based on the description
+  return fallback || 'Habitación Estándar';
 }
 
 // Keep the old parseRoomElement for backward compatibility (not used now)

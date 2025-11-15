@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import BaggageIcon from '@/components/ui/BaggageIcon';
 import { supabase } from '@/integrations/supabase/client';
+import { airlineResolver } from '@/features/chat/services/airlineResolver';
 
 interface FlightSelectorProps {
   flights: FlightData[];
@@ -71,6 +72,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [agencyId, setAgencyId] = useState<string | undefined>(undefined);
+  const [resolvedAirlineNames, setResolvedAirlineNames] = useState<{ [flightId: string]: string }>({});
   const { toast } = useToast();
 
   // Load agency_id from conversation
@@ -93,6 +95,38 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
         });
     }
   }, [conversationId]);
+
+  // Resolve airline names when flights change
+  useEffect(() => {
+    const resolveAirlineNames = async () => {
+      const resolved: { [flightId: string]: string } = {};
+
+      for (const flight of flights) {
+        // If name already exists, use it
+        if (flight.airline?.name && flight.airline.name !== 'Unknown' && flight.airline.name !== 'Airline ') {
+          resolved[flight.id] = flight.airline.name;
+        }
+        // Otherwise, try to resolve from code
+        else if (flight.airline?.code) {
+          try {
+            const airlineInfo = await airlineResolver.resolveAirline(flight.airline.code);
+            resolved[flight.id] = airlineInfo.name;
+          } catch (error) {
+            console.warn(`Failed to resolve airline for ${flight.airline.code}:`, error);
+            resolved[flight.id] = 'Aerolínea no especificada';
+          }
+        } else {
+          resolved[flight.id] = 'Aerolínea no especificada';
+        }
+      }
+
+      setResolvedAirlineNames(resolved);
+    };
+
+    if (flights.length > 0) {
+      resolveAirlineNames();
+    }
+  }, [flights]);
 
 
 
@@ -180,6 +214,11 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
   };
 
   const safeAirlineName = (flight: FlightData) => {
+    // Use resolved name if available
+    if (resolvedAirlineNames[flight.id]) {
+      return resolvedAirlineNames[flight.id];
+    }
+    // Fallback to original name if exists
     return flight.airline?.name || 'Aerolínea no especificada';
   };
 

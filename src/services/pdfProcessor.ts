@@ -6,6 +6,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { searchAirFares, type AirfareSearchParams } from './airfareSearch';
 import type { FlightData } from '@/types';
+import { getAirlineNameFromCode, getAirlineCodeFromName } from '@/features/chat/utils/flightHelpers';
 
 export interface PdfAnalysisResult {
     success: boolean;
@@ -116,6 +117,43 @@ function parsePrice(priceStr: string): number {
         // Commas are thousands, dot is decimal
         return parseFloat(cleaned.replace(/,/g, ''));
     }
+}
+
+/**
+ * Helper function to resolve airline name from code or partial name
+ * Uses static mappings for synchronous resolution in PDF processing
+ */
+function resolveAirlineName(airlineInput: string | undefined): string {
+    if (!airlineInput || airlineInput.trim() === '') {
+        return 'Aerolínea no especificada';
+    }
+
+    const input = airlineInput.trim();
+
+    // If it looks like a 2-3 letter code, try to resolve it
+    if (input.length <= 3 && /^[A-Z0-9]{2,3}$/i.test(input)) {
+        const resolved = getAirlineNameFromCode(input.toUpperCase());
+        // If resolution returned the same code, it wasn't found
+        if (resolved !== input.toUpperCase()) {
+            return resolved;
+        }
+    }
+
+    // If it's a name, try to get the code and then the full name
+    const code = getAirlineCodeFromName(input);
+    if (code !== input.toUpperCase()) {
+        const fullName = getAirlineNameFromCode(code);
+        if (fullName !== code) {
+            return fullName;
+        }
+    }
+
+    // If input already looks like a full name (more than 3 chars), return as is
+    if (input.length > 3) {
+        return input;
+    }
+
+    return 'Aerolínea no especificada';
 }
 
 /**
@@ -1957,7 +1995,7 @@ function extractFlightInfo(text: string): Array<{
     for (let i = 0; i < maxEntries; i++) {
         const routeDetail = routeDetails[i];
         const flight = {
-            airline: airlines[i] || 'Aerolínea no especificada',
+            airline: resolveAirlineName(airlines[i]),
             route: routes[i] || 'Ruta no especificada',
             price: prices[i] || 0,
             dates: dates[i] || 'Fechas no especificadas',
@@ -2416,6 +2454,9 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         console.log('🔍 [AIRLINE EXTRACTION] Starting airline extraction...');
 
         const airlinePatterns = [
+            // Pattern 0: "✈Vuelos [CODE] [FULL NAME]" format (HIGHEST PRIORITY - extracts name from PDF as-is)
+            // Stops before Title Case words (Buenos), airport codes (EZE), or lowercase words (outbound)
+            /✈?\s*[Vv]uelos\s+([A-Z0-9]{2,3})\s+([A-Z][A-Za-z\s\.]+?)(?=\s+[A-Z][a-z]+|\s+[a-z]+|$)/m,
             // Pattern 1: DETALLE DEL VUELO followed by code + name (most specific)
             /DETALLE\s+DEL\s+VUELO\s+([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)(?:\s+Ocupación)/i,
             // Pattern 2: Code + name just before Ocupación
@@ -2434,12 +2475,24 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
                 if (match[2]) {
                     const code = match[1].trim();
                     const name = match[2].trim();
+
+                    // Pattern 0 (Vuelos format): Return ONLY the name as-is from PDF
+                    if (i === 0) {
+                        console.log(`✅ [AIRLINE EXTRACTION] Found from "Vuelos" format: "${name}"`);
+                        return name;
+                    }
+
+                    // Other patterns: Combine code + name
                     const fullName = `${code} ${name}`;
                     console.log(`✅ [AIRLINE EXTRACTION] Found: "${fullName}"`);
                     return fullName;
                 } else if (match[1]) {
-                    console.log(`✅ [AIRLINE EXTRACTION] Found (code only): "${match[1].trim()}"`);
-                    return match[1].trim();
+                    const code = match[1].trim();
+                    console.log(`✅ [AIRLINE EXTRACTION] Found (code only): "${code}"`);
+                    // Try to resolve the code to a full name
+                    const resolved = resolveAirlineName(code);
+                    console.log(`✅ [AIRLINE EXTRACTION] Resolved to: "${resolved}"`);
+                    return resolved;
                 }
             } else {
                 console.log(`❌ [AIRLINE EXTRACTION] Pattern ${i + 1} did not match`);
@@ -2447,7 +2500,7 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         }
 
         console.warn('⚠️ [AIRLINE EXTRACTION] No patterns matched, returning default');
-        return 'Aerolínea no especificada';
+        return resolveAirlineName(undefined);
     };
 
     // Extract all airport codes and times from the content
@@ -2854,7 +2907,7 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
                 if (i < outboundLegs.length) {
                     const outboundLeg = outboundLegs[i];
                     flights.push({
-                        airline: outboundLeg.airline || 'Aerolínea no especificada',
+                        airline: resolveAirlineName(outboundLeg.airline),
                         route: `${outboundLeg.departure.city_code} → ${outboundLeg.arrival.city_code}`,
                         price: outboundLeg.price || 0,
                         dates: departureDate,
@@ -2873,7 +2926,7 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
                 if (i < returnLegs.length) {
                     const returnLeg = returnLegs[i];
                     flights.push({
-                        airline: returnLeg.airline || 'Aerolínea no especificada',
+                        airline: resolveAirlineName(returnLeg.airline),
                         route: `${returnLeg.departure.city_code} → ${returnLeg.arrival.city_code}`,
                         price: returnLeg.price || 0,
                         dates: returnDate || departureDate,
@@ -2892,7 +2945,7 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
             // One-way flights: create a flight object for each outbound leg
             outboundLegs.forEach((outboundLeg, i) => {
                 flights.push({
-                    airline: outboundLeg.airline || 'Aerolínea no especificada',
+                    airline: resolveAirlineName(outboundLeg.airline),
                     route: `${outboundLeg.departure.city_code} → ${outboundLeg.arrival.city_code}`,
                     price: outboundLeg.price || 0,
                     dates: departureDate,
@@ -2913,12 +2966,13 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
         const dates = returnDate && returnDate !== departureDate ? `${departureDate} / ${returnDate}` : departureDate;
 
         // Get airline from first leg if available, otherwise extract from content
-        let airlineName = 'Aerolínea no especificada';
+        let airlineName = resolveAirlineName(undefined);
         if (legs.length > 0 && legs[0].airline) {
-            airlineName = legs[0].airline;
+            airlineName = resolveAirlineName(legs[0].airline);
         } else {
             // Try to extract airline from content
-            airlineName = extractAirlineName(content);
+            const extracted = extractAirlineName(content);
+            airlineName = resolveAirlineName(extracted);
             console.log('🔍 Extracted airline for single flight:', airlineName);
         }
 
