@@ -1,0 +1,4598 @@
+[
+  {
+    "cityCode": "A07",
+    "cityName": "ANDORRA LA VELLA",
+    "countryCode": "AD",
+    "countryName": "ANDORRA"
+  },
+  {
+    "cityCode": "A5V",
+    "cityName": "ANDORRA",
+    "countryCode": "AD",
+    "countryName": "ANDORRA"
+  },
+  {
+    "cityCode": "CUR",
+    "cityName": "CURACAO",
+    "countryCode": "AH",
+    "countryName": "CURACAO"
+  },
+  {
+    "cityCode": "GRZ",
+    "cityName": "GRAZ",
+    "countryCode": "AT",
+    "countryName": "AUSTRIA"
+  },
+  {
+    "cityCode": "INN",
+    "cityName": "INNSBRUCK",
+    "countryCode": "AT",
+    "countryName": "AUSTRIA"
+  },
+  {
+    "cityCode": "LNZ",
+    "cityName": "LINZ",
+    "countryCode": "AT",
+    "countryName": "AUSTRIA"
+  },
+  {
+    "cityCode": "SZG",
+    "cityName": "SALZBURGO",
+    "countryCode": "AT",
+    "countryName": "AUSTRIA"
+  },
+  {
+    "cityCode": "VIE",
+    "cityName": "VIENA",
+    "countryCode": "AT",
+    "countryName": "AUSTRIA"
+  },
+  {
+    "cityCode": "A0I",
+    "cityName": "ALBANIA",
+    "countryCode": "AU",
+    "countryName": "AUSTRALIA"
+  },
+  {
+    "cityCode": "HTI",
+    "cityName": "HAMILTON ISLAND",
+    "countryCode": "AU",
+    "countryName": "AUSTRALIA"
+  },
+  {
+    "cityCode": "MEL",
+    "cityName": "MELBOURNE",
+    "countryCode": "AU",
+    "countryName": "AUSTRALIA"
+  },
+  {
+    "cityCode": "PAL",
+    "cityName": "PALM COVE",
+    "countryCode": "AU",
+    "countryName": "AUSTRALIA"
+  },
+  {
+    "cityCode": "PER",
+    "cityName": "PERTH",
+    "countryCode": "AU",
+    "countryName": "AUSTRALIA"
+  },
+  {
+    "cityCode": "SYD",
+    "cityName": "SYDNEY",
+    "countryCode": "AU",
+    "countryName": "AUSTRALIA"
+  },
+  {
+    "cityCode": "AUA",
+    "cityName": "ARUBA",
+    "countryCode": "AW",
+    "countryName": "ARUBA"
+  },
+  {
+    "cityCode": "BBQ",
+    "cityName": "BARBADOS",
+    "countryCode": "BB",
+    "countryName": "BARBADOS"
+  },
+  {
+    "cityCode": "ANR",
+    "cityName": "ANTWERPEN-ANVERS",
+    "countryCode": "BG",
+    "countryName": "BELGICA"
+  },
+  {
+    "cityCode": "BRG",
+    "cityName": "BRUJAS",
+    "countryCode": "BG",
+    "countryName": "BELGICA"
+  },
+  {
+    "cityCode": "BRU",
+    "cityName": "BRUSELAS",
+    "countryCode": "BG",
+    "countryName": "BELGICA"
+  },
+  {
+    "cityCode": "GAN",
+    "cityName": "GANTE",
+    "countryCode": "BG",
+    "countryName": "BELGICA"
+  },
+  {
+    "cityCode": "SOF",
+    "cityName": "SOFIA",
+    "countryCode": "BG",
+    "countryName": "BELGICA"
+  },
+  {
+    "cityCode": "ZGJ",
+    "cityName": "Brugge",
+    "countryCode": "BG",
+    "countryName": "BELGICA"
+  },
+  {
+    "cityCode": "SJJ",
+    "cityName": "SARAJEVO",
+    "countryCode": "BN",
+    "countryName": "BOSNIA HERZEGOVINA"
+  },
+  {
+    "cityCode": "CBB",
+    "cityName": "COCHABAMBA",
+    "countryCode": "BO",
+    "countryName": "BOLIVIA"
+  },
+  {
+    "cityCode": "LPB",
+    "cityName": "LA PAZ",
+    "countryCode": "BO",
+    "countryName": "BOLIVIA"
+  },
+  {
+    "cityCode": "S0P",
+    "cityName": "SUCRE",
+    "countryCode": "BO",
+    "countryName": "BOLIVIA"
+  },
+  {
+    "cityCode": "UYU",
+    "cityName": "UYUNI",
+    "countryCode": "BO",
+    "countryName": "BOLIVIA"
+  },
+  {
+    "cityCode": "VVI",
+    "cityName": "SANTA CRUZ",
+    "countryCode": "BO",
+    "countryName": "BOLIVIA"
+  },
+  {
+    "cityCode": "ADC",
+    "cityName": "ARRAIAL DO CABO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "ANG",
+    "cityName": "ANGRA DOS REIS",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "AQU",
+    "cityName": "AQUIRAZ",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "ARR",
+    "cityName": "ARRAIAL DE AJUDA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "BEL",
+    "cityName": "BELEM",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "BHZ",
+    "cityName": "BELO HORIZONTE",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "BO1",
+    "cityName": "BOMBINHAS",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "BPS",
+    "cityName": "PORTO SEGURO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "BSA",
+    "cityName": "BARRA SAO  MIGUEL",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "BSB",
+    "cityName": "BRASILIA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "BVY",
+    "cityName": "BAURU",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "BZS",
+    "cityName": "BUZIOS",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "CBU",
+    "cityName": "CAMBORIU",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "CDA",
+    "cityName": "CABO SANTO AGOSTINH",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "CFB",
+    "cityName": "CABO FRIO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "CSP",
+    "cityName": "COSTA DE SAUIPE",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "CUM",
+    "cityName": "CUMBUCO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "CWB",
+    "cityName": "CURITIBA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "FEN",
+    "cityName": "FERNANDO DE NORONHA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "FLN",
+    "cityName": "FLORIANOPOLIS",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "FOR",
+    "cityName": "FORTALEZA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "FRI",
+    "cityName": "FRIBURGO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "GMD",
+    "cityName": "GRAMADO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "GRJ",
+    "cityName": "GUARUJA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "GUR",
+    "cityName": "GUARAJUBA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "IGU",
+    "cityName": "FOZ DO IGUAZU",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "ILG",
+    "cityName": "ILHA GRANDE",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "ILH",
+    "cityName": "ILHA BELA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "IMB",
+    "cityName": "IMBASSAI",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "IOS",
+    "cityName": "ILHEUS",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "ITA",
+    "cityName": "ITAPEMA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "ITE",
+    "cityName": "ITACARE",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "JJC",
+    "cityName": "JERICOACOARA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "JPA",
+    "cityName": "JOAO PESSOA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "MAO",
+    "cityName": "MANAOS",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "MCZ",
+    "cityName": "MACEIO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "MRG",
+    "cityName": "MARAGOGI",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "MSA",
+    "cityName": "MORRO DE SAO PAULO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "NAT",
+    "cityName": "NATAL",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "OUR",
+    "cityName": "OURO PRETO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "PDF",
+    "cityName": "PRAIA DO FORTE",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "PIP",
+    "cityName": "PIPA (TIBAU DO SUL)",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "POA",
+    "cityName": "PORTO ALEGRE",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "PRT",
+    "cityName": "PARATY",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "PTG",
+    "cityName": "PORTO DE GALINHAS",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "PTL",
+    "cityName": "PETROPOLIS",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "REC",
+    "cityName": "RECIFE",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "RIO",
+    "cityName": "RIO DE JANEIRO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "SAO",
+    "cityName": "SAO PAULO",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "SSA",
+    "cityName": "SALVADOR",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "SSZ",
+    "cityName": "SANTOS",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "STD",
+    "cityName": "SANTO ANDRE",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "T5D",
+    "cityName": "TIBAUDOSUL",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "UBT",
+    "cityName": "UBATUBA",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "UDI",
+    "cityName": "Uberlandia",
+    "countryCode": "BR",
+    "countryName": "BRASIL"
+  },
+  {
+    "cityCode": "FPO",
+    "cityName": "FREEPORT",
+    "countryCode": "BS",
+    "countryName": "BAHAMAS"
+  },
+  {
+    "cityCode": "GC6",
+    "cityName": "GRAND BAHAMA",
+    "countryCode": "BS",
+    "countryName": "BAHAMAS"
+  },
+  {
+    "cityCode": "NAS",
+    "cityName": "NASSAU",
+    "countryCode": "BS",
+    "countryName": "BAHAMAS"
+  },
+  {
+    "cityCode": "PID",
+    "cityName": "PARADISE ISLAND",
+    "countryCode": "BS",
+    "countryName": "BAHAMAS"
+  },
+  {
+    "cityCode": "B1U",
+    "cityName": "BUS�N (PUS�N)",
+    "countryCode": "C0",
+    "countryName": "COREA DEL SUR"
+  },
+  {
+    "cityCode": "SEL",
+    "cityName": "SEUL",
+    "countryCode": "C0",
+    "countryName": "COREA DEL SUR"
+  },
+  {
+    "cityCode": "IAG",
+    "cityName": "NIAGARA FALLS",
+    "countryCode": "CA",
+    "countryName": "CANADA"
+  },
+  {
+    "cityCode": "YQB",
+    "cityName": "QUEBEC",
+    "countryCode": "CA",
+    "countryName": "CANADA"
+  },
+  {
+    "cityCode": "YYZ",
+    "cityName": "TORONTO",
+    "countryCode": "CA",
+    "countryName": "CANADA"
+  },
+  {
+    "cityCode": "BRN",
+    "cityName": "BERNA",
+    "countryCode": "CH",
+    "countryName": "SUIZA"
+  },
+  {
+    "cityCode": "BSL",
+    "cityName": "BASILEA",
+    "countryCode": "CH",
+    "countryName": "SUIZA"
+  },
+  {
+    "cityCode": "C8A",
+    "cityName": "CHUR",
+    "countryCode": "CH",
+    "countryName": "SUIZA"
+  },
+  {
+    "cityCode": "GVA",
+    "cityName": "GINEBRA",
+    "countryCode": "CH",
+    "countryName": "SUIZA"
+  },
+  {
+    "cityCode": "ITK",
+    "cityName": "INTERLAKEN",
+    "countryCode": "CH",
+    "countryName": "SUIZA"
+  },
+  {
+    "cityCode": "LGN",
+    "cityName": "LUGANO",
+    "countryCode": "CH",
+    "countryName": "SUIZA"
+  },
+  {
+    "cityCode": "LUC",
+    "cityName": "LUCERNA",
+    "countryCode": "CH",
+    "countryName": "SUIZA"
+  },
+  {
+    "cityCode": "QLS",
+    "cityName": "LAUSANNE",
+    "countryCode": "CH",
+    "countryName": "SUIZA"
+  },
+  {
+    "cityCode": "ZRH",
+    "cityName": "ZURICH",
+    "countryCode": "CH",
+    "countryName": "SUIZA"
+  },
+  {
+    "cityCode": "ARI",
+    "cityName": "ARICA",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "IPC",
+    "cityName": "DE PASCUA ISLA",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "IQQ",
+    "cityName": "IQUIQUE",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "KNA",
+    "cityName": "VI�A DEL MAR",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "LSC",
+    "cityName": "LA SERENA",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "PMC",
+    "cityName": "PUERTO MONTT",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "PUX",
+    "cityName": "PUERTO VARAS",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "SCL",
+    "cityName": "SANTIAGO DE CHILE",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "SPA",
+    "cityName": "SAN PEDRO DE ATACAM",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "VAP",
+    "cityName": "VALPARAISO",
+    "countryCode": "CL",
+    "countryName": "CHILE"
+  },
+  {
+    "cityCode": "BJS",
+    "cityName": "BEIJING",
+    "countryCode": "CN",
+    "countryName": "CHINA"
+  },
+  {
+    "cityCode": "GUG",
+    "cityName": "GUANGZHOU",
+    "countryCode": "CN",
+    "countryName": "CHINA"
+  },
+  {
+    "cityCode": "PEK",
+    "cityName": "PEKIN",
+    "countryCode": "CN",
+    "countryName": "CHINA"
+  },
+  {
+    "cityCode": "SHA",
+    "cityName": "SHANGHAI",
+    "countryCode": "CN",
+    "countryName": "CHINA"
+  },
+  {
+    "cityCode": "TAO",
+    "cityName": "Qingdao",
+    "countryCode": "CN",
+    "countryName": "CHINA"
+  },
+  {
+    "cityCode": "X67",
+    "cityName": "XIAMEN",
+    "countryCode": "CN",
+    "countryName": "CHINA"
+  },
+  {
+    "cityCode": "ADZ",
+    "cityName": "SAN ANDRES",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "AXM",
+    "cityName": "ARMENIA",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "BAQ",
+    "cityName": "BARRANQUILLA",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "BOG",
+    "cityName": "BOGOTA",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "CLO",
+    "cityName": "CALI",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "CTG",
+    "cityName": "CARTAGENA",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "MDE",
+    "cityName": "MEDELLIN",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "PRR",
+    "cityName": "PEREIRA",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "PVA",
+    "cityName": "PROVIDENCIA",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "QUI",
+    "cityName": "QUIMBAYA",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "SMR",
+    "cityName": "SANTA MARTA",
+    "countryCode": "CO",
+    "countryName": "COLOMBIA"
+  },
+  {
+    "cityCode": "AEN",
+    "cityName": "ARENAL",
+    "countryCode": "CR",
+    "countryName": "COSTA RICA"
+  },
+  {
+    "cityCode": "GTE",
+    "cityName": "GUANACASTE",
+    "countryCode": "CR",
+    "countryName": "COSTA RICA"
+  },
+  {
+    "cityCode": "LIO",
+    "cityName": "LIMON",
+    "countryCode": "CR",
+    "countryName": "COSTA RICA"
+  },
+  {
+    "cityCode": "MNA",
+    "cityName": "MANUEL ANTONIO",
+    "countryCode": "CR",
+    "countryName": "COSTA RICA"
+  },
+  {
+    "cityCode": "MOV",
+    "cityName": "MONTEVERDE",
+    "countryCode": "CR",
+    "countryName": "COSTA RICA"
+  },
+  {
+    "cityCode": "SJO",
+    "cityName": "SAN JOSE DE COSTA R",
+    "countryCode": "CR",
+    "countryName": "COSTA RICA"
+  },
+  {
+    "cityCode": "T2Q",
+    "cityName": "TORTUGUERO",
+    "countryCode": "CR",
+    "countryName": "COSTA RICA"
+  },
+  {
+    "cityCode": "TMU",
+    "cityName": "PLAYA TAMBOR",
+    "countryCode": "CR",
+    "countryName": "COSTA RICA"
+  },
+  {
+    "cityCode": "TNO",
+    "cityName": "TAMARINDO",
+    "countryCode": "CR",
+    "countryName": "COSTA RICA"
+  },
+  {
+    "cityCode": "BRJ",
+    "cityName": "CAYO LAS BRUJAS",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "CCC",
+    "cityName": "CAYO COCO",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "CCE",
+    "cityName": "CAYO ENSENACHOS",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "CCG",
+    "cityName": "CAYO GUILLERMO",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "CFG",
+    "cityName": "CIENFUEGOS",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "CMW",
+    "cityName": "CAMAGUEY",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "CSM",
+    "cityName": "CAYO SANTA MARIA",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "CYO",
+    "cityName": "CAYO LARGO",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "CYZ",
+    "cityName": "CAYO CRUZ",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "GDV",
+    "cityName": "GUARDALAVACA",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "HAV",
+    "cityName": "LA HABANA",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "HOG",
+    "cityName": "HOLGUIN",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "PIN",
+    "cityName": "PINAR DEL RIO",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "SCU",
+    "cityName": "SANTIAGO DE CUBA",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "SNU",
+    "cityName": "SANTA CLARA",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "TND",
+    "cityName": "TRINIDAD",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "VRA",
+    "cityName": "VARADERO",
+    "countryCode": "CU",
+    "countryName": "CUBA"
+  },
+  {
+    "cityCode": "IRH",
+    "cityName": "ILHA DA BOAVISTA",
+    "countryCode": "CV",
+    "countryName": "CABO VERDE"
+  },
+  {
+    "cityCode": "QLI",
+    "cityName": "LIMASOL",
+    "countryCode": "CY",
+    "countryName": "CHIPRE"
+  },
+  {
+    "cityCode": "K05",
+    "cityName": "KARLOVY VARY",
+    "countryCode": "CZ",
+    "countryName": "REPUBLICA CHECA"
+  },
+  {
+    "cityCode": "PRG",
+    "cityName": "PRAGA",
+    "countryCode": "CZ",
+    "countryName": "REPUBLICA CHECA"
+  },
+  {
+    "cityCode": "AC0",
+    "cityName": "AACHEN",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "B08",
+    "cityName": "BREMEN",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "BER",
+    "cityName": "BERLIN",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "CGN",
+    "cityName": "COLONIA",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "DUS",
+    "cityName": "DUSSELDORF",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "FRA",
+    "cityName": "FRANKFURT",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "G5H",
+    "cityName": "GOETTINGEN",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "GAJ",
+    "cityName": "GIESSEN",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "HAJ",
+    "cityName": "HANNOVER",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "HAM",
+    "cityName": "HAMBURGO",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "HDB",
+    "cityName": "HEIDELBERG",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "KVK",
+    "cityName": "KIEL",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "MUC",
+    "cityName": "MUNICH",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "NUE",
+    "cityName": "NUREMBERG",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "R3B",
+    "cityName": "ROTEMBURGO OB DER T",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "STR",
+    "cityName": "STUTTGART",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "UR3",
+    "cityName": "ULM",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "UWP",
+    "cityName": "WUPPERTAL",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "W65",
+    "cityName": "WEINHEIM",
+    "countryCode": "DE",
+    "countryName": "ALEMANIA"
+  },
+  {
+    "cityCode": "CPH",
+    "cityName": "COPENHAGUE",
+    "countryCode": "DK",
+    "countryName": "DINAMARCA"
+  },
+  {
+    "cityCode": "BAY",
+    "cityName": "BAYAHIBE",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "BOC",
+    "cityName": "BOCA CHICA",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "C7Z",
+    "cityName": "CABARETE",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "JDL",
+    "cityName": "JUAN DOLIO",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "LRM",
+    "cityName": "LA ROMANA",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "MIC",
+    "cityName": "MICHES",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "POP",
+    "cityName": "PUERTO PLATA",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "PUJ",
+    "cityName": "PUNTA CANA",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "RSJ",
+    "cityName": "RIO SAN JUAN",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "SAM",
+    "cityName": "SAMANA",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "SDQ",
+    "cityName": "SANTO DOMINGO",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "STI",
+    "cityName": "SANTIAGO DE LOS CAB",
+    "countryCode": "DO",
+    "countryName": "REPUBLICA DOMINICANA"
+  },
+  {
+    "cityCode": "C1P",
+    "cityName": "CUENCA",
+    "countryCode": "EC",
+    "countryName": "ECUADOR"
+  },
+  {
+    "cityCode": "ESM",
+    "cityName": "ESMERALDA",
+    "countryCode": "EC",
+    "countryName": "ECUADOR"
+  },
+  {
+    "cityCode": "GPS",
+    "cityName": "GALAPAGOS",
+    "countryCode": "EC",
+    "countryName": "ECUADOR"
+  },
+  {
+    "cityCode": "GYE",
+    "cityName": "GUAYAQUIL",
+    "countryCode": "EC",
+    "countryName": "ECUADOR"
+  },
+  {
+    "cityCode": "L33",
+    "cityName": "LOJA",
+    "countryCode": "EC",
+    "countryName": "ECUADOR"
+  },
+  {
+    "cityCode": "SAS",
+    "cityName": "SALINAS",
+    "countryCode": "EC",
+    "countryName": "ECUADOR"
+  },
+  {
+    "cityCode": "STE",
+    "cityName": "SANTA ELENA",
+    "countryCode": "EC",
+    "countryName": "ECUADOR"
+  },
+  {
+    "cityCode": "UIO",
+    "cityName": "QUITO",
+    "countryCode": "EC",
+    "countryName": "ECUADOR"
+  },
+  {
+    "cityCode": "CAI",
+    "cityName": "EL CAIRO",
+    "countryCode": "EG",
+    "countryName": "EGIPTO"
+  },
+  {
+    "cityCode": "HRG",
+    "cityName": "HURGHADA",
+    "countryCode": "EG",
+    "countryName": "EGIPTO"
+  },
+  {
+    "cityCode": "LXR",
+    "cityName": "LUXOR",
+    "countryCode": "EG",
+    "countryName": "EGIPTO"
+  },
+  {
+    "cityCode": "SSH",
+    "cityName": "SHARM EL SHEIKH",
+    "countryCode": "EG",
+    "countryName": "EGIPTO"
+  },
+  {
+    "cityCode": "A6O",
+    "cityName": "ALAVA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "AGP",
+    "cityName": "MALAGA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "ALC",
+    "cityName": "ALICANTE",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "AMN",
+    "cityName": "ALMADEN",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "AND",
+    "cityName": "ANDORRA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "AST",
+    "cityName": "ASTURIAS",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "AVL",
+    "cityName": "AVILA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "B2F",
+    "cityName": "BENAVENTE",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "B2G",
+    "cityName": "BENICASIM",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "B2I",
+    "cityName": "BLANES",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "BCN",
+    "cityName": "BARCELONA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "BEN",
+    "cityName": "BENIDORM",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "BIO",
+    "cityName": "BILBAO",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "BUR",
+    "cityName": "BURGOS",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "C17",
+    "cityName": "CADAQUES",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "C2K",
+    "cityName": "CALAHORRA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "C2S",
+    "cityName": "CARTAGENA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "C92",
+    "cityName": "CANTABRIA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "CAC",
+    "cityName": "CACERES",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "CD1",
+    "cityName": "CAN PASTILLA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "CDO",
+    "cityName": "COSTA DEL SOL",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "CDZ",
+    "cityName": "CADIZ",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "CF9",
+    "cityName": "CANGAS DE ONIS",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "E0E",
+    "cityName": "ESTEPONA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "EAS",
+    "cityName": "SAN SEBASTIAN",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "FGR",
+    "cityName": "FUENGIROLA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "FOM",
+    "cityName": "FORMENTERA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "GIJ",
+    "cityName": "GIJON",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "GPO",
+    "cityName": "GIRONA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "GRX",
+    "cityName": "GRANADA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "GUD",
+    "cityName": "GUADALAJARA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "H0Y",
+    "cityName": "HONDARRIBIA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "H2O",
+    "cityName": "HUESCA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "HLV",
+    "cityName": "HUELVA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "I1A",
+    "cityName": "IBIZA-SAN ANTONIO",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "IBZ",
+    "cityName": "IBIZA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "J0E",
+    "cityName": "JEREZ DE LA FRONTER",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "LCG",
+    "cityName": "LA CORU�A",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "LEI",
+    "cityName": "ALMERIA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "LEN",
+    "cityName": "LEON",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "LG7",
+    "cityName": "LLORET DE MAR",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "LPA",
+    "cityName": "GRAN CANARIA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "LUG",
+    "cityName": "LUGO",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "M12",
+    "cityName": "MALLORCA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "M1T",
+    "cityName": "MIRANDA DE EBRO",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "MAD",
+    "cityName": "MADRID",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "MDU",
+    "cityName": "MENORCA-CIUDADELA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "MIP",
+    "cityName": "MENORCA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "MRB",
+    "cityName": "MARBELLA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "MUR",
+    "cityName": "MURCIA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "O63",
+    "cityName": "Figueres",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "ODB",
+    "cityName": "CORDOBA (ESP)",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "ORS",
+    "cityName": "ORENSE",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "OVD",
+    "cityName": "OVIEDO",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "P54",
+    "cityName": "MALLORCA-PALMA NOVA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "P9P",
+    "cityName": "PUERTO POLLENSA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "PH3",
+    "cityName": "POTES",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "PJ7",
+    "cityName": "PAJARA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "PJK",
+    "cityName": "PUERTO BANUS",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "PMI",
+    "cityName": "MALLORCA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "PNA",
+    "cityName": "PAMPLONA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "PON",
+    "cityName": "PONTEVEDRA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "QGN",
+    "cityName": "TARRAGONA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "QWX",
+    "cityName": "MERIDA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "R7A",
+    "cityName": "ROSES",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "RRA",
+    "cityName": "RONDA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "SCQ",
+    "cityName": "SANTIAGO DE COMPOST",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "SDR",
+    "cityName": "SANTANDER",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "SEG",
+    "cityName": "SEGOVIA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "SLM",
+    "cityName": "SALAMANCA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "SOR",
+    "cityName": "SORIA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "STG",
+    "cityName": "SITGES",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "STM",
+    "cityName": "SANTILLANA DEL MAR",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "SVQ",
+    "cityName": "SEVILLA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "T0P",
+    "cityName": "TERUEL",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "T16",
+    "cityName": "TORREJON DE ARDOZ",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "T45",
+    "cityName": "TENERIFE-COSTA ADEJ",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "TCI",
+    "cityName": "TENERIFE",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "TF9",
+    "cityName": "TORROX",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "TOL",
+    "cityName": "TOLEDO",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "UTL",
+    "cityName": "TORREMOLINOS",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "VE5",
+    "cityName": "CENES DE LA VEGA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "VGO",
+    "cityName": "VIGO",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "VIT",
+    "cityName": "VITORIA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "VLC",
+    "cityName": "VALENCIA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "VLL",
+    "cityName": "VALLADOLID",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "ZAZ",
+    "cityName": "ZARAGOZA",
+    "countryCode": "ES",
+    "countryName": "ESPA�A"
+  },
+  {
+    "cityCode": "ADD",
+    "cityName": "Addis Ababa",
+    "countryCode": "ET",
+    "countryName": "ETIOPIA"
+  },
+  {
+    "cityCode": "HEL",
+    "cityName": "HELSINKI",
+    "countryCode": "FI",
+    "countryName": "FINLANDIA"
+  },
+  {
+    "cityCode": "RVN",
+    "cityName": "ROVANIEMI",
+    "countryCode": "FI",
+    "countryName": "FINLANDIA"
+  },
+  {
+    "cityCode": "SA0",
+    "cityName": "SAARISELKA",
+    "countryCode": "FI",
+    "countryName": "FINLANDIA"
+  },
+  {
+    "cityCode": "A31",
+    "cityName": "AMBOISE",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "A39",
+    "cityName": "ANNECY",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "A7K",
+    "cityName": "ALPES FRANCESES",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "ATA",
+    "cityName": "AZAY LE RIDEAU",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "AVN",
+    "cityName": "AVIGNON",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "BIQ",
+    "cityName": "Bayonne",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "BOD",
+    "cityName": "BURDEOS/BORDEAUX",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "C3L",
+    "cityName": "CARCASSONNE",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "C3Q",
+    "cityName": "CHAMONIX MONT BLANC",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "C3W",
+    "cityName": "CHAMB�RY",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "C3X",
+    "cityName": "COLMAR",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "CEQ",
+    "cityName": "CANNES",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "CT1",
+    "cityName": "CASSIS",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "ETB",
+    "cityName": "ESTRASBURGO",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "JLP",
+    "cityName": "Juan Les Pins",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "LDE",
+    "cityName": "LOURDES",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "LKY",
+    "cityName": "LA ROCHELLE",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "LOJ",
+    "cityName": "LES BAUX D PROVE",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "LYS",
+    "cityName": "LYON",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "M6P",
+    "cityName": "M�NACO-CAP D'AIL",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "M8K",
+    "cityName": "MONT SAINT MICHEL",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "MPL",
+    "cityName": "MONTPELLIER",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "MRS",
+    "cityName": "MARSELLA",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "MSH",
+    "cityName": "Mont St-Michel",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "NCE",
+    "cityName": "NIZA",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "O46",
+    "cityName": "Courchevel",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "PAR",
+    "cityName": "PARIS",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "QXB",
+    "cityName": "Aix En Provence",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "R15",
+    "cityName": "RICHELIEU",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "R77",
+    "cityName": "ROISSY",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "SV1",
+    "cityName": "ST JEAN DE LUZ",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "TLS",
+    "cityName": "TOULOUSE",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "TUF",
+    "cityName": "TOURS",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "V8V",
+    "cityName": "VERSALLES",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "XBQ",
+    "cityName": "BLOIS",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "XLX",
+    "cityName": "LISIEUX",
+    "countryCode": "FR",
+    "countryName": "FRANCIA"
+  },
+  {
+    "cityCode": "T0Q",
+    "cityName": "TBILISI",
+    "countryCode": "GE",
+    "countryName": "GEORGIA"
+  },
+  {
+    "cityCode": "ATH",
+    "cityName": "ATENAS",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "C4K",
+    "cityName": "CRETA-HERAKLI�N",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "CFU",
+    "cityName": "CORFU",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "CRE",
+    "cityName": "CRETA",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "HER",
+    "cityName": "HERAKLION",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "JMK",
+    "cityName": "MYKONOS",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "JTR",
+    "cityName": "SANTORINI",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "LJ4",
+    "cityName": "LEFKADA",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "M5I",
+    "cityName": "MYKONOS-PLATIS YIAL",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "MIK",
+    "cityName": "MIKONOS",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "N3S",
+    "cityName": "NAXOS",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "PAS",
+    "cityName": "PAROS",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "RHO",
+    "cityName": "RODAS",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "S3X",
+    "cityName": "SAMOS",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "SCS",
+    "cityName": "SANTORINI-OIA",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "Z4D",
+    "cityName": "ZAKINTHOS-TSILIVI",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "Z6J",
+    "cityName": "ZANTE",
+    "countryCode": "GR",
+    "countryName": "GRECIA"
+  },
+  {
+    "cityCode": "AN1",
+    "cityName": "ANTIGUA",
+    "countryCode": "GT",
+    "countryName": "GUATEMALA"
+  },
+  {
+    "cityCode": "GUA",
+    "cityName": "GUATEMALA",
+    "countryCode": "GT",
+    "countryName": "GUATEMALA"
+  },
+  {
+    "cityCode": "HKG",
+    "cityName": "HONG KONG",
+    "countryCode": "HK",
+    "countryName": "HONG KONG"
+  },
+  {
+    "cityCode": "DBV",
+    "cityName": "DUBROVNIK",
+    "countryCode": "HR",
+    "countryName": "CROACIA"
+  },
+  {
+    "cityCode": "H00",
+    "cityName": "HVAR",
+    "countryCode": "HR",
+    "countryName": "CROACIA"
+  },
+  {
+    "cityCode": "K0R",
+    "cityName": "KORCULA",
+    "countryCode": "HR",
+    "countryName": "CROACIA"
+  },
+  {
+    "cityCode": "O03",
+    "cityName": "OPATIJA",
+    "countryCode": "HR",
+    "countryName": "CROACIA"
+  },
+  {
+    "cityCode": "PUL",
+    "cityName": "PULA",
+    "countryCode": "HR",
+    "countryName": "CROACIA"
+  },
+  {
+    "cityCode": "S0O",
+    "cityName": "SPLIT",
+    "countryCode": "HR",
+    "countryName": "CROACIA"
+  },
+  {
+    "cityCode": "Z00",
+    "cityName": "ZAGREB",
+    "countryCode": "HR",
+    "countryName": "CROACIA"
+  },
+  {
+    "cityCode": "BUD",
+    "cityName": "BUDAPEST",
+    "countryCode": "HU",
+    "countryName": "HUNGRIA"
+  },
+  {
+    "cityCode": "B3W",
+    "cityName": "BALI",
+    "countryCode": "ID",
+    "countryName": "INDONESIA"
+  },
+  {
+    "cityCode": "JKT",
+    "cityName": "JAKARTA",
+    "countryCode": "ID",
+    "countryName": "INDONESIA"
+  },
+  {
+    "cityCode": "BFS",
+    "cityName": "BELFAST",
+    "countryCode": "IE",
+    "countryName": "IRLANDA"
+  },
+  {
+    "cityCode": "C58",
+    "cityName": "CORK",
+    "countryCode": "IE",
+    "countryName": "IRLANDA"
+  },
+  {
+    "cityCode": "DUB",
+    "cityName": "DUBLIN",
+    "countryCode": "IE",
+    "countryName": "IRLANDA"
+  },
+  {
+    "cityCode": "GWY",
+    "cityName": "GALWAY",
+    "countryCode": "IE",
+    "countryName": "IRLANDA"
+  },
+  {
+    "cityCode": "K0D",
+    "cityName": "KILKENNY",
+    "countryCode": "IE",
+    "countryName": "IRLANDA"
+  },
+  {
+    "cityCode": "W7D",
+    "cityName": "WEXFORD",
+    "countryCode": "IE",
+    "countryName": "IRLANDA"
+  },
+  {
+    "cityCode": "WJ0",
+    "cityName": "WATERFORD",
+    "countryCode": "IE",
+    "countryName": "IRLANDA"
+  },
+  {
+    "cityCode": "ETH",
+    "cityName": "EILAT",
+    "countryCode": "IL",
+    "countryName": "ISRAEL"
+  },
+  {
+    "cityCode": "HFA",
+    "cityName": "HAIFA",
+    "countryCode": "IL",
+    "countryName": "ISRAEL"
+  },
+  {
+    "cityCode": "JRS",
+    "cityName": "JERUSALEM",
+    "countryCode": "IL",
+    "countryName": "ISRAEL"
+  },
+  {
+    "cityCode": "TLV",
+    "cityName": "TEL AVIV",
+    "countryCode": "IL",
+    "countryName": "ISRAEL"
+  },
+  {
+    "cityCode": "BOM",
+    "cityName": "MUMBAI",
+    "countryCode": "IN",
+    "countryName": "INDIA"
+  },
+  {
+    "cityCode": "DEL",
+    "cityName": "NEW DELHI",
+    "countryCode": "IN",
+    "countryName": "INDIA"
+  },
+  {
+    "cityCode": "HCG",
+    "cityName": "HYDERABAD",
+    "countryCode": "IN",
+    "countryName": "INDIA"
+  },
+  {
+    "cityCode": "MO4",
+    "cityName": "MUMBAI-MAHARASHTRA",
+    "countryCode": "IN",
+    "countryName": "INDIA"
+  },
+  {
+    "cityCode": "NDL",
+    "cityName": "NUEVA DELHI",
+    "countryCode": "IN",
+    "countryName": "INDIA"
+  },
+  {
+    "cityCode": "THR",
+    "cityName": "TEHERAN",
+    "countryCode": "IR",
+    "countryName": "IRAN"
+  },
+  {
+    "cityCode": "A4D",
+    "cityName": "ALGHERO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "A4E",
+    "cityName": "ALBEROBELLO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "AMA",
+    "cityName": "AMALFI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "AMV",
+    "cityName": "ASSISI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "ASI",
+    "cityName": "ASIS",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "B5C",
+    "cityName": "BELLAGIO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "B5G",
+    "cityName": "BERGAMO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "BDS",
+    "cityName": "BRINDISI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "BGY",
+    "cityName": "BERGAMO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "BLQ",
+    "cityName": "BOLOGNA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "BRI",
+    "cityName": "BARI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "BSC",
+    "cityName": "BRESCIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "BYX",
+    "cityName": "BASSANO D GRAPPA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "C5X",
+    "cityName": "CASTELSARDO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "C60",
+    "cityName": "CEFALU",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "C62",
+    "cityName": "CHIANCIANO TERME",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "CAA",
+    "cityName": "CERDE�A NORTE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "CAG",
+    "cityName": "CAGLIARI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "CLB",
+    "cityName": "CALABRIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "CTA",
+    "cityName": "CATANIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "CVT",
+    "cityName": "CIVITAVECCHIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "F1O",
+    "cityName": "FORTE DEI MARMI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "F5E",
+    "cityName": "FOGGIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "FLR",
+    "cityName": "FLORENCIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "GBN",
+    "cityName": "SAN GIOVANNI ROTOND",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "GC8",
+    "cityName": "GROSSETO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "GOA",
+    "cityName": "GENOVA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "ISH",
+    "cityName": "ISCHIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "L1Y",
+    "cityName": "LECCE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "L2X",
+    "cityName": "LIDO DI OSTIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "L6I",
+    "cityName": "LA SPEZIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "LCV",
+    "cityName": "LUCCA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "LF9",
+    "cityName": "LAGO MAGGIORE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "LFZ",
+    "cityName": "LAGO DE GARDA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "LLL",
+    "cityName": "SANTA MARGARITA LIG",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "M32",
+    "cityName": "MONTEROSSO AL MARE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "M52",
+    "cityName": "MONOPOLI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "M5H",
+    "cityName": "MONTEPULCIANO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "M6C",
+    "cityName": "MONTECATINI TERME",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "M7I",
+    "cityName": "MATERA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "MIL",
+    "cityName": "MILAN",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "MOD",
+    "cityName": "MODENA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "MR3",
+    "cityName": "MAIORI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "NAP",
+    "cityName": "NAPOLES",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "O00",
+    "cityName": "ORVIETO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "O0A",
+    "cityName": "OSTUNI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "OLB",
+    "cityName": "OLBIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "P4W",
+    "cityName": "PORTOVENERE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "P4Y",
+    "cityName": "PORDENONE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "P6H",
+    "cityName": "PORTO CERVO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "P6U",
+    "cityName": "POMPEYA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "P90",
+    "cityName": "PUGLIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PDV",
+    "cityName": "PADOVA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PE5",
+    "cityName": "PRAIANO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PEG",
+    "cityName": "PERUGIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PG0",
+    "cityName": "PESCARA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PLE",
+    "cityName": "PESARO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PMF",
+    "cityName": "PARMA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PMO",
+    "cityName": "PALERMO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "POR",
+    "cityName": "PORTOFERRAIO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "POS",
+    "cityName": "POSITANO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PR5",
+    "cityName": "PORTO RECANATI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PRJ",
+    "cityName": "CAPRI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PSA",
+    "cityName": "PISA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "PUT",
+    "cityName": "PIACENZA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "QAO",
+    "cityName": "AGRIGENTO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "QCM",
+    "cityName": "COMO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "QCS",
+    "cityName": "COSENZA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "QCZ",
+    "cityName": "CATANZARO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "QIC",
+    "cityName": "SIRACUSA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "QME",
+    "cityName": "MESSINA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "QSR",
+    "cityName": "SALERNO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "QTV",
+    "cityName": "TREVISO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "R47",
+    "cityName": "RAVENNA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "RAP",
+    "cityName": "RAPALLO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "REG",
+    "cityName": "REGGIO CALABRIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "RH1",
+    "cityName": "RAVELLO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "RMI",
+    "cityName": "RIMINI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "ROM",
+    "cityName": "ROMA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "RRO",
+    "cityName": "SORRENTO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "S08",
+    "cityName": "SASSARI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "S0A",
+    "cityName": "SIRMIONE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "S4S",
+    "cityName": "STRESA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "SAR",
+    "cityName": "SAN GIMIGNANO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "SAV",
+    "cityName": "SAVONA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "SAY",
+    "cityName": "SIENA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "SD4",
+    "cityName": "SARONNO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "SIC",
+    "cityName": "SICILIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "SRE",
+    "cityName": "SAN REMO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "SSW",
+    "cityName": "SPERLONGA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "SUF",
+    "cityName": "LAMEZIA TERME",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "SXS",
+    "cityName": "SANT'AGNELLO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "T3G",
+    "cityName": "TRAPANI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "T97",
+    "cityName": "Giardini Naxos",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "TFC",
+    "cityName": "TAORMINA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "TRA",
+    "cityName": "TRANI",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "TRN",
+    "cityName": "TURIN",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "TRO",
+    "cityName": "TROPEA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "TRS",
+    "cityName": "TRIESTE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "U0Z",
+    "cityName": "UDINE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "U12",
+    "cityName": "St Margherita",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "VCE",
+    "cityName": "VENECIA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "VIC",
+    "cityName": "VICENZA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "VNI",
+    "cityName": "VARESE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "VQI",
+    "cityName": "VIETRI SUL MARE",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "VRN",
+    "cityName": "VERONA",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "ZIK",
+    "cityName": "TRENTO",
+    "countryCode": "IT",
+    "countryName": "ITALIA"
+  },
+  {
+    "cityCode": "MBJ",
+    "cityName": "MONTEGO BAY",
+    "countryCode": "JM",
+    "countryName": "JAMAICA"
+  },
+  {
+    "cityCode": "MO6",
+    "cityName": "MONTEGO BAY (Y ALRE",
+    "countryCode": "JM",
+    "countryName": "JAMAICA"
+  },
+  {
+    "cityCode": "NEG",
+    "cityName": "NEGRIL",
+    "countryCode": "JM",
+    "countryName": "JAMAICA"
+  },
+  {
+    "cityCode": "OCJ",
+    "cityName": "OCHO RIOS",
+    "countryCode": "JM",
+    "countryName": "JAMAICA"
+  },
+  {
+    "cityCode": "POT",
+    "cityName": "PORT ANTONIO",
+    "countryCode": "JM",
+    "countryName": "JAMAICA"
+  },
+  {
+    "cityCode": "RUB",
+    "cityName": "RUNAWAY BAY",
+    "countryCode": "JM",
+    "countryName": "JAMAICA"
+  },
+  {
+    "cityCode": "AMM",
+    "cityName": "AMMAN",
+    "countryCode": "JO",
+    "countryName": "JORDANIA"
+  },
+  {
+    "cityCode": "MJ2",
+    "cityName": "PETRA",
+    "countryCode": "JO",
+    "countryName": "JORDANIA"
+  },
+  {
+    "cityCode": "KYO",
+    "cityName": "KYOTO",
+    "countryCode": "JP",
+    "countryName": "JAPON"
+  },
+  {
+    "cityCode": "NRT",
+    "cityName": "TOKYO",
+    "countryCode": "JP",
+    "countryName": "JAPON"
+  },
+  {
+    "cityCode": "OSA",
+    "cityName": "OSAKA",
+    "countryCode": "JP",
+    "countryName": "JAPON"
+  },
+  {
+    "cityCode": "T2L",
+    "cityName": "TOKYO-NARITA",
+    "countryCode": "JP",
+    "countryName": "JAPON"
+  },
+  {
+    "cityCode": "TYO",
+    "cityName": "TOKYO",
+    "countryCode": "JP",
+    "countryName": "JAPON"
+  },
+  {
+    "cityCode": "WP4",
+    "cityName": "WAKAYAMA",
+    "countryCode": "JP",
+    "countryName": "JAPON"
+  },
+  {
+    "cityCode": "Y05",
+    "cityName": "YAMAGUCHI",
+    "countryCode": "JP",
+    "countryName": "JAPON"
+  },
+  {
+    "cityCode": "NBO",
+    "cityName": "NAIROBI",
+    "countryCode": "KE",
+    "countryName": "KENYA"
+  },
+  {
+    "cityCode": "GCM",
+    "cityName": "GRAND CAYMAN",
+    "countryCode": "KY",
+    "countryName": "ISLAS CAYMAN"
+  },
+  {
+    "cityCode": "C87",
+    "cityName": "COLOMBO",
+    "countryCode": "LK",
+    "countryName": "SRI LANKA"
+  },
+  {
+    "cityCode": "CBF",
+    "cityName": "COLOMBO AND SOUTH W",
+    "countryCode": "LK",
+    "countryName": "SRI LANKA"
+  },
+  {
+    "cityCode": "K7S",
+    "cityName": "KAUNAS",
+    "countryCode": "LT",
+    "countryName": "LITUANIA"
+  },
+  {
+    "cityCode": "VLN",
+    "cityName": "VILNIUS",
+    "countryCode": "LT",
+    "countryName": "LITUANIA"
+  },
+  {
+    "cityCode": "VNO",
+    "cityName": "VILNIUS",
+    "countryCode": "LT",
+    "countryName": "LITUANIA"
+  },
+  {
+    "cityCode": "LUX",
+    "cityName": "LUXEMBURGO",
+    "countryCode": "LU",
+    "countryName": "LUXEMBURGO"
+  },
+  {
+    "cityCode": "CAS",
+    "cityName": "CASABLANCA",
+    "countryCode": "MA",
+    "countryName": "MARRUECOS"
+  },
+  {
+    "cityCode": "CHF",
+    "cityName": "Chefchaouen",
+    "countryCode": "MA",
+    "countryName": "MARRUECOS"
+  },
+  {
+    "cityCode": "CMN",
+    "cityName": "CASABLANCA",
+    "countryCode": "MA",
+    "countryName": "MARRUECOS"
+  },
+  {
+    "cityCode": "FEZ",
+    "cityName": "FEZ",
+    "countryCode": "MA",
+    "countryName": "MARRUECOS"
+  },
+  {
+    "cityCode": "OAL",
+    "cityName": "OUARZAZATE",
+    "countryCode": "MA",
+    "countryName": "MARRUECOS"
+  },
+  {
+    "cityCode": "RAK",
+    "cityName": "MARRAKECH",
+    "countryCode": "MA",
+    "countryName": "MARRUECOS"
+  },
+  {
+    "cityCode": "RBA",
+    "cityName": "RABAT",
+    "countryCode": "MA",
+    "countryName": "MARRUECOS"
+  },
+  {
+    "cityCode": "T04",
+    "cityName": "TETOUAN",
+    "countryCode": "MA",
+    "countryName": "MARRUECOS"
+  },
+  {
+    "cityCode": "TNG",
+    "cityName": "TANGER",
+    "countryCode": "MA",
+    "countryName": "MARRUECOS"
+  },
+  {
+    "cityCode": "SXM",
+    "cityName": "SAINT MAARTEN",
+    "countryCode": "MF",
+    "countryName": "SAINT MAARTEN (F)"
+  },
+  {
+    "cityCode": "MCM",
+    "cityName": "MONTECARLO",
+    "countryCode": "MO",
+    "countryName": "MONACO"
+  },
+  {
+    "cityCode": "MON",
+    "cityName": "MONACO",
+    "countryCode": "MO",
+    "countryName": "MONACO"
+  },
+  {
+    "cityCode": "A51",
+    "cityName": "ATTARD",
+    "countryCode": "MT",
+    "countryName": "MALTA"
+  },
+  {
+    "cityCode": "L46",
+    "cityName": "LA VALLETTA",
+    "countryCode": "MT",
+    "countryName": "MALTA"
+  },
+  {
+    "cityCode": "MHU",
+    "cityName": "MALTA",
+    "countryCode": "MT",
+    "countryName": "MALTA"
+  },
+  {
+    "cityCode": "MRU",
+    "cityName": "MAURICIO ISLAS",
+    "countryCode": "MU",
+    "countryName": "MAURICIO"
+  },
+  {
+    "cityCode": "MGL",
+    "cityName": "MALDIVAS",
+    "countryCode": "MV",
+    "countryName": "MALDIVAS"
+  },
+  {
+    "cityCode": "MLE",
+    "cityName": "MALE",
+    "countryCode": "MV",
+    "countryName": "MALDIVAS"
+  },
+  {
+    "cityCode": "A55",
+    "cityName": "MEXICO D.F. AEROPUE",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "ACA",
+    "cityName": "ACAPULCO",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "C6Q",
+    "cityName": "CABO SAN LUCAS",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "CAW",
+    "cityName": "CHIAPAS",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "CUE",
+    "cityName": "CUERNAVACA",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "CUN",
+    "cityName": "CANCUN",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "CZM",
+    "cityName": "COZUMEL",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "GDL",
+    "cityName": "GUADALAJARA",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "GTO",
+    "cityName": "GUANAJUATO",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "HMO",
+    "cityName": "Hermosillo",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "HOX",
+    "cityName": "HOLBOX",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "HUX",
+    "cityName": "HUATULCO",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "IHB",
+    "cityName": "ISLA HOLBOX",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "ISJ",
+    "cityName": "ISLA MUJERES",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "LEO",
+    "cityName": "LEON",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "MEX",
+    "cityName": "MEXICO D.F.",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "MID",
+    "cityName": "MERIDA",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "MLM",
+    "cityName": "MORELIA",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "MTY",
+    "cityName": "MONTERREY",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "MZT",
+    "cityName": "MAZATLAN",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "OAX",
+    "cityName": "OAXACA",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "PBC",
+    "cityName": "PUEBLA",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "PCM",
+    "cityName": "PLAYA DEL CARMEN",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "PQM",
+    "cityName": "PALENQUE",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "PVR",
+    "cityName": "PUERTO VALLARTA",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "PXM",
+    "cityName": "PUERTO ESCONDIDO",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "RMY",
+    "cityName": "RIVIERA MAYA",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "SJD",
+    "cityName": "LOS CABOS",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "SMI",
+    "cityName": "SAN MIGUEL ALLENDE",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "TAX",
+    "cityName": "TAXCO",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "TGZ",
+    "cityName": "TUXTLA GUTIERREZ",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "VER",
+    "cityName": "VERACRUZ",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "VSA",
+    "cityName": "VILLA HERMOSA",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "ZIH",
+    "cityName": "IXTAPA/ZIHUATANEJO",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "ZLO",
+    "cityName": "MANZANILLO",
+    "countryCode": "MX",
+    "countryName": "MEXICO"
+  },
+  {
+    "cityCode": "KUL",
+    "cityName": "KUALA LUMPUR",
+    "countryCode": "MY",
+    "countryName": "MALASIA"
+  },
+  {
+    "cityCode": "AUH",
+    "cityName": "ABU DHABI",
+    "countryCode": "NCA",
+    "countryName": "EMIRATOS ARABES UN."
+  },
+  {
+    "cityCode": "DXB",
+    "cityName": "DUBAI",
+    "countryCode": "NCA",
+    "countryName": "EMIRATOS ARABES UN."
+  },
+  {
+    "cityCode": "MGA",
+    "cityName": "MANAGUA",
+    "countryCode": "NI",
+    "countryName": "NICARAGUA"
+  },
+  {
+    "cityCode": "AMS",
+    "cityName": "AMSTERDAM",
+    "countryCode": "NL",
+    "countryName": "HOLANDA"
+  },
+  {
+    "cityCode": "ARN",
+    "cityName": "ARNHEM",
+    "countryCode": "NL",
+    "countryName": "HOLANDA"
+  },
+  {
+    "cityCode": "V35",
+    "cityName": "VOLENDAM",
+    "countryCode": "NL",
+    "countryName": "HOLANDA"
+  },
+  {
+    "cityCode": "AAL",
+    "cityName": "Aalesund",
+    "countryCode": "NO",
+    "countryName": "NORUEGA"
+  },
+  {
+    "cityCode": "AES",
+    "cityName": "ALESUND",
+    "countryCode": "NO",
+    "countryName": "NORUEGA"
+  },
+  {
+    "cityCode": "BGO",
+    "cityName": "BERGEN",
+    "countryCode": "NO",
+    "countryName": "NORUEGA"
+  },
+  {
+    "cityCode": "LBJ",
+    "cityName": "LOEN",
+    "countryCode": "NO",
+    "countryName": "NORUEGA"
+  },
+  {
+    "cityCode": "OSL",
+    "cityName": "OSLO",
+    "countryCode": "NO",
+    "countryName": "NORUEGA"
+  },
+  {
+    "cityCode": "S2I",
+    "cityName": "SKEI",
+    "countryCode": "NO",
+    "countryName": "NORUEGA"
+  },
+  {
+    "cityCode": "AKL",
+    "cityName": "AUCKLAND",
+    "countryCode": "NZ",
+    "countryName": "NUEVA ZELANDA"
+  },
+  {
+    "cityCode": "ROT",
+    "cityName": "ROTORUA",
+    "countryCode": "NZ",
+    "countryName": "NUEVA ZELANDA"
+  },
+  {
+    "cityCode": "WLG",
+    "cityName": "WELLINGTON",
+    "countryCode": "NZ",
+    "countryName": "NUEVA ZELANDA"
+  },
+  {
+    "cityCode": "BTR",
+    "cityName": "BOCAS DEL TORO",
+    "countryCode": "PA",
+    "countryName": "PANAMA"
+  },
+  {
+    "cityCode": "CB6",
+    "cityName": "COCLE",
+    "countryCode": "PA",
+    "countryName": "PANAMA"
+  },
+  {
+    "cityCode": "ONX",
+    "cityName": "COLON",
+    "countryCode": "PA",
+    "countryName": "PANAMA"
+  },
+  {
+    "cityCode": "PTY",
+    "cityName": "PANAMA",
+    "countryCode": "PA",
+    "countryName": "PANAMA"
+  },
+  {
+    "cityCode": "AQP",
+    "cityName": "AREQUIPA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "AYP",
+    "cityName": "AYACUCHO",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "CHH",
+    "cityName": "CHACHAPOYAS",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "CIX",
+    "cityName": "CHICLAYO",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "CJM",
+    "cityName": "CAJAMARCA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "CLC",
+    "cityName": "COLCA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "CUZ",
+    "cityName": "CUZCO",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "H8P",
+    "cityName": "HUARAZ",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "ICP",
+    "cityName": "ICA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "IQT",
+    "cityName": "IQUITOS",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "LIM",
+    "cityName": "LIMA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "MCR",
+    "cityName": "MANCORA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "NAZ",
+    "cityName": "NAZCA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "OLL",
+    "cityName": "OLLANTAYTAMBO",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "PEM",
+    "cityName": "PUERTO MALDONADO",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "PIU",
+    "cityName": "PIURA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "PRK",
+    "cityName": "PARACAS",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "PUN",
+    "cityName": "PUNO",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "TBP",
+    "cityName": "TUMBES",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "TCQ",
+    "cityName": "TACNA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "TWM",
+    "cityName": "TRUJILLO",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "URB",
+    "cityName": "URUBAMBA",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "V7B",
+    "cityName": "VALLE SAGRADO",
+    "countryCode": "PE",
+    "countryName": "PERU"
+  },
+  {
+    "cityCode": "B50",
+    "cityName": "BORACAY",
+    "countryCode": "PH",
+    "countryName": "FILIPINAS"
+  },
+  {
+    "cityCode": "MNL",
+    "cityName": "MANILA",
+    "countryCode": "PH",
+    "countryName": "FILIPINAS"
+  },
+  {
+    "cityCode": "RAB",
+    "cityName": "ROXAS CITY",
+    "countryCode": "PH",
+    "countryName": "FILIPINAS"
+  },
+  {
+    "cityCode": "KRK",
+    "cityName": "CRACOVIA",
+    "countryCode": "PL",
+    "countryName": "POLONIA"
+  },
+  {
+    "cityCode": "WAW",
+    "cityName": "VARSOVIA",
+    "countryCode": "PL",
+    "countryName": "POLONIA"
+  },
+  {
+    "cityCode": "BOB",
+    "cityName": "BORA BORA",
+    "countryCode": "PO",
+    "countryName": "POLINESIA"
+  },
+  {
+    "cityCode": "MOZ",
+    "cityName": "MOOREA",
+    "countryCode": "PO",
+    "countryName": "POLINESIA"
+  },
+  {
+    "cityCode": "PPT",
+    "cityName": "PAPEETE",
+    "countryCode": "PO",
+    "countryName": "POLINESIA"
+  },
+  {
+    "cityCode": "T6I",
+    "cityName": "TAHITI",
+    "countryCode": "PO",
+    "countryName": "POLINESIA"
+  },
+  {
+    "cityCode": "SJU",
+    "cityName": "SAN JUAN DE PTO RIC",
+    "countryCode": "PR",
+    "countryName": "PUERTO RICO"
+  },
+  {
+    "cityCode": "A5G",
+    "cityName": "ALBUFEIRA",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "A5O",
+    "cityName": "AMARANTE",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "AGV",
+    "cityName": "ALGARVE",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "AVO",
+    "cityName": "ALVOR",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "C6Z",
+    "cityName": "CARVOEIRO",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "CBA",
+    "cityName": "COIMBRA",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "EST",
+    "cityName": "ESTORIL",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "FAO",
+    "cityName": "FARO",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "FAT",
+    "cityName": "FATIMA",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "LIS",
+    "cityName": "LISBOA",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "OBG",
+    "cityName": "OBIDOS",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "OPO",
+    "cityName": "PORTO",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "PRM",
+    "cityName": "PORTIMAO",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "SB1",
+    "cityName": "SINTRA",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "VIL",
+    "cityName": "VILLA MOURA",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "VMA",
+    "cityName": "VILAMOURA",
+    "countryCode": "PT",
+    "countryName": "PORTUGAL"
+  },
+  {
+    "cityCode": "ASU",
+    "cityName": "ASUNCION",
+    "countryCode": "PY",
+    "countryName": "PARAGUAY"
+  },
+  {
+    "cityCode": "DOH",
+    "cityName": "DOHA",
+    "countryCode": "QA",
+    "countryName": "QATAR"
+  },
+  {
+    "cityCode": "BUH",
+    "cityName": "BUCAREST",
+    "countryCode": "RO",
+    "countryName": "RUMANIA"
+  },
+  {
+    "cityCode": "LED",
+    "cityName": "SAN PETESBURGO",
+    "countryCode": "RU",
+    "countryName": "RUSIA"
+  },
+  {
+    "cityCode": "MOW",
+    "cityName": "MOSCU",
+    "countryCode": "RU",
+    "countryName": "RUSIA"
+  },
+  {
+    "cityCode": "CPT",
+    "cityName": "W.CAPE-CAPE TOWN-GA",
+    "countryCode": "SA",
+    "countryName": "SUDAFRICA"
+  },
+  {
+    "cityCode": "DUR",
+    "cityName": "DURBAN",
+    "countryCode": "SA",
+    "countryName": "SUDAFRICA"
+  },
+  {
+    "cityCode": "JNB",
+    "cityName": "JOHANNESBURG",
+    "countryCode": "SA",
+    "countryName": "SUDAFRICA"
+  },
+  {
+    "cityCode": "PLZ",
+    "cityName": "EASTERN CAPE-PORT E",
+    "countryCode": "SA",
+    "countryName": "SUDAFRICA"
+  },
+  {
+    "cityCode": "GOT",
+    "cityName": "GOTEMBURGO",
+    "countryCode": "SE",
+    "countryName": "SUECIA"
+  },
+  {
+    "cityCode": "MMA",
+    "cityName": "MALMO",
+    "countryCode": "SE",
+    "countryName": "SUECIA"
+  },
+  {
+    "cityCode": "STO",
+    "cityName": "ESTOCOLMO",
+    "countryCode": "SE",
+    "countryName": "SUECIA"
+  },
+  {
+    "cityCode": "I10",
+    "cityName": "ISLAS SEYCHELLES",
+    "countryCode": "SEZ",
+    "countryName": "SEYCHELLES"
+  },
+  {
+    "cityCode": "SIN",
+    "cityName": "SINGAPUR",
+    "countryCode": "SG",
+    "countryName": "SINGAPUR"
+  },
+  {
+    "cityCode": "L65",
+    "cityName": "LIUBLIANA",
+    "countryCode": "SI",
+    "countryName": "ESLOVENIA"
+  },
+  {
+    "cityCode": "SAL",
+    "cityName": "SAN SALVADOR",
+    "countryCode": "SV",
+    "countryName": "EL SALVADOR"
+  },
+  {
+    "cityCode": "TAH",
+    "cityName": "Tahiti(Papeete)",
+    "countryCode": "T1",
+    "countryName": "Tahiti"
+  },
+  {
+    "cityCode": "PLS",
+    "cityName": "PROVIDENCIALES",
+    "countryCode": "TC",
+    "countryName": "TURKS & CAICOS ISLA"
+  },
+  {
+    "cityCode": "BKK",
+    "cityName": "BANGKOK",
+    "countryCode": "TH",
+    "countryName": "THAILANDIA"
+  },
+  {
+    "cityCode": "CEI",
+    "cityName": "CHIANG RAI",
+    "countryCode": "TH",
+    "countryName": "THAILANDIA"
+  },
+  {
+    "cityCode": "HKT",
+    "cityName": "PHUKET",
+    "countryCode": "TH",
+    "countryName": "THAILANDIA"
+  },
+  {
+    "cityCode": "KBV",
+    "cityName": "KRABI",
+    "countryCode": "TH",
+    "countryName": "THAILANDIA"
+  },
+  {
+    "cityCode": "LPI",
+    "cityName": "KOH LIPE",
+    "countryCode": "TH",
+    "countryName": "THAILANDIA"
+  },
+  {
+    "cityCode": "PHZ",
+    "cityName": "PHI PHI ISLAND",
+    "countryCode": "TH",
+    "countryName": "THAILANDIA"
+  },
+  {
+    "cityCode": "PYX",
+    "cityName": "PATTAYA",
+    "countryCode": "TH",
+    "countryName": "THAILANDIA"
+  },
+  {
+    "cityCode": "USM",
+    "cityName": "KOH SAMUI",
+    "countryCode": "TH",
+    "countryName": "THAILANDIA"
+  },
+  {
+    "cityCode": "ARS",
+    "cityName": "CAPADOCIA",
+    "countryCode": "TR",
+    "countryName": "TURQUIA"
+  },
+  {
+    "cityCode": "AYT",
+    "cityName": "ANTALYA",
+    "countryCode": "TR",
+    "countryName": "TURQUIA"
+  },
+  {
+    "cityCode": "IST",
+    "cityName": "ESTAMBUL",
+    "countryCode": "TR",
+    "countryName": "TURQUIA"
+  },
+  {
+    "cityCode": "IZM",
+    "cityName": "IZMIR",
+    "countryCode": "TR",
+    "countryName": "TURQUIA"
+  },
+  {
+    "cityCode": "N1W",
+    "cityName": "NEVSEHIR",
+    "countryCode": "TR",
+    "countryName": "TURQUIA"
+  },
+  {
+    "cityCode": "NAV",
+    "cityName": "NEVSEHIR",
+    "countryCode": "TR",
+    "countryName": "TURQUIA"
+  },
+  {
+    "cityCode": "UJX",
+    "cityName": "URGUP",
+    "countryCode": "TR",
+    "countryName": "TURQUIA"
+  },
+  {
+    "cityCode": "ZNZ",
+    "cityName": "ZANZIBAR",
+    "countryCode": "TZ",
+    "countryName": "TANZANIA"
+  },
+  {
+    "cityCode": "B6L",
+    "cityName": "BATH",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "B6O",
+    "cityName": "BELFAST",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "B6R",
+    "cityName": "BIRMINGHAM",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "CRF",
+    "cityName": "CARDIFF",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "CV7",
+    "cityName": "CRAWLEY",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "E86",
+    "cityName": "Boroughbridge",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "EDI",
+    "cityName": "EDIMBURGO",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "GLA",
+    "cityName": "GLASGOW",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "INV",
+    "cityName": "INVERNESS",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "L1G",
+    "cityName": "LOCH LOMOND",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "LHU",
+    "cityName": "LANCASTER",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "LON",
+    "cityName": "LONDRES",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "LPV",
+    "cityName": "LIVERPOOL",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "MAN",
+    "cityName": "MANCHESTER",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "NBD",
+    "cityName": "NEWCASTLE-UPON-TYNE",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "O28",
+    "cityName": "OBAN",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "O73",
+    "cityName": "Isle Of Skye",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "OXF",
+    "cityName": "OXFORD",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "QQY",
+    "cityName": "YORK",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "SAW",
+    "cityName": "SALISBURY",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "TRK",
+    "cityName": "ABERDEEN",
+    "countryCode": "UK",
+    "countryName": "REINO UNIDO"
+  },
+  {
+    "cityCode": "APF",
+    "cityName": "NAPLES",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "B2S",
+    "cityName": "BAKERSFIELD",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "BCT",
+    "cityName": "BOCA RATON",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "BNA",
+    "cityName": "NASHVILLE",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "BOS",
+    "cityName": "BOSTON",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "BWI",
+    "cityName": "BALTIMORE",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "C9N",
+    "cityName": "CLEARWATER AREA - F",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "CAR",
+    "cityName": "CARMEL BY THE SEA",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "CHI",
+    "cityName": "CHICAGO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "CLW",
+    "cityName": "CLEARWATER",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "CSL",
+    "cityName": "SAN LUIS OBISPO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "D3A",
+    "cityName": "DIXON - IL",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "DEN",
+    "cityName": "DENVER",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "DFW",
+    "cityName": "DALLAS",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "EWR",
+    "cityName": "NEWARK-NEW JERSEY",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "EYW",
+    "cityName": "KEY WEST",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "F0D",
+    "cityName": "FORT LAUDERDALE - H",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "F2E",
+    "cityName": "FORT MYERS AREA - F",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "F3A",
+    "cityName": "FLORIDA KEYS - FL",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "FCH",
+    "cityName": "FRESNO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "FLL",
+    "cityName": "FORT LAUDERDALE",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "GCN",
+    "cityName": "GRAND CANYON",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "H4I",
+    "cityName": "HAWAII - THE BIG IS",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "H65",
+    "cityName": "HAWAII - MAUI - HI",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "H6B",
+    "cityName": "HALLANDALE-FL",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "H8E",
+    "cityName": "HAWAII - OAHU - HI",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "HNL",
+    "cityName": "OAHU-HONOLULU",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "JAC",
+    "cityName": "Jackson(WY)",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "KYL",
+    "cityName": "KEY LARGO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "LAS",
+    "cityName": "LAS VEGAS",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "LAX",
+    "cityName": "LOS ANGELES",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "MCO",
+    "cityName": "ORLANDO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "MEN",
+    "cityName": "MORGANTOWN - WV",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "MHV",
+    "cityName": "Mojave(CA)",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "MIA",
+    "cityName": "MIAMI",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "MKE",
+    "cityName": "MILWAUKEE",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "MMH",
+    "cityName": "MAMMOTH LAKE",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "MRP",
+    "cityName": "MARIPOSA",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "MRY",
+    "cityName": "MONTEREY",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "MSY",
+    "cityName": "NEW ORLEANS",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "N89",
+    "cityName": "NAPLES AREA - FL",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "NYC",
+    "cityName": "NEW YORK",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "OEA",
+    "cityName": "Vincennes(IN)",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "OGG",
+    "cityName": "MAUI",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "ORD",
+    "cityName": "CHICAGO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "P35",
+    "cityName": "PALM BEACH AREA - F",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "P4H",
+    "cityName": "PASADENA (CA)",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "PBI",
+    "cityName": "PALM BEACH",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "PGI",
+    "cityName": "PAGE - LAKE POWELL",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "PHL",
+    "cityName": "PHILADELPHIA",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "PHX",
+    "cityName": "PHOENIX",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "PIE",
+    "cityName": "SAINT PETESBURG",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "S20",
+    "cityName": "SANTA MAR�A",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "S80",
+    "cityName": "SACRAMENTO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SAK",
+    "cityName": "SPRINGDALE (UT)",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SAN",
+    "cityName": "SAN DIEGO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SAT",
+    "cityName": "SAN ANTONIO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SBA",
+    "cityName": "SANTA BARBARA",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SEK",
+    "cityName": "ST. PETERSBURG AREA",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SFO",
+    "cityName": "SAN FRANCISCO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SLC",
+    "cityName": "SALT LAKE CITY",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SMO",
+    "cityName": "SANTA MONICA",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SOG",
+    "cityName": "SOLVANG",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "SRQ",
+    "cityName": "SARASOTA",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "TPA",
+    "cityName": "TAMPA",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "V7M",
+    "cityName": "VAIL - CO",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "VIS",
+    "cityName": "Visalia(CA)",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "WAS",
+    "cityName": "WASHINGTON",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "Y4Q",
+    "cityName": "YELLOWSTONE NATIONA",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "Y8G",
+    "cityName": "YOSEMITE NATIONAL P",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "YC9",
+    "cityName": "YELLOWSTONE",
+    "countryCode": "US",
+    "countryName": "ESTADOS UNIDOS"
+  },
+  {
+    "cityCode": "C1T",
+    "cityName": "COLONIA DEL SACRAME",
+    "countryCode": "UY",
+    "countryName": "URUGUAY"
+  },
+  {
+    "cityCode": "FLA",
+    "cityName": "FLORIDA",
+    "countryCode": "UY",
+    "countryName": "URUGUAY"
+  },
+  {
+    "cityCode": "MVD",
+    "cityName": "MONTEVIDEO",
+    "countryCode": "UY",
+    "countryName": "URUGUAY"
+  },
+  {
+    "cityCode": "PDP",
+    "cityName": "PUNTA DEL ESTE",
+    "countryCode": "UY",
+    "countryName": "URUGUAY"
+  },
+  {
+    "cityCode": "CCS",
+    "cityName": "CARACAS",
+    "countryCode": "VE",
+    "countryName": "VENEZUELA"
+  },
+  {
+    "cityCode": "I0O",
+    "cityName": "ISLA DE COCHE",
+    "countryCode": "VE",
+    "countryName": "VENEZUELA"
+  },
+  {
+    "cityCode": "PMV",
+    "cityName": "ISLA MARGARITA",
+    "countryCode": "VE",
+    "countryName": "VENEZUELA"
+  },
+  {
+    "cityCode": "STT",
+    "cityName": "SAINT THOMAS",
+    "countryCode": "VI",
+    "countryName": "ISLAS VIRGENES (USA)"
+  },
+  {
+    "cityCode": "C85",
+    "cityName": "CAN THO",
+    "countryCode": "VN",
+    "countryName": "VIETNAM"
+  },
+  {
+    "cityCode": "HAN",
+    "cityName": "HANOI",
+    "countryCode": "VN",
+    "countryName": "VIETNAM"
+  },
+  {
+    "cityCode": "SGN",
+    "cityName": "HO CHI MINH (SAIGON",
+    "countryCode": "VN",
+    "countryName": "VIETNAM"
+  }
+]
