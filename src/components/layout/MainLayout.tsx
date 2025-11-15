@@ -270,7 +270,7 @@ export default function MainLayout({ children, userRole, sidebarExtra }: MainLay
         </nav>
 
         <div className="mt-auto p-4 border-t border-border space-y-2">
-          <ThemeToggle variant="default" className="w-full justify-center" showLabel />
+          <ThemeToggle variant="default" className="hidden lg:flex w-full justify-center" showLabel />
           <Button
             variant="ghost"
             onClick={handleLogout}
