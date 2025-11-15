@@ -45,8 +45,8 @@ const ChatHeader = React.memo(({
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Theme Toggle */}
-        <ThemeToggle variant="compact" />
+        {/* Theme Toggle - Hidden on mobile, shown on desktop */}
+        <ThemeToggle variant="compact" className="hidden md:flex" />
 
         {/* Add to CRM button in header */}
         <Button
