@@ -3,9 +3,9 @@ import { FlightData, FlightLeg, AirportInfo } from '@/types';
 // Configuration for LOZADA WebService (same as hotelSearch.ts)
 const WS_CONFIG = {
   url: import.meta.env.DEV ? '/api/airfare' : 'https://ujigyazketblwlzcomve.supabase.co/functions/v1/eurovips-soap',
-  username: 'LOZADAWS',
-  password: '.LOZAWS23.',
-  agency: '20350',
+  username: 'WSLOZADA',
+  password: 'ROS.9624+',
+  agency: '96175',
   currency: 'USD'
 };
 

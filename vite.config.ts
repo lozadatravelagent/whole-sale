@@ -10,9 +10,9 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     proxy: {
       '/api/hotel': {
-        target: 'https://test.eurovips.itraffic.com.ar',
+        target: 'https://eurovips.itraffic.com.ar',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/hotel/, '/WSBridge_EuroTest/BridgeService.asmx'),
+        rewrite: (path) => path.replace(/^\/api\/hotel/, '/WSBridge_Euro/BridgeService.asmx'),
         configure: (proxy, _options) => {
           proxy.on('error', (err, req, res) => {
             console.log('🚨 Proxy error:', err.message);
@@ -31,9 +31,9 @@ export default defineConfig(({ mode }) => ({
         },
       },
       '/api/airfare': {
-        target: 'https://test.eurovips.itraffic.com.ar',
+        target: 'https://eurovips.itraffic.com.ar',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/airfare/, '/WSBridge_EuroTest/BridgeService.asmx'),
+        rewrite: (path) => path.replace(/^\/api\/airfare/, '/WSBridge_Euro/BridgeService.asmx'),
         configure: (proxy, _options) => {
           proxy.on('error', (err, req, res) => {
             console.log('🚨 Proxy error:', err.message);
@@ -52,9 +52,9 @@ export default defineConfig(({ mode }) => ({
         },
       },
       '/api/package': {
-        target: 'https://test.eurovips.itraffic.com.ar',
+        target: 'https://eurovips.itraffic.com.ar',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/package/, '/WSBridge_EuroTest/BridgeService.asmx'),
+        rewrite: (path) => path.replace(/^\/api\/package/, '/WSBridge_Euro/BridgeService.asmx'),
         configure: (proxy, _options) => {
           proxy.on('error', (err, req, res) => {
             console.log('🚨 Proxy error:', err.message);

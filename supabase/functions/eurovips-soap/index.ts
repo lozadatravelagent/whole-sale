@@ -10,10 +10,10 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 class EurovipsSOAPClient {
-  baseUrl = 'https://test.eurovips.itraffic.com.ar/WSBridge_EuroTest/BridgeService.asmx';
-  username = 'LOZADAWS';
-  password = '.LOZAWS23.';
-  agency = '20350';
+  baseUrl = 'https://eurovips.itraffic.com.ar/WSBridge_Euro/BridgeService.asmx';
+  username = 'WSLOZADA';
+  password = 'ROS.9624+';
+  agency = '96175';
   currency = 'USD';
   async makeSOAPRequest(soapBody, soapAction) {
     const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
