@@ -218,6 +218,20 @@ function validateAndFormatDate(dateStr: string): string {
   }
 }
 
+/*
+ * ⚠️ DEPRECATED: Old getCityCode function (replaced by @/services/cityCodeMapping)
+ *
+ * This function has been replaced by a more efficient system:
+ * - Uses eurovips-cities.json (766 cities from EUROVIPS)
+ * - O(1) lookup instead of WebService calls
+ * - Better error handling and disambiguation
+ *
+ * Use: import { getCityCode } from '@/services/cityCodeMapping'
+ *
+ * This old code is kept commented for reference only.
+ */
+
+/*
 async function getCityCode(cityName: string): Promise<string> {
   try {
     // Define static mapping FIRST for priority lookup
@@ -410,6 +424,7 @@ async function getCityCode(cityName: string): Promise<string> {
     return cityName.substring(0, 3).toUpperCase();
   }
 }
+*/
 
 export async function searchHotelFares(params: HotelSearchParams): Promise<HotelData[]> {
 

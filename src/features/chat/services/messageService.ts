@@ -46,7 +46,10 @@ export const addMessageViaSupabase = async (messageData: {
   }
 };
 
-// City code service for EUROVIPS integration
+// ⚠️ DEPRECATED: Old city code service (slow WebService call)
+// Use @/services/cityCodeMapping instead for instant O(1) lookup from local JSON
+// This function is kept temporarily for reference but should not be used
+/*
 export const getCityCode = async (cityName: string): Promise<string> => {
   try {
     const response = await supabase.functions.invoke('eurovips-soap', {
@@ -64,3 +67,4 @@ export const getCityCode = async (cityName: string): Promise<string> => {
     return cityName;
   }
 };
+*/
