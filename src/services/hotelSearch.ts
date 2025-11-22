@@ -749,7 +749,10 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
       }
     }
 
-    if (rooms.length === 0) {
+    // Filter out "Habitación Individual" rooms
+    const filteredRooms = rooms.filter(room => room.type !== 'Habitación Individual');
+
+    if (filteredRooms.length === 0) {
       console.warn(`⚠️ No rooms found for hotel: ${name}`);
       return null;
     }
@@ -764,7 +767,7 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
       phone: phone || undefined,
       description: roomFeatures || undefined,
       images: [], // Could be extracted from Pictures elements if available
-      rooms,
+      rooms: filteredRooms,
       check_in: checkIn,
       check_out: checkOut,
       nights,
@@ -772,7 +775,7 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
       policy_lodging: getTextContent(hotelEl, 'LodgingPolicy')
     };
 
-    console.log('✅ Parsed hotel:', hotel.name, `- ${rooms.length} room(s)`);
+    console.log('✅ Parsed hotel:', hotel.name, `- ${filteredRooms.length} room(s)`);
     return hotel;
   } catch (error) {
     console.error('❌ Error parsing hotel element:', error);
