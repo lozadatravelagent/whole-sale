@@ -229,7 +229,10 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
           : new Date(Date.now() + 86400000 * hotel.nights).toISOString().split('T')[0]),
         nights: hotel.nights
       })),
-      requestType: localData.requestType
+      requestType: localData.requestType,
+      // Pass filter preferences through to UI
+      requestedRoomType: localData.requestedRoomType,
+      requestedMealPlan: localData.requestedMealPlan
     };
   };
 
@@ -240,6 +243,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
     combinedTravelData?.requestType,
     combinedTravelData?.flights?.length,
     combinedTravelData?.hotels?.length,
+    combinedTravelData?.requestedRoomType,
+    combinedTravelData?.requestedMealPlan,
     msg.id // Use message ID as stable dependency
   ]);
 
