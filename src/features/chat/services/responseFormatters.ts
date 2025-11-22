@@ -291,9 +291,7 @@ const groupRoomsByType = (rooms: LocalHotelData['rooms']) => {
 };
 
 export const formatHotelResponse = (
-  hotels: LocalHotelData[],
-  requestedRoomType?: 'single' | 'double' | 'triple',
-  requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'
+  hotels: LocalHotelData[]
 ) => {
   if (hotels.length === 0) {
     return '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.';
@@ -305,56 +303,9 @@ export const formatHotelResponse = (
   hotels.slice(0, 5).forEach((hotel, index) => {
     const minPrice = Math.min(...hotel.rooms.map((r) => r.total_price));
 
-    // Filter rooms by requested type and meal plan
-    let filteredRooms = hotel.rooms;
-
-    // 1️⃣ Filter by room type if specified
-    if (requestedRoomType) {
-      const typeMap: { [key: string]: string[] } = {
-        'single': ['sgl', 'single', 'individual'],
-        'double': ['dwl', 'dbl', 'double', 'doble', 'standard'],
-        'triple': ['tpl', 'triple']
-      };
-
-      const targetTypes = typeMap[requestedRoomType] || [];
-      filteredRooms = filteredRooms.filter(room => {
-        const desc = (room.description || '').toLowerCase();
-        const type = (room.type || '').toLowerCase();
-        return targetTypes.some(t => desc.includes(t) || type.includes(t));
-      });
-
-      console.log(`🛏️ [FILTER] Room type "${requestedRoomType}": ${hotel.rooms.length} → ${filteredRooms.length} rooms`);
-
-      // If no rooms match the room type filter, skip this hotel
-      if (filteredRooms.length === 0) {
-        return;
-      }
-    }
-
-    // 2️⃣ Filter by meal plan if specified
-    if (requestedMealPlan) {
-      const mealPlanMap: { [key: string]: string[] } = {
-        'all_inclusive': ['all inclusive', 'todo incluido', 'all-inclusive'],
-        'breakfast': ['breakfast', 'desayuno', 'bed and breakfast', 'b&b'],
-        'half_board': ['half board', 'media pensión', 'media pension', 'half-board'],
-        'room_only': ['room only', 'solo alojamiento', 'sin comida', 'alojamiento']
-      };
-
-      const targetMealPlans = mealPlanMap[requestedMealPlan] || [];
-      filteredRooms = filteredRooms.filter(room => {
-        const desc = (room.description || '').toLowerCase();
-        return targetMealPlans.some(mp => desc.includes(mp));
-      });
-
-      console.log(`🍽️ [FILTER] Meal plan "${requestedMealPlan}": ${filteredRooms.length} rooms match`);
-
-      // If no rooms match the meal plan filter, skip this hotel
-      if (filteredRooms.length === 0) {
-        return;
-      }
-    }
-
-    const sortedRooms = sortHotelRooms(filteredRooms);
+    // ✅ Hotels are already filtered by handleHotelSearch, no need to filter again
+    // Just sort and group the already-filtered rooms
+    const sortedRooms = sortHotelRooms(hotel.rooms);
     const roomGroups = groupRoomsByType(sortedRooms);
 
     response += `---\n\n`;
