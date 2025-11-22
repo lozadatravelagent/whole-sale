@@ -718,6 +718,26 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
             const position = positionMapping[positionStr] || parseInt(positionStr);
             const priceStr = match[2];
 
+            // CRITICAL: Validate that the position digit is not part of a larger number in Latino format (X.XXX)
+            // Example: "cambia el precio a 1.500" should NOT be interpreted as position 1 with price 500
+            if (position >= 1 && position <= 4 && /^[1-4]$/.test(positionStr)) {
+                // Check if this "position" is actually part of a number like "1.500" or "2.485"
+                const positionIndex = clause.indexOf(positionStr);
+                const nextChar = clause[positionIndex + 1];
+
+                // If the digit is immediately followed by a dot and 3 digits, it's a Latino number, not a position
+                if (nextChar === '.' && /^\d{3}/.test(clause.substring(positionIndex + 2))) {
+                    console.log(`⚠️ [CLAUSE] Skipping - "${positionStr}" is part of Latino number format (e.g., ${positionStr}.XXX)`);
+                    continue;
+                }
+
+                // Also check if there's a pattern like "precio a 1.500" or "total a 2.485"
+                if (/\b(precio|total|cuesta|cueste)\s+a\s+[1-4]\.\d{3}/.test(clause)) {
+                    console.log(`⚠️ [CLAUSE] Skipping - detected "precio/total a X.XXX" pattern`);
+                    continue;
+                }
+            }
+
             if (position > 0 && priceStr) {
                 const price = parsePrice(priceStr);
                 if (price >= 100 && price <= 50000) {
