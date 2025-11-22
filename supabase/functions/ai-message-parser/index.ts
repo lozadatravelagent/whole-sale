@@ -266,7 +266,16 @@ CRITICAL INSTRUCTION:
 - Required: city, checkinDate, checkoutDate
 - **DEFAULT: adults = 1** (if not specified, always assume 1 adult)
 - children = 0 (default if not specified)
-- roomType, mealPlan (optional)
+- roomType, mealPlan (OPTIONAL - ONLY include if user explicitly mentions them)
+
+🚨 **CRITICAL HOTEL PREFERENCE RULES:**
+- **roomType**: ONLY include if user explicitly says "habitación simple/single", "habitación doble/double", "habitación triple/triple"
+  * If user says NOTHING about room type → DO NOT include roomType field
+  * Examples: "hotel en Cancún" → NO roomType, "habitación doble en Cancún" → roomType: "double"
+- **mealPlan**: ONLY include if user explicitly mentions food/meal preferences
+  * Keywords: "all inclusive", "todo incluido", "desayuno", "breakfast", "media pensión", "half board", "solo alojamiento", "room only"
+  * If user says NOTHING about meals → DO NOT include mealPlan field
+  * Examples: "hotel en Cancún" → NO mealPlan, "hotel all inclusive" → mealPlan: "all_inclusive"
 
 **COMBINED:** All flight + hotel required fields with same defaults
 
@@ -336,14 +345,45 @@ User: "Quiero viajar"
   "confidence": 0.3
 }
 
-Example 5 - Hotel request with context from previous flight search (CRITICAL PATTERN):
+Example 5 - Hotel request WITHOUT room/meal preferences (ONLY required fields):
+User: "quiero un hotel en Cancún"
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "Cancún",
+    "checkinDate": "[DATE]",
+    "checkoutDate": "[DATE]",
+    "adults": 1,
+    "children": 0
+  },
+  "confidence": 0.9
+}
+❌ NOTE: NO roomType or mealPlan because user didn't mention them!
+
+Example 6 - Hotel request WITH room type but NO meal plan:
+User: "habitación doble en Cancún"
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "Cancún",
+    "checkinDate": "[DATE]",
+    "checkoutDate": "[DATE]",
+    "adults": 2,
+    "children": 0,
+    "roomType": "double"
+  },
+  "confidence": 0.9
+}
+❌ NOTE: NO mealPlan because user didn't mention food preferences!
+
+Example 7 - Hotel request with context from previous flight search (CRITICAL PATTERN):
 🚨 PATTERN: When user says "esas fechas" or "those dates", you MUST extract from conversation history:
 - Previous flight destination → becomes hotel city
 - Previous flight departureDate → becomes hotel checkinDate
 - Previous flight returnDate → becomes hotel checkoutDate
 - Previous flight adults/children → becomes hotel adults/children
 
-Structure:
+User: "también quiero hotel para esas fechas" (after previous flight search)
 {
   "requestType": "hotels",
   "hotels": {
@@ -351,34 +391,49 @@ Structure:
     "checkinDate": "[EXTRACT from previous flight DEPARTURE DATE]",
     "checkoutDate": "[EXTRACT from previous flight RETURN DATE]",
     "adults": "[EXTRACT from current message OR previous flight]",
-    "children": "[EXTRACT from current message OR previous flight OR 0]",
-    "roomType": "doble",
-    "mealPlan": "desayuno"
+    "children": "[EXTRACT from current message OR previous flight OR 0]"
   },
   "confidence": 0.95
 }
+❌ NOTE: NO roomType or mealPlan unless user explicitly mentioned them in THIS message!
 
-Example 6 - Hotel request mentioning city from previous flight (CRITICAL PATTERN):
+Example 8 - Hotel request WITH explicit room AND meal preferences:
+User: "habitación doble all inclusive en Cancún"
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "Cancún",
+    "checkinDate": "[DATE]",
+    "checkoutDate": "[DATE]",
+    "adults": 2,
+    "children": 0,
+    "roomType": "double",
+    "mealPlan": "all_inclusive"
+  },
+  "confidence": 0.95
+}
+✅ NOTE: BOTH roomType and mealPlan included because user explicitly mentioned them!
+
+Example 9 - Hotel request mentioning city from previous flight (CRITICAL PATTERN):
 🚨 PATTERN: When user mentions a city that appeared in previous flight search, you MUST:
 1. Extract ALL flight details from that previous message (dates, passengers)
 2. Use flight destination as hotel city
 3. Use flight dates as hotel dates
 4. Use flight passenger count as hotel passenger count
 
-Structure:
+User: "hotel en Cancún" (after previous flight search to Cancún)
 {
   "requestType": "hotels",
   "hotels": {
-    "city": "[CITY mentioned by user]",
+    "city": "Cancún",
     "checkinDate": "[EXTRACT from previous flight to this city]",
     "checkoutDate": "[EXTRACT from previous flight to this city]",
     "adults": "[EXTRACT from previous flight]",
-    "children": "[EXTRACT from previous flight OR 0]",
-    "roomType": "doble",
-    "mealPlan": "desayuno"
+    "children": "[EXTRACT from previous flight OR 0]"
   },
   "confidence": 0.9
 }
+❌ NOTE: NO roomType or mealPlan unless user explicitly mentioned them!
 
 🚨 CRITICAL FINAL INSTRUCTION:
 - The examples above show PATTERNS and STRUCTURES only
