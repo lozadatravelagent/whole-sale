@@ -628,6 +628,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       onRoomSelect={(roomId) => handleRoomSelect(hotel.id, roomId)}
                       isDisabled={!isSelected}
                       maxInitialRooms={3}
+                      requestedRoomType={combinedData.requestedRoomType}
+                      requestedMealPlan={combinedData.requestedMealPlan}
                     />
                   </CardContent>
                 </Card>
