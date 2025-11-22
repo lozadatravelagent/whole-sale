@@ -335,16 +335,22 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
           const desc = (room.description || '').toLowerCase();
           const type = (room.type || '').toLowerCase();
 
-          // PRIORITY 1: Use occupancy data from SOAP (most reliable)
+          // Check BOTH occupancy data AND description (EUROVIPS data can be inconsistent)
+          // Match if EITHER the occupancy count OR the description matches
+          let matchesByOccupancy = false;
           if (room.adults !== undefined) {
-            const matchesSingle = normalizedRoomType === 'single' && room.adults === 1;
-            const matchesDouble = normalizedRoomType === 'double' && room.adults === 2;
-            const matchesTriple = normalizedRoomType === 'triple' && room.adults === 3;
-            return matchesSingle || matchesDouble || matchesTriple;
+            matchesByOccupancy = (
+              (normalizedRoomType === 'single' && room.adults === 1) ||
+              (normalizedRoomType === 'double' && room.adults === 2) ||
+              (normalizedRoomType === 'triple' && room.adults === 3)
+            );
           }
 
-          // FALLBACK: Check type code and description
-          return targetTypes.some(t => desc.includes(t) || type.includes(t));
+          // Check description and type code
+          const matchesByDescription = targetTypes.some(t => desc.includes(t) || type.includes(t));
+
+          // Match if EITHER criterion matches (OR logic)
+          return matchesByOccupancy || matchesByDescription;
         });
 
         if (filteredRooms.length === 0) {
