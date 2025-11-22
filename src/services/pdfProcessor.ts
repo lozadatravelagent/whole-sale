@@ -70,6 +70,8 @@ function parsePrice(priceStr: string): number {
 
     if (!cleaned) return 0;
 
+    console.log('💰 [PARSE PRICE] Input:', priceStr, '→ Cleaned:', cleaned);
+
     // Count dots and commas to determine format
     const dotCount = (cleaned.match(/\./g) || []).length;
     const commaCount = (cleaned.match(/,/g) || []).length;
@@ -78,44 +80,79 @@ function parsePrice(priceStr: string): number {
 
     // No separators - simple case
     if (dotCount === 0 && commaCount === 0) {
-        return parseFloat(cleaned);
+        const result = parseFloat(cleaned);
+        console.log('💰 [PARSE PRICE] No separators:', result);
+        return result;
     }
 
     // Only dots - check if it's decimal or thousands separator
     if (dotCount > 0 && commaCount === 0) {
-        // If dot is in the last 3 positions and there's more than one dot, it's decimal
-        // Otherwise if there's only one dot and it's in last 3 chars, it's decimal
-        // Otherwise dots are thousands separators
-        if (lastDotIndex >= cleaned.length - 3 && dotCount === 1) {
-            // Single dot in last 3 positions = decimal separator
-            return parseFloat(cleaned);
-        } else {
-            // Multiple dots or dot not in decimal position = thousands separator
-            return parseFloat(cleaned.replace(/\./g, ''));
+        // LATINO/EU FORMAT DETECTION:
+        // - If there are 3 digits after the dot AND total length > 4: it's thousands (1.485)
+        // - If there are 1-2 digits after the dot: it's decimal (10.50)
+        // - If dot is NOT in last 3 positions: it's thousands (1.500.000)
+
+        const digitsAfterDot = cleaned.length - lastDotIndex - 1;
+        console.log('💰 [PARSE PRICE] Dots only - digitsAfterDot:', digitsAfterDot, 'lastDotIndex:', lastDotIndex, 'length:', cleaned.length);
+
+        // Explicit Latino format check: X.XXX (e.g., 1.485, 2.500)
+        if (digitsAfterDot === 3 && lastDotIndex > 0 && cleaned.length >= 5) {
+            // Latino format: dot is thousands separator
+            const result = parseFloat(cleaned.replace(/\./g, ''));
+            console.log('💰 [PARSE PRICE] Latino format (X.XXX):', result);
+            return result;
         }
+
+        // Decimal format: dot in last 1-2 positions (e.g., 10.5, 100.50)
+        if (lastDotIndex >= cleaned.length - 3 && dotCount === 1 && digitsAfterDot <= 2) {
+            const result = parseFloat(cleaned);
+            console.log('💰 [PARSE PRICE] Decimal format:', result);
+            return result;
+        }
+
+        // Multiple dots or dot not in decimal position = thousands separator
+        const result = parseFloat(cleaned.replace(/\./g, ''));
+        console.log('💰 [PARSE PRICE] Thousands separator:', result);
+        return result;
     }
 
     // Only commas - check if it's decimal or thousands separator
     if (commaCount > 0 && dotCount === 0) {
-        // If comma is in the last 3 positions and there's only one comma, it's decimal
-        if (lastCommaIndex >= cleaned.length - 3 && commaCount === 1) {
-            // Single comma in last 3 positions = decimal separator (EU format)
-            return parseFloat(cleaned.replace(',', '.'));
-        } else {
-            // Multiple commas or comma not in decimal position = thousands separator (US)
-            return parseFloat(cleaned.replace(/,/g, ''));
+        const digitsAfterComma = cleaned.length - lastCommaIndex - 1;
+
+        // EU format with comma as decimal: X,XX (e.g., 10,50)
+        if (lastCommaIndex >= cleaned.length - 3 && commaCount === 1 && digitsAfterComma <= 2) {
+            const result = parseFloat(cleaned.replace(',', '.'));
+            console.log('💰 [PARSE PRICE] EU decimal format:', result);
+            return result;
         }
+
+        // US thousands separator: X,XXX (e.g., 1,485)
+        if (digitsAfterComma === 3 && lastCommaIndex > 0 && cleaned.length >= 5) {
+            const result = parseFloat(cleaned.replace(/,/g, ''));
+            console.log('💰 [PARSE PRICE] US thousands format:', result);
+            return result;
+        }
+
+        // Multiple commas = thousands separator
+        const result = parseFloat(cleaned.replace(/,/g, ''));
+        console.log('💰 [PARSE PRICE] Multiple commas:', result);
+        return result;
     }
 
     // Both dots and commas present - determine which comes last
     if (lastCommaIndex > lastDotIndex) {
         // Comma comes after dot = EU/Latino format (2.549,32)
         // Dots are thousands, comma is decimal
-        return parseFloat(cleaned.replace(/\./g, '').replace(',', '.'));
+        const result = parseFloat(cleaned.replace(/\./g, '').replace(',', '.'));
+        console.log('💰 [PARSE PRICE] EU/Latino format (X.XXX,XX):', result);
+        return result;
     } else {
         // Dot comes after comma = US format (2,549.32)
         // Commas are thousands, dot is decimal
-        return parseFloat(cleaned.replace(/,/g, ''));
+        const result = parseFloat(cleaned.replace(/,/g, ''));
+        console.log('💰 [PARSE PRICE] US format (X,XXX.XX):', result);
+        return result;
     }
 }
 
