@@ -702,6 +702,11 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
     const roomFeatures = getTextContent(hotelEl, 'RoomFeatures') || '';
     const roomType = getTextContent(hotelEl, 'RoomType') || '';
 
+    // Calculate nights BEFORE parsing fares (needed for price_per_night calculation)
+    const checkIn = params.dateFrom;
+    const checkOut = params.dateTo;
+    const nights = calculateNights(checkIn, checkOut);
+
     // Parse fare information from FareList
     const rooms: HotelRoom[] = [];
     const fareList = hotelEl.querySelector('FareList');
@@ -710,7 +715,8 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
       const fareElements = fareList.querySelectorAll('Fare');
 
       fareElements.forEach((fareEl, roomIndex) => {
-        const room = parseFareElement(fareEl, roomIndex, roomType);
+        // ✅ Pass hotelEl and nights to parseFareElement for correct pricing
+        const room = parseFareElement(fareEl, roomIndex, roomType, hotelEl, nights);
         if (room) {
           rooms.push(room);
         }
@@ -748,11 +754,6 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
       return null;
     }
 
-    // Calculate nights
-    const checkIn = params.dateFrom;
-    const checkOut = params.dateTo;
-    const nights = calculateNights(checkIn, checkOut);
-
     const hotel: HotelData = {
       id: `hotel_${uniqueId}`,
       unique_id: uniqueId,
@@ -779,16 +780,55 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
   }
 }
 
-function parseFareElement(fareEl: Element, index: number, defaultRoomType: string): HotelRoom | null {
+/**
+ * Parse AdditionalCosts from hotel element (AdditionalCostsList)
+ * These are extra charges that must be added to Base + Tax for the final price
+ */
+function parseAdditionalCosts(hotelEl: Element): number {
+  try {
+    let additionalTotal = 0;
+    const costElements = hotelEl.querySelectorAll('AdditionalCostsList AdditionalCost Amount');
+
+    costElements.forEach(costEl => {
+      const amount = parseFloat(costEl.textContent || '0');
+      if (amount > 0) {
+        additionalTotal += amount;
+        console.log(`💰 [ADDITIONAL COST] +${amount} (${costEl.parentElement?.querySelector('Description')?.textContent || 'Unknown'})`);
+      }
+    });
+
+    if (additionalTotal > 0) {
+      console.log(`💰 [TOTAL ADDITIONAL COSTS] ${additionalTotal}`);
+    }
+
+    return additionalTotal;
+  } catch (error) {
+    console.error('❌ Error parsing additional costs:', error);
+    return 0;
+  }
+}
+
+function parseFareElement(fareEl: Element, index: number, defaultRoomType: string, hotelEl: Element, nights: number): HotelRoom | null {
   try {
     // Parse according to updated documentation: <Fare type="SGL" PassengerType="ADT" Availability="2">
     const fareType = fareEl.getAttribute('type') || 'STD';
     const availability = parseInt(fareEl.getAttribute('Availability') || '1');
 
+    // ✅ FIX #3: Get the CORRECT FareIdBroker from attribute (not fare type)
+    // This is CRITICAL for makeBudget → convertToBooking workflow
+    const fareIdBroker = fareEl.getAttribute('FareIdBroker') || fareType;
+    console.log(`🔑 [FARE ID BROKER] ${fareIdBroker}`);
+
     // Extract pricing information
     const basePrice = parseFloat(getTextContent(fareEl, 'Base') || '0');
     const taxPrice = parseFloat(getTextContent(fareEl, 'Tax') || '0');
-    const totalPrice = basePrice + taxPrice;
+
+    // ✅ FIX #2: Parse and add AdditionalCosts to the total price
+    // AdditionalCosts are at hotel level, not fare level
+    const additionalCosts = parseAdditionalCosts(hotelEl);
+    const totalPrice = basePrice + taxPrice + additionalCosts;
+
+    console.log(`💵 [PRICE BREAKDOWN] Base: ${basePrice} + Tax: ${taxPrice} + Additional: ${additionalCosts} = Total: ${totalPrice}`);
 
     // Get currency from parent FareList element
     const fareList = fareEl.closest('FareList');
@@ -810,15 +850,19 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
       return null;
     }
 
+    // ✅ FIX #1: Calculate REAL price per night by dividing total / nights
+    const pricePerNight = nights > 0 ? totalPrice / nights : totalPrice;
+    console.log(`🏷️ [PRICE PER NIGHT] ${totalPrice} / ${nights} nights = ${pricePerNight} per night`);
+
     return {
       type: roomType,
       description: description,
-      price_per_night: totalPrice, // This is typically the total price, not per night
-      total_price: totalPrice,
+      price_per_night: pricePerNight, // ✅ FIXED: Real price per night
+      total_price: totalPrice, // ✅ FIXED: Includes Base + Tax + AdditionalCosts
       currency: currency,
       availability: availability,
       occupancy_id: (index + 1).toString(),
-      fare_id_broker: fareType
+      fare_id_broker: fareIdBroker // ✅ FIXED: Correct FareIdBroker from attribute
     };
   } catch (error) {
     console.error('❌ Error parsing fare element:', error);
