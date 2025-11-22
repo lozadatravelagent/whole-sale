@@ -450,7 +450,11 @@ const useMessageHandler = (
       // No need for manual refreshes - Realtime handles it
 
       // 2. Update conversation title if first message
-      if (messages.length === 0) {
+      // IMPORTANT: Skip title generation for PDF uploads - title will be generated after PDF analysis
+      const isPdfUpload = currentMessage.toLowerCase().includes('he subido el pdf') ||
+                         currentMessage.toLowerCase().includes('pdf para análisis');
+
+      if (messages.length === 0 && !isPdfUpload) {
         console.log('🏷️ [MESSAGE FLOW] Step 6: First message - updating conversation title');
         const title = generateChatTitle(currentMessage);
         console.log('📝 Generated title:', title);
@@ -463,6 +467,8 @@ const useMessageHandler = (
           console.error('❌ [MESSAGE FLOW] Error updating conversation title:', titleError);
           // Don't fail the whole process if title update fails
         }
+      } else if (messages.length === 0 && isPdfUpload) {
+        console.log('📄 [MESSAGE FLOW] PDF upload detected - skipping title generation (will be set after PDF analysis)');
       }
 
       // 3. Load contextual memory before parsing
