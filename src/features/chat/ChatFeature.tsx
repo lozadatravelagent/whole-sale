@@ -72,7 +72,7 @@ const ChatFeature = () => {
     handlePdfUpload,
     handleCheaperFlightsSearch,
     handlePriceChangeRequest: handlePdfPriceChange
-  } = usePdfAnalysis(selectedConversation, messages);
+  } = usePdfAnalysis(selectedConversation, messages, updateConversationTitle);
 
   // Message handler hook
   const { handleSendMessage: handleSendMessageRaw } = useMessageHandler(

@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { analyzePdfContent, generatePriceChangeSuggestions, searchCheaperFlights, processPriceChangeRequest } from '@/services/pdfProcessor';
 import { addMessageViaSupabase } from '../services/messageService';
+import { generateChatTitle } from '../utils/messageHelpers';
 import { useToast } from '@/hooks/use-toast';
 import type { MessageRow } from '../types/chat';
 
-const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRow[]) => {
+const usePdfAnalysis = (
+  selectedConversation: string | null,
+  messages: MessageRow[],
+  updateConversationTitle: (conversationId: string, title: string) => Promise<void>
+) => {
   const [lastPdfAnalysis, setLastPdfAnalysis] = useState<any>(null);
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const { toast } = useToast();
@@ -41,7 +46,7 @@ const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRo
   }, [selectedConversation, messages]);
 
   // Process PDF content and generate response
-  const processPdfContent = useCallback(async (file: File, conversationId: string) => {
+  const processPdfContent = useCallback(async (file: File, conversationId: string, isFirstMessage: boolean) => {
     try {
       console.log('📄 Starting PDF analysis for:', file.name);
 
@@ -73,6 +78,37 @@ const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRo
 
         console.log('✅ PDF analysis completed successfully');
 
+        // Update conversation title if this is the first message
+        if (isFirstMessage) {
+          console.log('🏷️ [PDF UPLOAD] First message - generating conversation title from PDF analysis');
+
+          // Generate intelligent title based on PDF content
+          let title = '📄 Análisis de Cotización';
+
+          if (analysis.content) {
+            const hasFlights = analysis.content.flights && analysis.content.flights.length > 0;
+            const hasHotels = analysis.content.hotels && analysis.content.hotels.length > 0;
+
+            if (hasFlights && hasHotels) {
+              title = '🌟 Viaje Completo';
+            } else if (hasFlights) {
+              title = '✈️ Búsqueda de Vuelos';
+            } else if (hasHotels) {
+              title = '🏨 Búsqueda de Hoteles';
+            }
+          }
+
+          console.log('📝 Generated title:', title);
+
+          try {
+            await updateConversationTitle(conversationId, title);
+            console.log(`✅ [PDF UPLOAD] Conversation title updated to: "${title}"`);
+          } catch (titleError) {
+            console.error('❌ [PDF UPLOAD] Error updating conversation title:', titleError);
+            // Don't fail the whole process if title update fails
+          }
+        }
+
         // Store the analysis for future price change requests
         setLastPdfAnalysis({
           analysis,
@@ -101,7 +137,7 @@ const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRo
         }
       });
     }
-  }, []);
+  }, [updateConversationTitle]);
 
   // Handle PDF upload
   const handlePdfUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,6 +172,10 @@ const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRo
     setIsUploadingPdf(true);
 
     try {
+      // Check if this is the first message in the conversation
+      const isFirstMessage = messages.length === 0;
+      console.log('📊 [PDF UPLOAD] Is first message:', isFirstMessage, 'Message count:', messages.length);
+
       // Convert file to base64
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -169,8 +209,8 @@ const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRo
         }
       });
 
-      // Process PDF content (we'll implement this service)
-      await processPdfContent(file, selectedConversation);
+      // Process PDF content with first message flag
+      await processPdfContent(file, selectedConversation, isFirstMessage);
 
       toast({
         title: "PDF subido exitosamente",
@@ -187,7 +227,7 @@ const usePdfAnalysis = (selectedConversation: string | null, messages: MessageRo
     } finally {
       setIsUploadingPdf(false);
     }
-  }, [selectedConversation, processPdfContent, toast]);
+  }, [selectedConversation, messages, processPdfContent, toast]);
 
   // Handle cheaper flights search
   const handleCheaperFlightsSearch = useCallback(async (message: string) => {
