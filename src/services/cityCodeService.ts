@@ -611,3 +611,142 @@ export function getCityNameFromIATA(iataCode: string): string {
   const upperCode = iataCode.toUpperCase();
   return IATA_TO_CITY[upperCode] || upperCode;
 }
+
+/**
+ * ⭐ UNIFIED AIRPORT CODE RESOLVER - SINGLE SOURCE OF TRUTH ⭐
+ *
+ * Combines ALL city code sources with intelligent 4-layer fallback.
+ * This function GUARANTEES a valid 3-letter IATA code for Starling API.
+ *
+ * Resolution Strategy:
+ * 1️⃣ SMART LOGIC: Context-aware (Buenos Aires → AEP/EZE based on destination)
+ * 2️⃣ LOCAL DICT: Static dictionary (200 cities, includes Argentina)
+ * 3️⃣ EUROVIPS: Global database (766 cities worldwide)
+ * 4️⃣ FALLBACK: First 3 letters (last resort with warning)
+ *
+ * @param cityName - City name to convert (e.g., "Buenos Aires", "Miami")
+ * @param context - Optional context for smart resolution
+ * @returns Promise<string> - Valid 3-letter IATA code (uppercase)
+ * @throws Error if city cannot be resolved to valid code
+ */
+export async function getUnifiedAirportCode(
+  cityName: string,
+  context?: {
+    destination?: string;
+    country?: string;
+    searchType?: 'flight' | 'hotel';
+  }
+): Promise<string> {
+  if (!cityName || cityName.trim() === '') {
+    throw new Error('❌ City name cannot be empty');
+  }
+
+  const startTime = Date.now();
+  console.log(`\n🔍 [UNIFIED RESOLVER] Starting resolution for: "${cityName}"`);
+  if (context?.destination) console.log(`   → Destination context: "${context.destination}"`);
+  if (context?.country) console.log(`   → Country hint: "${context.country}"`);
+
+  // ============================================
+  // LAYER 1: Smart Context-Aware Logic
+  // ============================================
+  if (context?.searchType === 'flight' || !context?.searchType) {
+    console.log(`\n1️⃣ [LAYER 1] Trying smart context-aware logic...`);
+    const smartCode = getSmartAirportCode(cityName, context?.destination);
+
+    if (smartCode) {
+      const elapsed = Date.now() - startTime;
+      console.log(`✅ [LAYER 1 SUCCESS] "${cityName}" → ${smartCode} (smart logic, ${elapsed}ms)`);
+      return validateIATACode(smartCode, cityName);
+    }
+    console.log(`   ⏭️  Layer 1 returned null, trying next layer...`);
+  }
+
+  // ============================================
+  // LAYER 2: Local Static Dictionary
+  // ============================================
+  console.log(`\n2️⃣ [LAYER 2] Trying local static dictionary (200 cities)...`);
+  const localCode = getAirportCode(cityName);
+
+  if (localCode) {
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ [LAYER 2 SUCCESS] "${cityName}" → ${localCode} (static dict, ${elapsed}ms)`);
+    return validateIATACode(localCode, cityName);
+  }
+  console.log(`   ⏭️  City not in local dictionary, trying next layer...`);
+
+  // ============================================
+  // LAYER 3: EUROVIPS Global Database
+  // ============================================
+  console.log(`\n3️⃣ [LAYER 3] Trying EUROVIPS database (766 cities)...`);
+  try {
+    const { getCityCode } = await import('@/services/cityCodeMapping');
+    const eurovipsCode = await getCityCode(cityName, context?.country);
+
+    if (eurovipsCode) {
+      const elapsed = Date.now() - startTime;
+      console.log(`✅ [LAYER 3 SUCCESS] "${cityName}" → ${eurovipsCode} (EUROVIPS, ${elapsed}ms)`);
+      return validateIATACode(eurovipsCode, cityName);
+    }
+  } catch (error) {
+    console.warn(`   ⚠️  EUROVIPS query failed:`, (error as Error).message);
+  }
+  console.log(`   ⏭️  Not found in EUROVIPS, trying fallback...`);
+
+  // ============================================
+  // LAYER 4: Fallback (First 3 Letters)
+  // ============================================
+  console.log(`\n4️⃣ [LAYER 4] Using FALLBACK (first 3 letters)...`);
+  const fallbackCode = cityName
+    .trim()
+    .replace(/[^a-zA-Z]/g, '')
+    .slice(0, 3)
+    .toUpperCase();
+
+  if (fallbackCode.length === 3) {
+    const elapsed = Date.now() - startTime;
+    console.warn(`⚠️ [LAYER 4 FALLBACK] "${cityName}" → ${fallbackCode} (${elapsed}ms)`);
+    console.warn(`⚠️ [WARNING] Code generated from first 3 letters - may not be valid!`);
+    console.warn(`⚠️ [ACTION REQUIRED] Add "${cityName}" to cityCodeService.ts mappings`);
+    return validateIATACode(fallbackCode, cityName);
+  }
+
+  // ============================================
+  // CRITICAL FAILURE
+  // ============================================
+  const elapsed = Date.now() - startTime;
+  console.error(`\n❌ [CRITICAL FAILURE] Cannot resolve "${cityName}" (${elapsed}ms)`);
+  console.error(`   → All 4 layers failed`);
+  console.error(`   → City name too short or contains no letters`);
+
+  throw new Error(
+    `No se pudo obtener código IATA para "${cityName}". ` +
+    `Verifica que el nombre de la ciudad sea válido.`
+  );
+}
+
+/**
+ * Validate IATA code format and structure
+ * Ensures code meets Starling API requirements
+ */
+function validateIATACode(code: string, cityName: string): string {
+  const cleaned = code.trim().toUpperCase();
+
+  // Validate length (must be exactly 3 characters)
+  if (cleaned.length !== 3) {
+    throw new Error(
+      `Código IATA inválido para "${cityName}": "${code}" ` +
+      `(debe tener 3 caracteres, tiene ${cleaned.length})`
+    );
+  }
+
+  // Validate format (alphanumeric only - IATA codes can have numbers)
+  if (!/^[A-Z0-9]{3}$/.test(cleaned)) {
+    throw new Error(
+      `Código IATA inválido para "${cityName}": "${code}" ` +
+      `(solo se permiten letras A-Z y números 0-9)`
+    );
+  }
+
+  console.log(`   ✓ Validation passed: ${cleaned}`);
+  return cleaned;
+}

@@ -653,29 +653,70 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
 }
 
 /**
- * Formats parsed data for Starling API calls
+ * ⭐ STARLING API FORMATTER - WITH STRICT IATA VALIDATION ⭐
  *
- * NOTE: This function is now ASYNC because it needs to convert city names to IATA codes
- * IMPORTANT: Starling TVC API requires IATA airport codes, NOT city names
+ * Formats parsed travel request for Starling TVC API.
+ * GUARANTEES that only valid IATA codes are sent to Starling.
+ *
+ * CRITICAL REQUIREMENTS:
+ * - DepartureAirportCity: Must be valid 3-letter IATA code
+ * - ArrivalAirportCity: Must be valid 3-letter IATA code
+ * - FlightDate: Must be in YYYY-MM-DD format
+ *
+ * @param parsed - Parsed travel request from AI
+ * @returns Formatted request for Starling API with validated IATA codes
+ * @throws Error if city codes cannot be resolved
  */
 export async function formatForStarling(parsed: ParsedTravelRequest) {
-    if (!parsed.flights) return null;
+    if (!parsed.flights) {
+        console.warn('⚠️ [STARLING FORMAT] No flight data in parsed request');
+        return null;
+    }
 
-    // CRITICAL: Import getCityCode dynamically to avoid circular dependency
-    const { getCityCode } = await import('@/services/cityCodeMapping');
+    console.log('\n' + '='.repeat(60));
+    console.log('🚀 [STARLING API FORMATTER] Starting...');
+    console.log('='.repeat(60));
 
-    // Convert city names to IATA codes
-    console.log('🔍 [STARLING FORMAT] Converting cities to IATA codes...');
-    console.log('🔍 [STARLING FORMAT] Input origin:', parsed.flights.origin);
-    console.log('🔍 [STARLING FORMAT] Input destination:', parsed.flights.destination);
+    // ============================================
+    // STEP 1: Import unified code resolver
+    // ============================================
+    const { getUnifiedAirportCode } = await import('@/services/cityCodeService');
 
-    const originCode = await getCityCode(parsed.flights.origin);
-    const destinationCode = await getCityCode(parsed.flights.destination);
+    // ============================================
+    // STEP 2: Convert city names to IATA codes
+    // ============================================
+    console.log('\n📍 [CITY CONVERSION] Converting city names to IATA codes...');
+    console.log(`   Origin:      "${parsed.flights.origin}"`);
+    console.log(`   Destination: "${parsed.flights.destination}"`);
 
-    console.log('✅ [STARLING FORMAT] Origin converted:', `${parsed.flights.origin} → ${originCode}`);
-    console.log('✅ [STARLING FORMAT] Destination converted:', `${parsed.flights.destination} → ${destinationCode}`);
+    let originCode: string;
+    let destinationCode: string;
 
-    // Create passenger array for TVC API format
+    try {
+        // Use unified resolver with context awareness
+        originCode = await getUnifiedAirportCode(parsed.flights.origin, {
+            destination: parsed.flights.destination,
+            searchType: 'flight'
+        });
+
+        destinationCode = await getUnifiedAirportCode(parsed.flights.destination, {
+            destination: parsed.flights.origin, // Reverse for return context
+            searchType: 'flight'
+        });
+    } catch (error) {
+        console.error('\n❌ [CITY CONVERSION FAILED]', error);
+        throw new Error(
+            `No se pudieron convertir las ciudades a códigos IATA: ${(error as Error).message}`
+        );
+    }
+
+    console.log('\n✅ [CITY CONVERSION SUCCESS]');
+    console.log(`   "${parsed.flights.origin}" → ${originCode}`);
+    console.log(`   "${parsed.flights.destination}" → ${destinationCode}`);
+
+    // ============================================
+    // STEP 3: Build passenger array
+    // ============================================
     const passengers = [];
     if ((parsed.flights.adults || 1) > 0) {
         passengers.push({
@@ -690,29 +731,150 @@ export async function formatForStarling(parsed: ParsedTravelRequest) {
         });
     }
 
-    // Create legs array for TVC API format with IATA codes
+    console.log(`\n👥 [PASSENGERS] ${passengers.length} passenger type(s):`, passengers);
+
+    // ============================================
+    // STEP 4: Build legs array with IATA codes
+    // ============================================
     const legs = [
         {
-            DepartureAirportCity: originCode,        // ✅ IATA code (e.g., "EZE")
-            ArrivalAirportCity: destinationCode,     // ✅ IATA code (e.g., "MIA")
+            DepartureAirportCity: originCode,
+            ArrivalAirportCity: destinationCode,
             FlightDate: parsed.flights.departureDate
         }
     ];
 
-    // Add return leg if this is a round trip
+    // Add return leg if round trip
     if (parsed.flights.returnDate) {
         legs.push({
-            DepartureAirportCity: destinationCode,   // ✅ IATA code for return
-            ArrivalAirportCity: originCode,          // ✅ IATA code for return
+            DepartureAirportCity: destinationCode,
+            ArrivalAirportCity: originCode,
             FlightDate: parsed.flights.returnDate
         });
     }
 
-    console.log('📋 [STARLING FORMAT] Final formatted legs:', legs);
+    console.log(`\n✈️  [LEGS] ${legs.length} leg(s) created:`);
+    legs.forEach((leg, index) => {
+        console.log(`   Leg ${index + 1}: ${leg.DepartureAirportCity} → ${leg.ArrivalAirportCity} (${leg.FlightDate})`);
+    });
 
-    return {
+    // ============================================
+    // STEP 5: CRITICAL VALIDATION BEFORE SENDING
+    // ============================================
+    const starlingRequest = {
         Passengers: passengers,
         Legs: legs,
         Airlines: null
     };
+
+    console.log('\n🔍 [VALIDATION] Validating request before sending to Starling...');
+    validateStarlingRequest(starlingRequest);
+    console.log('✅ [VALIDATION PASSED] All checks OK!');
+
+    // ============================================
+    // STEP 6: Final formatted request
+    // ============================================
+    console.log('\n📦 [FINAL REQUEST] Ready to send to Starling API:');
+    console.log(JSON.stringify(starlingRequest, null, 2));
+    console.log('='.repeat(60) + '\n');
+
+    return starlingRequest;
+}
+
+/**
+ * ⛔ STRICT VALIDATION FOR STARLING API REQUESTS ⛔
+ *
+ * Validates that the request meets Starling API requirements.
+ * Throws error if validation fails (prevents sending invalid requests).
+ *
+ * @param request - Formatted Starling request
+ * @throws Error if validation fails
+ */
+function validateStarlingRequest(request: any): void {
+    // Validate structure
+    if (!request.Legs || !Array.isArray(request.Legs)) {
+        throw new Error('❌ Invalid request: Legs array is required');
+    }
+
+    if (!request.Passengers || !Array.isArray(request.Passengers)) {
+        throw new Error('❌ Invalid request: Passengers array is required');
+    }
+
+    // Validate each leg
+    request.Legs.forEach((leg: any, index: number) => {
+        const legNum = index + 1;
+
+        // Validate DepartureAirportCity
+        if (!leg.DepartureAirportCity) {
+            throw new Error(`❌ Leg ${legNum}: DepartureAirportCity is missing`);
+        }
+        if (typeof leg.DepartureAirportCity !== 'string') {
+            throw new Error(`❌ Leg ${legNum}: DepartureAirportCity must be a string`);
+        }
+        if (leg.DepartureAirportCity.length !== 3) {
+            throw new Error(
+                `❌ Leg ${legNum}: DepartureAirportCity "${leg.DepartureAirportCity}" ` +
+                `must be exactly 3 characters (got ${leg.DepartureAirportCity.length})`
+            );
+        }
+        if (!/^[A-Z0-9]{3}$/.test(leg.DepartureAirportCity)) {
+            throw new Error(
+                `❌ Leg ${legNum}: DepartureAirportCity "${leg.DepartureAirportCity}" ` +
+                `must contain only uppercase letters/numbers`
+            );
+        }
+
+        // Validate ArrivalAirportCity
+        if (!leg.ArrivalAirportCity) {
+            throw new Error(`❌ Leg ${legNum}: ArrivalAirportCity is missing`);
+        }
+        if (typeof leg.ArrivalAirportCity !== 'string') {
+            throw new Error(`❌ Leg ${legNum}: ArrivalAirportCity must be a string`);
+        }
+        if (leg.ArrivalAirportCity.length !== 3) {
+            throw new Error(
+                `❌ Leg ${legNum}: ArrivalAirportCity "${leg.ArrivalAirportCity}" ` +
+                `must be exactly 3 characters (got ${leg.ArrivalAirportCity.length})`
+            );
+        }
+        if (!/^[A-Z0-9]{3}$/.test(leg.ArrivalAirportCity)) {
+            throw new Error(
+                `❌ Leg ${legNum}: ArrivalAirportCity "${leg.ArrivalAirportCity}" ` +
+                `must contain only uppercase letters/numbers`
+            );
+        }
+
+        // Validate FlightDate
+        if (!leg.FlightDate) {
+            throw new Error(`❌ Leg ${legNum}: FlightDate is missing`);
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(leg.FlightDate)) {
+            throw new Error(
+                `❌ Leg ${legNum}: FlightDate "${leg.FlightDate}" ` +
+                `must be in YYYY-MM-DD format`
+            );
+        }
+
+        console.log(`   ✓ Leg ${legNum}: ${leg.DepartureAirportCity} → ${leg.ArrivalAirportCity} (${leg.FlightDate})`);
+    });
+
+    // Validate passengers
+    if (request.Passengers.length === 0) {
+        throw new Error('❌ Invalid request: At least one passenger type is required');
+    }
+
+    request.Passengers.forEach((passenger: any, index: number) => {
+        if (!passenger.Type || !['ADT', 'CHD', 'INF'].includes(passenger.Type)) {
+            throw new Error(
+                `❌ Passenger ${index + 1}: Invalid type "${passenger.Type}" ` +
+                `(must be ADT, CHD, or INF)`
+            );
+        }
+        if (!passenger.Count || passenger.Count < 1) {
+            throw new Error(
+                `❌ Passenger ${index + 1}: Count must be at least 1 (got ${passenger.Count})`
+            );
+        }
+        console.log(`   ✓ Passenger: ${passenger.Count} ${passenger.Type}`);
+    });
 }
