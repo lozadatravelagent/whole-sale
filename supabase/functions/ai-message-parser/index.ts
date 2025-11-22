@@ -269,9 +269,21 @@ CRITICAL INSTRUCTION:
 - roomType, mealPlan (OPTIONAL - ONLY include if user explicitly mentions them)
 
 🚨 **CRITICAL HOTEL PREFERENCE RULES - READ CAREFULLY:**
-- **roomType**: ONLY include if user explicitly says "habitación simple/single", "habitación doble/double", "habitación triple/triple"
+- **roomType**: ONLY include if user explicitly mentions room type/capacity
+  * **Be VERY tolerant with spelling variations - accept ALL these patterns:**
+    - WITH accents: "habitación simple", "habitación doble", "habitación triple"
+    - WITHOUT accents: "habitacion simple", "habitacion doble", "habitacion triple"
+    - Abbreviated: "hab simple", "hab doble", "hab triple"
+    - Just the type: "simple", "doble", "double", "triple", "sencilla", "individual"
+    - English: "single room", "double room", "triple room"
   * If user says NOTHING about room type → DO NOT include roomType field
-  * Examples: "hotel en Cancún" → NO roomType, "habitación doble en Cancún" → roomType: "double"
+  * Map all variations to standard enum: 'single', 'double', 'triple'
+  * Examples:
+    - "hotel en Cancún" → NO roomType ❌
+    - "habitación doble en Cancún" → roomType: "double" ✅
+    - "habitacion doble en Cancún" → roomType: "double" ✅ (no accent is OK!)
+    - "hab doble en Cancún" → roomType: "double" ✅
+    - "doble en Cancún" → roomType: "double" ✅
 - **mealPlan**: ONLY include if user explicitly mentions food/meal preferences IN THE CURRENT MESSAGE
   * ✅ **Include mealPlan ONLY IF these keywords appear in CURRENT message:**
     - "all inclusive", "todo incluido", "all-inclusive", "all inc"
@@ -453,7 +465,7 @@ User: "hotel en Cancún" (after previous flight search to Cancún)
 }
 ❌ NOTE: NO roomType or mealPlan unless user explicitly mentioned them!
 
-Example 10 - Combined flight + hotel WITHOUT meal plan (CRITICAL):
+Example 10 - Combined flight + hotel WITHOUT meal plan (CRITICAL - REAL USER CASE):
 User: "quiero un vuelo desde buenos aires a cancun para dos personas desde el 5 de enero al 15 de enero con escala de menos de 3 horas tambien quiero un hotel habitacion doble para ambas fechas"
 {
   "requestType": "combined",
@@ -478,9 +490,10 @@ User: "quiero un vuelo desde buenos aires a cancun para dos personas desde el 5 
   "confidence": 0.95
 }
 ❌ CRITICAL: NO mealPlan because user ONLY said "habitacion doble" without mentioning food/meals!
-✅ roomType: "double" is included because user explicitly said "habitacion doble"
+✅ roomType: "double" is included because user said "habitacion doble" (WITHOUT accent - this is OK!)
+🚨 IMPORTANT: Accept "habitacion" (no accent) as valid - users often omit accents!
 
-Example 11 - Hotel with room type but NO meal (to reinforce):
+Example 11 - Hotel with room type but NO meal (to reinforce - WITHOUT accents):
 User: "habitacion doble en cancun para 2 personas"
 {
   "requestType": "hotels",
@@ -495,6 +508,7 @@ User: "habitacion doble en cancun para 2 personas"
   "confidence": 0.9
 }
 ❌ NO mealPlan - user mentioned "habitacion doble" but did NOT mention meals!
+✅ roomType: "double" - detected "habitacion doble" even WITHOUT accent on "habitacion"
 
 🚨 CRITICAL FINAL INSTRUCTION:
 - The examples above show PATTERNS and STRUCTURES only
@@ -513,6 +527,13 @@ Examples to verify your understanding:
 - "hotel habitacion doble" → NO food keywords → NO mealPlan field ❌
 - "habitacion doble all inclusive" → "inclusive" keyword found → mealPlan: "all_inclusive" ✅
 - "hotel con desayuno" → "desayuno" keyword found → mealPlan: "breakfast" ✅
+
+🚨 FINAL REMINDER - roomType TOLERANCE:
+Be EXTREMELY tolerant with spelling variations for room types:
+- "habitacion doble" (no accent) = "habitación doble" (with accent) → roomType: "double" ✅
+- "hab doble" = "habitación doble" → roomType: "double" ✅
+- "doble" alone (in hotel context) → roomType: "double" ✅
+- Users OFTEN omit accents - this is NORMAL and VALID!
 
 Now analyze this ACTUAL message and respond with JSON only:`;
     const userPrompt = message;

@@ -547,6 +547,11 @@ export async function parseMessageWithAI(
             throw new Error('No parsed result from AI service');
         }
 
+        console.log('🔍 [DEBUG] parsedResult from Edge Function:', parsedResult);
+        console.log('🔍 [DEBUG] parsedResult.hotels:', parsedResult.hotels);
+        console.log('🔍 [DEBUG] parsedResult.hotels?.roomType:', parsedResult.hotels?.roomType);
+        console.log('🔍 [DEBUG] parsedResult.hotels?.mealPlan:', parsedResult.hotels?.mealPlan);
+
         // Merge quick pre-parse hints if AI missed them (e.g., max layover hours, stops, preferredAirline)
         const mergedFlights = {
             ...(parsedResult.flights || {}),

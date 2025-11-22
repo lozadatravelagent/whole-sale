@@ -655,12 +655,15 @@ const useMessageHandler = (
         parsedRequest.requestType = 'combined';
         // Mirror city/dates from flights to hotels if missing
         const f = parsedRequest.flights;
-        parsedRequest.hotels = parsedRequest.hotels || ({} as any);
-        if (f?.destination && !parsedRequest.hotels.city) parsedRequest.hotels.city = f.destination as any;
-        if (f?.departureDate && !parsedRequest.hotels.checkinDate) parsedRequest.hotels.checkinDate = f.departureDate as any;
-        if (f?.returnDate && !parsedRequest.hotels.checkoutDate) parsedRequest.hotels.checkoutDate = f.returnDate as any;
-        if (f?.adults && !parsedRequest.hotels.adults) parsedRequest.hotels.adults = f.adults as any;
-        parsedRequest.hotels.children = parsedRequest.hotels.children ?? (f?.children as any) ?? 0;
+        const existingHotels = parsedRequest.hotels || ({} as any);
+        parsedRequest.hotels = {
+          ...existingHotels, // ✅ PRESERVE existing hotel fields (roomType, mealPlan, etc.)
+          city: existingHotels.city || (f?.destination as any),
+          checkinDate: existingHotels.checkinDate || (f?.departureDate as any),
+          checkoutDate: existingHotels.checkoutDate || (f?.returnDate as any),
+          adults: existingHotels.adults || (f?.adults as any),
+          children: existingHotels.children ?? (f?.children as any) ?? 0
+        } as any;
       }
 
       // If user explicitly rejects hotel, force flights-only

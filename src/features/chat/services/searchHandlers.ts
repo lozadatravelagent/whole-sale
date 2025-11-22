@@ -206,6 +206,8 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
 export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
   console.log('🏨 [HOTEL SEARCH] Starting hotel search process');
   console.log('📋 Parsed request:', parsed);
+  console.log('🔍 [DEBUG] parsed.hotels?.roomType:', parsed.hotels?.roomType);
+  console.log('🔍 [DEBUG] parsed.hotels?.mealPlan:', parsed.hotels?.mealPlan);
 
   try {
     // Enrich hotel params from flight context if missing (city/dates/pax)
@@ -230,6 +232,9 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
         hotelName: (parsed as any)?.hotels?.hotelName
       } as any
     };
+
+    console.log('🔍 [DEBUG] enrichedParsed.hotels.roomType:', enrichedParsed.hotels?.roomType);
+    console.log('🔍 [DEBUG] enrichedParsed.hotels.mealPlan:', enrichedParsed.hotels?.mealPlan);
 
     // Validate we have at least a city to look up
     if (!enrichedParsed.hotels?.city) {
