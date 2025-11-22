@@ -261,32 +261,57 @@ ${occupantsXml}        </Ocuppancy>
   }
   parseHotelSearchResponse(xmlResponse, params) {
     try {
-      // ⚠️ MEMORY OPTIMIZATION: Limit processing to avoid out-of-memory errors
-      // For destinations with many hotels (like Cancún), EUROVIPS can return 14MB+ XML
-      const MAX_HOTELS_TO_PROCESS = 100; // Process at most 100 hotels to stay under memory limit
+      // 🚀 STREAMING-STYLE PROCESSING: Process hotels one-by-one WITHOUT loading full XML
+      // This allows handling 15-20MB responses without memory issues
+      const MAX_HOTELS_TO_PROCESS = 50;
 
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
+      console.log(`📊 [MEMORY] Original XML size: ${(xmlResponse.length / 1024 / 1024).toFixed(2)}MB`);
+      console.log(`🔄 [STREAMING] Processing hotels incrementally (max ${MAX_HOTELS_TO_PROCESS})`);
+
       const hotels = [];
-      const hotelElements = xmlDoc.querySelectorAll('HotelFares');
 
-      const totalHotels = hotelElements.length;
-      const hotelsToProcess = Math.min(totalHotels, MAX_HOTELS_TO_PROCESS);
+      // Regex to extract individual HotelFares blocks (non-greedy match)
+      // We process each hotel block independently without loading full XML
+      const hotelBlockPattern = /<HotelFares[^>]*>([\s\S]*?)<\/HotelFares>/g;
 
-      console.log(`🔍 Found ${totalHotels} hotel elements, will process ${hotelsToProcess} to avoid memory limit`);
+      let match;
+      let processedCount = 0;
+      const parser = new DOMParser();
 
-      // Process only first N hotels to avoid memory issues
-      for (let index = 0; index < hotelsToProcess; index++) {
+      // Process hotels one-by-one in streaming fashion
+      while ((match = hotelBlockPattern.exec(xmlResponse)) !== null && processedCount < MAX_HOTELS_TO_PROCESS) {
         try {
-          const hotelEl = hotelElements[index];
-          const hotel = this.parseHotelElement(hotelEl, params, index);
-          if (hotel) {
-            hotels.push(hotel);
+          // Extract just this ONE hotel block (small, ~50-100KB)
+          const hotelXmlBlock = match[0];
+
+          // Wrap in minimal XML structure for parsing
+          const wrappedXml = `<?xml version="1.0"?><root>${hotelXmlBlock}</root>`;
+
+          // Parse ONLY this small block (not the full 15MB!)
+          const miniDoc = parser.parseFromString(wrappedXml, 'text/html');
+          const hotelElement = miniDoc.querySelector('HotelFares');
+
+          if (hotelElement) {
+            const hotel = this.parseHotelElement(hotelElement, params, processedCount);
+            if (hotel) {
+              hotels.push(hotel);
+              processedCount++;
+
+              // Log progress every 10 hotels
+              if (processedCount % 10 === 0) {
+                console.log(`📦 [STREAMING] Processed ${processedCount} hotels...`);
+              }
+            }
           }
+
+          // Hotel block is discarded after processing, freeing memory
         } catch (error) {
-          console.error(`❌ Error parsing hotel element ${index}:`, error);
+          console.warn(`⚠️ [STREAMING] Error processing hotel ${processedCount}:`, error.message);
+          // Continue processing next hotel
         }
       }
+
+      console.log(`✅ [STREAMING] Processed ${processedCount} hotels from ${(xmlResponse.length / 1024 / 1024).toFixed(2)}MB XML`);
 
       // Sort hotels by price (lowest first)
       hotels.sort((a, b) => {
@@ -294,8 +319,12 @@ ${occupantsXml}        </Ocuppancy>
         const priceB = Math.min(...b.rooms.map((room) => room.total_price));
         return priceA - priceB;
       });
-      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels (processed ${hotelsToProcess}/${totalHotels})`);
-      console.log('🔍 First hotel sample:', JSON.stringify(hotels[0], null, 2));
+
+      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels (sorted by price)`);
+      if (hotels.length > 0) {
+        console.log('💰 Cheapest hotel:', hotels[0].name, '-', Math.min(...hotels[0].rooms.map(r => r.total_price)));
+      }
+
       return hotels;
     } catch (error) {
       console.error('❌ Error parsing hotel search response:', error);
