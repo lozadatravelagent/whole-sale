@@ -80,25 +80,9 @@ const usePdfAnalysis = (
 
         // Update conversation title if this is the first message
         if (isFirstMessage) {
-          console.log('🏷️ [PDF UPLOAD] First message - generating conversation title from PDF analysis');
+          console.log('🏷️ [PDF UPLOAD] First message - setting conversation title to "Análisis de Cotización"');
 
-          // Generate intelligent title based on PDF content
-          let title = '📄 Análisis de Cotización';
-
-          if (analysis.content) {
-            const hasFlights = analysis.content.flights && analysis.content.flights.length > 0;
-            const hasHotels = analysis.content.hotels && analysis.content.hotels.length > 0;
-
-            if (hasFlights && hasHotels) {
-              title = '🌟 Viaje Completo';
-            } else if (hasFlights) {
-              title = '✈️ Búsqueda de Vuelos';
-            } else if (hasHotels) {
-              title = '🏨 Búsqueda de Hoteles';
-            }
-          }
-
-          console.log('📝 Generated title:', title);
+          const title = '📄 Análisis de Cotización';
 
           try {
             await updateConversationTitle(conversationId, title);
