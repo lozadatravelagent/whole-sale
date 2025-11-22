@@ -316,6 +316,32 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     console.log('🍽️ [HOTEL SEARCH] Requested meal plan:', requestedMealPlan || 'none (showing all)');
     const formattedResponse = formatHotelResponse(hotels, requestedRoomType, requestedMealPlan);
 
+    // Normalize room type and meal plan from Spanish to English enum values
+    const normalizeRoomType = (type?: string): 'single' | 'double' | 'triple' | undefined => {
+      if (!type) return undefined;
+      const normalized = type.toLowerCase();
+      if (normalized === 'doble' || normalized === 'double') return 'double';
+      if (normalized === 'individual' || normalized === 'single') return 'single';
+      if (normalized === 'triple') return 'triple';
+      return type as any; // Return original if no match
+    };
+
+    const normalizeMealPlan = (plan?: string): 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only' | undefined => {
+      if (!plan) return undefined;
+      const normalized = plan.toLowerCase();
+      if (normalized === 'todo incluido' || normalized === 'all inclusive' || normalized === 'all_inclusive') return 'all_inclusive';
+      if (normalized === 'desayuno' || normalized === 'breakfast') return 'breakfast';
+      if (normalized === 'media pensión' || normalized === 'media pension' || normalized === 'half board' || normalized === 'half_board') return 'half_board';
+      if (normalized === 'solo habitación' || normalized === 'solo habitacion' || normalized === 'room only' || normalized === 'room_only') return 'room_only';
+      return plan as any; // Return original if no match
+    };
+
+    const normalizedRoomType = normalizeRoomType(enrichedParsed.hotels?.roomType);
+    const normalizedMealPlan = normalizeMealPlan(enrichedParsed.hotels?.mealPlan);
+
+    console.log('🔄 [NORMALIZATION] Room type:', enrichedParsed.hotels?.roomType, '→', normalizedRoomType);
+    console.log('🔄 [NORMALIZATION] Meal plan:', enrichedParsed.hotels?.mealPlan, '→', normalizedMealPlan);
+
     const result = {
       response: formattedResponse,
       data: {
@@ -324,8 +350,8 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
           flights: [],
           hotels,
           requestType: 'hotels-only' as const,
-          requestedRoomType: enrichedParsed.hotels?.roomType,
-          requestedMealPlan: enrichedParsed.hotels?.mealPlan
+          requestedRoomType: normalizedRoomType,
+          requestedMealPlan: normalizedMealPlan
         }
       }
     };
@@ -439,12 +465,39 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     console.log('🔍 [DEBUG] Hotel result data:', hotelResult.data);
 
     console.log('🔄 [COMBINED SEARCH] Step 3: Combining search results');
+
+    // Normalize room type and meal plan from Spanish to English enum values
+    const normalizeRoomType = (type?: string): 'single' | 'double' | 'triple' | undefined => {
+      if (!type) return undefined;
+      const normalized = type.toLowerCase();
+      if (normalized === 'doble' || normalized === 'double') return 'double';
+      if (normalized === 'individual' || normalized === 'single') return 'single';
+      if (normalized === 'triple') return 'triple';
+      return type as any;
+    };
+
+    const normalizeMealPlan = (plan?: string): 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only' | undefined => {
+      if (!plan) return undefined;
+      const normalized = plan.toLowerCase();
+      if (normalized === 'todo incluido' || normalized === 'all inclusive' || normalized === 'all_inclusive') return 'all_inclusive';
+      if (normalized === 'desayuno' || normalized === 'breakfast') return 'breakfast';
+      if (normalized === 'media pensión' || normalized === 'media pension' || normalized === 'half board' || normalized === 'half_board') return 'half_board';
+      if (normalized === 'solo habitación' || normalized === 'solo habitacion' || normalized === 'room only' || normalized === 'room_only') return 'room_only';
+      return plan as any;
+    };
+
+    const normalizedRoomType = normalizeRoomType(parsed.hotels?.roomType);
+    const normalizedMealPlan = normalizeMealPlan(parsed.hotels?.mealPlan);
+
+    console.log('🔄 [NORMALIZATION] Room type:', parsed.hotels?.roomType, '→', normalizedRoomType);
+    console.log('🔄 [NORMALIZATION] Meal plan:', parsed.hotels?.mealPlan, '→', normalizedMealPlan);
+
     const combinedData = {
       flights: flightResult.data?.combinedData?.flights || [],
       hotels: hotelResult.data?.combinedData?.hotels || [],
       requestType: 'combined' as const,
-      requestedRoomType: parsed.hotels?.roomType,
-      requestedMealPlan: parsed.hotels?.mealPlan
+      requestedRoomType: normalizedRoomType,
+      requestedMealPlan: normalizedMealPlan
     };
 
     console.log('📊 [COMBINED SEARCH] Combined data summary:');
