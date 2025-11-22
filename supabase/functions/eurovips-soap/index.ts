@@ -390,12 +390,18 @@ ${occupantsXml}        </Ocuppancy>
       const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
       // Get total price from FareList - Use the first Fare's Base + Tax (total for entire stay)
       let totalPrice = 0;
-      const fareListEl = hotelEl.querySelector('FareList');
+      const fareListEl = hotelEl.querySelector('FareList') || hotelEl.querySelector('farelist');
       if (fareListEl) {
-        const fareEl = fareListEl.querySelector('Fare');
+        const fareEl = fareListEl.querySelector('Fare') || fareListEl.querySelector('fare');
         if (fareEl) {
-          const base = parseFloat(this.getTextContent(fareEl, 'Base') || '0');
-          const tax = parseFloat(this.getTextContent(fareEl, 'Tax') || '0');
+          // CRITICAL: <base> is an HTML native tag, DOMParser treats it as void element
+          // Cannot use querySelector('base'), must access directly via children
+          const baseEl = Array.from(fareEl.children).find(el => el.tagName.toLowerCase() === 'base');
+          const taxEl = Array.from(fareEl.children).find(el => el.tagName.toLowerCase() === 'tax');
+
+          const base = baseEl ? parseFloat(baseEl.textContent?.trim() || '0') : 0;
+          const tax = taxEl ? parseFloat(taxEl.textContent?.trim() || '0') : 0;
+
           totalPrice = base + tax; // This is already the total for the entire stay
           console.log(`🔍 Hotel "${hotelName}" - Base: ${base}, Tax: ${tax}, Total for ${nights} nights: ${totalPrice}`);
         }
@@ -408,12 +414,17 @@ ${occupantsXml}        </Ocuppancy>
       // Parse room information from FareList
       const rooms = [];
       if (fareListEl) {
-        const fareElements = fareListEl.querySelectorAll('Fare');
+        const fareElements = fareListEl.querySelectorAll('Fare, fare');
         fareElements.forEach((fareEl, index) => {
           const fareType = fareEl.getAttribute('type') || 'Standard';
           const availability = parseInt(fareEl.getAttribute('Availability') || '0');
-          const base = parseFloat(this.getTextContent(fareEl, 'Base') || '0');
-          const tax = parseFloat(this.getTextContent(fareEl, 'Tax') || '0');
+
+          // Access <base> and <tax> via children (not querySelector) because <base> is HTML native tag
+          const baseEl = Array.from(fareEl.children).find(el => el.tagName.toLowerCase() === 'base');
+          const taxEl = Array.from(fareEl.children).find(el => el.tagName.toLowerCase() === 'tax');
+
+          const base = baseEl ? parseFloat(baseEl.textContent?.trim() || '0') : 0;
+          const tax = taxEl ? parseFloat(taxEl.textContent?.trim() || '0') : 0;
           const roomTotal = base + tax; // Total for entire stay
           const description = this.getTextContent(fareEl, 'Description') || fareType;
           if (roomTotal > 0) {
