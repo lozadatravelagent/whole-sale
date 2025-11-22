@@ -41,7 +41,18 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     const groupedRooms = useMemo(() => {
         const groups: { [key: string]: Room[] } = {};
 
-        rooms.forEach(room => {
+        // Filter out "Habitación Individual" rooms
+        const filteredRooms = rooms.filter(room => {
+            const roomType = (room.type || '').toLowerCase();
+            const description = (room.description || '').toLowerCase();
+
+            // Exclude single/individual rooms
+            return !roomType.includes('individual') &&
+                   !roomType.includes('sgl') &&
+                   !description.includes('habitación individual');
+        });
+
+        filteredRooms.forEach(room => {
             const roomType = room.type || 'Otro';
             if (!groups[roomType]) {
                 groups[roomType] = [];
