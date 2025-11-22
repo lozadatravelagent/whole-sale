@@ -261,52 +261,57 @@ ${occupantsXml}        </Ocuppancy>
   }
   parseHotelSearchResponse(xmlResponse, params) {
     try {
-      // ⚠️ CRITICAL MEMORY OPTIMIZATION: Truncate XML BEFORE parsing
-      // For destinations with many hotels (like Cancún), EUROVIPS can return 14MB+ XML
-      // We MUST truncate before DOMParser loads it all into memory
-      const MAX_HOTELS_TO_PROCESS = 50; // Reduced from 100 to be extra safe
+      // 🚀 STREAMING-STYLE PROCESSING: Process hotels one-by-one WITHOUT loading full XML
+      // This allows handling 15-20MB responses without memory issues
+      const MAX_HOTELS_TO_PROCESS = 50;
 
       console.log(`📊 [MEMORY] Original XML size: ${(xmlResponse.length / 1024 / 1024).toFixed(2)}MB`);
+      console.log(`🔄 [STREAMING] Processing hotels incrementally (max ${MAX_HOTELS_TO_PROCESS})`);
 
-      // Find positions of first N HotelFares closing tags
-      let truncatedXml = xmlResponse;
-      let hotelCount = 0;
-      let lastHotelEndPos = 0;
-      const hotelFaresPattern = /<\/HotelFares>/g;
-      let match;
-
-      while ((match = hotelFaresPattern.exec(xmlResponse)) !== null && hotelCount < MAX_HOTELS_TO_PROCESS) {
-        lastHotelEndPos = match.index + match[0].length;
-        hotelCount++;
-      }
-
-      if (hotelCount >= MAX_HOTELS_TO_PROCESS && lastHotelEndPos > 0) {
-        // Truncate after the Nth hotel, then close the XML properly
-        truncatedXml = xmlResponse.substring(0, lastHotelEndPos) +
-                      '</ArrayOfHotelFare1></soap:Body></soap:Envelope>';
-
-        console.log(`✂️ [MEMORY] Truncated XML to first ${hotelCount} hotels`);
-        console.log(`📊 [MEMORY] Truncated size: ${(truncatedXml.length / 1024 / 1024).toFixed(2)}MB (was ${(xmlResponse.length / 1024 / 1024).toFixed(2)}MB)`);
-      }
-
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(truncatedXml, 'text/html');
       const hotels = [];
-      const hotelElements = xmlDoc.querySelectorAll('HotelFares');
 
-      console.log(`🔍 Found ${hotelElements.length} hotel elements after truncation`);
+      // Regex to extract individual HotelFares blocks (non-greedy match)
+      // We process each hotel block independently without loading full XML
+      const hotelBlockPattern = /<HotelFares[^>]*>([\s\S]*?)<\/HotelFares>/g;
 
-      // Process all hotels in truncated XML
-      hotelElements.forEach((hotelEl, index) => {
+      let match;
+      let processedCount = 0;
+      const parser = new DOMParser();
+
+      // Process hotels one-by-one in streaming fashion
+      while ((match = hotelBlockPattern.exec(xmlResponse)) !== null && processedCount < MAX_HOTELS_TO_PROCESS) {
         try {
-          const hotel = this.parseHotelElement(hotelEl, params, index);
-          if (hotel) {
-            hotels.push(hotel);
+          // Extract just this ONE hotel block (small, ~50-100KB)
+          const hotelXmlBlock = match[0];
+
+          // Wrap in minimal XML structure for parsing
+          const wrappedXml = `<?xml version="1.0"?><root>${hotelXmlBlock}</root>`;
+
+          // Parse ONLY this small block (not the full 15MB!)
+          const miniDoc = parser.parseFromString(wrappedXml, 'text/html');
+          const hotelElement = miniDoc.querySelector('HotelFares');
+
+          if (hotelElement) {
+            const hotel = this.parseHotelElement(hotelElement, params, processedCount);
+            if (hotel) {
+              hotels.push(hotel);
+              processedCount++;
+
+              // Log progress every 10 hotels
+              if (processedCount % 10 === 0) {
+                console.log(`📦 [STREAMING] Processed ${processedCount} hotels...`);
+              }
+            }
           }
+
+          // Hotel block is discarded after processing, freeing memory
         } catch (error) {
-          console.error(`❌ Error parsing hotel element ${index}:`, error);
+          console.warn(`⚠️ [STREAMING] Error processing hotel ${processedCount}:`, error.message);
+          // Continue processing next hotel
         }
-      });
+      }
+
+      console.log(`✅ [STREAMING] Processed ${processedCount} hotels from ${(xmlResponse.length / 1024 / 1024).toFixed(2)}MB XML`);
 
       // Sort hotels by price (lowest first)
       hotels.sort((a, b) => {
@@ -315,9 +320,9 @@ ${occupantsXml}        </Ocuppancy>
         return priceA - priceB;
       });
 
-      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels`);
+      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels (sorted by price)`);
       if (hotels.length > 0) {
-        console.log('🔍 First hotel sample:', JSON.stringify(hotels[0], null, 2));
+        console.log('💰 Cheapest hotel:', hotels[0].name, '-', Math.min(...hotels[0].rooms.map(r => r.total_price)));
       }
 
       return hotels;
