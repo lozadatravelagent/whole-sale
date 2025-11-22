@@ -839,6 +839,13 @@ ${occupantsXml}        </Ocuppancy>
         return found.textContent.trim();
       }
     }
+
+    // DEBUG: Log when selector not found (only for first hotel)
+    if (selectors === 'Base' && element.querySelector('farelist, FareList')) {
+      console.log(`⚠️ [DEBUG] getTextContent('Base') failed. Element tagName:`, element.tagName);
+      console.log(`⚠️ [DEBUG] Children:`, Array.from(element.children).map(c => c.tagName).join(', '));
+    }
+
     return '';
   }
 }
