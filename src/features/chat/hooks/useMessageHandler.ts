@@ -295,6 +295,28 @@ const useMessageHandler = (
 
           const result = await handlePriceChangeRequest(currentMessage);
 
+          // CRITICAL: If no PDF exists, handlePriceChangeRequest returns null
+          if (!result) {
+            console.log('❌ [PRICE CHANGE] No PDF analysis found for this conversation');
+
+            // Inform user they need to upload a PDF first
+            await addMessageViaSupabase({
+              conversation_id: currentConversationId,
+              role: 'assistant' as const,
+              content: {
+                text: '❌ **No hay PDF analizado**\n\nPara modificar precios, primero necesito que subas o arrastres un PDF con la cotización que deseas modificar.\n\n📄 Una vez que analice el PDF, podré ayudarte a cambiar los precios según lo que necesites.'
+              },
+              meta: {
+                status: 'sent',
+                messageType: 'error_no_pdf'
+              }
+            });
+
+            setIsLoading(false);
+            return; // Exit early - PDF validation failed
+          }
+
+          // PDF exists and price change was processed
           if (result) {
             // Add assistant response
             await addMessageViaSupabase({
@@ -323,6 +345,20 @@ const useMessageHandler = (
           }
         } catch (error) {
           console.error('❌ Error processing price change request:', error);
+
+          // Send error message to user
+          await addMessageViaSupabase({
+            conversation_id: currentConversationId,
+            role: 'assistant' as const,
+            content: {
+              text: '❌ **Error al procesar cambio de precio**\n\nNo pude procesar tu solicitud de cambio de precio. Por favor, verifica que:\n\n• El PDF esté correctamente analizado\n• El precio que indicaste sea un número válido\n• Intenta nuevamente en unos momentos'
+            },
+            meta: {
+              status: 'sent',
+              messageType: 'error_response'
+            }
+          });
+
           toast({
             title: "Error",
             description: "No pude procesar tu solicitud de cambio de precio.",

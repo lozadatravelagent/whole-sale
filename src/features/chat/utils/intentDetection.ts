@@ -63,51 +63,83 @@ export const isCheaperFlightRequest = (message: string): boolean => {
 };
 
 // Check if message is a price change request
+// This function is EXCLUSIVE for PDF price modifications and should NOT trigger for flight/hotel searches
 export const isPriceChangeRequest = (message: string): boolean => {
   const norm = normalizeText(message);
-  const priceKeywords = [
-    'cambia el precio',
-    'cambiar precio',
-    'precio total',
-    'que cueste',
-    'quiero que el precio',
-    'modifica el precio',
-    'ajusta el precio',
-    'precio a $',
-    'precio a usd',
-    'cuesta $',
-    'cuesta usd',
-    '$',
-    'dolar',
-    'usd',
-    // Individual price modification keywords
-    'primer precio',
-    'segundo precio',
-    'tercer precio',
-    'cuarto precio',
-    'primer vuelo',
-    'segundo vuelo',
-    'tercer vuelo',
-    'cuarto vuelo',
-    'precio 1',
-    'precio 2',
-    'precio 3',
-    'precio 4',
-    'vuelo 1',
-    'vuelo 2',
-    'vuelo 3',
-    'vuelo 4',
-    // Hotel price keywords
-    'precio del hotel',
-    'precio de hotel',
-    'hotel a $',
-    'hotel a usd',
-    'hotel cueste',
-    'hotel por $',
-    'hotel por usd'
+
+  // CRITICAL: Exclude messages that are clearly flight/hotel search requests
+  // If message contains origin/destination patterns, it's a search, NOT a price change
+  const isSearchRequest = (
+    // Has "desde X a/para/hasta Y" pattern (flight search)
+    /\bdesde\s+\w+\s+(a|para|hasta)\s+\w+/i.test(norm) ||
+    // Has date patterns with "el" or month names without price change verbs
+    (/\b(el|fecha|dia)\s+\d{1,2}\b/i.test(norm) && !/\b(cambiar?|modificar?|ajustar?)\b/i.test(norm)) ||
+    // Has "buscar", "quiero", "necesito" + "vuelo/hotel" (search intent)
+    (/\b(buscar?|quiero|necesito|mostrar?|ver)\s+(vuelo|hotel|pasaje)/i.test(norm))
+  );
+
+  if (isSearchRequest) {
+    console.log('🚫 [PRICE CHANGE] Excluded - detected search request pattern');
+    return false;
+  }
+
+  // Price change patterns using REGEX for flexibility
+  const priceChangePatterns = [
+    // Primary patterns: "cambiar/modificar/ajustar [el/ese/este] precio [a/por] [number]"
+    /\b(cambiar?|modificar?|ajustar?|poner?)\s+(el|ese|este|ese)?\s*precio/i,
+
+    // "precio total/del vuelo/del hotel/de hotel [a/en] [number]"
+    /\bprecio\s+(total|del\s+(vuelo|hotel|paquete)|de\s+hotel)\s*(a|en|por)?\s*[\d$]/i,
+
+    // Generic "precio a/por $X" or "precio a/por usd X"
+    /\bprecio\s+(a|por)\s*([$]|\busd\b)/i,
+
+    // "que cueste/cuesta/debe costar [number]"
+    /\b(que|debe|deberia|tiene\s+que)\s+(cueste?|costar?)\s*[\d$]/i,
+
+    // Standalone "cuesta $X" or "cuesta usd X"
+    /\bcuesta\s*([$]|\busd\b)/i,
+
+    // Positional price changes: "primer/segundo/tercer/cuarto precio [a] [number]"
+    /\b(primer[ao]?|segundo?[ao]?|tercer[ao]?|cuarto?[ao]?)\s+precio\s*(a|al|en)?\s*[\d$]/i,
+
+    // Positional flights: "primer/segundo/tercer/cuarto vuelo [number]"
+    /\b(primer[ao]?|segundo?[ao]?|tercer[ao]?|cuarto?[ao]?)\s+vuelo\s+[\d$]/i,
+
+    // Positional with "al": "al primer/segundo [vuelo] [number]"
+    /\bal\s+(primer[ao]?|segundo?[ao]?|tercer[ao]?|cuarto?[ao]?|[1-4])\s+(?:vuelo\s+)?[\d$]/i,
+
+    // Direct price patterns: "precio 1/2/3/4 [a] [number]"
+    /\bprecio\s+[1-4]\s*(a|al|en)?\s*[\d$]/i,
+
+    // Direct flight patterns: "vuelo 1/2/3/4 [number]"
+    /\bvuelo\s+[1-4]\s+[\d$]/i,
+
+    // Hotel-specific: "hotel [a/por/en] $X/usd"
+    /\bhotel\s+(a|por|en)\s*([$\d]|\busd\b)/i,
+
+    // Hotel-specific: "hotel cueste [number]"
+    /\bhotel\s+cueste?\s*[\d$]/i
   ];
 
-  return priceKeywords.some(keyword => norm.includes(keyword));
+  // Check if any price change pattern matches
+  const hasValidPattern = priceChangePatterns.some(pattern => pattern.test(norm));
+
+  if (!hasValidPattern) {
+    return false;
+  }
+
+  // CRITICAL: Must contain a number (price value) to be a valid price change request
+  // This prevents false positives from generic "cambiar precio" without actual value
+  const hasNumber = /\d+/.test(norm);
+
+  if (!hasNumber) {
+    console.log('🚫 [PRICE CHANGE] Excluded - no numeric value found in message');
+    return false;
+  }
+
+  console.log('✅ [PRICE CHANGE] Detected valid price change request');
+  return true;
 };
 
 // Extract price change target (total, hotel, or flight)
