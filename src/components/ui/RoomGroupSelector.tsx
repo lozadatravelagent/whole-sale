@@ -50,14 +50,39 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
             const roomType = (room.type || '').toLowerCase();
             const description = (room.description || '').toLowerCase();
 
+            // Debug logging
+            if (requestedRoomType || requestedMealPlan) {
+                console.log('🔍 [FILTER] Checking room:', {
+                    type: room.type,
+                    description: room.description,
+                    requestedRoomType,
+                    requestedMealPlan
+                });
+            }
+
             // Filter by room type if requested
             if (requestedRoomType) {
-                const matchesSingle = requestedRoomType === 'single' &&
-                                      (roomType.includes('individual') || roomType.includes('single'));
-                const matchesDouble = requestedRoomType === 'double' &&
-                                      (roomType.includes('doble') || roomType.includes('double'));
-                const matchesTriple = requestedRoomType === 'triple' &&
-                                      (roomType.includes('triple'));
+                // Check both type code and description for flexibility
+                const matchesSingle = requestedRoomType === 'single' && (
+                    roomType === 'sgl' ||
+                    roomType.includes('individual') ||
+                    roomType.includes('single') ||
+                    description.includes('individual') ||
+                    description.includes('single')
+                );
+                const matchesDouble = requestedRoomType === 'double' && (
+                    roomType === 'dbl' ||
+                    roomType === 'dus' ||
+                    roomType.includes('doble') ||
+                    roomType.includes('double') ||
+                    description.includes('doble') ||
+                    description.includes('double')
+                );
+                const matchesTriple = requestedRoomType === 'triple' && (
+                    roomType === 'tpl' ||
+                    roomType.includes('triple') ||
+                    description.includes('triple')
+                );
 
                 if (!matchesSingle && !matchesDouble && !matchesTriple) {
                     return false;
@@ -76,12 +101,16 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                        (description.includes('solo habitación') || description.includes('room only'));
 
                 if (!matchesAllInclusive && !matchesBreakfast && !matchesHalfBoard && !matchesRoomOnly) {
+                    console.log('❌ [FILTER] Meal plan filter REJECTED room');
                     return false;
                 }
             }
 
+            console.log('✅ [FILTER] Room PASSED all filters');
             return true;
         });
+
+        console.log(`📊 [FILTER] Total rooms: ${rooms.length}, Filtered: ${filteredRooms.length}`);
 
         filteredRooms.forEach(room => {
             const roomType = room.type || 'Otro';
