@@ -191,10 +191,6 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
             <div className="space-y-3">
                 {Object.entries(roomsToShow).map(([roomType, roomsInType]) => (
                     <div key={roomType} className="space-y-2">
-                        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            {translateRoomDescription(roomType)}
-                        </div>
-
                         <div className="grid gap-2 sm:grid-cols-1 lg:grid-cols-2">
                             {roomsInType.map((room) => {
                                 const availabilityStatus = getAvailabilityStatus(room.availability);
