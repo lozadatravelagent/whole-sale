@@ -654,9 +654,26 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
 
 /**
  * Formats parsed data for Starling API calls
+ *
+ * NOTE: This function is now ASYNC because it needs to convert city names to IATA codes
+ * IMPORTANT: Starling TVC API requires IATA airport codes, NOT city names
  */
-export function formatForStarling(parsed: ParsedTravelRequest) {
+export async function formatForStarling(parsed: ParsedTravelRequest) {
     if (!parsed.flights) return null;
+
+    // CRITICAL: Import getCityCode dynamically to avoid circular dependency
+    const { getCityCode } = await import('@/services/cityCodeMapping');
+
+    // Convert city names to IATA codes
+    console.log('🔍 [STARLING FORMAT] Converting cities to IATA codes...');
+    console.log('🔍 [STARLING FORMAT] Input origin:', parsed.flights.origin);
+    console.log('🔍 [STARLING FORMAT] Input destination:', parsed.flights.destination);
+
+    const originCode = await getCityCode(parsed.flights.origin);
+    const destinationCode = await getCityCode(parsed.flights.destination);
+
+    console.log('✅ [STARLING FORMAT] Origin converted:', `${parsed.flights.origin} → ${originCode}`);
+    console.log('✅ [STARLING FORMAT] Destination converted:', `${parsed.flights.destination} → ${destinationCode}`);
 
     // Create passenger array for TVC API format
     const passengers = [];
@@ -673,11 +690,11 @@ export function formatForStarling(parsed: ParsedTravelRequest) {
         });
     }
 
-    // Create legs array for TVC API format
+    // Create legs array for TVC API format with IATA codes
     const legs = [
         {
-            DepartureAirportCity: parsed.flights.origin,
-            ArrivalAirportCity: parsed.flights.destination,
+            DepartureAirportCity: originCode,        // ✅ IATA code (e.g., "EZE")
+            ArrivalAirportCity: destinationCode,     // ✅ IATA code (e.g., "MIA")
             FlightDate: parsed.flights.departureDate
         }
     ];
@@ -685,11 +702,13 @@ export function formatForStarling(parsed: ParsedTravelRequest) {
     // Add return leg if this is a round trip
     if (parsed.flights.returnDate) {
         legs.push({
-            DepartureAirportCity: parsed.flights.destination,
-            ArrivalAirportCity: parsed.flights.origin,
+            DepartureAirportCity: destinationCode,   // ✅ IATA code for return
+            ArrivalAirportCity: originCode,          // ✅ IATA code for return
             FlightDate: parsed.flights.returnDate
         });
     }
+
+    console.log('📋 [STARLING FORMAT] Final formatted legs:', legs);
 
     return {
         Passengers: passengers,

@@ -48,7 +48,7 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
 
   try {
     console.log('🔄 [FLIGHT SEARCH] Step 1: Formatting parameters for Starling API');
-    const starlingParams = formatForStarling(parsed);
+    const starlingParams = await formatForStarling(parsed);
     console.log('📊 Starling parameters:', starlingParams);
 
     // ✈️ PRE-FILTER: Add airline filter to STARLING request if user specified preferredAirline
