@@ -42,92 +42,13 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     const [showAllRooms, setShowAllRooms] = useState(false);
 
     // Agrupar habitaciones por tipo y ordenar por precio
+    // ✅ Rooms are already filtered by handleHotelSearch, no need to filter again
     const groupedRooms = useMemo(() => {
         const groups: { [key: string]: Room[] } = {};
 
-        // Filter rooms based on user request
-        const filteredRooms = rooms.filter(room => {
-            const roomType = (room.type || '').toLowerCase();
-            const description = (room.description || '').toLowerCase();
+        console.log(`📊 [ROOM SELECTOR] Total rooms to display: ${rooms.length} (already filtered by backend)`);
 
-            // Debug logging
-            if (requestedRoomType || requestedMealPlan) {
-                console.log('🔍 [FILTER] Checking room:', {
-                    type: room.type,
-                    description: room.description,
-                    adults: room.adults,
-                    children: room.children,
-                    requestedRoomType,
-                    requestedMealPlan
-                });
-            }
-
-            // Filter by room type if requested
-            if (requestedRoomType) {
-                // PRIORITY 1: Use occupancy data from SOAP (most reliable per SOFTUR spec)
-                if (room.adults !== undefined) {
-                    const matchesSingle = requestedRoomType === 'single' && room.adults === 1;
-                    const matchesDouble = requestedRoomType === 'double' && room.adults === 2;
-                    const matchesTriple = requestedRoomType === 'triple' && room.adults === 3;
-
-                    if (!matchesSingle && !matchesDouble && !matchesTriple) {
-                        console.log(`❌ [FILTER] Room type filter REJECTED (occupancy: ${room.adults} adults)`);
-                        return false;
-                    }
-                } else {
-                    // FALLBACK: Check type code and description (less reliable)
-                    const matchesSingle = requestedRoomType === 'single' && (
-                        roomType === 'sgl' ||
-                        roomType.includes('individual') ||
-                        roomType.includes('single') ||
-                        description.includes('individual') ||
-                        description.includes('single')
-                    );
-                    const matchesDouble = requestedRoomType === 'double' && (
-                        roomType === 'dbl' ||
-                        roomType === 'dus' ||
-                        roomType.includes('doble') ||
-                        roomType.includes('double') ||
-                        description.includes('doble') ||
-                        description.includes('double')
-                    );
-                    const matchesTriple = requestedRoomType === 'triple' && (
-                        roomType === 'tpl' ||
-                        roomType.includes('triple') ||
-                        description.includes('triple')
-                    );
-
-                    if (!matchesSingle && !matchesDouble && !matchesTriple) {
-                        console.log('❌ [FILTER] Room type filter REJECTED (fallback matching)');
-                        return false;
-                    }
-                }
-            }
-
-            // Filter by meal plan if requested
-            if (requestedMealPlan) {
-                const matchesAllInclusive = requestedMealPlan === 'all_inclusive' &&
-                                            (description.includes('todo incluido') || description.includes('all inclusive'));
-                const matchesBreakfast = requestedMealPlan === 'breakfast' &&
-                                        (description.includes('desayuno') || description.includes('breakfast'));
-                const matchesHalfBoard = requestedMealPlan === 'half_board' &&
-                                        (description.includes('media pensión') || description.includes('half board'));
-                const matchesRoomOnly = requestedMealPlan === 'room_only' &&
-                                       (description.includes('solo habitación') || description.includes('room only'));
-
-                if (!matchesAllInclusive && !matchesBreakfast && !matchesHalfBoard && !matchesRoomOnly) {
-                    console.log('❌ [FILTER] Meal plan filter REJECTED room');
-                    return false;
-                }
-            }
-
-            console.log('✅ [FILTER] Room PASSED all filters');
-            return true;
-        });
-
-        console.log(`📊 [FILTER] Total rooms: ${rooms.length}, Filtered: ${filteredRooms.length}`);
-
-        filteredRooms.forEach(room => {
+        rooms.forEach(room => {
             const roomType = room.type || 'Otro';
             if (!groups[roomType]) {
                 groups[roomType] = [];
@@ -141,7 +62,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
         });
 
         return groups;
-    }, [rooms, requestedRoomType, requestedMealPlan]);
+    }, [rooms]);
 
     const getAvailabilityStatus = (availability: number) => {
         if (availability >= 3) return { text: 'Disponible', icon: CheckCircle, color: 'bg-green-500' };

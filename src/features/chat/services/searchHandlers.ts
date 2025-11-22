@@ -292,31 +292,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       params: enrichedParsed.hotels?.checkinDate
     });
 
-    // Sort hotels by lowest price (minimum room price) and limit to 5
-    const hotels = correctedHotels
-      .sort((a: LocalHotelData, b: LocalHotelData) => {
-        const minPriceA = Math.min(...a.rooms.map(r => r.total_price));
-        const minPriceB = Math.min(...b.rooms.map(r => r.total_price));
-        return minPriceA - minPriceB;
-      })
-      .slice(0, 5);
-
-    console.log('✅ [HOTEL SEARCH] Step 5: Hotel data extracted and sorted by price');
-    console.log('🏨 Hotels found:', allHotels.length, '| Sorted and limited to:', hotels.length);
-    if (hotels.length > 0) {
-      const cheapestPrice = Math.min(...hotels[0].rooms.map(r => r.total_price));
-      const mostExpensivePrice = Math.min(...hotels[hotels.length - 1].rooms.map(r => r.total_price));
-      console.log(`💸 Hotel price range: ${cheapestPrice} - ${mostExpensivePrice} ${hotels[0].rooms[0].currency}`);
-    }
-
-    console.log('📝 [HOTEL SEARCH] Step 6: Formatting response text');
-    const requestedRoomType = enrichedParsed.hotels?.roomType;
-    const requestedMealPlan = enrichedParsed.hotels?.mealPlan;
-    console.log('🛏️ [HOTEL SEARCH] Requested room type:', requestedRoomType || 'none (showing all)');
-    console.log('🍽️ [HOTEL SEARCH] Requested meal plan:', requestedMealPlan || 'none (showing all)');
-    const formattedResponse = formatHotelResponse(hotels, requestedRoomType, requestedMealPlan);
-
-    // Normalize room type and meal plan from Spanish to English enum values
+    // Normalize room type and meal plan from Spanish to English enum values FIRST
     const normalizeRoomType = (type?: string): 'single' | 'double' | 'triple' | undefined => {
       if (!type) return undefined;
       const normalized = type.toLowerCase();
@@ -342,13 +318,111 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     console.log('🔄 [NORMALIZATION] Room type:', enrichedParsed.hotels?.roomType, '→', normalizedRoomType);
     console.log('🔄 [NORMALIZATION] Meal plan:', enrichedParsed.hotels?.mealPlan, '→', normalizedMealPlan);
 
+    // ✅ FILTER HOTELS BY ROOM TYPE AND MEAL PLAN (BEFORE sorting and limiting)
+    const filterHotelRooms = (hotel: LocalHotelData): LocalHotelData | null => {
+      let filteredRooms = [...hotel.rooms];
+
+      // 1️⃣ Filter by room type if specified
+      if (normalizedRoomType) {
+        const typeMap: { [key: string]: string[] } = {
+          'single': ['sgl', 'single', 'individual'],
+          'double': ['dwl', 'dbl', 'double', 'doble', 'standard'],
+          'triple': ['tpl', 'triple']
+        };
+
+        const targetTypes = typeMap[normalizedRoomType] || [];
+        filteredRooms = filteredRooms.filter(room => {
+          const desc = (room.description || '').toLowerCase();
+          const type = (room.type || '').toLowerCase();
+
+          // PRIORITY 1: Use occupancy data from SOAP (most reliable)
+          if (room.adults !== undefined) {
+            const matchesSingle = normalizedRoomType === 'single' && room.adults === 1;
+            const matchesDouble = normalizedRoomType === 'double' && room.adults === 2;
+            const matchesTriple = normalizedRoomType === 'triple' && room.adults === 3;
+            return matchesSingle || matchesDouble || matchesTriple;
+          }
+
+          // FALLBACK: Check type code and description
+          return targetTypes.some(t => desc.includes(t) || type.includes(t));
+        });
+
+        if (filteredRooms.length === 0) {
+          console.log(`🚫 [FILTER] Hotel "${hotel.name}" has no rooms matching type "${normalizedRoomType}"`);
+          return null; // Skip hotel entirely
+        }
+      }
+
+      // 2️⃣ Filter by meal plan if specified
+      if (normalizedMealPlan) {
+        const mealPlanMap: { [key: string]: string[] } = {
+          'all_inclusive': ['all inclusive', 'todo incluido', 'all-inclusive'],
+          'breakfast': ['breakfast', 'desayuno', 'bed and breakfast', 'b&b'],
+          'half_board': ['half board', 'media pensión', 'media pension', 'half-board'],
+          'room_only': ['room only', 'solo alojamiento', 'sin comida', 'alojamiento']
+        };
+
+        const targetMealPlans = mealPlanMap[normalizedMealPlan] || [];
+        filteredRooms = filteredRooms.filter(room => {
+          const desc = (room.description || '').toLowerCase();
+          return targetMealPlans.some(mp => desc.includes(mp));
+        });
+
+        if (filteredRooms.length === 0) {
+          console.log(`🚫 [FILTER] Hotel "${hotel.name}" has no rooms matching meal plan "${normalizedMealPlan}"`);
+          return null; // Skip hotel entirely
+        }
+      }
+
+      console.log(`✅ [FILTER] Hotel "${hotel.name}": ${hotel.rooms.length} → ${filteredRooms.length} rooms after filtering`);
+
+      // Return hotel with filtered rooms
+      return {
+        ...hotel,
+        rooms: filteredRooms
+      };
+    };
+
+    // Apply filter and remove null hotels
+    const filteredHotels = correctedHotels
+      .map(filterHotelRooms)
+      .filter((hotel): hotel is LocalHotelData => hotel !== null);
+
+    console.log(`📊 [FILTER] Hotels: ${correctedHotels.length} → ${filteredHotels.length} (after room type/meal plan filtering)`);
+
+    // Sort hotels by lowest price (minimum room price) and limit to 5
+    const hotels = filteredHotels
+      .sort((a: LocalHotelData, b: LocalHotelData) => {
+        const minPriceA = Math.min(...a.rooms.map(r => r.total_price));
+        const minPriceB = Math.min(...b.rooms.map(r => r.total_price));
+        return minPriceA - minPriceB;
+      })
+      .slice(0, 5);
+
+    console.log('✅ [HOTEL SEARCH] Step 5: Hotel data filtered, sorted by price, and limited');
+    console.log('🏨 Hotels after filtering:', filteredHotels.length, '| Final count (top 5):', hotels.length);
+    if (hotels.length > 0) {
+      const cheapestPrice = Math.min(...hotels[0].rooms.map(r => r.total_price));
+      const mostExpensivePrice = Math.min(...hotels[hotels.length - 1].rooms.map(r => r.total_price));
+      console.log(`💸 Hotel price range: ${cheapestPrice} - ${mostExpensivePrice} ${hotels[0].rooms[0].currency}`);
+    }
+
+    console.log('📝 [HOTEL SEARCH] Step 6: Formatting response text');
+    const requestedRoomType = enrichedParsed.hotels?.roomType;
+    const requestedMealPlan = enrichedParsed.hotels?.mealPlan;
+    console.log('🛏️ [HOTEL SEARCH] Requested room type:', requestedRoomType || 'none (showing all)');
+    console.log('🍽️ [HOTEL SEARCH] Requested meal plan:', requestedMealPlan || 'none (showing all)');
+
+    // Pass already-filtered hotels to formatter (no need to filter again)
+    const formattedResponse = formatHotelResponse(hotels);
+
     const result = {
       response: formattedResponse,
       data: {
         eurovipsData: { hotels },
         combinedData: {
           flights: [],
-          hotels,
+          hotels, // ✅ Now contains ONLY hotels with matching rooms
           requestType: 'hotels-only' as const,
           requestedRoomType: normalizedRoomType,
           requestedMealPlan: normalizedMealPlan
@@ -466,43 +540,18 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
 
     console.log('🔄 [COMBINED SEARCH] Step 3: Combining search results');
 
-    // Normalize room type and meal plan from Spanish to English enum values
-    const normalizeRoomType = (type?: string): 'single' | 'double' | 'triple' | undefined => {
-      if (!type) return undefined;
-      const normalized = type.toLowerCase();
-      if (normalized === 'doble' || normalized === 'double') return 'double';
-      if (normalized === 'individual' || normalized === 'single') return 'single';
-      if (normalized === 'triple') return 'triple';
-      return type as any;
-    };
-
-    const normalizeMealPlan = (plan?: string): 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only' | undefined => {
-      if (!plan) return undefined;
-      const normalized = plan.toLowerCase();
-      if (normalized === 'todo incluido' || normalized === 'all inclusive' || normalized === 'all_inclusive') return 'all_inclusive';
-      if (normalized === 'desayuno' || normalized === 'breakfast') return 'breakfast';
-      if (normalized === 'media pensión' || normalized === 'media pension' || normalized === 'half board' || normalized === 'half_board') return 'half_board';
-      if (normalized === 'solo habitación' || normalized === 'solo habitacion' || normalized === 'room only' || normalized === 'room_only') return 'room_only';
-      return plan as any;
-    };
-
-    const normalizedRoomType = normalizeRoomType(parsed.hotels?.roomType);
-    const normalizedMealPlan = normalizeMealPlan(parsed.hotels?.mealPlan);
-
-    console.log('🔄 [NORMALIZATION] Room type:', parsed.hotels?.roomType, '→', normalizedRoomType);
-    console.log('🔄 [NORMALIZATION] Meal plan:', parsed.hotels?.mealPlan, '→', normalizedMealPlan);
-
+    // Hotels are already filtered by handleHotelSearch, just extract them
     const combinedData = {
       flights: flightResult.data?.combinedData?.flights || [],
-      hotels: hotelResult.data?.combinedData?.hotels || [],
+      hotels: hotelResult.data?.combinedData?.hotels || [], // ✅ Already filtered
       requestType: 'combined' as const,
-      requestedRoomType: normalizedRoomType,
-      requestedMealPlan: normalizedMealPlan
+      requestedRoomType: hotelResult.data?.combinedData?.requestedRoomType,
+      requestedMealPlan: hotelResult.data?.combinedData?.requestedMealPlan
     };
 
     console.log('📊 [COMBINED SEARCH] Combined data summary:');
     console.log('✈️ Flights found:', combinedData.flights.length);
-    console.log('🏨 Hotels found:', combinedData.hotels.length);
+    console.log('🏨 Hotels found (after filtering):', combinedData.hotels.length);
 
     console.log('📝 [COMBINED SEARCH] Step 4: Formatting combined response');
     const formattedResponse = formatCombinedResponse(combinedData);
