@@ -25,10 +25,10 @@ export interface ParsedTravelRequest {
         checkoutDate: string;
         adults: number;
         children: number;
-        // Nuevos campos requeridos para hoteles
-        roomType: 'single' | 'double' | 'triple'; // Tipo de habitación
+        // Campos opcionales de preferencias
+        roomType?: 'single' | 'double' | 'triple'; // Tipo de habitación (OPCIONAL - solo filtrar si usuario lo especifica)
         hotelChain?: string; // Cadena hotelera (opcional)
-        mealPlan: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'; // Modalidad de alimentación
+        mealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'; // Modalidad de alimentación (OPCIONAL - solo filtrar si usuario lo especifica)
         freeCancellation?: boolean; // Cancelación gratuita (opcional)
         roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view'; // Tipo de habitación (opcional)
         roomCount?: number; // Cantidad de habitaciones (opcional, default 1)
