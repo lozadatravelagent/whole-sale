@@ -88,23 +88,38 @@ export const isPriceChangeRequest = (message: string): boolean => {
     // Primary patterns: "cambiar/modificar/ajustar [el/ese/este] precio [a/por] [number]"
     /\b(cambiar?|modificar?|ajustar?|poner?)\s+(el|ese|este|ese)?\s*precio/i,
 
-    // "precio total/del vuelo/del hotel [a/en] [number]"
-    /\bprecio\s+(total|del\s+(vuelo|hotel|paquete))\s*(a|en|por)?\s*[\d$]/i,
+    // "precio total/del vuelo/del hotel/de hotel [a/en] [number]"
+    /\bprecio\s+(total|del\s+(vuelo|hotel|paquete)|de\s+hotel)\s*(a|en|por)?\s*[\d$]/i,
+
+    // Generic "precio a/por $X" or "precio a/por usd X"
+    /\bprecio\s+(a|por)\s*([$]|\busd\b)/i,
 
     // "que cueste/cuesta/debe costar [number]"
     /\b(que|debe|deberia|tiene\s+que)\s+(cueste?|costar?)\s*[\d$]/i,
 
+    // Standalone "cuesta $X" or "cuesta usd X"
+    /\bcuesta\s*([$]|\busd\b)/i,
+
     // Positional price changes: "primer/segundo/tercer/cuarto precio [a] [number]"
     /\b(primer[ao]?|segundo?[ao]?|tercer[ao]?|cuarto?[ao]?)\s+precio\s*(a|al|en)?\s*[\d$]/i,
 
-    // Positional with "al": "al primer/segundo [number]"
+    // Positional flights: "primer/segundo/tercer/cuarto vuelo [number]"
+    /\b(primer[ao]?|segundo?[ao]?|tercer[ao]?|cuarto?[ao]?)\s+vuelo\s+[\d$]/i,
+
+    // Positional with "al": "al primer/segundo [vuelo] [number]"
     /\bal\s+(primer[ao]?|segundo?[ao]?|tercer[ao]?|cuarto?[ao]?|[1-4])\s+(?:vuelo\s+)?[\d$]/i,
 
     // Direct price patterns: "precio 1/2/3/4 [a] [number]"
     /\bprecio\s+[1-4]\s*(a|al|en)?\s*[\d$]/i,
 
-    // Hotel-specific: "hotel [a/por/en] $X"
-    /\bhotel\s+(a|por|en)\s*[$\d]/i
+    // Direct flight patterns: "vuelo 1/2/3/4 [number]"
+    /\bvuelo\s+[1-4]\s+[\d$]/i,
+
+    // Hotel-specific: "hotel [a/por/en] $X/usd"
+    /\bhotel\s+(a|por|en)\s*([$\d]|\busd\b)/i,
+
+    // Hotel-specific: "hotel cueste [number]"
+    /\bhotel\s+cueste?\s*[\d$]/i
   ];
 
   // Check if any price change pattern matches
