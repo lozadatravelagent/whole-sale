@@ -168,8 +168,8 @@ function filterByCapacity(rooms: HotelRoom[], targetCapacity: CapacityType): Hot
         return true;
       }
 
-      // If code is generic (ROO, SUI, JSU, etc.), fall back to description
-      const genericCodes = ['ROO', 'SUI', 'JSU', 'STD'];
+      // If code is generic (ROO, SUI, JSU, etc.) or numeric (like "1"), fall back to description
+      const genericCodes = ['ROO', 'SUI', 'JSU', 'STD', '1'];
       const isGenericCode = genericCodes.some(generic => capacityCode.toUpperCase().startsWith(generic));
 
       if (!isGenericCode) {
