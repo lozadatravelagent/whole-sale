@@ -268,6 +268,17 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
 
+  // Debug: Log received filter preferences
+  useEffect(() => {
+    if (combinedData.requestedRoomType || combinedData.requestedMealPlan) {
+      console.log('🏨 [COMBINED_SELECTOR] Received filter preferences:', {
+        requestedRoomType: combinedData.requestedRoomType,
+        requestedMealPlan: combinedData.requestedMealPlan,
+        hotels: combinedData.hotels.length
+      });
+    }
+  }, [combinedData.requestedRoomType, combinedData.requestedMealPlan, combinedData.hotels.length]);
+
   // Load agency_id from conversation
   useEffect(() => {
     if (conversationId) {

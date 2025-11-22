@@ -210,6 +210,9 @@ export interface LocalCombinedTravelResults {
   flights: FlightData[];
   hotels: LocalHotelData[];
   requestType: 'combined' | 'flights-only' | 'hotels-only';
+  // Hotel filter preferences from user request
+  requestedRoomType?: 'single' | 'double' | 'triple';
+  requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
 }
 
 export interface LocalPackageData {
