@@ -6,6 +6,7 @@ import { transformStarlingResults } from './flightTransformer';
 import { formatFlightResponse, formatHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
+import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
 
 // Helper function to calculate layover hours between two flight segments
 function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
@@ -292,95 +293,27 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       params: enrichedParsed.hotels?.checkinDate
     });
 
-    // Normalize room type and meal plan from Spanish to English enum values FIRST
-    const normalizeRoomType = (type?: string): 'single' | 'double' | 'triple' | undefined => {
-      if (!type) return undefined;
-      const normalized = type.toLowerCase();
-      if (normalized === 'doble' || normalized === 'double') return 'double';
-      if (normalized === 'individual' || normalized === 'single') return 'single';
-      if (normalized === 'triple') return 'triple';
-      return type as any; // Return original if no match
-    };
-
-    const normalizeMealPlan = (plan?: string): 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only' | undefined => {
-      if (!plan) return undefined;
-      const normalized = plan.toLowerCase();
-      if (normalized === 'todo incluido' || normalized === 'all inclusive' || normalized === 'all_inclusive') return 'all_inclusive';
-      if (normalized === 'desayuno' || normalized === 'breakfast') return 'breakfast';
-      if (normalized === 'media pensión' || normalized === 'media pension' || normalized === 'half board' || normalized === 'half_board') return 'half_board';
-      if (normalized === 'solo habitación' || normalized === 'solo habitacion' || normalized === 'room only' || normalized === 'room_only') return 'room_only';
-      return plan as any; // Return original if no match
-    };
-
-    const normalizedRoomType = normalizeRoomType(enrichedParsed.hotels?.roomType);
+    // ✅ USE ADVANCED ROOM FILTERING SYSTEM
+    const normalizedRoomType = normalizeCapacity(enrichedParsed.hotels?.roomType);
     const normalizedMealPlan = normalizeMealPlan(enrichedParsed.hotels?.mealPlan);
 
     console.log('🔄 [NORMALIZATION] Room type:', enrichedParsed.hotels?.roomType, '→', normalizedRoomType);
     console.log('🔄 [NORMALIZATION] Meal plan:', enrichedParsed.hotels?.mealPlan, '→', normalizedMealPlan);
 
-    // ✅ FILTER HOTELS BY ROOM TYPE AND MEAL PLAN (BEFORE sorting and limiting)
+    // ✅ FILTER HOTELS BY ROOM TYPE AND MEAL PLAN using advanced filtering system
     const filterHotelRooms = (hotel: LocalHotelData): LocalHotelData | null => {
-      let filteredRooms = [...hotel.rooms];
+      // Apply advanced room filtering with both capacity and meal plan
+      const filteredRooms = filterRooms(hotel.rooms, {
+        capacity: normalizedRoomType,
+        mealPlan: normalizedMealPlan
+      });
 
-      // 1️⃣ Filter by room type if specified
-      if (normalizedRoomType) {
-        const typeMap: { [key: string]: string[] } = {
-          'single': ['sgl', 'single', 'individual'],
-          'double': ['dwl', 'dbl', 'double', 'doble', 'standard'],
-          'triple': ['tpl', 'triple']
-        };
-
-        const targetTypes = typeMap[normalizedRoomType] || [];
-        filteredRooms = filteredRooms.filter(room => {
-          const desc = (room.description || '').toLowerCase();
-          const type = (room.type || '').toLowerCase();
-
-          // Check BOTH occupancy data AND description (EUROVIPS data can be inconsistent)
-          // Match if EITHER the occupancy count OR the description matches
-          let matchesByOccupancy = false;
-          if (room.adults !== undefined) {
-            matchesByOccupancy = (
-              (normalizedRoomType === 'single' && room.adults === 1) ||
-              (normalizedRoomType === 'double' && room.adults === 2) ||
-              (normalizedRoomType === 'triple' && room.adults === 3)
-            );
-          }
-
-          // Check description and type code
-          const matchesByDescription = targetTypes.some(t => desc.includes(t) || type.includes(t));
-
-          // Match if EITHER criterion matches (OR logic)
-          return matchesByOccupancy || matchesByDescription;
-        });
-
-        if (filteredRooms.length === 0) {
-          console.log(`🚫 [FILTER] Hotel "${hotel.name}" has no rooms matching type "${normalizedRoomType}"`);
-          return null; // Skip hotel entirely
-        }
+      if (filteredRooms.length === 0) {
+        console.log(`🚫 [FILTER] Hotel "${hotel.name}" has no rooms matching criteria (capacity: ${normalizedRoomType || 'any'}, meal plan: ${normalizedMealPlan || 'any'})`);
+        return null; // Skip hotel entirely
       }
 
-      // 2️⃣ Filter by meal plan if specified
-      if (normalizedMealPlan) {
-        const mealPlanMap: { [key: string]: string[] } = {
-          'all_inclusive': ['all inclusive', 'todo incluido', 'all-inclusive'],
-          'breakfast': ['breakfast', 'desayuno', 'bed and breakfast', 'b&b'],
-          'half_board': ['half board', 'media pensión', 'media pension', 'half-board'],
-          'room_only': ['room only', 'solo alojamiento', 'sin comida', 'alojamiento']
-        };
-
-        const targetMealPlans = mealPlanMap[normalizedMealPlan] || [];
-        filteredRooms = filteredRooms.filter(room => {
-          const desc = (room.description || '').toLowerCase();
-          return targetMealPlans.some(mp => desc.includes(mp));
-        });
-
-        if (filteredRooms.length === 0) {
-          console.log(`🚫 [FILTER] Hotel "${hotel.name}" has no rooms matching meal plan "${normalizedMealPlan}"`);
-          return null; // Skip hotel entirely
-        }
-      }
-
-      console.log(`✅ [FILTER] Hotel "${hotel.name}": ${hotel.rooms.length} → ${filteredRooms.length} rooms after filtering`);
+      console.log(`✅ [FILTER] Hotel "${hotel.name}": ${hotel.rooms.length} → ${filteredRooms.length} rooms after advanced filtering`);
 
       // Return hotel with filtered rooms
       return {
@@ -394,7 +327,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       .map(filterHotelRooms)
       .filter((hotel): hotel is LocalHotelData => hotel !== null);
 
-    console.log(`📊 [FILTER] Hotels: ${correctedHotels.length} → ${filteredHotels.length} (after room type/meal plan filtering)`);
+    console.log(`📊 [FILTER] Hotels: ${correctedHotels.length} → ${filteredHotels.length} (after advanced room filtering)`);
 
     // Sort hotels by lowest price (minimum room price) and limit to 5
     const hotels = filteredHotels
