@@ -55,6 +55,8 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                 console.log('🔍 [FILTER] Checking room:', {
                     type: room.type,
                     description: room.description,
+                    adults: room.adults,
+                    children: room.children,
                     requestedRoomType,
                     requestedMealPlan
                 });
@@ -62,30 +64,43 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
 
             // Filter by room type if requested
             if (requestedRoomType) {
-                // Check both type code and description for flexibility
-                const matchesSingle = requestedRoomType === 'single' && (
-                    roomType === 'sgl' ||
-                    roomType.includes('individual') ||
-                    roomType.includes('single') ||
-                    description.includes('individual') ||
-                    description.includes('single')
-                );
-                const matchesDouble = requestedRoomType === 'double' && (
-                    roomType === 'dbl' ||
-                    roomType === 'dus' ||
-                    roomType.includes('doble') ||
-                    roomType.includes('double') ||
-                    description.includes('doble') ||
-                    description.includes('double')
-                );
-                const matchesTriple = requestedRoomType === 'triple' && (
-                    roomType === 'tpl' ||
-                    roomType.includes('triple') ||
-                    description.includes('triple')
-                );
+                // PRIORITY 1: Use occupancy data from SOAP (most reliable per SOFTUR spec)
+                if (room.adults !== undefined) {
+                    const matchesSingle = requestedRoomType === 'single' && room.adults === 1;
+                    const matchesDouble = requestedRoomType === 'double' && room.adults === 2;
+                    const matchesTriple = requestedRoomType === 'triple' && room.adults === 3;
 
-                if (!matchesSingle && !matchesDouble && !matchesTriple) {
-                    return false;
+                    if (!matchesSingle && !matchesDouble && !matchesTriple) {
+                        console.log(`❌ [FILTER] Room type filter REJECTED (occupancy: ${room.adults} adults)`);
+                        return false;
+                    }
+                } else {
+                    // FALLBACK: Check type code and description (less reliable)
+                    const matchesSingle = requestedRoomType === 'single' && (
+                        roomType === 'sgl' ||
+                        roomType.includes('individual') ||
+                        roomType.includes('single') ||
+                        description.includes('individual') ||
+                        description.includes('single')
+                    );
+                    const matchesDouble = requestedRoomType === 'double' && (
+                        roomType === 'dbl' ||
+                        roomType === 'dus' ||
+                        roomType.includes('doble') ||
+                        roomType.includes('double') ||
+                        description.includes('doble') ||
+                        description.includes('double')
+                    );
+                    const matchesTriple = requestedRoomType === 'triple' && (
+                        roomType === 'tpl' ||
+                        roomType.includes('triple') ||
+                        description.includes('triple')
+                    );
+
+                    if (!matchesSingle && !matchesDouble && !matchesTriple) {
+                        console.log('❌ [FILTER] Room type filter REJECTED (fallback matching)');
+                        return false;
+                    }
                 }
             }
 

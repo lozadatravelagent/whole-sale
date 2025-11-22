@@ -432,6 +432,24 @@ ${occupantsXml}        </Ocuppancy>
           const tax = taxMatch ? parseFloat(taxMatch[1]) : 0;
           const roomTotal = base + tax; // Total for entire stay
           const description = this.getTextContent(fareEl, 'Description') || fareType;
+
+          // Parse Ocuppancy node to get REAL room type (more reliable than Fare.type)
+          const ocuppancyEl = fareEl.querySelector('Ocuppancy, ocuppancy');
+          let adults = 0;
+          let children = 0;
+          let infants = 0;
+
+          if (ocuppancyEl) {
+            const occupants = ocuppancyEl.querySelectorAll('Occupants, occupants');
+            occupants.forEach(occupant => {
+              const type = occupant.getAttribute('type');
+              if (type === 'ADT') adults++;
+              else if (type === 'CHD') children++;
+              else if (type === 'INFOA') infants++;
+            });
+            console.log(`🛏️ [OCCUPANCY] Fare ${fareType}: ${adults} adults, ${children} children, ${infants} infants`);
+          }
+
           if (roomTotal > 0) {
             // Calculate price per night
             const pricePerNight = nights > 0 ? roomTotal / nights : roomTotal;
@@ -443,7 +461,11 @@ ${occupantsXml}        </Ocuppancy>
               currency: currency,
               availability: availability,
               occupancy_id: (index + 1).toString(),
-              fare_id_broker: fareEl.getAttribute('FareIdBroker') || undefined
+              fare_id_broker: fareEl.getAttribute('FareIdBroker') || undefined,
+              // Add occupancy info from SOAP response
+              adults: adults,
+              children: children,
+              infants: infants
             });
           }
         });
