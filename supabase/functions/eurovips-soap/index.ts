@@ -284,6 +284,12 @@ ${occupantsXml}        </Ocuppancy>
           // Extract just this ONE hotel block (small, ~50-100KB)
           const hotelXmlBlock = match[0];
 
+          // DEBUG: Log first hotel block to see structure
+          if (processedCount === 0) {
+            console.log('🔍 [DEBUG] First hotel block sample (first 500 chars):');
+            console.log(hotelXmlBlock.substring(0, 500));
+          }
+
           // Wrap in minimal XML structure for parsing
           const wrappedXml = `<?xml version="1.0"?><root>${hotelXmlBlock}</root>`;
 
@@ -292,6 +298,19 @@ ${occupantsXml}        </Ocuppancy>
           const hotelElement = miniDoc.querySelector('HotelFares');
 
           if (hotelElement) {
+            // DEBUG: Check if FareList exists
+            if (processedCount === 0) {
+              const fareList = hotelElement.querySelector('FareList');
+              console.log('🔍 [DEBUG] FareList found:', !!fareList);
+              if (fareList) {
+                const fare = fareList.querySelector('Fare');
+                console.log('🔍 [DEBUG] First Fare found:', !!fare);
+                if (fare) {
+                  console.log('🔍 [DEBUG] Fare innerHTML (first 300 chars):', fare.innerHTML?.substring(0, 300));
+                }
+              }
+            }
+
             const hotel = this.parseHotelElement(hotelElement, params, processedCount);
             if (hotel) {
               hotels.push(hotel);
