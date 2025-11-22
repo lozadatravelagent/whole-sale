@@ -240,7 +240,7 @@ ${occupantsXml}        </Ocuppancy>
   parseAirlineListResponse(xmlResponse) {
     try {
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
       const airlines = [];
       const airlineElements = xmlDoc.querySelectorAll('Airline, airline, AirlineInfo, airlineinfo');
       airlineElements.forEach((airlineEl) => {
@@ -293,8 +293,9 @@ ${occupantsXml}        </Ocuppancy>
           // Wrap in minimal XML structure for parsing
           const wrappedXml = `<?xml version="1.0"?><root>${hotelXmlBlock}</root>`;
 
-          // Parse ONLY this small block (not the full 15MB!)
-          const miniDoc = parser.parseFromString(wrappedXml, 'text/html');
+          // Parse as XML (not HTML) to preserve case-sensitivity of tags
+          // CRITICAL: 'text/xml' preserves <Base>, 'text/html' converts to <base>
+          const miniDoc = parser.parseFromString(wrappedXml, 'text/xml');
           const hotelElement = miniDoc.querySelector('HotelFares');
 
           if (hotelElement) {
@@ -353,7 +354,7 @@ ${occupantsXml}        </Ocuppancy>
   parseFlightSearchResponse(xmlResponse, params) {
     try {
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
       const flights = [];
       // Try multiple selectors to handle different XML structures
       let flightElements = xmlDoc.querySelectorAll('ArrayOfAirFare1 > AirFares');
@@ -607,7 +608,7 @@ ${occupantsXml}        </Ocuppancy>
   parsePackageSearchResponse(xmlResponse, params) {
     try {
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
       const packages = [];
       // Try multiple selectors to handle different XML structures
       let packageElements = xmlDoc.querySelectorAll('ArrayOfPackageFare1 PackageFares');
@@ -639,7 +640,7 @@ ${occupantsXml}        </Ocuppancy>
   parseServiceSearchResponse(xmlResponse, params) {
     try {
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
+      const xmlDoc = parser.parseFromString(xmlResponse, 'text/xml');
       const services = [];
       // Try multiple selectors to handle different XML structures
       let serviceElements = xmlDoc.querySelectorAll('ArrayOfServiceFare1 ServiceFares');
