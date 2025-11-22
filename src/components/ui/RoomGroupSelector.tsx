@@ -26,6 +26,8 @@ interface RoomGroupSelectorProps {
     onRoomSelect: (roomId: string) => void;
     isDisabled?: boolean;
     maxInitialRooms?: number;
+    requestedRoomType?: 'single' | 'double' | 'triple';
+    requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
 }
 
 const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
@@ -33,7 +35,9 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     selectedRoomId,
     onRoomSelect,
     isDisabled = false,
-    maxInitialRooms = 3
+    maxInitialRooms = 3,
+    requestedRoomType,
+    requestedMealPlan
 }) => {
     const [showAllRooms, setShowAllRooms] = useState(false);
 
@@ -41,15 +45,42 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     const groupedRooms = useMemo(() => {
         const groups: { [key: string]: Room[] } = {};
 
-        // Filter out "Habitación Individual" rooms
+        // Filter rooms based on user request
         const filteredRooms = rooms.filter(room => {
             const roomType = (room.type || '').toLowerCase();
             const description = (room.description || '').toLowerCase();
 
-            // Exclude single/individual rooms
-            return !roomType.includes('individual') &&
-                   !roomType.includes('sgl') &&
-                   !description.includes('habitación individual');
+            // Filter by room type if requested
+            if (requestedRoomType) {
+                const matchesSingle = requestedRoomType === 'single' &&
+                                      (roomType.includes('individual') || roomType.includes('single'));
+                const matchesDouble = requestedRoomType === 'double' &&
+                                      (roomType.includes('doble') || roomType.includes('double'));
+                const matchesTriple = requestedRoomType === 'triple' &&
+                                      (roomType.includes('triple'));
+
+                if (!matchesSingle && !matchesDouble && !matchesTriple) {
+                    return false;
+                }
+            }
+
+            // Filter by meal plan if requested
+            if (requestedMealPlan) {
+                const matchesAllInclusive = requestedMealPlan === 'all_inclusive' &&
+                                            (description.includes('todo incluido') || description.includes('all inclusive'));
+                const matchesBreakfast = requestedMealPlan === 'breakfast' &&
+                                        (description.includes('desayuno') || description.includes('breakfast'));
+                const matchesHalfBoard = requestedMealPlan === 'half_board' &&
+                                        (description.includes('media pensión') || description.includes('half board'));
+                const matchesRoomOnly = requestedMealPlan === 'room_only' &&
+                                       (description.includes('solo habitación') || description.includes('room only'));
+
+                if (!matchesAllInclusive && !matchesBreakfast && !matchesHalfBoard && !matchesRoomOnly) {
+                    return false;
+                }
+            }
+
+            return true;
         });
 
         filteredRooms.forEach(room => {
@@ -66,7 +97,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
         });
 
         return groups;
-    }, [rooms]);
+    }, [rooms, requestedRoomType, requestedMealPlan]);
 
     const getAvailabilityStatus = (availability: number) => {
         if (availability >= 3) return { text: 'Disponible', icon: CheckCircle, color: 'bg-green-500' };

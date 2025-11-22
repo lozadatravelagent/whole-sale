@@ -323,7 +323,9 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
         combinedData: {
           flights: [],
           hotels,
-          requestType: 'hotels-only' as const
+          requestType: 'hotels-only' as const,
+          requestedRoomType: enrichedParsed.hotels?.roomType,
+          requestedMealPlan: enrichedParsed.hotels?.mealPlan
         }
       }
     };
@@ -440,7 +442,9 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     const combinedData = {
       flights: flightResult.data?.combinedData?.flights || [],
       hotels: hotelResult.data?.combinedData?.hotels || [],
-      requestType: 'combined' as const
+      requestType: 'combined' as const,
+      requestedRoomType: parsed.hotels?.roomType,
+      requestedMealPlan: parsed.hotels?.mealPlan
     };
 
     console.log('📊 [COMBINED SEARCH] Combined data summary:');
