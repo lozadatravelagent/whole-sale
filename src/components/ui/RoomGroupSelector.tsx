@@ -50,17 +50,57 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
             const roomType = (room.type || '').toLowerCase();
             const description = (room.description || '').toLowerCase();
 
+            // Debug logging
+            if (requestedRoomType || requestedMealPlan) {
+                console.log('🔍 [FILTER] Checking room:', {
+                    type: room.type,
+                    description: room.description,
+                    adults: room.adults,
+                    children: room.children,
+                    requestedRoomType,
+                    requestedMealPlan
+                });
+            }
+
             // Filter by room type if requested
             if (requestedRoomType) {
-                const matchesSingle = requestedRoomType === 'single' &&
-                                      (roomType.includes('individual') || roomType.includes('single'));
-                const matchesDouble = requestedRoomType === 'double' &&
-                                      (roomType.includes('doble') || roomType.includes('double'));
-                const matchesTriple = requestedRoomType === 'triple' &&
-                                      (roomType.includes('triple'));
+                // PRIORITY 1: Use occupancy data from SOAP (most reliable per SOFTUR spec)
+                if (room.adults !== undefined) {
+                    const matchesSingle = requestedRoomType === 'single' && room.adults === 1;
+                    const matchesDouble = requestedRoomType === 'double' && room.adults === 2;
+                    const matchesTriple = requestedRoomType === 'triple' && room.adults === 3;
 
-                if (!matchesSingle && !matchesDouble && !matchesTriple) {
-                    return false;
+                    if (!matchesSingle && !matchesDouble && !matchesTriple) {
+                        console.log(`❌ [FILTER] Room type filter REJECTED (occupancy: ${room.adults} adults)`);
+                        return false;
+                    }
+                } else {
+                    // FALLBACK: Check type code and description (less reliable)
+                    const matchesSingle = requestedRoomType === 'single' && (
+                        roomType === 'sgl' ||
+                        roomType.includes('individual') ||
+                        roomType.includes('single') ||
+                        description.includes('individual') ||
+                        description.includes('single')
+                    );
+                    const matchesDouble = requestedRoomType === 'double' && (
+                        roomType === 'dbl' ||
+                        roomType === 'dus' ||
+                        roomType.includes('doble') ||
+                        roomType.includes('double') ||
+                        description.includes('doble') ||
+                        description.includes('double')
+                    );
+                    const matchesTriple = requestedRoomType === 'triple' && (
+                        roomType === 'tpl' ||
+                        roomType.includes('triple') ||
+                        description.includes('triple')
+                    );
+
+                    if (!matchesSingle && !matchesDouble && !matchesTriple) {
+                        console.log('❌ [FILTER] Room type filter REJECTED (fallback matching)');
+                        return false;
+                    }
                 }
             }
 
@@ -76,12 +116,16 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                        (description.includes('solo habitación') || description.includes('room only'));
 
                 if (!matchesAllInclusive && !matchesBreakfast && !matchesHalfBoard && !matchesRoomOnly) {
+                    console.log('❌ [FILTER] Meal plan filter REJECTED room');
                     return false;
                 }
             }
 
+            console.log('✅ [FILTER] Room PASSED all filters');
             return true;
         });
+
+        console.log(`📊 [FILTER] Total rooms: ${rooms.length}, Filtered: ${filteredRooms.length}`);
 
         filteredRooms.forEach(room => {
             const roomType = room.type || 'Otro';

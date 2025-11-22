@@ -347,6 +347,10 @@ export interface HotelRoom {
   availability: number;
   occupancy_id: string;
   fare_id_broker?: string;
+  // Occupancy info from SOAP Ocuppancy node (more reliable than type attribute)
+  adults?: number;
+  children?: number;
+  infants?: number;
 }
 
 export interface PackageFare {
