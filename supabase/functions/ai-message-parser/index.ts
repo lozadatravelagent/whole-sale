@@ -268,14 +268,32 @@ CRITICAL INSTRUCTION:
 - children = 0 (default if not specified)
 - roomType, mealPlan (OPTIONAL - ONLY include if user explicitly mentions them)
 
-🚨 **CRITICAL HOTEL PREFERENCE RULES:**
+🚨 **CRITICAL HOTEL PREFERENCE RULES - READ CAREFULLY:**
 - **roomType**: ONLY include if user explicitly says "habitación simple/single", "habitación doble/double", "habitación triple/triple"
   * If user says NOTHING about room type → DO NOT include roomType field
   * Examples: "hotel en Cancún" → NO roomType, "habitación doble en Cancún" → roomType: "double"
-- **mealPlan**: ONLY include if user explicitly mentions food/meal preferences
-  * Keywords: "all inclusive", "todo incluido", "desayuno", "breakfast", "media pensión", "half board", "solo alojamiento", "room only"
-  * If user says NOTHING about meals → DO NOT include mealPlan field
-  * Examples: "hotel en Cancún" → NO mealPlan, "hotel all inclusive" → mealPlan: "all_inclusive"
+- **mealPlan**: ONLY include if user explicitly mentions food/meal preferences IN THE CURRENT MESSAGE
+  * ✅ **Include mealPlan ONLY IF these keywords appear in CURRENT message:**
+    - "all inclusive", "todo incluido", "all-inclusive", "all inc"
+    - "desayuno", "breakfast", "con desayuno"
+    - "media pensión", "media pension", "half board"
+    - "solo alojamiento", "solo habitacion", "room only", "sin comida"
+  * ❌ **DO NOT include mealPlan if:**
+    - User only says "hotel" or "habitación" without food keywords
+    - User mentions ONLY room type ("habitación doble") but NO meal plan
+    - Previous conversation mentioned meals but CURRENT message does NOT
+  * Examples:
+    - "hotel en Cancún" → NO mealPlan ❌
+    - "habitación doble en Cancún" → NO mealPlan ❌
+    - "hotel all inclusive" → mealPlan: "all_inclusive" ✅
+    - "habitación doble con desayuno" → roomType: "double", mealPlan: "breakfast" ✅
+
+🚨 **ULTRA-STRICT RULE FOR mealPlan:**
+You MUST scan the CURRENT user message for these EXACT keywords before including mealPlan:
+- Scan message for: "incluido", "inclusive", "desayuno", "breakfast", "pensión", "pension", "board", "comida", "alojamiento"
+- If NONE of these keywords found → DO NOT include mealPlan field AT ALL
+- NEVER infer mealPlan from context, previous messages, or assumptions
+- ONLY include if user EXPLICITLY types food/meal keywords in THIS message
 
 **COMBINED:** All flight + hotel required fields with same defaults
 
@@ -435,12 +453,66 @@ User: "hotel en Cancún" (after previous flight search to Cancún)
 }
 ❌ NOTE: NO roomType or mealPlan unless user explicitly mentioned them!
 
+Example 10 - Combined flight + hotel WITHOUT meal plan (CRITICAL):
+User: "quiero un vuelo desde buenos aires a cancun para dos personas desde el 5 de enero al 15 de enero con escala de menos de 3 horas tambien quiero un hotel habitacion doble para ambas fechas"
+{
+  "requestType": "combined",
+  "flights": {
+    "origin": "Buenos Aires",
+    "destination": "Cancún",
+    "departureDate": "2026-01-05",
+    "returnDate": "2026-01-15",
+    "adults": 2,
+    "children": 0,
+    "stops": "any",
+    "maxLayoverHours": 3
+  },
+  "hotels": {
+    "city": "Cancún",
+    "checkinDate": "2026-01-05",
+    "checkoutDate": "2026-01-15",
+    "adults": 2,
+    "children": 0,
+    "roomType": "double"
+  },
+  "confidence": 0.95
+}
+❌ CRITICAL: NO mealPlan because user ONLY said "habitacion doble" without mentioning food/meals!
+✅ roomType: "double" is included because user explicitly said "habitacion doble"
+
+Example 11 - Hotel with room type but NO meal (to reinforce):
+User: "habitacion doble en cancun para 2 personas"
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "Cancún",
+    "checkinDate": "[DATE]",
+    "checkoutDate": "[DATE]",
+    "adults": 2,
+    "children": 0,
+    "roomType": "double"
+  },
+  "confidence": 0.9
+}
+❌ NO mealPlan - user mentioned "habitacion doble" but did NOT mention meals!
+
 🚨 CRITICAL FINAL INSTRUCTION:
 - The examples above show PATTERNS and STRUCTURES only
 - You MUST extract actual values from the REAL conversation history provided above, NOT from the examples
 - NEVER use example cities (Miami, Punta Cana) or example dates unless they appear in the ACTUAL conversation
 - Always use [EXTRACT from X] placeholders as instructions to extract from REAL conversation history
 - Your response must reflect the ACTUAL user request and ACTUAL conversation context
+
+🚨 FINAL REMINDER - mealPlan RULE:
+Before including "mealPlan" field in your JSON response, ask yourself:
+1. Did the user type ANY of these words in the CURRENT message? "incluido", "inclusive", "desayuno", "breakfast", "pensión", "pension", "board", "comida", "alojamiento"
+2. If answer is NO → DO NOT include "mealPlan" field in JSON
+3. If answer is YES → Include "mealPlan" with appropriate value
+
+Examples to verify your understanding:
+- "hotel habitacion doble" → NO food keywords → NO mealPlan field ❌
+- "habitacion doble all inclusive" → "inclusive" keyword found → mealPlan: "all_inclusive" ✅
+- "hotel con desayuno" → "desayuno" keyword found → mealPlan: "breakfast" ✅
 
 Now analyze this ACTUAL message and respond with JSON only:`;
     const userPrompt = message;
