@@ -261,24 +261,44 @@ ${occupantsXml}        </Ocuppancy>
   }
   parseHotelSearchResponse(xmlResponse, params) {
     try {
-      // ⚠️ MEMORY OPTIMIZATION: Limit processing to avoid out-of-memory errors
+      // ⚠️ CRITICAL MEMORY OPTIMIZATION: Truncate XML BEFORE parsing
       // For destinations with many hotels (like Cancún), EUROVIPS can return 14MB+ XML
-      const MAX_HOTELS_TO_PROCESS = 100; // Process at most 100 hotels to stay under memory limit
+      // We MUST truncate before DOMParser loads it all into memory
+      const MAX_HOTELS_TO_PROCESS = 50; // Reduced from 100 to be extra safe
+
+      console.log(`📊 [MEMORY] Original XML size: ${(xmlResponse.length / 1024 / 1024).toFixed(2)}MB`);
+
+      // Find positions of first N HotelFares closing tags
+      let truncatedXml = xmlResponse;
+      let hotelCount = 0;
+      let lastHotelEndPos = 0;
+      const hotelFaresPattern = /<\/HotelFares>/g;
+      let match;
+
+      while ((match = hotelFaresPattern.exec(xmlResponse)) !== null && hotelCount < MAX_HOTELS_TO_PROCESS) {
+        lastHotelEndPos = match.index + match[0].length;
+        hotelCount++;
+      }
+
+      if (hotelCount >= MAX_HOTELS_TO_PROCESS && lastHotelEndPos > 0) {
+        // Truncate after the Nth hotel, then close the XML properly
+        truncatedXml = xmlResponse.substring(0, lastHotelEndPos) +
+                      '</ArrayOfHotelFare1></soap:Body></soap:Envelope>';
+
+        console.log(`✂️ [MEMORY] Truncated XML to first ${hotelCount} hotels`);
+        console.log(`📊 [MEMORY] Truncated size: ${(truncatedXml.length / 1024 / 1024).toFixed(2)}MB (was ${(xmlResponse.length / 1024 / 1024).toFixed(2)}MB)`);
+      }
 
       const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
+      const xmlDoc = parser.parseFromString(truncatedXml, 'text/html');
       const hotels = [];
       const hotelElements = xmlDoc.querySelectorAll('HotelFares');
 
-      const totalHotels = hotelElements.length;
-      const hotelsToProcess = Math.min(totalHotels, MAX_HOTELS_TO_PROCESS);
+      console.log(`🔍 Found ${hotelElements.length} hotel elements after truncation`);
 
-      console.log(`🔍 Found ${totalHotels} hotel elements, will process ${hotelsToProcess} to avoid memory limit`);
-
-      // Process only first N hotels to avoid memory issues
-      for (let index = 0; index < hotelsToProcess; index++) {
+      // Process all hotels in truncated XML
+      hotelElements.forEach((hotelEl, index) => {
         try {
-          const hotelEl = hotelElements[index];
           const hotel = this.parseHotelElement(hotelEl, params, index);
           if (hotel) {
             hotels.push(hotel);
@@ -286,7 +306,7 @@ ${occupantsXml}        </Ocuppancy>
         } catch (error) {
           console.error(`❌ Error parsing hotel element ${index}:`, error);
         }
-      }
+      });
 
       // Sort hotels by price (lowest first)
       hotels.sort((a, b) => {
@@ -294,8 +314,12 @@ ${occupantsXml}        </Ocuppancy>
         const priceB = Math.min(...b.rooms.map((room) => room.total_price));
         return priceA - priceB;
       });
-      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels (processed ${hotelsToProcess}/${totalHotels})`);
-      console.log('🔍 First hotel sample:', JSON.stringify(hotels[0], null, 2));
+
+      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels`);
+      if (hotels.length > 0) {
+        console.log('🔍 First hotel sample:', JSON.stringify(hotels[0], null, 2));
+      }
+
       return hotels;
     } catch (error) {
       console.error('❌ Error parsing hotel search response:', error);
