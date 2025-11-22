@@ -261,28 +261,40 @@ ${occupantsXml}        </Ocuppancy>
   }
   parseHotelSearchResponse(xmlResponse, params) {
     try {
+      // ⚠️ MEMORY OPTIMIZATION: Limit processing to avoid out-of-memory errors
+      // For destinations with many hotels (like Cancún), EUROVIPS can return 14MB+ XML
+      const MAX_HOTELS_TO_PROCESS = 100; // Process at most 100 hotels to stay under memory limit
+
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlResponse, 'text/html');
       const hotels = [];
       const hotelElements = xmlDoc.querySelectorAll('HotelFares');
-      console.log(`🔍 Found ${hotelElements.length} hotel elements`);
-      hotelElements.forEach((hotelEl, index) => {
+
+      const totalHotels = hotelElements.length;
+      const hotelsToProcess = Math.min(totalHotels, MAX_HOTELS_TO_PROCESS);
+
+      console.log(`🔍 Found ${totalHotels} hotel elements, will process ${hotelsToProcess} to avoid memory limit`);
+
+      // Process only first N hotels to avoid memory issues
+      for (let index = 0; index < hotelsToProcess; index++) {
         try {
+          const hotelEl = hotelElements[index];
           const hotel = this.parseHotelElement(hotelEl, params, index);
           if (hotel) {
             hotels.push(hotel);
           }
         } catch (error) {
-          console.error('❌ Error parsing hotel element:', error);
+          console.error(`❌ Error parsing hotel element ${index}:`, error);
         }
-      });
+      }
+
       // Sort hotels by price (lowest first)
       hotels.sort((a, b) => {
         const priceA = Math.min(...a.rooms.map((room) => room.total_price));
         const priceB = Math.min(...b.rooms.map((room) => room.total_price));
         return priceA - priceB;
       });
-      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels`);
+      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels (processed ${hotelsToProcess}/${totalHotels})`);
       console.log('🔍 First hotel sample:', JSON.stringify(hotels[0], null, 2));
       return hotels;
     } catch (error) {
