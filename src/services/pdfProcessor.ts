@@ -726,10 +726,13 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
             const position = positionMapping[positionStr] || parseInt(positionStr);
             const priceStr = match[2];
 
-            // CRITICAL: Validate that the position digit is not part of a larger number in Latino format (X.XXX)
-            // Example: "cambia el precio a 1.500" should NOT be interpreted as position 1 with price 500
+            // CRITICAL: Validate that the position digit is not part of a larger number
+            // Examples:
+            //   - "cambia el precio a 1.500" should NOT be position 1, price 500
+            //   - "cambia el precio a 1400" should NOT be position 1, price 400
+            //   - "cambia el precio a 2350 usd" should NOT be position 2, price 350
             if (position >= 1 && position <= 4 && /^[1-4]$/.test(positionStr)) {
-                // Check if this "position" is actually part of a number like "1.500" or "2.485"
+                // Check if this "position" is actually part of a larger number
                 const positionIndex = clause.indexOf(positionStr);
                 const nextChar = clause[positionIndex + 1];
 
@@ -739,9 +742,16 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
                     continue;
                 }
 
-                // Also check if there's a pattern like "precio a 1.500" or "total a 2.485"
-                if (/\b(precio|total|cuesta|cueste)\s+a\s+[1-4]\.\d{3}/.test(clause)) {
-                    console.log(`⚠️ [CLAUSE] Skipping - detected "precio/total a X.XXX" pattern`);
+                // If the digit is immediately followed by more digits (no space), it's a complete number, not a position
+                // Examples: 1400, 2350, 3999, 4200
+                if (nextChar && /\d/.test(nextChar)) {
+                    console.log(`⚠️ [CLAUSE] Skipping - "${positionStr}" is part of complete number (e.g., ${positionStr}${nextChar}...)`);
+                    continue;
+                }
+
+                // Also check if there's a pattern like "precio a 1.500" or "total a 2.485" or "precio a 1400"
+                if (/\b(precio|total|cuesta|cueste)\s+a\s+[1-4][\.\d]/.test(clause)) {
+                    console.log(`⚠️ [CLAUSE] Skipping - detected "precio/total a X..." pattern`);
                     continue;
                 }
             }
