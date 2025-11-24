@@ -575,25 +575,34 @@ function generateManualDataEntryPrompt(): string {
 function extractPriceFromMessage(message: string): number | null {
     // Look for patterns like: $1200, 1200 USD, 1200 dólares, 2.549,32 USD, etc.
     // Updated regex to capture complete numbers with flexible separators
+    // IMPORTANT: More specific patterns first (precio total, cambia precio total) to avoid partial matches
     const pricePatterns = [
+        // Most specific patterns first - these include "total" or "precio" context
+        /(?:cambia|cambiar|modifica|modificar|actualiza|actualizar|ajusta|ajustar|pon|poner)(?:\s+el)?\s+precio\s+total\s+(?:a|en|por)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        /precio\s+total\s+(?:a|en|por|de)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        /total\s+(?:a|en|por|de)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        /(?:cambia|cambiar|modifica|modificar|actualiza|actualizar|ajusta|ajustar|pon|poner)(?:\s+el)?\s+precio\s+(?:a|en|por)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        /precio\s+(?:a|en|por|de)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        // Currency patterns
         /\$\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/g,
         /(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*(?:USD|usd|dólares?|dolares?)/gi,
-        /precio.*?(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
-        /total.*?(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        // Generic context patterns (less specific)
         /cambia.*?(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
         /por\s+(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi
     ];
 
     // First try to find numbers with context (more specific patterns)
+    // Use matchAll to properly capture groups
     for (const pattern of pricePatterns) {
-        const matches = message.match(pattern);
-        if (matches) {
+        const matches = [...message.matchAll(pattern)];
+        if (matches.length > 0) {
             for (const match of matches) {
-                const numberMatch = match.match(/(\d{1,10}(?:[.,]\d{1,3})+|\d+)/);
-                if (numberMatch) {
-                    const price = parsePrice(numberMatch[1]);
+                // match[1] contains the captured group (the number)
+                const priceStr = match[1];
+                if (priceStr) {
+                    const price = parsePrice(priceStr);
                     if (price > 0 && price < 100000) { // Reasonable price range
-                        console.log('💰 [PRICE EXTRACTION] Found price with context:', price, 'from match:', match, 'raw:', numberMatch[1]);
+                        console.log('💰 [PRICE EXTRACTION] Found price with context:', price, 'from match:', match[0], 'raw:', priceStr);
                         return price;
                     }
                 }
