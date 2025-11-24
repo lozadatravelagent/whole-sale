@@ -601,18 +601,26 @@ function extractPriceFromMessage(message: string): number | null {
         }
     }
 
-    // If no contextual match, look for standalone numbers (but be more careful)
-    const standaloneNumbers = message.match(/\b(\d{3,6})\b/g);
-    if (standaloneNumbers) {
-        // Filter out common non-price numbers
-        const filteredNumbers = standaloneNumbers.filter(num => {
-            const value = parseInt(num);
-            return value >= 100 && value <= 50000; // Reasonable price range
-        });
+    // If no contextual match, look for standalone numbers (including numbers with thousand separators)
+    // Updated regex to capture numbers with or without thousand separators
+    const standalonePattern = /\b(\d{1,10}(?:[.,]\d{3})+|\d{3,6})\b/g;
+    const standaloneMatches = message.match(standalonePattern);
 
-        if (filteredNumbers.length > 0) {
+    if (standaloneMatches) {
+        console.log('💰 [PRICE EXTRACTION] Found standalone matches:', standaloneMatches);
+
+        // Parse each match and filter by reasonable price range
+        const parsedPrices = standaloneMatches
+            .map(numStr => {
+                const price = parsePrice(numStr);
+                console.log('💰 [PRICE EXTRACTION] Parsing standalone:', numStr, '→', price);
+                return price;
+            })
+            .filter(price => price >= 100 && price <= 50000); // Reasonable price range
+
+        if (parsedPrices.length > 0) {
             // Take the largest number found (most likely to be the price)
-            const maxPrice = Math.max(...filteredNumbers.map(n => parseInt(n)));
+            const maxPrice = Math.max(...parsedPrices);
             console.log('💰 [PRICE EXTRACTION] Found standalone number:', maxPrice);
             return maxPrice;
         }
