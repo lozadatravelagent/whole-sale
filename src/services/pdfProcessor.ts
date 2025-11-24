@@ -826,10 +826,40 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
 
         // Collect all legs from both outbound and return
         const allLegs: any[] = [];
-        group.forEach(flight => {
+        group.forEach((flight, flightIndex) => {
+            console.log(`🔍 [RECONSTRUCT] Processing flight ${flightIndex + 1} in group ${groupIndex + 1}:`, {
+                has_legs: !!(flight as any).legs,
+                legs_count: (flight as any).legs?.length || 0,
+                legs_preview: (flight as any).legs?.map((leg: any, legIndex: number) => ({
+                    leg_index: legIndex,
+                    flight_type: leg.flight_type,
+                    route: `${leg.departure?.city_code} → ${leg.arrival?.city_code}`,
+                    has_layovers: !!(leg.layovers),
+                    layovers_count: leg.layovers?.length || 0,
+                    layovers: leg.layovers || []
+                }))
+            });
+
             if ((flight as any).legs && (flight as any).legs.length > 0) {
-                allLegs.push(...(flight as any).legs);
+                // Explicitly preserve all leg properties including layovers
+                (flight as any).legs.forEach((leg: any) => {
+                    allLegs.push({
+                        ...leg,
+                        // Ensure layovers are explicitly preserved
+                        layovers: leg.layovers || []
+                    });
+                });
             }
+        });
+
+        console.log(`🔍 [RECONSTRUCT] Collected ${allLegs.length} total legs for group ${groupIndex + 1}:`, {
+            legs: allLegs.map((leg, i) => ({
+                index: i,
+                flight_type: leg.flight_type,
+                route: `${leg.departure?.city_code} → ${leg.arrival?.city_code}`,
+                layovers_count: leg.layovers?.length || 0,
+                layovers: leg.layovers || []
+            }))
         });
 
         if (allLegs.length === 0) {
@@ -903,6 +933,21 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
             },
             legs: allLegs // All legs from ida + vuelta
         };
+    }).map((flight, index) => {
+        // Verify legs are properly preserved before returning
+        console.log(`✅ [RECONSTRUCT] Final flight ${index + 1} structure:`, {
+            airline: flight.airline.name,
+            price: flight.price.amount,
+            legs_count: flight.legs.length,
+            legs_detail: flight.legs.map((leg: any, legIdx: number) => ({
+                index: legIdx,
+                flight_type: leg.flight_type,
+                route: `${leg.departure.city_code} → ${leg.arrival.city_code}`,
+                layovers_count: leg.layovers?.length || 0,
+                layovers: leg.layovers || []
+            }))
+        });
+        return flight;
     });
 }
 
@@ -1315,7 +1360,38 @@ export async function generateModifiedPdf(
         if (analysis.content.extractedFromPdfMonkey) {
             // For our own PDFs, use reconstructFlightData which maintains the original template structure
             console.log('🏗️ Reconstructing flight data from PdfMonkey template');
+            console.log('📊 [MODIFY PDF] Input analysis flights:', {
+                flights_count: analysis.content.flights?.length || 0,
+                flights_preview: analysis.content.flights?.map((f: any, idx: number) => ({
+                    index: idx,
+                    airline: f.airline,
+                    legs_count: f.legs?.length || 0,
+                    legs_with_layovers: f.legs?.map((leg: any) => ({
+                        flight_type: leg.flight_type,
+                        route: `${leg.departure?.city_code} → ${leg.arrival?.city_code}`,
+                        layovers_count: leg.layovers?.length || 0,
+                        layovers: leg.layovers || []
+                    }))
+                }))
+            });
+
             adjustedFlights = reconstructFlightData(analysis, newPrice);
+
+            console.log('✅ [MODIFY PDF] Reconstructed flights:', {
+                flights_count: adjustedFlights.length,
+                flights_preview: adjustedFlights.map((f: any, idx: number) => ({
+                    index: idx,
+                    airline: f.airline?.name || f.airline,
+                    legs_count: f.legs?.length || 0,
+                    legs_with_layovers: f.legs?.map((leg: any) => ({
+                        flight_type: leg.flight_type,
+                        route: `${leg.departure?.city_code} → ${leg.arrival?.city_code}`,
+                        layovers_count: leg.layovers?.length || 0,
+                        layovers: leg.layovers || []
+                    }))
+                }))
+            });
+
             adjustedHotels = reconstructHotelData(analysis, newPrice);
         } else {
             // For external PDFs, use ONLY real data from PDF
@@ -1325,7 +1401,15 @@ export async function generateModifiedPdf(
             adjustedFlights = analysis.content.flights?.map((flight, index) => {
                 // Use ONLY real leg data from PDF - no mock data
                 if ((flight as any).legs && (flight as any).legs.length > 0) {
-                    console.log('✅ Using REAL external PDF leg data:', (flight as any).legs);
+                    console.log(`✅ [EXTERNAL] Flight ${index + 1} leg data:`, {
+                        legs_count: (flight as any).legs.length,
+                        legs: (flight as any).legs.map((leg: any) => ({
+                            flight_type: leg.flight_type,
+                            route: `${leg.departure?.city_code} → ${leg.arrival?.city_code}`,
+                            layovers_count: leg.layovers?.length || 0,
+                            layovers: leg.layovers || []
+                        }))
+                    });
 
                     return {
                         id: `external-modified-${Date.now()}-${index}`,
@@ -1345,7 +1429,7 @@ export async function generateModifiedPdf(
                         return_date: flight.dates.includes(' / ') ?
                             flight.dates.split(' / ')[1].trim() :
                             parseDateRange(flight.dates).returnDate,
-                        legs: (flight as any).legs // Use real legs from PDF
+                        legs: (flight as any).legs // Use real legs from PDF with layovers preserved
                     };
                 } else {
                     console.warn('⚠️ External PDF has no leg data - skipping flight');
