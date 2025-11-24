@@ -2633,6 +2633,24 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
             /DETALLE\s+DEL\s+VUELO[^\n]*\n\s*([A-Z]{2,3})\s+([A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)\s+Ocupación/im,
             // Pattern 4: Fallback - look for airline code followed by capitalized name near start
             /^[^\n]{0,200}?([A-Z]{2,3})\s+([A-Z][A-Za-z\s]+)(?:\s+Ocupación|\s+\d+\s+adultos)/im,
+
+            // ========== EXTENDED PATTERNS (added for complex airline names) ==========
+            // Pattern 5: Code + name with corporate suffixes (S.A., INC., LTD., CORP.) before "Ocupación:"
+            // Handles: "AV AVIANCA ECUADOR S.A. Ocupación:"
+            /([A-Z]{2,3})\s+([A-Z][A-Z\s\.]+?(?:S\.A\.|INC\.|LTD\.|CORP\.|GROUP)?)\s+Ocupación:/i,
+
+            // Pattern 6: Code + extended name with special chars (dots, commas, parentheses) before "Ocupación:" or "Ocupación"
+            // Handles: "AV AVIANCA ECUADOR S.A. Ocupación:" or "LA LATAM AIRLINES GROUP Ocupación"
+            /([A-Z]{2,3})\s+([A-Z][A-Za-z\s\.\(\),&-]+?)\s+Ocupación[:]/i,
+
+            // Pattern 7: Code + very permissive name capture until "Ocupación:" (last resort for complex formats)
+            // Captures any uppercase text after code until "Ocupación:" appears
+            // Handles: "Y4 VOLARIS AIRLINES, S.A. DE C.V. Ocupación:"
+            /([A-Z]{2,3})\s+([A-Z][^\n\r]+?)\s+Ocupación[:]/i,
+
+            // Pattern 8: Code + name without newline requirement (more flexible than Pattern 2)
+            // Handles cases where there's no \n before the code
+            /([A-Z]{2,3})\s+([A-Z][A-Za-z\sñÑáéíóúÁÉÍÓÚ\.]+?)\s+Ocupación/i,
         ];
 
         for (let i = 0; i < airlinePatterns.length; i++) {
