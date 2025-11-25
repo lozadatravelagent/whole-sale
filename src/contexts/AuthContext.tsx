@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useSessionExpiration } from '@/hooks/useSessionExpiration';
+import { LAST_ACTIVITY_KEY } from '@/config/sessionConfig';
 import type { Role } from '@/types';
 
 export interface AuthUser {
@@ -123,6 +125,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Session expiration tracking - only active when user is authenticated
+  // This will automatically log out the user after inactivity timeout
+  useSessionExpiration({
+    enabled: !!user, // Only track when there's an authenticated user
+    onSessionExpired: () => {
+      // Clear user state when session expires
+      setUser(null);
+      hasInitiallyLoadedRef.current = false;
+    },
+  });
+
+  // Initialize last activity timestamp when user logs in
+  useEffect(() => {
+    if (user) {
+      // Set initial activity timestamp on login
+      localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+    }
+  }, [user?.id]); // Only run when user id changes (login/logout)
 
   // Helper functions for role checks
   const isOwner = user?.role === 'OWNER';

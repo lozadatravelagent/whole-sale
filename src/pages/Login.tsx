@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Plane, Mail, Lock } from 'lucide-react';
+import { Mail, Lock, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const Login = () => {
@@ -16,8 +17,12 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
+  
+  // Check if session expired (redirected from session expiration)
+  const sessionExpired = searchParams.get('expired') === 'true';
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -26,6 +31,17 @@ const Login = () => {
       navigate(from, { replace: true });
     }
   }, [user, authLoading, navigate, location]);
+
+  // Show toast notification if session expired
+  useEffect(() => {
+    if (sessionExpired) {
+      toast({
+        title: "Sesión expirada",
+        description: "Tu sesión ha expirado por inactividad. Por favor, inicia sesión nuevamente.",
+        variant: "destructive",
+      });
+    }
+  }, [sessionExpired, toast]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,6 +133,14 @@ const Login = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {sessionExpired && (
+              <Alert variant="destructive" className="mb-4">
+                <Clock className="h-4 w-4" />
+                <AlertDescription>
+                  Tu sesión ha expirado por inactividad. Por favor, inicia sesión nuevamente.
+                </AlertDescription>
+              </Alert>
+            )}
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
