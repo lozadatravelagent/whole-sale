@@ -2701,7 +2701,9 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
     })));
 
     // Extract layover information
-    const layoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
+    // Flexible regex: (.+?) captures both IATA codes (PTY, ATL) and city names (Bogotá, Ciudad de Panamá)
+    // The non-greedy .+? stops at "Tiempo de espera", ensuring correct capture for all formats
+    const layoverPattern = /Escala en (.+?)\s+Tiempo de espera:\s*(\d+h\s*\d*m?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
     const layoverMatches = [...content.matchAll(layoverPattern)];
 
     console.log('🔍 Found layover matches:', layoverMatches.map(m => ({
@@ -2872,10 +2874,11 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
             });
 
             // Extract layovers for this section
-            const outboundLayoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
+            // Flexible regex: (.+?) captures both IATA codes (PTY, ATL) and city names (Bogotá, Ciudad de Panamá)
+            const outboundLayoverPattern = /Escala en (.+?)\s+Tiempo de espera:\s*(\d+h\s*\d*m?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
             const outboundLayovers = [...section.outboundContent.matchAll(outboundLayoverPattern)];
 
-            const returnLayoverPattern = /Escala en ([^T]+?)\s+Tiempo de espera:\s*([^e]+?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
+            const returnLayoverPattern = /Escala en (.+?)\s+Tiempo de espera:\s*(\d+h\s*\d*m?)\s+en\s+([A-Z]{3})\s*\(([^)]+)\)/g;
             const returnLayovers = [...section.returnContent.matchAll(returnLayoverPattern)];
 
             // Build outbound leg for this section
@@ -3385,7 +3388,7 @@ function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
         }, 0);
 
         console.log('💰 Extracted total price from PdfMonkey template (from "Precio total"):', totalPrice,
-                    `(${totalMatches.length} price(s) found)`);
+            `(${totalMatches.length} price(s) found)`);
         return totalPrice;
     }
 
