@@ -8,6 +8,80 @@ import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
 
+// =====================================================================
+// PUNTA CANA HOTEL WHITELIST - SPECIAL FILTER
+// =====================================================================
+
+/**
+ * Palabras clave para detectar hoteles permitidos en Punta Cana.
+ * Cada array interno representa un hotel; el hotel debe contener TODAS las palabras del array.
+ * Ejemplo: ["riu", "bambu"] matchea "RIU BAMBU HOTEL" pero NO "RIU PALACE".
+ */
+const PUNTA_CANA_ALLOWED_HOTELS = [
+  ['riu', 'bambu'],
+  ['iberostar', 'dominicana'],
+  ['bahia', 'principe', 'grand', 'punta', 'cana'],
+  ['sunscape', 'coco'],
+  ['riu', 'republica']
+];
+
+/**
+ * Normaliza texto eliminando acentos y convirtiendo a minúsculas.
+ */
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Verifica si el destino corresponde a Punta Cana.
+ */
+function isPuntaCanaDestination(city: string): boolean {
+  const normalized = normalizeText(city);
+  return normalized.includes('punta') && normalized.includes('cana');
+}
+
+/**
+ * Verifica si el nombre del hotel está en la whitelist de Punta Cana.
+ * Usa coincidencias parciales: el hotel debe contener TODAS las palabras clave de al menos un grupo.
+ */
+function isAllowedPuntaCanaHotel(hotelName: string): boolean {
+  const normalizedName = normalizeText(hotelName);
+
+  return PUNTA_CANA_ALLOWED_HOTELS.some(keywords =>
+    keywords.every(keyword => normalizedName.includes(keyword))
+  );
+}
+
+/**
+ * Filtra hoteles aplicando reglas especiales por destino.
+ * Actualmente solo aplica whitelist para Punta Cana.
+ */
+function applyDestinationSpecificFilters(hotels: LocalHotelData[], city: string): LocalHotelData[] {
+  // Solo aplicar filtro especial para Punta Cana
+  if (!isPuntaCanaDestination(city)) {
+    return hotels;
+  }
+
+  console.log('🌴 [PUNTA CANA FILTER] Applying special hotel whitelist filter');
+  console.log(`📊 [PUNTA CANA FILTER] Hotels before filter: ${hotels.length}`);
+
+  const filteredHotels = hotels.filter(hotel => {
+    const isAllowed = isAllowedPuntaCanaHotel(hotel.name);
+    if (!isAllowed) {
+      console.log(`🚫 [PUNTA CANA FILTER] Excluded: "${hotel.name}"`);
+    } else {
+      console.log(`✅ [PUNTA CANA FILTER] Allowed: "${hotel.name}"`);
+    }
+    return isAllowed;
+  });
+
+  console.log(`📊 [PUNTA CANA FILTER] Hotels after filter: ${filteredHotels.length}`);
+  return filteredHotels;
+}
+
 // Helper function to calculate layover hours between two flight segments
 function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
   try {
@@ -298,6 +372,12 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       params: enrichedParsed.hotels?.checkinDate
     });
 
+    // 🌴 Apply destination-specific filters (e.g., Punta Cana whitelist)
+    const destinationFilteredHotels = applyDestinationSpecificFilters(
+      correctedHotels,
+      enrichedParsed.hotels?.city || ''
+    );
+
     // ✅ USE ADVANCED ROOM FILTERING SYSTEM
     const normalizedRoomType = normalizeCapacity(enrichedParsed.hotels?.roomType);
     const normalizedMealPlan = normalizeMealPlan(enrichedParsed.hotels?.mealPlan);
@@ -308,7 +388,8 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     // ✅ FILTER HOTELS BY ROOM TYPE AND MEAL PLAN using advanced filtering system
     const filterHotelRooms = (hotel: LocalHotelData): LocalHotelData | null => {
       // Apply advanced room filtering with both capacity and meal plan
-      const filteredRooms = filterRooms(hotel.rooms, {
+      // Cast rooms to expected type since API response may have optional fields
+      const filteredRooms = filterRooms(hotel.rooms as Parameters<typeof filterRooms>[0], {
         capacity: normalizedRoomType,
         mealPlan: normalizedMealPlan
       });
@@ -328,11 +409,11 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     };
 
     // Apply filter and remove null hotels
-    const filteredHotels = correctedHotels
+    const filteredHotels = destinationFilteredHotels
       .map(filterHotelRooms)
       .filter((hotel): hotel is LocalHotelData => hotel !== null);
 
-    console.log(`📊 [FILTER] Hotels: ${correctedHotels.length} → ${filteredHotels.length} (after advanced room filtering)`);
+    console.log(`📊 [FILTER] Hotels: ${destinationFilteredHotels.length} → ${filteredHotels.length} (after advanced room filtering)`);
 
     // Sort hotels by lowest price (minimum room price) and limit to 5
     const hotels = filteredHotels
@@ -382,9 +463,10 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     console.error('❌ [HOTEL SEARCH] Error in hotel search process:', error);
 
     // Handle city not found error specifically
+    const requestedCity = parsed.hotels?.city || parsed.flights?.destination || 'desconocida';
     if (error instanceof Error && error.message.includes('Ciudad no encontrada')) {
       return {
-        response: `❌ **Ciudad no encontrada**\n\nNo pude encontrar "${enrichedParsed.hotels?.city}" en la base de datos de EUROVIPS.\n\n🔍 **Verifica que el nombre esté bien escrito:**\n- Ejemplos: "Punta Cana", "Cancún", "Madrid", "Barcelona"\n- Puedes escribir con o sin acentos\n\n💡 **¿Buscabas otra ciudad cercana?**\nIntenta con el nombre de la ciudad principal del destino.`,
+        response: `❌ **Ciudad no encontrada**\n\nNo pude encontrar "${requestedCity}" en la base de datos de EUROVIPS.\n\n🔍 **Verifica que el nombre esté bien escrito:**\n- Ejemplos: "Punta Cana", "Cancún", "Madrid", "Barcelona"\n- Puedes escribir con o sin acentos\n\n💡 **¿Buscabas otra ciudad cercana?**\nIntenta con el nombre de la ciudad principal del destino.`,
         data: null
       };
     }
