@@ -25,52 +25,52 @@ serve(async (req) => {
     { action: 'message', resource: 'ai-parser' },
     async () => {
       try {
-    const { message, language = 'es', currentDate, previousContext, conversationHistory = [] } = await req.json();
-    if (!message) {
-      throw new Error('Message is required');
-    }
-    console.log('🤖 AI Message Parser - Processing:', message);
-    console.log('📝 Previous context received:', previousContext);
-    console.log('📚 Conversation history received:', conversationHistory?.length || 0, 'messages');
-    console.log('📅 Current date:', currentDate);
-    // Format conversation history - use smart truncation to maximize context
-    let conversationHistoryText = '';
-    if (conversationHistory && conversationHistory.length > 0) {
-      try {
-        // Take last 20 messages for comprehensive context (up from 8)
-        const recentHistory = conversationHistory.slice(-20);
+        const { message, language = 'es', currentDate, previousContext, conversationHistory = [] } = await req.json();
+        if (!message) {
+          throw new Error('Message is required');
+        }
+        console.log('🤖 AI Message Parser - Processing:', message);
+        console.log('📝 Previous context received:', previousContext);
+        console.log('📚 Conversation history received:', conversationHistory?.length || 0, 'messages');
+        console.log('📅 Current date:', currentDate);
+        // Format conversation history - use smart truncation to maximize context
+        let conversationHistoryText = '';
+        if (conversationHistory && conversationHistory.length > 0) {
+          try {
+            // Take last 20 messages for comprehensive context (up from 8)
+            const recentHistory = conversationHistory.slice(-20);
 
-        conversationHistoryText = recentHistory.map((msg, index) => {
-          // Escape problematic characters
-          let safeContent = (msg.content || '').replace(/`/g, "'").replace(/\$/g, "\\$");
+            conversationHistoryText = recentHistory.map((msg, index) => {
+              // Escape problematic characters
+              let safeContent = (msg.content || '').replace(/`/g, "'").replace(/\$/g, "\\$");
 
-          // Smart truncation: keep more for recent messages, less for older ones
-          const messagesFromEnd = recentHistory.length - index;
-          let maxLength;
-          if (messagesFromEnd <= 5) {
-            maxLength = 800; // Last 5 messages: keep almost full content
-          } else if (messagesFromEnd <= 10) {
-            maxLength = 500; // Messages 6-10: medium length
-          } else {
-            maxLength = 300; // Older messages: shorter summary
+              // Smart truncation: keep more for recent messages, less for older ones
+              const messagesFromEnd = recentHistory.length - index;
+              let maxLength;
+              if (messagesFromEnd <= 5) {
+                maxLength = 800; // Last 5 messages: keep almost full content
+              } else if (messagesFromEnd <= 10) {
+                maxLength = 500; // Messages 6-10: medium length
+              } else {
+                maxLength = 300; // Older messages: shorter summary
+              }
+
+              safeContent = safeContent.substring(0, maxLength);
+              if (safeContent.length === maxLength) {
+                safeContent += '...'; // Indicate truncation
+              }
+
+              return `${msg.role}: ${safeContent}`;
+            }).join('\\n');
+          } catch (e) {
+            console.error('Error formatting conversation history:', e);
+            conversationHistoryText = '';
           }
+        }
 
-          safeContent = safeContent.substring(0, maxLength);
-          if (safeContent.length === maxLength) {
-            safeContent += '...'; // Indicate truncation
-          }
-
-          return `${msg.role}: ${safeContent}`;
-        }).join('\\n');
-      } catch (e) {
-        console.error('Error formatting conversation history:', e);
-        conversationHistoryText = '';
-      }
-    }
-
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) throw new Error('OpenAI API key not configured');
-    const systemPrompt = `Eres un experto asistente de viajes que analiza solicitudes de viaje en ESPAÑOL y extrae datos estructurados en JSON.
+        const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+        if (!openaiApiKey) throw new Error('OpenAI API key not configured');
+        const systemPrompt = `Eres un experto asistente de viajes que analiza solicitudes de viaje en ESPAÑOL y extrae datos estructurados en JSON.
 
 FECHA ACTUAL: ${currentDate}
 IMPORTANTE: Siempre responde solo con JSON válido. Usa \\n para saltos de línea en strings.
@@ -111,7 +111,7 @@ EXAMPLES:
 - Previous has complete flight + current "con valija" → Return complete flight with luggage: "checked"
 ` : ''}
 
-TASK: Extract structured data for flights, hotels, packages, services, or combined requests.
+TASK: Extract structured data for flights, hotels, packages, services, combined, or itinerary requests.
 
 **FLIGHT REQUEST INTENTION DETECTION (CRITICAL):**
 
@@ -254,6 +254,112 @@ CRITICAL INSTRUCTION:
 **COMBINED SEARCH TRIGGERS:**
 - "vuelo y hotel", "con hotel", "hotel incluido", "paquete", "agrega hotel"
 
+## 🗺️ ITINERARY REQUEST DETECTION (CRITICAL NEW FEATURE)
+
+**ITINERARY INTENTION DETECTION:**
+If the user wants to plan activities/things to do in a destination WITHOUT booking flights or hotels, classify as requestType: "itinerary"
+
+**Itinerary Keywords (Spanish):**
+- itinerario, plan de viaje, ruta de viaje, agenda de viaje, cronograma
+- qué hacer en, qué visitar en, qué ver en, lugares para visitar
+- organiza mi viaje, arma mi viaje, planifica mi viaje, armame un plan
+- actividades en, recorrido por, tour por
+
+**Itinerary Keywords (English):**
+- itinerary, travel plan, trip plan, travel route, schedule
+- what to do in, what to visit, what to see, places to visit
+- plan my trip, organize my trip
+
+**Itinerary Request Patterns:**
+- "Armame un itinerario de X días para [destino]"
+- "Plan de viaje de X días por [país/ciudad]"
+- "Qué puedo hacer en [ciudad] durante X días?"
+- "Necesito un itinerario para mi viaje a [destino]"
+- "Organiza mi viaje de X días por [lista de lugares]"
+- "Ruta de X días por [destino]"
+- "Dame actividades para X días en [ciudad]"
+
+**Duration Extraction:**
+- Numbers: "5 días", "10 days", "3 noches"
+- Words: "una semana" = 7, "dos semanas" = 14, "un fin de semana" = 2
+- Phrases: "fin de semana largo" = 3, "puente" = 3-4
+
+**Destination Extraction:**
+- Single city: "Roma", "Barcelona", "Tokyo"
+- Single country: "Italia", "España", "Japón"
+- Multiple destinations: "Italia y Francia", "Madrid, Barcelona y Valencia"
+- Regions: "Europa", "Patagonia", "Caribe"
+
+**CRITICAL: Itinerary vs Flights/Hotels Distinction:**
+- If user mentions "vuelo", "hotel", "reservar", "cotizar" → NOT itinerary, use flights/hotels/combined
+- If user ONLY asks for activities/plans/what to do → itinerary
+- Itinerary is for PLANNING, not BOOKING
+
+**ITINERARY Required Fields:**
+- destinations: array of destination names (cities, countries, or regions)
+- days: number of days for the trip
+
+**ITINERARY Examples:**
+
+Example A - Basic itinerary request:
+User: "Armame un itinerario de 5 días para Roma"
+{
+  "requestType": "itinerary",
+  "itinerary": {
+    "destinations": ["Roma"],
+    "days": 5
+  },
+  "confidence": 0.95
+}
+
+Example B - Multiple destinations:
+User: "Plan de viaje de 10 días por Italia y Francia"
+{
+  "requestType": "itinerary",
+  "itinerary": {
+    "destinations": ["Italia", "Francia"],
+    "days": 10
+  },
+  "confidence": 0.95
+}
+
+Example C - Question format:
+User: "Qué puedo hacer en Barcelona durante una semana?"
+{
+  "requestType": "itinerary",
+  "itinerary": {
+    "destinations": ["Barcelona"],
+    "days": 7
+  },
+  "confidence": 0.9
+}
+
+Example D - Missing days (ask for info):
+User: "Quiero un itinerario para Madrid"
+{
+  "requestType": "itinerary",
+  "itinerary": {
+    "destinations": ["Madrid"],
+    "days": null
+  },
+  "missingFields": ["days"],
+  "message": "Para armar tu itinerario de viaje a Madrid, necesito saber:\\n\\n**¿Cuántos días durará tu viaje?**\\n\\nPor ejemplo: '5 días', 'una semana', '10 días'",
+  "confidence": 0.7
+}
+
+Example E - Missing destination (ask for info):
+User: "Armame un plan de viaje de 7 días"
+{
+  "requestType": "itinerary",
+  "itinerary": {
+    "destinations": [],
+    "days": 7
+  },
+  "missingFields": ["destinations"],
+  "message": "Para armar tu itinerario de 7 días, necesito saber:\\n\\n**¿A qué destino(s) quieres viajar?**\\n\\nPor ejemplo: 'Roma', 'Italia y Francia', 'Barcelona, Madrid y París'",
+  "confidence": 0.7
+}
+
 ## REQUIRED FIELDS AND DEFAULTS
 
 **FLIGHTS:**
@@ -308,6 +414,10 @@ You MUST scan the CURRENT user message for these EXACT keywords before including
 - ONLY include if user EXPLICITLY types food/meal keywords in THIS message
 
 **COMBINED:** All flight + hotel required fields with same defaults
+
+**ITINERARY:**
+- Required: destinations (array of strings, at least 1), days (number > 0)
+- If either is missing, set requestType to "itinerary" but include missingFields array and message
 
 **IMPORTANT PASSENGER RULES:**
 1. If NO passenger count mentioned → adults = 1, children = 0
@@ -536,111 +646,111 @@ Be EXTREMELY tolerant with spelling variations for room types:
 - Users OFTEN omit accents - this is NORMAL and VALID!
 
 Now analyze this ACTUAL message and respond with JSON only:`;
-    const userPrompt = message;
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt
+        const userPrompt = message;
+        const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json'
           },
-          {
-            role: 'user',
-            content: userPrompt
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 1000
-      })
-    });
-    if (!openaiResponse.ok) {
-      const errorData = await openaiResponse.text();
-      console.error('❌ OpenAI API error:', errorData);
-      throw new Error(`OpenAI API error: ${openaiResponse.status}`);
-    }
-    const openaiData = await openaiResponse.json();
-    const aiResponse = openaiData.choices[0]?.message?.content;
-    if (!aiResponse) {
-      throw new Error('No response from OpenAI');
-    }
-    console.log('🤖 Raw AI response:', aiResponse);
-    console.log('🤖 AI response type:', typeof aiResponse);
-    console.log('🤖 AI response length:', aiResponse?.length);
-    // Clean the AI response to handle emojis and special characters properly
-    let cleanedResponse = aiResponse.trim();
-    // Remove any potential BOM or invisible characters
-    cleanedResponse = cleanedResponse.replace(/^\uFEFF/, '');
-    // Try to fix JSON by replacing literal newlines in string values with \\n
-    // This is a more targeted approach to fix the specific issue
-    try {
-      // First, try to parse as-is
-      JSON.parse(cleanedResponse);
-    } catch (error) {
-      // If parsing fails, try to fix common issues
-      console.log('🔧 Attempting to fix JSON formatting issues...');
-      // Fix literal newlines in string values by replacing them with \\n
-      cleanedResponse = cleanedResponse.replace(/"([^"]*)\n([^"]*)"/g, (match, before, after) => {
-        return `"${before}\\n${after}"`;
-      });
-      // Fix multiple consecutive newlines
-      cleanedResponse = cleanedResponse.replace(/"([^"]*)\n\n([^"]*)"/g, (match, before, after) => {
-        return `"${before}\\n\\n${after}"`;
-      });
-    }
-    // Parse the JSON response
-    let parsed;
-    try {
-      parsed = JSON.parse(cleanedResponse);
-    } catch (parseError) {
-      console.error('❌ Failed to parse AI response as JSON:', parseError);
-      console.error('❌ AI response was:', aiResponse);
-      console.error('❌ Cleaned response was:', cleanedResponse);
-      // Try to extract JSON from the response if it's wrapped in other text
-      const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          parsed = JSON.parse(jsonMatch[0]);
-          console.log('✅ Successfully extracted JSON from wrapped response');
-        } catch (secondParseError) {
-          console.error('❌ Failed to parse extracted JSON:', secondParseError);
-          throw new Error('Invalid JSON response from AI');
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: systemPrompt
+              },
+              {
+                role: 'user',
+                content: userPrompt
+              }
+            ],
+            temperature: 0.1,
+            max_tokens: 1000
+          })
+        });
+        if (!openaiResponse.ok) {
+          const errorData = await openaiResponse.text();
+          console.error('❌ OpenAI API error:', errorData);
+          throw new Error(`OpenAI API error: ${openaiResponse.status}`);
         }
-      } else {
-        throw new Error('Invalid JSON response from AI');
-      }
-    }
-    // Fix common type issues from AI response
-    if (typeof parsed.confidence === 'string') {
-      parsed.confidence = parseFloat(parsed.confidence);
-    }
+        const openaiData = await openaiResponse.json();
+        const aiResponse = openaiData.choices[0]?.message?.content;
+        if (!aiResponse) {
+          throw new Error('No response from OpenAI');
+        }
+        console.log('🤖 Raw AI response:', aiResponse);
+        console.log('🤖 AI response type:', typeof aiResponse);
+        console.log('🤖 AI response length:', aiResponse?.length);
+        // Clean the AI response to handle emojis and special characters properly
+        let cleanedResponse = aiResponse.trim();
+        // Remove any potential BOM or invisible characters
+        cleanedResponse = cleanedResponse.replace(/^\uFEFF/, '');
+        // Try to fix JSON by replacing literal newlines in string values with \\n
+        // This is a more targeted approach to fix the specific issue
+        try {
+          // First, try to parse as-is
+          JSON.parse(cleanedResponse);
+        } catch (error) {
+          // If parsing fails, try to fix common issues
+          console.log('🔧 Attempting to fix JSON formatting issues...');
+          // Fix literal newlines in string values by replacing them with \\n
+          cleanedResponse = cleanedResponse.replace(/"([^"]*)\n([^"]*)"/g, (match, before, after) => {
+            return `"${before}\\n${after}"`;
+          });
+          // Fix multiple consecutive newlines
+          cleanedResponse = cleanedResponse.replace(/"([^"]*)\n\n([^"]*)"/g, (match, before, after) => {
+            return `"${before}\\n\\n${after}"`;
+          });
+        }
+        // Parse the JSON response
+        let parsed;
+        try {
+          parsed = JSON.parse(cleanedResponse);
+        } catch (parseError) {
+          console.error('❌ Failed to parse AI response as JSON:', parseError);
+          console.error('❌ AI response was:', aiResponse);
+          console.error('❌ Cleaned response was:', cleanedResponse);
+          // Try to extract JSON from the response if it's wrapped in other text
+          const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              parsed = JSON.parse(jsonMatch[0]);
+              console.log('✅ Successfully extracted JSON from wrapped response');
+            } catch (secondParseError) {
+              console.error('❌ Failed to parse extracted JSON:', secondParseError);
+              throw new Error('Invalid JSON response from AI');
+            }
+          } else {
+            throw new Error('Invalid JSON response from AI');
+          }
+        }
+        // Fix common type issues from AI response
+        if (typeof parsed.confidence === 'string') {
+          parsed.confidence = parseFloat(parsed.confidence);
+        }
 
-    // Add default confidence if missing
-    if (parsed.confidence === undefined || parsed.confidence === null) {
-      console.log('⚠️ Missing confidence field, setting default value of 0.8');
-      parsed.confidence = 0.8;
-    }
+        // Add default confidence if missing
+        if (parsed.confidence === undefined || parsed.confidence === null) {
+          console.log('⚠️ Missing confidence field, setting default value of 0.8');
+          parsed.confidence = 0.8;
+        }
 
-    // Fix maxLayoverHours if it's a string
-    if (parsed.flights?.maxLayoverHours && typeof parsed.flights.maxLayoverHours === 'string') {
-      parsed.flights.maxLayoverHours = parseInt(parsed.flights.maxLayoverHours, 10);
-    }
+        // Fix maxLayoverHours if it's a string
+        if (parsed.flights?.maxLayoverHours && typeof parsed.flights.maxLayoverHours === 'string') {
+          parsed.flights.maxLayoverHours = parseInt(parsed.flights.maxLayoverHours, 10);
+        }
 
-    // Validate the response structure
-    if (!parsed.requestType || typeof parsed.confidence !== 'number') {
-      console.error('❌ Invalid response structure from AI:', {
-        requestType: parsed.requestType,
-        confidence: parsed.confidence,
-        confidenceType: typeof parsed.confidence,
-        fullResponse: parsed
-      });
-      throw new Error(`Invalid response structure from AI - requestType: ${parsed.requestType}, confidence: ${parsed.confidence} (${typeof parsed.confidence})`);
-    }
+        // Validate the response structure
+        if (!parsed.requestType || typeof parsed.confidence !== 'number') {
+          console.error('❌ Invalid response structure from AI:', {
+            requestType: parsed.requestType,
+            confidence: parsed.confidence,
+            confidenceType: typeof parsed.confidence,
+            fullResponse: parsed
+          });
+          throw new Error(`Invalid response structure from AI - requestType: ${parsed.requestType}, confidence: ${parsed.confidence} (${typeof parsed.confidence})`);
+        }
         console.log('✅ AI parsing successful:', parsed);
         return new Response(JSON.stringify({
           success: true,

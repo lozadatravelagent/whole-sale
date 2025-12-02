@@ -1,3 +1,15 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// Flight Helpers - Utilities for flight data transformation and display
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Centralized imports
+import { getCityNameFromIATA } from '@/services/cityCodeService';
+import {
+  getAirlineName as getAirlineNameFromAliases,
+  getAirlineCode,
+  AIRLINE_ALIASES
+} from '@/features/chat/data/airlineAliases';
+
 // Helper function to format duration from minutes to readable format
 export const formatDuration = (minutes: number): string => {
   if (!minutes || minutes <= 0) return '0h 0m';
@@ -12,8 +24,6 @@ export const formatDuration = (minutes: number): string => {
 
 // Helper function to get city name from airport code
 // Now uses centralized service with 500+ airport mappings
-import { getCityNameFromIATA } from '@/services/cityCodeService';
-
 export const getCityNameFromCode = getCityNameFromIATA;
 
 // Helper function to get tax description from tax code
@@ -40,113 +50,25 @@ export const getTaxDescription = (taxCode: string): string => {
 };
 
 // Helper function to get airline name from airline code
+// Uses centralized airline aliases for consistency across the system
 export const getAirlineNameFromCode = (airlineCode: string): string => {
-  const airlineMapping: Record<string, string> = {
-    'LA': 'LATAM AIRLINES GROUP',
-    'AR': 'Aerolíneas Argentinas',
-    'UA': 'United Airlines',
-    'AA': 'American Airlines',
-    'DL': 'Delta Air Lines',
-    'IB': 'Iberia',
-    'LH': 'Lufthansa',
-    'AF': 'Air France',
-    'KL': 'KLM',
-    'BA': 'British Airways',
-    'AZ': 'Alitalia',
-    'LX': 'Swiss International Air Lines',
-    'TP': 'TAP Air Portugal',
-    'JJ': 'TAM Airlines',
-    'G3': 'Gol Transportes Aéreos',
-    'AD': 'Azul Brazilian Airlines',
-    'CM': 'Copa Airlines',
-    'AV': 'Avianca',
-    'AM': 'Aeroméxico',
-    'VY': 'Vueling',
-    'FR': 'Ryanair',
-    'EK': 'Emirates',
-    'QR': 'Qatar Airways',
-    'TK': 'Turkish Airlines',
-    'SU': 'Aeroflot',
-    'CX': 'Cathay Pacific',
-    'SQ': 'Singapore Airlines',
-    'TG': 'Thai Airways',
-    'JL': 'Japan Airlines',
-    'NH': 'All Nippon Airways'
-  };
-
-  return airlineMapping[airlineCode] || airlineCode;
+  return getAirlineNameFromAliases(airlineCode);
 };
 
 // Helper function to get airline code from airline name (reverse mapping)
+// Uses centralized airline aliases for consistency across the system
+
 export const getAirlineCodeFromName = (airlineName: string): string => {
   const normalizedName = airlineName.toLowerCase().trim();
 
-  const nameToCodeMapping: Record<string, string> = {
-    // LATAM variations
-    'latam': 'LA',
-    'latam airlines': 'LA',
-    'latam airlines group': 'LA',
-    'tam': 'JJ',
-
-    // Aerolíneas Argentinas variations
-    'aerolineas argentinas': 'AR',
-    'aerolíneas argentinas': 'AR',
-    'aerolineas': 'AR',
-    'aerolíneas': 'AR',
-
-    // Air France variations
-    'air france': 'AF',
-    'airfrance': 'AF',
-
-    // Other major airlines
-    'iberia': 'IB',
-    'lufthansa': 'LH',
-    'american airlines': 'AA',
-    'american': 'AA',
-    'united airlines': 'UA',
-    'united': 'UA',
-    'delta': 'DL',
-    'delta air lines': 'DL',
-    'british airways': 'BA',
-    'klm': 'KL',
-    'alitalia': 'AZ',
-    'swiss': 'LX',
-    'swiss international air lines': 'LX',
-    'tap air portugal': 'TP',
-    'tap': 'TP',
-    'gol': 'G3',
-    'azul': 'AD',
-    'copa airlines': 'CM',
-    'copa': 'CM',
-    'avianca': 'AV',
-    'aeromexico': 'AM',
-    'aeroméxico': 'AM',
-    'vueling': 'VY',
-    'ryanair': 'FR',
-    'emirates': 'EK',
-    'qatar airways': 'QR',
-    'qatar': 'QR',
-    'turkish airlines': 'TK',
-    'turkish': 'TK',
-    'aeroflot': 'SU',
-    'cathay pacific': 'CX',
-    'singapore airlines': 'SQ',
-    'singapore': 'SQ',
-    'thai airways': 'TG',
-    'thai': 'TG',
-    'japan airlines': 'JL',
-    'jal': 'JL',
-    'ana': 'NH',
-    'all nippon airways': 'NH'
-  };
-
-  // Try exact match first
-  if (nameToCodeMapping[normalizedName]) {
-    return nameToCodeMapping[normalizedName];
+  // Try exact match first using centralized aliases
+  const exactMatch = getAirlineCode(airlineName);
+  if (exactMatch) {
+    return exactMatch;
   }
 
   // Try partial matches for common variations
-  for (const [name, code] of Object.entries(nameToCodeMapping)) {
+  for (const [name, code] of Object.entries(AIRLINE_ALIASES)) {
     if (normalizedName.includes(name) || name.includes(normalizedName)) {
       return code;
     }

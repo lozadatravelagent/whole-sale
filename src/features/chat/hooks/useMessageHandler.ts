@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 import type React from 'react';
-import { parseMessageWithAI, combineWithPreviousRequest, validateFlightRequiredFields, validateHotelRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
+import { parseMessageWithAI, combineWithPreviousRequest, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
-import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery } from '../services/searchHandlers';
+import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery, handleItineraryRequest } from '../services/searchHandlers';
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
@@ -452,7 +452,7 @@ const useMessageHandler = (
       // 2. Update conversation title if first message
       // IMPORTANT: Skip title generation for PDF uploads - title will be generated after PDF analysis
       const isPdfUpload = currentMessage.toLowerCase().includes('he subido el pdf') ||
-                         currentMessage.toLowerCase().includes('pdf para análisis');
+        currentMessage.toLowerCase().includes('pdf para análisis');
 
       if (messages.length === 0 && !isPdfUpload) {
         console.log('🏷️ [MESSAGE FLOW] Step 6: First message - updating conversation title');
@@ -863,6 +863,54 @@ const useMessageHandler = (
         // Clear previous request since we have all required fields
         setPreviousParsedRequest(null);
         await clearContextualMemory(finalConversationId);
+      } else if (parsedRequest.requestType === 'itinerary') {
+        console.log('🗺️ [VALIDATION] Validating itinerary required fields');
+        const validation = validateItineraryRequiredFields(parsedRequest.itinerary);
+
+        console.log('📋 [VALIDATION] Itinerary validation result:', {
+          isValid: validation.isValid,
+          missingFields: validation.missingFields,
+          missingFieldsSpanish: validation.missingFieldsSpanish
+        });
+
+        if (!validation.isValid) {
+          console.log('⚠️ [VALIDATION] Missing itinerary required fields, requesting more info');
+
+          // Store the current parsed request for future combination
+          setPreviousParsedRequest(parsedRequest);
+          await saveContextualMemory(finalConversationId, parsedRequest);
+
+          // Generate message asking for missing information
+          const missingInfoMessage = generateMissingInfoMessage(
+            validation.missingFieldsSpanish,
+            'itinerary'
+          );
+
+          console.log('💬 [VALIDATION] Generated missing info message for itinerary');
+
+          // Add assistant message with missing info request
+          await addMessageViaSupabase({
+            conversation_id: finalConversationId,
+            role: 'assistant' as const,
+            content: { text: missingInfoMessage },
+            meta: {
+              status: 'sent',
+              messageType: 'missing_info_request',
+              missingFields: validation.missingFields,
+              originalRequest: parsedRequest
+            }
+          });
+
+          console.log('✅ [VALIDATION] Missing info message sent, stopping process');
+          setIsTyping(false, conversationIdForThisSearch);
+          setIsLoading(false);
+          return; // Stop processing here, wait for user response
+        }
+
+        console.log('✅ [VALIDATION] All itinerary required fields present, proceeding with generation');
+        // Clear previous request since we have all required fields
+        setPreviousParsedRequest(null);
+        await clearContextualMemory(finalConversationId);
       }
 
       // 6. Execute searches based on type (WITHOUT N8N)
@@ -943,8 +991,17 @@ const useMessageHandler = (
           }
           break;
         }
+        case 'itinerary': {
+          console.log('🗺️ [MESSAGE FLOW] Step 12g: Processing itinerary request');
+          setTypingMessage('Generando tu itinerario de viaje...', conversationIdForThisSearch);
+          const itineraryResult = await handleItineraryRequest(parsedRequest);
+          assistantResponse = itineraryResult.response;
+          structuredData = itineraryResult.data;
+          console.log('✅ [MESSAGE FLOW] Itinerary generation completed');
+          break;
+        }
         default:
-          console.log('💬 [MESSAGE FLOW] Step 12g: Processing general query');
+          console.log('💬 [MESSAGE FLOW] Step 12h: Processing general query');
           assistantResponse = await handleGeneralQuery(parsedRequest);
           console.log('✅ [MESSAGE FLOW] General query completed');
       }

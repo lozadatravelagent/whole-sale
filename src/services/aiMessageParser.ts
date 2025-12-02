@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
 export interface ParsedTravelRequest {
-    requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request';
+    requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
     flights?: {
         origin: string;
         destination: string;
@@ -47,6 +47,10 @@ export interface ParsedTravelRequest {
         dateTo?: string;
         serviceType: '1' | '2' | '3'; // 1=Transfer, 2=Excursion, 3=Other
     };
+    itinerary?: {
+        destinations: string[]; // Lista de destinos (ciudades, países o combinación)
+        days: number; // Cantidad de días del itinerario
+    };
     confidence: number; // 0-1 score of parsing confidence
     originalMessage: string;
     // Fields for missing_info_request
@@ -74,6 +78,12 @@ export interface RequiredHotelFields {
     adults: boolean;
     roomType: boolean;
     mealPlan: boolean;
+}
+
+// Interfaz para campos requeridos de itinerarios
+export interface RequiredItineraryFields {
+    destinations: boolean;
+    days: boolean;
 }
 
 // Función para validar campos requeridos de vuelos
@@ -161,13 +171,49 @@ export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels
     };
 }
 
+// Función para validar campos requeridos de itinerarios
+export function validateItineraryRequiredFields(itinerary?: ParsedTravelRequest['itinerary']): {
+    isValid: boolean;
+    missingFields: string[];
+    missingFieldsSpanish: string[];
+} {
+    if (!itinerary) {
+        return {
+            isValid: false,
+            missingFields: ['destinations', 'days'],
+            missingFieldsSpanish: ['destino(s)', 'cantidad de días']
+        };
+    }
+
+    const missingFields: string[] = [];
+    const missingFieldsSpanish: string[] = [];
+
+    // Validar campos requeridos
+    if (!itinerary.destinations || itinerary.destinations.length === 0) {
+        missingFields.push('destinations');
+        missingFieldsSpanish.push('destino(s)');
+    }
+    if (!itinerary.days || itinerary.days < 1) {
+        missingFields.push('days');
+        missingFieldsSpanish.push('cantidad de días');
+    }
+
+    return {
+        isValid: missingFields.length === 0,
+        missingFields,
+        missingFieldsSpanish
+    };
+}
+
 // Función para generar mensaje solicitando información faltante
 export function generateMissingInfoMessage(missingFieldsSpanish: string[], requestType: string): string {
     const baseMessage = requestType === 'flights'
         ? 'Para buscar los mejores vuelos, necesito que me proporciones la siguiente información:'
         : requestType === 'hotels'
             ? 'Para buscar los mejores hoteles, necesito que me proporciones la siguiente información:'
-            : 'Para buscar las mejores opciones de viaje, necesito que me proporciones la siguiente información:';
+            : requestType === 'itinerary'
+                ? 'Para armar tu itinerario de viaje, necesito que me proporciones la siguiente información:'
+                : 'Para buscar las mejores opciones de viaje, necesito que me proporciones la siguiente información:';
 
     const fieldsList = missingFieldsSpanish.map((field, index) =>
         `${index + 1}. **${field.charAt(0).toUpperCase() + field.slice(1)}**`
@@ -226,6 +272,13 @@ function generateFieldExamples(missingFieldsSpanish: string[]): string {
                 break;
             case 'modalidad de alimentación (all inclusive, desayuno, media pensión)':
                 examples.push('🍽️ **Modalidad:** Por ejemplo: "all inclusive", "con desayuno", "media pensión"');
+                break;
+            // Ejemplos para itinerarios
+            case 'destino(s)':
+                examples.push('🌍 **Destino(s):** Por ejemplo: "Roma", "Italia y Francia", "Barcelona, Madrid y París"');
+                break;
+            case 'cantidad de días':
+                examples.push('📅 **Días:** Por ejemplo: "5 días", "una semana", "10 días"');
                 break;
         }
     });
@@ -388,7 +441,7 @@ export async function parseMessageWithAI(
                 const requestedMonth2 = parseInt(mes2Num, 10);
                 // For return date, compare with current month and consider if it wraps to next year
                 const año2 = requestedMonth2 < currentMonth ? (currentYear + 1).toString() :
-                            (requestedMonth2 < requestedMonth ? (parseInt(año) + 1).toString() : año);
+                    (requestedMonth2 < requestedMonth ? (parseInt(año) + 1).toString() : año);
                 quick.flights.returnDate = `${año2}-${mes2Num}-${fechaMatch[3].padStart(2, '0')}`;
             }
         }
@@ -446,74 +499,17 @@ export async function parseMessageWithAI(
             quick.flights = { ...(quick.flights || ({} as any)), stops: 'one_stop' as any } as any;
         }
 
-        // 🛡️ AIRLINE DETECTOR (Fallback for AI): Detect common airline names
-        // This ensures airline filtering works even if AI Edge Function fails to detect
-        const normalizedLower = normalized.toLowerCase();
+        // 🛡️ AIRLINE DETECTOR: Usa el sistema centralizado de detección
+        // Importamos el detector desde el archivo de aliases
+        const { detectAirlineInText } = await import('@/features/chat/data/airlineAliases');
 
-        // Strategy 1: Flexible pattern - captures 1-3 words after "aerolinea/aerolínea/airline"
-        // This catches ANY airline mentioned after these keywords, even if not in our predefined list
-        const flexibleAirlineMatch = normalizedLower.match(
-            /\b(?:aerolinea|aerolínea|airline|con\s+la\s+aerolinea|con\s+la\s+aerolínea)\s+([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+){0,2})/i
-        );
-
-        if (flexibleAirlineMatch && flexibleAirlineMatch[1]) {
-            let detectedAirline = flexibleAirlineMatch[1].trim();
-
-            // Remove everything after (and including) stop words
-            // Stop words indicate the airline name has ended
-            const stopWords = ['a', 'hacia', 'para', 'desde', 'saliendo', 'regresando', 'directo',
-                              'con', 'business', 'economy', 'class', 'primera', 'el', 'la', 'los', 'las',
-                              'de', 'en', 'por', 'del', 'al'];
-
-            // Split and find the first stop word, keep only words before it
-            const words = detectedAirline.split(/\s+/);
-            const stopWordIndex = words.findIndex(word => stopWords.includes(word));
-
-            if (stopWordIndex !== -1) {
-                // Found a stop word - keep only words before it
-                detectedAirline = words.slice(0, stopWordIndex).join(' ');
-            } else {
-                // No stop word found - keep all words (already 1-3 words due to regex)
-                detectedAirline = words.join(' ');
-            }
-
-            if (detectedAirline.length > 2) { // At least 2 characters to avoid false positives
-                quick.flights = { ...(quick.flights || ({} as any)), preferredAirline: detectedAirline } as any;
-                console.log(`🛡️ [QUICK PRE-PARSER] Detected airline (flexible pattern): "${detectedAirline}"`);
-            }
-        }
-
-        // Strategy 2: Predefined list with specific patterns (fallback if flexible didn't match)
-        if (!quick.flights?.preferredAirline) {
-            const commonAirlines = [
-                'emirates', 'latam', 'american airlines', 'american', 'united', 'delta',
-                'iberia', 'lufthansa', 'air france', 'klm', 'british airways',
-                'aerolíneas argentinas', 'aerolineas argentinas', 'aerolineas', 'aerolíneas',
-                'qatar', 'turkish', 'avianca', 'copa', 'gol', 'azul', 'tam',
-                'alitalia', 'tap', 'swiss', 'singapore', 'cathay', 'ana', 'jal',
-                'etihad', 'korean air', 'air canada', 'aeroméxico', 'aeromexico'
-            ];
-
-            // Try to find airline mentions with common patterns
-            for (const airline of commonAirlines) {
-                // Patterns: "con [airline]", "de [airline]", "en [airline]",
-                // "[airline] a [destino]", "vuelo [airline]", "prefiero [airline]"
-                const patterns = [
-                    new RegExp(`\\b(?:con|de|en|vuelo|prefiero|operado por)\\s+${airline}\\b`, 'i'),
-                    new RegExp(`\\b${airline}\\s+(?:a|hacia|para|desde)\\b`, 'i'),
-                    new RegExp(`\\b${airline}\\s+(?:class|business|economy|primera)\\b`, 'i')
-                ];
-
-                for (const pattern of patterns) {
-                    if (pattern.test(normalizedLower)) {
-                        quick.flights = { ...(quick.flights || ({} as any)), preferredAirline: airline } as any;
-                        console.log(`🛡️ [QUICK PRE-PARSER] Detected airline (predefined list): "${airline}"`);
-                        break;
-                    }
-                }
-
-                if (quick.flights?.preferredAirline) break;
-            }
+        const airlineDetection = detectAirlineInText(normalized);
+        if (airlineDetection) {
+            quick.flights = {
+                ...(quick.flights || ({} as any)),
+                preferredAirline: airlineDetection.name
+            } as any;
+            console.log(`🛡️ [QUICK PRE-PARSER] Detected airline: "${airlineDetection.name}" → ${airlineDetection.code} (confidence: ${airlineDetection.confidence})`);
         }
     } catch (e) {
         console.warn('Quick pre-parse failed:', e);
@@ -597,6 +593,10 @@ export function validateParsedRequest(parsed: ParsedTravelRequest): boolean {
         case 'combined':
             return validateParsedRequest({ ...parsed, requestType: 'flights' }) &&
                 validateParsedRequest({ ...parsed, requestType: 'hotels' });
+
+        case 'itinerary':
+            return !!(parsed.itinerary?.destinations && parsed.itinerary.destinations.length > 0 &&
+                parsed.itinerary?.days && parsed.itinerary.days > 0);
 
         default:
             return true;

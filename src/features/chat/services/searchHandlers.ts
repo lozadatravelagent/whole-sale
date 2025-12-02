@@ -3,7 +3,7 @@ import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { formatForStarling, formatForEurovips } from '@/services/aiMessageParser';
 import type { SearchResult, LocalHotelData, LocalPackageData, LocalServiceData } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
-import { formatFlightResponse, formatHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse } from './responseFormatters';
+import { formatFlightResponse, formatHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatItineraryResponse } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
@@ -606,6 +606,82 @@ export const handleGeneralQuery = async (parsed: ParsedTravelRequest): Promise<s
     '✈️ **Búsqueda de vuelos**\n' +
     '🏨 **Búsqueda de hoteles**\n' +
     '🎒 **Búsqueda de paquetes**\n' +
-    '🚌 **Servicios y transfers**\n\n' +
+    '🚌 **Servicios y transfers**\n' +
+    '🗺️ **Itinerarios de viaje**\n\n' +
     'Dime qué necesitas con fechas y destinos específicos.';
+};
+
+// =====================================================================
+// ITINERARY HANDLER - Generates AI-powered travel itineraries
+// =====================================================================
+
+export const handleItineraryRequest = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
+  console.log('🗺️ [ITINERARY] Starting itinerary generation process');
+  console.log('📋 Parsed request:', parsed);
+
+  try {
+    const { destinations, days } = parsed.itinerary || {};
+
+    if (!destinations || destinations.length === 0 || !days || days < 1) {
+      console.warn('⚠️ [ITINERARY] Missing required fields');
+      return {
+        response: '🗺️ Para crear tu itinerario necesito saber:\n\n' +
+          '• **Destino(s):** ¿A qué ciudad(es) o país(es) viajas?\n' +
+          '• **Duración:** ¿Cuántos días durará tu viaje?\n\n' +
+          'Por ejemplo: "Itinerario de 5 días para Roma" o "Plan de 10 días por Italia y Francia"',
+        data: null
+      };
+    }
+
+    console.log(`🔄 [ITINERARY] Generating itinerary for ${destinations.join(', ')} - ${days} days`);
+
+    // Call the travel-itinerary Edge Function
+    const response = await supabase.functions.invoke('travel-itinerary', {
+      body: {
+        destinations,
+        days
+      }
+    });
+
+    if (response.error) {
+      console.error('❌ [ITINERARY] Edge Function error:', response.error);
+      throw new Error(response.error.message);
+    }
+
+    const itineraryData = response.data?.data;
+
+    if (!itineraryData || !itineraryData.itinerary) {
+      console.error('❌ [ITINERARY] Invalid response from Edge Function');
+      throw new Error('Invalid itinerary response');
+    }
+
+    console.log('✅ [ITINERARY] Itinerary generated successfully');
+    console.log(`📊 [ITINERARY] Generated ${itineraryData.itinerary.length} days`);
+
+    // Format the response
+    const formattedResponse = formatItineraryResponse(itineraryData);
+
+    const result = {
+      response: formattedResponse,
+      data: {
+        itineraryData,
+        messageType: 'itinerary'
+      }
+    };
+
+    console.log('🎉 [ITINERARY] Itinerary generation completed successfully');
+
+    return result;
+  } catch (error) {
+    console.error('❌ [ITINERARY] Error in itinerary generation:', error);
+    return {
+      response: '❌ **Error generando itinerario**\n\n' +
+        'No pude generar el itinerario en este momento. Por favor, intenta nuevamente.\n\n' +
+        '💡 **Tips:**\n' +
+        '• Verifica que el destino esté bien escrito\n' +
+        '• Indica la cantidad de días (ej: "5 días", "una semana")\n' +
+        '• Puedes pedir itinerarios para ciudades, países o regiones',
+      data: null
+    };
+  }
 };

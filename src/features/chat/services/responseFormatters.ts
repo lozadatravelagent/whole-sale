@@ -397,3 +397,128 @@ export const formatCombinedResponse = (combinedData: LocalCombinedTravelResults)
   response += '\n📋 Usa los selectores interactivos para crear tu cotización personalizada.';
   return response;
 };
+
+// =====================================================================
+// ITINERARY FORMATTER - Formats AI-generated travel itineraries
+// =====================================================================
+
+interface ItineraryActivity {
+  time: string;
+  activity: string;
+  tip?: string;
+}
+
+interface ItineraryRestaurant {
+  name: string;
+  type: string;
+  priceRange: string;
+}
+
+interface ItineraryDay {
+  day: number;
+  title: string;
+  morning: ItineraryActivity[];
+  afternoon: ItineraryActivity[];
+  evening: ItineraryActivity[];
+  restaurants: ItineraryRestaurant[];
+  travelTip: string;
+}
+
+interface ItineraryData {
+  destinations: string[];
+  days: number;
+  title: string;
+  introduction: string;
+  itinerary: ItineraryDay[];
+  generalTips: string[];
+}
+
+export const formatItineraryResponse = (data: ItineraryData): string => {
+  if (!data || !data.itinerary || data.itinerary.length === 0) {
+    return '🗺️ No se pudo generar el itinerario. Por favor, intenta nuevamente.';
+  }
+
+  let response = `🗺️ **${data.title}**\n\n`;
+  response += `📍 **Destinos:** ${data.destinations.join(', ')}\n`;
+  response += `📅 **Duración:** ${data.days} días\n\n`;
+
+  if (data.introduction) {
+    response += `${data.introduction}\n\n`;
+  }
+
+  response += '---\n\n';
+
+  // Format each day
+  data.itinerary.forEach((day) => {
+    response += `## 📅 **Día ${day.day}: ${day.title}**\n\n`;
+
+    // Morning activities
+    if (day.morning && day.morning.length > 0) {
+      response += '☀️ **Mañana:**\n';
+      day.morning.forEach((activity) => {
+        response += `• **${activity.time}** - ${activity.activity}`;
+        if (activity.tip) {
+          response += `\n  💡 *${activity.tip}*`;
+        }
+        response += '\n';
+      });
+      response += '\n';
+    }
+
+    // Afternoon activities
+    if (day.afternoon && day.afternoon.length > 0) {
+      response += '🌤️ **Tarde:**\n';
+      day.afternoon.forEach((activity) => {
+        response += `• **${activity.time}** - ${activity.activity}`;
+        if (activity.tip) {
+          response += `\n  💡 *${activity.tip}*`;
+        }
+        response += '\n';
+      });
+      response += '\n';
+    }
+
+    // Evening activities
+    if (day.evening && day.evening.length > 0) {
+      response += '🌙 **Noche:**\n';
+      day.evening.forEach((activity) => {
+        response += `• **${activity.time}** - ${activity.activity}`;
+        if (activity.tip) {
+          response += `\n  💡 *${activity.tip}*`;
+        }
+        response += '\n';
+      });
+      response += '\n';
+    }
+
+    // Restaurants
+    if (day.restaurants && day.restaurants.length > 0) {
+      response += '🍽️ **Restaurantes recomendados:**\n';
+      day.restaurants.forEach((restaurant) => {
+        response += `• **${restaurant.name}** - ${restaurant.type} (${restaurant.priceRange})\n`;
+      });
+      response += '\n';
+    }
+
+    // Daily travel tip
+    if (day.travelTip) {
+      response += `💡 **Tip del día:** ${day.travelTip}\n`;
+    }
+
+    response += '\n---\n\n';
+  });
+
+  // General tips
+  if (data.generalTips && data.generalTips.length > 0) {
+    response += '## 📝 **Tips Generales**\n\n';
+    data.generalTips.forEach((tip, index) => {
+      response += `${index + 1}. ${tip}\n`;
+    });
+    response += '\n';
+  }
+
+  response += '---\n\n';
+  response += '✨ ¿Te gustaría que busque vuelos u hoteles para este viaje? Solo dímelo y te ayudo a cotizar.';
+
+  return response;
+};
