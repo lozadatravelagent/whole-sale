@@ -413,6 +413,53 @@ You MUST scan the CURRENT user message for these EXACT keywords before including
 - NEVER infer mealPlan from context, previous messages, or assumptions
 - ONLY include if user EXPLICITLY types food/meal keywords in THIS message
 
+🏨 **HOTEL CHAIN DETECTION (hotelChain) - NEW FEATURE:**
+Detect hotel chains when user mentions them. ONLY include hotelChain if user explicitly mentions a chain.
+
+**Patterns to detect:**
+- "cadena [nombre]", "de la cadena [nombre]", "chain [nombre]"
+- "hoteles [nombre]" where [nombre] is a known hotel chain
+- Direct chain name mentions: "quiero un Riu", "un Iberostar", "hotel Melia"
+
+**Known hotel chains (case-insensitive):**
+- Riu, RIU Hotels, RIU Palace, RIU Resorts
+- Iberostar, Iberoestars
+- Melia, Meliá, Sol Melia, ME by Melia, Tryp
+- Bahia Principe, Bahía Príncipe, Grand Bahia Principe
+- Barcelo, Barceló, Occidental
+- NH, NH Hotels, NH Collection
+- Hilton, DoubleTree, Hampton Inn, Waldorf Astoria
+- Marriott, Sheraton, Westin, Ritz Carlton
+- Hyatt, Grand Hyatt, Park Hyatt
+- Accor, Novotel, Ibis, Sofitel
+- Sunscape, Hard Rock, Excellence, Secrets, Dreams
+- Palace Resorts, Moon Palace, Le Blanc
+- Sandals, Club Med, Royalton, Breathless
+- Now Resorts, Catalonia, Princess Hotels
+
+**Examples:**
+- "hotel de la cadena Riu" → hotelChain: "Riu" ✅
+- "hoteles Iberostar" → hotelChain: "Iberostar" ✅
+- "quiero un Melia" → hotelChain: "Melia" ✅
+- "hotel en Cancún" → NO hotelChain (no chain mentioned) ❌
+- "habitación doble all inclusive en la CADENA riu" → hotelChain: "Riu", roomType: "double", mealPlan: "all_inclusive" ✅
+
+🏨 **SPECIFIC HOTEL NAME DETECTION (hotelName) - NEW FEATURE:**
+Detect specific hotel names when user mentions them. ONLY include hotelName if user explicitly mentions a specific hotel.
+
+**Patterns to detect:**
+- "en el hotel [nombre completo]"
+- "hotel [nombre específico]" (when it's a specific hotel, not just a chain)
+- "[nombre de hotel]" with chain + specific name (e.g., "Riu Bambu", "Iberostar Dominicana")
+
+**Examples:**
+- "en el hotel Riu Bambu" → hotelName: "Riu Bambu", hotelChain: "Riu" ✅
+- "quiero el Iberostar Dominicana" → hotelName: "Iberostar Dominicana", hotelChain: "Iberostar" ✅
+- "hotel Bahia Principe Grand Punta Cana" → hotelName: "Bahia Principe Grand Punta Cana", hotelChain: "Bahia Principe" ✅
+- "hotel en Cancún" → NO hotelName ❌
+
+**IMPORTANT:** When extracting hotelName, if it contains a chain name, also extract hotelChain.
+
 **COMBINED:** All flight + hotel required fields with same defaults
 
 **ITINERARY:**
@@ -620,6 +667,83 @@ User: "habitacion doble en cancun para 2 personas"
 ❌ NO mealPlan - user mentioned "habitacion doble" but did NOT mention meals!
 ✅ roomType: "double" - detected "habitacion doble" even WITHOUT accent on "habitacion"
 
+Example 12 - Hotel with CHAIN specified (NEW - hotelChain extraction):
+User: "quiero un hotel de la cadena Riu all inclusive habitacion doble"
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "[EXTRACT from context OR ask]",
+    "checkinDate": "[DATE]",
+    "checkoutDate": "[DATE]",
+    "adults": 2,
+    "children": 0,
+    "roomType": "double",
+    "mealPlan": "all_inclusive",
+    "hotelChain": "Riu"
+  },
+  "confidence": 0.95
+}
+✅ hotelChain: "Riu" - user said "cadena Riu"
+✅ mealPlan: "all_inclusive" - user said "all inclusive"
+✅ roomType: "double" - user said "habitacion doble"
+
+Example 13 - Hotel with SPECIFIC NAME and CHAIN (NEW - hotelName + hotelChain):
+User: "quiero reservar el hotel Riu Bambu en Punta Cana"
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "Punta Cana",
+    "checkinDate": "[DATE]",
+    "checkoutDate": "[DATE]",
+    "adults": 1,
+    "children": 0,
+    "hotelName": "Riu Bambu",
+    "hotelChain": "Riu"
+  },
+  "confidence": 0.95
+}
+✅ hotelName: "Riu Bambu" - user specified exact hotel
+✅ hotelChain: "Riu" - extracted from hotel name (Riu Bambu contains "Riu")
+❌ NO roomType or mealPlan - user didn't mention them
+
+Example 14 - Hotel chain with context from previous flight (CRITICAL PATTERN):
+User: "para las mismas fechas quiero un hotel Iberostar habitacion doble"
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "[EXTRACT from previous flight DESTINATION]",
+    "checkinDate": "[EXTRACT from previous flight DEPARTURE DATE]",
+    "checkoutDate": "[EXTRACT from previous flight RETURN DATE]",
+    "adults": "[EXTRACT from previous flight]",
+    "children": "[EXTRACT from previous flight OR 0]",
+    "roomType": "double",
+    "hotelChain": "Iberostar"
+  },
+  "confidence": 0.95
+}
+✅ hotelChain: "Iberostar" - user said "hotel Iberostar"
+✅ roomType: "double" - user said "habitacion doble"
+❌ NO mealPlan - user didn't mention food/meals
+
+Example 15 - Chain mention with typos/variations (TOLERANCE):
+User: "hotel melia todo incluido doble" or "hoteles meliá" or "un sol melia"
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "[EXTRACT from context]",
+    "checkinDate": "[DATE]",
+    "checkoutDate": "[DATE]",
+    "adults": 2,
+    "children": 0,
+    "roomType": "double",
+    "mealPlan": "all_inclusive",
+    "hotelChain": "Melia"
+  },
+  "confidence": 0.9
+}
+✅ hotelChain: "Melia" - recognize "melia", "meliá", "sol melia" as the same chain
+🚨 NOTE: Be tolerant with accents and variations (melia = meliá = sol melia)
+
 🚨 CRITICAL FINAL INSTRUCTION:
 - The examples above show PATTERNS and STRUCTURES only
 - You MUST extract actual values from the REAL conversation history provided above, NOT from the examples
@@ -644,6 +768,31 @@ Be EXTREMELY tolerant with spelling variations for room types:
 - "hab doble" = "habitación doble" → roomType: "double" ✅
 - "doble" alone (in hotel context) → roomType: "double" ✅
 - Users OFTEN omit accents - this is NORMAL and VALID!
+
+🚨 FINAL REMINDER - hotelChain RULE:
+Before including "hotelChain" field in your JSON response:
+1. Did the user mention ANY hotel chain by name? (Riu, Iberostar, Melia, Bahia Principe, Barcelo, NH, Hilton, Marriott, etc.)
+2. Did the user use patterns like "cadena [name]", "hoteles [name]", "de la cadena [name]"?
+3. If YES to either → Include hotelChain with the chain name
+4. If NO → DO NOT include hotelChain field
+
+Examples to verify:
+- "hotel en Cancún" → NO chain mentioned → NO hotelChain field ❌
+- "hotel Riu en Cancún" → "Riu" is a chain → hotelChain: "Riu" ✅
+- "cadena Iberostar" → explicit chain mention → hotelChain: "Iberostar" ✅
+- "un Melia todo incluido" → "Melia" is a chain → hotelChain: "Melia" ✅
+
+🚨 FINAL REMINDER - hotelName RULE:
+Before including "hotelName" field in your JSON response:
+1. Did the user mention a SPECIFIC hotel name (not just a chain)?
+2. Specific names include: "Riu Bambu", "Iberostar Dominicana", "Bahia Principe Grand Punta Cana", etc.
+3. If YES → Include hotelName AND also extract hotelChain from the name
+4. If user only mentions chain (e.g., "Riu") without specific hotel → ONLY hotelChain, NO hotelName
+
+Examples:
+- "hotel Riu" → only chain → hotelChain: "Riu", NO hotelName ❌
+- "hotel Riu Bambu" → specific hotel → hotelName: "Riu Bambu", hotelChain: "Riu" ✅
+- "Iberostar Dominicana" → specific hotel → hotelName: "Iberostar Dominicana", hotelChain: "Iberostar" ✅
 
 Now analyze this ACTUAL message and respond with JSON only:`;
         const userPrompt = message;

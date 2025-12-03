@@ -7,6 +7,7 @@ import { formatFlightResponse, formatHotelResponse, formatPackageResponse, forma
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
+import { hotelBelongsToChain, hotelNameMatches } from '../data/hotelChainAliases';
 
 // =====================================================================
 // PUNTA CANA HOTEL WHITELIST - SPECIAL FILTER
@@ -373,10 +374,48 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     });
 
     // 🌴 Apply destination-specific filters (e.g., Punta Cana whitelist)
-    const destinationFilteredHotels = applyDestinationSpecificFilters(
+    let destinationFilteredHotels = applyDestinationSpecificFilters(
       correctedHotels,
       enrichedParsed.hotels?.city || ''
     );
+
+    // 🏨 HOTEL CHAIN FILTER - Filter by hotel chain if specified
+    if (enrichedParsed.hotels?.hotelChain) {
+      const chainFilter = enrichedParsed.hotels.hotelChain;
+      console.log(`🏨 [CHAIN FILTER] Filtering hotels by chain: "${chainFilter}"`);
+      console.log(`📊 [CHAIN FILTER] Hotels before filter: ${destinationFilteredHotels.length}`);
+
+      destinationFilteredHotels = destinationFilteredHotels.filter(hotel => {
+        const belongs = hotelBelongsToChain(hotel.name, chainFilter);
+        if (belongs) {
+          console.log(`✅ [CHAIN FILTER] Included: "${hotel.name}" (matches chain "${chainFilter}")`);
+        } else {
+          console.log(`🚫 [CHAIN FILTER] Excluded: "${hotel.name}" (does not match chain "${chainFilter}")`);
+        }
+        return belongs;
+      });
+
+      console.log(`📊 [CHAIN FILTER] Hotels after filter: ${destinationFilteredHotels.length}`);
+    }
+
+    // 🏨 HOTEL NAME FILTER - Filter by specific hotel name if specified
+    if (enrichedParsed.hotels?.hotelName) {
+      const nameFilter = enrichedParsed.hotels.hotelName;
+      console.log(`🏨 [NAME FILTER] Filtering hotels by name: "${nameFilter}"`);
+      console.log(`📊 [NAME FILTER] Hotels before filter: ${destinationFilteredHotels.length}`);
+
+      destinationFilteredHotels = destinationFilteredHotels.filter(hotel => {
+        const matches = hotelNameMatches(hotel.name, nameFilter);
+        if (matches) {
+          console.log(`✅ [NAME FILTER] Included: "${hotel.name}" (matches name "${nameFilter}")`);
+        } else {
+          console.log(`🚫 [NAME FILTER] Excluded: "${hotel.name}" (does not match name "${nameFilter}")`);
+        }
+        return matches;
+      });
+
+      console.log(`📊 [NAME FILTER] Hotels after filter: ${destinationFilteredHotels.length}`);
+    }
 
     // ✅ USE ADVANCED ROOM FILTERING SYSTEM
     const normalizedRoomType = normalizeCapacity(enrichedParsed.hotels?.roomType);
