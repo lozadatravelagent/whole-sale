@@ -304,12 +304,14 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
         children: parsed.hotels?.children || parsed.flights?.children || 0,
         roomType: parsed.hotels?.roomType,
         mealPlan: parsed.hotels?.mealPlan,
-        hotelName: (parsed as any)?.hotels?.hotelName
+        hotelName: parsed.hotels?.hotelName,
+        hotelChain: parsed.hotels?.hotelChain  // ✅ FIX: Pass hotelChain for chain filtering
       } as any
     };
 
     console.log('🔍 [DEBUG] enrichedParsed.hotels.roomType:', enrichedParsed.hotels?.roomType);
     console.log('🔍 [DEBUG] enrichedParsed.hotels.mealPlan:', enrichedParsed.hotels?.mealPlan);
+    console.log('🔍 [DEBUG] enrichedParsed.hotels.hotelChain:', enrichedParsed.hotels?.hotelChain);
 
     // Validate we have at least a city to look up
     if (!enrichedParsed.hotels?.city) {
