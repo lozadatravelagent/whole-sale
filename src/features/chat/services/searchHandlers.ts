@@ -361,6 +361,12 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
 
     const allHotels = response.data.results || [];
 
+    // 🔍 DEBUG: Log all hotel names received from EUROVIPS
+    console.log(`📋 [EUROVIPS RESPONSE] Received ${allHotels.length} hotels:`);
+    allHotels.forEach((hotel: any, index: number) => {
+      console.log(`   ${index + 1}. "${hotel.name}"`);
+    });
+
     // Fix hotel dates - EUROVIPS sometimes returns incorrect dates, so we force the correct ones
     const correctedHotels = allHotels.map((hotel: any) => ({
       ...hotel,
