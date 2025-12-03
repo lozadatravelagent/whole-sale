@@ -338,151 +338,101 @@ export interface HotelPreParserResult {
 }
 
 /**
- * 🏨 PRE-PARSER: Deterministic extraction of hotel chain and name from user text
+ * 🏨 PRE-PARSER: Deterministic extraction of hotel CHAIN from user text
  * 
- * This function is called BEFORE the AI Parser to extract hotel/chain info
+ * This function is called BEFORE the AI Parser to extract hotel chain info
  * using deterministic regex patterns. Results are passed to AI as hints
  * and used as fallback if AI doesn't detect them.
  * 
- * FLOW:
- * 1. Pre-parser extracts hotelChain/hotelName from user text (this function)
- * 2. Results passed to AI Parser as context hints
- * 3. AI Parser processes message with hints
- * 4. If AI doesn't detect chain/name but pre-parser did, pre-parser values are used
- * 5. Post-search filtering uses final hotelChain/hotelName to filter hotel.name
+ * IMPORTANT: This pre-parser ONLY detects chains using the explicit pattern "cadena X".
+ * It does NOT attempt to detect specific hotel names (hotelName) - that is left to the AI Parser.
  * 
- * @param text - User's message (e.g., "quiero hotel de la cadena riu bambu all inclusive")
- * @returns Extracted hotel chain and/or name with confidence score
+ * FLOW:
+ * 1. Pre-parser extracts hotelChain from user text using "cadena X" pattern (this function)
+ * 2. Results passed to AI Parser as context hints
+ * 3. AI Parser processes message with hints (AI can also detect hotelName if mentioned)
+ * 4. If AI doesn't detect chain but pre-parser did, pre-parser value is used
+ * 5. Post-search filtering uses hotelChain to filter hotel.name via hotelBelongsToChain()
+ * 
+ * @param text - User's message (e.g., "quiero hotel de la cadena riu all inclusive")
+ * @returns Extracted hotel chain with confidence score (hotelName is always undefined)
  * 
  * @example
  * extractHotelInfoFromText("quiero un hotel de la cadena Riu habitacion doble")
  * // Returns: { hotelChain: "RIU", confidence: 0.95 }
  * 
  * @example
- * extractHotelInfoFromText("en el hotel Riu Bambu para 2 personas")
- * // Returns: { hotelChain: "RIU", hotelName: "Riu Bambu", confidence: 0.95 }
+ * extractHotelInfoFromText("hotel en Cancun para 2 personas")
+ * // Returns: { confidence: 0 } (no chain pattern found)
  */
 export function extractHotelInfoFromText(text: string): HotelPreParserResult {
     const normalizedText = normalizeText(text);
     const result: HotelPreParserResult = { confidence: 0 };
 
-    console.log(`🏨 [PRE-PARSER] Analyzing text for hotel/chain: "${text.substring(0, 100)}..."`);
+    console.log(`🏨 [PRE-PARSER] Analyzing text for hotel chain: "${text.substring(0, 100)}..."`);
 
     // =========================================================================
-    // PATTERN 1: "cadena [nombre]" / "de la cadena [nombre]" / "chain [nombre]"
-    // This is the most explicit pattern - highest confidence (0.95)
+    // ONLY PATTERN: "cadena [nombre]" / "de la cadena [nombre]" / "chain [nombre]"
+    // 
+    // This is the ONLY pattern we use for deterministic chain detection.
+    // We capture the text immediately after "cadena" until:
+    // - A comma, period, or end of string
+    // - Common hotel-related words (habitacion, all, todo, doble, etc.)
+    // 
+    // This avoids false positives from patterns like "hotel para las mismas fechas"
     // =========================================================================
-    const cadenaPatterns = [
-        /(?:de la cadena|cadena|chain)\s+([a-z][a-z\s]{1,30}?)(?:\s+(?:habitacion|all|todo|doble|simple|triple|para|en|con|$)|[,.]|$)/i,
-    ];
 
-    for (const pattern of cadenaPatterns) {
-        const match = normalizedText.match(pattern);
-        if (match && match[1]) {
-            const extractedName = match[1].trim();
-            console.log(`🏨 [PRE-PARSER] Pattern "cadena X" matched: "${extractedName}"`);
+    // Regex explanation:
+    // - (?:de la cadena|cadena|chain) - match "cadena", "de la cadena", or "chain"
+    // - \s+ - one or more spaces
+    // - ([a-z][a-z\s]*?) - capture group: starts with letter, then letters/spaces (non-greedy)
+    // - (?=\s+(?:habitacion|all|todo|doble|simple|triple|para|en|con)|[,.]|$) - lookahead: stop before these words or punctuation
+    const cadenaPattern = /(?:de la cadena|cadena|chain)\s+([a-z][a-z\s]*?)(?=\s+(?:habitacion|all|todo|doble|simple|triple|para|en|con)|[,.]|$)/i;
 
-            // Try to find in known chains
-            const chainInfo = findChainByAlias(extractedName);
-            if (chainInfo) {
-                result.hotelChain = chainInfo.name;
-                result.rawChainMatch = extractedName;
-                result.confidence = 0.95;
-                console.log(`✅ [PRE-PARSER] Matched known chain: "${extractedName}" → ${chainInfo.name}`);
-            } else {
-                // Even if not in known chains, use the extracted name (user might know a chain we don't)
-                result.hotelChain = extractedName.charAt(0).toUpperCase() + extractedName.slice(1);
-                result.rawChainMatch = extractedName;
-                result.confidence = 0.8;
-                console.log(`⚠️ [PRE-PARSER] Unknown chain, using raw: "${extractedName}"`);
-            }
-            break;
+    const match = normalizedText.match(cadenaPattern);
+    if (match && match[1]) {
+        const extractedName = match[1].trim();
+
+        // Skip if extracted name is empty or too short
+        if (extractedName.length < 2) {
+            console.log(`⚠️ [PRE-PARSER] Extracted chain name too short: "${extractedName}"`);
+            return result;
         }
-    }
 
-    // =========================================================================
-    // PATTERN 2: "hotel [nombre específico]" / "en el hotel [nombre]"
-    // Captures specific hotel names (e.g., "hotel Riu Bambu", "en el hotel Iberostar Dominicana")
-    // =========================================================================
-    const hotelNamePatterns = [
-        /(?:en el hotel|hotel)\s+([a-z][a-z\s]{2,40}?)(?:\s+(?:habitacion|all|todo|doble|simple|triple|para|en\s+(?:punta|cancun|madrid)|con|$)|[,.]|$)/i,
-        /(?:el|un|quiero el|reservar el)\s+([a-z][a-z\s]{2,40}?)(?:\s+(?:habitacion|all|todo|doble|simple|triple|para|en\s+|con|$)|[,.]|$)/i,
-    ];
+        console.log(`🏨 [PRE-PARSER] Pattern "cadena X" matched: "${extractedName}"`);
 
-    // Only try hotel name patterns if we haven't found a chain yet OR to find specific name
-    for (const pattern of hotelNamePatterns) {
-        const match = normalizedText.match(pattern);
-        if (match && match[1]) {
-            const extractedName = match[1].trim();
-
-            // Skip if it's just a city name or too short
-            if (extractedName.length < 3) continue;
-            const cityNames = ['cancun', 'punta cana', 'madrid', 'barcelona', 'miami', 'paris', 'roma', 'riviera maya'];
-            if (cityNames.some(city => normalizeText(extractedName) === city)) continue;
-
-            console.log(`🏨 [PRE-PARSER] Pattern "hotel X" matched: "${extractedName}"`);
-
-            // Check if this looks like a specific hotel (chain + name) or just a chain
-            const words = extractedName.split(/\s+/);
-            const firstWord = words[0];
-            const chainInfo = findChainByAlias(firstWord);
-
-            if (chainInfo && words.length > 1) {
-                // It's a specific hotel: "Riu Bambu", "Iberostar Dominicana"
-                result.hotelName = extractedName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                result.rawNameMatch = extractedName;
-                if (!result.hotelChain) {
-                    result.hotelChain = chainInfo.name;
-                    result.rawChainMatch = firstWord;
-                }
-                result.confidence = Math.max(result.confidence, 0.9);
-                console.log(`✅ [PRE-PARSER] Specific hotel detected: "${result.hotelName}" (chain: ${result.hotelChain})`);
-                break;
-            } else if (chainInfo && words.length === 1) {
-                // It's just a chain name mentioned with "hotel": "hotel Riu"
-                if (!result.hotelChain) {
-                    result.hotelChain = chainInfo.name;
-                    result.rawChainMatch = extractedName;
-                    result.confidence = Math.max(result.confidence, 0.85);
-                    console.log(`✅ [PRE-PARSER] Chain from "hotel X" pattern: ${chainInfo.name}`);
-                }
-            } else if (words.length > 1) {
-                // Unknown chain but specific name: might be a hotel we don't know
-                result.hotelName = extractedName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-                result.rawNameMatch = extractedName;
-                result.confidence = Math.max(result.confidence, 0.7);
-                console.log(`⚠️ [PRE-PARSER] Unknown specific hotel: "${result.hotelName}"`);
-                break;
-            }
-        }
-    }
-
-    // =========================================================================
-    // PATTERN 3: Direct chain name mention without "cadena" or "hotel" prefix
-    // Lower confidence (0.7) since it might be coincidental
-    // Only if we haven't found anything yet
-    // =========================================================================
-    if (!result.hotelChain && result.confidence < 0.5) {
-        const chainDetection = detectHotelChainInText(text);
-        if (chainDetection) {
-            result.hotelChain = chainDetection.name;
-            result.rawChainMatch = chainDetection.matchedAlias;
-            result.confidence = 0.7;
-            console.log(`🏨 [PRE-PARSER] Direct chain mention: "${chainDetection.matchedAlias}" → ${chainDetection.name}`);
+        // Try to find in known chains for canonical name
+        const chainInfo = findChainByAlias(extractedName);
+        if (chainInfo) {
+            result.hotelChain = chainInfo.name;
+            result.rawChainMatch = extractedName;
+            result.confidence = 0.95;
+            console.log(`✅ [PRE-PARSER] Matched known chain: "${extractedName}" → ${chainInfo.name}`);
+        } else {
+            // Even if not in known chains, use the extracted name (user might know a chain we don't)
+            // Capitalize first letter of each word
+            result.hotelChain = extractedName
+                .split(/\s+/)
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ');
+            result.rawChainMatch = extractedName;
+            result.confidence = 0.8;
+            console.log(`⚠️ [PRE-PARSER] Unknown chain, using raw: "${extractedName}" → "${result.hotelChain}"`);
         }
     }
 
     // Log final result
-    if (result.hotelChain || result.hotelName) {
+    if (result.hotelChain) {
         console.log(`✅ [PRE-PARSER] Final result:`, {
             hotelChain: result.hotelChain,
-            hotelName: result.hotelName,
             confidence: result.confidence
         });
     } else {
-        console.log(`ℹ️ [PRE-PARSER] No hotel/chain detected in text`);
+        console.log(`ℹ️ [PRE-PARSER] No chain detected (no "cadena X" pattern found)`);
     }
 
+    // NOTE: hotelName is intentionally NOT set by the pre-parser.
+    // The AI Parser handles hotelName detection to avoid false positives.
     return result;
 }
 
