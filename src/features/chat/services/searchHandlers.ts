@@ -59,8 +59,20 @@ function isAllowedPuntaCanaHotel(hotelName: string): boolean {
 /**
  * Filtra hoteles aplicando reglas especiales por destino.
  * Actualmente solo aplica whitelist para Punta Cana.
+ * 
+ * IMPORTANTE: Si el usuario especificó una cadena hotelera (hotelChain),
+ * los hoteles de esa cadena son SIEMPRE permitidos, aunque no estén en el whitelist.
+ * Esto permite que "cadena iberostar" devuelva todos los Iberostar, no solo "Iberostar Dominicana".
+ * 
+ * @param hotels - Lista de hoteles a filtrar
+ * @param city - Ciudad/destino de la búsqueda
+ * @param requestedChain - Cadena hotelera solicitada por el usuario (opcional)
  */
-function applyDestinationSpecificFilters(hotels: LocalHotelData[], city: string): LocalHotelData[] {
+function applyDestinationSpecificFilters(
+  hotels: LocalHotelData[], 
+  city: string,
+  requestedChain?: string
+): LocalHotelData[] {
   // Solo aplicar filtro especial para Punta Cana
   if (!isPuntaCanaDestination(city)) {
     return hotels;
@@ -68,13 +80,29 @@ function applyDestinationSpecificFilters(hotels: LocalHotelData[], city: string)
 
   console.log('🌴 [PUNTA CANA FILTER] Applying special hotel whitelist filter');
   console.log(`📊 [PUNTA CANA FILTER] Hotels before filter: ${hotels.length}`);
+  
+  if (requestedChain) {
+    console.log(`🏨 [PUNTA CANA FILTER] User requested chain: "${requestedChain}" - will allow all hotels from this chain`);
+  }
 
   const filteredHotels = hotels.filter(hotel => {
+    // FIRST: If user requested a specific chain, allow ALL hotels from that chain
+    if (requestedChain) {
+      const normalizedHotelName = normalizeText(hotel.name);
+      const normalizedChain = normalizeText(requestedChain);
+      
+      if (normalizedHotelName.includes(normalizedChain)) {
+        console.log(`✅ [PUNTA CANA FILTER] Allowed (matches requested chain "${requestedChain}"): "${hotel.name}"`);
+        return true;
+      }
+    }
+    
+    // SECOND: Check against the whitelist for non-chain-specific requests
     const isAllowed = isAllowedPuntaCanaHotel(hotel.name);
     if (!isAllowed) {
       console.log(`🚫 [PUNTA CANA FILTER] Excluded: "${hotel.name}"`);
     } else {
-      console.log(`✅ [PUNTA CANA FILTER] Allowed: "${hotel.name}"`);
+      console.log(`✅ [PUNTA CANA FILTER] Allowed (in whitelist): "${hotel.name}"`);
     }
     return isAllowed;
   });
@@ -382,9 +410,11 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     });
 
     // 🌴 Apply destination-specific filters (e.g., Punta Cana whitelist)
+    // IMPORTANT: Pass hotelChain so the filter respects user's chain preference
     let destinationFilteredHotels = applyDestinationSpecificFilters(
       correctedHotels,
-      enrichedParsed.hotels?.city || ''
+      enrichedParsed.hotels?.city || '',
+      enrichedParsed.hotels?.hotelChain  // ← Pass requested chain to allow all hotels from that chain
     );
 
     // 🏨 HOTEL CHAIN FILTER - Filter by hotel chain if specified
