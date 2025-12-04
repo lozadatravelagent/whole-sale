@@ -607,7 +607,13 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
           time: leg.arrival.time
         },
         duration: leg.duration,
-        flight_type: leg.flight_type
+        flight_type: leg.flight_type,
+        // Preserve layovers (escalas) for combined PDF generation
+        layovers: leg.layovers?.map(layover => ({
+          waiting_time: layover.waiting_time,
+          destination_city: layover.destination_city,
+          destination_code: layover.destination_code
+        })) || []
       })),
       price: {
         amount: formatPriceForTemplate(flight.price.amount), // Formato europeo con comas
