@@ -389,31 +389,105 @@ export async function parseMessageWithAI(
     const quick: Partial<ParsedTravelRequest> = {} as any;
     try {
         const normalized = message.replace(/\s+/g, ' ').trim();
+        const normalizedLower = normalized.toLowerCase();
+
+        // 🏨 HOTEL KEYWORD DETECTION - CHECK FIRST BEFORE ASSUMING FLIGHTS
+        // If message contains hotel-specific keywords, DO NOT auto-assign flights
+        const hotelKeywords = [
+            'hotel', 'hoteles', 'habitacion', 'habitación', 'alojamiento',
+            'all inclusive', 'todo incluido', 'media pension', 'media pensión',
+            'cadena', 'resort', 'hostal', 'hospedaje', 'posada'
+        ];
+        const hasHotelKeywords = hotelKeywords.some(kw => normalizedLower.includes(kw));
+
+        // Flight-specific keywords (NOT just origin-destination pattern)
+        const flightKeywords = [
+            'vuelo', 'vuelos', 'volar', 'avion', 'avión', 'aereo', 'aéreo',
+            'pasaje', 'pasajes', 'boleto', 'boletos', 'flight', 'flights'
+        ];
+        const hasFlightKeywords = flightKeywords.some(kw => normalizedLower.includes(kw));
 
         // Origen - Destino con "desde X a Y"
+        // Determine request type based on keywords present
         const desdeMatch = normalized.match(/desde\s+([^a]+?)\s+a\s+([^a]+?)(?=\s+desde|\s+para|\s+con|$)/i);
         if (desdeMatch && desdeMatch[1] && desdeMatch[2]) {
-            quick.requestType = 'flights' as any;
-            quick.flights = {
-                origin: desdeMatch[1].trim(),
-                destination: desdeMatch[2].trim(),
-                departureDate: '',
-                adults: 1,
-                children: 0,
-            } as any;
+            // Extract origin and destination regardless of request type
+            const origin = desdeMatch[1].trim();
+            const destination = desdeMatch[2].trim();
+
+            if (hasHotelKeywords && hasFlightKeywords) {
+                // BOTH hotel AND flight keywords → COMBINED (vuelo y hotel)
+                console.log(`✈️🏨 [PRE-PARSER] Both hotel AND flight keywords detected → COMBINED`);
+                quick.requestType = 'combined' as any;
+                quick.flights = {
+                    origin: origin,
+                    destination: destination,
+                    departureDate: '',
+                    adults: 1,
+                    children: 0,
+                } as any;
+                // Hotels will be filled by AI with destination as city
+            } else if (hasHotelKeywords && !hasFlightKeywords) {
+                // ONLY hotel keywords → let AI decide (hotels)
+                // "desde X a Y" means user is FROM X going TO Y for hotel
+                console.log(`🏨 [PRE-PARSER] Hotel keywords detected with "desde X a Y" pattern - NOT auto-assigning flights`);
+                console.log(`   Origin context: ${origin}, Destination: ${destination}`);
+                // Don't set requestType, let AI handle it
+            } else if (hasFlightKeywords && !hasHotelKeywords) {
+                // ONLY flight keywords → flights
+                console.log(`✈️ [PRE-PARSER] Flight keywords detected → FLIGHTS`);
+                quick.requestType = 'flights' as any;
+                quick.flights = {
+                    origin: origin,
+                    destination: destination,
+                    departureDate: '',
+                    adults: 1,
+                    children: 0,
+                } as any;
+            } else {
+                // No specific keywords, pattern "desde X a Y" → assume flights
+                quick.requestType = 'flights' as any;
+                quick.flights = {
+                    origin: origin,
+                    destination: destination,
+                    departureDate: '',
+                    adults: 1,
+                    children: 0,
+                } as any;
+            }
         }
 
         // Origen - Destino con formato "X - Y"
         const odMatch = normalized.match(/([\p{L} .]+)\s*-\s*([\p{L} .]+)/u);
         if (odMatch && odMatch[1] && odMatch[2] && !quick.flights) {
-            quick.requestType = 'flights' as any;
-            quick.flights = {
-                origin: odMatch[1].trim(),
-                destination: odMatch[2].split(',')[0].trim(),
-                departureDate: '',
-                adults: 1,
-                children: 0,
-            } as any;
+            const origin = odMatch[1].trim();
+            const destination = odMatch[2].split(',')[0].trim();
+
+            if (hasHotelKeywords && hasFlightKeywords) {
+                // BOTH → COMBINED
+                console.log(`✈️🏨 [PRE-PARSER] Both keywords with "X - Y" pattern → COMBINED`);
+                quick.requestType = 'combined' as any;
+                quick.flights = {
+                    origin: origin,
+                    destination: destination,
+                    departureDate: '',
+                    adults: 1,
+                    children: 0,
+                } as any;
+            } else if (hasHotelKeywords && !hasFlightKeywords) {
+                // ONLY hotel → let AI decide
+                console.log(`🏨 [PRE-PARSER] Hotel keywords detected with "X - Y" pattern - NOT auto-assigning flights`);
+            } else {
+                // Flight keywords or no specific keywords → flights
+                quick.requestType = 'flights' as any;
+                quick.flights = {
+                    origin: origin,
+                    destination: destination,
+                    departureDate: '',
+                    adults: 1,
+                    children: 0,
+                } as any;
+            }
         }
 
         // Extraer fechas con formato "desde X de mes al Y de mes"
