@@ -23,13 +23,31 @@ const CAPACITY_CODES = {
 } as const;
 
 /**
- * Capacity keywords in description (fallback when code is generic like ROO, SUI, JSU)
+ * Capacity keywords in description - PRIORITY MATCHING
+ * Now used as a primary criterion (not just fallback)
+ * Includes both Spanish and English variations
  */
 const CAPACITY_KEYWORDS = {
-  single: ['SINGLE', '1 ADULT', 'INDIVIDUAL'],
-  double: ['DOUBLE', 'KING', 'QUEEN', 'TWIN', '2 ADULTS', 'DOBLE'],
-  triple: ['TRIPLE', '3 ADULTS', '3 PAXS'],
-  quad: ['QUADRUPLE', '4 ADULTS', '4 PAXS', 'CUADRUPLE']
+  single: [
+    'SINGLE', 'SINGLE ROOM', 'SENCILLA', 'INDIVIDUAL',
+    '1 ADULT', '1 ADULTO', 'SGL ROOM', 'HABITACION SENCILLA', 'HABITACIÓN SENCILLA'
+  ],
+  double: [
+    'DOUBLE', 'DOUBLE ROOM', 'TWIN', 'TWIN ROOM', 'DOBLE', 'HABITACION DOBLE', 'HABITACIÓN DOBLE',
+    'KING', 'KING ROOM', 'QUEEN', 'QUEEN ROOM', '2 ADULTS', '2 ADULTOS',
+    'DBL ROOM', 'TWN ROOM', 'STANDARD DOUBLE', 'STANDARD TWIN',
+    'MATRIMONIAL', 'CAMA DOBLE', 'DOS CAMAS', 'TWO BEDS'
+  ],
+  triple: [
+    'TRIPLE', 'TRIPLE ROOM', 'HABITACION TRIPLE', 'HABITACIÓN TRIPLE',
+    '3 ADULTS', '3 ADULTOS', '3 PAXS', '3 PAX', 'TPL ROOM',
+    'THREE BEDS', 'TRES CAMAS', 'TRIPLE STANDARD'
+  ],
+  quad: [
+    'QUADRUPLE', 'QUAD', 'QUAD ROOM', 'CUADRUPLE', 'CUÁDRUPLE',
+    'HABITACION CUADRUPLE', 'HABITACIÓN CUÁDRUPLE',
+    '4 ADULTS', '4 ADULTOS', '4 PAXS', '4 PAX', 'FOUR BEDS', 'CUATRO CAMAS'
+  ]
 } as const;
 
 /**
@@ -151,7 +169,13 @@ function hasCapacityExclusion(description: string, targetCapacity: CapacityType)
 
 /**
  * Filter rooms by capacity (FILTER A)
- * Uses hierarchical logic: fare_id_broker code → description keywords → exclusions
+ * 
+ * NEW LOGIC: Description is now a PRIORITY criterion (not just fallback)
+ * A room matches if:
+ *   1. fare_id_broker code matches the target capacity, OR
+ *   2. description contains keywords for the target capacity (and no exclusions)
+ * 
+ * This allows rooms with generic codes but descriptive names to be correctly filtered.
  */
 function filterByCapacity(rooms: HotelRoom[], targetCapacity: CapacityType): HotelRoom[] {
   console.log(`🔍 [CAPACITY FILTER] Filtering ${rooms.length} rooms for capacity: ${targetCapacity}`);
@@ -160,42 +184,47 @@ function filterByCapacity(rooms: HotelRoom[], targetCapacity: CapacityType): Hot
     const capacityCode = extractCapacityCode(room.fare_id_broker);
     const description = room.description || '';
 
-    // PRIMARY SOURCE: Check fare_id_broker code (most reliable)
-    if (capacityCode) {
-      const matchesByCode = matchesCapacityCode(capacityCode, targetCapacity);
-      if (matchesByCode) {
-        console.log(`✅ [CODE MATCH] ${room.description?.substring(0, 50)} | Code: ${capacityCode}`);
-        return true;
-      }
-
-      // If code is generic (ROO, SUI, JSU, etc.) or numeric (like "1"), fall back to description
-      const genericCodes = ['ROO', 'SUI', 'JSU', 'STD', '1'];
-      const isGenericCode = genericCodes.some(generic => capacityCode.toUpperCase().startsWith(generic));
-
-      if (!isGenericCode) {
-        // Code is specific but doesn't match - reject
-        console.log(`❌ [CODE MISMATCH] ${room.description?.substring(0, 50)} | Code: ${capacityCode}`);
-        return false;
-      }
-    }
-
-    // SECONDARY SOURCE: Check description keywords (fallback for generic codes or missing codes)
-    const matchesByDescription = matchesCapacityDescription(description, targetCapacity);
-
-    if (!matchesByDescription) {
-      console.log(`❌ [DESC MISMATCH] ${room.description?.substring(0, 50)}`);
-      return false;
-    }
-
-    // EXCLUSION CHECK: Prevent false positives (e.g., "double" search shouldn't match "TRIPLE")
+    // EXCLUSION CHECK FIRST: If description contains exclusion keywords, reject immediately
+    // This prevents "TRIPLE" rooms from matching "double" searches
     const hasExclusion = hasCapacityExclusion(description, targetCapacity);
     if (hasExclusion) {
       console.log(`❌ [EXCLUSION] ${room.description?.substring(0, 50)} | Contains exclusion keyword`);
       return false;
     }
 
-    console.log(`✅ [DESC MATCH] ${room.description?.substring(0, 50)}`);
-    return true;
+    // CRITERION 1: Check fare_id_broker code
+    let matchesByCode = false;
+    if (capacityCode) {
+      matchesByCode = matchesCapacityCode(capacityCode, targetCapacity);
+      if (matchesByCode) {
+        console.log(`✅ [CODE MATCH] ${room.description?.substring(0, 50)} | Code: ${capacityCode}`);
+        return true;
+      }
+    }
+
+    // CRITERION 2: Check description keywords (NOW A PRIORITY, not just fallback)
+    const matchesByDescription = matchesCapacityDescription(description, targetCapacity);
+    if (matchesByDescription) {
+      console.log(`✅ [DESC MATCH] ${room.description?.substring(0, 50)}`);
+      return true;
+    }
+
+    // Neither code nor description matched
+    // Only reject if the code is specific (not generic) - for generic codes, we already checked description
+    if (capacityCode) {
+      const genericCodes = ['ROO', 'SUI', 'JSU', 'STD', '1'];
+      const isGenericCode = genericCodes.some(generic => capacityCode.toUpperCase().startsWith(generic));
+      
+      if (!isGenericCode) {
+        // Code is specific but doesn't match target, and description doesn't match either
+        console.log(`❌ [NO MATCH] ${room.description?.substring(0, 50)} | Code: ${capacityCode} (specific, no desc match)`);
+        return false;
+      }
+    }
+
+    // For rooms without fare_id_broker or with generic codes, if description doesn't match, reject
+    console.log(`❌ [NO MATCH] ${room.description?.substring(0, 50)} | No code or description match`);
+    return false;
   });
 
   console.log(`📊 [CAPACITY FILTER] Result: ${rooms.length} → ${filtered.length} rooms`);
