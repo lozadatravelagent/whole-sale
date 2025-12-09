@@ -69,7 +69,7 @@ function isAllowedPuntaCanaHotel(hotelName: string): boolean {
  * @param requestedChain - Cadena hotelera solicitada por el usuario (opcional)
  */
 function applyDestinationSpecificFilters(
-  hotels: LocalHotelData[], 
+  hotels: LocalHotelData[],
   city: string,
   requestedChain?: string
 ): LocalHotelData[] {
@@ -80,7 +80,7 @@ function applyDestinationSpecificFilters(
 
   console.log('🌴 [PUNTA CANA FILTER] Applying special hotel whitelist filter');
   console.log(`📊 [PUNTA CANA FILTER] Hotels before filter: ${hotels.length}`);
-  
+
   if (requestedChain) {
     console.log(`🏨 [PUNTA CANA FILTER] User requested chain: "${requestedChain}" - will allow all hotels from this chain`);
   }
@@ -90,13 +90,13 @@ function applyDestinationSpecificFilters(
     if (requestedChain) {
       const normalizedHotelName = normalizeText(hotel.name);
       const normalizedChain = normalizeText(requestedChain);
-      
+
       if (normalizedHotelName.includes(normalizedChain)) {
         console.log(`✅ [PUNTA CANA FILTER] Allowed (matches requested chain "${requestedChain}"): "${hotel.name}"`);
         return true;
       }
     }
-    
+
     // SECOND: Check against the whitelist for non-chain-specific requests
     const isAllowed = isAllowedPuntaCanaHotel(hotel.name);
     if (!isAllowed) {
@@ -282,6 +282,18 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     console.log('📝 [FLIGHT SEARCH] Step 6: Formatting response text');
     const formattedResponse = formatFlightResponse(flights);
 
+    // 📊 BUILD EXTENDED METADATA for API responses
+    const lightFareAirlines = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
+    const userRequestedCarryOn = parsed?.flights?.luggage === 'carry_on';
+
+    const metadata = {
+      // Light fares exclusion (when user requests carry-on, light fare airlines are filtered)
+      ...(userRequestedCarryOn && {
+        light_fares_excluded: true,
+        light_fare_airlines: lightFareAirlines
+      })
+    };
+
     const result = {
       response: formattedResponse,
       data: {
@@ -289,7 +301,8 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
           flights,
           hotels: [],
           requestType: 'flights-only' as const
-        }
+        },
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined
       }
     };
 
@@ -313,6 +326,27 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
   console.log('🔍 [DEBUG] parsed.hotels?.mealPlan:', parsed.hotels?.mealPlan);
 
   try {
+    // 🔄 STEP 0: Infer adults from roomType if not explicitly specified
+    // This is a CRITICAL fallback in case the AI parser didn't correctly infer adults
+    let inferredAdults = parsed.hotels?.adults || parsed.flights?.adults || 1;
+    const roomType = parsed.hotels?.roomType;
+
+    if (inferredAdults === 1 && roomType) {
+      // If adults is default (1) but roomType is specified, infer adults from roomType
+      const normalizedRoomType = roomType.toLowerCase().trim();
+      if (normalizedRoomType === 'double' || normalizedRoomType === 'twin' || normalizedRoomType === 'doble') {
+        inferredAdults = 2;
+        console.log('🔄 [ADULTS INFERENCE] roomType="double" → adults=2 (overriding default of 1)');
+      } else if (normalizedRoomType === 'triple') {
+        inferredAdults = 3;
+        console.log('🔄 [ADULTS INFERENCE] roomType="triple" → adults=3 (overriding default of 1)');
+      } else if (normalizedRoomType === 'quad' || normalizedRoomType === 'quadruple' || normalizedRoomType === 'cuadruple') {
+        inferredAdults = 4;
+        console.log('🔄 [ADULTS INFERENCE] roomType="quad" → adults=4 (overriding default of 1)');
+      }
+    }
+    console.log(`📊 [ADULTS] Final adults count: ${inferredAdults} (roomType: ${roomType || 'not specified'})`);
+
     // Enrich hotel params from flight context if missing (city/dates/pax)
     const enrichedParsed: ParsedTravelRequest = {
       ...parsed,
@@ -328,7 +362,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
               .toISOString()
               .split('T')[0]
             : ''),
-        adults: parsed.hotels?.adults || parsed.flights?.adults || 1,
+        adults: inferredAdults,  // ✅ Use inferred adults from roomType
         children: parsed.hotels?.children || parsed.flights?.children || 0,
         roomType: parsed.hotels?.roomType,
         mealPlan: parsed.hotels?.mealPlan,
@@ -518,6 +552,35 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     // Pass already-filtered hotels to formatter (no need to filter again)
     const formattedResponse = formatHotelResponse(hotels);
 
+    // 📊 BUILD EXTENDED METADATA for API responses
+    const isPuntaCana = isPuntaCanaDestination(enrichedParsed.hotels?.city || '');
+    const hotelsExcludedNoRooms = destinationFilteredHotels.length - filteredHotels.length;
+
+    const metadata = {
+      // Destination-specific rules (e.g., Punta Cana whitelist)
+      ...(isPuntaCana && {
+        destination_rules: {
+          type: 'quality_whitelist' as const,
+          destination: enrichedParsed.hotels?.city || 'Punta Cana',
+          total_available_from_provider: correctedHotels.length,
+          whitelist_matches: destinationFilteredHotels.length,
+          after_all_filters: filteredHotels.length,
+          reason: 'Destino con lista curada de hoteles verificados'
+        }
+      }),
+      // Hotels excluded because no rooms matched criteria
+      ...(hotelsExcludedNoRooms > 0 && {
+        hotels_excluded_no_matching_rooms: hotelsExcludedNoRooms
+      }),
+      // Room filters that were applied
+      ...((normalizedRoomType || normalizedMealPlan) && {
+        room_filters_applied: {
+          ...(normalizedRoomType && { capacity: normalizedRoomType }),
+          ...(normalizedMealPlan && { meal_plan: normalizedMealPlan })
+        }
+      })
+    };
+
     const result = {
       response: formattedResponse,
       data: {
@@ -528,7 +591,8 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
           requestType: 'hotels-only' as const,
           requestedRoomType: normalizedRoomType,
           requestedMealPlan: normalizedMealPlan
-        }
+        },
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined
       }
     };
 
@@ -626,13 +690,47 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
   console.log('📋 Parsed request:', parsed);
 
   try {
+    // 🔄 STEP 0: Infer adults from roomType for BOTH flights and hotels
+    // When user says "habitación doble", they need 2 adults for BOTH flight AND hotel
+    let inferredAdults = parsed.hotels?.adults || parsed.flights?.adults || 1;
+    const roomType = parsed.hotels?.roomType;
+
+    if (inferredAdults === 1 && roomType) {
+      const normalizedRoomType = roomType.toLowerCase().trim();
+      if (normalizedRoomType === 'double' || normalizedRoomType === 'twin' || normalizedRoomType === 'doble') {
+        inferredAdults = 2;
+        console.log('🔄 [COMBINED ADULTS INFERENCE] roomType="double" → adults=2 for BOTH flight and hotel');
+      } else if (normalizedRoomType === 'triple') {
+        inferredAdults = 3;
+        console.log('🔄 [COMBINED ADULTS INFERENCE] roomType="triple" → adults=3 for BOTH flight and hotel');
+      } else if (normalizedRoomType === 'quad' || normalizedRoomType === 'quadruple' || normalizedRoomType === 'cuadruple') {
+        inferredAdults = 4;
+        console.log('🔄 [COMBINED ADULTS INFERENCE] roomType="quad" → adults=4 for BOTH flight and hotel');
+      }
+    }
+    console.log(`📊 [COMBINED ADULTS] Final adults count: ${inferredAdults} (roomType: ${roomType || 'not specified'})`);
+
+    // Enrich parsed with inferred adults for both flights and hotels
+    const enrichedParsed: ParsedTravelRequest = {
+      ...parsed,
+      flights: parsed.flights ? {
+        ...parsed.flights,
+        adults: inferredAdults
+      } : undefined,
+      hotels: parsed.hotels ? {
+        ...parsed.hotels,
+        adults: inferredAdults
+      } : undefined
+    };
+
     console.log('🚀 [COMBINED SEARCH] Step 1: Starting parallel searches');
     console.log('⚡ Running flight and hotel searches simultaneously');
+    console.log('📊 [COMBINED SEARCH] Using adults:', inferredAdults, 'for both searches');
 
-    // Parallel searches
+    // Parallel searches with enriched adults count
     const [flightResult, hotelResult] = await Promise.all([
-      handleFlightSearch(parsed),
-      handleHotelSearch(parsed)
+      handleFlightSearch(enrichedParsed),
+      handleHotelSearch(enrichedParsed)
     ]);
 
     console.log('✅ [COMBINED SEARCH] Step 2: Parallel searches completed');
@@ -659,9 +757,20 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     console.log('📝 [COMBINED SEARCH] Step 4: Formatting combined response');
     const formattedResponse = formatCombinedResponse(combinedData);
 
+    // 📊 MERGE METADATA from both searches
+    const flightMetadata = flightResult.data?.metadata || {};
+    const hotelMetadata = hotelResult.data?.metadata || {};
+    const combinedMetadata = {
+      ...flightMetadata,
+      ...hotelMetadata
+    };
+
     const result = {
       response: formattedResponse,
-      data: { combinedData }
+      data: {
+        combinedData,
+        metadata: Object.keys(combinedMetadata).length > 0 ? combinedMetadata : undefined
+      }
     };
 
     console.log('🎉 [COMBINED SEARCH] Combined search completed successfully');
