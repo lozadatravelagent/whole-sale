@@ -789,14 +789,21 @@ const useMessageHandler = (
           if (flightCtx) {
             console.log('🧩 [ENRICH] Filling missing hotel fields from flight context');
             parsedRequest.hotels = {
+              // ✅ PRESERVE all existing hotel fields first (hotelChain, hotelName, roomType, mealPlan, etc.)
+              ...parsedRequest.hotels,
+              // Then fill in missing required fields from flight context
               city: parsedRequest.hotels?.city || flightCtx.destination,
               checkinDate: parsedRequest.hotels?.checkinDate || flightCtx.departureDate,
               checkoutDate: parsedRequest.hotels?.checkoutDate || (flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0]),
               adults: parsedRequest.hotels?.adults || flightCtx.adults,
-              children: parsedRequest.hotels?.children ?? flightCtx.children ?? 0,
+              children: parsedRequest.hotels?.children ?? flightCtx.children ?? 0
+            } as any;
+            console.log('🏨 [ENRICH] Preserved hotel preferences:', {
+              hotelChain: parsedRequest.hotels?.hotelChain,
+              hotelName: parsedRequest.hotels?.hotelName,
               roomType: parsedRequest.hotels?.roomType,
               mealPlan: parsedRequest.hotels?.mealPlan
-            } as any;
+            });
 
             const reval = validateHotelRequiredFields(parsedRequest.hotels);
             console.log('📋 [REVALIDATION] After enrichment:', reval);
