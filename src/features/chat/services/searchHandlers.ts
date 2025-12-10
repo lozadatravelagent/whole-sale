@@ -396,15 +396,27 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     const cityCode = await getCityCode(enrichedParsed.hotels?.city || '');
     console.log('✅ [HOTEL SEARCH] City code resolved:', `"${enrichedParsed.hotels?.city}" → ${cityCode}`);
 
+    // ✅ REGLA DE NEGOCIO (confirmada con Ruth/SOFTUR):
+    // El campo <name> de EUROVIPS es el ÚNICO campo correcto para filtrar por:
+    // - Cadena hotelera (Iberostar, Riu, Melia, etc.)
+    // - Texto parcial del nombre del hotel (Ocean, Palace, etc.)
+    // Prioridad: hotelChain > hotelName (hotelChain es más específico para búsquedas de cadena)
+    const nameFilter = enrichedParsed.hotels?.hotelChain || enrichedParsed.hotels?.hotelName || '';
+
+    if (nameFilter) {
+      console.log(`🏨 [HOTEL SEARCH] Applying name filter to EUROVIPS: "${nameFilter}"`);
+    }
+
     const requestBody = {
       action: 'searchHotels',
       data: {
         ...eurovipsParams.hotelParams,
-        cityCode: cityCode
+        cityCode: cityCode,
+        hotelName: nameFilter // ✅ Filtro por <name> en EUROVIPS (cadena o nombre parcial)
       }
     };
 
-    console.log('📤 [HOTEL SEARCH] Step 3: About to call EUROVIPS API (Supabase Edge Function)');
+    console.log('📤 [HOTEL SEARCH] Step 3: About to call EUROVIPS API (Supabase Edge Function)', nameFilter ? `with name filter: "${nameFilter}"` : 'without name filter');
     console.log('📋 Request body:', requestBody);
 
     const response = await supabase.functions.invoke('eurovips-soap', {
