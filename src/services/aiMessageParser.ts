@@ -12,7 +12,7 @@ export interface ParsedTravelRequest {
         // Nuevos campos requeridos
         luggage?: 'carry_on' | 'checked' | 'both' | 'none'; // con o sin valija/equipaje
         departureTimePreference?: string; // horario de salida preferido
-        arrivalTimePreference?: string; // horario de llegada preferido  
+        arrivalTimePreference?: string; // horario de llegada preferido
         stops?: 'direct' | 'one_stop' | 'two_stops' | 'with_stops' | 'any'; // vuelo directo o con escalas
         layoverDuration?: string; // tiempo de escala preferido (ej: "3 hours", "10 hours")
         maxLayoverHours?: number; // duración máxima de escalas en horas
@@ -32,6 +32,16 @@ export interface ParsedTravelRequest {
         freeCancellation?: boolean; // Cancelación gratuita (opcional)
         roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view'; // Tipo de habitación (opcional)
         roomCount?: number; // Cantidad de habitaciones (opcional, default 1)
+    };
+    // 🚗 TRASLADOS (transfers) - Servicios de traslado aeropuerto-hotel
+    transfers?: {
+        included: boolean; // Si el usuario solicitó traslados
+        type?: 'in' | 'out' | 'in_out'; // Tipo: solo ida, solo vuelta, o ambos
+    };
+    // 🏥 ASISTENCIA MÉDICA / SEGURO DE VIAJE (travel_assistance)
+    travelAssistance?: {
+        included: boolean; // Si el usuario solicitó seguro/asistencia
+        coverageAmount?: number; // Monto de cobertura si se especificó
     };
     packages?: {
         destination: string;
@@ -363,10 +373,30 @@ export function combineWithPreviousRequest(
         parsedNewRequest.hotels = combinedHotels;
     }
 
+    // Combine transfers data
+    if (parsedNewRequest.transfers || previousRequest.transfers) {
+        const combinedTransfers = {
+            ...previousRequest.transfers,
+            ...parsedNewRequest.transfers
+        };
+        parsedNewRequest.transfers = combinedTransfers;
+    }
+
+    // Combine travel assistance data
+    if (parsedNewRequest.travelAssistance || previousRequest.travelAssistance) {
+        const combinedTravelAssistance = {
+            ...previousRequest.travelAssistance,
+            ...parsedNewRequest.travelAssistance
+        };
+        parsedNewRequest.travelAssistance = combinedTravelAssistance;
+    }
+
     console.log('✅ Combined request result:', {
         type: parsedNewRequest.requestType,
         flights: parsedNewRequest.flights ? Object.keys(parsedNewRequest.flights) : null,
-        hotels: parsedNewRequest.hotels ? Object.keys(parsedNewRequest.hotels) : null
+        hotels: parsedNewRequest.hotels ? Object.keys(parsedNewRequest.hotels) : null,
+        transfers: parsedNewRequest.transfers,
+        travelAssistance: parsedNewRequest.travelAssistance
     });
 
     return parsedNewRequest;

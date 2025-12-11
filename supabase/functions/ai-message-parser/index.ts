@@ -460,6 +460,141 @@ Detect specific hotel names when user mentions them. ONLY include hotelName if u
 
 **IMPORTANT:** When extracting hotelName, if it contains a chain name, also extract hotelChain.
 
+## 🚗 TRASLADOS (TRANSFERS) DETECTION
+
+**TRANSFER INTENTION DETECTION:**
+Detect when user requests airport-hotel transportation services.
+
+**Transfer Keywords (Spanish):**
+- traslado, traslados, transfer, transfers
+- aeropuerto al hotel, hotel al aeropuerto
+- transfer in, transfer out, in/out
+- transporte, transporte incluido, con transporte
+- pickup, recogida, recoger en aeropuerto
+
+**Transfer Keywords (English):**
+- transfer, transfers, shuttle
+- airport transfer, hotel transfer
+- transportation, transport
+- pickup, drop-off
+
+**Transfer Types:**
+- "transfer in" / "traslado de entrada" / "aeropuerto al hotel" → type: "in"
+- "transfer out" / "traslado de salida" / "hotel al aeropuerto" → type: "out"
+- "transfer in/out" / "traslados" / "con traslados" → type: "in_out" (DEFAULT when no specific type mentioned)
+
+**CRITICAL RULE: ONLY include transfers field if user EXPLICITLY mentions transfer/traslado keywords**
+
+**transfers Required Fields:**
+- included: boolean (true if user mentioned transfers)
+- type: 'in' | 'out' | 'in_out' (optional, default: 'in_out' if not specified)
+
+**Transfer Examples:**
+
+Example A - Generic transfers request:
+User: "Vuelo a Punta Cana con traslados incluidos"
+{
+  "requestType": "flights",
+  "flights": { ... },
+  "transfers": {
+    "included": true,
+    "type": "in_out"
+  }
+}
+
+Example B - Specific transfer type:
+User: "Hotel en Cancún con transfer del aeropuerto al hotel"
+{
+  "requestType": "hotels",
+  "hotels": { ... },
+  "transfers": {
+    "included": true,
+    "type": "in"
+  }
+}
+
+Example C - NO transfers (user didn't mention):
+User: "Vuelo a Miami"
+{
+  "requestType": "flights",
+  "flights": { ... }
+}
+❌ NOTE: NO transfers field because user didn't mention traslados/transfers!
+
+## 🏥 SEGURO / ASISTENCIA MÉDICA (TRAVEL ASSISTANCE) DETECTION
+
+**TRAVEL ASSISTANCE INTENTION DETECTION:**
+Detect when user requests travel insurance or medical assistance coverage.
+
+**Assistance Keywords (Spanish):**
+- seguro, seguros, seguro de viaje
+- asistencia, asistencia médica, asistencia al viajero
+- cobertura, cobertura médica
+- assist card, assistance card
+- con seguro, incluye seguro
+
+**Assistance Keywords (English):**
+- insurance, travel insurance
+- medical assistance, travel assistance
+- coverage, medical coverage
+- assistance card
+
+**Coverage Amount Extraction:**
+- Look for amounts like "seguro de USD 50000", "cobertura de 100000 dólares"
+- Extract numeric value if specified
+
+**CRITICAL RULE: ONLY include travelAssistance field if user EXPLICITLY mentions seguro/asistencia/insurance keywords**
+
+**travelAssistance Required Fields:**
+- included: boolean (true if user mentioned insurance/assistance)
+- coverageAmount: number (optional, only if user specified amount)
+
+**Travel Assistance Examples:**
+
+Example A - Basic insurance request:
+User: "Vuelo a Europa con seguro de viaje"
+{
+  "requestType": "flights",
+  "flights": { ... },
+  "travelAssistance": {
+    "included": true
+  }
+}
+
+Example B - Insurance with coverage amount:
+User: "Necesito asistencia médica de USD 50000 para mi viaje"
+{
+  "requestType": "combined",
+  "flights": { ... },
+  "travelAssistance": {
+    "included": true,
+    "coverageAmount": 50000
+  }
+}
+
+Example C - NO insurance (user didn't mention):
+User: "Vuelo a Madrid"
+{
+  "requestType": "flights",
+  "flights": { ... }
+}
+❌ NOTE: NO travelAssistance field because user didn't mention seguro/asistencia!
+
+Example D - Combined with transfers:
+User: "Paquete a Cancún todo incluido con traslados y seguro de viaje"
+{
+  "requestType": "combined",
+  "flights": { ... },
+  "hotels": { ... },
+  "transfers": {
+    "included": true,
+    "type": "in_out"
+  },
+  "travelAssistance": {
+    "included": true
+  }
+}
+
 **COMBINED:** All flight + hotel required fields with same defaults
 
 **ITINERARY:**

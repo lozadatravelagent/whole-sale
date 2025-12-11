@@ -388,9 +388,10 @@ function preparePdfData(flights: FlightData[]) {
         amount: formatPriceForTemplate(flight.price.amount),
         currency: flight.price.currency
       },
-      // Optional fields for template compatibility
-      travel_assistance: flight.travel_assistance || 0,
-      transfers: flight.transfers || 0
+      // 🏥 ASISTENCIA MÉDICA / SEGURO - Only include if user requested it (for legend in PDF)
+      travel_assistance: flight.travel_assistance?.included ? 1 : 0,
+      // 🚗 TRASLADOS - Only include if user requested it (for legend in PDF)
+      transfers: flight.transfers?.included ? 1 : 0
     };
   });
 
@@ -726,12 +727,31 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     hotels_count: hotels.length
   });
 
+  // 🏥 Check if any flight includes travel assistance (for legend in PDF)
+  let hasTravelAssistance = false;
+  flights.forEach(flight => {
+    if (flight.travel_assistance?.included) {
+      hasTravelAssistance = true;
+    }
+  });
+
+  // 🚗 Check if any flight includes transfers (for legend in PDF)
+  let hasTransfers = false;
+  flights.forEach(flight => {
+    if (flight.transfers?.included) {
+      hasTransfers = true;
+    }
+  });
+
+  // Note: Total price remains unchanged since transfers and assistance are included in the package
+  const grandTotalWithServices = totalPrice;
+
   // Template-specific data structure (OBJETO DIRECTO, no array)
   const template_data = {
     // Core flight data (as expected by template)
     selected_flights,
 
-    // Core hotel data (as expected by template)  
+    // Core hotel data (as expected by template)
     best_hotels,
 
     // Template-specific variables
@@ -740,15 +760,17 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     adults,
     childrens,
 
-    // Total pricing
-    total_price: formatPriceForTemplate(totalPrice),
+    // Total pricing (transfers and assistance are included in package price)
+    total_price: formatPriceForTemplate(grandTotalWithServices),
     total_currency: currency,
     flight_price: formatPriceForTemplate(totalFlightPrice),
     hotel_price: formatPriceForTemplate(totalHotelPrice),
 
-    // Optional services (can be added later)
-    travel_assistance: 0, // Can be set if needed
-    transfers: 0         // Can be set if needed
+    // 🏥 ASISTENCIA MÉDICA / SEGURO - Boolean flag for legend in PDF (1 = included, 0 = not included)
+    travel_assistance: hasTravelAssistance ? 1 : 0,
+
+    // 🚗 TRASLADOS - Boolean flag for legend in PDF (1 = included, 0 = not included)
+    transfers: hasTransfers ? 1 : 0
   };
 
   console.log('✅ PREPARED TEMPLATE DATA:', {
@@ -798,8 +820,21 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     adults: template_data.adults,
     childrens: template_data.childrens,
     travel_assistance: template_data.travel_assistance,
-    transfers: template_data.transfers
+    transfers: template_data.transfers,
+    total_with_services: template_data.total_price
   });
+
+  // Log services summary for debugging
+  if (hasTravelAssistance || hasTransfers) {
+    console.log('🎯 [SERVICES] Additional services legends will be shown in PDF:');
+    if (hasTravelAssistance) {
+      console.log(`   🏥 Travel Assistance: INCLUDED (legend will be displayed in PDF)`);
+    }
+    if (hasTransfers) {
+      console.log(`   🚗 Transfers: INCLUDED (legend will be displayed in PDF)`);
+    }
+    console.log(`   ℹ️ Note: Services are included in the package price, no additional cost`);
+  }
 
   return template_data;
 }

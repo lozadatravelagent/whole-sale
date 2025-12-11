@@ -466,7 +466,17 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       fareCode: fare.FareCode || null,
       fareFeatures: fare.FareFeatures || null,
       fareCategory: fare.FareCategory || null,
-      baggageAnalysis: baggageAnalysis
+      baggageAnalysis: baggageAnalysis,
+      // 🚗 TRASLADOS - Propagated from parsed request (included in package, no separate cost)
+      transfers: parsedRequest?.transfers ? {
+        included: parsedRequest.transfers.included,
+        type: parsedRequest.transfers.type || 'in_out'
+      } : undefined,
+      // 🏥 ASISTENCIA MÉDICA / SEGURO - Propagated from parsed request (included in package, no separate cost)
+      travel_assistance: parsedRequest?.travelAssistance ? {
+        included: parsedRequest.travelAssistance.included,
+        coverageAmount: parsedRequest.travelAssistance.coverageAmount
+      } : undefined
     };
   }));
 
