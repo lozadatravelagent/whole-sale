@@ -735,6 +735,14 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
       } : undefined
     };
 
+    // 🔍 DEBUG: Verify services are preserved in enrichedParsed
+    console.log('🔍 [COMBINED SEARCH] Services in enrichedParsed:', {
+      has_transfers: !!enrichedParsed.transfers,
+      transfers_included: enrichedParsed.transfers?.included,
+      has_travel_assistance: !!enrichedParsed.travelAssistance,
+      travel_assistance_included: enrichedParsed.travelAssistance?.included
+    });
+
     console.log('🚀 [COMBINED SEARCH] Step 1: Starting parallel searches');
     console.log('⚡ Running flight and hotel searches simultaneously');
     console.log('📊 [COMBINED SEARCH] Using adults:', inferredAdults, 'for both searches');

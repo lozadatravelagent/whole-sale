@@ -583,7 +583,9 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       airline: flight.airline,
       price: flight.price,
       dates: { departure: flight.departure_date, return: flight.return_date },
-      legs_count: flight.legs?.length || 0
+      legs_count: flight.legs?.length || 0,
+      has_travel_assistance: !!flight.travel_assistance?.included,
+      has_transfers: !!flight.transfers?.included
     });
 
     return {
@@ -619,7 +621,11 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       price: {
         amount: formatPriceForTemplate(flight.price.amount), // Formato europeo con comas
         currency: flight.price.currency
-      }
+      },
+      // 🏥 ASISTENCIA MÉDICA / SEGURO - Copy from original flight data
+      travel_assistance: flight.travel_assistance?.included ? 1 : 0,
+      // 🚗 TRASLADOS - Copy from original flight data
+      transfers: flight.transfers?.included ? 1 : 0
     };
   });
 
@@ -835,6 +841,12 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     }
     console.log(`   ℹ️ Note: Services are included in the package price, no additional cost`);
   }
+
+  // 🔍 DEBUG: Log individual flights with their services
+  console.log('🔍 [DEBUG] Selected flights services status:');
+  template_data.selected_flights.forEach((flight: any, idx: number) => {
+    console.log(`   Flight ${idx + 1}: travel_assistance=${flight.travel_assistance}, transfers=${flight.transfers}`);
+  });
 
   return template_data;
 }

@@ -143,6 +143,16 @@ function evaluateLegacyBaggageLogic(hasCheckedBaggage: boolean, hasCarryOn: bool
 export const transformStarlingResults = async (tvcData: any, parsedRequest?: ParsedTravelRequest): Promise<FlightData[]> => {
   console.log('🔄 Transforming TVC API results:', tvcData);
 
+  // 🔍 DEBUG: Log services from parsedRequest
+  console.log('🔍 [TRANSFORMER] Services from parsedRequest:', {
+    has_transfers: !!parsedRequest?.transfers,
+    transfers_included: parsedRequest?.transfers?.included,
+    transfers_type: parsedRequest?.transfers?.type,
+    has_travel_assistance: !!parsedRequest?.travelAssistance,
+    travel_assistance_included: parsedRequest?.travelAssistance?.included,
+    travel_assistance_coverage: parsedRequest?.travelAssistance?.coverageAmount
+  });
+
   // TVC API returns fares in Fares array, not Recommendations
   let fares = tvcData?.Fares || [];
 
@@ -468,17 +478,27 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       fareCategory: fare.FareCategory || null,
       baggageAnalysis: baggageAnalysis,
       // 🚗 TRASLADOS - Propagated from parsed request (included in package, no separate cost)
-      transfers: parsedRequest?.transfers ? {
-        included: parsedRequest.transfers.included,
+      transfers: parsedRequest?.transfers?.included ? {
+        included: true,
         type: parsedRequest.transfers.type || 'in_out'
       } : undefined,
       // 🏥 ASISTENCIA MÉDICA / SEGURO - Propagated from parsed request (included in package, no separate cost)
-      travel_assistance: parsedRequest?.travelAssistance ? {
-        included: parsedRequest.travelAssistance.included,
+      travel_assistance: parsedRequest?.travelAssistance?.included ? {
+        included: true,
         coverageAmount: parsedRequest.travelAssistance.coverageAmount
       } : undefined
     };
   }));
+
+  // 🔍 DEBUG: Log first flight's services to verify propagation
+  if (allTransformedFlights.length > 0) {
+    console.log('🔍 [TRANSFORMER] First flight services check:', {
+      has_transfers: !!allTransformedFlights[0].transfers,
+      transfers_included: allTransformedFlights[0].transfers?.included,
+      has_travel_assistance: !!allTransformedFlights[0].travel_assistance,
+      travel_assistance_included: allTransformedFlights[0].travel_assistance?.included
+    });
+  }
 
   // Filter by stops preference BEFORE limiting by price
   let filteredFlights = allTransformedFlights;
