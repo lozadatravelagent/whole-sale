@@ -366,10 +366,22 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     setIsGenerating(true);
 
     try {
+      // 🔍 DEBUG: Log combinedData flights BEFORE filtering
+      console.log('🔍 [CombinedTravelSelector] Flights in combinedData BEFORE filter:');
+      combinedData.flights.forEach((flight, idx) => {
+        console.log(`   Flight ${idx + 1}: transfers=${JSON.stringify(flight.transfers)}, travel_assistance=${JSON.stringify(flight.travel_assistance)}`);
+      });
+
       // Get selected data
       const selectedFlightData = combinedData.flights.filter(flight =>
         selectedFlights.includes(flight.id!)
       );
+
+      // 🔍 DEBUG: Log selected flights AFTER filtering
+      console.log('🔍 [CombinedTravelSelector] Selected flights AFTER filter:');
+      selectedFlightData.forEach((flight, idx) => {
+        console.log(`   Flight ${idx + 1}: transfers=${JSON.stringify(flight.transfers)}, travel_assistance=${JSON.stringify(flight.travel_assistance)}`);
+      });
 
       const selectedHotelData = combinedData.hotels.filter(hotel =>
         selectedHotels.includes(hotel.id)

@@ -56,6 +56,12 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
 
   // Convert local combined data to global type for component compatibility
   const convertToGlobalCombinedData = (localData: LocalCombinedTravelResults): CombinedTravelResults => {
+    // 🔍 DEBUG: Log original data to verify transfers and travel_assistance are present
+    console.log('🔍 [MessageItem] Converting combined data, checking services in flights:');
+    localData.flights.forEach((flight, idx) => {
+      console.log(`   Flight ${idx + 1}: transfers=${JSON.stringify(flight.transfers)}, travel_assistance=${JSON.stringify(flight.travel_assistance)}`);
+    });
+
     const calcWait = (arrTime?: string, depTime?: string) => {
       if (!arrTime || !depTime) return 'N/A';
       try {
@@ -203,7 +209,11 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
             options: leg.options
           };
         }),
-        luggage: flight.luggage || false
+        luggage: flight.luggage || false,
+        // 🚗 TRASLADOS - Preserve from flight data
+        transfers: flight.transfers,
+        // 🏥 ASISTENCIA MÉDICA / SEGURO - Preserve from flight data
+        travel_assistance: flight.travel_assistance
       })),
       hotels: localData.hotels.map(hotel => ({
         id: Math.random().toString(36),
