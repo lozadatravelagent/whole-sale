@@ -162,15 +162,19 @@ const useMessageHandler = (
     // If user asks to add a hotel for same dates after flight results, coerce to combined using last flight context
     if (isAddHotelRequest(currentMessage)) {
       // Load persistent context state first, then fallback to other sources
-      const persistentState = await loadContextState(currentConversationId);
-      const flightCtx = persistentState?.flights || (previousParsedRequest?.flights ? {
-        origin: previousParsedRequest.flights.origin,
-        destination: previousParsedRequest.flights.destination,
-        departureDate: previousParsedRequest.flights.departureDate,
-        returnDate: previousParsedRequest.flights.returnDate,
-        adults: previousParsedRequest.flights.adults,
-        children: previousParsedRequest.flights.children || 0
-      } : null);
+      const persistentState = await loadContextState(currentConversationId) as ContextState | null;
+      
+      // Try new ContextState structure first, then legacy structure, then previousParsedRequest
+      const flightCtx = persistentState?.lastSearch?.flightsParams || 
+        (persistentState as any)?.flights ||  // Legacy fallback
+        (previousParsedRequest?.flights ? {
+          origin: previousParsedRequest.flights.origin,
+          destination: previousParsedRequest.flights.destination,
+          departureDate: previousParsedRequest.flights.departureDate,
+          returnDate: previousParsedRequest.flights.returnDate,
+          adults: previousParsedRequest.flights.adults,
+          children: previousParsedRequest.flights.children || 0
+        } : null);
       if (flightCtx) {
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
         console.log('🏨 [INTENT] Flight context:', flightCtx);

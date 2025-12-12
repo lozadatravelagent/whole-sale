@@ -17,8 +17,26 @@ export const normalizeText = (text: string): string => {
 // Helper: detect intent to add a hotel to existing flight search
 // This should ONLY trigger for follow-up messages, not initial combined requests
 // NOTE: This function is now complemented by iterationDetection.ts for more complex patterns
+// IMPORTANT: Iteration patterns should be handled by iterationDetection.ts, not here
 export const isAddHotelRequest = (text: string): boolean => {
   const norm = normalizeText(text);
+
+  // === EXCLUSION: Iteration patterns should be handled by iterationDetection.ts ===
+  // These patterns indicate a modification to an existing search, not "add hotel"
+  const isIterationPattern = (
+    norm.includes('misma busqueda') ||      // "quiero la misma búsqueda pero..."
+    norm.includes('lo mismo pero') ||        // "lo mismo pero con hotel X"
+    norm.includes('igual pero') ||           // "igual pero con hotel Y"
+    norm.includes('mismo vuelo') ||          // "mismo vuelo pero hotel Z"
+    norm.includes('mismos vuelos') ||        // "mismos vuelos pero..."
+    norm.includes('cambiar el hotel') ||     // "cambiar el hotel por X"
+    norm.includes('cambia el hotel') ||      // "cambia el hotel a Y"
+    /\bpero\s+(?:con\s+)?hotel\b/i.test(norm)  // "pero con hotel X" / "pero hotel X"
+  );
+  
+  if (isIterationPattern) {
+    return false; // Let iterationDetection.ts handle this
+  }
 
   // If the message contains flight details (origin, destination, dates), it's likely a combined request, not an "add hotel" request
   const hasFlightDetails = (
@@ -37,7 +55,7 @@ export const isAddHotelRequest = (text: string): boolean => {
     return false; // This is likely a combined request, not an "add hotel" request
   }
 
-  // Primary patterns: explicit "add hotel" requests
+  // Primary patterns: explicit "add hotel" requests (simple addition, not modification)
   const addHotelKeywords = [
     'agrega un hotel', 'agregale un hotel', 'agregar un hotel', 'sumale un hotel', 'añade un hotel',
     'agrega hotel', 'agregale hotel', 'sumale hotel', 'añade hotel', 'agregar hotel', 'agregame un hotel',
@@ -48,9 +66,9 @@ export const isAddHotelRequest = (text: string): boolean => {
     return true;
   }
   
-  // Pattern: "hotel" + reference to previous search
+  // Pattern: "hotel" + reference to dates (not search modification)
+  // NOTE: Removed "misma/mismo" patterns - those are iterations now
   if (norm.includes('hotel') && (
-    norm.includes('misma') || norm.includes('mismo') || 
     norm.includes('esas fechas') || norm.includes('esos dias') ||
     norm.includes('para las fechas') || norm.includes('para esas')
   )) {

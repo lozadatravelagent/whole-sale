@@ -412,6 +412,268 @@ addEvent → makeBudget (para crear presupuestos con eventos especiales)
 
 Los servicios están diseñados para trabajar en conjunto siguiendo el flujo lógico: **búsqueda → presupuestación → reserva → gestión**.
 
+## Cambios Recientes (Diciembre 2025)
+
+### Sistema de Expiración de Sesión por Inactividad
+
+**Archivos**: `src/hooks/useSessionExpiration.ts`, `src/config/sessionConfig.ts`
+
+Implementación de cierre automático de sesión tras inactividad:
+
+- **Timeout**: 2 horas de inactividad (configurable en `SESSION_TIMEOUT_MS`)
+- **Verificación**: Cada 1 minuto mediante intervalo
+- **Eventos monitoreados**: `mousedown`, `mousemove`, `keydown`, `scroll`, `touchstart`, `click`, `focus`
+- **Throttling**: Actualiza timestamp cada 10 segundos para evitar escrituras excesivas a localStorage
+- **Limpieza**: Al expirar, elimina tokens de Supabase y redirige a `/login?expired=true`
+- **Visibility Change**: Verifica expiración al volver a la pestaña del navegador
+
+### Sistema de Detección de Aerolíneas (Alias Centralizados)
+
+**Archivo**: `src/features/chat/data/airlineAliases.ts` (789 líneas)
+
+Mapeo completo de nombres de aerolíneas a códigos IATA para filtrado de resultados:
+
+```typescript
+// Ejemplo de uso:
+// Usuario escribe: "quiero volar con latam a madrid"
+// Sistema detecta "latam" → código IATA "LA"
+// Filtro usa "LA" para filtrar resultados de Starling
+```
+
+**Grupos de aerolíneas incluidos**:
+- LATAM Group (LA, JJ, LP, XL, 4C, 4M)
+- Avianca Group (AV, 2K, LR, TA)
+- Iberia Group/IAG (IB, I2)
+- American Airlines, Delta, United, Copa, Aeromexico, JetBlue, etc.
+
+### Sistema de Detección de Cadenas Hoteleras
+
+**Archivo**: `src/features/chat/data/hotelChainAliases.ts` (438 líneas)
+
+Detección de cadenas hoteleras con variaciones y aliases:
+
+```typescript
+interface HotelChainInfo {
+    name: string;       // Nombre canónico
+    aliases: string[];  // Todas las variaciones conocidas
+}
+```
+
+**Cadenas implementadas**: RIU, Iberostar, Meliá, Bahía Príncipe, Barceló, NH Hotels, Hilton, Marriott, Hyatt, IHG, Hard Rock, Secrets, Dreams, Sandals, Best Western, All Inclusive resorts, etc.
+
+### Generador de Itinerarios de Viaje con IA
+
+**Archivo**: `supabase/functions/travel-itinerary/index.ts` (263 líneas)
+
+Nueva Edge Function que genera itinerarios detallados usando OpenAI:
+
+**Input**:
+```typescript
+{ destinations: string[], days: number }
+```
+
+**Output estructurado**:
+```typescript
+interface ItineraryDay {
+    day: number;
+    title: string;
+    morning: ItineraryActivity[];
+    afternoon: ItineraryActivity[];
+    evening: ItineraryActivity[];
+    restaurants: ItineraryRestaurant[];
+    travelTip: string;
+}
+```
+
+**Formateador**: `formatItineraryResponse()` en `responseFormatters.ts` convierte el JSON a markdown legible.
+
+### Sistema Avanzado de Filtrado de Habitaciones
+
+**Archivo**: `src/utils/roomFilters.ts` (360 líneas)
+
+Sistema experto de filtrado con lógica de dos filtros (AND):
+
+**FILTRO A - Capacidad**:
+- Códigos en `fare_id_broker`: SGL, DBL, TWN, TPL, QUA
+- Keywords en descripción (español/inglés): "single", "doble", "triple", "cuádruple"
+- Exclusiones para evitar falsos positivos (ej: filtro "double" excluye "TRIPLE")
+
+**FILTRO B - Plan de Comidas**:
+- `all_inclusive` → "ALL INCLUSIVE", "TODO INCLUIDO"
+- `breakfast` → "BUFFET BREAKFAST", "DESAYUNO", "B&B"
+- `half_board` → "HALF BOARD", "MEDIA PENSIÓN"
+- `room_only` → "ROOM ONLY", "SOLO ALOJAMIENTO"
+
+**Normalización bilingüe**:
+```typescript
+normalizeCapacity("doble") → "double"
+normalizeMealPlan("todo incluido") → "all_inclusive"
+```
+
+### Filtro Especial de Hoteles Punta Cana
+
+**Archivo**: `src/features/chat/services/searchHandlers.ts`
+
+Whitelist de hoteles permitidos para búsquedas en Punta Cana:
+
+```typescript
+const PUNTA_CANA_ALLOWED_HOTELS = [
+  ['riu', 'bambu'],
+  ['iberostar', 'dominicana'],
+  ['bahia', 'principe', 'grand', 'punta', 'cana'],
+  ['sunscape', 'coco'],
+  ['riu', 'republica']
+];
+```
+
+**Excepción**: Si el usuario especifica una cadena hotelera (ej: "cadena iberostar"), TODOS los hoteles de esa cadena se permiten.
+
+### Mejoras en AI Message Parser (Edge Function)
+
+**Archivo**: `supabase/functions/ai-message-parser/index.ts`
+
+**Detección mejorada de intención hotel vs vuelo**:
+- Keywords de hotel tienen prioridad sobre patrones de vuelo
+- Patrón "desde X a Y" con keywords de hotel → se interpreta como hotel (destino: Y), no vuelo
+- Detección de cadenas hoteleras (`hotelChain` field)
+- Detección de nombre específico de hotel (`hotelName` field)
+
+**Historial de conversación expandido**:
+- Ahora procesa últimos 20 mensajes (antes: 8)
+- Smart truncation: mensajes recientes mantienen 800 chars, antiguos 300 chars
+- Extracción de contexto de vuelos previos para búsquedas de hotel
+
+**Nuevos campos parseados**:
+```typescript
+hotels?: {
+    hotelChain?: string;  // Cadena hotelera detectada
+    hotelName?: string;   // Nombre específico de hotel
+    // ... otros campos
+}
+```
+
+### Mejoras en PDF Processor
+
+**Archivo**: `src/services/pdfProcessor.ts`
+
+**Nuevos patrones regex para extracción de vuelos**:
+- Soporte para nombres de aerolíneas complejos con sufijos corporativos
+- Patrones mejorados para información de escalas (layovers)
+- Preservación de información de conexiones en estructura de vuelo reconstruida
+
+**Smart price parser**:
+- Detecta automáticamente formato US (2,549.32) vs EU/Latino (2.549,32)
+- Maneja múltiples símbolos de moneda
+
+### Lógica de Adultos Inferidos
+
+**Archivo**: `src/features/chat/services/searchHandlers.ts`
+
+Cuando el usuario no especifica cantidad de adultos, el sistema infiere basándose en:
+1. Contexto previo de la conversación
+2. Tipo de habitación solicitada (doble → 2 adultos)
+3. Default: 1 adulto si no hay contexto
+
+### Response Formatters Actualizados
+
+**Archivo**: `src/features/chat/services/responseFormatters.ts`
+
+**Nuevas funciones**:
+- `formatItineraryResponse()` - Formatea itinerarios AI en markdown
+- Mejoras en `formatHotelResponse()` - Agrupación por tipo de habitación
+- Mejoras en `formatFlightResponse()` - Detección de carry-on inconsistente
+
+**Ordenamiento inteligente de habitaciones**:
+1. Por tipo (SGL → DUS → DBL → TPL → QUA)
+2. Por categoría (BASIC → STANDARD → COMFORT → SUPERIOR)
+3. Por desayuno incluido
+4. Por precio
+
+### Sistema de Iteración de Búsquedas (Diciembre 2025)
+
+**Archivos principales**:
+- `src/features/chat/utils/iterationDetection.ts` (720 líneas)
+- `src/features/chat/types/contextState.ts` (148 líneas)
+- `src/features/chat/hooks/useContextualMemory.ts` (modificado)
+- `src/features/chat/hooks/useMessageHandler.ts` (modificado)
+
+Sistema que detecta cuando el usuario quiere **iterar sobre una búsqueda anterior** en vez de hacer una nueva:
+
+#### Casos de Uso Principales
+
+**Iteración de Hotel sobre Combined**:
+```
+Turno 1: "Vuelo + hotel a Punta Cana del 15 al 22 de enero, 2 adultos"
+Turno 2: "Quiero la misma búsqueda pero con hotel RIU" 
+→ Preserva vuelo, solo cambia filtro de hotel
+```
+
+**Iteración de Vuelo (escalas/equipaje/aerolínea)**:
+```
+Turno 1: "Vuelo a Madrid del 10 al 20 de marzo"
+Turno 2: "El mismo pero directo" / "Con equipaje" / "En Iberia"
+→ Preserva origen/destino/fechas, solo modifica filtros
+```
+
+#### Tipos de Contexto (`ContextState`)
+
+```typescript
+interface ContextState {
+  lastSearch?: {
+    requestType: 'flights' | 'hotels' | 'combined' | 'packages' | 'services';
+    flightsParams?: FlightContextParams;  // origin, destination, dates, pax, cabin, stops, airline
+    hotelsParams?: HotelContextParams;    // city, dates, pax, chain, name, stars, mealPlan
+  };
+  turnNumber: number;
+  lastIntent?: string;
+}
+```
+
+#### Patrones de Detección
+
+**Referencias al contexto anterior**:
+- "misma búsqueda", "mismo vuelo", "mismo hotel"
+- "lo mismo pero", "igual pero", "repetí"
+
+**Modificaciones de hotel**:
+- Cadenas: "hotel RIU", "con Iberostar", "cadena Meliá"
+- Estrellas: "5 estrellas", "mínimo 4 estrellas"
+- Plan de comidas: "todo incluido", "all inclusive"
+
+**Modificaciones de vuelo**:
+- Escalas: "directo", "con escalas", "sin escalas"
+- Equipaje: "con valija", "solo carry-on"
+- Aerolínea: "con Iberia", "en Latam" (usa `detectAirlineInText()` del archivo centralizado)
+
+#### Integración con Archivo de Aerolíneas
+
+El sistema de iteración **usa el archivo centralizado** `src/features/chat/data/airlineAliases.ts` que contiene:
+- **229 códigos IATA** de aerolíneas mundiales
+- **~385 aliases** (variaciones de nombres que usuarios pueden escribir)
+- **Función `detectAirlineInText()`** que detecta menciones con niveles de confianza (high/medium/low)
+
+```typescript
+// iterationDetection.ts usa:
+import { detectAirlineInText } from '../data/airlineAliases';
+
+// Ejemplo de detección:
+detectAirlineInText("quiero volar con latam a madrid")
+// Returns: { code: 'LA', name: 'latam', confidence: 'high' }
+```
+
+Esto permite detectar aerolíneas en iteraciones sin duplicar la lista de aliases.
+
+#### Flujo de Merge
+
+```
+1. Usuario envía mensaje
+2. detectIterationIntent() analiza contra ContextState previo
+3. Si es iteración → mergeIterationContext() combina:
+   - Parámetros previos (vuelo: origin, dest, dates, pax)
+   - Nuevas modificaciones (hotel: chain, stars, etc.)
+4. Se ejecuta búsqueda combined con parámetros mergeados
+5. Se actualiza ContextState para próximo turno
+```
 
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
