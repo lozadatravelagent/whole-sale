@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageItem from './MessageItem';
@@ -45,6 +45,9 @@ const ChatInterface = React.memo(({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  
+  // Contador de profundidad para manejar drag sobre elementos hijos
+  const dragDepthRef = useRef(0);
 
   // Filter out system contextual memory messages
   const visibleMessages = messages.filter((m: MessageRow) => {
@@ -93,28 +96,49 @@ const ChatInterface = React.memo(({
     };
   }, []);
 
+  // Función para resetear el estado de drag (usada por múltiples handlers)
+  const resetDragState = useCallback(() => {
+    dragDepthRef.current = 0;
+    setIsDraggingOver(false);
+  }, []);
+
   // Handle drag and drop for PDF files
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+  // Usamos dragenter/dragleave con contador de profundidad para detectar correctamente
+  // cuando el cursor entra/sale del contenedor vs elementos hijos
+  const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!isDraggingOver) {
+    
+    dragDepthRef.current++;
+    
+    // Solo mostrar overlay si hay archivos en el drag
+    if (e.dataTransfer.types.includes('Files')) {
       setIsDraggingOver(true);
     }
-  };
+  }, []);
 
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only set to false if we're leaving the main container
-    if (e.currentTarget === e.target) {
-      setIsDraggingOver(false);
+    // Necesario para permitir el drop, pero no cambiamos estado aquí
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    dragDepthRef.current--;
+    
+    // Solo ocultar cuando realmente salimos del contenedor (depth = 0)
+    if (dragDepthRef.current <= 0) {
+      resetDragState();
     }
-  };
+  }, [resetDragState]);
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDraggingOver(false);
+    resetDragState();
 
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
@@ -135,11 +159,77 @@ const ChatInterface = React.memo(({
         console.warn('Only PDF files are supported');
       }
     }
-  };
+  }, [onPdfUpload, resetDragState]);
+
+  // Listeners globales para casos edge: drop fuera de ventana, ESC, cambio de pestaña
+  useEffect(() => {
+    // Handler para drop en window (usuario suelta fuera del área de chat)
+    const handleWindowDrop = (e: DragEvent) => {
+      // Solo resetear si estamos mostrando el overlay
+      if (isDraggingOver) {
+        resetDragState();
+      }
+    };
+
+    // Handler para dragend (drag cancelado o terminado)
+    const handleWindowDragEnd = () => {
+      resetDragState();
+    };
+
+    // Handler para ESC key
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isDraggingOver) {
+        resetDragState();
+      }
+    };
+
+    // Handler para blur/visibilitychange (cambio de pestaña o ventana)
+    const handleVisibilityChange = () => {
+      if (document.hidden && isDraggingOver) {
+        resetDragState();
+      }
+    };
+
+    const handleWindowBlur = () => {
+      // Pequeño delay para evitar falsos positivos al hacer click en el overlay
+      setTimeout(() => {
+        if (isDraggingOver) {
+          resetDragState();
+        }
+      }, 100);
+    };
+
+    // Handler para cuando el mouse sale de la ventana completamente
+    const handleMouseLeave = (e: MouseEvent) => {
+      // Si salimos de la ventana mientras arrastramos
+      if (isDraggingOver && !e.relatedTarget) {
+        resetDragState();
+      }
+    };
+
+    // Registrar listeners
+    window.addEventListener('drop', handleWindowDrop);
+    window.addEventListener('dragend', handleWindowDragEnd);
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    document.addEventListener('mouseleave', handleMouseLeave);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('drop', handleWindowDrop);
+      window.removeEventListener('dragend', handleWindowDragEnd);
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [isDraggingOver, resetDragState]);
 
   return (
     <div
       className="flex-1 flex flex-col h-full relative"
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -153,13 +243,18 @@ const ChatInterface = React.memo(({
         onBackToList={onBackToList}
       />
 
-      {/* Drag and Drop Overlay */}
+      {/* Drag and Drop Overlay - pointer-events-none para no interferir con drag events */}
       {isDraggingOver && (
-        <div className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary rounded-lg flex items-center justify-center">
+        <div 
+          className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary rounded-lg flex items-center justify-center pointer-events-none"
+          aria-live="polite"
+          role="status"
+        >
           <div className="text-center">
             <FileUp className="h-16 w-16 text-primary mx-auto mb-4 animate-bounce" />
             <p className="text-xl font-semibold text-primary">Suelta el PDF aquí</p>
             <p className="text-sm text-muted-foreground mt-2">Solo archivos PDF (máx. 10MB)</p>
+            <p className="text-xs text-muted-foreground mt-1">Presiona ESC para cancelar</p>
           </div>
         </div>
       )}
