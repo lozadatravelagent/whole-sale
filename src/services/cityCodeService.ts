@@ -44,7 +44,7 @@ const CITY_MAPPINGS: Record<string, CityCodeMapping> = {
     iata: 'PUJ',
     hotelCode: 'PUJ',
     country: 'DO',
-    aliases: ['puntacana']
+    aliases: ['puntacana', 'bavaro', 'bávaro']
   },
   'santo domingo': {
     iata: 'SDQ',
@@ -57,6 +57,164 @@ const CITY_MAPPINGS: Record<string, CityCodeMapping> = {
     hotelCode: 'POP',
     country: 'DO',
     aliases: []
+  },
+  'la romana': {
+    iata: 'LRM',
+    hotelCode: 'LRM',
+    country: 'DO',
+    aliases: ['romana', 'casa de campo']
+  },
+
+  // Cuba
+  'la habana': {
+    iata: 'HAV',
+    hotelCode: 'HAV',
+    country: 'CU',
+    aliases: ['habana', 'havana', 'havanna']
+  },
+  'varadero': {
+    iata: 'VRA',
+    hotelCode: 'VRA',
+    country: 'CU',
+    aliases: []
+  },
+  'holguin': {
+    iata: 'HOG',
+    hotelCode: 'HOG',
+    country: 'CU',
+    aliases: ['holguín']
+  },
+  'cayo coco': {
+    iata: 'CCC',
+    hotelCode: 'CCC',
+    country: 'CU',
+    aliases: ['cayo guillermo']
+  },
+  'santa clara': {
+    iata: 'SNU',
+    hotelCode: 'SNU',
+    country: 'CU',
+    aliases: ['cayo santa maria']
+  },
+
+  // Jamaica
+  'montego bay': {
+    iata: 'MBJ',
+    hotelCode: 'MBJ',
+    country: 'JM',
+    aliases: ['montego', 'mobay']
+  },
+  'kingston': {
+    iata: 'KIN',
+    hotelCode: 'KIN',
+    country: 'JM',
+    aliases: []
+  },
+  'ocho rios': {
+    iata: 'OCJ',
+    hotelCode: 'OCJ',
+    country: 'JM',
+    aliases: []
+  },
+  'negril': {
+    iata: 'NEG',
+    hotelCode: 'NEG',
+    country: 'JM',
+    aliases: []
+  },
+
+  // Bahamas
+  'nassau': {
+    iata: 'NAS',
+    hotelCode: 'NAS',
+    country: 'BS',
+    aliases: ['bahamas', 'new providence']
+  },
+  'freeport': {
+    iata: 'FPO',
+    hotelCode: 'FPO',
+    country: 'BS',
+    aliases: ['gran bahama', 'grand bahama']
+  },
+
+  // Puerto Rico
+  'san juan': {
+    iata: 'SJU',
+    hotelCode: 'SJU',
+    country: 'PR',
+    aliases: ['puerto rico']
+  },
+
+  // Aruba
+  'aruba': {
+    iata: 'AUA',
+    hotelCode: 'AUA',
+    country: 'AW',
+    aliases: ['oranjestad']
+  },
+
+  // Curazao
+  'curacao': {
+    iata: 'CUR',
+    hotelCode: 'CUR',
+    country: 'CW',
+    aliases: ['curazao', 'curaçao', 'willemstad']
+  },
+
+  // Bonaire
+  'bonaire': {
+    iata: 'BON',
+    hotelCode: 'BON',
+    country: 'BQ',
+    aliases: ['kralendijk']
+  },
+
+  // Sint Maarten / San Martín
+  'sint maarten': {
+    iata: 'SXM',
+    hotelCode: 'SXM',
+    country: 'SX',
+    aliases: ['san martin', 'saint martin', 'st maarten', 'st martin']
+  },
+
+  // Barbados
+  'barbados': {
+    iata: 'BGI',
+    hotelCode: 'BGI',
+    country: 'BB',
+    aliases: ['bridgetown']
+  },
+
+  // Trinidad y Tobago
+  'trinidad': {
+    iata: 'POS',
+    hotelCode: 'POS',
+    country: 'TT',
+    aliases: ['puerto espana', 'port of spain', 'trinidad y tobago']
+  },
+
+  // Islas Caimán
+  'grand cayman': {
+    iata: 'GCM',
+    hotelCode: 'GCM',
+    country: 'KY',
+    aliases: ['cayman', 'islas caiman', 'george town']
+  },
+
+  // Islas Turcas y Caicos
+  'turks and caicos': {
+    iata: 'PLS',
+    hotelCode: 'PLS',
+    country: 'TC',
+    aliases: ['providenciales', 'turcos y caicos']
+  },
+
+  // Islas Vírgenes
+  'st thomas': {
+    iata: 'STT',
+    hotelCode: 'STT',
+    country: 'VI',
+    aliases: ['saint thomas', 'islas virgenes']
   },
 
   // España

@@ -15,6 +15,7 @@
 
 import type { ContextState, FlightContextParams, HotelContextParams } from '../types/contextState';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import { detectAirlineInText } from '../data/airlineAliases';
 
 /**
  * Modificaciones específicas de vuelo detectadas
@@ -33,37 +34,37 @@ export interface IterationContext {
    * Si el mensaje es una iteración sobre contexto previo
    */
   isIteration: boolean;
-  
+
   /**
    * Tipo de iteración detectada
    */
   iterationType: 'hotel_modification' | 'flight_modification' | 'filter_change' | 'full_reuse' | 'new_search';
-  
+
   /**
    * Tipo de búsqueda base del contexto anterior
    */
   baseRequestType: 'flights' | 'hotels' | 'combined' | null;
-  
+
   /**
    * Qué componente se está modificando
    */
   modifiedComponent: 'flights' | 'hotels' | 'both' | null;
-  
+
   /**
    * Campos que deben preservarse del contexto anterior
    */
   preserveFields: string[];
-  
+
   /**
    * Confianza de la detección (0-1)
    */
   confidence: number;
-  
+
   /**
    * Patrón que matcheó (para debug)
    */
   matchedPattern?: string;
-  
+
   /**
    * Detalles de modificación de vuelo (si aplica)
    */
@@ -142,22 +143,11 @@ const FLIGHT_MODIFICATION_PATTERNS = [
   { pattern: /\b(sin\s+escalas?|vuelo\s+directo|solo\s+directo|directos?)\b/i, name: 'sin_escalas', stopsValue: 'direct' },
   { pattern: /\b(una\s+escala|1\s+escala|con\s+una\s+escala)\b/i, name: 'una_escala', stopsValue: 'one_stop' },
   { pattern: /\b(dos\s+escalas?|2\s+escalas?|con\s+dos\s+escalas?)\b/i, name: 'dos_escalas', stopsValue: 'two_stops' },
-  // Aerolínea
+  // Aerolínea (patrones genéricos - la detección real usa detectAirlineInText)
   { pattern: /\b(otra\s+aerolinea|diferente\s+aerolinea|cambiar?\s+aerolinea)\b/i, name: 'otra_aerolinea', airlineChange: true },
-  { pattern: /\b(con\s+(?:aerolinea\s+)?(?:iberia|latam|avianca|american|delta|united|air\s+france|lufthansa|emirates|qatar))\b/i, name: 'con_aerolinea', airlineChange: true },
-  { pattern: /\b(en\s+(?:iberia|latam|avianca|american|delta|united|air\s+france|lufthansa|emirates|qatar))\b/i, name: 'en_aerolinea', airlineChange: true },
   // Equipaje
   { pattern: /\b(con\s+valija|con\s+equipaje|equipaje\s+facturado)\b/i, name: 'con_equipaje', luggageValue: 'checked' },
   { pattern: /\b(sin\s+valija|solo\s+equipaje\s+de\s+mano|carry\s*on)\b/i, name: 'sin_equipaje', luggageValue: 'carry_on' },
-];
-
-/**
- * Aerolíneas conocidas para detección
- */
-const KNOWN_AIRLINES = [
-  'iberia', 'latam', 'avianca', 'american', 'delta', 'united', 
-  'air france', 'lufthansa', 'emirates', 'qatar', 'aerolineas argentinas',
-  'copa', 'aeromexico', 'gol', 'azul', 'jetsmart', 'flybondi', 'sky'
 ];
 
 /**
@@ -172,7 +162,7 @@ export function detectIterationIntent(
   previousContext: ContextState | null
 ): IterationContext {
   const norm = normalizeText(message);
-  
+
   // Sin contexto previo = no puede ser iteración
   if (!previousContext?.lastSearch) {
     console.log('🔍 [ITERATION] No previous context, cannot be iteration');
@@ -229,19 +219,18 @@ export function detectIterationIntent(
   }
 
   // Detectar mención de cadena hotelera conocida
-  const mentionsHotelChain = KNOWN_HOTEL_CHAINS.some(chain => 
+  const mentionsHotelChain = KNOWN_HOTEL_CHAINS.some(chain =>
     norm.includes(normalizeText(chain))
   );
   if (mentionsHotelChain) {
     console.log('✅ [ITERATION] Known hotel chain mentioned');
   }
 
-  // Detectar mención de aerolínea conocida
-  const mentionsAirline = KNOWN_AIRLINES.some(airline => 
-    norm.includes(normalizeText(airline))
-  );
+  // Detectar mención de aerolínea conocida (usa archivo centralizado)
+  const detectedAirline = detectAirlineInText(message);
+  const mentionsAirline = detectedAirline !== null;
   if (mentionsAirline) {
-    console.log('✅ [ITERATION] Known airline mentioned');
+    console.log('✅ [ITERATION] Known airline mentioned:', detectedAirline?.name, '→', detectedAirline?.code);
   }
 
   // Detectar si hay nuevos parámetros de vuelo (origen/destino/fechas nuevas)
@@ -361,7 +350,7 @@ export function detectIterationIntent(
     // Puede ser sobre vuelo solo o sobre combined (manteniendo hotel si había)
     const baseType = lastSearch.requestType;
     const preserveHotel = baseType === 'combined';
-    
+
     console.log(`✅ [ITERATION] CASE 7: Flight stops modification → flight_modification (${flightModDetails.stopsValue})`);
     return {
       isIteration: true,
@@ -382,7 +371,7 @@ export function detectIterationIntent(
   if (hasFlightMod && flightModDetails.luggageValue && !hasNewFlightParams) {
     const baseType = lastSearch.requestType;
     const preserveHotel = baseType === 'combined';
-    
+
     console.log(`✅ [ITERATION] CASE 8: Flight luggage modification → flight_modification (${flightModDetails.luggageValue})`);
     return {
       isIteration: true,
@@ -404,11 +393,12 @@ export function detectIterationIntent(
     if (!hasNewFlightParams && (lastSearch.requestType === 'flights' || lastSearch.requestType === 'combined')) {
       const baseType = lastSearch.requestType;
       const preserveHotel = baseType === 'combined';
-      
-      // Extraer nombre de aerolínea mencionada
-      const airlineMentioned = KNOWN_AIRLINES.find(a => norm.includes(normalizeText(a)));
-      
-      console.log(`✅ [ITERATION] CASE 9: Flight airline change → flight_modification (${airlineMentioned || 'unknown'})`);
+
+      // Usar aerolínea detectada por detectAirlineInText (archivo centralizado)
+      const airlineCode = detectedAirline?.code;
+      const airlineName = detectedAirline?.name;
+
+      console.log(`✅ [ITERATION] CASE 9: Flight airline change → flight_modification (${airlineName || 'unknown'} → ${airlineCode || '?'})`);
       return {
         isIteration: true,
         iterationType: 'flight_modification',
@@ -418,7 +408,7 @@ export function detectIterationIntent(
         confidence: 0.85,
         matchedPattern: flightModPattern || 'airline_mention',
         flightModification: {
-          airline: airlineMentioned
+          airline: airlineCode // Usa código IATA en vez del nombre
         }
       } as IterationContext & { flightModification?: { stops?: string; luggage?: string; airline?: string } };
     }
@@ -428,7 +418,7 @@ export function detectIterationIntent(
   if (/\b(lo\s+mismo\s+pero|la\s+misma\s+pero)\b/i.test(norm) && hasFlightMod) {
     const baseType = lastSearch.requestType;
     const preserveHotel = baseType === 'combined';
-    
+
     console.log('✅ [ITERATION] CASE 10: "lo mismo pero" with flight change → flight_modification');
     return {
       isIteration: true,
@@ -463,7 +453,7 @@ export function detectIterationIntent(
 function getAllFlightFields(): string[] {
   return [
     'flights.origin',
-    'flights.destination', 
+    'flights.destination',
     'flights.departureDate',
     'flights.returnDate',
     'flights.adults',
@@ -511,7 +501,7 @@ export function mergeIterationContext(
   }
 
   const { lastSearch } = previousContext;
-  
+
   console.log('🔄 [MERGE] Starting iteration merge');
   console.log('🔄 [MERGE] Iteration type:', iterationContext.iterationType);
   console.log('🔄 [MERGE] Base request type:', iterationContext.baseRequestType);
@@ -522,7 +512,7 @@ export function mergeIterationContext(
     const mergedRequest: ParsedTravelRequest = {
       ...newParsedRequest,
       requestType: 'combined', // Forzar combined para mantener vuelo + hotel
-      
+
       // Preservar parámetros de vuelo del contexto anterior
       flights: {
         origin: lastSearch.flightsParams?.origin || '',
@@ -539,7 +529,7 @@ export function mergeIterationContext(
         ...(newParsedRequest.flights?.origin && { origin: newParsedRequest.flights.origin }),
         ...(newParsedRequest.flights?.destination && { destination: newParsedRequest.flights.destination }),
       },
-      
+
       // Combinar parámetros de hotel: base del contexto + nuevos filtros
       hotels: {
         // Base del contexto anterior (ciudad, fechas, pax)
@@ -548,21 +538,21 @@ export function mergeIterationContext(
         checkoutDate: lastSearch.hotelsParams?.checkoutDate || lastSearch.flightsParams?.returnDate || '',
         adults: lastSearch.hotelsParams?.adults || lastSearch.flightsParams?.adults || 1,
         children: lastSearch.hotelsParams?.children ?? lastSearch.flightsParams?.children ?? 0,
-        
+
         // Preservar preferencias anteriores a menos que se cambien explícitamente
         roomType: newParsedRequest.hotels?.roomType || lastSearch.hotelsParams?.roomType,
         mealPlan: newParsedRequest.hotels?.mealPlan || lastSearch.hotelsParams?.mealPlan,
-        
+
         // Actualizar con nuevos filtros del usuario (ESTO ES LO NUEVO)
         ...(newParsedRequest.hotels?.hotelChain && { hotelChain: newParsedRequest.hotels.hotelChain }),
         ...(newParsedRequest.hotels?.hotelName && { hotelName: newParsedRequest.hotels.hotelName }),
         ...(newParsedRequest.hotels?.freeCancellation !== undefined && { freeCancellation: newParsedRequest.hotels.freeCancellation }),
       },
-      
+
       // Preservar transfers y asistencia si existían
       transfers: newParsedRequest.transfers || undefined,
       travelAssistance: newParsedRequest.travelAssistance || undefined,
-      
+
       confidence: Math.max(newParsedRequest.confidence || 0, iterationContext.confidence),
       originalMessage: newParsedRequest.originalMessage,
     };
@@ -583,11 +573,11 @@ export function mergeIterationContext(
   if (iterationContext.iterationType === 'flight_modification') {
     const flightMod = iterationContext.flightModification;
     const preserveHotel = lastSearch.requestType === 'combined';
-    
+
     const mergedRequest: ParsedTravelRequest = {
       ...newParsedRequest,
       requestType: preserveHotel ? 'combined' : 'flights',
-      
+
       // Preservar parámetros de vuelo del contexto anterior + aplicar modificación
       flights: {
         origin: lastSearch.flightsParams?.origin || '',
@@ -610,7 +600,7 @@ export function mergeIterationContext(
         ...(newParsedRequest.flights?.preferredAirline && { preferredAirline: newParsedRequest.flights.preferredAirline }),
         ...(newParsedRequest.flights?.luggage && { luggage: newParsedRequest.flights.luggage }),
       },
-      
+
       // Preservar hotel si era búsqueda combined
       ...(preserveHotel && lastSearch.hotelsParams && {
         hotels: {
@@ -625,10 +615,10 @@ export function mergeIterationContext(
           hotelName: lastSearch.hotelsParams.hotelName,
         }
       }),
-      
+
       transfers: newParsedRequest.transfers || undefined,
       travelAssistance: newParsedRequest.travelAssistance || undefined,
-      
+
       confidence: Math.max(newParsedRequest.confidence || 0, iterationContext.confidence),
       originalMessage: newParsedRequest.originalMessage,
     };
@@ -683,22 +673,22 @@ export function generateIterationExplanation(
   }
 
   const { lastSearch } = previousContext;
-  
+
   if (iterationContext.iterationType === 'hotel_modification') {
     const origin = lastSearch.flightsParams?.origin || '?';
     const dest = lastSearch.flightsParams?.destination || '?';
-    const dates = lastSearch.flightsParams?.departureDate 
+    const dates = lastSearch.flightsParams?.departureDate
       ? `${lastSearch.flightsParams.departureDate}${lastSearch.flightsParams.returnDate ? ` al ${lastSearch.flightsParams.returnDate}` : ''}`
       : '';
     const pax = lastSearch.flightsParams?.adults || 1;
-    
+
     return `🔄 **Búsqueda actualizada** (mantuve tu vuelo anterior)\n\n✈️ **Vuelo:** ${origin} → ${dest}${dates ? ` | ${dates}` : ''} | ${pax} adulto(s)\n\n`;
   }
 
   if (iterationContext.iterationType === 'flight_modification') {
     const flightMod = iterationContext.flightModification;
     let changeDesc = '';
-    
+
     if (flightMod?.stops) {
       const stopsMap: Record<string, string> = {
         'direct': 'vuelos directos',
@@ -716,10 +706,10 @@ export function generateIterationExplanation(
     } else if (flightMod?.airline) {
       changeDesc = `con ${flightMod.airline}`;
     }
-    
+
     const origin = lastSearch.flightsParams?.origin || '?';
     const dest = lastSearch.flightsParams?.destination || '?';
-    
+
     return `🔄 **Búsqueda actualizada** (${changeDesc})\n\n✈️ **Ruta:** ${origin} → ${dest}\n\n`;
   }
 
