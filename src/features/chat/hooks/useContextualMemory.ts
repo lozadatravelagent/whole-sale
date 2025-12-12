@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { ContextState } from '../types/contextState';
+import { isValidContextState } from '../types/contextState';
 
 const useContextualMemory = () => {
   // Load contextual memory from database when conversation changes
@@ -99,7 +101,7 @@ const useContextualMemory = () => {
   }, []);
 
   // Load persistent context state (parameters that persist across turns)
-  const loadContextState = useCallback(async (conversationId: string) => {
+  const loadContextState = useCallback(async (conversationId: string): Promise<ContextState | null> => {
     try {
       console.log('🧠 [STATE] Loading context state for conversation:', conversationId);
       const { data: messages, error } = await supabase
@@ -118,8 +120,37 @@ const useContextualMemory = () => {
 
       const meta: any = messages?.[0]?.meta as any;
       const state = meta && typeof meta === 'object' && 'contextState' in meta ? (meta as any).contextState : null;
-      console.log('✅ [STATE] Loaded context state:', state);
-      return state;
+      
+      // Validate the loaded state has the correct structure
+      if (state && isValidContextState(state)) {
+        console.log('✅ [STATE] Loaded valid context state:', {
+          requestType: state.lastSearch?.requestType,
+          hasFlights: !!state.lastSearch?.flightsParams,
+          hasHotels: !!state.lastSearch?.hotelsParams,
+          turnNumber: state.turnNumber
+        });
+        return state;
+      }
+      
+      // Handle legacy state format (old format without lastSearch structure)
+      if (state && (state.flights || state.hotels)) {
+        console.log('🔄 [STATE] Converting legacy state format to new ContextState');
+        const legacyState: ContextState = {
+          lastSearch: {
+            requestType: state.flights && state.hotels ? 'combined' : (state.flights ? 'flights' : 'hotels'),
+            timestamp: state.timestamp || new Date().toISOString(),
+            flightsParams: state.flights,
+            hotelsParams: state.hotels
+          },
+          constraintsHistory: [],
+          turnNumber: 1,
+          schemaVersion: 1
+        };
+        return legacyState;
+      }
+      
+      console.log('ℹ️ [STATE] No valid context state found');
+      return null;
     } catch (error) {
       console.error('❌ [STATE] Error in loadContextState:', error);
       return null;
@@ -127,9 +158,30 @@ const useContextualMemory = () => {
   }, []);
 
   // Save persistent context state
-  const saveContextState = useCallback(async (conversationId: string, contextState: any) => {
+  const saveContextState = useCallback(async (conversationId: string, contextState: ContextState) => {
     try {
-      console.log('💾 [STATE] Saving context state for conversation:', conversationId, contextState);
+      console.log('💾 [STATE] Saving context state for conversation:', conversationId);
+      console.log('💾 [STATE] State to save:', {
+        requestType: contextState.lastSearch?.requestType,
+        hasFlights: !!contextState.lastSearch?.flightsParams,
+        hasHotels: !!contextState.lastSearch?.hotelsParams,
+        turnNumber: contextState.turnNumber
+      });
+      
+      // Delete previous context_state messages to avoid duplicates
+      const { error: deleteError } = await supabase
+        .from('messages')
+        .delete()
+        .eq('conversation_id', conversationId)
+        .eq('role', 'system')
+        .contains('meta', { messageType: 'context_state' });
+      
+      if (deleteError) {
+        console.warn('⚠️ [STATE] Error deleting old context state:', deleteError);
+        // Continue anyway - we'll insert the new one
+      }
+      
+      // Insert new context state
       const { error } = await supabase
         .from('messages')
         .insert({
@@ -142,10 +194,11 @@ const useContextualMemory = () => {
             timestamp: new Date().toISOString()
           }
         });
+        
       if (error) {
         console.error('❌ [STATE] Error saving context state:', error);
       } else {
-        console.log('✅ [STATE] Context state saved');
+        console.log('✅ [STATE] Context state saved successfully');
       }
     } catch (error) {
       console.error('❌ [STATE] Error in saveContextState:', error);

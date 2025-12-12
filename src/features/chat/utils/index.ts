@@ -2,3 +2,4 @@
 export * from './intentDetection';
 export * from './messageHelpers';
 export * from './flightHelpers';
+export * from './iterationDetection';

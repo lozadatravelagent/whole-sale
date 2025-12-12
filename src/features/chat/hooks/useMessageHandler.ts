@@ -6,7 +6,9 @@ import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePack
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
+import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
 import type { MessageRow } from '../types/chat';
+import type { ContextState } from '../types/contextState';
 import { translateBaggage } from '../utils/translations';
 
 const useMessageHandler = (
@@ -478,9 +480,20 @@ const useMessageHandler = (
 
       // Load context from DB and state first
       const contextFromDB = await loadContextualMemory(finalConversationId);
-      const persistentState = await loadContextState(finalConversationId);
+      const persistentState = await loadContextState(finalConversationId) as ContextState | null;
       console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
       console.log('🔍 [DEBUG] Persistent context state:', persistentState);
+
+      // 🔄 ITERATION DETECTION: Check if this message is an iteration on previous search
+      const iterationContext = detectIterationIntent(currentMessage, persistentState);
+      console.log('🔄 [ITERATION] Detection result:', {
+        isIteration: iterationContext.isIteration,
+        type: iterationContext.iterationType,
+        baseRequestType: iterationContext.baseRequestType,
+        modifiedComponent: iterationContext.modifiedComponent,
+        confidence: iterationContext.confidence,
+        matchedPattern: iterationContext.matchedPattern
+      });
 
       // 🧹 Clean context for new conversations (first message)
       let contextToUse = null;
@@ -591,29 +604,49 @@ const useMessageHandler = (
         }
       }
 
-      // If user replied "con escalas" after a direct-only attempt, force a flights request with stops:with_stops using prior context
-      if (/\bcon\s+escalas\b/i.test(currentMessage)) {
+      console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
+      console.log('🎯 AI parsing result:', parsedRequest);
+
+      // 🔄 ITERATION MERGE: If this is an iteration, merge with previous context
+      // This runs BEFORE combineWithPreviousRequest to properly handle hotel/flight iterations
+      if (iterationContext.isIteration && persistentState) {
+        console.log('🔄 [ITERATION] Applying iteration merge');
+        console.log('🔄 [ITERATION] Before merge - requestType:', parsedRequest.requestType);
+        parsedRequest = mergeIterationContext(persistentState, parsedRequest, iterationContext);
+        console.log('🔄 [ITERATION] After merge - requestType:', parsedRequest.requestType);
+        console.log('🔄 [ITERATION] Merged request:', {
+          requestType: parsedRequest.requestType,
+          hasFlights: !!parsedRequest.flights,
+          hasHotels: !!parsedRequest.hotels,
+          flightsOrigin: parsedRequest.flights?.origin,
+          flightsDest: parsedRequest.flights?.destination,
+          stops: parsedRequest.flights?.stops,
+          hotelChain: parsedRequest.hotels?.hotelChain
+        });
+      }
+
+      // 🔄 LEGACY FALLBACK: "con escalas" heuristic (only if iteration system didn't handle it)
+      // This is kept as a fallback for cases where the new iteration system might miss the pattern
+      if (!iterationContext.isIteration && /\bcon\s+escalas\b/i.test(currentMessage)) {
         const baseFlights = parsedRequest?.flights || previousParsedRequest?.flights || (contextToUse as any)?.flights;
         if (baseFlights?.origin && baseFlights?.destination && baseFlights?.departureDate && (baseFlights?.adults ?? 0) >= 1) {
+          console.log('🔀 [LEGACY FALLBACK] "con escalas" detected - forcing stops:with_stops');
           parsedRequest = {
             requestType: 'flights',
             flights: {
               ...baseFlights,
-              stops: 'with_stops' as any  // Changed from 'any' to 'with_stops'
+              stops: 'with_stops' as any
             },
             confidence: parsedRequest?.confidence ?? 0.9,
             originalMessage: currentMessage
           } as any;
-          console.log('🔀 [INTENT] Forced flights search with stops:with_stops using prior context');
         }
       }
 
-      console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
-      console.log('🎯 AI parsing result:', parsedRequest);
-
       // 5. Combine with previous request if available (contextual memory)
+      // Note: This is a fallback for non-iteration cases
       console.log('🧠 [MESSAGE FLOW] Step 10: Combining with previous request');
-      if (previousParsedRequest) {
+      if (previousParsedRequest && !iterationContext.isIteration) {
         console.log('🔄 [MEMORY] Combining with previous request:', {
           previousType: previousParsedRequest.requestType,
           newType: parsedRequest.requestType
@@ -1018,48 +1051,99 @@ const useMessageHandler = (
       console.log('📊 Structured data:', structuredData);
 
       // Clear or preserve contextual memory depending on search results
+      // 🔄 ENHANCED: Save complete ContextState for iteration support
       try {
-        if (parsedRequest.requestType === 'flights') {
-          const flightsCount = (structuredData as any)?.combinedData?.flights?.length ?? 0;
-          if (flightsCount > 0) {
-            // We have usable results, clear context
-            setPreviousParsedRequest(null);
-            await clearContextualMemory(finalConversationId);
+        const flightsCount = (structuredData as any)?.combinedData?.flights?.length ?? 0;
+        const hotelsCount = (structuredData as any)?.combinedData?.hotels?.length ?? 0;
+        const hasResults = flightsCount > 0 || hotelsCount > 0;
+        
+        if (hasResults) {
+          // We have usable results, clear old contextual memory
+          setPreviousParsedRequest(null);
+          await clearContextualMemory(finalConversationId);
 
-            // Extract actual dates from the first flight found
-            const firstFlight = (structuredData as any)?.combinedData?.flights?.[0];
-            const actualDepartureDate = firstFlight?.departure_date;
-            const actualReturnDate = firstFlight?.return_date;
+          // Extract actual dates from the first flight found (if any)
+          const firstFlight = (structuredData as any)?.combinedData?.flights?.[0];
+          const actualDepartureDate = firstFlight?.departure_date || parsedRequest.flights?.departureDate;
+          const actualReturnDate = firstFlight?.return_date || parsedRequest.flights?.returnDate;
 
-            // Save persistent state for flights with actual dates from search results
-            const state = {
-              flights: {
-                ...parsedRequest.flights,
-                departureDate: actualDepartureDate || parsedRequest.flights?.departureDate,
-                returnDate: actualReturnDate || parsedRequest.flights?.returnDate
-              },
-              domain: 'flights'
-            };
-            console.log('💾 [STATE] Saving flight context state with actual dates:', state);
-            console.log('💾 [STATE] Original dates:', {
-              original: parsedRequest.flights?.departureDate,
-              actual: actualDepartureDate
-            });
-            await saveContextState(finalConversationId, state);
-          } else {
-            // No results (e.g., no direct flights). Preserve context so follow-up like "con escalas" can merge.
-            await saveContextualMemory(finalConversationId, parsedRequest);
-            setPreviousParsedRequest(parsedRequest);
-          }
-        } else if (parsedRequest.requestType === 'hotels') {
-          const hotelsCount = (structuredData as any)?.combinedData?.hotels?.length ?? 0;
-          if (hotelsCount > 0) {
-            const state = {
-              hotels: parsedRequest.hotels,
-              domain: 'hotels'
-            };
-            await saveContextState(finalConversationId, state);
-          }
+          // Build complete ContextState with ALL search parameters
+          const newContextState: ContextState = {
+            lastSearch: {
+              requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
+              timestamp: new Date().toISOString(),
+              // Flight params (if present)
+              ...(parsedRequest.flights && {
+                flightsParams: {
+                  origin: parsedRequest.flights.origin,
+                  destination: parsedRequest.flights.destination,
+                  departureDate: actualDepartureDate || parsedRequest.flights.departureDate,
+                  returnDate: actualReturnDate || parsedRequest.flights.returnDate,
+                  adults: parsedRequest.flights.adults || 1,
+                  children: parsedRequest.flights.children || 0,
+                  stops: parsedRequest.flights.stops,
+                  preferredAirline: parsedRequest.flights.preferredAirline,
+                  luggage: parsedRequest.flights.luggage,
+                  maxLayoverHours: parsedRequest.flights.maxLayoverHours
+                }
+              }),
+              // Hotel params (if present)
+              ...(parsedRequest.hotels && {
+                hotelsParams: {
+                  city: parsedRequest.hotels.city,
+                  checkinDate: parsedRequest.hotels.checkinDate,
+                  checkoutDate: parsedRequest.hotels.checkoutDate,
+                  adults: parsedRequest.hotels.adults || 1,
+                  children: parsedRequest.hotels.children || 0,
+                  roomType: parsedRequest.hotels.roomType,
+                  mealPlan: parsedRequest.hotels.mealPlan,
+                  hotelChain: parsedRequest.hotels.hotelChain,
+                  hotelName: parsedRequest.hotels.hotelName
+                }
+              }),
+              // Results summary
+              resultsSummary: {
+                flightsCount,
+                hotelsCount
+              }
+            },
+            // Track constraints history for iterations
+            constraintsHistory: [
+              ...(persistentState?.constraintsHistory || []),
+              // If this was an iteration, record what changed
+              ...(iterationContext.isIteration && parsedRequest.hotels?.hotelChain ? [{
+                turn: (persistentState?.turnNumber || 0) + 1,
+                component: 'hotels' as const,
+                constraint: 'hotelChain',
+                value: parsedRequest.hotels.hotelChain,
+                timestamp: new Date().toISOString()
+              }] : []),
+              ...(iterationContext.isIteration && parsedRequest.hotels?.hotelName ? [{
+                turn: (persistentState?.turnNumber || 0) + 1,
+                component: 'hotels' as const,
+                constraint: 'hotelName',
+                value: parsedRequest.hotels.hotelName,
+                timestamp: new Date().toISOString()
+              }] : [])
+            ],
+            turnNumber: (persistentState?.turnNumber || 0) + 1,
+            schemaVersion: 1
+          };
+
+          console.log('💾 [STATE] Saving complete context state:', {
+            requestType: newContextState.lastSearch.requestType,
+            hasFlights: !!newContextState.lastSearch.flightsParams,
+            hasHotels: !!newContextState.lastSearch.hotelsParams,
+            turnNumber: newContextState.turnNumber,
+            constraintsCount: newContextState.constraintsHistory.length
+          });
+          
+          await saveContextState(finalConversationId, newContextState);
+        } else {
+          // No results - preserve context for retry (e.g., "con escalas")
+          console.log('⚠️ [STATE] No results, preserving context for potential retry');
+          await saveContextualMemory(finalConversationId, parsedRequest);
+          setPreviousParsedRequest(parsedRequest);
         }
       } catch (memErr) {
         console.warn('⚠️ [MEMORY] Could not update contextual memory after search:', memErr);

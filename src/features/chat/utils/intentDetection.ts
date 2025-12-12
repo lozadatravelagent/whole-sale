@@ -16,6 +16,7 @@ export const normalizeText = (text: string): string => {
 
 // Helper: detect intent to add a hotel to existing flight search
 // This should ONLY trigger for follow-up messages, not initial combined requests
+// NOTE: This function is now complemented by iterationDetection.ts for more complex patterns
 export const isAddHotelRequest = (text: string): boolean => {
   const norm = normalizeText(text);
 
@@ -36,11 +37,62 @@ export const isAddHotelRequest = (text: string): boolean => {
     return false; // This is likely a combined request, not an "add hotel" request
   }
 
-  const hotelKeywords = [
+  // Primary patterns: explicit "add hotel" requests
+  const addHotelKeywords = [
     'agrega un hotel', 'agregale un hotel', 'agregar un hotel', 'sumale un hotel', 'añade un hotel',
-    'agrega hotel', 'agregale hotel', 'sumale hotel', 'añade hotel', 'agregar hotel', 'agregame un hotel'
+    'agrega hotel', 'agregale hotel', 'sumale hotel', 'añade hotel', 'agregar hotel', 'agregame un hotel',
+    'incluir hotel', 'incluime hotel', 'con hotel tambien', 'con hotel también'
   ];
-  return hotelKeywords.some(k => norm.includes(k)) || (norm.includes('hotel') && norm.includes('misma')); // e.g., "hotel mismas fechas"
+  
+  if (addHotelKeywords.some(k => norm.includes(k))) {
+    return true;
+  }
+  
+  // Pattern: "hotel" + reference to previous search
+  if (norm.includes('hotel') && (
+    norm.includes('misma') || norm.includes('mismo') || 
+    norm.includes('esas fechas') || norm.includes('esos dias') ||
+    norm.includes('para las fechas') || norm.includes('para esas')
+  )) {
+    return true;
+  }
+
+  return false;
+};
+
+// Helper: detect intent to modify/change hotel in an existing combined search
+// This is used for iteration detection - when user wants to change only the hotel
+// NOTE: More comprehensive detection is done in iterationDetection.ts
+export const isHotelIterationRequest = (text: string): boolean => {
+  const norm = normalizeText(text);
+
+  // If it has new flight details, it's not a hotel-only iteration
+  const hasNewFlightDetails = (
+    /\bdesde\s+\w+\s+(?:a|para|hasta)\s+\w+\b/i.test(norm) ||
+    /\b\d{1,2}\s+de\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i.test(norm)
+  );
+
+  if (hasNewFlightDetails) {
+    return false;
+  }
+
+  // Patterns that indicate hotel modification/iteration
+  const iterationPatterns = [
+    // "misma búsqueda pero con hotel X"
+    /\b(mism[ao]s?\s+busqueda|misma\s+consulta)\s+(pero\s+)?(con\s+)?hotel/i,
+    // "mismo vuelo pero/y hotel X"
+    /\b(mismo\s+vuelo|mismos\s+vuelos)\s+(pero|y|con)\s+hotel/i,
+    // "cambiar/cambiá el hotel"
+    /\b(cambi[aáe]r?|cambia)\s+(el\s+)?hotel/i,
+    // "otro hotel"
+    /\b(otro\s+hotel|diferente\s+hotel)/i,
+    // "quiero hotel X" after context (without flight params)
+    /\b(quiero|prefiero)\s+(un\s+)?(hotel\s+)?(cadena\s+)?(\w+)\s*$/i,
+    // "lo mismo pero con hotel X"
+    /\b(lo\s+mismo|la\s+misma)\s+(pero\s+)?(con\s+)?hotel/i,
+  ];
+
+  return iterationPatterns.some(p => p.test(norm));
 };
 
 // Check if message is a cheaper flights search request
