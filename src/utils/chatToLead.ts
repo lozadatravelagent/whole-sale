@@ -453,6 +453,10 @@ export async function createLeadFromChat(
 
     console.log('Safe info for lead creation:', safeInfo);
 
+    // Obtener usuario actual para asignar el lead
+    const { data: sessionData } = await supabase.auth.getSession();
+    const currentUserId = sessionData?.session?.user?.id;
+
     // Crear el lead
     const leadData = {
       contact: {
@@ -474,6 +478,7 @@ export async function createLeadFromChat(
       agency_id: (await resolveContextIds(conversation)).agencyId,
       status: 'new' as const,
       section_id: firstSectionId,
+      assigned_user_id: currentUserId, // Asignar al usuario actual (SELLER)
       budget: safeInfo.budget,
       description: safeInfo.description,
       conversation_id: conversation.id,
@@ -902,6 +907,10 @@ export async function createComprehensiveLeadFromChat(
 
     console.log('📋 Safe info for lead creation:', safeInfo);
 
+    // Obtener usuario actual para asignar el lead
+    const { data: sessionData } = await supabase.auth.getSession();
+    const currentUserId = sessionData?.session?.user?.id;
+
     // Crear el lead
     const leadData = {
       contact: {
@@ -923,6 +932,7 @@ export async function createComprehensiveLeadFromChat(
       agency_id: agencyId,
       status: 'new' as const,
       section_id: firstSectionId,
+      assigned_user_id: currentUserId, // Asignar al usuario actual (SELLER)
       budget: safeInfo.budget,
       description: safeInfo.description,
       conversation_id: conversation.id,
