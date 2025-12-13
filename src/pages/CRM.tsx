@@ -186,7 +186,8 @@ export default function CRM() {
         const result = await addLead({
           ...data,
           tenant_id: user?.tenant_id || DUMMY_TENANT_ID,
-          agency_id: (isOwner || isSuperAdmin) && filterAgency !== 'all' ? filterAgency : (user?.agency_id || DUMMY_AGENCY_ID)
+          agency_id: (isOwner || isSuperAdmin) && filterAgency !== 'all' ? filterAgency : (user?.agency_id || DUMMY_AGENCY_ID),
+          assigned_user_id: user?.id  // Assign current user to new lead
         });
         console.log('CRM addLead result:', result);
         toast({

@@ -14,7 +14,7 @@ export class LeadService {
           trip: data.trip,
           status: data.status || 'new',
           section_id: data.section_id,
-          seller_id: data.seller_id,
+          assigned_user_id: data.assigned_user_id,
           budget: data.budget || 0,
           description: data.description || '',
           due_date: data.due_date || null,
@@ -130,7 +130,7 @@ export class LeadService {
       }
 
       if (filters?.assignedUser && filters.assignedUser.length > 0) {
-        query = query.in('seller_id', filters.assignedUser);
+        query = query.in('assigned_user_id', filters.assignedUser);
       }
 
       // Apply sorting

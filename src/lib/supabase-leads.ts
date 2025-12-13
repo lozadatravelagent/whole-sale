@@ -132,7 +132,8 @@ export async function createLead(input: CreateLeadInput): Promise<Lead | null> {
       description: processedInput.description ?? '',
       conversation_id: (input as any).conversation_id || null,
       section_id: processedInput.section_id || null,
-      // Leave checklist, attachments, pdf_urls, section_id, due_date to defaults
+      assigned_user_id: processedInput.assigned_user_id || null,  // Include assigned_user_id
+      // Leave checklist, attachments, pdf_urls, due_date to defaults
     } as any;
 
     const { data, error } = await supabase
