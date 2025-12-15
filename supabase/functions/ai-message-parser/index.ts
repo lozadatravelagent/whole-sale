@@ -936,30 +936,33 @@ Be EXTREMELY tolerant with spelling variations for room types:
 - "doble" alone (in hotel context) → roomType: "double" ✅
 - Users OFTEN omit accents - this is NORMAL and VALID!
 
-🚨 FINAL REMINDER - hotelChain RULE:
-Before including "hotelChain" field in your JSON response:
+🚨 FINAL REMINDER - hotelChains RULE (PLURAL ARRAY):
+Before including "hotelChains" field in your JSON response:
 1. Did the user mention ANY hotel chain by name? (Riu, Iberostar, Melia, Bahia Principe, Barcelo, NH, Hilton, Marriott, etc.)
 2. Did the user use patterns like "cadena [name]", "hoteles [name]", "de la cadena [name]"?
-3. If YES to either → Include hotelChain with the chain name
-4. If NO → DO NOT include hotelChain field
+3. Did the user mention MULTIPLE chains? (e.g., "riu y iberostar", "Melia o Barcelo")
+4. If YES to any → Include hotelChains as an ARRAY with ALL mentioned chain names
+5. If NO → DO NOT include hotelChains field
 
 Examples to verify:
-- "hotel en Cancún" → NO chain mentioned → NO hotelChain field ❌
-- "hotel Riu en Cancún" → "Riu" is a chain → hotelChain: "Riu" ✅
-- "cadena Iberostar" → explicit chain mention → hotelChain: "Iberostar" ✅
-- "un Melia todo incluido" → "Melia" is a chain → hotelChain: "Melia" ✅
+- "hotel en Cancún" → NO chain mentioned → NO hotelChains field ❌
+- "hotel Riu en Cancún" → "Riu" is a chain → hotelChains: ["Riu"] ✅
+- "cadena Iberostar" → explicit chain mention → hotelChains: ["Iberostar"] ✅
+- "un Melia todo incluido" → "Melia" is a chain → hotelChains: ["Melia"] ✅
+- "cadena riu y iberostar" → MULTIPLE chains → hotelChains: ["Riu", "Iberostar"] ✅
+- "hoteles Melia, Barcelo o NH" → MULTIPLE chains → hotelChains: ["Melia", "Barcelo", "NH"] ✅
 
 🚨 FINAL REMINDER - hotelName RULE:
 Before including "hotelName" field in your JSON response:
 1. Did the user mention a SPECIFIC hotel name (not just a chain)?
 2. Specific names include: "Riu Bambu", "Iberostar Dominicana", "Bahia Principe Grand Punta Cana", etc.
-3. If YES → Include hotelName AND also extract hotelChain from the name
-4. If user only mentions chain (e.g., "Riu") without specific hotel → ONLY hotelChain, NO hotelName
+3. If YES → Include hotelName AND also extract hotelChains from the name (as array)
+4. If user only mentions chain (e.g., "Riu") without specific hotel → ONLY hotelChains, NO hotelName
 
 Examples:
-- "hotel Riu" → only chain → hotelChain: "Riu", NO hotelName ❌
-- "hotel Riu Bambu" → specific hotel → hotelName: "Riu Bambu", hotelChain: "Riu" ✅
-- "Iberostar Dominicana" → specific hotel → hotelName: "Iberostar Dominicana", hotelChain: "Iberostar" ✅
+- "hotel Riu" → only chain → hotelChains: ["Riu"], NO hotelName ❌
+- "hotel Riu Bambu" → specific hotel → hotelName: "Riu Bambu", hotelChains: ["Riu"] ✅
+- "Iberostar Dominicana" → specific hotel → hotelName: "Iberostar Dominicana", hotelChains: ["Iberostar"] ✅
 
 Now analyze this ACTUAL message and respond with JSON only:`;
         const userPrompt = message;

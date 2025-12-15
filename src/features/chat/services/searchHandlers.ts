@@ -637,14 +637,72 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
 
     console.log(`📊 [FILTER] Hotels: ${destinationFilteredHotels.length} → ${filteredHotels.length} (after advanced room filtering)`);
 
-    // Sort hotels by lowest price (minimum room price) and limit to 5
-    const hotels = filteredHotels
-      .sort((a: LocalHotelData, b: LocalHotelData) => {
-        const minPriceA = Math.min(...a.rooms.map(r => r.total_price));
-        const minPriceB = Math.min(...b.rooms.map(r => r.total_price));
-        return minPriceA - minPriceB;
-      })
-      .slice(0, 5);
+    // Sort hotels by lowest price (minimum room price)
+    const sortedHotels = filteredHotels.sort((a: LocalHotelData, b: LocalHotelData) => {
+      const minPriceA = Math.min(...a.rooms.map(r => r.total_price));
+      const minPriceB = Math.min(...b.rooms.map(r => r.total_price));
+      return minPriceA - minPriceB;
+    });
+
+    // 🎯 MULTI-CHAIN INTERLEAVING: If multiple chains requested, mix results evenly
+    let hotels: LocalHotelData[];
+    const requestedChains = enrichedParsed.hotels?.hotelChains;
+
+    if (requestedChains && requestedChains.length > 1) {
+      console.log(`🔀 [INTERLEAVING] Multiple chains requested (${requestedChains.length}): ${requestedChains.join(', ')}`);
+
+      // Group hotels by chain
+      const hotelsByChain = new Map<string, LocalHotelData[]>();
+      for (const chain of requestedChains) {
+        hotelsByChain.set(chain, []);
+      }
+
+      // Categorize each hotel into its chain group
+      for (const hotel of sortedHotels) {
+        for (const chain of requestedChains) {
+          if (hotelBelongsToChain(hotel.name, chain)) {
+            hotelsByChain.get(chain)!.push(hotel);
+            break; // Hotel belongs to first matching chain
+          }
+        }
+      }
+
+      // Log distribution
+      for (const [chain, chainHotels] of hotelsByChain.entries()) {
+        console.log(`  📍 ${chain}: ${chainHotels.length} hotels`);
+      }
+
+      // Interleave hotels from different chains (round-robin)
+      const interleaved: LocalHotelData[] = [];
+      const maxPerChain = Math.ceil(5 / requestedChains.length); // Distribute 5 slots evenly
+      let slotsRemaining = 5;
+
+      // Round-robin: take one from each chain until we have 5 hotels
+      let roundIndex = 0;
+      while (interleaved.length < 5 && slotsRemaining > 0) {
+        let addedThisRound = false;
+
+        for (const chain of requestedChains) {
+          if (interleaved.length >= 5) break;
+
+          const chainHotels = hotelsByChain.get(chain)!;
+          if (roundIndex < chainHotels.length) {
+            interleaved.push(chainHotels[roundIndex]);
+            addedThisRound = true;
+            console.log(`  ✅ Round ${roundIndex + 1}: Added "${chainHotels[roundIndex].name}" from ${chain}`);
+          }
+        }
+
+        if (!addedThisRound) break; // No more hotels to add
+        roundIndex++;
+      }
+
+      hotels = interleaved;
+      console.log(`🔀 [INTERLEAVING] Final mix: ${hotels.length} hotels from ${requestedChains.length} chains`);
+    } else {
+      // Single chain or no chain filter: just take top 5 by price
+      hotels = sortedHotels.slice(0, 5);
+    }
 
     console.log('✅ [HOTEL SEARCH] Step 5: Hotel data filtered, sorted by price, and limited');
     console.log('🏨 Hotels after filtering:', filteredHotels.length, '| Final count (top 5):', hotels.length);

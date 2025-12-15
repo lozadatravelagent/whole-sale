@@ -27,7 +27,7 @@ export interface ParsedTravelRequest {
         children: number;
         // Campos opcionales de preferencias
         roomType?: 'single' | 'double' | 'triple'; // Tipo de habitación (OPCIONAL - solo filtrar si usuario lo especifica)
-        hotelChain?: string; // Cadena hotelera (opcional)
+        hotelChains?: string[]; // Cadenas hoteleras - soporta múltiples cadenas (opcional)
         mealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'; // Modalidad de alimentación (OPCIONAL - solo filtrar si usuario lo especifica)
         freeCancellation?: boolean; // Cancelación gratuita (opcional)
         roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view'; // Tipo de habitación (opcional)
@@ -363,7 +363,7 @@ export function combineWithPreviousRequest(
             ...(parsedNewRequest.hotels?.children && { children: parsedNewRequest.hotels.children }),
             ...(parsedNewRequest.hotels?.roomType && { roomType: parsedNewRequest.hotels.roomType }),
             ...(parsedNewRequest.hotels?.mealPlan && { mealPlan: parsedNewRequest.hotels.mealPlan }),
-            ...(parsedNewRequest.hotels?.hotelChain && { hotelChain: parsedNewRequest.hotels.hotelChain }),
+            ...(parsedNewRequest.hotels?.hotelChains && { hotelChains: parsedNewRequest.hotels.hotelChains }),
             ...(parsedNewRequest.hotels?.hotelName && { hotelName: parsedNewRequest.hotels.hotelName }),
             ...(parsedNewRequest.hotels?.freeCancellation !== undefined && { freeCancellation: parsedNewRequest.hotels.freeCancellation }),
             ...(parsedNewRequest.hotels?.roomView && { roomView: parsedNewRequest.hotels.roomView }),
@@ -620,19 +620,18 @@ export async function parseMessageWithAI(
         // 🏨 HOTEL/CHAIN DETECTOR: Usa el sistema centralizado de detección
         // Similar a airlines, pero para cadenas hoteleras y nombres de hotel
         // FLOW: Pre-parser → AI Parser (hints) → Post-search filtering
-        const { extractHotelInfoFromText } = await import('@/features/chat/data/hotelChainAliases');
+        // UPDATED: Now supports MULTIPLE hotel chains (e.g., "cadena riu y iberostar")
+        const { detectMultipleHotelChains } = await import('@/features/chat/data/hotelChainAliases');
 
-        const hotelDetection = extractHotelInfoFromText(message); // Use original message, not normalized
-        if (hotelDetection.hotelChain || hotelDetection.hotelName) {
+        const detectedChains = detectMultipleHotelChains(message); // Detects multiple chains
+        if (detectedChains.length > 0) {
             (quick as any).hotels = {
                 ...((quick as any).hotels || {}),
-                ...(hotelDetection.hotelChain ? { hotelChain: hotelDetection.hotelChain } : {}),
-                ...(hotelDetection.hotelName ? { hotelName: hotelDetection.hotelName } : {})
+                hotelChains: detectedChains // Array of chain names
             };
-            console.log(`🏨 [QUICK PRE-PARSER] Detected hotel info:`, {
-                hotelChain: hotelDetection.hotelChain,
-                hotelName: hotelDetection.hotelName,
-                confidence: hotelDetection.confidence
+            console.log(`🏨 [QUICK PRE-PARSER] Detected hotel chains:`, {
+                hotelChains: detectedChains,
+                count: detectedChains.length
             });
         }
     } catch (e) {
@@ -680,19 +679,19 @@ export async function parseMessageWithAI(
             ...(quick.flights?.preferredAirline && !parsedResult.flights?.preferredAirline ? { preferredAirline: quick.flights.preferredAirline } : {})
         } as any;
 
-        // 🏨 Merge hotel pre-parse hints if AI missed them (hotelChain, hotelName)
-        // PRE-PARSER acts as fallback: if AI didn't detect chain/name but pre-parser did, use pre-parser values
+        // 🏨 Merge hotel pre-parse hints if AI missed them (hotelChains, hotelName)
+        // PRE-PARSER acts as fallback: if AI didn't detect chains/name but pre-parser did, use pre-parser values
         const quickHotels = (quick as any).hotels;
         const mergedHotels = {
             ...(parsedResult.hotels || {}),
-            // If AI didn't detect hotelChain but pre-parser did → use pre-parser value
-            ...(quickHotels?.hotelChain && !parsedResult.hotels?.hotelChain ? { hotelChain: quickHotels.hotelChain } : {}),
+            // If AI didn't detect hotelChains but pre-parser did → use pre-parser value (array)
+            ...(quickHotels?.hotelChains && !parsedResult.hotels?.hotelChains ? { hotelChains: quickHotels.hotelChains } : {}),
             // If AI didn't detect hotelName but pre-parser did → use pre-parser value
             ...(quickHotels?.hotelName && !parsedResult.hotels?.hotelName ? { hotelName: quickHotels.hotelName } : {})
         } as any;
 
         // Log merge details for debugging
-        if (quickHotels?.hotelChain || quickHotels?.hotelName) {
+        if (quickHotels?.hotelChains || quickHotels?.hotelName) {
             console.log(`🏨 [MERGE] Pre-parser hotel hints:`, quickHotels);
             console.log(`🏨 [MERGE] AI detected hotels:`, parsedResult.hotels);
             console.log(`🏨 [MERGE] Final merged hotels:`, mergedHotels);

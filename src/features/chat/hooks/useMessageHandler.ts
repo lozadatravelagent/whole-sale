@@ -625,7 +625,7 @@ const useMessageHandler = (
           flightsOrigin: parsedRequest.flights?.origin,
           flightsDest: parsedRequest.flights?.destination,
           stops: parsedRequest.flights?.stops,
-          hotelChain: parsedRequest.hotels?.hotelChain
+          hotelChains: parsedRequest.hotels?.hotelChains
         });
       }
 
@@ -836,7 +836,7 @@ const useMessageHandler = (
               children: parsedRequest.hotels?.children ?? flightCtx.children ?? 0
             } as any;
             console.log('🏨 [ENRICH] Preserved hotel preferences:', {
-              hotelChain: parsedRequest.hotels?.hotelChain,
+              hotelChains: parsedRequest.hotels?.hotelChains,
               hotelName: parsedRequest.hotels?.hotelName,
               roomType: parsedRequest.hotels?.roomType,
               mealPlan: parsedRequest.hotels?.mealPlan
@@ -1101,7 +1101,7 @@ const useMessageHandler = (
                   children: parsedRequest.hotels.children || 0,
                   roomType: parsedRequest.hotels.roomType,
                   mealPlan: parsedRequest.hotels.mealPlan,
-                  hotelChain: parsedRequest.hotels.hotelChain,
+                  hotelChains: parsedRequest.hotels.hotelChains,
                   hotelName: parsedRequest.hotels.hotelName
                 }
               }),
@@ -1115,11 +1115,11 @@ const useMessageHandler = (
             constraintsHistory: [
               ...(persistentState?.constraintsHistory || []),
               // If this was an iteration, record what changed
-              ...(iterationContext.isIteration && parsedRequest.hotels?.hotelChain ? [{
+              ...(iterationContext.isIteration && parsedRequest.hotels?.hotelChains ? [{
                 turn: (persistentState?.turnNumber || 0) + 1,
                 component: 'hotels' as const,
-                constraint: 'hotelChain',
-                value: parsedRequest.hotels.hotelChain,
+                constraint: 'hotelChains',
+                value: parsedRequest.hotels.hotelChains,
                 timestamp: new Date().toISOString()
               }] : []),
               ...(iterationContext.isIteration && parsedRequest.hotels?.hotelName ? [{

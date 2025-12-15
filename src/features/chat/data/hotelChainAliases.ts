@@ -507,9 +507,9 @@ export function detectMultipleHotelChains(text: string): string[] {
     // Only if no chains detected yet (to avoid false positives)
     if (detectedChains.length === 0) {
         const detection = detectHotelChainInText(text);
-        if (detection.detected && detection.chainName) {
-            detectedChains.push(detection.chainName);
-            console.log(`✅ [MULTI-CHAIN] Fallback detection: ${detection.chainName}`);
+        if (detection && detection.name) {
+            detectedChains.push(detection.name);
+            console.log(`✅ [MULTI-CHAIN] Fallback detection: ${detection.name}`);
         }
     }
 
