@@ -1,11 +1,14 @@
 [build]
 builder = "dockerfile"
+dockerfilePath = "api/Dockerfile"
+watchPatterns = ["api/**"]
 
 [deploy]
-startCommand = "npm run start"
-healthcheckPath = "/"
-healthcheckTimeout = 300
+startCommand = "node dist/server.js"
+healthcheckPath = "/v1/health"
+healthcheckTimeout = 100
 restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
 
 [environments.production]
 variables = { NODE_ENV = "production" }

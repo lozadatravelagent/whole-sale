@@ -21,6 +21,61 @@ import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.ts';
 // HELPER FUNCTIONS
 // =============================================================================
 
+const PROVIDER_TIMEOUT_MS = 15000; // 15 seconds
+
+/**
+ * Invoke Supabase Edge Function with timeout
+ *
+ * Prevents hanging requests by aborting after PROVIDER_TIMEOUT_MS
+ *
+ * @param supabase - Supabase client
+ * @param functionName - Name of Edge Function to invoke
+ * @param body - Request body
+ * @returns Response data
+ * @throws Error if timeout or provider error
+ */
+async function invokeWithTimeout<T>(
+  supabase: ReturnType<typeof createClient>,
+  functionName: string,
+  body: unknown
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+  const startTime = Date.now();
+
+  try {
+    console.log(`[INVOKE_TIMEOUT] Calling ${functionName}...`);
+
+    const response = await supabase.functions.invoke(functionName, {
+      body,
+      // @ts-ignore - Deno supports signal in fetch
+      signal: controller.signal,
+    });
+
+    const latency = Date.now() - startTime;
+
+    if (response.error) {
+      console.error(`[INVOKE_TIMEOUT] ❌ ${functionName} error (${latency}ms):`, response.error);
+      throw new Error(response.error.message);
+    }
+
+    console.log(`[INVOKE_TIMEOUT] ✅ ${functionName} completed (${latency}ms)`);
+    return response.data as T;
+  } catch (error) {
+    const latency = Date.now() - startTime;
+
+    if (error.name === 'AbortError') {
+      console.error(`[INVOKE_TIMEOUT] ⏱️ ${functionName} timed out after ${PROVIDER_TIMEOUT_MS}ms`);
+      throw new Error(`Provider ${functionName} timed out after ${PROVIDER_TIMEOUT_MS}ms`);
+    }
+
+    console.error(`[INVOKE_TIMEOUT] ❌ ${functionName} failed (${latency}ms):`, error.message);
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Format flight duration from minutes to human-readable string
  */
@@ -175,22 +230,21 @@ async function executeFlightSearch(
 
   console.log('[FLIGHT_SEARCH] Calling starling-flights Edge Function');
 
-  // Call starling-flights Edge Function
-  const response = await supabase.functions.invoke('starling-flights', {
-    body: {
+  // Call starling-flights Edge Function with timeout
+  let response;
+  try {
+    response = await invokeWithTimeout(supabase, 'starling-flights', {
       action: 'searchFlights',
       data: starlingRequest
-    }
-  });
-
-  if (response.error) {
-    console.error('[FLIGHT_SEARCH] Starling API error:', response.error);
+    });
+  } catch (error) {
+    console.error('[FLIGHT_SEARCH] Starling API error:', error);
     return {
       status: 'error',
       type: 'flights',
       error: {
-        message: 'Flight search failed',
-        details: response.error
+        message: error.message || 'Flight search failed',
+        details: error
       }
     };
   }
@@ -211,13 +265,13 @@ async function executeFlightSearch(
   // }
   // ============================================================================
 
-  const tvcResponse = response.data?.data || response.data;
+  const tvcResponse = response.data || response;
 
   // Extract fares from TVC response (Fares or Recommendations depending on API version)
   const rawFares = tvcResponse?.Fares || tvcResponse?.Recommendations || [];
 
   console.log('[FLIGHT_SEARCH] TVC Response received:', {
-    success: response.data?.success,
+    success: response.success,
     hasFares: !!tvcResponse?.Fares,
     hasRecommendations: !!tvcResponse?.Recommendations,
     faresCount: rawFares.length,
@@ -496,24 +550,23 @@ async function executeHotelSearch(
   console.log('[HOTEL_SEARCH] Calling eurovips-soap Edge Function', nameFilter ? `with name filter: "${nameFilter}"` : 'without name filter');
   console.log(`   → cityCode: ${cityCode}, dates: ${hotels.checkinDate} to ${hotels.checkoutDate}, adults: ${inferredAdults}`);
 
-  // Call eurovips-soap Edge Function
-  const response = await supabase.functions.invoke('eurovips-soap', {
-    body: eurovipsRequest
-  });
-
-  if (response.error) {
-    console.error('[HOTEL_SEARCH] EUROVIPS API error:', response.error);
+  // Call eurovips-soap Edge Function with timeout
+  let response;
+  try {
+    response = await invokeWithTimeout(supabase, 'eurovips-soap', eurovipsRequest);
+  } catch (error) {
+    console.error('[HOTEL_SEARCH] EUROVIPS API error:', error);
     return {
       status: 'error',
       type: 'hotels',
       error: {
-        message: 'Hotel search failed',
-        details: response.error
+        message: error.message || 'Hotel search failed',
+        details: error
       }
     };
   }
 
-  let allHotels = response.data?.results || [];
+  let allHotels = response?.results || [];
   const totalFromProvider = allHotels.length;
 
   console.log('[HOTEL_SEARCH] Found', totalFromProvider, 'hotels from provider');
@@ -668,8 +721,9 @@ async function executePackageSearch(
 
   const { packages } = parsedRequest;
 
-  const response = await supabase.functions.invoke('eurovips-soap', {
-    body: {
+  let response;
+  try {
+    response = await invokeWithTimeout(supabase, 'eurovips-soap', {
       action: 'searchPackages',
       data: {
         cityCode: packages.destination,
@@ -677,22 +731,20 @@ async function executePackageSearch(
         dateTo: packages.dateTo,
         packageClass: packages.packageClass
       }
-    }
-  });
-
-  if (response.error) {
-    console.error('[PACKAGE_SEARCH] EUROVIPS API error:', response.error);
+    });
+  } catch (error) {
+    console.error('[PACKAGE_SEARCH] EUROVIPS API error:', error);
     return {
       status: 'error',
       type: 'packages',
       error: {
-        message: 'Package search failed',
-        details: response.error
+        message: error.message || 'Package search failed',
+        details: error
       }
     };
   }
 
-  const packageData = response.data?.results || [];
+  const packageData = response?.results || [];
 
   return {
     status: 'completed',
@@ -720,8 +772,9 @@ async function executeServiceSearch(
 
   const { services } = parsedRequest;
 
-  const response = await supabase.functions.invoke('eurovips-soap', {
-    body: {
+  let response;
+  try {
+    response = await invokeWithTimeout(supabase, 'eurovips-soap', {
       action: 'searchServices',
       data: {
         cityCode: services.city,
@@ -729,22 +782,20 @@ async function executeServiceSearch(
         dateTo: services.dateTo,
         serviceType: services.serviceType
       }
-    }
-  });
-
-  if (response.error) {
-    console.error('[SERVICE_SEARCH] EUROVIPS API error:', response.error);
+    });
+  } catch (error) {
+    console.error('[SERVICE_SEARCH] EUROVIPS API error:', error);
     return {
       status: 'error',
       type: 'services',
       error: {
-        message: 'Service search failed',
-        details: response.error
+        message: error.message || 'Service search failed',
+        details: error
       }
     };
   }
 
-  const serviceData = response.data?.results || [];
+  const serviceData = response?.results || [];
 
   return {
     status: 'completed',
@@ -772,26 +823,25 @@ async function executeItinerarySearch(
 
   const { itinerary } = parsedRequest;
 
-  const response = await supabase.functions.invoke('travel-itinerary', {
-    body: {
+  let response;
+  try {
+    response = await invokeWithTimeout(supabase, 'travel-itinerary', {
       destinations: itinerary.destinations,
       days: itinerary.days
-    }
-  });
-
-  if (response.error) {
-    console.error('[ITINERARY_SEARCH] Edge Function error:', response.error);
+    });
+  } catch (error) {
+    console.error('[ITINERARY_SEARCH] Edge Function error:', error);
     return {
       status: 'error',
       type: 'itinerary',
       error: {
-        message: 'Itinerary generation failed',
-        details: response.error
+        message: error.message || 'Itinerary generation failed',
+        details: error
       }
     };
   }
 
-  const itineraryData = response.data?.data;
+  const itineraryData = response?.data;
 
   return {
     status: 'completed',
