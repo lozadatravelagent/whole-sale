@@ -1,22 +1,21 @@
 # Railway Deployment Guide - Fastify API
 
-## Problema Detectado
+## Configuración: Desplegar Solo el Directorio `/api`
 
-Railway está intentando usar `root_dir=api` pero no encuentra el Dockerfile. El error es:
-```
-couldn't locate a dockerfile at path /api/Dockerfile in code archive
-```
+El repositorio contiene dos proyectos:
+1. **React/Vite** (raíz del repo) - No debe desplegarse en Railway
+2. **Fastify API** (directorio `/api`) - Esto es lo que queremos desplegar
 
-## Solución: Configurar Railway Dashboard
+## Solución: Configurar Root Directory en Railway
 
-### Paso 1: Eliminar Root Directory Override
+### Paso 1: Configurar Root Directory
 
-1. Ve a Railway Dashboard → Tu proyecto → Settings
+1. Ve a **Railway Dashboard** → Tu proyecto → **Settings**
 2. Busca la sección **"Root Directory"** o **"Source"**
-3. **ELIMINA** cualquier valor en "Root Directory" (debe estar vacío o en "/")
+3. Establece Root Directory como: **`api`**
 4. Guarda los cambios
 
-Railway usará el `railway.toml` que ya configuré correctamente.
+Esto le dice a Railway que ignore todo fuera de `/api` y solo despliegue el API Gateway.
 
 ### Paso 2: Verificar Variables de Entorno
 
@@ -47,8 +46,8 @@ LOG_LEVEL=info
 ```toml
 [build]
 builder = "dockerfile"
-dockerfilePath = "api/Dockerfile"
-watchPatterns = ["api/**"]
+dockerfilePath = "Dockerfile"  # Relativo a Root Directory (api/)
+watchPatterns = ["**"]
 
 [deploy]
 startCommand = "node dist/server.js"
@@ -60,6 +59,8 @@ restartPolicyMaxRetries = 10
 [environments.production]
 variables = { NODE_ENV = "production" }
 ```
+
+**Nota**: Con Root Directory = `api`, Railway buscará el Dockerfile en `api/Dockerfile` automáticamente.
 
 ## Verificación Post-Deploy
 
@@ -82,8 +83,9 @@ curl -X POST https://tu-app.railway.app/v1/search \
 ## Troubleshooting
 
 ### Error: "Cannot find Dockerfile"
-- Verifica que NO hay Root Directory configurado en Railway Dashboard
-- Confirma que `railway.toml` tiene `dockerfilePath = "api/Dockerfile"`
+- ✅ **SOLUCIÓN**: Configura Root Directory = `api` en Railway Dashboard
+- ✅ Verifica que `railway.toml` tiene `dockerfilePath = "Dockerfile"`
+- ❌ NO dejes Root Directory vacío (desplegará el proyecto React por error)
 
 ### Error: Health check failing
 - Verifica que las variables de entorno están configuradas
