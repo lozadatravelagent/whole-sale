@@ -413,13 +413,22 @@ You MUST scan the CURRENT user message for these EXACT keywords before including
 - NEVER infer mealPlan from context, previous messages, or assumptions
 - ONLY include if user EXPLICITLY types food/meal keywords in THIS message
 
-🏨 **HOTEL CHAIN DETECTION (hotelChain) - NEW FEATURE:**
-Detect hotel chains when user mentions them. ONLY include hotelChain if user explicitly mentions a chain.
+🏨 **HOTEL CHAIN DETECTION (hotelChains) - MULTIPLE CHAINS SUPPORT:**
+Detect hotel chains when user mentions them. ONLY include hotelChains if user explicitly mentions one or more chains.
+
+**IMPORTANT:** The field is now hotelChains (PLURAL), which is an array of strings.
 
 **Patterns to detect:**
-- "cadena [nombre]", "de la cadena [nombre]", "chain [nombre]"
-- "hoteles [nombre]" where [nombre] is a known hotel chain
-- Direct chain name mentions: "quiero un Riu", "un Iberostar", "hotel Melia"
+- Single chain: "cadena [nombre]", "de la cadena [nombre]", "chain [nombre]"
+- Multiple chains: "cadena [nombre1] y [nombre2]", "hoteles [nombre1] o [nombre2]"
+- Direct chain mentions: "quiero un Riu", "un Iberostar", "hotel Melia"
+
+**Separators to detect multiple chains:**
+- "y", "e", "and" → ["Riu", "Iberostar"]
+- "o", "or" → ["Riu", "Iberostar"]
+- "," (comas) → ["Riu", "Iberostar", "Melia"]
+- "/" (slash) → ["Riu", "Iberostar"]
+- "&" (ampersand) → ["Riu", "Iberostar"]
 
 **Known hotel chains (case-insensitive):**
 - Riu, RIU Hotels, RIU Palace, RIU Resorts
@@ -438,11 +447,14 @@ Detect hotel chains when user mentions them. ONLY include hotelChain if user exp
 - Now Resorts, Catalonia, Princess Hotels
 
 **Examples:**
-- "hotel de la cadena Riu" → hotelChain: "Riu" ✅
-- "hoteles Iberostar" → hotelChain: "Iberostar" ✅
-- "quiero un Melia" → hotelChain: "Melia" ✅
-- "hotel en Cancún" → NO hotelChain (no chain mentioned) ❌
-- "habitación doble all inclusive en la CADENA riu" → hotelChain: "Riu", roomType: "double", mealPlan: "all_inclusive" ✅
+- "hotel de la cadena Riu" → hotelChains: ["Riu"] ✅
+- "hoteles Iberostar" → hotelChains: ["Iberostar"] ✅
+- "quiero un Melia" → hotelChains: ["Melia"] ✅
+- "hotel en Cancún" → NO hotelChains (no chain mentioned) ❌
+- "habitación doble all inclusive en la CADENA riu" → hotelChains: ["Riu"], roomType: "double", mealPlan: "all_inclusive" ✅
+- "quiero cadena riu y iberostar" → hotelChains: ["Riu", "Iberostar"] ✅ (MULTIPLE CHAINS)
+- "hoteles de la cadena Riu, Iberostar o Melia" → hotelChains: ["Riu", "Iberostar", "Melia"] ✅ (MULTIPLE CHAINS)
+- "cadena Barcelo/NH" → hotelChains: ["Barcelo", "NH"] ✅ (MULTIPLE CHAINS)
 
 🏨 **SPECIFIC HOTEL NAME DETECTION (hotelName) - NEW FEATURE:**
 Detect specific hotel names when user mentions them. ONLY include hotelName if user explicitly mentions a specific hotel.
@@ -802,7 +814,7 @@ User: "habitacion doble en cancun para 2 personas"
 ❌ NO mealPlan - user mentioned "habitacion doble" but did NOT mention meals!
 ✅ roomType: "double" - detected "habitacion doble" even WITHOUT accent on "habitacion"
 
-Example 12 - Hotel with CHAIN specified (NEW - hotelChain extraction):
+Example 12 - Hotel with CHAIN specified (NEW - hotelChains extraction):
 User: "quiero un hotel de la cadena Riu all inclusive habitacion doble"
 {
   "requestType": "hotels",
@@ -814,15 +826,35 @@ User: "quiero un hotel de la cadena Riu all inclusive habitacion doble"
     "children": 0,
     "roomType": "double",
     "mealPlan": "all_inclusive",
-    "hotelChain": "Riu"
+    "hotelChains": ["Riu"]
   },
   "confidence": 0.95
 }
-✅ hotelChain: "Riu" - user said "cadena Riu"
+✅ hotelChains: ["Riu"] - user said "cadena Riu"
 ✅ mealPlan: "all_inclusive" - user said "all inclusive"
 ✅ roomType: "double" - user said "habitacion doble"
 
-Example 13 - Hotel with SPECIFIC NAME and CHAIN (NEW - hotelName + hotelChain):
+Example 12b - Hotel with MULTIPLE CHAINS (NEW - hotelChains array):
+User: "quiero cadena riu y iberostar all inclusive habitacion doble"
+{
+  "requestType": "hotels",
+  "hotels": {
+    "city": "[EXTRACT from context OR ask]",
+    "checkinDate": "[DATE]",
+    "checkoutDate": "[DATE]",
+    "adults": 2,
+    "children": 0,
+    "roomType": "double",
+    "mealPlan": "all_inclusive",
+    "hotelChains": ["Riu", "Iberostar"]
+  },
+  "confidence": 0.95
+}
+✅ hotelChains: ["Riu", "Iberostar"] - user said "cadena riu y iberostar"
+✅ mealPlan: "all_inclusive" - user said "all inclusive"
+✅ roomType: "double" - user said "habitacion doble"
+
+Example 13 - Hotel with SPECIFIC NAME and CHAIN (NEW - hotelName + hotelChains):
 User: "quiero reservar el hotel Riu Bambu en Punta Cana"
 {
   "requestType": "hotels",
@@ -833,12 +865,12 @@ User: "quiero reservar el hotel Riu Bambu en Punta Cana"
     "adults": 1,
     "children": 0,
     "hotelName": "Riu Bambu",
-    "hotelChain": "Riu"
+    "hotelChains": ["Riu"]
   },
   "confidence": 0.95
 }
 ✅ hotelName: "Riu Bambu" - user specified exact hotel
-✅ hotelChain: "Riu" - extracted from hotel name (Riu Bambu contains "Riu")
+✅ hotelChains: ["Riu"] - extracted from hotel name (Riu Bambu contains "Riu")
 ❌ NO roomType or mealPlan - user didn't mention them
 
 Example 14 - Hotel chain with context from previous flight (CRITICAL PATTERN):
@@ -852,11 +884,11 @@ User: "para las mismas fechas quiero un hotel Iberostar habitacion doble"
     "adults": "[EXTRACT from previous flight]",
     "children": "[EXTRACT from previous flight OR 0]",
     "roomType": "double",
-    "hotelChain": "Iberostar"
+    "hotelChains": ["Iberostar"]
   },
   "confidence": 0.95
 }
-✅ hotelChain: "Iberostar" - user said "hotel Iberostar"
+✅ hotelChains: ["Iberostar"] - user said "hotel Iberostar"
 ✅ roomType: "double" - user said "habitacion doble"
 ❌ NO mealPlan - user didn't mention food/meals
 
@@ -872,11 +904,11 @@ User: "hotel melia todo incluido doble" or "hoteles meliá" or "un sol melia"
     "children": 0,
     "roomType": "double",
     "mealPlan": "all_inclusive",
-    "hotelChain": "Melia"
+    "hotelChains": ["Melia"]
   },
   "confidence": 0.9
 }
-✅ hotelChain: "Melia" - recognize "melia", "meliá", "sol melia" as the same chain
+✅ hotelChains: ["Melia"] - recognize "melia", "meliá", "sol melia" as the same chain
 🚨 NOTE: Be tolerant with accents and variations (melia = meliá = sol melia)
 
 🚨 CRITICAL FINAL INSTRUCTION:

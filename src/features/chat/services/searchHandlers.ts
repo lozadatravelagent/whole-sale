@@ -7,7 +7,7 @@ import { formatFlightResponse, formatHotelResponse, formatPackageResponse, forma
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
-import { hotelBelongsToChain, hotelNameMatches } from '../data/hotelChainAliases';
+import { hotelBelongsToChain, hotelBelongsToAnyChain, hotelNameMatches } from '../data/hotelChainAliases';
 
 // =====================================================================
 // PUNTA CANA HOTEL WHITELIST - SPECIAL FILTER
@@ -71,7 +71,7 @@ function isAllowedPuntaCanaHotel(hotelName: string): boolean {
 function applyDestinationSpecificFilters(
   hotels: LocalHotelData[],
   city: string,
-  requestedChain?: string
+  requestedChains?: string[]  // ✅ UPDATED: Changed from singular to plural array
 ): LocalHotelData[] {
   // Solo aplicar filtro especial para Punta Cana
   if (!isPuntaCanaDestination(city)) {
@@ -81,19 +81,21 @@ function applyDestinationSpecificFilters(
   console.log('🌴 [PUNTA CANA FILTER] Applying special hotel whitelist filter');
   console.log(`📊 [PUNTA CANA FILTER] Hotels before filter: ${hotels.length}`);
 
-  if (requestedChain) {
-    console.log(`🏨 [PUNTA CANA FILTER] User requested chain: "${requestedChain}" - will allow all hotels from this chain`);
+  if (requestedChains && requestedChains.length > 0) {
+    console.log(`🏨 [PUNTA CANA FILTER] User requested chains: ${requestedChains.join(', ')} - will allow all hotels from these chains`);
   }
 
   const filteredHotels = hotels.filter(hotel => {
-    // FIRST: If user requested a specific chain, allow ALL hotels from that chain
-    if (requestedChain) {
+    // FIRST: If user requested specific chains, allow ALL hotels from ANY of those chains
+    if (requestedChains && requestedChains.length > 0) {
       const normalizedHotelName = normalizeText(hotel.name);
-      const normalizedChain = normalizeText(requestedChain);
 
-      if (normalizedHotelName.includes(normalizedChain)) {
-        console.log(`✅ [PUNTA CANA FILTER] Allowed (matches requested chain "${requestedChain}"): "${hotel.name}"`);
-        return true;
+      for (const chain of requestedChains) {
+        const normalizedChain = normalizeText(chain);
+        if (normalizedHotelName.includes(normalizedChain)) {
+          console.log(`✅ [PUNTA CANA FILTER] Allowed (matches requested chain "${chain}"): "${hotel.name}"`);
+          return true;
+        }
       }
     }
 
@@ -367,13 +369,13 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
         roomType: parsed.hotels?.roomType,
         mealPlan: parsed.hotels?.mealPlan,
         hotelName: parsed.hotels?.hotelName,
-        hotelChain: parsed.hotels?.hotelChain  // ✅ FIX: Pass hotelChain for chain filtering
+        hotelChains: parsed.hotels?.hotelChains  // ✅ UPDATED: Changed from singular to plural array
       } as any
     };
 
     console.log('🔍 [DEBUG] enrichedParsed.hotels.roomType:', enrichedParsed.hotels?.roomType);
     console.log('🔍 [DEBUG] enrichedParsed.hotels.mealPlan:', enrichedParsed.hotels?.mealPlan);
-    console.log('🔍 [DEBUG] enrichedParsed.hotels.hotelChain:', enrichedParsed.hotels?.hotelChain);
+    console.log('🔍 [DEBUG] enrichedParsed.hotels.hotelChains:', enrichedParsed.hotels?.hotelChains);
 
     // Validate we have at least a city to look up
     if (!enrichedParsed.hotels?.city) {
@@ -400,40 +402,137 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     // El campo <name> de EUROVIPS es el ÚNICO campo correcto para filtrar por:
     // - Cadena hotelera (Iberostar, Riu, Melia, etc.)
     // - Texto parcial del nombre del hotel (Ocean, Palace, etc.)
-    // Prioridad: hotelChain > hotelName (hotelChain es más específico para búsquedas de cadena)
-    const nameFilter = enrichedParsed.hotels?.hotelChain || enrichedParsed.hotels?.hotelName || '';
 
-    if (nameFilter) {
-      console.log(`🏨 [HOTEL SEARCH] Applying name filter to EUROVIPS: "${nameFilter}"`);
-    }
+    // ✅ MULTI-CHAIN STRATEGY:
+    // If multiple chains specified → Make N requests (1 per chain) + merge results
+    // If single chain → Single request with that chain as name filter
+    // If no chains but hotelName → Single request with hotelName as filter
 
-    const requestBody = {
-      action: 'searchHotels',
-      data: {
-        ...eurovipsParams.hotelParams,
-        cityCode: cityCode,
-        hotelName: nameFilter // ✅ Filtro por <name> en EUROVIPS (cadena o nombre parcial)
+    const hotelChains = enrichedParsed.hotels?.hotelChains || [];
+    const hotelName = enrichedParsed.hotels?.hotelName || '';
+
+    let allHotels: any[] = [];
+
+    if (hotelChains.length > 0) {
+      // MULTI-CHAIN: Make N requests (1 per chain)
+      console.log(`🏨 [MULTI-CHAIN] Making ${hotelChains.length} API requests (1 per chain):`, hotelChains);
+
+      const hotelsByChain: Map<string, any[]> = new Map();
+
+      for (const chain of hotelChains) {
+        console.log(`📤 [MULTI-CHAIN] Request ${hotelChains.indexOf(chain) + 1}/${hotelChains.length}: Searching hotels for chain "${chain}"`);
+
+        const requestBody = {
+          action: 'searchHotels',
+          data: {
+            ...eurovipsParams.hotelParams,
+            cityCode: cityCode,
+            hotelName: chain // ✅ Filtro por <name> en EUROVIPS (una cadena por request)
+          }
+        };
+
+        const response = await supabase.functions.invoke('eurovips-soap', {
+          body: requestBody
+        });
+
+        if (response.error) {
+          console.error(`❌ [MULTI-CHAIN] EUROVIPS API error for chain "${chain}":`, response.error);
+          // Continue with other chains instead of throwing
+          continue;
+        }
+
+        const chainHotels = response.data.results || [];
+        console.log(`✅ [MULTI-CHAIN] Chain "${chain}": Received ${chainHotels.length} hotels`);
+        hotelsByChain.set(chain, chainHotels);
+
+        allHotels.push(...chainHotels);
       }
-    };
 
-    console.log('📤 [HOTEL SEARCH] Step 3: About to call EUROVIPS API (Supabase Edge Function)', nameFilter ? `with name filter: "${nameFilter}"` : 'without name filter');
-    console.log('📋 Request body:', requestBody);
+      console.log(`🔗 [MULTI-CHAIN] Total hotels before deduplication: ${allHotels.length}`);
 
-    const response = await supabase.functions.invoke('eurovips-soap', {
-      body: requestBody
-    });
+      // DEDUPLICATION: Remove duplicate hotels by hotel_id or name+city
+      const seenHotels = new Set<string>();
+      const deduplicatedHotels: any[] = [];
 
-    console.log('✅ [HOTEL SEARCH] Step 4: EUROVIPS API response received');
-    console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
+      for (const hotel of allHotels) {
+        // Use hotel_id if available, otherwise use name+city as unique key
+        const uniqueKey = hotel.hotel_id
+          ? `id:${hotel.hotel_id}`
+          : `name:${hotel.name.toLowerCase().trim()}`;
 
-    if (response.error) {
-      console.error('❌ [HOTEL SEARCH] EUROVIPS API error:', response.error);
-      throw new Error(response.error.message);
+        if (!seenHotels.has(uniqueKey)) {
+          seenHotels.add(uniqueKey);
+          deduplicatedHotels.push(hotel);
+        } else {
+          console.log(`🗑️ [DEDUP] Removed duplicate: "${hotel.name}" (key: ${uniqueKey})`);
+        }
+      }
+
+      allHotels = deduplicatedHotels;
+      console.log(`✅ [MULTI-CHAIN] Total hotels after deduplication: ${allHotels.length}`);
+
+    } else if (hotelName) {
+      // SINGLE REQUEST: Filter by hotel name
+      console.log(`🏨 [HOTEL SEARCH] Applying name filter to EUROVIPS: "${hotelName}"`);
+
+      const requestBody = {
+        action: 'searchHotels',
+        data: {
+          ...eurovipsParams.hotelParams,
+          cityCode: cityCode,
+          hotelName: hotelName
+        }
+      };
+
+      console.log('📤 [HOTEL SEARCH] Step 3: About to call EUROVIPS API (Supabase Edge Function) with name filter');
+      console.log('📋 Request body:', requestBody);
+
+      const response = await supabase.functions.invoke('eurovips-soap', {
+        body: requestBody
+      });
+
+      console.log('✅ [HOTEL SEARCH] Step 4: EUROVIPS API response received');
+      console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
+
+      if (response.error) {
+        console.error('❌ [HOTEL SEARCH] EUROVIPS API error:', response.error);
+        throw new Error(response.error.message);
+      }
+
+      console.log('📊 [HOTEL SEARCH] Raw response data:', response.data);
+      allHotels = response.data.results || [];
+
+    } else {
+      // NO FILTER: Get all hotels for city
+      console.log('🏨 [HOTEL SEARCH] No chain or name filter - searching all hotels');
+
+      const requestBody = {
+        action: 'searchHotels',
+        data: {
+          ...eurovipsParams.hotelParams,
+          cityCode: cityCode,
+          hotelName: ''
+        }
+      };
+
+      console.log('📤 [HOTEL SEARCH] Step 3: About to call EUROVIPS API (Supabase Edge Function) without filters');
+      console.log('📋 Request body:', requestBody);
+
+      const response = await supabase.functions.invoke('eurovips-soap', {
+        body: requestBody
+      });
+
+      console.log('✅ [HOTEL SEARCH] Step 4: EUROVIPS API response received');
+      console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
+
+      if (response.error) {
+        console.error('❌ [HOTEL SEARCH] EUROVIPS API error:', response.error);
+        throw new Error(response.error.message);
+      }
+
+      console.log('📊 [HOTEL SEARCH] Raw response data:', response.data);
+      allHotels = response.data.results || [];
     }
-
-    console.log('📊 [HOTEL SEARCH] Raw response data:', response.data);
-
-    const allHotels = response.data.results || [];
 
     // 🔍 DEBUG: Log all hotel names received from EUROVIPS
     console.log(`📋 [EUROVIPS RESPONSE] Received ${allHotels.length} hotels:`);
@@ -456,25 +555,25 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     });
 
     // 🌴 Apply destination-specific filters (e.g., Punta Cana whitelist)
-    // IMPORTANT: Pass hotelChain so the filter respects user's chain preference
+    // IMPORTANT: Pass hotelChains so the filter respects user's chain preference
     let destinationFilteredHotels = applyDestinationSpecificFilters(
       correctedHotels,
       enrichedParsed.hotels?.city || '',
-      enrichedParsed.hotels?.hotelChain  // ← Pass requested chain to allow all hotels from that chain
+      enrichedParsed.hotels?.hotelChains  // ✅ UPDATED: Pass array of requested chains
     );
 
-    // 🏨 HOTEL CHAIN FILTER - Filter by hotel chain if specified
-    if (enrichedParsed.hotels?.hotelChain) {
-      const chainFilter = enrichedParsed.hotels.hotelChain;
-      console.log(`🏨 [CHAIN FILTER] Filtering hotels by chain: "${chainFilter}"`);
+    // 🏨 HOTEL CHAIN FILTER - Filter by hotel chains if specified (supports multiple chains)
+    if (enrichedParsed.hotels?.hotelChains && enrichedParsed.hotels.hotelChains.length > 0) {
+      const chainsFilter = enrichedParsed.hotels.hotelChains;
+      console.log(`🏨 [CHAIN FILTER] Filtering hotels by chains: ${chainsFilter.join(', ')}`);
       console.log(`📊 [CHAIN FILTER] Hotels before filter: ${destinationFilteredHotels.length}`);
 
       destinationFilteredHotels = destinationFilteredHotels.filter(hotel => {
-        const belongs = hotelBelongsToChain(hotel.name, chainFilter);
+        const belongs = hotelBelongsToAnyChain(hotel.name, chainsFilter);
         if (belongs) {
-          console.log(`✅ [CHAIN FILTER] Included: "${hotel.name}" (matches chain "${chainFilter}")`);
+          console.log(`✅ [CHAIN FILTER] Included: "${hotel.name}" (matches one of: ${chainsFilter.join(', ')})`);
         } else {
-          console.log(`🚫 [CHAIN FILTER] Excluded: "${hotel.name}" (does not match chain "${chainFilter}")`);
+          console.log(`🚫 [CHAIN FILTER] Excluded: "${hotel.name}" (does not match any of: ${chainsFilter.join(', ')})`);
         }
         return belongs;
       });

@@ -436,3 +436,109 @@ export function extractHotelInfoFromText(text: string): HotelPreParserResult {
     return result;
 }
 
+/**
+ * Detect MULTIPLE hotel chains in text with separators support
+ *
+ * Supports: "cadena riu y iberostar", "hoteles riu, iberostar o melia", etc.
+ *
+ * @param text - User input text
+ * @returns Array of detected chain names (canonical form)
+ *
+ * @example
+ * detectMultipleHotelChains("cadena riu y iberostar") → ["RIU", "Iberostar"]
+ * detectMultipleHotelChains("hoteles riu, melia o barcelo") → ["RIU", "Melia", "Barcelo"]
+ * detectMultipleHotelChains("hotel en cancun") → []
+ */
+export function detectMultipleHotelChains(text: string): string[] {
+    const normalizedText = text.toLowerCase().trim();
+    const detectedChains: string[] = [];
+
+    console.log(`🏨 [MULTI-CHAIN] Detecting chains in: "${text}"`);
+
+    // Pattern 1: "cadena X y Y" or "cadenas X, Y, Z"
+    const chainPatterns = [
+        /(?:cadena|cadenas|chain|chains)\s+([^.?!]+)/gi,
+        /hoteles?\s+([a-záéíóúñü\s,\/&y]+?)(?:\s+(?:en|de|para|habitaci[oó]n|doble|triple|todo|all|con|desayuno)|\.|,|$)/gi
+    ];
+
+    for (const pattern of chainPatterns) {
+        const matches = [...normalizedText.matchAll(pattern)];
+        if (matches.length > 0) {
+            for (const match of matches) {
+                const capturedText = match[1].trim();
+                console.log(`🔍 [MULTI-CHAIN] Pattern matched: "${capturedText}"`);
+
+                // Split by separators: y, e, o, or, and, comas, slash, ampersand
+                const separators = /\s+(?:y|e|o|or|and)\s+|,\s*|\/|&/gi;
+                const parts = capturedText.split(separators).map(p => p.trim()).filter(p => p.length > 0);
+
+                console.log(`📋 [MULTI-CHAIN] Split into parts:`, parts);
+
+                for (const part of parts) {
+                    // Try to find in known chains
+                    const chainInfo = findChainByAlias(part);
+                    if (chainInfo) {
+                        if (!detectedChains.includes(chainInfo.name)) {
+                            detectedChains.push(chainInfo.name);
+                            console.log(`✅ [MULTI-CHAIN] Matched known chain: "${part}" → ${chainInfo.name}`);
+                        }
+                    } else {
+                        // Check if it might be a partial chain name
+                        const maybeChain = part
+                            .split(/\s+/)
+                            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                            .join(' ');
+
+                        // Only add if it looks like a chain name (2-20 chars, not common words)
+                        const commonWords = ['hotel', 'hoteles', 'habitacion', 'doble', 'triple', 'todo', 'incluido', 'inclusive', 'con', 'sin', 'para', 'en', 'de', 'la', 'el'];
+                        if (maybeChain.length >= 2 && maybeChain.length <= 20 && !commonWords.includes(part.toLowerCase())) {
+                            if (!detectedChains.includes(maybeChain)) {
+                                detectedChains.push(maybeChain);
+                                console.log(`⚠️ [MULTI-CHAIN] Unknown chain, using raw: "${part}" → "${maybeChain}"`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Pattern 2: Direct chain mentions without "cadena" keyword
+    // Only if no chains detected yet (to avoid false positives)
+    if (detectedChains.length === 0) {
+        const detection = detectHotelChainInText(text);
+        if (detection.detected && detection.chainName) {
+            detectedChains.push(detection.chainName);
+            console.log(`✅ [MULTI-CHAIN] Fallback detection: ${detection.chainName}`);
+        }
+    }
+
+    console.log(`🏁 [MULTI-CHAIN] Final result:`, detectedChains);
+    return detectedChains;
+}
+
+/**
+ * Check if a hotel belongs to ANY of the specified chains
+ *
+ * @param hotelName - Hotel name to check
+ * @param chains - Array of chain names to check against
+ * @returns true if hotel belongs to any chain in the array
+ *
+ * @example
+ * hotelBelongsToAnyChain("RIU Bambu", ["RIU", "Iberostar"]) → true
+ * hotelBelongsToAnyChain("Hard Rock Cancun", ["RIU", "Iberostar"]) → false
+ */
+export function hotelBelongsToAnyChain(hotelName: string, chains: string[]): boolean {
+    if (!chains || chains.length === 0) {
+        return true; // No filter, all hotels match
+    }
+
+    for (const chain of chains) {
+        if (hotelBelongsToChain(hotelName, chain)) {
+            return true; // Match found
+        }
+    }
+
+    return false; // No match
+}
+

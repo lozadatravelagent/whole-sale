@@ -477,7 +477,7 @@ function getAllHotelFields(): string[] {
     'hotels.children',
     'hotels.roomType',
     'hotels.mealPlan',
-    'hotels.hotelChain',
+    'hotels.hotelChains',  // ✅ UPDATED: Changed from singular to plural
     'hotels.hotelName'
   ];
 }
@@ -514,6 +514,8 @@ export function mergeIterationContext(
       requestType: 'combined', // Forzar combined para mantener vuelo + hotel
 
       // Preservar parámetros de vuelo del contexto anterior
+      // IMPORTANTE: En hotel_modification, NO permitimos que el AI override los datos de vuelo
+      // porque el usuario dijo "misma búsqueda pero hotel X" - el vuelo debe preservarse
       flights: {
         origin: lastSearch.flightsParams?.origin || '',
         destination: lastSearch.flightsParams?.destination || '',
@@ -525,9 +527,8 @@ export function mergeIterationContext(
         preferredAirline: lastSearch.flightsParams?.preferredAirline,
         luggage: lastSearch.flightsParams?.luggage,
         maxLayoverHours: lastSearch.flightsParams?.maxLayoverHours,
-        // Permitir override si el usuario especificó algo nuevo en flights
-        ...(newParsedRequest.flights?.origin && { origin: newParsedRequest.flights.origin }),
-        ...(newParsedRequest.flights?.destination && { destination: newParsedRequest.flights.destination }),
+        // NO hacemos override de origin/destination en hotel_modification
+        // El AI puede inventar datos que no corresponden al contexto real
       },
 
       // Combinar parámetros de hotel: base del contexto + nuevos filtros
@@ -544,7 +545,7 @@ export function mergeIterationContext(
         mealPlan: newParsedRequest.hotels?.mealPlan || lastSearch.hotelsParams?.mealPlan,
 
         // Actualizar con nuevos filtros del usuario (ESTO ES LO NUEVO)
-        ...(newParsedRequest.hotels?.hotelChain && { hotelChain: newParsedRequest.hotels.hotelChain }),
+        ...(newParsedRequest.hotels?.hotelChains && { hotelChains: newParsedRequest.hotels.hotelChains }),  // ✅ UPDATED: Changed to plural
         ...(newParsedRequest.hotels?.hotelName && { hotelName: newParsedRequest.hotels.hotelName }),
         ...(newParsedRequest.hotels?.freeCancellation !== undefined && { freeCancellation: newParsedRequest.hotels.freeCancellation }),
       },
@@ -562,7 +563,7 @@ export function mergeIterationContext(
       flightsOrigin: mergedRequest.flights?.origin,
       flightsDest: mergedRequest.flights?.destination,
       hotelsCity: mergedRequest.hotels?.city,
-      hotelChain: mergedRequest.hotels?.hotelChain,
+      hotelChains: mergedRequest.hotels?.hotelChains,  // ✅ UPDATED: Changed to plural
       hotelName: mergedRequest.hotels?.hotelName
     });
 
@@ -611,7 +612,7 @@ export function mergeIterationContext(
           children: lastSearch.hotelsParams.children || 0,
           roomType: lastSearch.hotelsParams.roomType,
           mealPlan: lastSearch.hotelsParams.mealPlan,
-          hotelChain: lastSearch.hotelsParams.hotelChain,
+          hotelChains: lastSearch.hotelsParams.hotelChains,  // ✅ UPDATED: Changed to plural
           hotelName: lastSearch.hotelsParams.hotelName,
         }
       }),
