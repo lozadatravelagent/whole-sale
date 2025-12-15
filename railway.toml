@@ -1,0 +1,19 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+# Watch only React app files, not API
+watchPatterns = [
+  "src/**",
+  "public/**",
+  "index.html",
+  "vite.config.ts",
+  "package.json",
+  "Dockerfile",
+  ".dockerignore"
+]
+
+[deploy]
+healthcheckPath = "/"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10
