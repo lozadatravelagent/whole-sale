@@ -27,15 +27,15 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Force cache bust - change this comment to rebuild: v3-fix-module-not-found
+# ARG for cache busting (change value to force rebuild)
+ARG CACHEBUST=20251216-fix-fastify-missing
+RUN echo "Cache bust: ${CACHEBUST}"
+
 # Install ONLY production dependencies
-RUN echo "🔍 Installing production dependencies..." && \
-    npm ci --omit=dev && \
-    echo "✅ Dependencies installed. Listing node_modules:" && \
-    ls -la node_modules | head -20 && \
-    echo "🔍 Checking if fastify exists:" && \
-    ls -la node_modules/fastify 2>/dev/null || echo "❌ fastify NOT found!" && \
-    npm cache clean --force
+RUN npm ci --omit=dev && \
+    echo "✅ Production dependencies installed" && \
+    echo "📦 Verifying fastify:" && \
+    ls -la node_modules/fastify || (echo "❌ FASTIFY NOT FOUND!" && exit 1)
 
 # Copy compiled code from builder
 COPY --from=builder /app/dist ./dist
