@@ -25,9 +25,17 @@ serve(async (req) => {
     { action: 'message', resource: 'ai-parser' },
     async () => {
       try {
-        const { message, language = 'es', currentDate, previousContext, conversationHistory = [] } = await req.json();
+        const requestBody = await req.json();
+        const {
+          message = requestBody.prompt, // Support both 'message' and 'prompt'
+          language = 'es',
+          currentDate = new Date().toISOString().split('T')[0], // Default to today's date (YYYY-MM-DD)
+          previousContext,
+          conversationHistory = []
+        } = requestBody;
+
         if (!message) {
-          throw new Error('Message is required');
+          throw new Error('Message or prompt is required');
         }
         console.log('🤖 AI Message Parser - Processing:', message);
         console.log('📝 Previous context received:', previousContext);

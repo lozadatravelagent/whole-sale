@@ -76,7 +76,20 @@ export async function searchRoutes(fastify: FastifyInstance) {
         throw new Error(`AI parsing failed: ${parseResponse.error.message || 'Unknown error'}`);
       }
 
-      const parsedRequest = parseResponse.data;
+      // Extract parsed data from Edge Function response
+      const responseData = parseResponse.data;
+
+      // Edge Function returns { success, parsed, ... }
+      if (!responseData.success) {
+        throw new Error(`AI parsing failed: ${responseData.error || 'Unknown error'}`);
+      }
+
+      // Extract the parsed object and map requestType to type
+      const parsedRequest = {
+        type: responseData.parsed.requestType,
+        ...responseData.parsed
+      };
+
       request.logger.info('AI_PARSE_SUCCESS', `Parsed as type: ${parsedRequest.type}`, {
         type: parsedRequest.type,
         latency_ms: aiParsingTimeMs
