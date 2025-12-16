@@ -22,10 +22,15 @@ RUN npm prune --omit=dev
 
 # ============================================
 # Stage 2: Runtime - Minimal production image
+# IMPORTANT: Changed stage name to force Railway cache invalidation
 # ============================================
-FROM node:20-alpine
+FROM node:20-alpine AS production
 
 WORKDIR /app
+
+# Cache invalidation marker - change this value to force rebuild
+ARG REBUILD_MARKER=20251216-nuclear-fix
+RUN echo "Rebuild marker: ${REBUILD_MARKER}"
 
 # Copy package.json for metadata
 COPY package*.json ./
