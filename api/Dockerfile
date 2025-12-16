@@ -28,10 +28,20 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install ONLY production dependencies
-RUN npm ci --omit=dev && npm cache clean --force
+RUN echo "🔍 Installing production dependencies..." && \
+    npm ci --omit=dev && \
+    echo "✅ Dependencies installed. Listing node_modules:" && \
+    ls -la node_modules | head -20 && \
+    echo "🔍 Checking if fastify exists:" && \
+    ls -la node_modules/fastify 2>/dev/null || echo "❌ fastify NOT found!" && \
+    npm cache clean --force
 
 # Copy compiled code from builder
 COPY --from=builder /app/dist ./dist
+
+# Debug: List dist contents
+RUN echo "🔍 Listing dist directory:" && \
+    ls -la dist/
 
 # Set environment
 ENV NODE_ENV=production
