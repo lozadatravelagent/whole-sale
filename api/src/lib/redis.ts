@@ -7,10 +7,18 @@
 
 import { Redis } from '@upstash/redis';
 
+// Validate environment variables
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+if (!redisUrl || !redisToken) {
+  throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN environment variables');
+}
+
 // Initialize Redis client
 const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  url: redisUrl,
+  token: redisToken,
 });
 
 // =========================================================================
