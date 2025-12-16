@@ -5,6 +5,8 @@
  * Middleware chain: CORS → Correlation ID → Auth → Rate Limit → Execute
  */
 
+console.log('[SERVER] 🚀 Starting server initialization...');
+
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { baseLogger } from './lib/logger.js';
@@ -68,12 +70,24 @@ fastify.setErrorHandler((error, request, reply) => {
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
+// Log environment check (without exposing secrets)
+console.log('🔧 Environment check:');
+console.log(`  - NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
+console.log(`  - PORT: ${PORT}`);
+console.log(`  - HOST: ${HOST}`);
+console.log(`  - SUPABASE_URL: ${process.env.SUPABASE_URL ? '✅ set' : '❌ missing'}`);
+console.log(`  - SUPABASE_SERVICE_ROLE_KEY: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? '✅ set' : '❌ missing'}`);
+console.log(`  - UPSTASH_REDIS_REST_URL: ${process.env.UPSTASH_REDIS_REST_URL ? '✅ set' : '❌ missing'}`);
+console.log(`  - UPSTASH_REDIS_REST_TOKEN: ${process.env.UPSTASH_REDIS_REST_TOKEN ? '✅ set' : '❌ missing'}`);
+
 try {
+  console.log('🚀 Starting Fastify server...');
   await fastify.listen({ port: PORT, host: HOST });
-  console.log(`🚀 Fastify API Gateway listening on http://${HOST}:${PORT}`);
+  console.log(`✅ Fastify API Gateway listening on http://${HOST}:${PORT}`);
   console.log(`📊 Health check: http://${HOST}:${PORT}/v1/health`);
   console.log(`🔍 Search endpoint: http://${HOST}:${PORT}/v1/search`);
 } catch (err) {
+  console.error('❌ Failed to start server:', err);
   fastify.log.error(err);
   process.exit(1);
 }

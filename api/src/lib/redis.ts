@@ -12,14 +12,21 @@ const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 if (!redisUrl || !redisToken) {
+  console.error('[REDIS] ❌ Missing environment variables:');
+  console.error(`  - UPSTASH_REDIS_REST_URL: ${redisUrl ? '✅' : '❌ missing'}`);
+  console.error(`  - UPSTASH_REDIS_REST_TOKEN: ${redisToken ? '✅' : '❌ missing'}`);
   throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN environment variables');
 }
+
+console.log('[REDIS] ✅ Initializing Redis client...');
 
 // Initialize Redis client
 const redis = new Redis({
   url: redisUrl,
   token: redisToken,
 });
+
+console.log('[REDIS] ✅ Redis client initialized');
 
 // =========================================================================
 // RATE LIMITING (Sliding Window)
