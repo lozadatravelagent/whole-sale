@@ -2,6 +2,14 @@
  * City Code Resolver for API Gateway
  *
  * Convierte nombres de ciudades a códigos IATA de aeropuertos para Starling API.
+ *
+ * Resolution Strategy:
+ * 1. Smart context-aware logic (Buenos Aires → AEP/EZE based on destination)
+ * 2. Local static dictionary (current implementation)
+ * 3. Fallback: First 3 letters (with warning)
+ *
+ * TODO: Add EUROVIPS getCountryList as Layer 3 for better coverage
+ * This would require making resolve functions async and adding supabase client param
  */
 
 interface CityCodeMapping {

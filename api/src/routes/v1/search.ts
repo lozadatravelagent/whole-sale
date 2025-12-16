@@ -11,16 +11,24 @@ import { updateUsageStats } from '../../services/apiKeyAuth.js';
 import { executeSearch } from '../../services/searchExecutor.js';
 import { validateParsedRequest } from '../../services/validation.js';
 import { buildCompleteMetadata } from '../../services/buildMetadata.js';
+import {
+  detectIterationIntent,
+  mergeIterationContext,
+  buildContextFromSearch,
+  type ContextState
+} from '../../services/iterationDetection.js';
 
 interface SearchRequest {
   request_id: string;
   prompt: string;
+  conversation_history?: Array<{ role: string; content: string }>;
+  previous_context?: any;
 }
 
 export async function searchRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: SearchRequest }>('/search', async (request, reply) => {
     const startTime = Date.now();
-    const { request_id, prompt } = request.body;
+    const { request_id, prompt, conversation_history, previous_context } = request.body;
 
     // Validate request_id format
     const requestIdPattern = /^(req_[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
@@ -63,7 +71,12 @@ export async function searchRoutes(fastify: FastifyInstance) {
       const aiParseStart = Date.now();
 
       const parseResponse = await fastify.supabase.functions.invoke('ai-message-parser', {
-        body: { prompt, request_id }
+        body: {
+          prompt,
+          request_id,
+          conversationHistory: conversation_history || [],
+          previousContext: previous_context || null
+        }
       });
 
       const aiParsingTimeMs = Date.now() - aiParseStart;
@@ -85,7 +98,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
       }
 
       // Extract the parsed object and map requestType to type
-      const parsedRequest = {
+      let parsedRequest = {
         type: responseData.parsed.requestType,
         ...responseData.parsed
       };
@@ -94,6 +107,27 @@ export async function searchRoutes(fastify: FastifyInstance) {
         type: parsedRequest.type,
         latency_ms: aiParsingTimeMs
       });
+
+      // STEP 1.5: Detect and handle iteration (modify previous search)
+      const iterationResult = detectIterationIntent(prompt, previous_context as ContextState | null);
+
+      if (iterationResult.isIteration && previous_context?.lastSearch) {
+        request.logger.info('ITERATION_DETECTED', 'User is iterating on previous search', {
+          iteration_type: iterationResult.iterationType,
+          modified_component: iterationResult.modifiedComponent,
+          confidence: iterationResult.confidence
+        });
+
+        // Merge with previous context
+        parsedRequest = mergeIterationContext(
+          parsedRequest,
+          previous_context as ContextState,
+          iterationResult,
+          prompt
+        );
+
+        request.logger.info('ITERATION_MERGED', `Final request type after merge: ${parsedRequest.type}`);
+      }
 
       // STEP 2: Validate parsed request
       const validationResult = validateParsedRequest(parsedRequest);
@@ -161,6 +195,9 @@ export async function searchRoutes(fastify: FastifyInstance) {
       // Destructure to avoid duplicating status and metadata
       const { status, metadata: _searchMetadata, ...searchData } = searchResults;
 
+      // Build context for next iteration (client should pass this back as previous_context)
+      const nextContext = buildContextFromSearch(parsedRequest, previous_context?.turnNumber);
+
       const response = {
         request_id,
         search_id,
@@ -171,6 +208,16 @@ export async function searchRoutes(fastify: FastifyInstance) {
           ...parsedRequest
         },
         ...searchData,
+        // Context for iteration support - client should pass this back as previous_context
+        context_for_next_request: nextContext,
+        // Iteration info if applicable
+        ...(iterationResult.isIteration && {
+          iteration_applied: {
+            type: iterationResult.iterationType,
+            component: iterationResult.modifiedComponent,
+            confidence: iterationResult.confidence
+          }
+        }),
         metadata: {
           ...completeMetadata,
           gateway: 'fastify',
