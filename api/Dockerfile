@@ -26,9 +26,11 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY tsconfig.json ./
 
-# Install production dependencies only
-RUN npm ci --only=production && npm cache clean --force
+# Bring built dependencies from builder and prune to production-only
+COPY --from=builder /app/node_modules ./node_modules
+RUN npm prune --production && npm cache clean --force
 
 # Copy compiled code from builder
 COPY --from=builder /app/dist ./dist
