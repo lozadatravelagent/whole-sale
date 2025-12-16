@@ -1,14 +1,14 @@
 # ============================================
-# Stage 1: Builder
+# Stage 1: Builder - Build and prepare dependencies
 # ============================================
 FROM node:20-alpine AS builder
- 
+
 WORKDIR /app
 
 # Copy package files
 COPY package*.json tsconfig.json ./
 
-# Install dependencies
+# Install ALL dependencies (dev + prod) for building
 RUN npm ci
 
 # Copy source code
@@ -17,32 +17,28 @@ COPY src/ ./src/
 # Build TypeScript to JavaScript
 RUN npm run build
 
+# Remove devDependencies, keep only production deps
+RUN npm prune --omit=dev
+
 # ============================================
-# Stage 2: Production
+# Stage 2: Runtime - Minimal production image
 # ============================================
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copy package.json for metadata
 COPY package*.json ./
 
-# ARG for cache busting (change value to force rebuild)
-ARG CACHEBUST=20251216-fix-fastify-missing
-RUN echo "Cache bust: ${CACHEBUST}"
+# Copy ONLY production node_modules from builder
+# This bypasses Railway's cached npm install layers completely
+COPY --from=builder /app/node_modules ./node_modules
 
-# Install ONLY production dependencies
-RUN npm ci --omit=dev && \
-    echo "✅ Production dependencies installed" && \
-    echo "📦 Verifying fastify:" && \
-    ls -la node_modules/fastify || (echo "❌ FASTIFY NOT FOUND!" && exit 1)
-
-# Copy compiled code from builder
+# Copy compiled JavaScript from builder
 COPY --from=builder /app/dist ./dist
 
-# Debug: List dist contents
-RUN echo "🔍 Listing dist directory:" && \
-    ls -la dist/
+# Verify critical dependency exists (fail build if missing)
+RUN ls -la node_modules/fastify || (echo "❌ CRITICAL: fastify not found!" && exit 1)
 
 # Set environment
 ENV NODE_ENV=production
