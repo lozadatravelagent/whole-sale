@@ -21,7 +21,7 @@ import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver';
 // HELPER FUNCTIONS
 // =============================================================================
 
-const PROVIDER_TIMEOUT_MS = 15000; // 15 seconds
+const PROVIDER_TIMEOUT_MS = 45000; // 45 seconds (Starling puede tardar 20-30s en búsquedas internacionales)
 
 /**
  * Invoke Supabase Edge Function with timeout
