@@ -675,6 +675,204 @@ Esto permite detectar aerolíneas en iteraciones sin duplicar la lista de aliase
 5. Se actualiza ContextState para próximo turno
 ```
 
+### Fastify API Gateway (Diciembre 2025)
+
+**Ubicación**: `api/` (directorio separado del frontend React)
+
+API Gateway moderna construida con Fastify que reemplaza las Supabase Edge Functions para mejor rendimiento y escalabilidad. Desplegada en Railway con proxy Cloudflare.
+
+#### Arquitectura
+
+**Middleware Chain**: `CORS → Correlation ID → Auth → Rate Limit → Execute`
+
+**Stack Tecnológico**:
+- **Runtime**: Node.js 20+
+- **Framework**: Fastify 4.x
+- **Database**: Supabase PostgreSQL
+- **Cache/Rate Limiting**: Upstash Redis (REST API)
+- **Logging**: Pino (structured JSON)
+- **Language**: TypeScript 5.x
+
+#### Estructura del Proyecto
+
+```
+api/
+├── src/
+│   ├── routes/v1/
+│   │   ├── search.ts       # Travel search endpoint
+│   │   └── health.ts       # Health check endpoints
+│   ├── middleware/
+│   │   ├── cors.ts         # CORS configuration
+│   │   ├── correlation.ts  # Correlation ID tracking
+│   │   ├── auth.ts         # API key authentication
+│   │   └── rateLimit.ts    # Redis-based rate limiting
+│   ├── services/
+│   │   ├── searchExecutor.ts      # Search execution logic
+│   │   ├── advancedFilters.ts     # Hotel/flight filtering
+│   │   ├── cityCodeResolver.ts    # City code mapping (700+ cities)
+│   │   ├── contextManagement.ts   # Context persistence
+│   │   ├── validation.ts          # Request validation
+│   │   ├── buildMetadata.ts       # Response metadata builder
+│   │   └── apiKeyAuth.ts         # API key validation
+│   ├── lib/
+│   │   ├── redis.ts        # Upstash Redis client
+│   │   ├── supabase.ts     # Supabase client
+│   │   └── logger.ts       # Pino logger with correlation IDs
+│   └── server.ts           # Main server entry point
+├── Dockerfile              # Multi-stage Docker build
+├── railway.toml            # Railway deployment config
+└── package.json
+```
+
+#### Features Implementados
+
+**✅ Autenticación y Seguridad**:
+- API key authentication con Supabase (`api_keys` table)
+- Rate limiting basado en Redis (sliding window: minute/hour/day)
+- Idempotency cache con Redis (TTL 5 minutos)
+- Correlation ID tracking para request tracing
+- CORS middleware configurado
+
+**✅ Búsquedas de Viaje**:
+- **Flights**: Integración con Starling via Edge Functions
+- **Hotels**: Integración con EUROVIPS via Edge Functions
+- **Combined**: Búsquedas combinadas de vuelo + hotel
+- **Packages**: Paquetes turísticos
+- **Services**: Servicios adicionales
+- **Itinerary**: Generación de itinerarios con IA (OpenAI)
+
+**✅ Filtros Avanzados** (`advancedFilters.ts`):
+- **Whitelist de Punta Cana**: Lista de hoteles permitidos para calidad
+- **Filtrado de habitaciones**: Capacidad (SGL/DBL/TPL/QUA) + Plan de comidas (all_inclusive/breakfast/half_board/room_only)
+- **Detección de light fares**: Exclusión automática de tarifas sin equipaje
+- **Inferencia de adultos**: Basada en tipo de habitación solicitada
+
+**✅ Resolución de Códigos de Ciudad** (`cityCodeResolver.ts`):
+- **700+ ciudades mapeadas** con códigos IATA y códigos de hotel
+- Soporte para aeropuertos secundarios (ej: Buenos Aires: EZE/AEP)
+- Aliases y variaciones de nombres de ciudades
+- Resolución automática de códigos para Starling y EUROVIPS
+
+**✅ Validación de Requests** (`validation.ts`):
+- Validación de campos requeridos por tipo de búsqueda
+- Mensajes de error descriptivos con ejemplos
+- Detección de campos faltantes con sugerencias
+
+**✅ Gestión de Contexto** (`contextManagement.ts`):
+- Persistencia de contexto entre requests
+- Merge/replace/clear de contexto según tipo de búsqueda
+- Sugerencias de follow-up para terceros
+
+**✅ Metadata y Logging** (`buildMetadata.ts`):
+- Metadata completa de búsquedas (tiempos, providers, filtros aplicados)
+- Tracking de whitelists y exclusiones
+- Pipeline de filtrado documentado
+
+**✅ Health Checks**:
+- `/v1/health` - Health check básico (sin dependencias)
+- `/v1/health/detailed` - Health check con estado de Redis y Supabase
+
+#### Endpoints
+
+**POST `/v1/search`** (Protegido - requiere API key):
+```typescript
+Headers:
+  X-API-Key: wsk_prod_xxx
+  X-Correlation-ID: optional-uuid
+  Content-Type: application/json
+
+Body:
+{
+  "request_id": "req_test_001" | UUID,
+  "prompt": "vuelo a miami del 15 al 25 de enero"
+}
+
+Response Headers:
+  X-RateLimit-Limit: Rate limit threshold
+  X-RateLimit-Remaining: Remaining requests
+  X-RateLimit-Reset: Unix timestamp for reset
+  X-RateLimit-Window: Current window (minute/hour/day)
+  X-Correlation-ID: Request correlation ID
+```
+
+**GET `/v1/health`** (Público):
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-12-16T...",
+  "uptime": 1234.56,
+  "version": "1.0.0"
+}
+```
+
+#### Variables de Entorno Requeridas
+
+```bash
+# Supabase
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# Upstash Redis
+UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN=AXxx...
+
+# Server (Railway auto-asigna PORT)
+PORT=3000
+HOST=0.0.0.0
+NODE_ENV=production
+```
+
+#### Deployment
+
+**Railway**:
+- Root directory: `api/`
+- Dockerfile multi-stage build
+- Health check automático en `/v1/health`
+- Variables de entorno configuradas en Railway dashboard
+
+**Cloudflare Worker Proxy**:
+- Rutas `/v1/*` → Railway Fastify API
+- Rutas `/search` → Supabase Edge Functions (legacy)
+- CORS headers automáticos
+- Custom domain: `api.vibook.ai`
+
+#### Performance
+
+**Rate Limiting**:
+- PostgreSQL (3 COUNTs): ~100-200ms
+- Redis (1 pipeline): ~20-40ms
+- **Mejora**: ~80-160ms por request
+
+**Idempotency Cache**:
+- Búsqueda completa: ~20-30s
+- Respuesta cacheada: <1s
+- **Mejora**: 95%+ más rápido en retries
+
+#### Logging
+
+Todos los logs son JSON estructurado con correlation IDs:
+```json
+{
+  "level": "info",
+  "correlation_id": "uuid",
+  "type": "RATE_LIMIT_CHECK",
+  "message": "Checking rate limit (Redis: true)",
+  "timestamp": "2025-12-15T10:30:00.000Z"
+}
+```
+
+#### Inicialización Resiliente
+
+**Logs de diagnóstico**:
+- Verificación de variables de entorno al inicio
+- Logs de inicialización de Redis y Supabase
+- Manejo de errores con mensajes claros
+
+**Health checks mejorados**:
+- Health check básico funciona sin dependencias externas
+- Health check detallado verifica Redis y Supabase
+- Timeout configurado en Railway (120s)
+
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.
