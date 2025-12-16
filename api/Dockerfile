@@ -27,6 +27,7 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+# Force cache bust - change this comment to rebuild: v2
 # Install ONLY production dependencies
 RUN echo "🔍 Installing production dependencies..." && \
     npm ci --omit=dev && \
