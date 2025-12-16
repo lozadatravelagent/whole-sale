@@ -1,49 +1,31 @@
 # ============================================
-# Stage 1: Builder - Build and prepare dependencies
+# RAILWAY CACHE INVALIDATION - DO NOT MERGE STAGES
+# Build everything in ONE stage to prevent Railway cache reuse
 # ============================================
-FROM node:20-alpine AS builder
+FROM node:20-alpine
 
 WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
 
 # Copy package files
 COPY package*.json tsconfig.json ./
 
-# Install ALL dependencies (dev + prod) for building
+# Install ALL dependencies
 RUN npm ci
 
 # Copy source code
 COPY src/ ./src/
 
-# Build TypeScript to JavaScript
+# Build TypeScript
 RUN npm run build
 
-# Remove devDependencies, keep only production deps
+# Remove devDependencies to keep only production deps
 RUN npm prune --omit=dev
 
-# ============================================
-# Stage 2: Runtime - Minimal production image
-# IMPORTANT: Changed stage name to force Railway cache invalidation
-# ============================================
-FROM node:20-alpine AS production
-
-WORKDIR /app
-
-# Cache invalidation marker - change this value to force rebuild
-ARG REBUILD_MARKER=20251216-nuclear-fix
-RUN echo "Rebuild marker: ${REBUILD_MARKER}"
-
-# Copy package.json for metadata
-COPY package*.json ./
-
-# Copy ONLY production node_modules from builder
-# This bypasses Railway's cached npm install layers completely
-COPY --from=builder /app/node_modules ./node_modules
-
-# Copy compiled JavaScript from builder
-COPY --from=builder /app/dist ./dist
-
-# Verify critical dependency exists (fail build if missing)
-RUN ls -la node_modules/fastify || (echo "❌ CRITICAL: fastify not found!" && exit 1)
+# Verify fastify exists (fail if missing)
+RUN ls -la node_modules/fastify || (echo "CRITICAL ERROR: fastify not found!" && exit 1)
 
 # Set environment
 ENV NODE_ENV=production
