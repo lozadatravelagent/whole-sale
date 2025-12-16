@@ -89,6 +89,58 @@ function formatDuration(minutes: number): string {
 }
 
 /**
+ * Interleave hotels from different chains in round-robin fashion
+ * Ensures fair representation of each chain in results
+ */
+function interleaveHotelsByChain(hotels: any[], chains: string[]): any[] {
+  if (chains.length <= 1) return hotels;
+
+  // Group hotels by chain
+  const byChain = new Map<string, any[]>();
+  chains.forEach(c => byChain.set(c.toLowerCase(), []));
+
+  // Categorize each hotel into its chain group
+  for (const hotel of hotels) {
+    const hotelName = (hotel.name || '').toLowerCase();
+    for (const chain of chains) {
+      if (hotelName.includes(chain.toLowerCase())) {
+        byChain.get(chain.toLowerCase())!.push(hotel);
+        break; // Hotel belongs to first matching chain
+      }
+    }
+  }
+
+  // Log distribution
+  for (const [chain, chainHotels] of byChain.entries()) {
+    console.log(`📍 [INTERLEAVE] ${chain}: ${chainHotels.length} hotels`);
+  }
+
+  // Round-robin interleave (take one from each chain until we have enough)
+  const result: any[] = [];
+  let round = 0;
+  const maxResults = 10; // Get more initially, will be filtered to 5 later
+
+  while (result.length < maxResults) {
+    let addedThisRound = false;
+
+    for (const chain of chains) {
+      const chainHotels = byChain.get(chain.toLowerCase())!;
+      if (round < chainHotels.length && result.length < maxResults) {
+        result.push(chainHotels[round]);
+        console.log(`✅ [INTERLEAVE] Round ${round + 1}: Added "${chainHotels[round].name}" from ${chain}`);
+        addedThisRound = true;
+      }
+    }
+
+    if (!addedThisRound) break; // No more hotels to add from any chain
+    round++;
+  }
+
+  console.log(`📊 [INTERLEAVE] Final interleaved count: ${result.length} hotels`);
+  return result;
+}
+
+/**
  * Calculate layover hours between two flight segments
  * Used for filtering flights by maximum layover duration
  */
@@ -518,42 +570,102 @@ async function executeHotelSearch(
 
   console.log(`📊 [HOTEL_SEARCH] Adults: ${inferredAdults} (roomType: ${hotels.roomType || 'not specified'})`);
 
-  // ✅ REGLA DE NEGOCIO (confirmada con Ruth/SOFTUR):
-  // El campo <name> de EUROVIPS es el ÚNICO campo correcto para filtrar por:
-  // - Cadena hotelera (Iberostar, Riu, Melia, etc.)
-  // - Texto parcial del nombre del hotel (Ocean, Palace, etc.)
-  // Prioridad: hotelChain > hotelName (hotelChain es más específico para búsquedas de cadena)
-  const nameFilter = hotels.hotelChain || hotels.hotelName || '';
-
-  if (nameFilter) {
-    console.log(`🏨 [HOTEL_SEARCH] Applying name filter to EUROVIPS: "${nameFilter}"`);
-  }
-
   // ✅ STEP 1: Resolve city name to EUROVIPS city code
   console.log(`🔍 [HOTEL_SEARCH] Resolving city code for: "${hotels.city}"`);
   const cityCode = resolveHotelCode(hotels.city);
   console.log(`✅ [HOTEL_SEARCH] City code resolved: "${hotels.city}" → ${cityCode}`);
 
-  // Build EUROVIPS API request
-  const eurovipsRequest = {
-    action: 'searchHotels',
-    data: {
-      cityCode: cityCode, // ✅ Código resuelto (ej: "PUJ", no "Punta Cana")
-      checkinDate: hotels.checkinDate,
-      checkoutDate: hotels.checkoutDate,
-      adults: inferredAdults,
-      children: hotels.children || 0,
-      hotelName: nameFilter // ✅ Filtro por <name> en EUROVIPS (cadena o nombre parcial)
-    }
+  // ✅ MULTI-CHAIN HOTEL SEARCH STRATEGY:
+  // - If hotelChains array has multiple chains → Make N parallel requests + dedupe + interleave
+  // - If hotelChains has 1 chain → Single request with that chain
+  // - If only hotelName → Single request with that name
+  // - If nothing → Single request without filter
+  const hotelChains = hotels.hotelChains || [];
+  const hotelName = hotels.hotelName || '';
+
+  // Base params for all requests
+  const baseParams = {
+    cityCode: cityCode,
+    checkinDate: hotels.checkinDate,
+    checkoutDate: hotels.checkoutDate,
+    adults: inferredAdults,
+    children: hotels.children || 0
   };
 
-  console.log('[HOTEL_SEARCH] Calling eurovips-soap Edge Function', nameFilter ? `with name filter: "${nameFilter}"` : 'without name filter');
-  console.log(`   → cityCode: ${cityCode}, dates: ${hotels.checkinDate} to ${hotels.checkoutDate}, adults: ${inferredAdults}`);
+  let allHotels: any[] = [];
+  let totalFromProvider = 0;
 
-  // Call eurovips-soap Edge Function with timeout
-  let response;
   try {
-    response = await invokeWithTimeout(supabase, 'eurovips-soap', eurovipsRequest);
+    if (hotelChains.length > 1) {
+      // ✅ MULTI-CHAIN: Make N parallel requests (1 per chain)
+      console.log(`🏨 [MULTI-CHAIN] Making ${hotelChains.length} parallel API requests for chains:`, hotelChains);
+
+      const chainResults = await Promise.all(
+        hotelChains.map(async (chain: string) => {
+          console.log(`📤 [MULTI-CHAIN] Requesting hotels for chain: "${chain}"`);
+          try {
+            const result = await invokeWithTimeout(supabase, 'eurovips-soap', {
+              action: 'searchHotels',
+              data: { ...baseParams, hotelName: chain }
+            });
+            const hotels = (result as any)?.results || [];
+            console.log(`✅ [MULTI-CHAIN] Chain "${chain}": received ${hotels.length} hotels`);
+            return { chain, hotels };
+          } catch (error) {
+            console.error(`❌ [MULTI-CHAIN] Chain "${chain}" failed:`, error);
+            return { chain, hotels: [] };
+          }
+        })
+      );
+
+      // Flatten all results
+      for (const { hotels: chainHotels } of chainResults) {
+        totalFromProvider += chainHotels.length;
+        allHotels.push(...chainHotels);
+      }
+
+      console.log(`🔗 [MULTI-CHAIN] Total hotels before deduplication: ${allHotels.length}`);
+
+      // Deduplicate by hotel_id or name
+      const seen = new Set<string>();
+      allHotels = allHotels.filter(hotel => {
+        const key = hotel.hotel_id || hotel.name?.toLowerCase().trim();
+        if (!key || seen.has(key)) {
+          if (key) console.log(`🗑️ [DEDUP] Removed duplicate: "${hotel.name}"`);
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+
+      console.log(`✅ [MULTI-CHAIN] After deduplication: ${allHotels.length} hotels`);
+
+      // Interleave results round-robin if multiple chains
+      allHotels = interleaveHotelsByChain(allHotels, hotelChains);
+
+    } else {
+      // ✅ SINGLE REQUEST: Use first chain, hotelName, or no filter
+      const nameFilter = hotelChains[0] || hotelName || '';
+
+      if (nameFilter) {
+        console.log(`🏨 [HOTEL_SEARCH] Applying name filter to EUROVIPS: "${nameFilter}"`);
+      } else {
+        console.log('🏨 [HOTEL_SEARCH] No chain or name filter - searching all hotels');
+      }
+
+      console.log(`📤 [HOTEL_SEARCH] Calling eurovips-soap Edge Function`);
+      console.log(`   → cityCode: ${cityCode}, dates: ${hotels.checkinDate} to ${hotels.checkoutDate}, adults: ${inferredAdults}`);
+
+      const response = await invokeWithTimeout(supabase, 'eurovips-soap', {
+        action: 'searchHotels',
+        data: { ...baseParams, hotelName: nameFilter }
+      });
+
+      allHotels = (response as any)?.results || [];
+      totalFromProvider = allHotels.length;
+
+      console.log('[HOTEL_SEARCH] Found', totalFromProvider, 'hotels from provider');
+    }
   } catch (error: any) {
     console.error('[HOTEL_SEARCH] EUROVIPS API error:', error);
     return {
@@ -566,16 +678,14 @@ async function executeHotelSearch(
     };
   }
 
-  let allHotels = (response as any)?.results || [];
-  const totalFromProvider = allHotels.length;
-
   console.log('[HOTEL_SEARCH] Found', totalFromProvider, 'hotels from provider');
 
   // ✅ STEP 1: Apply destination-specific filters (e.g., Punta Cana whitelist)
+  // Pass first chain if available (for whitelist bypass logic)
   allHotels = applyDestinationWhitelist(
     allHotels,
     hotels.city || '',
-    hotels.hotelChain
+    hotelChains[0] || hotelName // Pass first chain or hotelName for whitelist bypass
   );
   const afterWhitelist = allHotels.length;
 
@@ -628,11 +738,12 @@ async function executeHotelSearch(
     };
   }
 
-  // Name filter applied (chain or hotel name)
-  if (nameFilter) {
-    metadata.name_filter_applied = {
-      filter_value: nameFilter,
-      filter_source: hotels.hotelChain ? 'hotelChain' : 'hotelName',
+  // Chain/Name filter applied
+  if (hotelChains.length > 0 || hotelName) {
+    metadata.chain_filter_applied = {
+      chains: hotelChains.length > 0 ? hotelChains : undefined,
+      hotel_name: hotelName || undefined,
+      multi_chain_search: hotelChains.length > 1,
       applied_to: 'EUROVIPS <name> field'
     };
   }
@@ -686,6 +797,18 @@ async function executeCombinedSearch(
   ]);
 
   console.log('[COMBINED_SEARCH] Both searches completed');
+  console.log('[COMBINED_SEARCH] Flight status:', flightResult.status);
+  console.log('[COMBINED_SEARCH] Hotel status:', hotelResult.status);
+
+  // ✅ Handle errors in individual searches
+  // If flight search failed, include empty results instead of undefined
+  const flightData = flightResult.status === 'error'
+    ? { count: 0, items: [], error: flightResult.error }
+    : flightResult.flights;
+
+  const hotelData = hotelResult.status === 'error'
+    ? { count: 0, items: [], error: hotelResult.error }
+    : hotelResult.hotels;
 
   // ✅ Merge metadata from both searches
   const flightMetadata = flightResult.metadata || {};
@@ -695,11 +818,16 @@ async function executeCombinedSearch(
     ...hotelMetadata
   };
 
+  // Determine overall status: completed only if both succeeded
+  const overallStatus = flightResult.status === 'error' || hotelResult.status === 'error'
+    ? 'incomplete'
+    : 'completed';
+
   return {
-    status: 'completed',
+    status: overallStatus,
     type: 'combined',
-    flights: flightResult.flights,
-    hotels: hotelResult.hotels,
+    flights: flightData,
+    hotels: hotelData,
     metadata: Object.keys(combinedMetadata).length > 0 ? combinedMetadata : undefined
   };
 }
