@@ -1,9 +1,9 @@
 [build]
 builder = "dockerfile"
-dockerfilePath = "Dockerfile"
+dockerfilePath = "api/Dockerfile"
 
 # Watch only API directory
-watchPatterns = ["**"]
+watchPatterns = ["api/**"]
 
 [deploy]
 startCommand = "node dist/server.js"
