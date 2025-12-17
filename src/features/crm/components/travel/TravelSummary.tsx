@@ -22,25 +22,23 @@ import {
 } from 'lucide-react';
 import type { TravelSummaryProps } from '../../types/travel';
 import { formatCurrency, calculateConnectionTime } from '../../utils';
+import { calculateTotalPrice, extractRoomForCalculation } from '../../services/priceCalculator';
 
 export function TravelSummary({
   selectedFlights,
   selectedHotels,
+  selectedRooms,
   onGeneratePdf,
   isGenerating
 }: TravelSummaryProps) {
-  // Calculate totals
-  const flightTotal = selectedFlights.reduce((sum, flight) => {
-    const price = parseFloat(flight.price?.replace(/[^\d.]/g, '') || '0');
-    return sum + price;
-  }, 0);
+  // Calculate totals using centralized price calculator
+  const priceBreakdown = calculateTotalPrice(
+    selectedFlights,
+    selectedHotels,
+    selectedRooms
+  );
 
-  const hotelTotal = selectedHotels.reduce((sum, hotel) => {
-    const bestRoom = hotel.rooms?.[0];
-    return sum + (bestRoom?.total_price || 0);
-  }, 0);
-
-  const grandTotal = flightTotal + hotelTotal;
+  const { flightSubtotal: flightTotal, hotelSubtotal: hotelTotal, grandTotal } = priceBreakdown;
   const hasItems = selectedFlights.length > 0 || selectedHotels.length > 0;
 
   if (!hasItems) {
@@ -183,7 +181,10 @@ export function TravelSummary({
           </CardHeader>
           <CardContent className="space-y-4">
             {selectedHotels.map((hotel, index) => {
-              const bestRoom = hotel.rooms?.[0];
+              const { room: selectedRoom, source } = extractRoomForCalculation(
+                hotel,
+                selectedRooms?.[hotel.id]
+              );
               return (
                 <div key={hotel.id || index} className="border rounded-lg p-4 space-y-3">
                   {/* Hotel Header */}
@@ -220,40 +221,43 @@ export function TravelSummary({
 
                     <div className="text-right">
                       <div className="text-xl font-bold text-green-600">
-                        {formatCurrency(bestRoom?.total_price || 0)}
+                        {formatCurrency(selectedRoom.total_price || 0)}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {bestRoom?.currency || 'USD'}
+                        {selectedRoom.currency || 'USD'}
                       </div>
-                      {bestRoom?.price_per_night && (
+                      {selectedRoom.price_per_night && (
                         <div className="text-xs text-muted-foreground">
-                          {formatCurrency(bestRoom.price_per_night)}/noche
+                          {formatCurrency(selectedRoom.price_per_night)}/noche
                         </div>
                       )}
                     </div>
                   </div>
 
                   {/* Room Details */}
-                  {bestRoom && (
-                    <div className="p-3 bg-green-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-green-800">{bestRoom.type}</span>
-                        <Badge variant="outline" className="text-green-600 border-green-600">
-                          {bestRoom.availability} disponibles
-                        </Badge>
-                      </div>
-                      {bestRoom.description && (
-                        <p className="text-sm text-green-700 mb-2">{bestRoom.description}</p>
-                      )}
-                      <div className="flex items-center justify-between text-sm text-green-700">
-                        <span>Ocupación máxima:</span>
-                        <span className="flex items-center gap-1">
-                          <Users className="h-3 w-3" />
-                          {bestRoom.max_occupancy || 2} personas
-                        </span>
-                      </div>
+                  <div className="p-3 bg-green-50 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-green-800">{selectedRoom.type}</span>
+                      <Badge variant="outline" className="text-green-600 border-green-600">
+                        {selectedRoom.availability} disponibles
+                      </Badge>
                     </div>
-                  )}
+                    {selectedRoom.description && (
+                      <p className="text-sm text-green-700 mb-2">{selectedRoom.description}</p>
+                    )}
+                    <div className="flex items-center justify-between text-sm text-green-700">
+                      <span>Ocupación máxima:</span>
+                      <span className="flex items-center gap-1">
+                        <Users className="h-3 w-3" />
+                        {(selectedRoom as any).max_occupancy || 2} personas
+                      </span>
+                    </div>
+                    {source === 'selected' && (
+                      <Badge variant="default" className="mt-2">
+                        Habitación seleccionada
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               );
             })}

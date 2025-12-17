@@ -1,6 +1,7 @@
 // PDF generation service for travel quotes
 import { generateFlightPdf, generateCombinedTravelPdf } from '@/services/pdfMonkey';
-import type { FlightData, HotelData } from '@/types';
+import { calculateTotalPrice, generatePriceBreakdown } from './priceCalculator';
+import type { FlightData, HotelData, HotelDataWithSelectedRoom } from '@/types';
 
 export class PdfService {
   // Generate flight quote PDF
@@ -77,36 +78,29 @@ export class PdfService {
   // Calculate total cost for quote
   static calculateQuoteTotal(
     selectedFlights: FlightData[],
-    selectedHotels: HotelData[]
+    selectedHotels: (HotelData | HotelDataWithSelectedRoom)[],
+    selectedRooms?: Record<string, string>
   ): {
     flightTotal: number;
     hotelTotal: number;
     grandTotal: number;
     currency: string;
   } {
-    const flightTotal = selectedFlights.reduce((sum, flight) => {
-      return sum + (parseFloat(flight.price?.replace(/[^\d.]/g, '') || '0') || 0);
-    }, 0);
-
-    const hotelTotal = selectedHotels.reduce((sum, hotel) => {
-      const bestRoom = hotel.rooms?.[0];
-      return sum + (bestRoom?.total_price || 0);
-    }, 0);
-
-    const grandTotal = flightTotal + hotelTotal;
+    const breakdown = calculateTotalPrice(selectedFlights, selectedHotels, selectedRooms);
 
     return {
-      flightTotal,
-      hotelTotal,
-      grandTotal,
-      currency: 'USD' // Default currency
+      flightTotal: breakdown.flightSubtotal,
+      hotelTotal: breakdown.hotelSubtotal,
+      grandTotal: breakdown.grandTotal,
+      currency: breakdown.currency
     };
   }
 
   // Format quote summary for display
   static formatQuoteSummary(
     selectedFlights: FlightData[],
-    selectedHotels: HotelData[]
+    selectedHotels: (HotelData | HotelDataWithSelectedRoom)[],
+    selectedRooms?: Record<string, string>
   ): {
     items: Array<{
       type: 'flight' | 'hotel';
@@ -126,38 +120,28 @@ export class PdfService {
       price: number;
     }> = [];
 
-    // Add flights
-    selectedFlights.forEach(flight => {
-      const price = parseFloat(flight.price?.replace(/[^\d.]/g, '') || '0') || 0;
-      let description = 'Vuelo';
+    // Use price calculator for accurate breakdown
+    const breakdown = generatePriceBreakdown(selectedFlights, selectedHotels, selectedRooms);
 
-      if (flight.segments && flight.segments.length > 0) {
-        const firstSegment = flight.segments[0];
-        const lastSegment = flight.segments[flight.segments.length - 1];
-        description = `Vuelo ${firstSegment.departure.city_code} - ${lastSegment.arrival.city_code}`;
-      }
-
+    // Add flights from breakdown
+    breakdown.flights.forEach(flightResult => {
       items.push({
         type: 'flight',
-        description,
-        price
+        description: `Vuelo ${flightResult.airline}`,
+        price: flightResult.total
       });
     });
 
-    // Add hotels
-    selectedHotels.forEach(hotel => {
-      const bestRoom = hotel.rooms?.[0];
-      const price = bestRoom?.total_price || 0;
-      const description = `Hotel ${hotel.name}`;
-
+    // Add hotels from breakdown
+    breakdown.hotels.forEach(hotelResult => {
       items.push({
         type: 'hotel',
-        description,
-        price
+        description: `Hotel ${hotelResult.hotelName}`,
+        price: hotelResult.total
       });
     });
 
-    const totals = this.calculateQuoteTotal(selectedFlights, selectedHotels);
+    const totals = this.calculateQuoteTotal(selectedFlights, selectedHotels, selectedRooms);
 
     return { items, totals };
   }

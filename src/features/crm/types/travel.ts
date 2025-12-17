@@ -75,6 +75,7 @@ export interface HotelDetailsProps {
 export interface TravelSummaryProps {
   selectedFlights: FlightData[];
   selectedHotels: HotelData[];
+  selectedRooms?: Record<string, string>; // Map of hotelId → roomId
   onGeneratePdf: () => void;
   isGenerating: boolean;
 }
@@ -84,3 +85,11 @@ export interface ConnectionTimeProps {
   segment1: any;
   segment2: any;
 }
+
+// Re-export price calculator types for convenience
+export type {
+  RoomSelection,
+  HotelPriceResult,
+  FlightPriceResult,
+  TotalPriceBreakdown
+} from '../services/priceCalculator';

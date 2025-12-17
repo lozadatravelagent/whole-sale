@@ -186,7 +186,8 @@ export function useTravelSelection() {
   const getSelectionSummary = useCallback(() => {
     const totals = PdfService.calculateQuoteTotal(
       selectionState.selectedFlights,
-      selectionState.selectedHotels
+      selectionState.selectedHotels,
+      undefined // This hook doesn't manage selectedRooms
     );
 
     return {
@@ -201,7 +202,8 @@ export function useTravelSelection() {
   const getFormattedQuoteSummary = useCallback(() => {
     return PdfService.formatQuoteSummary(
       selectionState.selectedFlights,
-      selectionState.selectedHotels
+      selectionState.selectedHotels,
+      undefined // This hook doesn't manage selectedRooms
     );
   }, [selectionState.selectedFlights, selectionState.selectedHotels]);
 
