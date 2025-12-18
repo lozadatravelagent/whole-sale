@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import type { RelativeAdjustment, HotelReference } from '../types/chat';
 
 // Helper: normalize text removing diacritics and trimming spaces for robust intent detection
 export const normalizeText = (text: string): string => {
@@ -189,7 +190,24 @@ export const isPriceChangeRequest = (message: string): boolean => {
     /\bhotel\s+(a|por|en)\s*([$\d]|\busd\b)/i,
 
     // Hotel-specific: "hotel cueste [number]"
-    /\bhotel\s+cueste?\s*[\d$]/i
+    /\bhotel\s+cueste?\s*[\d$]/i,
+
+    // NUEVO: Positional hotels: "primer/segundo hotel [a] [number]"
+    /\b(primer[ao]?|segundo?[ao]?)\s+hotel\s*(a|al|en|por)?\s*[\d$]/i,
+
+    // NUEVO: Relative adjustments: "sumale/restale/bajale/subile [number]"
+    /\b(sum[aá]le?|rest[aá]le?|baj[aá](?:lo|le)?|sub[ií](?:lo|le)?|aument[aá]r?|reduc[ií]r?|descont[aá]r?)\s+(?:en\s+)?(\d+)/i,
+
+    // NUEVO: Percentage adjustments: "X% más/menos" or "más/menos X%"
+    /\b(\d+)\s*%\s*(m[aá]s|menos|arriba|abajo)/i,
+    /\b(m[aá]s|menos)\s+(\d+)\s*%/i,
+
+    // NUEVO: Simple operators: "+X" or "-X"
+    /\+\s*\$?\s*(\d+)/,
+    /-\s*\$?\s*(\d+)/,
+
+    // NUEVO: Price order references: "el más barato/caro a [number]"
+    /\b(?:el\s+)?m[aá]s\s+(barato|caro|econ[oó]mico)\s+(?:a|en|por)?\s*[\d$]/i
   ];
 
   // Check if any price change pattern matches
@@ -256,4 +274,85 @@ export const extractPriceChangeTarget = (message: string): 'total' | 'hotel' | '
   }
 
   return 'unknown';
+};
+
+// Extract relative adjustment (add, subtract, percent) from message
+export const extractRelativeAdjustment = (message: string): RelativeAdjustment | null => {
+  const norm = normalizeText(message);
+
+  // Patterns for detecting operation and value
+  const patterns = [
+    { regex: /sum[aá]le?\s+(\d+)/i, op: 'add' as const },
+    { regex: /rest[aá]le?\s+(\d+)/i, op: 'subtract' as const },
+    { regex: /baj[aá](?:lo|le)?\s+(\d+)/i, op: 'subtract' as const },
+    { regex: /sub[ií](?:lo|le)?\s+(\d+)/i, op: 'add' as const },
+    { regex: /\+\s*\$?\s*(\d+)/, op: 'add' as const },
+    { regex: /-\s*\$?\s*(\d+)/, op: 'subtract' as const },
+    { regex: /(\d+)\s*%\s*m[aá]s/i, op: 'percent_add' as const },
+    { regex: /(\d+)\s*%\s*menos/i, op: 'percent_subtract' as const },
+    { regex: /m[aá]s\s+(\d+)\s*%/i, op: 'percent_add' as const },
+    { regex: /menos\s+(\d+)\s*%/i, op: 'percent_subtract' as const },
+    { regex: /aument[aá]r?\s+(?:en\s+)?(\d+)/i, op: 'add' as const },
+    { regex: /reduc[ií]r?\s+(?:en\s+)?(\d+)/i, op: 'subtract' as const },
+    { regex: /descont[aá]r?\s+(\d+)/i, op: 'subtract' as const },
+  ];
+
+  for (const { regex, op } of patterns) {
+    const match = norm.match(regex);
+    if (match) {
+      const value = parseInt(match[1]);
+      const target = extractPriceChangeTarget(message);
+
+      console.log('✅ [RELATIVE ADJUSTMENT] Detected:', { operation: op, value, target });
+
+      return {
+        operation: op,
+        value,
+        target
+      };
+    }
+  }
+
+  return null;
+};
+
+// Extract hotel reference (by position, price order, or chain name)
+export const extractHotelReference = (message: string): HotelReference | null => {
+  const norm = normalizeText(message);
+
+  // By position (primer, segundo)
+  const positionPatterns = [
+    { regex: /primer(?:o)?\s+hotel/i, position: 1 },
+    { regex: /segundo?\s+hotel/i, position: 2 },
+    { regex: /hotel\s+(?:#|n[uú]mero?\s*)1/i, position: 1 },
+    { regex: /hotel\s+(?:#|n[uú]mero?\s*)2/i, position: 2 },
+  ];
+
+  for (const { regex, position } of positionPatterns) {
+    if (regex.test(norm)) {
+      console.log('✅ [HOTEL REFERENCE] Detected position:', position);
+      return { position };
+    }
+  }
+
+  // By price order (más barato, más caro)
+  if (/(?:el\s+)?m[aá]s\s+barato/i.test(norm) || /(?:el\s+)?econ[oó]mico/i.test(norm)) {
+    console.log('✅ [HOTEL REFERENCE] Detected price order: cheapest');
+    return { priceOrder: 'cheapest' };
+  }
+
+  if (/(?:el\s+)?m[aá]s\s+caro/i.test(norm)) {
+    console.log('✅ [HOTEL REFERENCE] Detected price order: expensive');
+    return { priceOrder: 'expensive' };
+  }
+
+  // By chain name (riu, iberostar, bahia, barcelo, melia, nh)
+  const chainMatch = norm.match(/(?:hotel\s+)?(riu|iberostar|bahia|barcelo|meli[aá]|nh|hilton|marriott)/i);
+  if (chainMatch) {
+    const chainName = chainMatch[1].toLowerCase();
+    console.log('✅ [HOTEL REFERENCE] Detected chain name:', chainName);
+    return { chainName };
+  }
+
+  return null;
 };

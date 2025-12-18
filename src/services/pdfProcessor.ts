@@ -796,6 +796,111 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
 }
 
 /**
+ * Extract multiple hotel prices from message
+ * Supports: position (primer/segundo), price order (más barato/caro), chain name (RIU, Iberostar)
+ */
+function extractMultipleHotelPricesFromMessage(
+    message: string,
+    hotels: Array<{ name: string; price: number; nights?: number }>
+): Array<{ hotelIndex: number; hotelName?: string; referenceType: 'position' | 'name' | 'price_order'; newPrice: number }> {
+    console.log('🏨 [MULTIPLE HOTEL PRICES] Extracting from:', message);
+    console.log('🏨 [MULTIPLE HOTEL PRICES] Hotels available:', hotels.length);
+
+    const changes: Array<{ hotelIndex: number; hotelName?: string; referenceType: 'position' | 'name' | 'price_order'; newPrice: number }> = [];
+    const norm = message.toLowerCase();
+
+    if (hotels.length === 0) {
+        console.log('❌ [MULTIPLE HOTEL PRICES] No hotels available');
+        return changes;
+    }
+
+    // Sort hotels by price for "más barato/caro" references
+    const sortedByPrice = [...hotels].sort((a, b) => a.price - b.price);
+
+    // Pattern 1: By position "primer hotel a 1000"
+    const positionPatterns = [
+        { regex: /primer(?:o)?\s+hotel\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 1 },
+        { regex: /segundo?\s+hotel\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 2 },
+        { regex: /hotel\s+(?:#|n[uú]mero?\s*)1\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 1 },
+        { regex: /hotel\s+(?:#|n[uú]mero?\s*)2\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 2 },
+    ];
+
+    for (const { regex, position } of positionPatterns) {
+        const match = message.match(regex);
+        if (match && position <= hotels.length) {
+            const newPrice = parsePrice(match[1]);
+            if (newPrice >= 100 && newPrice <= 50000) {
+                changes.push({
+                    hotelIndex: position - 1,
+                    referenceType: 'position',
+                    newPrice
+                });
+                console.log(`💰 [HOTEL POSITION] Hotel ${position}: $${newPrice}`);
+            }
+        }
+    }
+
+    // Pattern 2: By price order "el más barato a 900"
+    const priceOrderPatterns = [
+        { regex: /(?:el\s+)?m[aá]s\s+barato\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, order: 'cheapest' },
+        { regex: /(?:el\s+)?m[aá]s\s+caro\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, order: 'expensive' },
+        { regex: /(?:el\s+)?econ[oó]mico\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, order: 'cheapest' },
+    ];
+
+    for (const { regex, order } of priceOrderPatterns) {
+        const match = message.match(regex);
+        if (match) {
+            const newPrice = parsePrice(match[1]);
+            if (newPrice >= 100 && newPrice <= 50000) {
+                const targetHotel = order === 'cheapest' ? sortedByPrice[0] : sortedByPrice[sortedByPrice.length - 1];
+                const originalIndex = hotels.findIndex(h => h.name === targetHotel.name);
+
+                if (originalIndex >= 0) {
+                    changes.push({
+                        hotelIndex: originalIndex,
+                        hotelName: targetHotel.name,
+                        referenceType: 'price_order',
+                        newPrice
+                    });
+                    console.log(`💰 [HOTEL PRICE ORDER] ${order}: ${targetHotel.name} → $${newPrice}`);
+                }
+            }
+        }
+    }
+
+    // Pattern 3: By chain name "el RIU a 1200", "Iberostar a 1400"
+    const chainPattern = /(?:(?:el|hotel)\s+)?(riu|iberostar|bahia|barcelo|meli[aá]|nh|hilton|marriott)\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/gi;
+    let chainMatch;
+
+    while ((chainMatch = chainPattern.exec(message)) !== null) {
+        const chainName = chainMatch[1].toLowerCase();
+        const newPrice = parsePrice(chainMatch[2]);
+
+        if (newPrice >= 100 && newPrice <= 50000) {
+            const hotelIndex = hotels.findIndex(h => h.name.toLowerCase().includes(chainName));
+
+            if (hotelIndex >= 0) {
+                changes.push({
+                    hotelIndex,
+                    hotelName: hotels[hotelIndex].name,
+                    referenceType: 'name',
+                    newPrice
+                });
+                console.log(`💰 [HOTEL CHAIN] ${chainName}: ${hotels[hotelIndex].name} → $${newPrice}`);
+            }
+        }
+    }
+
+    if (changes.length > 0) {
+        console.log(`✅ [MULTIPLE HOTEL PRICES] Total extracted: ${changes.length}`, changes);
+    } else {
+        console.log('❌ [MULTIPLE HOTEL PRICES] No hotel prices found');
+    }
+
+    return changes;
+}
+
+/**
  * Reconstruct FlightData from extracted PDF data
  */
 function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): any[] {
@@ -1332,6 +1437,171 @@ export async function generateModifiedPdfWithHotelPrice(
 }
 
 /**
+ * Generate modified PDF with multiple hotel price changes
+ * Supports changing prices for specific hotels by position, name, or price order
+ */
+async function generateModifiedPdfWithMultipleHotelPrices(
+    analysis: PdfAnalysisResult,
+    hotelChanges: Array<{ hotelIndex: number; hotelName?: string; referenceType: 'position' | 'name' | 'price_order'; newPrice: number }>,
+    conversationId: string
+): Promise<{ success: boolean; pdfUrl?: string; totalPrice?: number; error?: string }> {
+    try {
+        console.log('🏨🏨 Generating modified PDF with multiple hotel price changes:', hotelChanges);
+
+        const { generateCombinedTravelPdf } = await import('./pdfMonkey');
+
+        if (!analysis.content) {
+            throw new Error('No content available from PDF analysis');
+        }
+
+        if (!analysis.content.hotels || analysis.content.hotels.length === 0) {
+            throw new Error('No hotel information available');
+        }
+
+        // Keep flight prices unchanged
+        const adjustedFlights = analysis.content.flights?.map((flight, index) => {
+            if ((flight as any).legs && (flight as any).legs.length > 0) {
+                return {
+                    id: `multi-hotel-modified-${Date.now()}-${index}`,
+                    airline: {
+                        code: extractAirlineCode(flight.airline),
+                        name: flight.airline
+                    },
+                    price: {
+                        amount: flight.price, // Keep original flight price
+                        currency: analysis.content?.currency || 'USD'
+                    },
+                    adults: analysis.content?.passengers || 1,
+                    childrens: 0,
+                    departure_date: flight.dates.includes(' / ') ?
+                        flight.dates.split(' / ')[0].trim() :
+                        parseDateRange(flight.dates).departureDate,
+                    return_date: flight.dates.includes(' / ') ?
+                        flight.dates.split(' / ')[1].trim() :
+                        parseDateRange(flight.dates).returnDate,
+                    legs: (flight as any).legs
+                };
+            }
+            return null;
+        }).filter(flight => flight !== null) || [];
+
+        // Apply price changes to hotels
+        const adjustedHotels = analysis.content.hotels?.map((hotel, index) => {
+            // Check if this hotel has a price change
+            const priceChange = hotelChanges.find(change => change.hotelIndex === index);
+            const finalPrice = priceChange ? priceChange.newPrice : hotel.price;
+
+            // Extract check-in and check-out dates from flights
+            let checkIn = '2025-11-01';
+            let checkOut = '2025-11-15';
+
+            if (analysis.content?.flights && analysis.content.flights.length > 0) {
+                const firstFlight = analysis.content.flights[0];
+                const lastFlight = analysis.content.flights[analysis.content.flights.length - 1];
+
+                // Get check-in date from first flight
+                if (firstFlight.dates) {
+                    if (firstFlight.dates.includes(' / ')) {
+                        checkIn = firstFlight.dates.split(' / ')[0].trim();
+                    } else if (firstFlight.dates.includes(' | ')) {
+                        checkIn = firstFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                    } else {
+                        checkIn = firstFlight.dates.replace('📅', '').trim();
+                    }
+                }
+
+                // Get check-out date from last flight
+                if (lastFlight.dates && analysis.content.flights.length > 1) {
+                    if (lastFlight.dates.includes(' / ')) {
+                        checkOut = lastFlight.dates.split(' / ')[1]?.trim() || lastFlight.dates.split(' / ')[0].trim();
+                    } else if (lastFlight.dates.includes(' | ')) {
+                        checkOut = lastFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                    } else {
+                        checkOut = lastFlight.dates.replace('📅', '').trim();
+                    }
+                } else if (hotel.nights > 0) {
+                    // Calculate check-out based on nights
+                    const checkInDate = new Date(checkIn);
+                    checkInDate.setDate(checkInDate.getDate() + hotel.nights);
+                    checkOut = checkInDate.toISOString().split('T')[0];
+                }
+            }
+
+            const hotelId = `multi-hotel-modified-${Date.now()}-${index}`;
+            const pricePerNight = parseFloat((finalPrice / (hotel.nights || 7)).toFixed(2));
+
+            return {
+                id: hotelId,
+                unique_id: hotelId,
+                name: hotel.name,
+                city: hotel.location,
+                address: hotel.location,
+                category: '5', // Default category
+                check_in: checkIn,
+                check_out: checkOut,
+                nights: hotel.nights || 7,
+                rooms: [{
+                    type: 'Standard',
+                    description: priceChange ? 'Precio modificado' : 'Precio original',
+                    price_per_night: pricePerNight,
+                    total_price: finalPrice,
+                    currency: analysis.content?.currency || 'USD',
+                    availability: 5,
+                    occupancy_id: `room-${index}`
+                }],
+                selectedRoom: {
+                    type: 'Standard',
+                    description: priceChange ? 'Precio modificado' : 'Precio original',
+                    price_per_night: pricePerNight,
+                    total_price: finalPrice,
+                    currency: analysis.content?.currency || 'USD',
+                    availability: 5,
+                    occupancy_id: `room-${index}`
+                }
+            };
+        }) || [];
+
+        // Calculate new total (flights + modified hotels)
+        const flightsTotal = adjustedFlights.reduce((sum, f) => sum + (f.price?.amount || 0), 0);
+        const hotelsTotal = adjustedHotels.reduce((sum, h) => sum + (h.selectedRoom?.total_price || 0), 0);
+        const newTotalPrice = flightsTotal + hotelsTotal;
+
+        console.log('💰 Price breakdown (multi-hotel):', {
+            flightsTotal,
+            hotelsTotal,
+            newTotalPrice,
+            hotelPrices: adjustedHotels.map(h => ({ name: h.name, price: h.selectedRoom?.total_price }))
+        });
+
+        // Generate PDF with combined travel data
+        const result = await generateCombinedTravelPdf(
+            adjustedFlights,
+            adjustedHotels,
+            conversationId
+        );
+
+        if (result.success && result.document_url) {
+            return {
+                success: true,
+                pdfUrl: result.document_url,
+                totalPrice: newTotalPrice
+            };
+        } else {
+            return {
+                success: false,
+                error: result.error || 'Failed to generate modified PDF'
+            };
+        }
+    } catch (error) {
+        console.error('❌ Error generating modified PDF with multiple hotel prices:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
  * Generate modified PDF with new price
  */
 export async function generateModifiedPdf(
@@ -1594,11 +1864,118 @@ export async function processPriceChangeRequest(
         const lowerRequest = request.toLowerCase();
 
         // Import the extractPriceChangeTarget function
-        const { extractPriceChangeTarget } = await import('../features/chat/utils/intentDetection');
+        const { extractPriceChangeTarget, extractRelativeAdjustment } = await import('../features/chat/utils/intentDetection');
 
         // Detect what type of price change the user wants
         const changeTarget = extractPriceChangeTarget(request);
         console.log('🎯 Price change target detected:', changeTarget);
+
+        // NUEVO: Check for relative adjustments (sumale, restale, +X%, etc.)
+        const relativeAdj = extractRelativeAdjustment(request);
+        if (relativeAdj) {
+            console.log('📊 Relative adjustment detected:', relativeAdj);
+
+            // Calculate current price based on target
+            let currentPrice = analysis.content?.totalPrice || 0;
+
+            if (relativeAdj.target === 'hotel' && analysis.content?.hotels?.[0]) {
+                currentPrice = analysis.content.hotels[0].price;
+            } else if (relativeAdj.target === 'flights') {
+                currentPrice = (analysis.content?.flights || []).reduce((sum, f) => sum + f.price, 0);
+            }
+
+            // Calculate new price
+            let newPrice: number;
+            switch (relativeAdj.operation) {
+                case 'add':
+                    newPrice = currentPrice + relativeAdj.value;
+                    break;
+                case 'subtract':
+                    newPrice = Math.max(100, currentPrice - relativeAdj.value); // Ensure minimum price
+                    break;
+                case 'percent_add':
+                    newPrice = currentPrice * (1 + relativeAdj.value / 100);
+                    break;
+                case 'percent_subtract':
+                    newPrice = currentPrice * (1 - relativeAdj.value / 100);
+                    break;
+            }
+
+            console.log(`💰 Relative adjustment: ${currentPrice} → ${newPrice} (${relativeAdj.operation})`);
+
+            // Apply change based on target
+            if (relativeAdj.target === 'hotel') {
+                const result = await generateModifiedPdfWithHotelPrice(analysis, newPrice, conversationId);
+
+                if (result.success && result.pdfUrl) {
+                    return {
+                        response: `✅ **Precio del Hotel Modificado**\n\n` +
+                            `📊 **Cambio aplicado:**\n` +
+                            `• Precio anterior: $${currentPrice.toFixed(2)} USD\n` +
+                            `• Precio nuevo: $${newPrice.toFixed(2)} USD\n` +
+                            `• Diferencia: ${relativeAdj.operation.includes('add') || relativeAdj.operation === 'percent_add' ? '+' : '-'}$${Math.abs(newPrice - currentPrice).toFixed(2)} USD\n\n` +
+                            `💰 **Total actualizado:** $${result.totalPrice.toFixed(2)} USD\n\n` +
+                            `📄 PDF adjunto con los cambios.`,
+                        modifiedPdfUrl: result.pdfUrl
+                    };
+                }
+            } else {
+                // Apply to total or flights
+                const result = await generateModifiedPdf(analysis, newPrice, conversationId);
+
+                if (result.success && result.pdfUrl) {
+                    return {
+                        response: `✅ **Precio Modificado**\n\n` +
+                            `📊 **Cambio aplicado:**\n` +
+                            `• Precio anterior: $${currentPrice.toFixed(2)} USD\n` +
+                            `• Precio nuevo: $${newPrice.toFixed(2)} USD\n` +
+                            `• Diferencia: ${relativeAdj.operation.includes('add') || relativeAdj.operation === 'percent_add' ? '+' : '-'}$${Math.abs(newPrice - currentPrice).toFixed(2)} USD\n\n` +
+                            `📄 PDF adjunto con los cambios.`,
+                        modifiedPdfUrl: result.pdfUrl
+                    };
+                }
+            }
+        }
+
+        // NUEVO: Check for multiple hotel price changes
+        if (analysis.content?.hotels && analysis.content.hotels.length > 0) {
+            const multiHotelChanges = extractMultipleHotelPricesFromMessage(
+                request,
+                analysis.content.hotels
+            );
+
+            if (multiHotelChanges.length > 0) {
+                console.log('🏨🏨 Multiple hotel price changes:', multiHotelChanges);
+
+                // Validate we have enough hotels
+                if (analysis.content.hotels.length < Math.max(...multiHotelChanges.map(c => c.hotelIndex + 1))) {
+                    return {
+                        response: `❌ No hay suficientes hoteles en el PDF. El PDF contiene ${analysis.content.hotels.length} hotel(es).`
+                    };
+                }
+
+                // Generate modified PDF with multiple hotel prices
+                const result = await generateModifiedPdfWithMultipleHotelPrices(analysis, multiHotelChanges, conversationId);
+
+                if (result.success && result.pdfUrl) {
+                    // Build response message
+                    const changesDescription = multiHotelChanges.map(change => {
+                        const hotel = analysis.content!.hotels![change.hotelIndex];
+                        const hotelName = change.hotelName || hotel.name;
+                        return `• ${hotelName}: $${change.newPrice.toFixed(2)} USD`;
+                    }).join('\n');
+
+                    return {
+                        response: `✅ He modificado los precios de los hoteles seleccionados:\n\n${changesDescription}\n\n💰 **Precio Total Actualizado**: $${result.totalPrice.toFixed(2)} USD\n\n📄 Puedes descargar el PDF actualizado desde el archivo adjunto.`,
+                        modifiedPdfUrl: result.pdfUrl
+                    };
+                } else {
+                    return {
+                        response: `❌ No pude generar el PDF modificado: ${result.error || 'Error desconocido'}`
+                    };
+                }
+            }
+        }
 
         // First, check if user is specifying multiple individual prices
         const multiplePrices = extractMultiplePricesFromMessage(request);
