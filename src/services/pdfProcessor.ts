@@ -347,6 +347,31 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
         });
     }
 
+    // CORRECCIÓN: Si hay 2+ hoteles, el precio extraído como "vuelo" podría ser en realidad
+    // el precio de la "Opción Económica" completa (vuelo + hotel más barato).
+    // Corregir el precio del vuelo si es necesario.
+    if (hotels && hotels.length >= 2 && calculatedFlightPrice > 0 && flights && flights.length > 0) {
+        // Obtener el hotel más barato
+        const cheapestHotelPrice = Math.min(...hotels.map(h => h.price));
+
+        // Si el precio del vuelo es mayor que el hotel más barato,
+        // probablemente capturamos "Opción Económica $X" en vez del precio del vuelo solo
+        if (calculatedFlightPrice > cheapestHotelPrice) {
+            const originalFlightPrice = calculatedFlightPrice;
+            // Corregir: precio_vuelo_real = precio_capturado - hotel_mas_barato
+            calculatedFlightPrice = calculatedFlightPrice - cheapestHotelPrice;
+            console.log(`🔧 [PRICE CORRECTION] Detected flight price was actually economic package price. Corrected from $${originalFlightPrice} to $${calculatedFlightPrice} (subtracted cheapest hotel: $${cheapestHotelPrice})`);
+
+            // Actualizar el precio de cada vuelo individual proporcionalmente
+            const priceRatio = calculatedFlightPrice / originalFlightPrice;
+            flights.forEach((flight, index) => {
+                const correctedPrice = flight.price * priceRatio;
+                console.log(`🔧 [FLIGHT PRICE UPDATE] Flight ${index + 1}: $${flight.price.toFixed(2)} → $${correctedPrice.toFixed(2)}`);
+                flight.price = correctedPrice;
+            });
+        }
+    }
+
     // Extract total price from PDF (fallback)
     const extractedTotalPrice = extractTotalPriceFromPdfMonkeyTemplate(content);
 
@@ -547,19 +572,8 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
         const cheapestHotel = hotelsSortedByPrice[0];
         const mostExpensiveHotel = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
 
-        // Calcular precio de vuelos correctamente
-        // Si el precio del vuelo extraído parece ser un total (vuelo + hotel), debemos corregirlo
-        let flightsTotalPrice = content.flights.reduce((sum, f) => sum + f.price, 0);
-
-        // CORRECCIÓN: Si el precio de vuelos es igual o mayor al precio económico total,
-        // significa que se extrajo mal (se capturó el precio total de la opción en vez del vuelo)
-        // En ese caso, calculamos el precio del vuelo restando el hotel más barato
-        if (content.totalPrice && flightsTotalPrice >= content.totalPrice) {
-            // El precio extraído como "vuelo" es en realidad el total de la opción económica
-            // Calculamos el precio real del vuelo
-            flightsTotalPrice = flightsTotalPrice - cheapestHotel.price;
-            console.log(`🔧 [PRICE CORRECTION] Detected flights price was total package price. Corrected from ${content.flights.reduce((sum, f) => sum + f.price, 0)} to ${flightsTotalPrice}`);
-        }
+        // Calcular precio de vuelos (ya viene corregido de la extracción)
+        const flightsTotalPrice = content.flights.reduce((sum, f) => sum + f.price, 0);
 
         // Calcular precios
         const precioEconomico = flightsTotalPrice + cheapestHotel.price;
@@ -2125,16 +2139,8 @@ export async function processPriceChangeRequest(
             // Calcular nuevo precio del hotel
             // requestedPrice = flightsPrice + newHotelPrice
             // newHotelPrice = requestedPrice - flightsPrice
-            let flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
-
-            // CORRECCIÓN: Aplicar la misma lógica de corrección que en generatePriceChangeSuggestions
-            const cheapestHotel = hotelsSortedByPrice[0];
-            if (analysis.content.totalPrice && flightsPrice >= analysis.content.totalPrice) {
-                // El precio extraído como "vuelo" es en realidad el total de la opción económica
-                flightsPrice = flightsPrice - cheapestHotel.price;
-                console.log(`🔧 [PRICE CORRECTION] Corrected flights price from ${(analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0)} to ${flightsPrice}`);
-            }
-
+            // Nota: flightsPrice ya viene corregido de la extracción del PDF
+            const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
             const newHotelPrice = requestedPrice - flightsPrice;
 
             // Validar precio razonable
