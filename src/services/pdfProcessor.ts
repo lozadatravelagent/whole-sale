@@ -542,13 +542,24 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
 
     // NUEVO: Mostrar Precio Económico/Premium cuando hay 2+ hoteles
     if (content.hotels && content.hotels.length >= 2 && content.flights && content.flights.length > 0) {
-        // Calcular precio de vuelos
-        const flightsTotalPrice = content.flights.reduce((sum, f) => sum + f.price, 0);
-
         // Ordenar hoteles por precio
         const hotelsSortedByPrice = [...content.hotels].sort((a, b) => a.price - b.price);
         const cheapestHotel = hotelsSortedByPrice[0];
         const mostExpensiveHotel = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
+
+        // Calcular precio de vuelos correctamente
+        // Si el precio del vuelo extraído parece ser un total (vuelo + hotel), debemos corregirlo
+        let flightsTotalPrice = content.flights.reduce((sum, f) => sum + f.price, 0);
+
+        // CORRECCIÓN: Si el precio de vuelos es igual o mayor al precio económico total,
+        // significa que se extrajo mal (se capturó el precio total de la opción en vez del vuelo)
+        // En ese caso, calculamos el precio del vuelo restando el hotel más barato
+        if (content.totalPrice && flightsTotalPrice >= content.totalPrice) {
+            // El precio extraído como "vuelo" es en realidad el total de la opción económica
+            // Calculamos el precio real del vuelo
+            flightsTotalPrice = flightsTotalPrice - cheapestHotel.price;
+            console.log(`🔧 [PRICE CORRECTION] Detected flights price was total package price. Corrected from ${content.flights.reduce((sum, f) => sum + f.price, 0)} to ${flightsTotalPrice}`);
+        }
 
         // Calcular precios
         const precioEconomico = flightsTotalPrice + cheapestHotel.price;
@@ -2114,7 +2125,16 @@ export async function processPriceChangeRequest(
             // Calcular nuevo precio del hotel
             // requestedPrice = flightsPrice + newHotelPrice
             // newHotelPrice = requestedPrice - flightsPrice
-            const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
+            let flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
+
+            // CORRECCIÓN: Aplicar la misma lógica de corrección que en generatePriceChangeSuggestions
+            const cheapestHotel = hotelsSortedByPrice[0];
+            if (analysis.content.totalPrice && flightsPrice >= analysis.content.totalPrice) {
+                // El precio extraído como "vuelo" es en realidad el total de la opción económica
+                flightsPrice = flightsPrice - cheapestHotel.price;
+                console.log(`🔧 [PRICE CORRECTION] Corrected flights price from ${(analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0)} to ${flightsPrice}`);
+            }
+
             const newHotelPrice = requestedPrice - flightsPrice;
 
             // Validar precio razonable
