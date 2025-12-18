@@ -338,8 +338,13 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
     // Calculate hotel total
     let calculatedHotelPrice = 0;
     if (hotels && hotels.length > 0) {
-        calculatedHotelPrice = hotels.reduce((sum, hotel) => sum + (hotel.price * hotel.nights), 0);
-        console.log('💰 Calculated hotel price:', calculatedHotelPrice);
+        // hotel.price is already the TOTAL price for the hotel (from "Precio: $XXX USD" in PDF)
+        // Do NOT multiply by nights - the price extracted is the total price
+        calculatedHotelPrice = hotels.reduce((sum, hotel) => sum + hotel.price, 0);
+        console.log('💰 Calculated hotel price (sum of all hotels):', calculatedHotelPrice, {
+            hotels_count: hotels.length,
+            hotels: hotels.map(h => ({ name: h.name, price: h.price, nights: h.nights }))
+        });
     }
 
     // Extract total price from PDF (fallback)
@@ -3219,10 +3224,17 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
     const hotelNamePatterns = [
         // Pattern 1: "Hotel Recomendado" followed by name
         /(?:🏨\s*)?Hotel\s*Recomendado\s+([A-Z][A-Z\s]+?)(?=\s*\d+\s*estrellas|DETALLE|Precio:|🏨\s*Hotel|📍|⭐)/gi,
-        // Pattern 2: "🏨 Hotel" followed by name (for individual hotel pages)
-        /🏨\s*Hotel\s+([A-Z][A-Za-z\s\-\'\.]+?)(?=\s*(?:📍|⭐|👥|DETALLE|Tarifa|Para confirmar|Ocupación|estrellas))/gi,
+        // Pattern 2: "🏨 Hotel" on one line, name on next line (for individual hotel pages)
+        // Captures hotel name that appears after "🏨 Hotel" on the same or next line
+        /🏨\s*Hotel\s*\n?\s*([A-Z][A-Za-z\s\-\'\.]+?)(?=\s*(?:📍|⭐|👥|DETALLE|Tarifa|Para confirmar|Ocupación|estrellas|\n\n|\n🏨))/gi,
         // Pattern 3: Capitalized name before "X estrellas" (most reliable for individual pages)
-        /([A-Z][A-Za-z\s\-\'\.,]+?)\s+(\d+)\s*estrellas/gi
+        /([A-Z][A-Za-z\s\-\'\.,]+?)\s+(\d+)\s*estrellas/gi,
+        // Pattern 4: Standalone capitalized hotel names (RESORT, HOTEL, etc.) on their own line
+        // This catches hotels like "SOLYMAR BEACH RESORT" that appear as titles
+        /^([A-Z][A-Z\s]+(?:RESORT|HOTEL|BEACH|SUITES|INN|LODGE)[A-Z\s]*?)(?=\s*(?:📍|⭐|👥|🏨|DETALLE|Tarifa|Para confirmar|Ocupación|\n\n))/gim,
+        // Pattern 5: Hotel name as a title (all caps, multiple words, before location/price info)
+        // Matches patterns like "SOLYMAR BEACH RESORT" followed by location or price
+        /([A-Z]{2,}(?:\s+[A-Z]{2,}){1,4})(?=\s*(?:📍|⭐|👥|🏨|DETALLE|Tarifa|Para confirmar|Ocupación|Ubicación|Precio|\d+\s*estrellas|\n\n))/g
     ];
 
     const foundHotels: Array<{ name: string, position: number, stars?: number }> = [];
@@ -3243,16 +3255,27 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
                 );
 
                 // Filter out false positives (common words that aren't hotel names)
-                const falsePositives = ['DETALLE', 'Precio', 'Ubicación', 'Categoría', 'Ocupación', 'Tarifa'];
+                const falsePositives = ['DETALLE', 'Precio', 'Ubicación', 'Categoría', 'Ocupación', 'Tarifa', 'VUELO', 'VUELOS', 'ADULTOS', 'NIÑOS', 'PASAJEROS', 'DURACIÓN', 'INCLUYE', 'PRESUPUESTO', 'VIAJE', 'DESTINO', 'FECHAS'];
                 const isFalsePositive = falsePositives.some(fp => hotelName.includes(fp));
 
-                if (!isDuplicate && !isFalsePositive) {
+                // Additional validation: hotel name should be at least 3 characters and not just common words
+                const minLength = 3;
+                const isTooShort = hotelName.length < minLength;
+
+                // Check if it looks like a hotel name (contains common hotel keywords or is multi-word)
+                const hasHotelKeywords = /\b(RESORT|HOTEL|BEACH|SUITES|INN|LODGE|PALACE|GRAND|PLAZA|PARK|CLUB|VILLA)\b/i.test(hotelName);
+                const isMultiWord = hotelName.trim().split(/\s+/).length >= 2;
+                const looksLikeHotelName = hasHotelKeywords || isMultiWord;
+
+                if (!isDuplicate && !isFalsePositive && !isTooShort && looksLikeHotelName) {
                     foundHotels.push({
                         name: hotelName,
                         position: match.index || 0,
                         stars
                     });
                     console.log(`🏨 [FOUND HOTEL] "${hotelName}" at position ${match.index}, stars: ${stars || 'N/A'}`);
+                } else {
+                    console.log(`🏨 [SKIPPED] "${hotelName}" - duplicate: ${isDuplicate}, falsePositive: ${isFalsePositive}, tooShort: ${isTooShort}, looksLikeHotel: ${looksLikeHotelName}`);
                 }
             }
         }
