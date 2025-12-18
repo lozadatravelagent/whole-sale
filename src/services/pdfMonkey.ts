@@ -752,6 +752,64 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   // Note: Total price remains unchanged since transfers and assistance are included in the package
   const grandTotalWithServices = totalPrice;
 
+  // Detect multiple hotels and prepare comparative options
+  const hasMultipleHotels = hotels.length >= 2;
+  let option1Hotel = null;
+  let option2Hotel = null;
+  let option1Total = 0;
+  let option2Total = 0;
+
+  if (hasMultipleHotels) {
+    // Sort hotels by price (cheapest first)
+    const sortedHotels = [...best_hotels].sort((a, b) => {
+      const priceA = typeof a.price === 'string' ? parseFloat(a.price.replace(/\./g, '').replace(',', '.')) : a.price;
+      const priceB = typeof b.price === 'string' ? parseFloat(b.price.replace(/\./g, '').replace(',', '.')) : b.price;
+      return priceA - priceB;
+    });
+
+    // Extract cheapest and most expensive
+    const cheapestHotel = sortedHotels[0];
+    const mostExpensiveHotel = sortedHotels[sortedHotels.length - 1];
+
+    // Parse hotel prices
+    const cheapestPrice = typeof cheapestHotel.price === 'string'
+      ? parseFloat(cheapestHotel.price.replace(/\./g, '').replace(',', '.'))
+      : cheapestHotel.price;
+    const expensivePrice = typeof mostExpensiveHotel.price === 'string'
+      ? parseFloat(mostExpensiveHotel.price.replace(/\./g, '').replace(',', '.'))
+      : mostExpensiveHotel.price;
+
+    // Calculate totals for each option
+    option1Total = totalFlightPrice + cheapestPrice;
+    option2Total = totalFlightPrice + expensivePrice;
+
+    // Prepare hotel data for template
+    option1Hotel = {
+      name: cheapestHotel.name,
+      stars: cheapestHotel.stars,
+      location: cheapestHotel.location,
+      price: cheapestHotel.price
+    };
+
+    option2Hotel = {
+      name: mostExpensiveHotel.name,
+      stars: mostExpensiveHotel.stars,
+      location: mostExpensiveHotel.location,
+      price: mostExpensiveHotel.price
+    };
+
+    console.log('💰 MULTIPLE HOTELS PRICING:', {
+      hotels_count: hotels.length,
+      cheapest_hotel: cheapestHotel.name,
+      cheapest_price: cheapestPrice,
+      expensive_hotel: mostExpensiveHotel.name,
+      expensive_price: expensivePrice,
+      flight_price: totalFlightPrice,
+      option_1_total: option1Total,
+      option_2_total: option2Total
+    });
+  }
+
   // Template-specific data structure (OBJETO DIRECTO, no array)
   const template_data = {
     // Core flight data (as expected by template)
@@ -776,7 +834,14 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     travel_assistance: hasTravelAssistance ? 1 : 0,
 
     // 🚗 TRASLADOS - Boolean flag for legend in PDF (1 = included, 0 = not included)
-    transfers: hasTransfers ? 1 : 0
+    transfers: hasTransfers ? 1 : 0,
+
+    // 🏨 MULTI-HOTEL SUPPORT - Comparative options
+    has_multiple_hotels: hasMultipleHotels,
+    option_1_hotel: option1Hotel,
+    option_1_total: hasMultipleHotels ? formatPriceForTemplate(option1Total) : null,
+    option_2_hotel: option2Hotel,
+    option_2_total: hasMultipleHotels ? formatPriceForTemplate(option2Total) : null
   };
 
   console.log('✅ PREPARED TEMPLATE DATA:', {

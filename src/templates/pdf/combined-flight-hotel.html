@@ -54,20 +54,200 @@
       <div class="package-combinations">
         <h2 class="combinations-title">INCLUYE</h2>
 
+        {% if has_multiple_hotels %}
+        <!-- MULTI-HOTEL MODE: Two comparative options -->
+
+        <!-- Opción Económica (cheapest hotel) -->
+        <div class="package-card best-deal">
+          <div class="package-header">
+            <div class="package-title">Opción Económica</div>
+            <div class="package-price">
+              {% assign _opt1_str = option_1_total | default: 0 %}
+              {% assign _opt1 = _opt1_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+              ${{ _opt1 }} {{ total_currency }}
+            </div>
+          </div>
+
+          <div class="package-details">
+            <!-- VUELOS -->
+            <div class="package-section">
+              <div class="section-title">
+                <span class="section-icon">✈️</span>
+                Vuelos {{ selected_flights[0].airline.name }}
+              </div>
+
+              <div class="section-content">
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">
+                    {{ selected_flights[0].legs[0].departure.city_name }} ⇄ {{
+                    selected_flights[0].legs[0].arrival.city_name }}
+                  </div>
+                </div>
+
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">{{ selected_flights[0].legs[0].flight_type }}</div>
+                </div>
+
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">
+                    {% if selected_flights[0].luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif
+                    %}
+                  </div>
+                </div>
+                </br>
+
+                {% if _tr_norm > 0 %}
+                <div class="sc-row sc-row--van">
+                  <div class="sc-icon">🚐</div>
+                  <div class="sc-text">Traslados, por pasajero.</div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- HOTEL ECONÓMICO -->
+            <div class="package-section">
+              <div class="section-title">
+                <span class="section-icon">🏨</span>
+                Hotel
+              </div>
+
+              <div class="section-content">
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">{{ option_1_hotel.name }}</div>
+                </div>
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">{{ option_1_hotel.stars }} estrellas</div>
+                </div>
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">{{ option_1_hotel.location }}</div>
+                </div>
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">Precio: ${{ option_1_hotel.price }} {{ selected_flights[0].price.currency }}</div>
+                </div>
+                </br>
+
+                {% if _ta_norm > 0 %}
+                <div class="sc-row">
+                  <div class="sc-icon">🏥</div>
+                  <div class="sc-text">Tarjeta de asistencia médica, por pasajero.</div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Opción Premium (most expensive hotel) -->
+        <div class="package-card">
+          <div class="package-header">
+            <div class="package-title">Opción Premium</div>
+            <div class="package-price">
+              {% assign _opt2_str = option_2_total | default: 0 %}
+              {% assign _opt2 = _opt2_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+              ${{ _opt2 }} {{ total_currency }}
+            </div>
+          </div>
+
+          <div class="package-details">
+            <!-- VUELOS -->
+            <div class="package-section">
+              <div class="section-title">
+                <span class="section-icon">✈️</span>
+                Vuelos {{ selected_flights[0].airline.name }}
+              </div>
+
+              <div class="section-content">
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">
+                    {{ selected_flights[0].legs[0].departure.city_name }} ⇄ {{
+                    selected_flights[0].legs[0].arrival.city_name }}
+                  </div>
+                </div>
+
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">{{ selected_flights[0].legs[0].flight_type }}</div>
+                </div>
+
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">
+                    {% if selected_flights[0].luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif
+                    %}
+                  </div>
+                </div>
+                </br>
+
+                {% if _tr_norm > 0 %}
+                <div class="sc-row sc-row--van">
+                  <div class="sc-icon">🚐</div>
+                  <div class="sc-text">Traslados, por pasajero.</div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- HOTEL PREMIUM -->
+            <div class="package-section">
+              <div class="section-title">
+                <span class="section-icon">🏨</span>
+                Hotel
+              </div>
+
+              <div class="section-content">
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">{{ option_2_hotel.name }}</div>
+                </div>
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">{{ option_2_hotel.stars }} estrellas</div>
+                </div>
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">{{ option_2_hotel.location }}</div>
+                </div>
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">Precio: ${{ option_2_hotel.price }} {{ selected_flights[0].price.currency }}</div>
+                </div>
+                </br>
+
+                {% if _ta_norm > 0 %}
+                <div class="sc-row">
+                  <div class="sc-icon">🏥</div>
+                  <div class="sc-text">Tarjeta de asistencia médica, por pasajero.</div>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {% else %}
+        <!-- SINGLE HOTEL MODE: Original behavior -->
+
         <!-- Package Option 1: Main Hotel -->
         {% if best_hotels[0] %}
         <div class="package-card best-deal">
           <div class="package-header">
             <div class="package-title"></div>
             <div class="package-price">
-              {% assign _flight_str = selected_flights[0].price.amount | default: 0 %}
-              {% assign _flight = _flight_str | replace: ".", "" | replace: ",", "." | times: 1 %}
-              {% assign _hotel_str = best_hotels[0].price | default: 0 %}
-              {% assign _hotel = _hotel_str | replace: ".", "" | replace: ",", "." | times: 1 %}
-              {% assign total_price = _flight | plus: _hotel %}
-              {% if _ta_norm > 0 %}{% assign total_price = total_price | plus: _ta_norm %}{% endif %}
-              {% if _tr_norm > 0 %}{% assign total_price = total_price | plus: _tr_norm %}{% endif %}
-              ${{ total_price }} {{ selected_flights[0].price.currency }}
+              {%- comment -%}
+              Use pre-calculated total_price from JavaScript which already includes all hotels
+              {%- endcomment -%}
+              {% assign _total_str = total_price | default: 0 %}
+              {% assign _total = _total_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+              ${{ _total }} {{ total_currency }}
             </div>
           </div>
 
@@ -321,6 +501,8 @@
           </div>
         </div>
         {% endif %}
+
+        {% endif %}
       </div>
 
       <div class="contact-section">
@@ -331,6 +513,7 @@
   </div>
 
   <!-- FLIGHT PAGES -->
+  {% unless has_multiple_hotels %}
   {% for flight in selected_flights %}
   <div class="page">
     <div class="content">
@@ -448,8 +631,10 @@
     </div>
   </div>
   {% endfor %}
+  {% endunless %}
 
   <!-- HOTEL PAGES -->
+  {% unless has_multiple_hotels %}
   {% for best_hotel in best_hotels %}
   <div class="page">
     <div class="quote-container">
@@ -519,6 +704,7 @@
     </div>
   </div>
   {% endfor %}
+  {% endunless %}
 
 </body>
 
