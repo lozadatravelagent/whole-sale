@@ -1000,8 +1000,10 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number): an
             }
         }
 
+        const hotelId = `regenerated-hotel-${Date.now()}-${index}`;
         return {
-            id: `regenerated-hotel-${Date.now()}-${index}`,
+            id: hotelId,
+            unique_id: hotelId,
             name: hotel.name,
             city: hotel.location,
             address: hotel.location,
@@ -1253,8 +1255,10 @@ export async function generateModifiedPdfWithHotelPrice(
                 }
             }
 
+            const hotelId = `hotel-price-modified-${Date.now()}-${index}`;
             return {
-                id: `hotel-price-modified-${Date.now()}-${index}`,
+                id: hotelId,
+                unique_id: hotelId,
                 name: hotel.name,
                 city: hotel.location,
                 address: hotel.location,
@@ -1301,10 +1305,10 @@ export async function generateModifiedPdfWithHotelPrice(
             conversationId
         );
 
-        if (result.success && result.pdfUrl) {
+        if (result.success && result.document_url) {
             return {
                 success: true,
-                pdfUrl: result.pdfUrl,
+                pdfUrl: result.document_url,
                 totalPrice: newTotalPrice
             };
         } else {
@@ -1476,11 +1480,15 @@ export async function generateModifiedPdf(
 
                 console.log(`🏨 Hotel dates: check_in=${checkIn}, check_out=${checkOut}, nights=${hotel.nights}`);
 
+                const hotelId = `external-modified-hotel-${Date.now()}-${index}`;
                 return {
-                    id: `external-modified-hotel-${Date.now()}-${index}`,
+                    id: hotelId,
+                    unique_id: hotelId,
                     name: hotel.name,
                     city: hotel.location,
                     address: hotel.location,
+                    category: '4',
+                    nights: hotel.nights || 0,
                     check_in: checkIn,
                     check_out: checkOut,
                     rooms: [{
@@ -3186,6 +3194,7 @@ function extractFlightsFromPdfMonkeyTemplate(content: string): Array<{
 
 /**
  * Extract hotel information from PdfMonkey template content  
+ * NOW SUPPORTS MULTIPLE HOTELS - iterates over all hotel sections
  */
 function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
     name: string,
@@ -3195,178 +3204,177 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
 }> {
     const hotels = [];
 
-    // Extract hotel name from template - multiple patterns with fallbacks
-    let hotelName = 'Hotel no especificado';
-
-    // Pattern 1: After "Hotel Recomendado" or "🏨 Hotel Recomendado" (UPPERCASE names)
-    const hotelNamePattern1 = /(?:🏨\s*)?Hotel\s*Recomendado\s+([A-Z][A-Z\s]+?)(?=\s*\d+\s*estrellas|DETALLE|Precio:|🏨\s*Hotel|📍|⭐)/i;
-    const hotelNameMatch1 = content.match(hotelNamePattern1);
-    if (hotelNameMatch1) {
-        hotelName = hotelNameMatch1[1].trim();
-        console.log(`🏨 [HOTEL NAME - Pattern 1 UPPERCASE] "${hotelName}"`);
-    } else {
-        // Pattern 2: After "Hotel Recomendado" (mixed case - more flexible)
-        // Captures until we hit digits (stars) or specific keywords
-        const hotelNamePattern2 = /(?:🏨\s*)?Hotel\s*Recomendado\s+([A-Z][A-Za-z\s\-\'\.]+?)(?=\s*\d+\s*estrellas|DETALLE|Precio:|🏨|📍|⭐)/i;
-        const hotelNameMatch2 = content.match(hotelNamePattern2);
-        if (hotelNameMatch2) {
-            hotelName = hotelNameMatch2[1].trim();
-            console.log(`🏨 [HOTEL NAME - Pattern 2 Mixed Case] "${hotelName}"`);
-        } else {
-            // Pattern 3: Look for hotel keywords (HOTEL, RESORT, etc) before "estrellas"
-            const hotelNamePattern3 = /([A-Z][A-Za-z\s\-\']*(?:HOTEL|Hotel|RESORT|Resort|APARTHOTEL|Aparthotel|INN|Inn|SUITES|Suites)[A-Za-z\s\-\']*?)(?=\s*\d+\s*estrellas|DETALLE|🏨|📍)/i;
-            const hotelNameMatch3 = content.match(hotelNamePattern3);
-            if (hotelNameMatch3) {
-                hotelName = hotelNameMatch3[1].trim();
-                console.log(`🏨 [HOTEL NAME - Pattern 3 Keywords] "${hotelName}"`);
-            } else {
-                // Pattern 4: Capture any capitalized text before "X estrellas"
-                const hotelNamePattern4 = /([A-Z][A-Za-z\s\-\'\.,]+?)\s+(\d+)\s*estrellas/i;
-                const hotelNameMatch4 = content.match(hotelNamePattern4);
-                if (hotelNameMatch4) {
-                    hotelName = hotelNameMatch4[1].trim();
-                    console.log(`🏨 [HOTEL NAME - Pattern 4 Before Stars] "${hotelName}"`);
-                }
-            }
-        }
-    }
-
-    // Extract location - more flexible pattern
-    let location = 'Ubicación no especificada';
-
-    // Pattern 1: After stars rating, look for location until we hit keywords that indicate end of location
-    const locationPattern1 = /(\d+)\s*estrellas\s*([A-Za-zÀ-ÿ\s,]+?)(?=\s*(?:DETALLE|Precio:|🏨|📍|⭐|👥|Tarifa|Para confirmar|Ocupación))/i;
-    const locationMatch1 = content.match(locationPattern1);
-    if (locationMatch1) {
-        location = locationMatch1[2].trim();
-        console.log(`🏨 [LOCATION - Pattern 1] "${location}"`);
-    } else {
-        // Pattern 2: Look for specific known locations
-        const knownLocations = /([A-ZÀ-Ÿ][A-Za-zÀ-ÿ\s,]*(?:Punta\s+Cana|PUNTA\s+CANA|Buenos\s+Aires|BUENOS\s+AIRES|Madrid|Barcelona|Miami|Cancún|CANCÚN|República\s+Dominicana)[A-Za-zÀ-ÿ\s,]*?)(?=\s*(?:DETALLE|Precio:|🏨|📍|⭐|👥|Tarifa|Ocupación))/i;
-        const locationMatch2 = content.match(knownLocations);
-        if (locationMatch2) {
-            location = locationMatch2[1].trim();
-            console.log(`🏨 [LOCATION - Pattern 2] "${location}"`);
-        }
-    }
-
-    // Extract nights duration
+    // Extract nights duration (shared across all hotels typically)
     const nightsMatch = content.match(/(\d+)\s*(?:Noche|Noches|noche|noches)/i);
     const nights = nightsMatch ? parseInt(nightsMatch[1]) : 0;
 
-    // Extract hotel price - try multiple patterns
-    let hotelPrice = 0;
+    console.log(`🏨 [MULTI-HOTEL EXTRACTION] Starting extraction, nights: ${nights}`);
 
-    // Pattern 1: Look for "Precio: $XXX USD" near Hotel section (with flexible spacing)
-    const pricePattern1 = /Precio:\s*\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i;
-    const priceMatch1 = content.match(pricePattern1);
-    if (priceMatch1) {
-        hotelPrice = parsePrice(priceMatch1[1]);
-        console.log(`🏨 [HOTEL PRICE PARSE - Pattern 1] "${priceMatch1[1]}" → ${hotelPrice}`);
-    }
+    // Strategy: Find ALL hotel sections by looking for hotel name patterns
+    // Pattern 1: Find all sections with "🏨 Hotel" or "Hotel" followed by a capitalized name
+    // Pattern 2: Find all hotel names before "X estrellas"
+    // Pattern 3: Find all sections with "Hotel Recomendado" or standalone hotel names
 
-    // Pattern 1b: Try without spaces (for when PDF text is concatenated)
-    if (hotelPrice === 0) {
-        const pricePattern1b = /Precio:\$?(\d{1,10}(?:[.,]\d{1,3})+|\d+)USD/i;
-        const priceMatch1b = content.match(pricePattern1b);
-        if (priceMatch1b) {
-            hotelPrice = parsePrice(priceMatch1b[1]);
-            console.log(`🏨 [HOTEL PRICE PARSE - Pattern 1b No Spaces] "${priceMatch1b[1]}" → ${hotelPrice}`);
-        }
-    }
+    // Extract ALL hotel names from the document
+    const hotelNamePatterns = [
+        // Pattern 1: "Hotel Recomendado" followed by name
+        /(?:🏨\s*)?Hotel\s*Recomendado\s+([A-Z][A-Z\s]+?)(?=\s*\d+\s*estrellas|DETALLE|Precio:|🏨\s*Hotel|📍|⭐)/gi,
+        // Pattern 2: "🏨 Hotel" followed by name (for individual hotel pages)
+        /🏨\s*Hotel\s+([A-Z][A-Za-z\s\-\'\.]+?)(?=\s*(?:📍|⭐|👥|DETALLE|Tarifa|Para confirmar|Ocupación|estrellas))/gi,
+        // Pattern 3: Capitalized name before "X estrellas" (most reliable for individual pages)
+        /([A-Z][A-Za-z\s\-\'\.,]+?)\s+(\d+)\s*estrellas/gi
+    ];
 
-    // Pattern 2: Look for price after hotel name in the hotel section
-    if (hotelPrice === 0) {
-        const hotelSection = content.match(/Hotel Recomendado[\s\S]{0,500}?(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i);
-        if (hotelSection) {
-            hotelPrice = parsePrice(hotelSection[1]);
-            console.log(`🏨 [HOTEL PRICE PARSE - Pattern 2] "${hotelSection[1]}" → ${hotelPrice}`);
-        }
-    }
+    const foundHotels: Array<{ name: string, position: number, stars?: number }> = [];
 
-    // Pattern 3: If still not found, look for any USD price that's not the total
-    if (hotelPrice === 0) {
-        const allPrices = [...content.matchAll(/(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/gi)];
-        console.log(`🏨 [HOTEL PRICE PARSE - Pattern 3] Found ${allPrices.length} USD prices in document`);
+    // Collect all hotel names with their positions
+    for (const pattern of hotelNamePatterns) {
+        const matches = [...content.matchAll(pattern)];
+        for (const match of matches) {
+            const hotelName = match[1]?.trim();
+            const stars = match[2] ? parseInt(match[2]) : undefined;
 
-        // Filter out the total price (usually the largest one or marked as "Precio total")
-        const prices = allPrices
-            .map(m => ({ text: m[1], value: parsePrice(m[1]) }))
-            .filter(p => p.value > 0 && p.value < 100000); // Reasonable range
+            if (hotelName && hotelName.length > 2) {
+                // Avoid duplicates and filter out common false positives
+                const isDuplicate = foundHotels.some(h =>
+                    h.name.toLowerCase() === hotelName.toLowerCase() ||
+                    hotelName.toLowerCase().includes(h.name.toLowerCase()) ||
+                    h.name.toLowerCase().includes(hotelName.toLowerCase())
+                );
 
-        if (prices.length >= 2) {
-            // If we have multiple prices, the hotel is likely the smaller one (not the total)
-            prices.sort((a, b) => a.value - b.value);
-            hotelPrice = prices[0].value; // Take the smallest (likely hotel per night or total)
-            console.log(`🏨 [HOTEL PRICE PARSE - Pattern 3] Using smallest price: ${hotelPrice}`);
-        }
-    }
+                // Filter out false positives (common words that aren't hotel names)
+                const falsePositives = ['DETALLE', 'Precio', 'Ubicación', 'Categoría', 'Ocupación', 'Tarifa'];
+                const isFalsePositive = falsePositives.some(fp => hotelName.includes(fp));
 
-    // Pattern 4: Calculate hotel price from total - flight price (FALLBACK CALCULATION)
-    // This is useful when the PDF has total price but not individual hotel price
-    if (hotelPrice === 0) {
-        console.log(`🏨 [HOTEL PRICE PARSE - Pattern 4] Attempting calculation from total - flight`);
-
-        // Extract ALL prices from the entire document
-        const allUsdPrices = [...content.matchAll(/\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/gi)];
-        const parsedPrices = allUsdPrices
-            .map(m => parsePrice(m[1]))
-            .filter(p => p > 0 && p < 100000);
-
-        console.log(`💰 [ALL PRICES] Found ${parsedPrices.length} USD prices:`, parsedPrices);
-
-        if (parsedPrices.length === 1) {
-            // Only one price found - this is the total package price
-            // We can't separate hotel from flight, so return 0 for hotel
-            // The total will be shown in the analysis
-            console.log(`⚠️ [HOTEL PRICE] Only total price found: ${parsedPrices[0]}. Cannot determine hotel price separately.`);
-            hotelPrice = 0; // Will show total in analysis instead
-        } else if (parsedPrices.length >= 2) {
-            // Multiple prices found
-            const totalPrice = Math.max(...parsedPrices); // Largest is likely the total
-            const otherPrices = parsedPrices.filter(p => p !== totalPrice);
-
-            console.log(`💰 [TOTAL PRICE] Identified as largest: ${totalPrice}`);
-            console.log(`💰 [OTHER PRICES] ${otherPrices.join(', ')}`);
-
-            // Try to find flight price more intelligently
-            let flightPrice = 0;
-
-            // Strategy 1: Look for price near flight-related keywords
-            const flightSection = content.match(/(?:Vuelos?|✈️|Copa|Aerolínea|Flight)[\s\S]{0,200}?\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i);
-            if (flightSection) {
-                const possibleFlightPrice = parsePrice(flightSection[1]);
-                if (possibleFlightPrice < totalPrice && otherPrices.includes(possibleFlightPrice)) {
-                    flightPrice = possibleFlightPrice;
-                    console.log(`✈️ [FLIGHT PRICE - Strategy 1] Found near flight keywords: ${flightPrice}`);
+                if (!isDuplicate && !isFalsePositive) {
+                    foundHotels.push({
+                        name: hotelName,
+                        position: match.index || 0,
+                        stars
+                    });
+                    console.log(`🏨 [FOUND HOTEL] "${hotelName}" at position ${match.index}, stars: ${stars || 'N/A'}`);
                 }
             }
-
-            // Strategy 2: If still no flight price, check if we have exactly 2 prices (flight + hotel)
-            if (flightPrice === 0 && otherPrices.length === 1) {
-                // Assume the other price is the flight price
-                flightPrice = otherPrices[0];
-                console.log(`✈️ [FLIGHT PRICE - Strategy 2] Assumed from pair: ${flightPrice}`);
-            }
-
-            // Calculate hotel price
-            if (totalPrice > 0 && flightPrice > 0 && totalPrice > flightPrice) {
-                hotelPrice = totalPrice - flightPrice;
-                console.log(`🏨 [HOTEL PRICE CALC] Calculated: ${totalPrice} - ${flightPrice} = ${hotelPrice}`);
-            } else {
-                console.log(`⚠️ [HOTEL PRICE] Could not reliably calculate hotel price from available data`);
-            }
         }
     }
 
-    hotels.push({
-        name: hotelName,
-        location,
-        price: hotelPrice,
-        nights
-    });
+    // Sort by position in document (to maintain order)
+    foundHotels.sort((a, b) => a.position - b.position);
 
-    console.log('🏨 Extracted hotels from PdfMonkey template:', hotels);
+    console.log(`🏨 [MULTI-HOTEL] Found ${foundHotels.length} unique hotels:`, foundHotels.map(h => h.name));
+
+    // If no hotels found with patterns, try fallback: look for "Hotel Recomendado" (original behavior)
+    if (foundHotels.length === 0) {
+        console.log(`🏨 [FALLBACK] No hotels found with multi-pattern, trying original single-hotel extraction`);
+
+        let hotelName = 'Hotel no especificado';
+        const hotelNamePattern1 = /(?:🏨\s*)?Hotel\s*Recomendado\s+([A-Z][A-Z\s]+?)(?=\s*\d+\s*estrellas|DETALLE|Precio:|🏨\s*Hotel|📍|⭐)/i;
+        const hotelNameMatch1 = content.match(hotelNamePattern1);
+        if (hotelNameMatch1) {
+            hotelName = hotelNameMatch1[1].trim();
+            foundHotels.push({ name: hotelName, position: 0 });
+        }
+    }
+
+    // Extract data for each hotel found
+    for (let i = 0; i < foundHotels.length; i++) {
+        const hotelInfo = foundHotels[i];
+        const hotelName = hotelInfo.name;
+
+        // Find the section for this hotel (from its position to next hotel or end)
+        const startPos = hotelInfo.position;
+        const nextHotelPos = i < foundHotels.length - 1 ? foundHotels[i + 1].position : content.length;
+        const hotelSection = content.substring(startPos, Math.min(startPos + 2000, nextHotelPos));
+
+        console.log(`🏨 [EXTRACTING HOTEL ${i + 1}] "${hotelName}" (section length: ${hotelSection.length})`);
+
+        // Extract location for this specific hotel
+        let location = 'Ubicación no especificada';
+
+        // Pattern 1: After stars rating in this hotel's section
+        const locationPattern1 = /(\d+)\s*estrellas\s*([A-Za-zÀ-ÿ\s,]+?)(?=\s*(?:DETALLE|Precio:|🏨|📍|⭐|👥|Tarifa|Para confirmar|Ocupación))/i;
+        const locationMatch1 = hotelSection.match(locationPattern1);
+        if (locationMatch1) {
+            location = locationMatch1[2].trim();
+        } else {
+            // Pattern 2: Look for "📍 Ubicación:" pattern
+            const locationPattern2 = /📍\s*Ubicación:\s*([A-Za-zÀ-ÿ\s,]+?)(?=\s*(?:⭐|👥|DETALLE|Tarifa|Para confirmar|Ocupación|estrellas))/i;
+            const locationMatch2 = hotelSection.match(locationPattern2);
+            if (locationMatch2) {
+                location = locationMatch2[1].trim();
+            } else {
+                // Pattern 3: Known locations in this section
+                const knownLocations = /([A-ZÀ-Ÿ][A-Za-zÀ-ÿ\s,]*(?:Punta\s+Cana|PUNTA\s+CANA|Buenos\s+Aires|BUENOS\s+AIRES|Madrid|Barcelona|Miami|Cancún|CANCÚN|República\s+Dominicana)[A-Za-zÀ-ÿ\s,]*?)(?=\s*(?:DETALLE|Precio:|🏨|📍|⭐|👥|Tarifa|Ocupación))/i;
+                const locationMatch3 = hotelSection.match(knownLocations);
+                if (locationMatch3) {
+                    location = locationMatch3[1].trim();
+                }
+            }
+        }
+
+        // Extract price for this specific hotel
+        let hotelPrice = 0;
+
+        // Pattern 1: "Precio: $XXX USD" in this hotel's section
+        const pricePattern1 = /Precio:\s*\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i;
+        const priceMatch1 = hotelSection.match(pricePattern1);
+        if (priceMatch1) {
+            hotelPrice = parsePrice(priceMatch1[1]);
+            console.log(`🏨 [HOTEL ${i + 1} PRICE] Pattern 1: "${priceMatch1[1]}" → ${hotelPrice}`);
+        }
+
+        // Pattern 2: Price without spaces
+        if (hotelPrice === 0) {
+            const pricePattern2 = /Precio:\$?(\d{1,10}(?:[.,]\d{1,3})+|\d+)USD/i;
+            const priceMatch2 = hotelSection.match(pricePattern2);
+            if (priceMatch2) {
+                hotelPrice = parsePrice(priceMatch2[1]);
+                console.log(`🏨 [HOTEL ${i + 1} PRICE] Pattern 2: "${priceMatch2[1]}" → ${hotelPrice}`);
+            }
+        }
+
+        // Pattern 3: Any USD price in this hotel's section (if multiple, take the one closest to hotel name)
+        if (hotelPrice === 0) {
+            const allPricesInSection = [...hotelSection.matchAll(/(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/gi)];
+            if (allPricesInSection.length > 0) {
+                // Take the first price found in this section (closest to hotel name)
+                hotelPrice = parsePrice(allPricesInSection[0][1]);
+                console.log(`🏨 [HOTEL ${i + 1} PRICE] Pattern 3: "${allPricesInSection[0][1]}" → ${hotelPrice}`);
+            }
+        }
+
+        // If still no price, try to extract from the "Hotel Recomendado" section (first hotel only)
+        if (hotelPrice === 0 && i === 0) {
+            // Fallback: look in the main "Hotel Recomendado" section
+            const mainHotelSection = content.match(/Hotel Recomendado[\s\S]{0,500}?(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i);
+            if (mainHotelSection) {
+                hotelPrice = parsePrice(mainHotelSection[1]);
+                console.log(`🏨 [HOTEL ${i + 1} PRICE] Fallback from main section: "${mainHotelSection[1]}" → ${hotelPrice}`);
+            }
+        }
+
+        hotels.push({
+            name: hotelName,
+            location,
+            price: hotelPrice,
+            nights
+        });
+
+        console.log(`🏨 [HOTEL ${i + 1} EXTRACTED]`, {
+            name: hotelName,
+            location,
+            price: hotelPrice,
+            nights
+        });
+    }
+
+    // If still no hotels found, return empty array (don't create fake data)
+    if (hotels.length === 0) {
+        console.log(`⚠️ [MULTI-HOTEL] No hotels extracted from PDF`);
+    } else {
+        console.log(`✅ [MULTI-HOTEL] Successfully extracted ${hotels.length} hotel(s):`, hotels.map(h => h.name));
+    }
+
     return hotels;
 }
 
