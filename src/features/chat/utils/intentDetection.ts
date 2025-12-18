@@ -230,9 +230,29 @@ export const isPriceChangeRequest = (message: string): boolean => {
   return true;
 };
 
-// Extract price change target (total, hotel, or flight)
-export const extractPriceChangeTarget = (message: string): 'total' | 'hotel' | 'flights' | 'unknown' => {
+// Extract price change target (total, hotel, flight, economico, or premium)
+export const extractPriceChangeTarget = (message: string): 'total' | 'hotel' | 'flights' | 'economico' | 'premium' | 'unknown' => {
   const norm = normalizeText(message);
+
+  // NUEVO: Detectar comandos de precio económico
+  if (norm.includes('precio economico') ||
+      norm.includes('precio económico') ||
+      norm.includes('economico a $') ||
+      norm.includes('económico a $') ||
+      norm.includes('economico a usd') ||
+      norm.includes('opcion economica') ||
+      norm.includes('opción económica')) {
+    return 'economico';
+  }
+
+  // NUEVO: Detectar comandos de precio premium
+  if (norm.includes('precio premium') ||
+      norm.includes('premium a $') ||
+      norm.includes('premium a usd') ||
+      norm.includes('opcion premium') ||
+      norm.includes('opción premium')) {
+    return 'premium';
+  }
 
   // Check for hotel-specific price change
   if (norm.includes('precio del hotel') ||
