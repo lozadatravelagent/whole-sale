@@ -2136,29 +2136,39 @@ export async function processPriceChangeRequest(
                 };
             }
 
-            // Calcular nuevo precio del hotel
-            // requestedPrice = flightsPrice + newHotelPrice
-            // newHotelPrice = requestedPrice - flightsPrice
-            // Nota: flightsPrice ya viene corregido de la extracción del PDF
-            const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
-            const newHotelPrice = requestedPrice - flightsPrice;
+            // NUEVA LÓGICA: Ajustar proporcionalmente TODO el paquete (vuelo + hotel)
+            // El precio económico/premium representa el PAQUETE COMPLETO, no solo el hotel
 
-            // Validar precio razonable
-            if (newHotelPrice < 50) {
+            const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
+            const originalPackagePrice = flightsPrice + targetHotel.price;
+
+            console.log(`📊 Original package price (${changeTarget}): $${originalPackagePrice} (flights: $${flightsPrice} + hotel: $${targetHotel.price})`);
+
+            // Validar precio mínimo razonable ($100 mínimo para un paquete completo)
+            if (requestedPrice < 100) {
+                const label = changeTarget === 'economico' ? 'Económico' : 'Premium';
                 return {
-                    response: `❌ El precio del hotel resultante ($${newHotelPrice.toFixed(2)}) es demasiado bajo. El precio total incluye vuelos por $${flightsPrice.toFixed(2)}. Por favor verifica el monto.`
+                    response: `❌ **Precio ${label} Demasiado Bajo**\n\n` +
+                        `El precio ${label.toLowerCase()} de **$${requestedPrice.toFixed(2)} USD** es muy bajo para un paquete completo.\n\n` +
+                        `💡 **Precio mínimo sugerido:** $100 USD\n\n` +
+                        `Por favor, ingresa un precio razonable para el paquete completo (vuelo + hotel).`
                 };
             }
 
-            // Generar PDF modificado
-            const result = await generateModifiedPdfWithMultipleHotelPrices(
+            // Calcular ratio de ajuste proporcional
+            const adjustmentRatio = requestedPrice / originalPackagePrice;
+            console.log(`🔧 Adjustment ratio: ${adjustmentRatio.toFixed(4)} (${requestedPrice} / ${originalPackagePrice})`);
+
+            // Calcular nuevos precios proporcionalmente
+            const newFlightsPrice = flightsPrice * adjustmentRatio;
+            const newHotelPrice = targetHotel.price * adjustmentRatio;
+
+            console.log(`💰 New prices: flights=$${newFlightsPrice.toFixed(2)}, hotel=$${newHotelPrice.toFixed(2)}, total=$${(newFlightsPrice + newHotelPrice).toFixed(2)}`);
+
+            // Generar PDF modificado con TODOS los precios ajustados
+            const result = await generateModifiedPdf(
                 analysis,
-                [{
-                    hotelIndex: targetHotelIndex,
-                    hotelName: targetHotel.name,
-                    referenceType: 'price_order',
-                    newPrice: newHotelPrice
-                }],
+                requestedPrice, // Precio total del paquete
                 conversationId
             );
 
@@ -2169,11 +2179,15 @@ export async function processPriceChangeRequest(
 
                 return {
                     response: `✅ **Precio ${label} Modificado**\n\n` +
+                        `📦 **Paquete completo ajustado proporcionalmente:**\n\n` +
+                        `✈️ **Vuelos:** $${newFlightsPrice.toFixed(2)} USD\n` +
+                        `   (ajustado desde $${flightsPrice.toFixed(2)})\n\n` +
                         `🏨 **Hotel ${label}:** ${targetHotel.name}\n` +
                         `📍 **Ubicación:** ${targetHotel.location}\n` +
-                        `💰 **Nuevo precio del hotel:** $${newHotelPrice.toFixed(2)} USD (${nights} ${nights === 1 ? 'noche' : 'noches'})\n` +
+                        `💰 **Precio hotel:** $${newHotelPrice.toFixed(2)} USD (${nights} ${nights === 1 ? 'noche' : 'noches'})\n` +
+                        `   (ajustado desde $${targetHotel.price.toFixed(2)})\n` +
                         `💵 **Precio por noche:** $${pricePerNight} USD\n\n` +
-                        `📄 **Precio total del paquete:** $${result.totalPrice.toFixed(2)} USD\n\n` +
+                        `📄 **TOTAL PAQUETE ${label.toUpperCase()}:** $${requestedPrice.toFixed(2)} USD\n\n` +
                         `Puedes descargar el PDF actualizado desde el archivo adjunto.`,
                     modifiedPdfUrl: result.pdfUrl
                 };
