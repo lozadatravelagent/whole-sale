@@ -338,13 +338,29 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
     // Calculate hotel total
     let calculatedHotelPrice = 0;
     if (hotels && hotels.length > 0) {
-        // hotel.price is already the TOTAL price for the hotel (from "Precio: $XXX USD" in PDF)
-        // Do NOT multiply by nights - the price extracted is the total price
-        calculatedHotelPrice = hotels.reduce((sum, hotel) => sum + hotel.price, 0);
-        console.log('💰 Calculated hotel price (sum of all hotels):', calculatedHotelPrice, {
-            hotels_count: hotels.length,
-            hotels: hotels.map(h => ({ name: h.name, price: h.price, nights: h.nights }))
-        });
+        // NEW: Check if hotels are package options (not multiple hotels in same package)
+        const arePackageOptions = hotels.length >= 2 &&
+            hotels.every(h => /\(Opción\s+\d+\)/i.test(h.name));
+
+        if (arePackageOptions) {
+            // For package options, use the CHEAPEST option (economic) for price calculation
+            // The other options are alternatives, not additions
+            calculatedHotelPrice = Math.min(...hotels.map(h => h.price));
+            console.log('💰 [PACKAGE OPTIONS] Using cheapest hotel price:', calculatedHotelPrice, {
+                hotels_count: hotels.length,
+                allPrices: hotels.map(h => ({ name: h.name, price: h.price })),
+                note: 'Options are mutually exclusive, not additive'
+            });
+        } else {
+            // Traditional behavior: sum all hotels (for actual multiple hotels in same package)
+            // hotel.price is already the TOTAL price for the hotel (from "Precio: $XXX USD" in PDF)
+            // Do NOT multiply by nights - the price extracted is the total price
+            calculatedHotelPrice = hotels.reduce((sum, hotel) => sum + hotel.price, 0);
+            console.log('💰 Calculated hotel price (sum of all hotels):', calculatedHotelPrice, {
+                hotels_count: hotels.length,
+                hotels: hotels.map(h => ({ name: h.name, price: h.price, nights: h.nights }))
+            });
+        }
     }
 
     // CORRECCIÓN: Si hay 2+ hoteles, el precio extraído como "vuelo" podría ser en realidad
@@ -3748,6 +3764,101 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
     const nights = nightsMatch ? parseInt(nightsMatch[1]) : 0;
 
     console.log(`🏨 [MULTI-HOTEL EXTRACTION] Starting extraction, nights: ${nights}`);
+
+    // NEW: Detect package options pattern (Opción 1, Opción 2, etc.)
+    // This handles PDFs with multiple package options using the SAME hotel but different prices
+    const optionPattern = /Opción\s+(\d+)\s+\$?(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/gi;
+    const optionMatches = [...content.matchAll(optionPattern)];
+
+    if (optionMatches.length >= 2) {
+        console.log(`📦 [PACKAGE OPTIONS] Detected ${optionMatches.length} package options - using option-based extraction`);
+
+        // Extract data for each option
+        for (let i = 0; i < optionMatches.length; i++) {
+            const optionMatch = optionMatches[i];
+            const optionNumber = parseInt(optionMatch[1]);
+            const packagePrice = parsePrice(optionMatch[2]);
+            const optionStartPos = optionMatch.index || 0;
+
+            // Define section boundaries
+            const optionEndPos = i < optionMatches.length - 1
+                ? optionMatches[i + 1].index || content.length
+                : content.length;
+
+            const optionContent = content.substring(optionStartPos, optionEndPos);
+
+            console.log(`📦 [OPTION ${optionNumber}] Extracting data (package price: $${packagePrice})`);
+
+            // Extract hotel name from this option
+            let hotelName = 'Hotel no especificado';
+            let stars = 0;
+
+            // Try multiple patterns to find hotel name
+            const hotelPatterns = [
+                /🏨\s*Hotel\s*\n?\s*([A-Z][A-Za-z\s\-\'\.]+?)\s+(\d+)\s*estrellas/i,
+                /([A-Z][A-Za-z\s\-\'\.,]+?)\s+(\d+)\s*estrellas/i,
+                /🏨\s*Hotel\s*\n?\s*([A-Z][A-Za-z\s\-\'\.]+?)(?=\s*(?:📍|⭐|DETALLE|Precio))/i
+            ];
+
+            for (const pattern of hotelPatterns) {
+                const match = optionContent.match(pattern);
+                if (match) {
+                    hotelName = match[1].trim();
+                    if (match[2]) {
+                        stars = parseInt(match[2]);
+                    }
+                    break;
+                }
+            }
+
+            // Extract location
+            let location = 'Ubicación no especificada';
+            const locationPatterns = [
+                /(\d+)\s*estrellas\s*([A-Za-zÀ-ÿ\s,\(\)]+?)(?=\s*(?:DETALLE|Precio:|outbound|return))/i,
+                /📍\s*(?:Ubicación:)?\s*([A-Za-zÀ-ÿ\s,\(\)]+?)(?=\s*(?:⭐|👥|DETALLE|Precio))/i
+            ];
+
+            for (const pattern of locationPatterns) {
+                const match = optionContent.match(pattern);
+                if (match) {
+                    location = (match[2] || match[1]).trim();
+                    break;
+                }
+            }
+
+            // Extract hotel price (not package price)
+            let hotelPrice = 0;
+            const hotelPricePattern = /(?:🏨\s*Hotel[\s\S]{0,300}?)Precio:\s*\$?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/i;
+            const hotelPriceMatch = optionContent.match(hotelPricePattern);
+            if (hotelPriceMatch) {
+                hotelPrice = parsePrice(hotelPriceMatch[1]);
+            }
+
+            // Create unique hotel name with option label
+            const uniqueHotelName = `${hotelName} (Opción ${optionNumber})`;
+
+            hotels.push({
+                name: uniqueHotelName,
+                location,
+                price: hotelPrice,
+                nights
+            });
+
+            console.log(`📦 [OPTION ${optionNumber} EXTRACTED]`, {
+                name: uniqueHotelName,
+                location,
+                hotelPrice,
+                packagePrice,
+                nights
+            });
+        }
+
+        // Return early with option-based extraction
+        console.log(`✅ [PACKAGE OPTIONS] Successfully extracted ${hotels.length} package options`);
+        return hotels;
+    }
+
+    console.log(`📦 [PACKAGE OPTIONS] No multi-option pattern detected, using standard extraction`);
 
     // Strategy: Find ALL hotel sections by looking for hotel name patterns
     // Pattern 1: Find all sections with "🏨 Hotel" or "Hotel" followed by a capitalized name
