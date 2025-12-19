@@ -760,54 +760,99 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   let option2Total = 0;
 
   if (hasMultipleHotels) {
-    // Sort hotels by price (cheapest first)
-    const sortedHotels = [...best_hotels].sort((a, b) => {
-      const priceA = typeof a.price === 'string' ? parseFloat(a.price.replace(/\./g, '').replace(',', '.')) : a.price;
-      const priceB = typeof b.price === 'string' ? parseFloat(b.price.replace(/\./g, '').replace(',', '.')) : b.price;
-      return priceA - priceB;
-    });
+    // Check if hotels have package metadata (from pdfProcessor when targetOption is used)
+    const hasPackageMetadata = best_hotels.some((h: any) => h._packageMetadata);
 
-    // Extract cheapest and most expensive
-    const cheapestHotel = sortedHotels[0];
-    const mostExpensiveHotel = sortedHotels[sortedHotels.length - 1];
+    if (hasPackageMetadata) {
+      console.log('📦 [PDF GENERATION] Using package metadata for option totals');
 
-    // Parse hotel prices
-    const cheapestPrice = typeof cheapestHotel.price === 'string'
-      ? parseFloat(cheapestHotel.price.replace(/\./g, '').replace(',', '.'))
-      : cheapestHotel.price;
-    const expensivePrice = typeof mostExpensiveHotel.price === 'string'
-      ? parseFloat(mostExpensiveHotel.price.replace(/\./g, '').replace(',', '.'))
-      : mostExpensiveHotel.price;
+      // Find hotels by option number
+      const option1Data = best_hotels.find((h: any) => h._packageMetadata?.optionNumber === 1);
+      const option2Data = best_hotels.find((h: any) => h._packageMetadata?.optionNumber === 2);
 
-    // Calculate totals for each option
-    option1Total = totalFlightPrice + cheapestPrice;
-    option2Total = totalFlightPrice + expensivePrice;
+      if (option1Data && option2Data) {
+        // Use metadata prices (already calculated in pdfProcessor.ts)
+        option1Total = option1Data._packageMetadata.totalPackagePrice;
+        option2Total = option2Data._packageMetadata.totalPackagePrice;
 
-    // Prepare hotel data for template
-    option1Hotel = {
-      name: cheapestHotel.name,
-      stars: cheapestHotel.stars,
-      location: cheapestHotel.location,
-      price: cheapestHotel.price
-    };
+        // Prepare hotel data for template (remove "(Opción X)" from names)
+        option1Hotel = {
+          name: option1Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
+          stars: option1Data.category,
+          location: option1Data.city,
+          price: option1Data.rooms[0].total_price
+        };
 
-    option2Hotel = {
-      name: mostExpensiveHotel.name,
-      stars: mostExpensiveHotel.stars,
-      location: mostExpensiveHotel.location,
-      price: mostExpensiveHotel.price
-    };
+        option2Hotel = {
+          name: option2Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
+          stars: option2Data.category,
+          location: option2Data.city,
+          price: option2Data.rooms[0].total_price
+        };
 
-    console.log('💰 MULTIPLE HOTELS PRICING:', {
-      hotels_count: hotels.length,
-      cheapest_hotel: cheapestHotel.name,
-      cheapest_price: cheapestPrice,
-      expensive_hotel: mostExpensiveHotel.name,
-      expensive_price: expensivePrice,
-      flight_price: totalFlightPrice,
-      option_1_total: option1Total,
-      option_2_total: option2Total
-    });
+        console.log('💰 [PACKAGE OPTIONS] Using metadata pricing:', {
+          hotels_count: hotels.length,
+          option_1_hotel: option1Hotel.name,
+          option_1_total: option1Total,
+          option_1_modified: option1Data._packageMetadata.isModified,
+          option_2_hotel: option2Hotel.name,
+          option_2_total: option2Total,
+          option_2_modified: option2Data._packageMetadata.isModified
+        });
+      }
+    } else {
+      // ORIGINAL FLOW: Multiple different hotels (not package options)
+      console.log('🏨 [PDF GENERATION] Using standard multiple hotels flow');
+
+      // Sort hotels by price (cheapest first)
+      const sortedHotels = [...best_hotels].sort((a, b) => {
+        const priceA = typeof a.price === 'string' ? parseFloat(a.price.replace(/\./g, '').replace(',', '.')) : a.price;
+        const priceB = typeof b.price === 'string' ? parseFloat(b.price.replace(/\./g, '').replace(',', '.')) : b.price;
+        return priceA - priceB;
+      });
+
+      // Extract cheapest and most expensive
+      const cheapestHotel = sortedHotels[0];
+      const mostExpensiveHotel = sortedHotels[sortedHotels.length - 1];
+
+      // Parse hotel prices
+      const cheapestPrice = typeof cheapestHotel.price === 'string'
+        ? parseFloat(cheapestHotel.price.replace(/\./g, '').replace(',', '.'))
+        : cheapestHotel.price;
+      const expensivePrice = typeof mostExpensiveHotel.price === 'string'
+        ? parseFloat(mostExpensiveHotel.price.replace(/\./g, '').replace(',', '.'))
+        : mostExpensiveHotel.price;
+
+      // Calculate totals for each option
+      option1Total = totalFlightPrice + cheapestPrice;
+      option2Total = totalFlightPrice + expensivePrice;
+
+      // Prepare hotel data for template
+      option1Hotel = {
+        name: cheapestHotel.name,
+        stars: cheapestHotel.stars,
+        location: cheapestHotel.location,
+        price: cheapestHotel.price
+      };
+
+      option2Hotel = {
+        name: mostExpensiveHotel.name,
+        stars: mostExpensiveHotel.stars,
+        location: mostExpensiveHotel.location,
+        price: mostExpensiveHotel.price
+      };
+
+      console.log('💰 MULTIPLE HOTELS PRICING:', {
+        hotels_count: hotels.length,
+        cheapest_hotel: cheapestHotel.name,
+        cheapest_price: cheapestPrice,
+        expensive_hotel: mostExpensiveHotel.name,
+        expensive_price: expensivePrice,
+        flight_price: totalFlightPrice,
+        option_1_total: option1Total,
+        option_2_total: option2Total
+      });
+    }
   }
 
   // Template-specific data structure (OBJETO DIRECTO, no array)

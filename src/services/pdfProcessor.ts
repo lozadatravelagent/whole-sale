@@ -889,6 +889,31 @@ function extractMultipleHotelPricesFromMessage(
     // Sort hotels by price for "más barato/caro" references
     const sortedByPrice = [...hotels].sort((a, b) => a.price - b.price);
 
+    // Pattern 0: By package option "opción 1 a 5000", "opción 2 a 6000"
+    const optionPatterns = [
+        { regex: /opci[oó]n\s+1\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 1 },
+        { regex: /opci[oó]n\s+2\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 2 },
+        { regex: /primera?\s+opci[oó]n\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 1 },
+        { regex: /segunda?\s+opci[oó]n\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 2 },
+        { regex: /la\s+opci[oó]n\s+1\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 1 },
+        { regex: /la\s+opci[oó]n\s+2\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 2 },
+    ];
+
+    for (const { regex, position } of optionPatterns) {
+        const match = message.match(regex);
+        if (match && position <= hotels.length) {
+            const newPrice = parsePrice(match[1]);
+            if (newPrice >= 100 && newPrice <= 50000) {
+                changes.push({
+                    hotelIndex: position - 1,
+                    referenceType: 'position',
+                    newPrice
+                });
+                console.log(`💰 [OPTION PRICE] Opción ${position}: $${newPrice}`);
+            }
+        }
+    }
+
     // Pattern 1: By position "primer hotel a 1000"
     const positionPatterns = [
         { regex: /primer(?:o)?\s+hotel\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 1 },
@@ -1136,15 +1161,47 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
 /**
  * Reconstruct HotelData from extracted PDF data  
  */
-function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number): any[] {
+function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, targetOption?: 1 | 2): any[] {
     if (!analysis.content?.hotels) return [];
+
+    // Check if hotels are package options
+    const arePackageOptions = analysis.content.hotels.length >= 2 &&
+        analysis.content.hotels.every(h => /\(Opción\s+\d+\)/i.test(h.name));
+
+    console.log(`🏨 [RECONSTRUCT] Hotels: ${analysis.content.hotels.length}, arePackageOptions: ${arePackageOptions}, targetOption: ${targetOption}`);
 
     const originalPrice = analysis.content.totalPrice || 0;
     const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
 
     return analysis.content.hotels.map((hotel, index) => {
-        const adjustedNightlyPrice = parseFloat((hotel.price * priceRatio).toFixed(2));
-        const adjustedTotalPrice = parseFloat((adjustedNightlyPrice * hotel.nights).toFixed(2));
+        let adjustedNightlyPrice: number;
+        let adjustedTotalPrice: number;
+
+        // If this is a package option PDF and targetOption is specified
+        if (arePackageOptions && targetOption) {
+            // Extract option number from hotel name (e.g., "RIU LUPITA (Opción 1)" -> 1)
+            const optionMatch = hotel.name.match(/\(Opción\s+(\d+)\)/i);
+            const hotelOptionNumber = optionMatch ? parseInt(optionMatch[1]) : undefined;
+
+            if (hotelOptionNumber === targetOption) {
+                // This is the hotel to modify - calculate new price based on package price
+                const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
+                const newHotelPrice = newPrice - flightsPrice;
+
+                adjustedNightlyPrice = newHotelPrice;
+                adjustedTotalPrice = newHotelPrice;
+                console.log(`🏨 [RECONSTRUCT] Modified hotel ${hotel.name}: $${hotel.price} → $${newHotelPrice}`);
+            } else {
+                // This is NOT the target hotel - keep original price
+                adjustedNightlyPrice = hotel.price;
+                adjustedTotalPrice = hotel.price;
+                console.log(`🏨 [RECONSTRUCT] Kept original for ${hotel.name}: $${hotel.price}`);
+            }
+        } else {
+            // Standard behavior: adjust all hotels proportionally
+            adjustedNightlyPrice = parseFloat((hotel.price * priceRatio).toFixed(2));
+            adjustedTotalPrice = parseFloat((adjustedNightlyPrice * hotel.nights).toFixed(2));
+        }
 
         // Extract check-in and check-out dates from flights - NO MOCK DATA
         let checkIn = '';
@@ -1679,7 +1736,8 @@ async function generateModifiedPdfWithMultipleHotelPrices(
 export async function generateModifiedPdf(
     analysis: PdfAnalysisResult,
     newPrice: number,
-    conversationId: string
+    conversationId: string,
+    targetOption?: 1 | 2 // Optional: which package option to modify (for multi-option PDFs)
 ): Promise<{ success: boolean; pdfUrl?: string; error?: string }> {
     try {
         console.log('🔄 Generating modified PDF with new price:', newPrice);
@@ -1743,7 +1801,53 @@ export async function generateModifiedPdf(
                 }))
             });
 
-            adjustedHotels = reconstructHotelData(analysis, newPrice);
+            adjustedHotels = reconstructHotelData(analysis, newPrice, targetOption);
+
+            // Add metadata for package options to preserve original prices
+            if (targetOption && analysis.content.hotels) {
+                const arePackageOptions = analysis.content.hotels.length >= 2 &&
+                    analysis.content.hotels.every(h => /\(Opción\s+\d+\)/i.test(h.name));
+
+                if (arePackageOptions) {
+                    console.log('📦 [METADATA] Adding package metadata to hotels');
+
+                    // Get original flight price (before modification)
+                    const originalFlightPrice = analysis.content.flights?.reduce((sum, f) => sum + f.price, 0) || 0;
+                    console.log(`✈️ [METADATA] Original flight price: $${originalFlightPrice}`);
+
+                    adjustedHotels = adjustedHotels.map((hotel: any) => {
+                        const optionMatch = hotel.name.match(/\(Opción\s+(\d+)\)/i);
+                        if (optionMatch) {
+                            const optionNumber = parseInt(optionMatch[1]);
+
+                            // Calculate total package price for this option
+                            let packagePrice: number;
+                            if (optionNumber === targetOption) {
+                                // Modified option: use requested price
+                                packagePrice = newPrice;
+                                console.log(`📦 [METADATA] Option ${optionNumber} (MODIFIED): $${packagePrice}`);
+                            } else {
+                                // Original option: vuelo original + hotel original
+                                const originalHotelData = analysis.content.hotels?.find(h =>
+                                    h.name.includes(`(Opción ${optionNumber})`)
+                                );
+                                packagePrice = originalFlightPrice + (originalHotelData?.price || 0);
+                                console.log(`📦 [METADATA] Option ${optionNumber} (ORIGINAL): flight $${originalFlightPrice} + hotel $${originalHotelData?.price} = $${packagePrice}`);
+                            }
+
+                            return {
+                                ...hotel,
+                                _packageMetadata: {
+                                    optionNumber,
+                                    totalPackagePrice: packagePrice,
+                                    isModified: targetOption === optionNumber
+                                }
+                            };
+                        }
+                        return hotel;
+                    });
+                }
+            }
         } else {
             // For external PDFs, use ONLY real data from PDF
             console.log('🔄 Adapting external PDF data with real data only');
@@ -2184,11 +2288,13 @@ export async function processPriceChangeRequest(
 
             console.log(`💰 New prices: flights=$${newFlightsPrice.toFixed(2)}, hotel=$${newHotelPrice.toFixed(2)}, total=$${(newFlightsPrice + newHotelPrice).toFixed(2)}`);
 
-            // Generar PDF modificado con TODOS los precios ajustados
+            // Generar PDF modificado solo para la opción solicitada
+            const optionNumber = changeTarget === 'economico' ? 1 : 2;
             const result = await generateModifiedPdf(
                 analysis,
                 requestedPrice, // Precio total del paquete
-                conversationId
+                conversationId,
+                optionNumber as 1 | 2 // Solo modificar esta opción
             );
 
             if (result.success && result.pdfUrl) {
@@ -3765,9 +3871,9 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
 
     console.log(`🏨 [MULTI-HOTEL EXTRACTION] Starting extraction, nights: ${nights}`);
 
-    // NEW: Detect package options pattern (Opción 1, Opción 2, etc.)
+    // NEW: Detect package options pattern (Opción 1, Opción 2, Opción Económica, Opción Premium, etc.)
     // This handles PDFs with multiple package options using the SAME hotel but different prices
-    const optionPattern = /Opción\s+(\d+)\s+\$?(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/gi;
+    const optionPattern = /Opci[oó]n\s+(1|2|\d+|Econ[oó]mica|Premium)\s+\$?(\d{1,10}(?:[.,]\d{1,3})+|\d+)\s*USD/gi;
     const optionMatches = [...content.matchAll(optionPattern)];
 
     if (optionMatches.length >= 2) {
@@ -3776,7 +3882,18 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
         // Extract data for each option
         for (let i = 0; i < optionMatches.length; i++) {
             const optionMatch = optionMatches[i];
-            const optionNumber = parseInt(optionMatch[1]);
+            const optionLabel = optionMatch[1]; // Can be "1", "2", "Económica", "Premium", etc.
+
+            // Normalize option label to number
+            let optionNumber: number;
+            if (optionLabel.match(/^(Econ[oó]mica)$/i)) {
+                optionNumber = 1;
+            } else if (optionLabel.match(/^Premium$/i)) {
+                optionNumber = 2;
+            } else {
+                optionNumber = parseInt(optionLabel);
+            }
+
             const packagePrice = parsePrice(optionMatch[2]);
             const optionStartPos = optionMatch.index || 0;
 
