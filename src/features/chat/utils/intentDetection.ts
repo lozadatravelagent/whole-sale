@@ -234,23 +234,31 @@ export const isPriceChangeRequest = (message: string): boolean => {
 export const extractPriceChangeTarget = (message: string): 'total' | 'hotel' | 'flights' | 'economico' | 'premium' | 'unknown' => {
   const norm = normalizeText(message);
 
-  // NUEVO: Detectar comandos de precio económico
+  // NUEVO: Detectar comandos de precio económico / Opción 1
   if (norm.includes('precio economico') ||
       norm.includes('precio económico') ||
       norm.includes('economico a $') ||
       norm.includes('económico a $') ||
       norm.includes('economico a usd') ||
       norm.includes('opcion economica') ||
-      norm.includes('opción económica')) {
+      norm.includes('opción económica') ||
+      norm.includes('opcion 1') ||
+      norm.includes('opción 1') ||
+      norm.includes('la opcion 1') ||
+      norm.includes('la opción 1')) {
     return 'economico';
   }
 
-  // NUEVO: Detectar comandos de precio premium
+  // NUEVO: Detectar comandos de precio premium / Opción 2
   if (norm.includes('precio premium') ||
       norm.includes('premium a $') ||
       norm.includes('premium a usd') ||
       norm.includes('opcion premium') ||
-      norm.includes('opción premium')) {
+      norm.includes('opción premium') ||
+      norm.includes('opcion 2') ||
+      norm.includes('opción 2') ||
+      norm.includes('la opcion 2') ||
+      norm.includes('la opción 2')) {
     return 'premium';
   }
 

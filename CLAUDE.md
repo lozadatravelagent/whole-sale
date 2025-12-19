@@ -873,6 +873,217 @@ Todos los logs son JSON estructurado con correlation IDs:
 - Health check detallado verifica Redis y Supabase
 - Timeout configurado en Railway (120s)
 
+### Sistema de Precio Económico y Premium para PDFs Multi-Hotel (Diciembre 2025)
+
+**Archivos principales**:
+- `src/services/pdfProcessor.ts` (líneas 350-373, 568-595, 2139-2198)
+- `src/features/chat/utils/intentDetection.ts` (líneas 234-255)
+
+Sistema avanzado para mostrar y modificar opciones de precio cuando un PDF contiene múltiples hoteles, permitiendo al usuario elegir entre el paquete más económico o premium.
+
+#### Funcionalidad Principal
+
+**Detección automática**: Cuando un PDF contiene 2 o más hoteles, el sistema:
+1. Identifica el hotel más barato (Precio Económico)
+2. Identifica el hotel más caro (Precio Premium)
+3. Calcula el precio total de cada paquete (vuelo + hotel respectivo)
+4. Muestra ambas opciones en la respuesta del chat
+
+**Comandos naturales soportados**:
+```
+"cambia el precio económico a 2000"
+"cambia el precio premium a 5000"
+"modifica la opción económica a 1800"
+```
+
+#### Corrección de Precios Durante Extracción
+
+**Problema resuelto**: Los PDFs generados por PDFMonkey muestran "Opción Económica" como un precio total (vuelo + hotel más barato), pero el sistema de extracción lo interpretaba como el precio del vuelo solamente.
+
+**Solución** (`pdfProcessor.ts:350-373`):
+```typescript
+// CORRECCIÓN: Si hay 2+ hoteles, el precio extraído como "vuelo" podría ser en realidad
+// el precio de la "Opción Económica" completa (vuelo + hotel más barato).
+if (hotels && hotels.length >= 2 && calculatedFlightPrice > 0 && flights && flights.length > 0) {
+    const cheapestHotelPrice = Math.min(...hotels.map(h => h.price));
+    if (calculatedFlightPrice > cheapestHotelPrice) {
+        const originalFlightPrice = calculatedFlightPrice;
+        calculatedFlightPrice = calculatedFlightPrice - cheapestHotelPrice;
+
+        // Actualizar el precio de cada vuelo individual proporcionalmente
+        const priceRatio = calculatedFlightPrice / originalFlightPrice;
+        flights.forEach((flight, index) => {
+            flight.price = flight.price * priceRatio;
+        });
+    }
+}
+```
+
+**Algoritmo**:
+1. Detecta si hay 2+ hoteles en el PDF
+2. Si el precio de "vuelo" extraído > precio del hotel más barato → indica que es un precio de paquete
+3. Resta el hotel más barato del precio extraído para obtener el precio real del vuelo
+4. Actualiza todos los vuelos individuales proporcionalmente
+
+#### Display de Opciones Económico/Premium
+
+**Ubicación**: `pdfProcessor.ts:568-595` en `generatePriceChangeSuggestions()`
+
+**Comportamiento**:
+- **Con 2+ hoteles**: Muestra "Precio Económico" y "Precio Premium" con desglose de hoteles
+- **Con 0-1 hoteles**: Muestra "Precio Total" tradicional (backward compatible)
+
+**Formato de salida**:
+```markdown
+💰 **Opciones de Precio:**
+
+• **Precio Económico:** $1800.00 USD
+  (RIU Palace Punta Cana - $1000.00)
+
+• **Precio Premium:** $2300.00 USD
+  (Iberostar Dominicana - $1500.00)
+
+👥 **Pasajeros:** 2
+
+💬 **¿Qué te gustaría modificar?**
+
+Puedes pedirme:
+• "Cambia el precio económico a [cantidad]"
+• "Cambia el precio premium a [cantidad]"
+• "Cambia el precio total a [cantidad]"
+```
+
+#### Detección de Intent para Comandos
+
+**Ubicación**: `intentDetection.ts:234-255` en `extractPriceChangeTarget()`
+
+**Nueva signature**:
+```typescript
+export const extractPriceChangeTarget = (
+  message: string
+): 'total' | 'hotel' | 'flights' | 'economico' | 'premium' | 'unknown'
+```
+
+**Patrones detectados**:
+- **Económico**: "precio economico", "precio económico", "opcion economica", "económico a $", etc.
+- **Premium**: "precio premium", "opcion premium", "premium a $", "premium a usd", etc.
+
+**Normalización**: El sistema normaliza texto eliminando acentos y convirtiendo a minúsculas para mejor detección.
+
+#### Ajuste Proporcional de Precios de Paquete
+
+**Ubicación**: `pdfProcessor.ts:2139-2198` en `processPriceChangeRequest()`
+
+**Problema original**: Sistema intentaba mantener precio de vuelo fijo y solo ajustar hotel, resultando en precios negativos cuando el precio solicitado era menor que el precio del vuelo.
+
+**Solución implementada**: Ajuste proporcional del PAQUETE COMPLETO (vuelo + hotel)
+
+**Algoritmo**:
+```typescript
+// 1. Calcular precio original del paquete
+const flightsPrice = analysis.content.flights.reduce((sum, f) => sum + f.price, 0);
+const originalPackagePrice = flightsPrice + targetHotel.price;
+
+// 2. Calcular ratio de ajuste
+const adjustmentRatio = requestedPrice / originalPackagePrice;
+
+// 3. Aplicar ratio a TODOS los componentes
+const newFlightsPrice = flightsPrice * adjustmentRatio;
+const newHotelPrice = targetHotel.price * adjustmentRatio;
+
+// 4. Generar PDF con precios ajustados proporcionalmente
+```
+
+**Ejemplo de flujo**:
+```
+Input: "cambia el precio económico a 2000"
+
+Original:
+- Vuelos: $4583.00
+- Hotel Económico: $1308.37
+- Total: $5891.37
+
+Ajuste:
+- Ratio: 2000 / 5891.37 = 0.3395
+- Nuevos Vuelos: $4583.00 × 0.3395 = $1556.07
+- Nuevo Hotel: $1308.37 × 0.3395 = $443.93
+- Nuevo Total: $2000.00 ✓
+
+Output:
+✅ Precio Económico Modificado
+
+📦 Paquete completo ajustado proporcionalmente:
+
+✈️ Vuelos: $1556.07 USD
+   (ajustado desde $4583.00)
+
+🏨 Hotel Económico: Hotel PLAYABACHATA RESORT
+💰 Precio hotel: $443.93 USD (8 noches)
+   (ajustado desde $1308.37)
+
+📄 TOTAL PAQUETE ECONÓMICO: $2000.00 USD
+```
+
+#### Validaciones Implementadas
+
+**Validación 1 - PDF sin múltiples hoteles**:
+```typescript
+if (!analysis.content.hotels || analysis.content.hotels.length < 2) {
+    return {
+        response: "❌ No puedo modificar el precio económico/premium porque el PDF no contiene 2 o más hoteles."
+    };
+}
+```
+
+**Validación 2 - Precio no especificado**:
+```typescript
+if (!requestedPrice) {
+    return {
+        response: "❌ No pude identificar el precio. Por favor especifica un monto."
+    };
+}
+```
+
+**Validación 3 - Búsqueda de hotel por índice**:
+```typescript
+const targetHotelIndex = analysis.content.hotels.findIndex(h => h.name === targetHotel.name);
+if (targetHotelIndex < 0) {
+    return { response: "❌ Error interno: no pude identificar el hotel." };
+}
+```
+
+#### Integración con Sistema de PDF
+
+**Generación de PDF modificado**: Usa `generateModifiedPdf()` existente con el nuevo precio total del paquete.
+
+**Persistencia**: El PDF modificado se almacena en Supabase Storage y se retorna la URL al usuario.
+
+**Desglose en respuesta**: El sistema muestra breakdown completo de precios antes/después para transparencia.
+
+#### Edge Cases Manejados
+
+1. **PDFs con precio de vuelo = precio de opción económica**: Detectado y corregido durante extracción
+2. **Hoteles con precios idénticos**: Ambos pueden ser cheapest/expensive (se acepta el primero encontrado)
+3. **Precio solicitado muy bajo**: Sistema ajusta proporcionalmente pero advierte si el precio parece inusual
+4. **PDFs con 0-1 hoteles**: Fallback a comportamiento legacy ("Precio Total")
+5. **Usuario cambia económico a precio mayor que premium**: Permitido (el usuario tiene control total)
+
+#### Mejoras Clave vs Implementación Original
+
+**Antes**:
+- Solo mostraba "Precio Total" genérico
+- No distinguía entre múltiples opciones de hotel
+- Cambios de precio afectaban solo un componente (hotel o vuelo)
+- Podía generar precios negativos o inválidos
+
+**Después**:
+- Muestra automáticamente Económico/Premium cuando hay 2+ hoteles
+- Comandos naturales específicos para cada opción
+- Ajuste proporcional de todo el paquete manteniendo relaciones
+- Corrección automática de precios durante extracción
+- Validaciones robustas con mensajes descriptivos
+- Backward compatible con PDFs de 1 hotel
+
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.
