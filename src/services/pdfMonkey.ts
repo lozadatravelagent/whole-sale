@@ -775,27 +775,39 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         option1Total = option1Data._packageMetadata.totalPackagePrice;
         option2Total = option2Data._packageMetadata.totalPackagePrice;
 
+        // Extract hotel individual prices from the hotel data structure
+        // (not from rooms array which may be outdated after price changes)
+        const option1HotelPrice = typeof option1Data.price === 'string'
+          ? parseFloat(option1Data.price.replace(/\./g, '').replace(',', '.'))
+          : option1Data.price;
+
+        const option2HotelPrice = typeof option2Data.price === 'string'
+          ? parseFloat(option2Data.price.replace(/\./g, '').replace(',', '.'))
+          : option2Data.price;
+
         // Prepare hotel data for template (remove "(Opción X)" from names)
         option1Hotel = {
           name: option1Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
-          stars: option1Data.category,
-          location: option1Data.city,
-          price: option1Data.rooms[0].total_price
+          stars: option1Data.stars || option1Data.category || '5',
+          location: option1Data.location || option1Data.city || 'Ubicación no especificada',
+          price: formatPriceForTemplate(option1HotelPrice)
         };
 
         option2Hotel = {
           name: option2Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
-          stars: option2Data.category,
-          location: option2Data.city,
-          price: option2Data.rooms[0].total_price
+          stars: option2Data.stars || option2Data.category || '5',
+          location: option2Data.location || option2Data.city || 'Ubicación no especificada',
+          price: formatPriceForTemplate(option2HotelPrice)
         };
 
         console.log('💰 [PACKAGE OPTIONS] Using metadata pricing:', {
           hotels_count: hotels.length,
           option_1_hotel: option1Hotel.name,
+          option_1_hotel_price: option1Hotel.price,
           option_1_total: option1Total,
           option_1_modified: option1Data._packageMetadata.isModified,
           option_2_hotel: option2Hotel.name,
+          option_2_hotel_price: option2Hotel.price,
           option_2_total: option2Total,
           option_2_modified: option2Data._packageMetadata.isModified
         });

@@ -1206,7 +1206,8 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
 
                 adjustedNightlyPrice = newHotelPrice;
                 adjustedTotalPrice = newHotelPrice;
-                console.log(`🏨 [RECONSTRUCT] Modified hotel ${hotel.name}: $${hotel.price} → $${newHotelPrice}`);
+
+                console.log(`🏨 [RECONSTRUCT] Modified hotel ${hotel.name}: $${hotel.price} → $${adjustedTotalPrice} (flights: $${flightsPrice}, package: $${newPrice})`);
             } else {
                 // This is NOT the target hotel - keep original price
                 adjustedNightlyPrice = hotel.price;
@@ -2174,17 +2175,6 @@ export async function processPriceChangeRequest(
             const originalPackagePrice = flightsPrice + targetHotel.price;
 
             console.log(`📊 Original package price (${changeTarget}): $${originalPackagePrice} (flights: $${flightsPrice} + hotel: $${targetHotel.price})`);
-
-            // Validar precio mínimo razonable ($100 mínimo para un paquete completo)
-            if (requestedPrice < 100) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
-                return {
-                    response: `❌ **${label} - Precio Demasiado Bajo**\n\n` +
-                        `El precio de la ${label} de **$${requestedPrice.toFixed(2)} USD** es muy bajo para un paquete completo.\n\n` +
-                        `💡 **Precio mínimo sugerido:** $100 USD\n\n` +
-                        `Por favor, ingresa un precio razonable para el paquete completo (vuelo + hotel).`
-                };
-            }
 
             // Calcular ratio de ajuste proporcional
             const adjustmentRatio = requestedPrice / originalPackagePrice;
