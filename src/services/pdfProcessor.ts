@@ -2070,7 +2070,20 @@ export async function generateModifiedPdf(
                 console.log(`🏨 Hotel dates: check_in=${checkIn}, check_out=${checkOut}, nights=${hotel.nights}`);
 
                 const hotelId = `external-modified-hotel-${Date.now()}-${index}`;
-                return {
+
+                // CRITICAL: Check if hotel has _packageMetadata from dual price change
+                // If it does, use the specific package price instead of global priceRatio
+                let roomTotalPrice: number;
+                if ((hotel as any)._packageMetadata) {
+                    // For dual price changes, use the hotel price directly (already calculated with correct ratio)
+                    roomTotalPrice = parseFloat((hotel.price * hotel.nights).toFixed(2));
+                    console.log(`💰 [EXTERNAL PDF] Using specific price for ${hotel.name}: $${roomTotalPrice} (from _packageMetadata)`);
+                } else {
+                    // For regular price changes, use global priceRatio
+                    roomTotalPrice = parseFloat((hotel.price * hotel.nights * priceRatio).toFixed(2));
+                }
+
+                const hotelData: any = {
                     id: hotelId,
                     unique_id: hotelId,
                     name: hotel.name,
@@ -2083,12 +2096,20 @@ export async function generateModifiedPdf(
                     rooms: [{
                         type: 'Standard',
                         description: 'Habitación estándar modificada',
-                        total_price: parseFloat((hotel.price * hotel.nights * priceRatio).toFixed(2)),
+                        total_price: roomTotalPrice,
                         currency: analysis.content?.currency || 'USD',
                         availability: 5,
                         occupancy_id: `external-room-${index}`
                     }]
                 };
+
+                // Preserve _packageMetadata if it exists (from dual price change)
+                if ((hotel as any)._packageMetadata) {
+                    hotelData._packageMetadata = (hotel as any)._packageMetadata;
+                    console.log(`✅ [EXTERNAL PDF] Preserved _packageMetadata for ${hotel.name}:`, (hotel as any)._packageMetadata);
+                }
+
+                return hotelData;
             }) || [];
         }
 
