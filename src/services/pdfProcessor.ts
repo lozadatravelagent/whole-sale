@@ -1123,7 +1123,11 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
         // If we have a return flight, use its date
         if (hasReturn && lastFlight.dates) {
             if (lastFlight.dates.includes(' / ')) {
-                returnDate = lastFlight.dates.split(' / ')[0].trim();
+                // If last flight has date range, take the return part
+                returnDate = lastFlight.dates.split(' / ')[1].trim();
+            } else {
+                // If last flight has single date, use it directly
+                returnDate = lastFlight.dates.trim();
             }
         }
 
