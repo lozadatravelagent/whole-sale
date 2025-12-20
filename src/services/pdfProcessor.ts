@@ -1284,15 +1284,30 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
 
     console.log(`🏨 [RECONSTRUCT] Hotels: ${analysis.content.hotels.length}, arePackageOptions: ${arePackageOptions}, targetOption: ${targetOption}`);
 
+    // Check if hotels have _packageMetadata (from dual price change)
+    const hasPackageMetadata = analysis.content.hotels.some((h: any) => h._packageMetadata);
+    if (hasPackageMetadata) {
+        console.log('📦 [RECONSTRUCT] Detected _packageMetadata - preserving it');
+    }
+
     const originalPrice = analysis.content.totalPrice || 0;
     const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
 
     return analysis.content.hotels.map((hotel, index) => {
         let adjustedNightlyPrice: number;
         let adjustedTotalPrice: number;
+        let packageMetadata: any = undefined;
 
-        // If this is a package option PDF and targetOption is specified
-        if (arePackageOptions && targetOption) {
+        // PRIORITY 1: If hotel has _packageMetadata, use it (from dual price change)
+        if ((hotel as any)._packageMetadata) {
+            const metadata = (hotel as any)._packageMetadata;
+            adjustedNightlyPrice = hotel.price;
+            adjustedTotalPrice = hotel.price;
+            packageMetadata = metadata;
+            console.log(`📦 [RECONSTRUCT] Using _packageMetadata for ${hotel.name}:`, metadata);
+        }
+        // PRIORITY 2: If this is a package option PDF and targetOption is specified
+        else if (arePackageOptions && targetOption) {
             // Extract option number from hotel name (e.g., "RIU LUPITA (Opción 1)" -> 1)
             const optionMatch = hotel.name.match(/\(Opción\s+(\d+)\)/i);
             const hotelOptionNumber = optionMatch ? parseInt(optionMatch[1]) : undefined;
@@ -1355,7 +1370,7 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
         }
 
         const hotelId = `regenerated-hotel-${Date.now()}-${index}`;
-        return {
+        const hotelData: any = {
             id: hotelId,
             unique_id: hotelId,
             name: hotel.name,
@@ -1375,6 +1390,14 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
                 occupancy_id: `room-${index}-modified`
             }]
         };
+
+        // Add _packageMetadata if present (for dual price changes)
+        if (packageMetadata) {
+            hotelData._packageMetadata = packageMetadata;
+            console.log(`✅ [RECONSTRUCT] Added _packageMetadata to ${hotel.name}:`, packageMetadata);
+        }
+
+        return hotelData;
     });
 }
 
