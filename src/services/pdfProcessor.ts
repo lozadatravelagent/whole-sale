@@ -2174,59 +2174,85 @@ export async function processPriceChangeRequest(
                 };
             }
 
-            // Sort hotels by price to identify economic (cheapest) and premium (most expensive)
-            const hotelsSortedByPrice = [...analysis.content.hotels].sort((a, b) => a.price - b.price);
-            const economicHotel = hotelsSortedByPrice[0];
-            const premiumHotel = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
+            // Identify option 1 and option 2 hotels by name
+            const option1Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+1\)/i));
+            const option2Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+2\)/i));
 
-            console.log('🏨 [DUAL OPTIONS] Economic hotel:', economicHotel.name);
-            console.log('🏨 [DUAL OPTIONS] Premium hotel:', premiumHotel.name);
+            if (!option1Hotel || !option2Hotel) {
+                console.log('❌ [DUAL OPTIONS] Could not identify option 1/2 hotels by name');
+                return {
+                    response: `❌ No pude identificar las opciones 1 y 2 en el PDF. Verifica que el PDF tenga hoteles con "(Opción 1)" y "(Opción 2)" en el nombre.`
+                };
+            }
 
-            // Generate modified PDF with BOTH option prices
-            const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
+            console.log('🏨 [DUAL OPTIONS] Option 1 hotel:', option1Hotel.name);
+            console.log('🏨 [DUAL OPTIONS] Option 2 hotel:', option2Hotel.name);
+
+            // Get original package prices from each option
+            // Use packagePrice if available (from extraction), otherwise calculate
+            const option1OriginalPrice = (option1Hotel as any).packagePrice || analysis.content.totalPrice || 0;
+            const option2OriginalPrice = (option2Hotel as any).packagePrice || analysis.content.totalPrice || 0;
+
+            console.log(`📦 [DUAL OPTIONS] Option 1 original package price: $${option1OriginalPrice}`);
+            console.log(`📦 [DUAL OPTIONS] Option 2 original package price: $${option2OriginalPrice}`);
 
             // Calculate proportional adjustments for each option
-            const option1OriginalPrice = flightsPrice + economicHotel.price;
-            const option2OriginalPrice = flightsPrice + premiumHotel.price;
-
             const option1Ratio = dualOptions.option1Price / option1OriginalPrice;
             const option2Ratio = dualOptions.option2Price / option2OriginalPrice;
 
             console.log(`📊 [DUAL OPTIONS] Option 1: ${option1OriginalPrice} → ${dualOptions.option1Price} (ratio: ${option1Ratio.toFixed(4)})`);
             console.log(`📊 [DUAL OPTIONS] Option 2: ${option2OriginalPrice} → ${dualOptions.option2Price} (ratio: ${option2Ratio.toFixed(4)})`);
 
-            // Create modified analysis with BOTH option prices
+            // Create modified analysis with BOTH option prices updated
             const modifiedAnalysis = { ...analysis };
             if (modifiedAnalysis.content) {
-                // Clone hotels array
+                // Clone hotels array and update prices
                 modifiedAnalysis.content = {
                     ...modifiedAnalysis.content,
-                    hotels: analysis.content.hotels?.map((hotel, index) => {
-                        const hotelSortedIndex = hotelsSortedByPrice.findIndex(h => h.name === hotel.name);
-                        const isEconomic = hotel.name === economicHotel.name;
-                        const isPremium = hotel.name === premiumHotel.name;
+                    hotels: analysis.content.hotels?.map((hotel) => {
+                        const isOption1 = hotel.name === option1Hotel.name;
+                        const isOption2 = hotel.name === option2Hotel.name;
 
-                        if (isEconomic) {
-                            // Calculate new hotel price proportionally
-                            const newHotelPrice = economicHotel.price * option1Ratio;
-                            console.log(`🏨 [DUAL] Updating Economic hotel: ${hotel.name} from $${hotel.price} to $${newHotelPrice.toFixed(2)}`);
+                        if (isOption1) {
+                            // Calculate new hotel price for option 1
+                            // If hotel price is 0, it means it's included in package price
+                            const newHotelPrice = option1Hotel.price > 0
+                                ? option1Hotel.price * option1Ratio
+                                : 0;
+
+                            console.log(`🏨 [DUAL] Updating Option 1 hotel: ${hotel.name}`);
+                            console.log(`   Package price: $${option1OriginalPrice} → $${dualOptions.option1Price}`);
+                            console.log(`   Hotel price: $${hotel.price} → $${newHotelPrice.toFixed(2)}`);
+
                             return {
                                 ...hotel,
                                 price: parseFloat(newHotelPrice.toFixed(2)),
-                                _dualOptionModified: true,
-                                _optionNumber: 1,
-                                _totalPackagePrice: dualOptions.option1Price
+                                packagePrice: dualOptions.option1Price, // Update package price
+                                _packageMetadata: {
+                                    optionNumber: 1,
+                                    totalPackagePrice: dualOptions.option1Price,
+                                    isModified: true
+                                }
                             };
-                        } else if (isPremium) {
-                            // Calculate new hotel price proportionally
-                            const newHotelPrice = premiumHotel.price * option2Ratio;
-                            console.log(`🏨 [DUAL] Updating Premium hotel: ${hotel.name} from $${hotel.price} to $${newHotelPrice.toFixed(2)}`);
+                        } else if (isOption2) {
+                            // Calculate new hotel price for option 2
+                            const newHotelPrice = option2Hotel.price > 0
+                                ? option2Hotel.price * option2Ratio
+                                : 0;
+
+                            console.log(`🏨 [DUAL] Updating Option 2 hotel: ${hotel.name}`);
+                            console.log(`   Package price: $${option2OriginalPrice} → $${dualOptions.option2Price}`);
+                            console.log(`   Hotel price: $${hotel.price} → $${newHotelPrice.toFixed(2)}`);
+
                             return {
                                 ...hotel,
                                 price: parseFloat(newHotelPrice.toFixed(2)),
-                                _dualOptionModified: true,
-                                _optionNumber: 2,
-                                _totalPackagePrice: dualOptions.option2Price
+                                packagePrice: dualOptions.option2Price, // Update package price
+                                _packageMetadata: {
+                                    optionNumber: 2,
+                                    totalPackagePrice: dualOptions.option2Price,
+                                    isModified: true
+                                }
                             };
                         }
 
@@ -2234,11 +2260,18 @@ export async function processPriceChangeRequest(
                     })
                 };
 
-                // Also update flights price to average of both options
-                // This is used for the PDF generation
-                const averageFlightPrice = (dualOptions.option1Price + dualOptions.option2Price) / 2 -
-                    ((economicHotel.price * option1Ratio + premiumHotel.price * option2Ratio) / 2);
+                // Update flights to use average price (for template display)
+                const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
                 modifiedAnalysis.content.totalPrice = (dualOptions.option1Price + dualOptions.option2Price) / 2;
+
+                // Also update flights array with proportional pricing
+                if (modifiedAnalysis.content.flights) {
+                    const avgRatio = ((option1Ratio + option2Ratio) / 2);
+                    modifiedAnalysis.content.flights = modifiedAnalysis.content.flights.map((flight: any) => ({
+                        ...flight,
+                        price: parseFloat((flight.price * avgRatio).toFixed(2))
+                    }));
+                }
             }
 
             // Generate single PDF with BOTH modified options
@@ -2258,12 +2291,14 @@ export async function processPriceChangeRequest(
 
             return {
                 response: `✅ **Ambas Opciones Modificadas**\n\n` +
-                    `📦 **Opción 1 (Económica):**\n` +
-                    `🏨 Hotel: ${economicHotel.name}\n` +
-                    `💰 Precio total paquete: $${dualOptions.option1Price.toFixed(2)} USD\n\n` +
-                    `📦 **Opción 2 (Premium):**\n` +
-                    `🏨 Hotel: ${premiumHotel.name}\n` +
-                    `💰 Precio total paquete: $${dualOptions.option2Price.toFixed(2)} USD\n\n` +
+                    `📦 **Opción 1:**\n` +
+                    `🏨 Hotel: ${option1Hotel.name}\n` +
+                    `💰 Precio total paquete: $${dualOptions.option1Price.toFixed(2)} USD\n` +
+                    `   (modificado desde $${option1OriginalPrice.toFixed(2)})\n\n` +
+                    `📦 **Opción 2:**\n` +
+                    `🏨 Hotel: ${option2Hotel.name}\n` +
+                    `💰 Precio total paquete: $${dualOptions.option2Price.toFixed(2)} USD\n` +
+                    `   (modificado desde $${option2OriginalPrice.toFixed(2)})\n\n` +
                     `📄 PDF adjunto con ambas opciones actualizadas.`,
                 modifiedPdfUrl: result.pdfUrl
             };
