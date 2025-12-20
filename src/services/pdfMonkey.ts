@@ -761,7 +761,14 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
   if (hasMultipleHotels) {
     // Check if hotels have package metadata (from pdfProcessor when targetOption is used)
+    console.log('🔍 [PDF GENERATION DEBUG] Checking for _packageMetadata in hotels:', best_hotels.map((h: any) => ({
+      name: h.name,
+      has_packageMetadata: !!h._packageMetadata,
+      _packageMetadata: h._packageMetadata
+    })));
+
     const hasPackageMetadata = best_hotels.some((h: any) => h._packageMetadata);
+    console.log('🔍 [PDF GENERATION DEBUG] hasPackageMetadata:', hasPackageMetadata);
 
     if (hasPackageMetadata) {
       console.log('📦 [PDF GENERATION] Using package metadata for option totals');
