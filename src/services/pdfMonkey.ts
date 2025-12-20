@@ -664,13 +664,21 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       formatted_price_for_template: formatPriceForTemplate(priceForAllNights)
     });
 
-    return {
+    const hotelForTemplate: any = {
       name: hotel.name,
       stars: hotel.category || "5", // Default to 5 stars like the example
       location: hotel.address || `${hotel.city}, República Dominicana`, // Full address format
       price: formatPriceForTemplate(priceForAllNights), // Formato europeo - precio total por todas las noches
       link: `https://wholesale-connect.com/hotel/${hotel.id}` // Placeholder link
     };
+
+    // CRITICAL: Preserve _packageMetadata if it exists (from dual price change)
+    if ((hotel as any)._packageMetadata) {
+      hotelForTemplate._packageMetadata = (hotel as any)._packageMetadata;
+      console.log(`✅ [TEMPLATE] Preserved _packageMetadata for ${hotel.name}:`, (hotel as any)._packageMetadata);
+    }
+
+    return hotelForTemplate;
   });
 
   // Extract key dates from first hotel or flight
