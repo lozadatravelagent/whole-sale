@@ -904,12 +904,16 @@ function extractMultipleHotelPricesFromMessage(
         if (match && position <= hotels.length) {
             const newPrice = parsePrice(match[1]);
             if (newPrice >= 100 && newPrice <= 50000) {
-                changes.push({
-                    hotelIndex: position - 1,
-                    referenceType: 'position',
-                    newPrice
-                });
-                console.log(`💰 [OPTION PRICE] Opción ${position}: $${newPrice}`);
+                // Check if we already have a change for this hotel index
+                const existingChange = changes.find(c => c.hotelIndex === position - 1);
+                if (!existingChange) {
+                    changes.push({
+                        hotelIndex: position - 1,
+                        referenceType: 'position',
+                        newPrice
+                    });
+                    console.log(`💰 [OPTION PRICE] Opción ${position}: $${newPrice}`);
+                }
             }
         }
     }
@@ -927,12 +931,16 @@ function extractMultipleHotelPricesFromMessage(
         if (match && position <= hotels.length) {
             const newPrice = parsePrice(match[1]);
             if (newPrice >= 100 && newPrice <= 50000) {
-                changes.push({
-                    hotelIndex: position - 1,
-                    referenceType: 'position',
-                    newPrice
-                });
-                console.log(`💰 [HOTEL POSITION] Hotel ${position}: $${newPrice}`);
+                // Check if we already have a change for this hotel index
+                const existingChange = changes.find(c => c.hotelIndex === position - 1);
+                if (!existingChange) {
+                    changes.push({
+                        hotelIndex: position - 1,
+                        referenceType: 'position',
+                        newPrice
+                    });
+                    console.log(`💰 [HOTEL POSITION] Hotel ${position}: $${newPrice}`);
+                }
             }
         }
     }
@@ -953,13 +961,17 @@ function extractMultipleHotelPricesFromMessage(
                 const originalIndex = hotels.findIndex(h => h.name === targetHotel.name);
 
                 if (originalIndex >= 0) {
-                    changes.push({
-                        hotelIndex: originalIndex,
-                        hotelName: targetHotel.name,
-                        referenceType: 'price_order',
-                        newPrice
-                    });
-                    console.log(`💰 [HOTEL PRICE ORDER] ${order}: ${targetHotel.name} → $${newPrice}`);
+                    // Check if we already have a change for this hotel index
+                    const existingChange = changes.find(c => c.hotelIndex === originalIndex);
+                    if (!existingChange) {
+                        changes.push({
+                            hotelIndex: originalIndex,
+                            hotelName: targetHotel.name,
+                            referenceType: 'price_order',
+                            newPrice
+                        });
+                        console.log(`💰 [HOTEL PRICE ORDER] ${order}: ${targetHotel.name} → $${newPrice}`);
+                    }
                 }
             }
         }
@@ -977,13 +989,17 @@ function extractMultipleHotelPricesFromMessage(
             const hotelIndex = hotels.findIndex(h => h.name.toLowerCase().includes(chainName));
 
             if (hotelIndex >= 0) {
-                changes.push({
-                    hotelIndex,
-                    hotelName: hotels[hotelIndex].name,
-                    referenceType: 'name',
-                    newPrice
-                });
-                console.log(`💰 [HOTEL CHAIN] ${chainName}: ${hotels[hotelIndex].name} → $${newPrice}`);
+                // Check if we already have a change for this hotel index
+                const existingChange = changes.find(c => c.hotelIndex === hotelIndex);
+                if (!existingChange) {
+                    changes.push({
+                        hotelIndex,
+                        hotelName: hotels[hotelIndex].name,
+                        referenceType: 'name',
+                        newPrice
+                    });
+                    console.log(`💰 [HOTEL CHAIN] ${chainName}: ${hotels[hotelIndex].name} → $${newPrice}`);
+                }
             }
         }
     }
@@ -2113,6 +2129,109 @@ export async function processPriceChangeRequest(
             }
         }
 
+        // NUEVO: Handler para cambios de precio económico/premium (MOVED UP - must execute before extractMultipleHotelPricesFromMessage)
+        if (changeTarget === 'economico' || changeTarget === 'premium') {
+            console.log(`💰 Processing ${changeTarget} price change`);
+
+            // Validar que hay 2+ hoteles
+            if (!analysis.success || !analysis.content ||
+                !analysis.content.hotels || analysis.content.hotels.length < 2) {
+                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                return {
+                    response: `❌ No puedo modificar la ${label} porque el PDF no contiene 2 o más hoteles. Esta opción solo está disponible para PDFs con múltiples opciones de hotel.`
+                };
+            }
+
+            // Extraer precio solicitado
+            const requestedPrice = extractPriceFromMessage(request);
+            if (!requestedPrice) {
+                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                return {
+                    response: `❌ No pude identificar el precio. Por favor especifica un monto, por ejemplo: "cambia la ${label.toLowerCase()} a 2000"`
+                };
+            }
+
+            // Ordenar hoteles por precio
+            const hotelsSortedByPrice = [...analysis.content.hotels].sort((a, b) => a.price - b.price);
+            const targetHotel = changeTarget === 'economico'
+                ? hotelsSortedByPrice[0]
+                : hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
+
+            // Encontrar índice original del hotel
+            const targetHotelIndex = analysis.content.hotels.findIndex(h => h.name === targetHotel.name);
+
+            if (targetHotelIndex < 0) {
+                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                return {
+                    response: `❌ Error interno: no pude identificar el hotel para la ${label}.`
+                };
+            }
+
+            // NUEVA LÓGICA: Ajustar proporcionalmente TODO el paquete (vuelo + hotel)
+            // El precio económico/premium representa el PAQUETE COMPLETO, no solo el hotel
+
+            const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
+            const originalPackagePrice = flightsPrice + targetHotel.price;
+
+            console.log(`📊 Original package price (${changeTarget}): $${originalPackagePrice} (flights: $${flightsPrice} + hotel: $${targetHotel.price})`);
+
+            // Validar precio mínimo razonable ($100 mínimo para un paquete completo)
+            if (requestedPrice < 100) {
+                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                return {
+                    response: `❌ **${label} - Precio Demasiado Bajo**\n\n` +
+                        `El precio de la ${label} de **$${requestedPrice.toFixed(2)} USD** es muy bajo para un paquete completo.\n\n` +
+                        `💡 **Precio mínimo sugerido:** $100 USD\n\n` +
+                        `Por favor, ingresa un precio razonable para el paquete completo (vuelo + hotel).`
+                };
+            }
+
+            // Calcular ratio de ajuste proporcional
+            const adjustmentRatio = requestedPrice / originalPackagePrice;
+            console.log(`🔧 Adjustment ratio: ${adjustmentRatio.toFixed(4)} (${requestedPrice} / ${originalPackagePrice})`);
+
+            // Calcular nuevos precios proporcionalmente
+            const newFlightsPrice = flightsPrice * adjustmentRatio;
+            const newHotelPrice = targetHotel.price * adjustmentRatio;
+
+            console.log(`💰 New prices: flights=$${newFlightsPrice.toFixed(2)}, hotel=$${newHotelPrice.toFixed(2)}, total=$${(newFlightsPrice + newHotelPrice).toFixed(2)}`);
+
+            // Generar PDF modificado solo para la opción solicitada
+            const optionNumber = changeTarget === 'economico' ? 1 : 2;
+            const result = await generateModifiedPdf(
+                analysis,
+                requestedPrice, // Precio total del paquete
+                conversationId,
+                optionNumber as 1 | 2 // Solo modificar esta opción
+            );
+
+            if (result.success && result.pdfUrl) {
+                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                const nights = targetHotel.nights || 7;
+                const pricePerNight = (newHotelPrice / nights).toFixed(2);
+
+                return {
+                    response: `✅ **${label} Modificada**\n\n` +
+                        `📦 **Paquete completo ajustado proporcionalmente:**\n\n` +
+                        `✈️ **Vuelos:** $${newFlightsPrice.toFixed(2)} USD\n` +
+                        `   (ajustado desde $${flightsPrice.toFixed(2)})\n\n` +
+                        `🏨 **Hotel (${label}):** ${targetHotel.name}\n` +
+                        `📍 **Ubicación:** ${targetHotel.location}\n` +
+                        `💰 **Precio hotel:** $${newHotelPrice.toFixed(2)} USD (${nights} ${nights === 1 ? 'noche' : 'noches'})\n` +
+                        `   (ajustado desde $${targetHotel.price.toFixed(2)})\n` +
+                        `💵 **Precio por noche:** $${pricePerNight} USD\n\n` +
+                        `📄 **TOTAL PAQUETE (${label.toUpperCase()}):** $${requestedPrice.toFixed(2)} USD\n\n` +
+                        `Puedes descargar el PDF actualizado desde el archivo adjunto.`,
+                    modifiedPdfUrl: result.pdfUrl
+                };
+            } else {
+                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                return {
+                    response: `❌ **Error generando PDF**\n\nNo pude generar el PDF con la nueva ${label}. Error: ${result.error || 'desconocido'}\n\n¿Podrías intentar nuevamente?`
+                };
+            }
+        }
+
         // NUEVO: Check for multiple hotel price changes
         if (analysis.content?.hotels && analysis.content.hotels.length > 0) {
             const multiHotelChanges = extractMultipleHotelPricesFromMessage(
@@ -2217,109 +2336,6 @@ export async function processPriceChangeRequest(
             } else {
                 return {
                     response: `❌ No pude generar el PDF modificado: ${result.error || 'Error desconocido'}`
-                };
-            }
-        }
-
-        // NUEVO: Handler para cambios de precio económico/premium
-        if (changeTarget === 'economico' || changeTarget === 'premium') {
-            console.log(`💰 Processing ${changeTarget} price change`);
-
-            // Validar que hay 2+ hoteles
-            if (!analysis.success || !analysis.content ||
-                !analysis.content.hotels || analysis.content.hotels.length < 2) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
-                return {
-                    response: `❌ No puedo modificar la ${label} porque el PDF no contiene 2 o más hoteles. Esta opción solo está disponible para PDFs con múltiples opciones de hotel.`
-                };
-            }
-
-            // Extraer precio solicitado
-            const requestedPrice = extractPriceFromMessage(request);
-            if (!requestedPrice) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
-                return {
-                    response: `❌ No pude identificar el precio. Por favor especifica un monto, por ejemplo: "cambia la ${label.toLowerCase()} a 2000"`
-                };
-            }
-
-            // Ordenar hoteles por precio
-            const hotelsSortedByPrice = [...analysis.content.hotels].sort((a, b) => a.price - b.price);
-            const targetHotel = changeTarget === 'economico'
-                ? hotelsSortedByPrice[0]
-                : hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
-
-            // Encontrar índice original del hotel
-            const targetHotelIndex = analysis.content.hotels.findIndex(h => h.name === targetHotel.name);
-
-            if (targetHotelIndex < 0) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
-                return {
-                    response: `❌ Error interno: no pude identificar el hotel para la ${label}.`
-                };
-            }
-
-            // NUEVA LÓGICA: Ajustar proporcionalmente TODO el paquete (vuelo + hotel)
-            // El precio económico/premium representa el PAQUETE COMPLETO, no solo el hotel
-
-            const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
-            const originalPackagePrice = flightsPrice + targetHotel.price;
-
-            console.log(`📊 Original package price (${changeTarget}): $${originalPackagePrice} (flights: $${flightsPrice} + hotel: $${targetHotel.price})`);
-
-            // Validar precio mínimo razonable ($100 mínimo para un paquete completo)
-            if (requestedPrice < 100) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
-                return {
-                    response: `❌ **${label} - Precio Demasiado Bajo**\n\n` +
-                        `El precio de la ${label} de **$${requestedPrice.toFixed(2)} USD** es muy bajo para un paquete completo.\n\n` +
-                        `💡 **Precio mínimo sugerido:** $100 USD\n\n` +
-                        `Por favor, ingresa un precio razonable para el paquete completo (vuelo + hotel).`
-                };
-            }
-
-            // Calcular ratio de ajuste proporcional
-            const adjustmentRatio = requestedPrice / originalPackagePrice;
-            console.log(`🔧 Adjustment ratio: ${adjustmentRatio.toFixed(4)} (${requestedPrice} / ${originalPackagePrice})`);
-
-            // Calcular nuevos precios proporcionalmente
-            const newFlightsPrice = flightsPrice * adjustmentRatio;
-            const newHotelPrice = targetHotel.price * adjustmentRatio;
-
-            console.log(`💰 New prices: flights=$${newFlightsPrice.toFixed(2)}, hotel=$${newHotelPrice.toFixed(2)}, total=$${(newFlightsPrice + newHotelPrice).toFixed(2)}`);
-
-            // Generar PDF modificado solo para la opción solicitada
-            const optionNumber = changeTarget === 'economico' ? 1 : 2;
-            const result = await generateModifiedPdf(
-                analysis,
-                requestedPrice, // Precio total del paquete
-                conversationId,
-                optionNumber as 1 | 2 // Solo modificar esta opción
-            );
-
-            if (result.success && result.pdfUrl) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
-                const nights = targetHotel.nights || 7;
-                const pricePerNight = (newHotelPrice / nights).toFixed(2);
-
-                return {
-                    response: `✅ **${label} Modificada**\n\n` +
-                        `📦 **Paquete completo ajustado proporcionalmente:**\n\n` +
-                        `✈️ **Vuelos:** $${newFlightsPrice.toFixed(2)} USD\n` +
-                        `   (ajustado desde $${flightsPrice.toFixed(2)})\n\n` +
-                        `🏨 **Hotel (${label}):** ${targetHotel.name}\n` +
-                        `📍 **Ubicación:** ${targetHotel.location}\n` +
-                        `💰 **Precio hotel:** $${newHotelPrice.toFixed(2)} USD (${nights} ${nights === 1 ? 'noche' : 'noches'})\n` +
-                        `   (ajustado desde $${targetHotel.price.toFixed(2)})\n` +
-                        `💵 **Precio por noche:** $${pricePerNight} USD\n\n` +
-                        `📄 **TOTAL PAQUETE (${label.toUpperCase()}):** $${requestedPrice.toFixed(2)} USD\n\n` +
-                        `Puedes descargar el PDF actualizado desde el archivo adjunto.`,
-                    modifiedPdfUrl: result.pdfUrl
-                };
-            } else {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
-                return {
-                    response: `❌ **Error generando PDF**\n\nNo pude generar el PDF con la nueva ${label}. Error: ${result.error || 'desconocido'}\n\n¿Podrías intentar nuevamente?`
                 };
             }
         }
