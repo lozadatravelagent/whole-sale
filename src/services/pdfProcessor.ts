@@ -583,17 +583,31 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
 
     // NUEVO: Mostrar Precio Económico/Premium cuando hay 2+ hoteles
     if (content.hotels && content.hotels.length >= 2 && content.flights && content.flights.length > 0) {
-        // Ordenar hoteles por precio
-        const hotelsSortedByPrice = [...content.hotels].sort((a, b) => a.price - b.price);
-        const cheapestHotel = hotelsSortedByPrice[0];
-        const mostExpensiveHotel = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
+        // Check if hotels have package prices (from multi-option PDFs)
+        const option1Hotel = content.hotels.find((h: any) => h.name.match(/\(Opción\s+1\)/i));
+        const option2Hotel = content.hotels.find((h: any) => h.name.match(/\(Opción\s+2\)/i));
 
-        // Calcular precio de vuelos (ya viene corregido de la extracción)
-        const flightsTotalPrice = content.flights.reduce((sum, f) => sum + f.price, 0);
+        let precioEconomico: number;
+        let precioPremium: number;
+        let cheapestHotel: any;
+        let mostExpensiveHotel: any;
 
-        // Calcular precios
-        const precioEconomico = flightsTotalPrice + cheapestHotel.price;
-        const precioPremium = flightsTotalPrice + mostExpensiveHotel.price;
+        if (option1Hotel?.packagePrice && option2Hotel?.packagePrice) {
+            // Use packagePrice directly from options (for regenerated PDFs)
+            precioEconomico = option1Hotel.packagePrice;
+            precioPremium = option2Hotel.packagePrice;
+            cheapestHotel = option1Hotel;
+            mostExpensiveHotel = option2Hotel;
+        } else {
+            // Calculate by summing flights + hotel (original behavior)
+            const hotelsSortedByPrice = [...content.hotels].sort((a, b) => a.price - b.price);
+            cheapestHotel = hotelsSortedByPrice[0];
+            mostExpensiveHotel = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
+
+            const flightsTotalPrice = content.flights.reduce((sum, f) => sum + f.price, 0);
+            precioEconomico = flightsTotalPrice + cheapestHotel.price;
+            precioPremium = flightsTotalPrice + mostExpensiveHotel.price;
+        }
 
         // Mostrar opciones
         response += `💰 **Opciones de Precio:**\n\n`;
@@ -3966,7 +3980,8 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
                 name: uniqueHotelName,
                 location,
                 price: hotelPrice,
-                nights
+                nights,
+                packagePrice: packagePrice  // ✅ Guardar packagePrice para opciones
             });
 
             console.log(`📦 [OPTION ${optionNumber} EXTRACTED]`, {
