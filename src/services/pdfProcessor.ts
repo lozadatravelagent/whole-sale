@@ -658,6 +658,8 @@ function extractPriceFromMessage(message: string): number | null {
         /(?:cambia|cambiar|modifica|modificar|actualiza|actualizar|ajusta|ajustar|pon|poner)(?:\s+el)?\s+precio\s+total\s+(?:a|en|por)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
         /precio\s+total\s+(?:a|en|por|de)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
         /total\s+(?:a|en|por|de)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
+        // Specific pattern for "opción 1/2 a PRICE" - MUST come before generic "cambia precio"
+        /(?:opci[oó]n|opcion)\s+[12]\s+(?:a|en)\s+(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
         /(?:cambia|cambiar|modifica|modificar|actualiza|actualizar|ajusta|ajustar|pon|poner)(?:\s+el)?\s+precio\s+(?:a|en|por)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
         /precio\s+(?:a|en|por|de)?\s*(\d{1,10}(?:[.,]\d{1,3})+|\d+)/gi,
         // Currency patterns
