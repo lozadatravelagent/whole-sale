@@ -592,7 +592,7 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
         let cheapestHotel: any;
         let mostExpensiveHotel: any;
 
-        if (option1Hotel?.packagePrice && option2Hotel?.packagePrice) {
+        if (option1Hotel?.packagePrice !== undefined && option2Hotel?.packagePrice !== undefined) {
             // Use packagePrice directly from options (for regenerated PDFs)
             precioEconomico = option1Hotel.packagePrice;
             precioPremium = option2Hotel.packagePrice;
@@ -629,8 +629,8 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
     response += `Puedes pedirme:\n\n`;
 
     if (content.hotels && content.hotels.length >= 2) {
-        response += `• "Cambia la opción 1 a [cantidad]"\n`;
-        response += `• "Cambia la opción 2 a [cantidad]"\n`;
+        response += `• "Cambia el precio de la opción 1 a [cantidad]"\n`;
+        response += `• "Cambia el precio de la opción 2 a [cantidad]"\n`;
         response += `• "Cambia el precio total a [cantidad]"\n\n`;
     } else {
         response += `• "Cambia el precio total a [cantidad]"\n\n`;
@@ -884,6 +884,68 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
 }
 
 /**
+ * Extract dual option price changes (opción 1 AND opción 2 in the same message)
+ * Returns { option1Price, option2Price } if both are found, null otherwise
+ */
+function extractDualOptionPrices(message: string): { option1Price: number; option2Price: number } | null {
+    console.log('🔄 [DUAL OPTIONS] Checking for dual option price changes:', message);
+
+    // Patterns for option 1
+    const option1Patterns = [
+        /(?:el\s+)?precio\s+de\s+(?:la\s+)?opci[oó]n\s+1\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+        /opci[oó]n\s+1\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+        /(?:la\s+)?opci[oó]n\s+1\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+        /primera?\s+opci[oó]n\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+    ];
+
+    // Patterns for option 2
+    const option2Patterns = [
+        /(?:el\s+)?precio\s+de\s+(?:la\s+)?opci[oó]n\s+2\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+        /opci[oó]n\s+2\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+        /(?:la\s+)?opci[oó]n\s+2\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+        /segunda?\s+opci[oó]n\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+    ];
+
+    let option1Price: number | null = null;
+    let option2Price: number | null = null;
+
+    // Try to match option 1
+    for (const pattern of option1Patterns) {
+        const match = message.match(pattern);
+        if (match) {
+            const price = parsePrice(match[1]);
+            if (price >= 100 && price <= 50000) {
+                option1Price = price;
+                console.log('💰 [DUAL OPTIONS] Option 1 price found:', price);
+                break;
+            }
+        }
+    }
+
+    // Try to match option 2
+    for (const pattern of option2Patterns) {
+        const match = message.match(pattern);
+        if (match) {
+            const price = parsePrice(match[1]);
+            if (price >= 100 && price <= 50000) {
+                option2Price = price;
+                console.log('💰 [DUAL OPTIONS] Option 2 price found:', price);
+                break;
+            }
+        }
+    }
+
+    // Only return if BOTH options were found
+    if (option1Price !== null && option2Price !== null) {
+        console.log('✅ [DUAL OPTIONS] Both options found:', { option1Price, option2Price });
+        return { option1Price, option2Price };
+    }
+
+    console.log('❌ [DUAL OPTIONS] Not a dual option change (found only one or none)');
+    return null;
+}
+
+/**
  * Extract multiple hotel prices from message
  * Supports: position (primer/segundo), price order (más barato/caro), chain name (RIU, Iberostar)
  */
@@ -913,6 +975,10 @@ function extractMultipleHotelPricesFromMessage(
         { regex: /segunda?\s+opci[oó]n\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 2 },
         { regex: /la\s+opci[oó]n\s+1\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 1 },
         { regex: /la\s+opci[oó]n\s+2\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 2 },
+        { regex: /(?:el\s+)?precio\s+de\s+la\s+opci[oó]n\s+1\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 1 },
+        { regex: /(?:el\s+)?precio\s+de\s+la\s+opci[oó]n\s+2\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 2 },
+        { regex: /(?:el\s+)?precio\s+de\s+opci[oó]n\s+1\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 1 },
+        { regex: /(?:el\s+)?precio\s+de\s+opci[oó]n\s+2\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i, position: 2 },
     ];
 
     for (const { regex, position } of optionPatterns) {
@@ -2095,6 +2161,114 @@ export async function processPriceChangeRequest(
         const changeTarget = extractPriceChangeTarget(request);
         console.log('🎯 Price change target detected:', changeTarget);
 
+        // NUEVO: Check for DUAL option price changes (opción 1 AND opción 2 in the same message)
+        const dualOptions = extractDualOptionPrices(request);
+        if (dualOptions) {
+            console.log('💎 [DUAL OPTIONS] Processing dual option price change:', dualOptions);
+
+            // Validate we have 2+ hotels
+            if (!analysis.success || !analysis.content ||
+                !analysis.content.hotels || analysis.content.hotels.length < 2) {
+                return {
+                    response: `❌ No puedo modificar ambas opciones porque el PDF no contiene 2 o más hoteles. Esta función solo está disponible para PDFs con múltiples opciones de hotel.`
+                };
+            }
+
+            // Sort hotels by price to identify economic (cheapest) and premium (most expensive)
+            const hotelsSortedByPrice = [...analysis.content.hotels].sort((a, b) => a.price - b.price);
+            const economicHotel = hotelsSortedByPrice[0];
+            const premiumHotel = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
+
+            console.log('🏨 [DUAL OPTIONS] Economic hotel:', economicHotel.name);
+            console.log('🏨 [DUAL OPTIONS] Premium hotel:', premiumHotel.name);
+
+            // Generate modified PDF with BOTH option prices
+            const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
+
+            // Calculate proportional adjustments for each option
+            const option1OriginalPrice = flightsPrice + economicHotel.price;
+            const option2OriginalPrice = flightsPrice + premiumHotel.price;
+
+            const option1Ratio = dualOptions.option1Price / option1OriginalPrice;
+            const option2Ratio = dualOptions.option2Price / option2OriginalPrice;
+
+            console.log(`📊 [DUAL OPTIONS] Option 1: ${option1OriginalPrice} → ${dualOptions.option1Price} (ratio: ${option1Ratio.toFixed(4)})`);
+            console.log(`📊 [DUAL OPTIONS] Option 2: ${option2OriginalPrice} → ${dualOptions.option2Price} (ratio: ${option2Ratio.toFixed(4)})`);
+
+            // Create modified analysis with BOTH option prices
+            const modifiedAnalysis = { ...analysis };
+            if (modifiedAnalysis.content) {
+                // Clone hotels array
+                modifiedAnalysis.content = {
+                    ...modifiedAnalysis.content,
+                    hotels: analysis.content.hotels?.map((hotel, index) => {
+                        const hotelSortedIndex = hotelsSortedByPrice.findIndex(h => h.name === hotel.name);
+                        const isEconomic = hotel.name === economicHotel.name;
+                        const isPremium = hotel.name === premiumHotel.name;
+
+                        if (isEconomic) {
+                            // Calculate new hotel price proportionally
+                            const newHotelPrice = economicHotel.price * option1Ratio;
+                            console.log(`🏨 [DUAL] Updating Economic hotel: ${hotel.name} from $${hotel.price} to $${newHotelPrice.toFixed(2)}`);
+                            return {
+                                ...hotel,
+                                price: parseFloat(newHotelPrice.toFixed(2)),
+                                _dualOptionModified: true,
+                                _optionNumber: 1,
+                                _totalPackagePrice: dualOptions.option1Price
+                            };
+                        } else if (isPremium) {
+                            // Calculate new hotel price proportionally
+                            const newHotelPrice = premiumHotel.price * option2Ratio;
+                            console.log(`🏨 [DUAL] Updating Premium hotel: ${hotel.name} from $${hotel.price} to $${newHotelPrice.toFixed(2)}`);
+                            return {
+                                ...hotel,
+                                price: parseFloat(newHotelPrice.toFixed(2)),
+                                _dualOptionModified: true,
+                                _optionNumber: 2,
+                                _totalPackagePrice: dualOptions.option2Price
+                            };
+                        }
+
+                        return hotel;
+                    })
+                };
+
+                // Also update flights price to average of both options
+                // This is used for the PDF generation
+                const averageFlightPrice = (dualOptions.option1Price + dualOptions.option2Price) / 2 -
+                    ((economicHotel.price * option1Ratio + premiumHotel.price * option2Ratio) / 2);
+                modifiedAnalysis.content.totalPrice = (dualOptions.option1Price + dualOptions.option2Price) / 2;
+            }
+
+            // Generate single PDF with BOTH modified options
+            // We'll use the average price to maintain the template structure
+            const avgPrice = (dualOptions.option1Price + dualOptions.option2Price) / 2;
+            const result = await generateModifiedPdf(
+                modifiedAnalysis,
+                avgPrice,
+                conversationId
+            );
+
+            if (!result.success || !result.pdfUrl) {
+                return {
+                    response: `❌ **Error generando PDF**\n\nNo pude generar el PDF con ambas opciones modificadas. Error: ${result.error || 'desconocido'}\n\n¿Podrías intentar nuevamente?`
+                };
+            }
+
+            return {
+                response: `✅ **Ambas Opciones Modificadas**\n\n` +
+                    `📦 **Opción 1 (Económica):**\n` +
+                    `🏨 Hotel: ${economicHotel.name}\n` +
+                    `💰 Precio total paquete: $${dualOptions.option1Price.toFixed(2)} USD\n\n` +
+                    `📦 **Opción 2 (Premium):**\n` +
+                    `🏨 Hotel: ${premiumHotel.name}\n` +
+                    `💰 Precio total paquete: $${dualOptions.option2Price.toFixed(2)} USD\n\n` +
+                    `📄 PDF adjunto con ambas opciones actualizadas.`,
+                modifiedPdfUrl: result.pdfUrl
+            };
+        }
+
         // NUEVO: Check for relative adjustments (sumale, restale, +X%, etc.)
         const relativeAdj = extractRelativeAdjustment(request);
         if (relativeAdj) {
@@ -2235,13 +2409,10 @@ export async function processPriceChangeRequest(
                 return {
                     response: `✅ **${label} Modificada**\n\n` +
                         `📦 **Paquete completo ajustado proporcionalmente:**\n\n` +
-                        `✈️ **Vuelos:** $${newFlightsPrice.toFixed(2)} USD\n` +
+                        `✈️ **Nuevo precio:** $${newFlightsPrice.toFixed(2)} USD\n` +
                         `   (ajustado desde $${flightsPrice.toFixed(2)})\n\n` +
                         `🏨 **Hotel (${label}):** ${targetHotel.name}\n` +
                         `📍 **Ubicación:** ${targetHotel.location}\n` +
-                        `💰 **Precio hotel:** $${newHotelPrice.toFixed(2)} USD (${nights} ${nights === 1 ? 'noche' : 'noches'})\n` +
-                        `   (ajustado desde $${targetHotel.price.toFixed(2)})\n` +
-                        `💵 **Precio por noche:** $${pricePerNight} USD\n\n` +
                         `📄 **TOTAL PAQUETE (${label.toUpperCase()}):** $${requestedPrice.toFixed(2)} USD\n\n` +
                         `Puedes descargar el PDF actualizado desde el archivo adjunto.`,
                     modifiedPdfUrl: result.pdfUrl
@@ -3899,9 +4070,16 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
     name: string,
     location: string,
     price: number,
-    nights: number
+    nights: number,
+    packagePrice?: number
 }> {
-    const hotels = [];
+    const hotels: Array<{
+        name: string,
+        location: string,
+        price: number,
+        nights: number,
+        packagePrice?: number
+    }> = [];
 
     // Extract nights duration (shared across all hotels typically)
     const nightsMatch = content.match(/(\d+)\s*(?:Noche|Noches|noche|noches)/i);
