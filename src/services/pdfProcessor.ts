@@ -1109,6 +1109,13 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
         const flight = group[0];
         const lastFlight = group[group.length - 1];
 
+        console.log(`📅 [RECONSTRUCT DATES] Group ${groupIndex + 1}:`, {
+            hasReturn,
+            firstFlight_dates: flight.dates,
+            lastFlight_dates: lastFlight.dates,
+            group_length: group.length
+        });
+
         let departureDate, returnDate;
         if (flight.dates.includes(' / ')) {
             const [dep, ret] = flight.dates.split(' / ');
@@ -1120,6 +1127,8 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
             returnDate = parsed.returnDate;
         }
 
+        console.log(`📅 [DATES PARSED] After first parse:`, { departureDate, returnDate });
+
         // If we have a return flight, use its date
         if (hasReturn && lastFlight.dates) {
             if (lastFlight.dates.includes(' / ')) {
@@ -1129,7 +1138,10 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
                 // If last flight has single date, use it directly
                 returnDate = lastFlight.dates.trim();
             }
+            console.log(`📅 [DATES CORRECTED] After using lastFlight:`, { returnDate });
         }
+
+        console.log(`📅 [FINAL DATES]`, { departureDate, returnDate });
 
         // Get airline code
         const airlineCode = extractAirlineCode(firstFlight.airline);
