@@ -98,7 +98,8 @@ async function getTemplateId(
 export async function generateCombinedTravelPdf(
   selectedFlights: FlightData[],
   selectedHotels: HotelData[] | HotelDataWithSelectedRoom[],
-  agencyId?: string
+  agencyId?: string,
+  isPriceModified?: boolean
 ): Promise<PdfMonkeyResponse> {
   try {
     if (selectedFlights.length === 0 && selectedHotels.length === 0) {
@@ -109,7 +110,7 @@ export async function generateCombinedTravelPdf(
     }
 
     // Prepare combined data for PdfMonkey template
-    const pdfData = prepareCombinedPdfData(selectedFlights, selectedHotels);
+    const pdfData = prepareCombinedPdfData(selectedFlights, selectedHotels, isPriceModified);
 
     console.log('🔍 SELECTED FLIGHTS:', selectedFlights.length);
     console.log('🔍 SELECTED HOTELS:', selectedHotels.length);
@@ -573,7 +574,7 @@ function formatPriceForTemplate(price: number | string): string {
 }
 
 // Function to prepare combined travel data (flights + hotels) for the specific template
-function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | HotelDataWithSelectedRoom[]) {
+function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | HotelDataWithSelectedRoom[], isPriceModified: boolean = false) {
   console.log('🔧 PREPARING COMBINED PDF DATA FOR TEMPLATE');
   console.log('📊 Input:', { flights: flights.length, hotels: hotels.length });
 
@@ -913,7 +914,10 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     option_1_hotel: option1Hotel,
     option_1_total: hasMultipleHotels ? formatPriceForTemplate(option1Total) : null,
     option_2_hotel: option2Hotel,
-    option_2_total: hasMultipleHotels ? formatPriceForTemplate(option2Total) : null
+    option_2_total: hasMultipleHotels ? formatPriceForTemplate(option2Total) : null,
+
+    // 🔄 PRICE MODIFICATION FLAG - Hide hotel prices when regenerating PDF with new price
+    is_price_modified: isPriceModified
   };
 
   console.log('✅ PREPARED TEMPLATE DATA:', {

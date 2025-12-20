@@ -2158,7 +2158,7 @@ export async function generateModifiedPdf(
         if (adjustedHotels.length > 0) {
             // Combined PDF (flights + hotels)
             console.log('📄 Using combined PDF generation (flights + hotels)');
-            pdfResult = await generateCombinedTravelPdf(adjustedFlights, adjustedHotels);
+            pdfResult = await generateCombinedTravelPdf(adjustedFlights, adjustedHotels, undefined, true);
         } else {
             // Flights-only PDF - let generateFlightPdf decide the best template
             console.log('📄 Using flights-only PDF generation with intelligent template selection');
