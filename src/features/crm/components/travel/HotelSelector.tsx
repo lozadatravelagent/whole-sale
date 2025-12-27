@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
+import { calculateHotelPrice } from '../../services/priceCalculator';
 import {
   Hotel,
   MapPin,
@@ -334,8 +335,8 @@ export function HotelSelector({
               <div className="text-right">
                 <div className="text-xl font-bold text-green-600">
                   {selectedHotels.reduce((total, hotel) => {
-                    const room = hotel.rooms?.find(r => r.occupancy_id === selectedRooms[hotel.id]) || hotel.rooms?.[0];
-                    return total + (room?.total_price || 0);
+                    const { total: hotelTotal } = calculateHotelPrice(hotel, selectedRooms[hotel.id]);
+                    return total + hotelTotal;
                   }, 0).toFixed(2)} USD
                 </div>
                 <p className="text-sm text-muted-foreground">Total estimado</p>

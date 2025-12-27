@@ -765,8 +765,10 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   const hasMultipleHotels = hotels.length >= 2;
   let option1Hotel = null;
   let option2Hotel = null;
+  let option3Hotel = null;
   let option1Total = 0;
   let option2Total = 0;
+  let option3Total = 0;
 
   if (hasMultipleHotels) {
     // Check if hotels have package metadata (from pdfProcessor when targetOption is used)
@@ -785,6 +787,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       // Find hotels by option number
       const option1Data = best_hotels.find((h: any) => h._packageMetadata?.optionNumber === 1);
       const option2Data = best_hotels.find((h: any) => h._packageMetadata?.optionNumber === 2);
+      const option3Data = best_hotels.find((h: any) => h._packageMetadata?.optionNumber === 3);
 
       if (option1Data && option2Data) {
         // Use metadata prices (already calculated in pdfProcessor.ts)
@@ -816,6 +819,22 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
           price: formatPriceForTemplate(option2HotelPrice)
         };
 
+        // Process option 3 if exists
+        if (option3Data) {
+          option3Total = option3Data._packageMetadata.totalPackagePrice;
+
+          const option3HotelPrice = typeof option3Data.price === 'string'
+            ? parseFloat(option3Data.price.replace(/\./g, '').replace(',', '.'))
+            : option3Data.price;
+
+          option3Hotel = {
+            name: option3Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
+            stars: option3Data.stars || option3Data.category || '5',
+            location: option3Data.location || option3Data.city || 'Ubicación no especificada',
+            price: formatPriceForTemplate(option3HotelPrice)
+          };
+        }
+
         console.log('💰 [PACKAGE OPTIONS] Using metadata pricing:', {
           hotels_count: hotels.length,
           option_1_hotel: option1Hotel.name,
@@ -825,7 +844,11 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
           option_2_hotel: option2Hotel.name,
           option_2_hotel_price: option2Hotel.price,
           option_2_total: option2Total,
-          option_2_modified: option2Data._packageMetadata.isModified
+          option_2_modified: option2Data._packageMetadata.isModified,
+          option_3_hotel: option3Hotel?.name || null,
+          option_3_hotel_price: option3Hotel?.price || null,
+          option_3_total: option3Total || null,
+          option_3_modified: option3Data?._packageMetadata?.isModified || null
         });
       }
     } else {
@@ -870,15 +893,37 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         price: mostExpensiveHotel.price
       };
 
+      // Process option 3 if there are 3+ hotels (take middle hotel)
+      if (sortedHotels.length >= 3) {
+        const middleIndex = Math.floor(sortedHotels.length / 2);
+        const middleHotel = sortedHotels[middleIndex];
+
+        const middlePrice = typeof middleHotel.price === 'string'
+          ? parseFloat(middleHotel.price.replace(/\./g, '').replace(',', '.'))
+          : middleHotel.price;
+
+        option3Total = totalFlightPrice + middlePrice;
+
+        option3Hotel = {
+          name: middleHotel.name,
+          stars: middleHotel.stars,
+          location: middleHotel.location,
+          price: middleHotel.price
+        };
+      }
+
       console.log('💰 MULTIPLE HOTELS PRICING:', {
         hotels_count: hotels.length,
         cheapest_hotel: cheapestHotel.name,
         cheapest_price: cheapestPrice,
         expensive_hotel: mostExpensiveHotel.name,
         expensive_price: expensivePrice,
+        middle_hotel: option3Hotel?.name || null,
+        middle_price: option3Hotel?.price || null,
         flight_price: totalFlightPrice,
         option_1_total: option1Total,
-        option_2_total: option2Total
+        option_2_total: option2Total,
+        option_3_total: option3Total || null
       });
     }
   }
@@ -915,6 +960,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     option_1_total: hasMultipleHotels ? formatPriceForTemplate(option1Total) : null,
     option_2_hotel: option2Hotel,
     option_2_total: hasMultipleHotels ? formatPriceForTemplate(option2Total) : null,
+    option_3_hotel: option3Hotel,
+    option_3_total: option3Hotel ? formatPriceForTemplate(option3Total) : null,
 
     // 🔄 PRICE MODIFICATION FLAG - Hide hotel prices when regenerating PDF with new price
     is_price_modified: isPriceModified

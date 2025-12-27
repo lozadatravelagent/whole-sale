@@ -1273,9 +1273,9 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
 }
 
 /**
- * Reconstruct HotelData from extracted PDF data  
+ * Reconstruct HotelData from extracted PDF data
  */
-function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, targetOption?: 1 | 2): any[] {
+function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, targetOption?: 1 | 2 | 3): any[] {
     if (!analysis.content?.hotels) return [];
 
     // Check if hotels are package options
@@ -1875,7 +1875,7 @@ export async function generateModifiedPdf(
     analysis: PdfAnalysisResult,
     newPrice: number,
     conversationId: string,
-    targetOption?: 1 | 2 // Optional: which package option to modify (for multi-option PDFs)
+    targetOption?: 1 | 2 | 3 // Optional: which package option to modify (for multi-option PDFs)
 ): Promise<{ success: boolean; pdfUrl?: string; error?: string }> {
     try {
         console.log('🔄 Generating modified PDF with new price:', newPrice);
@@ -2415,14 +2415,14 @@ export async function processPriceChangeRequest(
             }
         }
 
-        // NUEVO: Handler para cambios de precio económico/premium (MOVED UP - must execute before extractMultipleHotelPricesFromMessage)
-        if (changeTarget === 'economico' || changeTarget === 'premium') {
+        // NUEVO: Handler para cambios de precio económico/premium/opcion3 (MOVED UP - must execute before extractMultipleHotelPricesFromMessage)
+        if (changeTarget === 'economico' || changeTarget === 'premium' || changeTarget === 'opcion3') {
             console.log(`💰 Processing ${changeTarget} price change`);
 
             // Validar que hay 2+ hoteles
             if (!analysis.success || !analysis.content ||
                 !analysis.content.hotels || analysis.content.hotels.length < 2) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                const label = changeTarget === 'economico' ? 'Opción 1' : changeTarget === 'premium' ? 'Opción 2' : 'Opción 3';
                 return {
                     response: `❌ No puedo modificar la ${label} porque el PDF no contiene 2 o más hoteles. Esta opción solo está disponible para PDFs con múltiples opciones de hotel.`
                 };
@@ -2431,7 +2431,7 @@ export async function processPriceChangeRequest(
             // Extraer precio solicitado
             const requestedPrice = extractPriceFromMessage(request);
             if (!requestedPrice) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                const label = changeTarget === 'economico' ? 'Opción 1' : changeTarget === 'premium' ? 'Opción 2' : 'Opción 3';
                 return {
                     response: `❌ No pude identificar el precio. Por favor especifica un monto, por ejemplo: "cambia la ${label.toLowerCase()} a 2000"`
                 };
@@ -2439,15 +2439,22 @@ export async function processPriceChangeRequest(
 
             // Ordenar hoteles por precio
             const hotelsSortedByPrice = [...analysis.content.hotels].sort((a, b) => a.price - b.price);
-            const targetHotel = changeTarget === 'economico'
-                ? hotelsSortedByPrice[0]
-                : hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
+            let targetHotel;
+            if (changeTarget === 'economico') {
+                targetHotel = hotelsSortedByPrice[0];
+            } else if (changeTarget === 'premium') {
+                targetHotel = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
+            } else {
+                // opcion3: middle hotel
+                const middleIndex = Math.floor(hotelsSortedByPrice.length / 2);
+                targetHotel = hotelsSortedByPrice[middleIndex];
+            }
 
             // Encontrar índice original del hotel
             const targetHotelIndex = analysis.content.hotels.findIndex(h => h.name === targetHotel.name);
 
             if (targetHotelIndex < 0) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                const label = changeTarget === 'economico' ? 'Opción 1' : changeTarget === 'premium' ? 'Opción 2' : 'Opción 3';
                 return {
                     response: `❌ Error interno: no pude identificar el hotel para la ${label}.`
                 };
@@ -2472,16 +2479,16 @@ export async function processPriceChangeRequest(
             console.log(`💰 New prices: flights=$${newFlightsPrice.toFixed(2)}, hotel=$${newHotelPrice.toFixed(2)}, total=$${(newFlightsPrice + newHotelPrice).toFixed(2)}`);
 
             // Generar PDF modificado solo para la opción solicitada
-            const optionNumber = changeTarget === 'economico' ? 1 : 2;
+            const optionNumber = changeTarget === 'economico' ? 1 : changeTarget === 'premium' ? 2 : changeTarget === 'opcion3' ? 3 : 2;
             const result = await generateModifiedPdf(
                 analysis,
                 requestedPrice, // Precio total del paquete
                 conversationId,
-                optionNumber as 1 | 2 // Solo modificar esta opción
+                optionNumber as 1 | 2 | 3 // Solo modificar esta opción
             );
 
             if (result.success && result.pdfUrl) {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                const label = changeTarget === 'economico' ? 'Opción 1' : changeTarget === 'premium' ? 'Opción 2' : 'Opción 3';
                 const nights = targetHotel.nights || 7;
                 const pricePerNight = (newHotelPrice / nights).toFixed(2);
 
@@ -2497,7 +2504,7 @@ export async function processPriceChangeRequest(
                     modifiedPdfUrl: result.pdfUrl
                 };
             } else {
-                const label = changeTarget === 'economico' ? 'Opción 1' : 'Opción 2';
+                const label = changeTarget === 'economico' ? 'Opción 1' : changeTarget === 'premium' ? 'Opción 2' : 'Opción 3';
                 return {
                     response: `❌ **Error generando PDF**\n\nNo pude generar el PDF con la nueva ${label}. Error: ${result.error || 'desconocido'}\n\n¿Podrías intentar nuevamente?`
                 };
