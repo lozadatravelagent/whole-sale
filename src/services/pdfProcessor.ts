@@ -648,7 +648,12 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
     response += `💬 **¿Qué te gustaría modificar?**\n\n`;
     response += `Puedes pedirme:\n\n`;
 
-    if (content.hotels && content.hotels.length >= 2) {
+    if (content.hotels && content.hotels.length >= 3) {
+        response += `• "Cambia el precio de la opción 1 a [cantidad]"\n`;
+        response += `• "Cambia el precio de la opción 2 a [cantidad]"\n`;
+        response += `• "Cambia el precio de la opción 3 a [cantidad]"\n`;
+        response += `• "Cambia el precio total a [cantidad]"\n\n`;
+    } else if (content.hotels && content.hotels.length >= 2) {
         response += `• "Cambia el precio de la opción 1 a [cantidad]"\n`;
         response += `• "Cambia el precio de la opción 2 a [cantidad]"\n`;
         response += `• "Cambia el precio total a [cantidad]"\n\n`;
