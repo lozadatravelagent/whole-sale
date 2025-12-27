@@ -912,8 +912,8 @@ function extractMultiplePricesFromMessage(message: string): Array<{ position: nu
  * Extract dual option price changes (opción 1 AND opción 2 in the same message)
  * Returns { option1Price, option2Price } if both are found, null otherwise
  */
-function extractDualOptionPrices(message: string): { option1Price: number; option2Price: number } | null {
-    console.log('🔄 [DUAL OPTIONS] Checking for dual option price changes:', message);
+function extractDualOptionPrices(message: string): { option1Price: number; option2Price: number; option3Price?: number } | null {
+    console.log('🔄 [MULTI OPTIONS] Checking for multiple option price changes:', message);
 
     // Patterns for option 1
     const option1Patterns = [
@@ -931,8 +931,17 @@ function extractDualOptionPrices(message: string): { option1Price: number; optio
         /segunda?\s+opci[oó]n\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
     ];
 
+    // Patterns for option 3
+    const option3Patterns = [
+        /(?:el\s+)?precio\s+de\s+(?:la\s+)?opci[oó]n\s+3\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+        /opci[oó]n\s+3\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+        /(?:la\s+)?opci[oó]n\s+3\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+        /tercera?\s+opci[oó]n\s+(?:a|en|por)?\s*\$?(\d[\d.,]*)/i,
+    ];
+
     let option1Price: number | null = null;
     let option2Price: number | null = null;
+    let option3Price: number | null = null;
 
     // Try to match option 1
     for (const pattern of option1Patterns) {
@@ -941,7 +950,7 @@ function extractDualOptionPrices(message: string): { option1Price: number; optio
             const price = parsePrice(match[1]);
             if (price >= 100 && price <= 50000) {
                 option1Price = price;
-                console.log('💰 [DUAL OPTIONS] Option 1 price found:', price);
+                console.log('💰 [MULTI OPTIONS] Option 1 price found:', price);
                 break;
             }
         }
@@ -954,19 +963,39 @@ function extractDualOptionPrices(message: string): { option1Price: number; optio
             const price = parsePrice(match[1]);
             if (price >= 100 && price <= 50000) {
                 option2Price = price;
-                console.log('💰 [DUAL OPTIONS] Option 2 price found:', price);
+                console.log('💰 [MULTI OPTIONS] Option 2 price found:', price);
                 break;
             }
         }
     }
 
-    // Only return if BOTH options were found
-    if (option1Price !== null && option2Price !== null) {
-        console.log('✅ [DUAL OPTIONS] Both options found:', { option1Price, option2Price });
-        return { option1Price, option2Price };
+    // Try to match option 3
+    for (const pattern of option3Patterns) {
+        const match = message.match(pattern);
+        if (match) {
+            const price = parsePrice(match[1]);
+            if (price >= 100 && price <= 50000) {
+                option3Price = price;
+                console.log('💰 [MULTI OPTIONS] Option 3 price found:', price);
+                break;
+            }
+        }
     }
 
-    console.log('❌ [DUAL OPTIONS] Not a dual option change (found only one or none)');
+    // Return if at least 2 options were found (dual or triple)
+    if (option1Price !== null && option2Price !== null) {
+        const result: { option1Price: number; option2Price: number; option3Price?: number } = {
+            option1Price,
+            option2Price
+        };
+        if (option3Price !== null) {
+            result.option3Price = option3Price;
+        }
+        console.log('✅ [MULTI OPTIONS] Multiple options found:', result);
+        return result;
+    }
+
+    console.log('❌ [MULTI OPTIONS] Not a multi-option change (found only one or none)');
     return null;
 }
 
@@ -1990,12 +2019,20 @@ export async function generateModifiedPdf(
                                 packagePrice = newPrice;
                                 console.log(`📦 [METADATA] Option ${optionNumber} (MODIFIED): $${packagePrice}`);
                             } else {
-                                // Original option: vuelo original + hotel original
+                                // Original option: usar packagePrice si existe (precio total del paquete extraído del PDF)
+                                // Si no, calcular sumando vuelo + hotel
                                 const originalHotelData = analysis.content.hotels?.find(h =>
                                     h.name.includes(`(Opción ${optionNumber})`)
                                 );
-                                packagePrice = originalFlightPrice + (originalHotelData?.price || 0);
-                                console.log(`📦 [METADATA] Option ${optionNumber} (ORIGINAL): flight $${originalFlightPrice} + hotel $${originalHotelData?.price} = $${packagePrice}`);
+
+                                // Prioridad: packagePrice > calculado
+                                if ((originalHotelData as any)?.packagePrice) {
+                                    packagePrice = (originalHotelData as any).packagePrice;
+                                    console.log(`📦 [METADATA] Option ${optionNumber} (ORIGINAL from packagePrice): $${packagePrice}`);
+                                } else {
+                                    packagePrice = originalFlightPrice + (originalHotelData?.price || 0);
+                                    console.log(`📦 [METADATA] Option ${optionNumber} (ORIGINAL calculated): flight $${originalFlightPrice} + hotel $${originalHotelData?.price} = $${packagePrice}`);
+                                }
                             }
 
                             return {
@@ -2230,96 +2267,110 @@ export async function processPriceChangeRequest(
         const changeTarget = extractPriceChangeTarget(request);
         console.log('🎯 Price change target detected:', changeTarget);
 
-        // NUEVO: Check for DUAL option price changes (opción 1 AND opción 2 in the same message)
-        const dualOptions = extractDualOptionPrices(request);
-        if (dualOptions) {
-            console.log('💎 [DUAL OPTIONS] Processing dual option price change:', dualOptions);
+        // NUEVO: Check for MULTI option price changes (opción 1, 2, and optionally 3 in the same message)
+        const multiOptions = extractDualOptionPrices(request);
+        if (multiOptions) {
+            const hasOption3 = multiOptions.option3Price !== undefined;
+            console.log(`💎 [MULTI OPTIONS] Processing ${hasOption3 ? 'triple' : 'dual'} option price change:`, multiOptions);
 
-            // Validate we have 2+ hotels
+            // Validate we have enough hotels
+            const requiredHotels = hasOption3 ? 3 : 2;
             if (!analysis.success || !analysis.content ||
-                !analysis.content.hotels || analysis.content.hotels.length < 2) {
+                !analysis.content.hotels || analysis.content.hotels.length < requiredHotels) {
                 return {
-                    response: `❌ No puedo modificar ambas opciones porque el PDF no contiene 2 o más hoteles. Esta función solo está disponible para PDFs con múltiples opciones de hotel.`
+                    response: `❌ No puedo modificar las opciones porque el PDF no contiene ${requiredHotels} o más hoteles. Esta función solo está disponible para PDFs con múltiples opciones de hotel.`
                 };
             }
 
-            // Identify option 1 and option 2 hotels by name
+            // Identify option hotels by name
             const option1Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+1\)/i));
             const option2Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+2\)/i));
+            const option3Hotel = hasOption3 ? analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+3\)/i)) : null;
 
-            if (!option1Hotel || !option2Hotel) {
-                console.log('❌ [DUAL OPTIONS] Could not identify option 1/2 hotels by name');
+            if (!option1Hotel || !option2Hotel || (hasOption3 && !option3Hotel)) {
+                console.log('❌ [MULTI OPTIONS] Could not identify all option hotels by name');
                 return {
-                    response: `❌ No pude identificar las opciones 1 y 2 en el PDF. Verifica que el PDF tenga hoteles con "(Opción 1)" y "(Opción 2)" en el nombre.`
+                    response: `❌ No pude identificar las opciones ${hasOption3 ? '1, 2 y 3' : '1 y 2'} en el PDF. Verifica que el PDF tenga hoteles con "(Opción N)" en el nombre.`
                 };
             }
 
-            console.log('🏨 [DUAL OPTIONS] Option 1 hotel:', option1Hotel.name);
-            console.log('🏨 [DUAL OPTIONS] Option 2 hotel:', option2Hotel.name);
+            console.log('🏨 [MULTI OPTIONS] Option 1 hotel:', option1Hotel.name);
+            console.log('🏨 [MULTI OPTIONS] Option 2 hotel:', option2Hotel.name);
+            if (option3Hotel) {
+                console.log('🏨 [MULTI OPTIONS] Option 3 hotel:', option3Hotel.name);
+            }
 
             // Get original package prices from each option
-            // Use packagePrice if available (from extraction), otherwise calculate
             const option1OriginalPrice = (option1Hotel as any).packagePrice || analysis.content.totalPrice || 0;
             const option2OriginalPrice = (option2Hotel as any).packagePrice || analysis.content.totalPrice || 0;
+            const option3OriginalPrice = option3Hotel ? ((option3Hotel as any).packagePrice || analysis.content.totalPrice || 0) : 0;
 
-            console.log(`📦 [DUAL OPTIONS] Option 1 original package price: $${option1OriginalPrice}`);
-            console.log(`📦 [DUAL OPTIONS] Option 2 original package price: $${option2OriginalPrice}`);
+            console.log(`📦 [MULTI OPTIONS] Option 1 original package price: $${option1OriginalPrice}`);
+            console.log(`📦 [MULTI OPTIONS] Option 2 original package price: $${option2OriginalPrice}`);
+            if (hasOption3) {
+                console.log(`📦 [MULTI OPTIONS] Option 3 original package price: $${option3OriginalPrice}`);
+            }
 
             // Calculate proportional adjustments for each option
-            const option1Ratio = dualOptions.option1Price / option1OriginalPrice;
-            const option2Ratio = dualOptions.option2Price / option2OriginalPrice;
+            const option1Ratio = multiOptions.option1Price / option1OriginalPrice;
+            const option2Ratio = multiOptions.option2Price / option2OriginalPrice;
+            const option3Ratio = hasOption3 && option3OriginalPrice > 0 ? multiOptions.option3Price! / option3OriginalPrice : 1;
 
-            console.log(`📊 [DUAL OPTIONS] Option 1: ${option1OriginalPrice} → ${dualOptions.option1Price} (ratio: ${option1Ratio.toFixed(4)})`);
-            console.log(`📊 [DUAL OPTIONS] Option 2: ${option2OriginalPrice} → ${dualOptions.option2Price} (ratio: ${option2Ratio.toFixed(4)})`);
+            console.log(`📊 [MULTI OPTIONS] Option 1: ${option1OriginalPrice} → ${multiOptions.option1Price} (ratio: ${option1Ratio.toFixed(4)})`);
+            console.log(`📊 [MULTI OPTIONS] Option 2: ${option2OriginalPrice} → ${multiOptions.option2Price} (ratio: ${option2Ratio.toFixed(4)})`);
+            if (hasOption3) {
+                console.log(`📊 [MULTI OPTIONS] Option 3: ${option3OriginalPrice} → ${multiOptions.option3Price} (ratio: ${option3Ratio.toFixed(4)})`);
+            }
 
-            // Create modified analysis with BOTH option prices updated
+            // Create modified analysis with ALL option prices updated
             const modifiedAnalysis = { ...analysis };
             if (modifiedAnalysis.content) {
-                // Clone hotels array and update prices
                 modifiedAnalysis.content = {
                     ...modifiedAnalysis.content,
                     hotels: analysis.content.hotels?.map((hotel) => {
                         const isOption1 = hotel.name === option1Hotel.name;
                         const isOption2 = hotel.name === option2Hotel.name;
+                        const isOption3 = option3Hotel && hotel.name === option3Hotel.name;
 
                         if (isOption1) {
-                            // Calculate new hotel price for option 1
-                            // If hotel price is 0, it means it's included in package price
-                            const newHotelPrice = option1Hotel.price > 0
-                                ? option1Hotel.price * option1Ratio
-                                : 0;
-
-                            console.log(`🏨 [DUAL] Updating Option 1 hotel: ${hotel.name}`);
-                            console.log(`   Package price: $${option1OriginalPrice} → $${dualOptions.option1Price}`);
-                            console.log(`   Hotel price: $${hotel.price} → $${newHotelPrice.toFixed(2)}`);
-
+                            const newHotelPrice = option1Hotel.price > 0 ? option1Hotel.price * option1Ratio : 0;
+                            console.log(`🏨 [MULTI] Updating Option 1 hotel: ${hotel.name}`);
+                            console.log(`   Package price: $${option1OriginalPrice} → $${multiOptions.option1Price}`);
                             return {
                                 ...hotel,
                                 price: parseFloat(newHotelPrice.toFixed(2)),
-                                packagePrice: dualOptions.option1Price, // Update package price
+                                packagePrice: multiOptions.option1Price,
                                 _packageMetadata: {
                                     optionNumber: 1,
-                                    totalPackagePrice: dualOptions.option1Price,
+                                    totalPackagePrice: multiOptions.option1Price,
                                     isModified: true
                                 }
                             };
                         } else if (isOption2) {
-                            // Calculate new hotel price for option 2
-                            const newHotelPrice = option2Hotel.price > 0
-                                ? option2Hotel.price * option2Ratio
-                                : 0;
-
-                            console.log(`🏨 [DUAL] Updating Option 2 hotel: ${hotel.name}`);
-                            console.log(`   Package price: $${option2OriginalPrice} → $${dualOptions.option2Price}`);
-                            console.log(`   Hotel price: $${hotel.price} → $${newHotelPrice.toFixed(2)}`);
-
+                            const newHotelPrice = option2Hotel.price > 0 ? option2Hotel.price * option2Ratio : 0;
+                            console.log(`🏨 [MULTI] Updating Option 2 hotel: ${hotel.name}`);
+                            console.log(`   Package price: $${option2OriginalPrice} → $${multiOptions.option2Price}`);
                             return {
                                 ...hotel,
                                 price: parseFloat(newHotelPrice.toFixed(2)),
-                                packagePrice: dualOptions.option2Price, // Update package price
+                                packagePrice: multiOptions.option2Price,
                                 _packageMetadata: {
                                     optionNumber: 2,
-                                    totalPackagePrice: dualOptions.option2Price,
+                                    totalPackagePrice: multiOptions.option2Price,
+                                    isModified: true
+                                }
+                            };
+                        } else if (isOption3 && option3Hotel) {
+                            const newHotelPrice = option3Hotel.price > 0 ? option3Hotel.price * option3Ratio : 0;
+                            console.log(`🏨 [MULTI] Updating Option 3 hotel: ${hotel.name}`);
+                            console.log(`   Package price: $${option3OriginalPrice} → $${multiOptions.option3Price}`);
+                            return {
+                                ...hotel,
+                                price: parseFloat(newHotelPrice.toFixed(2)),
+                                packagePrice: multiOptions.option3Price!,
+                                _packageMetadata: {
+                                    optionNumber: 3,
+                                    totalPackagePrice: multiOptions.option3Price!,
                                     isModified: true
                                 }
                             };
@@ -2330,12 +2381,15 @@ export async function processPriceChangeRequest(
                 };
 
                 // Update flights to use average price (for template display)
-                const flightsPrice = (analysis.content.flights || []).reduce((sum, f) => sum + f.price, 0);
-                modifiedAnalysis.content.totalPrice = (dualOptions.option1Price + dualOptions.option2Price) / 2;
+                const priceSum = multiOptions.option1Price + multiOptions.option2Price + (multiOptions.option3Price || 0);
+                const optionCount = hasOption3 ? 3 : 2;
+                modifiedAnalysis.content.totalPrice = priceSum / optionCount;
 
                 // Also update flights array with proportional pricing
                 if (modifiedAnalysis.content.flights) {
-                    const avgRatio = ((option1Ratio + option2Ratio) / 2);
+                    const avgRatio = hasOption3
+                        ? (option1Ratio + option2Ratio + option3Ratio) / 3
+                        : (option1Ratio + option2Ratio) / 2;
                     modifiedAnalysis.content.flights = modifiedAnalysis.content.flights.map((flight: any) => ({
                         ...flight,
                         price: parseFloat((flight.price * avgRatio).toFixed(2))
@@ -2343,9 +2397,9 @@ export async function processPriceChangeRequest(
                 }
             }
 
-            // Generate single PDF with BOTH modified options
-            // We'll use the average price to maintain the template structure
-            const avgPrice = (dualOptions.option1Price + dualOptions.option2Price) / 2;
+            // Generate single PDF with ALL modified options
+            const priceSum = multiOptions.option1Price + multiOptions.option2Price + (multiOptions.option3Price || 0);
+            const avgPrice = priceSum / (hasOption3 ? 3 : 2);
             const result = await generateModifiedPdf(
                 modifiedAnalysis,
                 avgPrice,
@@ -2354,21 +2408,32 @@ export async function processPriceChangeRequest(
 
             if (!result.success || !result.pdfUrl) {
                 return {
-                    response: `❌ **Error generando PDF**\n\nNo pude generar el PDF con ambas opciones modificadas. Error: ${result.error || 'desconocido'}\n\n¿Podrías intentar nuevamente?`
+                    response: `❌ **Error generando PDF**\n\nNo pude generar el PDF con las opciones modificadas. Error: ${result.error || 'desconocido'}\n\n¿Podrías intentar nuevamente?`
                 };
             }
 
+            // Build response message
+            const cleanName1 = option1Hotel.name.replace(/\s*\(Opción\s+\d+\)/i, '');
+            const cleanName2 = option2Hotel.name.replace(/\s*\(Opción\s+\d+\)/i, '');
+            let responseMsg = `✅ **${hasOption3 ? 'Todas las Opciones' : 'Ambas Opciones'} Modificadas**\n\n` +
+                `📦 **Opción 1:**\n` +
+                `🏨 Hotel: ${cleanName1}\n` +
+                `💰 Nuevo precio: $${multiOptions.option1Price.toFixed(2)} USD\n\n` +
+                `📦 **Opción 2:**\n` +
+                `🏨 Hotel: ${cleanName2}\n` +
+                `💰 Nuevo precio: $${multiOptions.option2Price.toFixed(2)} USD\n\n`;
+
+            if (hasOption3 && option3Hotel) {
+                const cleanName3 = option3Hotel.name.replace(/\s*\(Opción\s+\d+\)/i, '');
+                responseMsg += `📦 **Opción 3:**\n` +
+                    `🏨 Hotel: ${cleanName3}\n` +
+                    `💰 Nuevo precio: $${multiOptions.option3Price!.toFixed(2)} USD\n\n`;
+            }
+
+            responseMsg += `📄 PDF adjunto con ${hasOption3 ? 'las tres opciones' : 'ambas opciones'} actualizadas.`;
+
             return {
-                response: `✅ **Ambas Opciones Modificadas**\n\n` +
-                    `📦 **Opción 1:**\n` +
-                    `🏨 Hotel: ${option1Hotel.name}\n` +
-                    `💰 Precio total paquete: $${dualOptions.option1Price.toFixed(2)} USD\n` +
-                    `   (modificado desde $${option1OriginalPrice.toFixed(2)})\n\n` +
-                    `📦 **Opción 2:**\n` +
-                    `🏨 Hotel: ${option2Hotel.name}\n` +
-                    `💰 Precio total paquete: $${dualOptions.option2Price.toFixed(2)} USD\n` +
-                    `   (modificado desde $${option2OriginalPrice.toFixed(2)})\n\n` +
-                    `📄 PDF adjunto con ambas opciones actualizadas.`,
+                response: responseMsg,
                 modifiedPdfUrl: result.pdfUrl
             };
         }
@@ -2514,17 +2579,13 @@ export async function processPriceChangeRequest(
 
             if (result.success && result.pdfUrl) {
                 const label = changeTarget === 'economico' ? 'Opción 1' : changeTarget === 'premium' ? 'Opción 2' : 'Opción 3';
-                const nights = targetHotel.nights || 7;
-                const pricePerNight = (newHotelPrice / nights).toFixed(2);
+                // Limpiar nombre del hotel (remover sufijo "(Opción X)")
+                const cleanHotelName = targetHotel.name.replace(/\s*\(Opción\s+\d+\)/i, '');
 
                 return {
                     response: `✅ **${label} Modificada**\n\n` +
-                        `📦 **Paquete completo ajustado proporcionalmente:**\n\n` +
-                        `✈️ **Nuevo precio:** $${newFlightsPrice.toFixed(2)} USD\n` +
-                        `   (ajustado desde $${flightsPrice.toFixed(2)})\n\n` +
-                        `🏨 **Hotel (${label}):** ${targetHotel.name}\n` +
-                        `📍 **Ubicación:** ${targetHotel.location}\n` +
-                        `📄 **TOTAL PAQUETE (${label.toUpperCase()}):** $${requestedPrice.toFixed(2)} USD\n\n` +
+                        `🏨 **Hotel:** ${cleanHotelName}\n` +
+                        `💰 **Nuevo precio total:** $${requestedPrice.toFixed(2)} USD\n\n` +
                         `Puedes descargar el PDF actualizado desde el archivo adjunto.`,
                     modifiedPdfUrl: result.pdfUrl
                 };
