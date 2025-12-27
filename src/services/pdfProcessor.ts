@@ -581,40 +581,60 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
         });
     }
 
-    // NUEVO: Mostrar Precio Económico/Premium cuando hay 2+ hoteles
+    // NUEVO: Mostrar opciones de precio cuando hay 2+ hoteles
     if (content.hotels && content.hotels.length >= 2 && content.flights && content.flights.length > 0) {
         // Check if hotels have package prices (from multi-option PDFs)
         const option1Hotel = content.hotels.find((h: any) => h.name.match(/\(Opción\s+1\)/i));
         const option2Hotel = content.hotels.find((h: any) => h.name.match(/\(Opción\s+2\)/i));
+        const option3Hotel = content.hotels.find((h: any) => h.name.match(/\(Opción\s+3\)/i));
 
-        let precioEconomico: number;
-        let precioPremium: number;
-        let cheapestHotel: any;
-        let mostExpensiveHotel: any;
+        let precio1: number;
+        let precio2: number;
+        let precio3: number | null = null;
+        let hotel1: any;
+        let hotel2: any;
+        let hotel3: any = null;
 
         if (option1Hotel?.packagePrice !== undefined && option2Hotel?.packagePrice !== undefined) {
             // Use packagePrice directly from options (for regenerated PDFs)
-            precioEconomico = option1Hotel.packagePrice;
-            precioPremium = option2Hotel.packagePrice;
-            cheapestHotel = option1Hotel;
-            mostExpensiveHotel = option2Hotel;
+            precio1 = option1Hotel.packagePrice;
+            precio2 = option2Hotel.packagePrice;
+            hotel1 = option1Hotel;
+            hotel2 = option2Hotel;
+
+            if (option3Hotel?.packagePrice !== undefined) {
+                precio3 = option3Hotel.packagePrice;
+                hotel3 = option3Hotel;
+            }
         } else {
             // Calculate by summing flights + hotel (original behavior)
             const hotelsSortedByPrice = [...content.hotels].sort((a, b) => a.price - b.price);
-            cheapestHotel = hotelsSortedByPrice[0];
-            mostExpensiveHotel = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
+            hotel1 = hotelsSortedByPrice[0];
+            hotel2 = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
 
             const flightsTotalPrice = content.flights.reduce((sum, f) => sum + f.price, 0);
-            precioEconomico = flightsTotalPrice + cheapestHotel.price;
-            precioPremium = flightsTotalPrice + mostExpensiveHotel.price;
+            precio1 = flightsTotalPrice + hotel1.price;
+            precio2 = flightsTotalPrice + hotel2.price;
+
+            // Si hay 3+ hoteles, tomar el del medio
+            if (hotelsSortedByPrice.length >= 3) {
+                const middleIndex = Math.floor(hotelsSortedByPrice.length / 2);
+                hotel3 = hotelsSortedByPrice[middleIndex];
+                precio3 = flightsTotalPrice + hotel3.price;
+            }
         }
 
         // Mostrar opciones
         response += `💰 **Opciones de Precio:**\n\n`;
-        response += `• **Opción 1:** $${precioEconomico.toFixed(2)} ${content.currency || 'USD'}\n`;
-        response += `  (${cheapestHotel.name} - $${cheapestHotel.price.toFixed(2)})\n\n`;
-        response += `• **Opción 2:** $${precioPremium.toFixed(2)} ${content.currency || 'USD'}\n`;
-        response += `  (${mostExpensiveHotel.name} - $${mostExpensiveHotel.price.toFixed(2)})\n\n`;
+        response += `• **Opción 1:** $${precio1.toFixed(2)} ${content.currency || 'USD'}\n`;
+        response += `  (${hotel1.name.replace(/\s*\(Opción\s+\d+\)/i, '')})\n\n`;
+        response += `• **Opción 2:** $${precio2.toFixed(2)} ${content.currency || 'USD'}\n`;
+        response += `  (${hotel2.name.replace(/\s*\(Opción\s+\d+\)/i, '')})\n\n`;
+
+        if (hotel3 && precio3 !== null) {
+            response += `• **Opción 3:** $${precio3.toFixed(2)} ${content.currency || 'USD'}\n`;
+            response += `  (${hotel3.name.replace(/\s*\(Opción\s+\d+\)/i, '')})\n\n`;
+        }
     } else if (content.totalPrice) {
         // Comportamiento original para 0-1 hoteles
         response += `💰 **Precio Total:** $${content.totalPrice} ${content.currency || 'USD'}  \n`;

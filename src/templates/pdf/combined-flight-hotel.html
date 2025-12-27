@@ -5,6 +5,89 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flight & Hotel Information</title>
+  <style>
+    /* Estilos para layout de 3 opciones de hotel */
+    .hotel-options-grid {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .hotel-option-card {
+      flex: 1;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 10px;
+      background: #fafafa;
+    }
+
+    .hotel-option-header {
+      border-bottom: 1px solid #e0e0e0;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+
+    .hotel-option-title {
+      font-weight: bold;
+      font-size: 12px;
+      color: #333;
+    }
+
+    .hotel-option-price {
+      font-size: 16px;
+      font-weight: bold;
+      color: #2563eb;
+      margin-top: 4px;
+    }
+
+    .hotel-option-content {
+      font-size: 11px;
+    }
+
+    .hotel-option-name {
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+
+    .hotel-option-stars,
+    .hotel-option-location {
+      color: #666;
+      font-size: 10px;
+      margin-bottom: 2px;
+    }
+
+    .shared-flights {
+      margin-bottom: 10px !important;
+    }
+
+    .shared-flights .package-section {
+      margin: 0 !important;
+      text-align: center !important;
+    }
+
+    .shared-flights .section-content {
+      text-align: center !important;
+      display: block !important;
+    }
+
+    .shared-flights .section-title {
+      text-align: center !important;
+      display: block !important;
+    }
+
+    .shared-flights .sc-row {
+      display: block !important;
+      text-align: center !important;
+      width: 100% !important;
+    }
+
+    .shared-flights .sc-text {
+      text-align: center !important;
+      display: inline !important;
+      width: auto !important;
+    }
+  </style>
 </head>
 
 <body>
@@ -55,12 +138,108 @@
         <h2 class="combinations-title">INCLUYE</h2>
 
         {% if has_multiple_hotels %}
-        <!-- MULTI-HOTEL MODE: Two comparative options -->
+        <!-- MULTI-HOTEL MODE -->
+
+        {% if option_3_hotel %}
+        <!-- THREE OPTIONS: Compact layout with shared flight info -->
+
+        <!-- Vuelos compartidos (una sola vez) -->
+        <div class="package-card best-deal shared-flights">
+          <div class="package-section">
+            <div class="section-title">
+              <span class="section-icon">✈️</span>
+              Vuelos {{ selected_flights[0].airline.name }}
+            </div>
+            <div class="section-content">
+              <div class="sc-row">
+                <div class="sc-text">
+                  {{ selected_flights[0].legs[0].departure.city_name }} ⇄ {{
+                  selected_flights[0].legs[0].arrival.city_name }}
+                </div>
+              </div>
+              <div class="sc-row">
+                <div class="sc-text">{{ selected_flights[0].legs[0].flight_type }}</div>
+              </div>
+              <div class="sc-row">
+                <div class="sc-text">
+                  {% if selected_flights[0].luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif %}
+                </div>
+              </div>
+              {% if _tr_norm > 0 %}
+              <div class="sc-row">
+                <div class="sc-text">🚐 Traslados incluidos</div>
+              </div>
+              {% endif %}
+              {% if _ta_norm > 0 %}
+              <div class="sc-row">
+                <div class="sc-text">🏥 Asistencia médica incluida</div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Tres opciones de hotel en columnas -->
+        <div class="hotel-options-grid">
+          <!-- Opción 1 -->
+          <div class="hotel-option-card">
+            <div class="hotel-option-header">
+              <div class="hotel-option-title">Opción 1</div>
+              <div class="hotel-option-price">
+                {% assign _opt1_str = option_1_total | default: 0 %}
+                {% assign _opt1 = _opt1_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+                ${{ _opt1 }} {{ total_currency }}
+              </div>
+            </div>
+            <div class="hotel-option-content">
+              <div class="hotel-option-name">🏨 {{ option_1_hotel.name }}</div>
+              <div class="hotel-option-stars">{{ option_1_hotel.stars }} estrellas</div>
+              <div class="hotel-option-location">{{ option_1_hotel.location }}</div>
+            </div>
+          </div>
+
+          <!-- Opción 2 -->
+          <div class="hotel-option-card">
+            <div class="hotel-option-header">
+              <div class="hotel-option-title">Opción 2</div>
+              <div class="hotel-option-price">
+                {% assign _opt2_str = option_2_total | default: 0 %}
+                {% assign _opt2 = _opt2_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+                ${{ _opt2 }} {{ total_currency }}
+              </div>
+            </div>
+            <div class="hotel-option-content">
+              <div class="hotel-option-name">🏨 {{ option_2_hotel.name }}</div>
+              <div class="hotel-option-stars">{{ option_2_hotel.stars }} estrellas</div>
+              <div class="hotel-option-location">{{ option_2_hotel.location }}</div>
+            </div>
+          </div>
+
+          <!-- Opción 3 -->
+          <div class="hotel-option-card">
+            <div class="hotel-option-header">
+              <div class="hotel-option-title">Opción 3</div>
+              <div class="hotel-option-price">
+                {% assign _opt3_str = option_3_total | default: 0 %}
+                {% assign _opt3 = _opt3_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+                ${{ _opt3 }} {{ total_currency }}
+              </div>
+            </div>
+            <div class="hotel-option-content">
+              <div class="hotel-option-name">🏨 {{ option_3_hotel.name }}</div>
+              <div class="hotel-option-stars">{{ option_3_hotel.stars }} estrellas</div>
+              <div class="hotel-option-location">{{ option_3_hotel.location }}</div>
+            </div>
+          </div>
+        </div>
+
+        {% else %}
+        <!-- TWO OPTIONS: Original vertical layout -->
 
         <!-- Opción Económica (cheapest hotel) -->
         <div class="package-card best-deal">
           <div class="package-header">
-            <div class="package-title">Opción Económica</div>
+            <div class="package-title">Opción 1</div>
             <div class="package-price">
               {% assign _opt1_str = option_1_total | default: 0 %}
               {% assign _opt1 = _opt1_str | replace: ".", "" | replace: ",", "." | times: 1 %}
@@ -128,10 +307,6 @@
                   <div class="sc-icon"></div>
                   <div class="sc-text">{{ option_1_hotel.location }}</div>
                 </div>
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">Precio: ${{ option_1_hotel.price }} {{ selected_flights[0].price.currency }}</div>
-                </div>
                 </br>
 
                 {% if _ta_norm > 0 %}
@@ -148,7 +323,7 @@
         <!-- Opción Premium (most expensive hotel) -->
         <div class="package-card best-deal">
           <div class="package-header">
-            <div class="package-title">Opción Premium</div>
+            <div class="package-title">Opción 2</div>
             <div class="package-price">
               {% assign _opt2_str = option_2_total | default: 0 %}
               {% assign _opt2 = _opt2_str | replace: ".", "" | replace: ",", "." | times: 1 %}
@@ -216,10 +391,6 @@
                   <div class="sc-icon"></div>
                   <div class="sc-text">{{ option_2_hotel.location }}</div>
                 </div>
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">Precio: ${{ option_2_hotel.price }} {{ selected_flights[0].price.currency }}</div>
-                </div>
                 </br>
 
                 {% if _ta_norm > 0 %}
@@ -232,6 +403,7 @@
             </div>
           </div>
         </div>
+        {% endif %}
 
         {% else %}
         <!-- SINGLE HOTEL MODE: Original behavior -->
@@ -310,10 +482,6 @@
                 <div class="sc-row">
                   <div class="sc-icon"></div>
                   <div class="sc-text">{{ best_hotels[0].location }}</div>
-                </div>
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">Precio: ${{ best_hotels[0].price }} {{ selected_flights[0].price.currency }}</div>
                 </div>
                 </br>
 
