@@ -331,11 +331,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         return newSelected;
       }
 
-      // Limit to maximum 2 hotels
-      if (prev.length >= 2) {
+      // Limit to maximum 3 hotels
+      if (prev.length >= 3) {
         toast({
           title: "Límite alcanzado",
-          description: "Solo puedes seleccionar máximo 2 hoteles para el PDF.",
+          description: "Solo puedes seleccionar máximo 3 hoteles para el PDF.",
           variant: "destructive",
         });
         return prev;
