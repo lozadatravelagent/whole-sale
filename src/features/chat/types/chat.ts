@@ -204,6 +204,9 @@ export interface LocalHotelData {
     availability?: number;
     occupancy_id?: string;
   }>;
+  // Search params - occupancy requested by user (for PDF generation)
+  search_adults?: number;
+  search_children?: number;
 }
 
 export interface LocalCombinedTravelResults {
@@ -213,6 +216,8 @@ export interface LocalCombinedTravelResults {
   // Hotel filter preferences from user request
   requestedRoomType?: 'single' | 'double' | 'triple';
   requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
+  // Flight search ID for localStorage lookup (dynamic filtering)
+  flightSearchId?: string;
 }
 
 export interface LocalPackageData {

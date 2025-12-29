@@ -237,12 +237,17 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
         check_out: hotel.check_out || (localData.flights.length > 0 && localData.flights[0].return_date
           ? localData.flights[0].return_date
           : new Date(Date.now() + 86400000 * hotel.nights).toISOString().split('T')[0]),
-        nights: hotel.nights
+        nights: hotel.nights,
+        // Preserve search params for PDF occupancy (hotel-only mode)
+        search_adults: hotel.search_adults,
+        search_children: hotel.search_children
       })),
       requestType: localData.requestType,
       // Pass filter preferences through to UI
       requestedRoomType: localData.requestedRoomType,
-      requestedMealPlan: localData.requestedMealPlan
+      requestedMealPlan: localData.requestedMealPlan,
+      // Pass flight search ID for localStorage lookup (dynamic filtering)
+      flightSearchId: localData.flightSearchId
     };
   };
 
@@ -255,6 +260,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
     combinedTravelData?.hotels?.length,
     combinedTravelData?.requestedRoomType,
     combinedTravelData?.requestedMealPlan,
+    combinedTravelData?.flightSearchId,
     msg.id // Use message ID as stable dependency
   ]);
 
