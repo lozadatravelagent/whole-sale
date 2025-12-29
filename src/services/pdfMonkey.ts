@@ -694,9 +694,36 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   const checkoutDate = new Date(checkout);
   const nights = Math.floor((checkoutDate.getTime() - checkinDate.getTime()) / (1000 * 60 * 60 * 24));
 
-  // Get passenger info from first flight
-  const adults = firstFlight?.adults || 1;
-  const childrens = firstFlight?.childrens || 0;
+  // Detect if this is a hotel-only PDF (no flights)
+  const hasFlights = flights.length > 0;
+
+  // Get passenger info: from flight if available, otherwise from hotel's selected room
+  let adults = 1;
+  let childrens = 0;
+  let infants = 0;
+
+  if (firstFlight) {
+    // Get from flight data
+    adults = firstFlight.adults || 1;
+    childrens = firstFlight.childrens || 0;
+  } else if (firstHotel) {
+    // For hotel-only PDFs, extract occupancy from the selected room
+    const hotelWithRoom = firstHotel as HotelDataWithSelectedRoom;
+    const roomToUse = hotelWithRoom.selectedRoom || firstHotel.rooms?.[0];
+
+    if (roomToUse) {
+      adults = roomToUse.adults || 1;
+      childrens = roomToUse.children || 0;
+      infants = roomToUse.infants || 0;
+
+      console.log('👥 [HOTEL-ONLY] Extracted occupancy from room:', {
+        room_type: roomToUse.type,
+        adults,
+        children: childrens,
+        infants
+      });
+    }
+  }
 
   // Calculate total price (flights + hotels)
   let totalFlightPrice = 0;
@@ -928,6 +955,9 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     }
   }
 
+  // Extract hotel destination for hotel-only PDFs
+  const hotelDestination = firstHotel?.city || firstHotel?.address?.split(',')[0] || 'Destino';
+
   // Template-specific data structure (OBJETO DIRECTO, no array)
   const template_data = {
     // Core flight data (as expected by template)
@@ -936,11 +966,18 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     // Core hotel data (as expected by template)
     best_hotels,
 
+    // ✈️ HOTEL-ONLY MODE SUPPORT - Flag to hide flight sections
+    has_flights: hasFlights,
+
+    // 🏨 Hotel destination for hotel-only PDFs
+    hotel_destination: hotelDestination,
+
     // Template-specific variables
     checkin,
     checkout,
     adults,
     childrens,
+    infants,
 
     // Total pricing (transfers and assistance are included in package price)
     total_price: formatPriceForTemplate(grandTotalWithServices),
@@ -969,12 +1006,16 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
   console.log('✅ PREPARED TEMPLATE DATA:', {
     is_array: Array.isArray(template_data),
+    has_flights: template_data.has_flights,
+    hotel_only_mode: !template_data.has_flights,
     selected_flights: template_data.selected_flights.length,
     best_hotels: template_data.best_hotels.length,
+    hotel_destination: template_data.hotel_destination,
     checkin: template_data.checkin,
     checkout: template_data.checkout,
     adults: template_data.adults,
     childrens: template_data.childrens,
+    infants: template_data.infants,
     total_price: template_data.total_price,
     total_currency: template_data.total_currency,
     flight_price: template_data.flight_price,

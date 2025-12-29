@@ -110,8 +110,8 @@
         <div class="trip-details">
           <div class="trip-detail">
             <div class="trip-detail-label">Destino</div>
-            <div class="trip-detail-value">{{ selected_flights[0].legs[0].departure.city_code }} -- {{
-              selected_flights[0].legs[0].arrival.city_code }}</div>
+            <div class="trip-detail-value">{% if has_flights %}{{ selected_flights[0].legs[0].departure.city_code }} -- {{
+              selected_flights[0].legs[0].arrival.city_code }}{% else %}{{ hotel_destination }}{% endif %}</div>
           </div>
           <div class="trip-detail">
             <div class="trip-detail-label">Fechas</div>
@@ -120,7 +120,8 @@
           <div class="trip-detail">
             <div class="trip-detail-label">Pasajeros</div>
             <div class="trip-detail-value">{{ adults }} {% if adults == 1 %}Adulto{% else %}Adultos{% endif %}{% if
-              childrens > 0 %} {{ childrens }} {% if childrens == 1 %}Niño{% else %}Niños{% endif %}{% endif %}</div>
+              childrens > 0 %}, {{ childrens }} {% if childrens == 1 %}Niño{% else %}Niños{% endif %}{% endif %}{% if
+              infants > 0 %}, {{ infants }} {% if infants == 1 %}Infante{% else %}Infantes{% endif %}{% endif %}</div>
           </div>
           <div class="trip-detail">
             <div class="trip-detail-label">Duración</div>
@@ -143,7 +144,8 @@
         {% if option_3_hotel %}
         <!-- THREE OPTIONS: Compact layout with shared flight info -->
 
-        <!-- Vuelos compartidos (una sola vez) -->
+        {% if has_flights %}
+        <!-- Vuelos compartidos (una sola vez) - Solo si hay vuelos -->
         <div class="package-card best-deal shared-flights">
           <div class="package-section">
             <div class="section-title">
@@ -178,6 +180,7 @@
             </div>
           </div>
         </div>
+        {% endif %}
 
         <!-- Tres opciones de hotel en columnas -->
         <div class="hotel-options-grid">
@@ -248,7 +251,8 @@
           </div>
 
           <div class="package-details">
-            <!-- VUELOS -->
+            {% if has_flights %}
+            <!-- VUELOS - Solo si hay vuelos -->
             <div class="package-section">
               <div class="section-title">
                 <span class="section-icon">✈️</span>
@@ -286,6 +290,7 @@
                 {% endif %}
               </div>
             </div>
+            {% endif %}
 
             <!-- HOTEL ECONÓMICO -->
             <div class="package-section">
@@ -332,7 +337,8 @@
           </div>
 
           <div class="package-details">
-            <!-- VUELOS -->
+            {% if has_flights %}
+            <!-- VUELOS - Solo si hay vuelos -->
             <div class="package-section">
               <div class="section-title">
                 <span class="section-icon">✈️</span>
@@ -370,6 +376,7 @@
                 {% endif %}
               </div>
             </div>
+            {% endif %}
 
             <!-- HOTEL PREMIUM -->
             <div class="package-section">
@@ -424,7 +431,8 @@
           </div>
 
           <div class="package-details">
-            <!-- VUELOS -->
+            {% if has_flights %}
+            <!-- VUELOS - Solo si hay vuelos -->
             <div class="package-section">
               <div class="section-title">
                 <span class="section-icon">✈️</span>
@@ -462,6 +470,7 @@
                 {% endif %}
               </div>
             </div>
+            {% endif %}
 
             <!-- HOTEL RECOMENDADO -->
             <div class="package-section">
@@ -518,8 +527,8 @@
         </div>
         {% endif %}
 
-        <!-- Package Option 2: Alternative Hotel 1 -->
-        {% if best_hotels[0] and best_hotels[0].alternatives and best_hotels[0].alternatives[0] %}
+        <!-- Package Option 2: Alternative Hotel 1 - Solo si hay vuelos -->
+        {% if has_flights and best_hotels[0] and best_hotels[0].alternatives and best_hotels[0].alternatives[0] %}
         <div class="package-card">
           <div class="package-header">
             <div class="package-title">Paquete Alternativo 1</div>
@@ -594,8 +603,8 @@
         </div>
         {% endif %}
 
-        <!-- Package Option 3: Alternative Hotel 2 -->
-        {% if best_hotels[0] and best_hotels[0].alternatives and best_hotels[0].alternatives[1] %}
+        <!-- Package Option 3: Alternative Hotel 2 - Solo si hay vuelos -->
+        {% if has_flights and best_hotels[0] and best_hotels[0].alternatives and best_hotels[0].alternatives[1] %}
         <div class="package-card">
           <div class="package-header">
             <div class="package-title">Paquete Alternativo 2</div>
@@ -680,7 +689,8 @@
     </div>
   </div>
 
-  <!-- FLIGHT PAGES -->
+  <!-- FLIGHT PAGES - Solo si hay vuelos -->
+  {% if has_flights %}
   {% for flight in selected_flights %}
   <div class="page">
     <div class="content">
@@ -693,7 +703,7 @@
               <div class="price-amount">{{ flight.airline.name }}</div>
               <div class="no-adults-box">
                 <span class="detail-label">Ocupación:</span>
-                <span class="detail-value">{{ flight.adults }} adultos {{ flight.childrens }} niños</span>
+                <span class="detail-value">{{ flight.adults }} adultos{% if flight.childrens > 0 %}, {{ flight.childrens }} niños{% endif %}</span>
               </div>
             </div>
           </div>
@@ -798,6 +808,7 @@
     </div>
   </div>
   {% endfor %}
+  {% endif %}
 
   <!-- HOTEL PAGES -->
   {% unless has_multiple_hotels %}
@@ -827,7 +838,7 @@
         <div class="detail-row">
           <div class="detail-icon">👥</div>
           <span class="detail-label">Ocupación:</span>
-          <span class="detail-value">{{ adults }} adultos {{ childrens }} niños</span>
+          <span class="detail-value">{{ adults }} {% if adults == 1 %}adulto{% else %}adultos{% endif %}{% if childrens > 0 %}, {{ childrens }} {% if childrens == 1 %}niño{% else %}niños{% endif %}{% endif %}{% if infants > 0 %}, {{ infants }} {% if infants == 1 %}infante{% else %}infantes{% endif %}{% endif %}</span>
         </div>
       </div>
 

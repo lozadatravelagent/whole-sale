@@ -472,6 +472,9 @@ export interface HotelData {
   nights: number;
   policy_cancellation?: string;
   policy_lodging?: string;
+  // Search params - occupancy requested by user (for PDF generation)
+  search_adults?: number;
+  search_children?: number;
 }
 
 // Extended hotel data with selected room for PDF generation
@@ -502,6 +505,8 @@ export interface CombinedTravelResults {
   // Hotel filter preferences from user request
   requestedRoomType?: 'single' | 'double' | 'triple';
   requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
+  // Flight search ID for localStorage lookup (dynamic filtering)
+  flightSearchId?: string;
 }
 
 // EUROVIPS WebService types
