@@ -697,33 +697,37 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   // Detect if this is a hotel-only PDF (no flights)
   const hasFlights = flights.length > 0;
 
-  // Get passenger info: from flight if available, otherwise from hotel's selected room
+  // Get passenger info: from flight if available, otherwise from hotel's search params
   let adults = 1;
   let childrens = 0;
   let infants = 0;
 
   if (firstFlight) {
-    // Get from flight data
-    adults = firstFlight.adults || 1;
-    childrens = firstFlight.childrens || 0;
+    // Get from flight data (matches the search input)
+    adults = firstFlight.adults ?? 1;
+    childrens = firstFlight.childrens ?? 0;
   } else if (firstHotel) {
-    // For hotel-only PDFs, extract occupancy from the selected room
-    const hotelWithRoom = firstHotel as HotelDataWithSelectedRoom;
-    const roomToUse = hotelWithRoom.selectedRoom || firstHotel.rooms?.[0];
+    // For hotel-only PDFs, use search_adults/search_children from hotel
+    // These come from the original search params, not from room capacity
+    adults = firstHotel.search_adults ?? 1;
+    childrens = firstHotel.search_children ?? 0;
 
-    if (roomToUse) {
-      adults = roomToUse.adults || 1;
-      childrens = roomToUse.children || 0;
-      infants = roomToUse.infants || 0;
-
-      console.log('👥 [HOTEL-ONLY] Extracted occupancy from room:', {
-        room_type: roomToUse.type,
-        adults,
-        children: childrens,
-        infants
-      });
-    }
+    console.log('👥 [HOTEL-ONLY] Using search params from hotel:', {
+      hotel_name: firstHotel.name,
+      search_adults: firstHotel.search_adults,
+      search_children: firstHotel.search_children,
+      final_adults: adults,
+      final_children: childrens
+    });
   }
+
+  // Log the final occupancy being used
+  console.log('👥 [PDF] Final occupancy for PDF:', {
+    source: hasFlights ? 'flight' : 'hotel_search_params',
+    adults,
+    childrens,
+    infants
+  });
 
   // Calculate total price (flights + hotels)
   let totalFlightPrice = 0;
