@@ -10,7 +10,7 @@ import { FlightData, HotelData, HotelDataWithSelectedRoom, CombinedTravelResults
 import { generateFlightPdf, generateCombinedTravelPdf } from '@/services/pdfMonkey';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import { useSearchResultsCache } from '@/features/chat/hooks/useSearchResultsCache';
-import { FilterChips } from '@/features/chat/components/FilterChips';
+import { FilterChips } from '@/features/chat/components';
 import {
   Plane,
   Hotel,
