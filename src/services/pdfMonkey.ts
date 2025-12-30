@@ -573,6 +573,14 @@ function formatPriceForTemplate(price: number | string): string {
   });
 }
 
+// Helper function to extract star rating from EUROVIPS category format
+// EUROVIPS returns category as "3*", "4*", "5*", etc. or text like "Standard"
+function extractStars(category: string | undefined): string {
+  if (!category) return "5";
+  const match = category.match(/(\d+)/);
+  return match ? match[1] : "5";
+}
+
 // Function to prepare combined travel data (flights + hotels) for the specific template
 function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | HotelDataWithSelectedRoom[], isPriceModified: boolean = false) {
   console.log('🔧 PREPARING COMBINED PDF DATA FOR TEMPLATE');
@@ -667,8 +675,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
     const hotelForTemplate: any = {
       name: hotel.name,
-      stars: hotel.category || "5", // Default to 5 stars like the example
-      location: hotel.address || `${hotel.city}, República Dominicana`, // Full address format
+      stars: extractStars(hotel.category), // Extract number from EUROVIPS format "3*", "4*", etc.
+      location: hotel.address || hotel.city, // Use address if available, otherwise just city
       price: formatPriceForTemplate(priceForAllNights), // Formato europeo - precio total por todas las noches
       link: `https://wholesale-connect.com/hotel/${hotel.id}` // Placeholder link
     };
@@ -838,14 +846,14 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         // Prepare hotel data for template (remove "(Opción X)" from names)
         option1Hotel = {
           name: option1Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
-          stars: option1Data.stars || option1Data.category || '5',
+          stars: option1Data.stars || extractStars(option1Data.category),
           location: option1Data.location || option1Data.city || 'Ubicación no especificada',
           price: formatPriceForTemplate(option1HotelPrice)
         };
 
         option2Hotel = {
           name: option2Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
-          stars: option2Data.stars || option2Data.category || '5',
+          stars: option2Data.stars || extractStars(option2Data.category),
           location: option2Data.location || option2Data.city || 'Ubicación no especificada',
           price: formatPriceForTemplate(option2HotelPrice)
         };
@@ -860,7 +868,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
           option3Hotel = {
             name: option3Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
-            stars: option3Data.stars || option3Data.category || '5',
+            stars: option3Data.stars || extractStars(option3Data.category),
             location: option3Data.location || option3Data.city || 'Ubicación no especificada',
             price: formatPriceForTemplate(option3HotelPrice)
           };
