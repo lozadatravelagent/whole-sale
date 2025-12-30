@@ -22,6 +22,7 @@ export interface PdfAnalysisResult {
             location: string;
             price: number;
             nights: number;
+            category?: string;
         }>;
         totalPrice?: number;
         currency?: string;
@@ -1430,7 +1431,7 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
             name: hotel.name,
             city: hotel.location,
             address: hotel.location,
-            category: "4",
+            category: hotel.category || "5",
             nights: hotel.nights,
             check_in: checkIn,
             check_out: checkOut,
@@ -1693,7 +1694,7 @@ export async function generateModifiedPdfWithHotelPrice(
                 name: hotel.name,
                 city: hotel.location,
                 address: hotel.location,
-                category: '5', // Default category
+                category: hotel.category || '5',
                 check_in: checkIn,
                 check_out: checkOut,
                 nights: hotel.nights || 7,
@@ -1857,7 +1858,7 @@ async function generateModifiedPdfWithMultipleHotelPrices(
                 name: hotel.name,
                 city: hotel.location,
                 address: hotel.location,
-                category: '5', // Default category
+                category: hotel.category || '5',
                 check_in: checkIn,
                 check_out: checkOut,
                 nights: hotel.nights || 7,
@@ -2151,7 +2152,7 @@ export async function generateModifiedPdf(
                     name: hotel.name,
                     city: hotel.location,
                     address: hotel.location,
-                    category: '4',
+                    category: hotel.category || '5',
                     nights: hotel.nights || 0,
                     check_in: checkIn,
                     check_out: checkOut,
@@ -3282,8 +3283,8 @@ function extractFlightInfo(text: string): Array<{
 /**
  * Extract hotel information from PDF text
  */
-function extractHotelInfo(text: string): Array<{ name: string, location: string, price: number, nights: number }> {
-    const hotels: Array<{ name: string, location: string, price: number, nights: number }> = [];
+function extractHotelInfo(text: string): Array<{ name: string, location: string, price: number, nights: number, category?: string }> {
+    const hotels: Array<{ name: string, location: string, price: number, nights: number, category?: string }> = [];
 
     // Patterns for hotel names
     const hotelPatterns = [
@@ -3307,6 +3308,9 @@ function extractHotelInfo(text: string): Array<{ name: string, location: string,
         /(\d+)\s*(?:noches?|nights?)/gi,
         /(?:noches?|nights?)\s*(\d+)/gi
     ];
+
+    // Pattern for stars/category
+    const starsPattern = /(\d+)\s*(?:estrellas?|stars?|\*)/gi;
 
     // Extract hotel names
     const hotelNames = [];
@@ -3336,6 +3340,11 @@ function extractHotelInfo(text: string): Array<{ name: string, location: string,
         nightsArray.push(...matches.map(m => parseInt(m[1])));
     }
 
+    // Extract stars/category
+    const starsArray: number[] = [];
+    const starsMatches = [...text.matchAll(starsPattern)];
+    starsArray.push(...starsMatches.map(m => parseInt(m[1])).filter(n => n >= 1 && n <= 5));
+
     // Combine extracted information
     const maxEntries = Math.max(hotelNames.length, locations.length, nightlyRates.length, nightsArray.length, 1);
 
@@ -3344,7 +3353,8 @@ function extractHotelInfo(text: string): Array<{ name: string, location: string,
             name: hotelNames[i] || 'Hotel no especificado',
             location: locations[i] || 'Ubicación no especificada',
             price: nightlyRates[i] || 0,
-            nights: nightsArray[i] || 0
+            nights: nightsArray[i] || 0,
+            category: starsArray[i] ? String(starsArray[i]) : undefined
         });
     }
 
@@ -4347,6 +4357,7 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
                 location,
                 price: hotelPrice,
                 nights,
+                category: stars > 0 ? String(stars) : undefined,
                 packagePrice: packagePrice  // ✅ Guardar packagePrice para opciones
             });
 
@@ -4531,14 +4542,16 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
             name: hotelName,
             location,
             price: hotelPrice,
-            nights
+            nights,
+            category: hotelInfo.stars ? String(hotelInfo.stars) : undefined
         });
 
         console.log(`🏨 [HOTEL ${i + 1} EXTRACTED]`, {
             name: hotelName,
             location,
             price: hotelPrice,
-            nights
+            nights,
+            stars: hotelInfo.stars
         });
     }
 

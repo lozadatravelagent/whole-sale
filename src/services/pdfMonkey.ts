@@ -642,6 +642,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   const best_hotels = hotels.map((hotel, index) => {
     console.log(`🔧 Processing hotel ${index + 1} for template:`, {
       name: hotel.name,
+      category: hotel.category,
+      extracted_stars: extractStars(hotel.category),
       city: hotel.city,
       nights: hotel.nights,
       rooms_count: hotel.rooms?.length || 0,
