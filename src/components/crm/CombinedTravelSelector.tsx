@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,9 +6,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { FlightData, HotelData, CombinedTravelResults } from '@/types';
+import { FlightData, HotelData, HotelDataWithSelectedRoom, CombinedTravelResults } from '@/types';
 import { generateFlightPdf, generateCombinedTravelPdf } from '@/services/pdfMonkey';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
+import { useSearchResultsCache } from '@/features/chat/hooks/useSearchResultsCache';
+import { FilterChips } from '@/features/chat/components/FilterChips';
 import {
   Plane,
   Hotel,
@@ -35,6 +37,7 @@ import {
   Navigation
 } from 'lucide-react';
 import { formatTime } from '@/features/chat/utils/messageHelpers';
+import { getCityNameFromCode } from '@/features/chat/utils/flightHelpers';
 import BaggageIcon from '@/components/ui/BaggageIcon';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -140,6 +143,91 @@ const calculateConnectionTime = (segment1: any, segment2: any): string => {
   } catch (error) {
     return 'N/A';
   }
+};
+
+/**
+ * Convierte vuelos del cache (estructura local) a formato de display (estructura global)
+ * Local: legs[].options[].segments[].departure.airportCode
+ * Global: legs[].departure.city_code
+ */
+const convertCachedFlightToDisplayFormat = (flight: any): FlightData => {
+  // Si ya tiene la estructura correcta (departure.city_code existe), retornar sin cambios
+  if (flight.legs?.[0]?.departure?.city_code) {
+    return flight as FlightData;
+  }
+
+  // Convertir estructura local a global
+  const convertedLegs = (flight.legs || []).map((leg: any, legIndex: number) => {
+    // Obtener el primer option y sus segmentos
+    const firstOption = leg.options?.[0];
+    const segments = firstOption?.segments || [];
+    const firstSegment = segments[0];
+    const lastSegment = segments[segments.length - 1] || firstSegment;
+
+    // Extraer códigos de aeropuerto
+    const departureCode = firstSegment?.departure?.airportCode || '';
+    const arrivalCode = lastSegment?.arrival?.airportCode || '';
+
+    // Calcular layovers desde segmentos (escalas entre segmentos)
+    const layovers: any[] = [];
+    if (segments.length > 1) {
+      for (let i = 0; i < segments.length - 1; i++) {
+        const seg = segments[i];
+        const nextSeg = segments[i + 1];
+        layovers.push({
+          destination_city: getCityNameFromCode(seg.arrival?.airportCode || ''),
+          destination_code: seg.arrival?.airportCode || '',
+          waiting_time: calculateConnectionTime(seg, nextSeg)
+        });
+      }
+    }
+
+    // Agregar paradas técnicas dentro de segmentos
+    for (const segment of segments) {
+      if (segment.stops && segment.stops.length > 0) {
+        for (const stop of segment.stops) {
+          layovers.push({
+            destination_city: getCityNameFromCode(stop.airportCode || ''),
+            destination_code: stop.airportCode || '',
+            waiting_time: 'Escala técnica'
+          });
+        }
+      }
+    }
+
+    // Calcular duración formateada
+    const duration = firstOption?.duration
+      ? `${Math.floor(firstOption.duration / 60)}h ${firstOption.duration % 60}m`
+      : '0h 0m';
+
+    // Determinar si llega al día siguiente
+    const isNextDay = (firstSegment?.departure?.date && lastSegment?.arrival?.date)
+      ? (new Date(lastSegment.arrival.date).getTime() > new Date(firstSegment.departure.date).getTime())
+      : false;
+
+    return {
+      departure: {
+        city_code: departureCode,
+        city_name: getCityNameFromCode(departureCode),
+        time: firstSegment?.departure?.time || ''
+      },
+      arrival: {
+        city_code: arrivalCode,
+        city_name: getCityNameFromCode(arrivalCode),
+        time: lastSegment?.arrival?.time || ''
+      },
+      duration,
+      flight_type: legIndex === 0 ? 'outbound' : 'return',
+      layovers,
+      arrival_next_day: isNextDay,
+      options: leg.options // Preservar options para getBaggageInfoFromLeg
+    };
+  });
+
+  return {
+    ...flight,
+    legs: convertedLegs
+  } as FlightData;
 };
 
 // Component to display flight itinerary with visual connections
@@ -268,6 +356,25 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
 
+  // Hook para cache de resultados y filtrado dinámico
+  // Pasa el searchId para cargar todos los vuelos desde localStorage
+  const {
+    displayedResults: cachedFlights,
+    activeFilters,
+    distribution,
+    filterStats,
+    applyFilter,
+    clearAllFilters,
+    toggleAirline,
+    hasCache,
+  } = useSearchResultsCache(combinedData.flightSearchId);
+
+  // Convertir vuelos del cache a formato de display
+  const filteredFlights = useMemo(() => {
+    if (!cachedFlights?.length) return [];
+    return cachedFlights.map(convertCachedFlightToDisplayFormat);
+  }, [cachedFlights]);
+
   // Debug: Log received filter preferences
   useEffect(() => {
     if (combinedData.requestedRoomType || combinedData.requestedMealPlan) {
@@ -387,6 +494,16 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         selectedHotels.includes(hotel.id)
       );
 
+      // Debug: Log hotel categories in selectedHotelData
+      console.log('🏨 [DEBUG] Selected hotels BEFORE mapping:', selectedHotelData.map((h, i) => ({
+        index: i + 1,
+        name: h.name,
+        category: h.category,
+        category_type: typeof h.category,
+        address: h.address,
+        city: h.city
+      })));
+
       console.log('📄 Generating PDF for:', {
         flights: selectedFlightData.length,
         hotels: selectedHotelData.length
@@ -402,6 +519,10 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         console.log(`🏨 Preparing hotel ${hotel.name} for PDF:`, {
           hotel_id: hotel.id,
           hotel_nights: hotel.nights,
+          category: hotel.category,
+          category_type: typeof hotel.category,
+          address: hotel.address,
+          city: hotel.city,
           selected_room_id: selectedRoomId,
           selected_room: selectedRoom ? {
             type: selectedRoom.type,
@@ -417,10 +538,24 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           } : 'NO_ROOMS_AVAILABLE'
         });
 
-        return {
+        // Explicitly preserve all hotel fields including category
+        const hotelWithRoom: HotelDataWithSelectedRoom = {
           ...hotel,
+          category: hotel.category || '', // Explicitly preserve category
+          address: hotel.address || '', // Explicitly preserve address
+          city: hotel.city || '', // Explicitly preserve city
           selectedRoom: selectedRoom || hotel.rooms[0] // fallback to first room if none selected
         };
+
+        console.log(`✅ Hotel ${hotel.name} prepared with category:`, {
+          original_category: hotel.category,
+          prepared_category: hotelWithRoom.category,
+          has_category: !!hotelWithRoom.category,
+          original_address: hotel.address,
+          prepared_address: hotelWithRoom.address
+        });
+
+        return hotelWithRoom;
       });
 
       // Determine which PDF type to generate
@@ -511,7 +646,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           {(combinedData.requestType === 'combined' || combinedData.requestType === 'flights-only') && (
             <TabsTrigger value="flights" className="flex items-center space-x-2">
               <Plane className="h-4 w-4" />
-              <span>Vuelos ({combinedData.flights.length})</span>
+              <span>Vuelos ({hasCache ? filteredFlights.length : combinedData.flights.length})</span>
             </TabsTrigger>
           )}
           {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
@@ -525,7 +660,20 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         {/* Flights Tab */}
         {(combinedData.requestType === 'combined' || combinedData.requestType === 'flights-only') && (
           <TabsContent value="flights" className="space-y-2">
-            {combinedData.flights.map((flight, index) => {
+            {/* Dynamic Filter Chips */}
+            {hasCache && distribution && filterStats && (
+              <FilterChips
+                distribution={distribution}
+                activeFilters={activeFilters}
+                filterStats={filterStats}
+                onFilterChange={applyFilter}
+                onClearAll={clearAllFilters}
+                onToggleAirline={toggleAirline}
+              />
+            )}
+
+            {/* Usar vuelos filtrados (filteredFlights) cuando hay cache, sino los originales */}
+            {(hasCache ? filteredFlights : combinedData.flights).map((flight, index) => {
               const isSelected = selectedFlights.includes(flight.id!);
 
               return (
@@ -571,6 +719,23 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               );
             })}
 
+            {/* Mensaje cuando no hay vuelos después de filtrar */}
+            {hasCache && filteredFlights.length === 0 && combinedData.flights.length > 0 && (
+              <Card>
+                <CardContent className="p-6 text-center">
+                  <Plane className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground">No hay vuelos con los filtros seleccionados</p>
+                  <p className="text-sm text-muted-foreground mt-1">Prueba cambiando o limpiando los filtros</p>
+                  <div className="mt-3">
+                    <Button variant="outline" onClick={clearAllFilters}>
+                      Limpiar filtros
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Mensaje cuando no hay vuelos en la búsqueda original */}
             {combinedData.flights.length === 0 && (
               <Card>
                 <CardContent className="p-6 text-center">
