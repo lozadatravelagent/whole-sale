@@ -574,22 +574,42 @@ function formatPriceForTemplate(price: number | string): string {
 }
 
 // Helper function to extract star rating from EUROVIPS category format
-// EUROVIPS returns category as "3*", "4*", "5*", etc. or text like "Standard"
+// EUROVIPS returns category as "3*", "4*", "5*", "3EST", "H2_5", etc. or text like "Standard"
 // Also tries to extract from hotel name if category is empty
 function extractStars(category: string | undefined, hotelName?: string): string {
   // First try to extract from category
-  if (category) {
-    const match = category.match(/(\d+)/);
-    if (match) return match[1];
+  if (category && category.trim()) {
+    // Try to match numbers at the start (e.g., "3EST", "3*", "4*")
+    const match = category.match(/^(\d+)/);
+    if (match) {
+      const stars = match[1];
+      console.log(`⭐ [EXTRACT STARS] Found stars "${stars}" from category "${category}"`);
+      return stars;
+    }
+
+    // Also try to match numbers anywhere in the string (fallback)
+    const anyMatch = category.match(/(\d+)/);
+    if (anyMatch) {
+      const stars = anyMatch[1];
+      console.log(`⭐ [EXTRACT STARS] Found stars "${stars}" from category "${category}" (anywhere match)`);
+      return stars;
+    }
+
+    console.log(`⚠️ [EXTRACT STARS] No stars found in category "${category}"`);
   }
 
   // If category is empty, try to extract from hotel name (some hotels have stars in name)
   if (hotelName) {
     const nameMatch = hotelName.match(/(\d+)\s*(?:estrellas?|stars?|\*)/i);
-    if (nameMatch) return nameMatch[1];
+    if (nameMatch) {
+      const stars = nameMatch[1];
+      console.log(`⭐ [EXTRACT STARS] Found stars "${stars}" from hotel name "${hotelName}"`);
+      return stars;
+    }
   }
 
   // If no stars found, return empty string (don't default to "5")
+  console.log(`⚠️ [EXTRACT STARS] No stars found for category: "${category}", hotel: "${hotelName}"`);
   return "";
 }
 
@@ -597,6 +617,15 @@ function extractStars(category: string | undefined, hotelName?: string): string 
 function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | HotelDataWithSelectedRoom[], isPriceModified: boolean = false) {
   console.log('🔧 PREPARING COMBINED PDF DATA FOR TEMPLATE');
   console.log('📊 Input:', { flights: flights.length, hotels: hotels.length });
+
+  // Debug: Log hotel categories before processing
+  console.log('🏨 [DEBUG] Hotel categories before processing:', hotels.map((h, i) => ({
+    index: i + 1,
+    name: h.name,
+    category: h.category,
+    category_type: typeof h.category,
+    category_length: h.category?.length || 0
+  })));
 
   // Transform flight data (same structure as before)
   const selected_flights = flights.map((flight, index) => {
