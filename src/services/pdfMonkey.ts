@@ -575,10 +575,22 @@ function formatPriceForTemplate(price: number | string): string {
 
 // Helper function to extract star rating from EUROVIPS category format
 // EUROVIPS returns category as "3*", "4*", "5*", etc. or text like "Standard"
-function extractStars(category: string | undefined): string {
-  if (!category) return "5";
-  const match = category.match(/(\d+)/);
-  return match ? match[1] : "5";
+// Also tries to extract from hotel name if category is empty
+function extractStars(category: string | undefined, hotelName?: string): string {
+  // First try to extract from category
+  if (category) {
+    const match = category.match(/(\d+)/);
+    if (match) return match[1];
+  }
+
+  // If category is empty, try to extract from hotel name (some hotels have stars in name)
+  if (hotelName) {
+    const nameMatch = hotelName.match(/(\d+)\s*(?:estrellas?|stars?|\*)/i);
+    if (nameMatch) return nameMatch[1];
+  }
+
+  // If no stars found, return empty string (don't default to "5")
+  return "";
 }
 
 // Function to prepare combined travel data (flights + hotels) for the specific template
@@ -640,11 +652,28 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
   // Transform hotel data to match template expectations (simplified structure)
   const best_hotels = hotels.map((hotel, index) => {
+    // Extract stars from category or hotel name
+    const extractedStars = extractStars(hotel.category, hotel.name);
+
+    // Build location: combine address and city if both are available
+    let location = hotel.city || '';
+    if (hotel.address && hotel.address.trim()) {
+      // If both address and city exist, combine them
+      if (hotel.city && hotel.city.trim()) {
+        location = `${hotel.address.trim()}, ${hotel.city.trim()}`;
+      } else {
+        // If only address exists, use it
+        location = hotel.address.trim();
+      }
+    }
+
     console.log(`🔧 Processing hotel ${index + 1} for template:`, {
       name: hotel.name,
       category: hotel.category,
-      extracted_stars: extractStars(hotel.category),
+      extracted_stars: extractedStars,
+      address: hotel.address,
       city: hotel.city,
+      location: location,
       nights: hotel.nights,
       rooms_count: hotel.rooms?.length || 0,
       has_selected_room: !!(hotel as HotelDataWithSelectedRoom).selectedRoom
@@ -677,8 +706,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
     const hotelForTemplate: any = {
       name: hotel.name,
-      stars: extractStars(hotel.category), // Extract number from EUROVIPS format "3*", "4*", etc.
-      location: hotel.address || hotel.city, // Use address if available, otherwise just city
+      stars: extractedStars, // Extract number from EUROVIPS format "3*", "4*", etc. or from hotel name
+      location: location, // Combined address and city, or just city if address is empty
       price: formatPriceForTemplate(priceForAllNights), // Formato europeo - precio total por todas las noches
       link: `https://wholesale-connect.com/hotel/${hotel.id}` // Placeholder link
     };
@@ -846,16 +875,19 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
           : option2Data.price;
 
         // Prepare hotel data for template (remove "(Opción X)" from names)
+        const option1Name = option1Data.name.replace(/\s*\(Opción\s+\d+\)/i, '');
+        const option2Name = option2Data.name.replace(/\s*\(Opción\s+\d+\)/i, '');
+
         option1Hotel = {
-          name: option1Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
-          stars: option1Data.stars || extractStars(option1Data.category),
+          name: option1Name,
+          stars: option1Data.stars || extractStars(option1Data.category, option1Name),
           location: option1Data.location || option1Data.city || 'Ubicación no especificada',
           price: formatPriceForTemplate(option1HotelPrice)
         };
 
         option2Hotel = {
-          name: option2Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
-          stars: option2Data.stars || extractStars(option2Data.category),
+          name: option2Name,
+          stars: option2Data.stars || extractStars(option2Data.category, option2Name),
           location: option2Data.location || option2Data.city || 'Ubicación no especificada',
           price: formatPriceForTemplate(option2HotelPrice)
         };
@@ -868,9 +900,10 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
             ? parseFloat(option3Data.price.replace(/\./g, '').replace(',', '.'))
             : option3Data.price;
 
+          const option3Name = option3Data.name.replace(/\s*\(Opción\s+\d+\)/i, '');
           option3Hotel = {
-            name: option3Data.name.replace(/\s*\(Opción\s+\d+\)/i, ''),
-            stars: option3Data.stars || extractStars(option3Data.category),
+            name: option3Name,
+            stars: option3Data.stars || extractStars(option3Data.category, option3Name),
             location: option3Data.location || option3Data.city || 'Ubicación no especificada',
             price: formatPriceForTemplate(option3HotelPrice)
           };
