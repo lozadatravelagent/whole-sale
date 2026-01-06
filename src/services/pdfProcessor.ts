@@ -17,12 +17,13 @@ export interface PdfAnalysisResult {
             price: number;
             dates: string;
         }>;
-        hotels?: Array<{
+hotels?: Array<{
             name: string;
             location: string;
             price: number;
             nights: number;
             category?: string;
+            packagePrice?: number;
         }>;
         totalPrice?: number;
         currency?: string;
@@ -2274,13 +2275,69 @@ export async function processPriceChangeRequest(
             const hasOption3 = multiOptions.option3Price !== undefined;
             console.log(`💎 [MULTI OPTIONS] Processing ${hasOption3 ? 'triple' : 'dual'} option price change:`, multiOptions);
 
-            // Validate we have enough hotels
-            const requiredHotels = hasOption3 ? 3 : 2;
-            if (!analysis.success || !analysis.content ||
-                !analysis.content.hotels || analysis.content.hotels.length < requiredHotels) {
-                return {
-                    response: `❌ No puedo modificar las opciones porque el PDF no contiene ${requiredHotels} o más hoteles. Esta función solo está disponible para PDFs con múltiples opciones de hotel.`
-                };
+// Check if we have enough options (hotels OR flights)
+            const requiredOptions = hasOption3 ? 3 : 2;
+            const hasEnoughHotels = analysis.content?.hotels && analysis.content.hotels.length >= requiredOptions;
+            
+            // Calculate flight pairs (outbound + return = 1 option)
+            const flightPairs = analysis.content?.flights ? 
+                Math.floor(analysis.content.flights.length / 2) : 0;
+            const hasEnoughFlights = flightPairs >= requiredOptions;
+            
+            console.log(`🔍 [OPTION VALIDATION] Required: ${requiredOptions}, Hotels: ${analysis.content?.hotels?.length || 0}, Flight pairs: ${flightPairs}`);
+            
+            if (!analysis.success || !analysis.content || (!hasEnoughHotels && !hasEnoughFlights)) {
+                if (hasEnoughFlights) {
+                    // We have flight options but not hotel options - use flight logic
+                    console.log('✈️ [FLIGHT OPTIONS] Detected flight options, using flight price change logic');
+                    
+                    // Convert multi-option prices to individual flight price changes
+                    const priceChanges: Array<{ position: number, price: number }> = [];
+                    priceChanges.push({ position: 1, price: multiOptions.option1Price });
+                    priceChanges.push({ position: 2, price: multiOptions.option2Price });
+                    if (hasOption3 && multiOptions.option3Price !== undefined) {
+                        priceChanges.push({ position: 3, price: multiOptions.option3Price });
+                    }
+                    
+                    // Use the existing flight price change function
+                    const result = await generateModifiedPdfWithIndividualPrices(
+                        analysis,
+                        priceChanges,
+                        conversationId
+                    );
+                    
+                    if (!result.success || !result.pdfUrl) {
+                        return {
+                            response: `❌ **Error generando PDF**\n\nNo pude generar el PDF con las opciones de vuelo modificadas. Error: ${result.error || 'desconocido'}\n\n¿Podrías intentar nuevamente?`
+                        };
+                    }
+                    
+                    // Build response for flight options
+                    let responseMsg = `✅ **${hasOption3 ? 'Tres Opciones' : 'Dos Opciones'} de Vuelo Modificadas**\n\n` +
+                        `📦 **Opción 1:**\n` +
+                        `✈️ Vuelo modificado\n` +
+                        `💰 Nuevo precio: $${multiOptions.option1Price.toFixed(2)} USD\n\n` +
+                        `📦 **Opción 2:**\n` +
+                        `✈️ Vuelo modificado\n` +
+                        `💰 Nuevo precio: $${multiOptions.option2Price.toFixed(2)} USD\n\n`;
+                    
+                    if (hasOption3 && multiOptions.option3Price !== undefined) {
+                        responseMsg += `📦 **Opción 3:**\n` +
+                            `✈️ Vuelo modificado\n` +
+                            `💰 Nuevo precio: $${multiOptions.option3Price.toFixed(2)} USD\n\n`;
+                    }
+                    
+                    responseMsg += `📄 PDF adjunto con ${hasOption3 ? 'las tres opciones' : 'ambas opciones'} de vuelo actualizadas.`;
+                    
+                    return {
+                        response: responseMsg,
+                        modifiedPdfUrl: result.pdfUrl
+                    };
+                } else {
+                    return {
+                        response: `❌ No puedo modificar las opciones porque el PDF no contiene ${requiredOptions} o más opciones. Esta función está disponible para:\n\n• PDFs con ${requiredOptions} o más hoteles (opciones de hotel)\n• PDFs con ${requiredOptions} o más pares de vuelos (opciones de vuelo)\n\nVerifica que tu PDF tenga suficientes opciones disponibles.`
+                    };
+                }
             }
 
             // Identify option hotels by name
@@ -4352,12 +4409,11 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
             // Create unique hotel name with option label
             const uniqueHotelName = `${hotelName} (Opción ${optionNumber})`;
 
-            hotels.push({
+hotels.push({
                 name: uniqueHotelName,
                 location,
                 price: hotelPrice,
                 nights,
-                category: stars > 0 ? String(stars) : undefined,
                 packagePrice: packagePrice  // ✅ Guardar packagePrice para opciones
             });
 
@@ -4538,12 +4594,11 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
             }
         }
 
-        hotels.push({
+hotels.push({
             name: hotelName,
             location,
             price: hotelPrice,
             nights,
-            category: hotelInfo.stars ? String(hotelInfo.stars) : undefined
         });
 
         console.log(`🏨 [HOTEL ${i + 1} EXTRACTED]`, {
