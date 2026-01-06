@@ -2285,61 +2285,72 @@ export async function processPriceChangeRequest(
             const hasEnoughFlights = flightPairs >= requiredOptions;
             
             console.log(`🔍 [OPTION VALIDATION] Required: ${requiredOptions}, Hotels: ${analysis.content?.hotels?.length || 0}, Flight pairs: ${flightPairs}`);
-            
-            if (!analysis.success || !analysis.content || (!hasEnoughHotels && !hasEnoughFlights)) {
-                if (hasEnoughFlights) {
-                    // We have flight options but not hotel options - use flight logic
-                    console.log('✈️ [FLIGHT OPTIONS] Detected flight options, using flight price change logic');
-                    
-                    // Convert multi-option prices to individual flight price changes
-                    const priceChanges: Array<{ position: number, price: number }> = [];
-                    priceChanges.push({ position: 1, price: multiOptions.option1Price });
-                    priceChanges.push({ position: 2, price: multiOptions.option2Price });
-                    if (hasOption3 && multiOptions.option3Price !== undefined) {
-                        priceChanges.push({ position: 3, price: multiOptions.option3Price });
-                    }
-                    
-                    // Use the existing flight price change function
-                    const result = await generateModifiedPdfWithIndividualPrices(
-                        analysis,
-                        priceChanges,
-                        conversationId
-                    );
-                    
-                    if (!result.success || !result.pdfUrl) {
-                        return {
-                            response: `❌ **Error generando PDF**\n\nNo pude generar el PDF con las opciones de vuelo modificadas. Error: ${result.error || 'desconocido'}\n\n¿Podrías intentar nuevamente?`
-                        };
-                    }
-                    
-                    // Build response for flight options
-                    let responseMsg = `✅ **${hasOption3 ? 'Tres Opciones' : 'Dos Opciones'} de Vuelo Modificadas**\n\n` +
-                        `📦 **Opción 1:**\n` +
-                        `✈️ Vuelo modificado\n` +
-                        `💰 Nuevo precio: $${multiOptions.option1Price.toFixed(2)} USD\n\n` +
-                        `📦 **Opción 2:**\n` +
-                        `✈️ Vuelo modificado\n` +
-                        `💰 Nuevo precio: $${multiOptions.option2Price.toFixed(2)} USD\n\n`;
-                    
-                    if (hasOption3 && multiOptions.option3Price !== undefined) {
-                        responseMsg += `📦 **Opción 3:**\n` +
-                            `✈️ Vuelo modificado\n` +
-                            `💰 Nuevo precio: $${multiOptions.option3Price.toFixed(2)} USD\n\n`;
-                    }
-                    
-                    responseMsg += `📄 PDF adjunto con ${hasOption3 ? 'las tres opciones' : 'ambas opciones'} de vuelo actualizadas.`;
-                    
-                    return {
-                        response: responseMsg,
-                        modifiedPdfUrl: result.pdfUrl
-                    };
-                } else {
-                    return {
-                        response: `❌ No puedo modificar las opciones porque el PDF no contiene ${requiredOptions} o más opciones. Esta función está disponible para:\n\n• PDFs con ${requiredOptions} o más hoteles (opciones de hotel)\n• PDFs con ${requiredOptions} o más pares de vuelos (opciones de vuelo)\n\nVerifica que tu PDF tenga suficientes opciones disponibles.`
-                    };
-                }
+
+            // First check if analysis failed completely
+            if (!analysis.success || !analysis.content) {
+                return {
+                    response: `❌ No puedo modificar las opciones porque no se pudo analizar el PDF correctamente.`
+                };
             }
 
+            // Check if we have neither enough hotels nor flights
+            if (!hasEnoughHotels && !hasEnoughFlights) {
+                return {
+                    response: `❌ No puedo modificar las opciones porque el PDF no contiene ${requiredOptions} o más opciones. Esta función está disponible para:\n\n• PDFs con ${requiredOptions} o más hoteles (opciones de hotel)\n• PDFs con ${requiredOptions} o más pares de vuelos (opciones de vuelo)\n\nVerifica que tu PDF tenga suficientes opciones disponibles.`
+                };
+            }
+
+            // PRIORITY: If we have enough flights, use flight logic (even if hotels exist)
+            // This handles the case where PDF has flight options but no hotel options
+            if (hasEnoughFlights && !hasEnoughHotels) {
+                // We have flight options but not hotel options - use flight logic
+                console.log('✈️ [FLIGHT OPTIONS] Detected flight options without hotel options, using flight price change logic');
+
+                // Convert multi-option prices to individual flight price changes
+                const priceChanges: Array<{ position: number, price: number }> = [];
+                priceChanges.push({ position: 1, price: multiOptions.option1Price });
+                priceChanges.push({ position: 2, price: multiOptions.option2Price });
+                if (hasOption3 && multiOptions.option3Price !== undefined) {
+                    priceChanges.push({ position: 3, price: multiOptions.option3Price });
+                }
+
+                // Use the existing flight price change function
+                const result = await generateModifiedPdfWithIndividualPrices(
+                    analysis,
+                    priceChanges,
+                    conversationId
+                );
+
+                if (!result.success || !result.pdfUrl) {
+                    return {
+                        response: `❌ **Error generando PDF**\n\nNo pude generar el PDF con las opciones de vuelo modificadas. Error: ${result.error || 'desconocido'}\n\n¿Podrías intentar nuevamente?`
+                    };
+                }
+
+                // Build response for flight options
+                let responseMsg = `✅ **${hasOption3 ? 'Tres Opciones' : 'Dos Opciones'} de Vuelo Modificadas**\n\n` +
+                    `📦 **Opción 1:**\n` +
+                    `✈️ Vuelo modificado\n` +
+                    `💰 Nuevo precio: $${multiOptions.option1Price.toFixed(2)} USD\n\n` +
+                    `📦 **Opción 2:**\n` +
+                    `✈️ Vuelo modificado\n` +
+                    `💰 Nuevo precio: $${multiOptions.option2Price.toFixed(2)} USD\n\n`;
+
+                if (hasOption3 && multiOptions.option3Price !== undefined) {
+                    responseMsg += `📦 **Opción 3:**\n` +
+                        `✈️ Vuelo modificado\n` +
+                        `💰 Nuevo precio: $${multiOptions.option3Price.toFixed(2)} USD\n\n`;
+                }
+
+                responseMsg += `📄 PDF adjunto con ${hasOption3 ? 'las tres opciones' : 'ambas opciones'} de vuelo actualizadas.`;
+
+                return {
+                    response: responseMsg,
+                    modifiedPdfUrl: result.pdfUrl
+                };
+            }
+
+            // From here on, we process hotel options (hasEnoughHotels is true)
             // Identify option hotels by name
             const option1Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+1\)/i));
             const option2Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+2\)/i));
