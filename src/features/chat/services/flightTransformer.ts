@@ -702,14 +702,14 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
   }
 
 
-  // Sort by price (lowest first) and limit to 5
+  // Sort by price (lowest first) - do NOT limit here
+  // All flights are returned for localStorage caching, limit happens in searchHandlers
   const transformedFlights = filteredFlights
-    .sort((a, b) => (a.price.amount || 0) - (b.price.amount || 0))
-    .slice(0, 5);
+    .sort((a, b) => (a.price.amount || 0) - (b.price.amount || 0));
 
-  // DEBUG: Log the final flights connections
-  console.log(`🔍 [DEBUG] Final 5 flights connections:`);
-  transformedFlights.forEach(flight => {
+  // DEBUG: Log the final flights connections (show first 5 for brevity)
+  console.log(`🔍 [DEBUG] First 5 flights connections:`);
+  transformedFlights.slice(0, 5).forEach(flight => {
     const fareData = fares.find(f => f.FareID === flight.id);
     if (fareData) {
       const analysis = analyzeFlightType(fareData);

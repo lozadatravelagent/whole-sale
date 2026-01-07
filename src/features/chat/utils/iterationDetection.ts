@@ -148,6 +148,24 @@ const FLIGHT_MODIFICATION_PATTERNS = [
   // Equipaje
   { pattern: /\b(con\s+valija|con\s+equipaje|equipaje\s+facturado)\b/i, name: 'con_equipaje', luggageValue: 'checked' },
   { pattern: /\b(sin\s+valija|solo\s+equipaje\s+de\s+mano|carry\s*on)\b/i, name: 'sin_equipaje', luggageValue: 'carry_on' },
+  // ✨ Horarios de salida
+  {
+    pattern: /\b(que\s+)?(?:salga|sal[íi]|vuele)\s+(?:de\s+)?(?:la\s+)?(mañana|manana|tarde|noche|madrugada|dia|d[íi]a|temprano)\b/i,
+    name: 'horario_salida',
+    timeType: 'departure'
+  },
+  // ✨ Horarios de llegada
+  {
+    pattern: /\b(que\s+)?(?:llegue|vuelva|regrese)\s+(?:de\s+)?(?:la\s+)?(mañana|manana|tarde|noche|dia|d[íi]a)\b/i,
+    name: 'horario_llegada',
+    timeType: 'arrival'
+  },
+  // ✨ Máximo de escalas
+  {
+    pattern: /\bescalas?\s+(?:de\s+)?(?:no\s+)?m[aá]s\s+(?:de\s+)?(\d+)\s*(?:h|hs|hora|horas)\b/i,
+    name: 'max_layover',
+    extractHours: true
+  },
 ];
 
 /**
@@ -204,15 +222,37 @@ export function detectIterationIntent(
     }
   }
 
-  // Detectar modificación de vuelo (escalas, aerolínea, equipaje)
+  // Detectar modificación de vuelo (escalas, aerolínea, equipaje, horarios, max layover)
   let hasFlightMod = false;
   let flightModPattern = '';
-  let flightModDetails: { stopsValue?: string; luggageValue?: string; airlineChange?: boolean } = {};
-  for (const { pattern, name, stopsValue, luggageValue, airlineChange } of FLIGHT_MODIFICATION_PATTERNS) {
-    if (pattern.test(norm)) {
+  let flightModDetails: {
+    stopsValue?: string;
+    luggageValue?: string;
+    airlineChange?: boolean;
+    departureTimePreference?: string;
+    arrivalTimePreference?: string;
+    maxLayoverHours?: number;
+  } = {};
+  for (const { pattern, name, stopsValue, luggageValue, airlineChange, timeType, extractHours } of FLIGHT_MODIFICATION_PATTERNS) {
+    const match = pattern.exec(norm);
+    if (match) {
       hasFlightMod = true;
       flightModPattern = name;
       flightModDetails = { stopsValue, luggageValue, airlineChange };
+
+      // ✨ Extraer preferencia de horario
+      if (timeType === 'departure' && match[2]) {
+        flightModDetails.departureTimePreference = match[2].toLowerCase();
+      }
+      if (timeType === 'arrival' && match[2]) {
+        flightModDetails.arrivalTimePreference = match[2].toLowerCase();
+      }
+
+      // ✨ Extraer horas máximas de escala
+      if (extractHours && match[1]) {
+        flightModDetails.maxLayoverHours = parseInt(match[1], 10);
+      }
+
       console.log(`✅ [ITERATION] Flight modification detected: "${name}"`, flightModDetails);
       break;
     }
@@ -592,14 +632,22 @@ export function mergeIterationContext(
         preferredAirline: lastSearch.flightsParams?.preferredAirline,
         luggage: lastSearch.flightsParams?.luggage,
         maxLayoverHours: lastSearch.flightsParams?.maxLayoverHours,
+        departureTimePreference: lastSearch.flightsParams?.departureTimePreference,
+        arrivalTimePreference: lastSearch.flightsParams?.arrivalTimePreference,
         // Aplicar la modificación específica
         ...(flightMod?.stops && { stops: flightMod.stops as any }),
         ...(flightMod?.luggage && { luggage: flightMod.luggage as any }),
         ...(flightMod?.airline && { preferredAirline: flightMod.airline }),
+        ...(flightMod?.departureTimePreference && { departureTimePreference: flightMod.departureTimePreference }),
+        ...(flightMod?.arrivalTimePreference && { arrivalTimePreference: flightMod.arrivalTimePreference }),
+        ...(flightMod?.maxLayoverHours !== undefined && { maxLayoverHours: flightMod.maxLayoverHours }),
         // También permitir overrides del AI parser
         ...(newParsedRequest.flights?.stops && { stops: newParsedRequest.flights.stops }),
         ...(newParsedRequest.flights?.preferredAirline && { preferredAirline: newParsedRequest.flights.preferredAirline }),
         ...(newParsedRequest.flights?.luggage && { luggage: newParsedRequest.flights.luggage }),
+        ...(newParsedRequest.flights?.departureTimePreference && { departureTimePreference: newParsedRequest.flights.departureTimePreference }),
+        ...(newParsedRequest.flights?.arrivalTimePreference && { arrivalTimePreference: newParsedRequest.flights.arrivalTimePreference }),
+        ...(newParsedRequest.flights?.maxLayoverHours !== undefined && { maxLayoverHours: newParsedRequest.flights.maxLayoverHours }),
       },
 
       // Preservar hotel si era búsqueda combined
@@ -706,6 +754,24 @@ export function generateIterationExplanation(
       changeDesc = luggageMap[flightMod.luggage] || flightMod.luggage;
     } else if (flightMod?.airline) {
       changeDesc = `con ${flightMod.airline}`;
+    } else if (flightMod?.departureTimePreference) {
+      const timeMap: Record<string, string> = {
+        'morning': 'que salga de mañana',
+        'afternoon': 'que salga de tarde',
+        'evening': 'que salga de noche',
+        'night': 'que salga de madrugada'
+      };
+      changeDesc = timeMap[flightMod.departureTimePreference] || `salida ${flightMod.departureTimePreference}`;
+    } else if (flightMod?.arrivalTimePreference) {
+      const timeMap: Record<string, string> = {
+        'morning': 'que llegue de mañana',
+        'afternoon': 'que llegue de tarde',
+        'evening': 'que llegue de noche',
+        'night': 'que llegue de madrugada'
+      };
+      changeDesc = timeMap[flightMod.arrivalTimePreference] || `llegada ${flightMod.arrivalTimePreference}`;
+    } else if (flightMod?.maxLayoverHours !== undefined) {
+      changeDesc = `escalas de máximo ${flightMod.maxLayoverHours}h`;
     }
 
     const origin = lastSearch.flightsParams?.origin || '?';

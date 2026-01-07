@@ -638,6 +638,49 @@ export async function parseMessageWithAI(
         console.warn('Quick pre-parse failed:', e);
     }
 
+    // 🕐 HORARIOS DE SALIDA/LLEGADA - Detección mediante regex
+    try {
+        // Importar mapper centralizado
+        const { timePreferenceToRange } = await import('@/features/chat/utils/timeSlotMapper');
+
+        // Normalizar mensaje para detección de tiempo (scope local)
+        const normalizedForTime = message.replace(/\s+/g, ' ').trim();
+
+        // Detectar "que salga de noche", "que vuelva de día", etc.
+        // Note: Using [a-záéíóúñü]+ instead of \w+ to include Spanish characters (ñ, accents)
+        const departureTimeMatch = normalizedForTime.match(/\b(?:que\s+)?(?:salga|sal[íi]|vuele)\s+(?:de\s+)?(?:la\s+)?([a-záéíóúñü]+)\b/i);
+        if (departureTimeMatch) {
+            const preference = departureTimeMatch[1]; // "noche", "tarde", "mañana", etc.
+            const range = timePreferenceToRange(preference);
+
+            if (range) {
+                quick.flights = {
+                    ...(quick.flights || ({} as any)),
+                    departureTimePreference: preference
+                } as any;
+                console.log(`🕐 [QUICK PRE-PARSER] Detected departure time: "${preference}" → [${range[0]}, ${range[1]}]`);
+            }
+        }
+
+        // Detectar "que llegue de día", "que vuelva de noche", etc.
+        // Note: Using [a-záéíóúñü]+ instead of \w+ to include Spanish characters (ñ, accents)
+        const arrivalTimeMatch = normalizedForTime.match(/\b(?:que\s+)?(?:llegue|llegu[eé]|vuelva)\s+(?:de\s+)?(?:la\s+)?([a-záéíóúñü]+)\b/i);
+        if (arrivalTimeMatch) {
+            const preference = arrivalTimeMatch[1];
+            const range = timePreferenceToRange(preference);
+
+            if (range) {
+                quick.flights = {
+                    ...(quick.flights || ({} as any)),
+                    arrivalTimePreference: preference
+                } as any;
+                console.log(`🕐 [QUICK PRE-PARSER] Detected arrival time: "${preference}" → [${range[0]}, ${range[1]}]`);
+            }
+        }
+    } catch (e) {
+        console.warn('⚠️ [QUICK PRE-PARSER] Time detection failed:', e);
+    }
+
     try {
         console.log('🚀 Calling OpenAI via Supabase Edge Function...');
         console.log('📚 [CONTEXT] Sending conversation history:', {
@@ -671,12 +714,15 @@ export async function parseMessageWithAI(
         console.log('🔍 [DEBUG] parsedResult.hotels?.roomType:', parsedResult.hotels?.roomType);
         console.log('🔍 [DEBUG] parsedResult.hotels?.mealPlan:', parsedResult.hotels?.mealPlan);
 
-        // Merge quick pre-parse hints if AI missed them (e.g., max layover hours, stops, preferredAirline)
+        // Merge quick pre-parse hints if AI missed them (e.g., max layover hours, stops, preferredAirline, time preferences)
         const mergedFlights = {
             ...(parsedResult.flights || {}),
             ...(quick.flights?.stops && !parsedResult.flights?.stops ? { stops: quick.flights.stops } : {}),
             ...(quick.flights?.maxLayoverHours && !parsedResult.flights?.maxLayoverHours ? { maxLayoverHours: quick.flights.maxLayoverHours } : {}),
-            ...(quick.flights?.preferredAirline && !parsedResult.flights?.preferredAirline ? { preferredAirline: quick.flights.preferredAirline } : {})
+            ...(quick.flights?.preferredAirline && !parsedResult.flights?.preferredAirline ? { preferredAirline: quick.flights.preferredAirline } : {}),
+            // 🕐 Time preference merge - if pre-parser detected but AI missed
+            ...((quick.flights as any)?.departureTimePreference && !parsedResult.flights?.departureTimePreference ? { departureTimePreference: (quick.flights as any).departureTimePreference } : {}),
+            ...((quick.flights as any)?.arrivalTimePreference && !parsedResult.flights?.arrivalTimePreference ? { arrivalTimePreference: (quick.flights as any).arrivalTimePreference } : {})
         } as any;
 
         // 🏨 Merge hotel pre-parse hints if AI missed them (hotelChains, hotelName)

@@ -1,13 +1,15 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { formatForStarling, formatForEurovips } from '@/services/aiMessageParser';
-import type { SearchResult, LocalHotelData, LocalPackageData, LocalServiceData } from '../types/chat';
+import type { SearchResult, LocalHotelData, LocalPackageData, LocalServiceData, FlightData } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
 import { formatFlightResponse, formatHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatItineraryResponse } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
 import { hotelBelongsToChain, hotelBelongsToAnyChain, hotelNameMatches } from '../data/hotelChainAliases';
+import { generateSearchId, saveFlightsToStorage } from './flightStorageService';
+import { timeStringToNumber } from '@/features/chat/utils/timeSlotMapper';
 
 // =====================================================================
 // PUNTA CANA HOTEL WHITELIST - SPECIAL FILTER
@@ -23,7 +25,25 @@ const PUNTA_CANA_ALLOWED_HOTELS = [
   ['iberostar', 'dominicana'],
   ['bahia', 'principe', 'grand', 'punta', 'cana'],
   ['sunscape', 'coco'],
-  ['riu', 'republica']
+  ['riu', 'republica'],
+  ['dreams', 'punta', 'cana'],
+  ['now', 'onyx'],
+  ['secrets', 'cap', 'cana'],
+  ['excellence', 'punta', 'cana'],
+  ['majestic', 'elegance'],
+  ['barcelo', 'bavaro'],
+  ['occidental', 'punta', 'cana'],
+  ['paradisus', 'punta', 'cana'],
+  ['hard', 'rock', 'punta', 'cana'],
+  ['royalton', 'punta', 'cana'],
+  ['hideaway', 'royalton'],
+  ['chic', 'punta', 'cana'],
+  ['lopesan', 'costa', 'bavaro'],
+  ['luxury', 'bahia', 'principe'],
+  ['grand', 'palladium'],
+  ['trs', 'cap', 'cana'],
+  ['catalonia', 'royal', 'bavaro'],
+  ['hotel', 'riu', 'palace']
 ];
 
 /**
@@ -114,7 +134,14 @@ function applyDestinationSpecificFilters(
 }
 
 // Helper function to calculate layover hours between two flight segments
-function calculateLayoverHours(arrivalSegment: any, departureSegment: any): number {
+interface FlightSegmentData {
+  arrival?: { time?: string; date?: string; airportCode?: string };
+  departure?: { time?: string; date?: string; airportCode?: string };
+  Arrival?: { Time?: string; Date?: string; AirportCode?: string };
+  Departure?: { Time?: string; Date?: string; AirportCode?: string };
+}
+
+function calculateLayoverHours(arrivalSegment: FlightSegmentData, departureSegment: FlightSegmentData): number {
   try {
     // Parse arrival time and date (support both lowercase and uppercase API responses)
     const arrivalTime = arrivalSegment.arrival?.time || arrivalSegment.Arrival?.Time || '';
@@ -146,6 +173,13 @@ function calculateLayoverHours(arrivalSegment: any, departureSegment: any): numb
   }
 }
 
+// Type for Starling API request parameters
+interface StarlingRequestParams {
+  Passengers: Array<{ Count: number; Type: string }>;
+  Legs: Array<{ DepartureAirportCity: string; ArrivalAirportCity: string; FlightDate: string }>;
+  Airlines: string[] | null;
+}
+
 // Handler functions WITHOUT N8N
 export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
   console.log('✈️ [FLIGHT SEARCH] Starting flight search process');
@@ -165,7 +199,9 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
         const airlineCode = resolvedAirline.code;
 
         // Add Airlines filter to STARLING API request
-        (starlingParams as any).Airlines = [airlineCode];
+        if (starlingParams) {
+          (starlingParams as StarlingRequestParams).Airlines = [airlineCode];
+        }
 
         console.log(`✅ [PRE-FILTER] Added airline filter to STARLING: ${airlineCode} (${resolvedAirline.name})`);
         console.log(`📊 [PRE-FILTER] Updated starlingParams:`, starlingParams);
@@ -205,15 +241,15 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
 
       // For layover filtering, we need to search with "any" stops to get more options
       // IMPORTANT: Keep airline filter if it was set
-      const expandedStarlingParams = {
-        ...starlingParams,
-        stops: 'any' as any // Force expanded search to get more layover options
+      const expandedStarlingParams: StarlingRequestParams & { stops?: string } = {
+        ...starlingParams as StarlingRequestParams,
+        stops: 'any' // Force expanded search to get more layover options
         // Airlines filter is preserved from starlingParams (if it was set)
       };
 
       console.log(`🔍 [LAYOVER FILTER] Doing expanded search with stops: any to find more layover options`);
-      if ((expandedStarlingParams as any).Airlines) {
-        console.log(`✈️ [LAYOVER FILTER] Airline filter preserved: ${(expandedStarlingParams as any).Airlines}`);
+      if (expandedStarlingParams.Airlines) {
+        console.log(`✈️ [LAYOVER FILTER] Airline filter preserved: ${expandedStarlingParams.Airlines}`);
       }
 
       try {
@@ -241,9 +277,9 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       // Now filter the expanded results by layover time
       console.log(`🔍 [LAYOVER FILTER] Filtering ${flights.length} flights for layovers <= ${parsed.flights.maxLayoverHours} hours`);
       flights = flights
-        .map((flight: any) => {
-          const filteredLegs = (flight.legs || []).map((leg: any) => {
-            const options = (leg.options || []).filter((opt: any) => {
+        .map((flight: FlightData) => {
+          const filteredLegs = (flight.legs || []).map((leg) => {
+            const options = (leg.options || []).filter((opt) => {
               const segments = opt.segments || [];
               if (segments.length <= 1) return true; // Direct flights are always allowed
 
@@ -264,17 +300,72 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
           });
 
           // Keep flight only if every leg still has at least one option
-          const allLegsHaveOptions = filteredLegs.every((leg: any) => (leg.options?.length || 0) > 0);
+          const allLegsHaveOptions = filteredLegs.every((leg) => (leg.options?.length || 0) > 0);
           if (!allLegsHaveOptions) return null;
           return { ...flight, legs: filteredLegs };
         })
-        .filter(Boolean) as any[];
+        .filter((flight): flight is FlightData => flight !== null);
 
       if (flights.length === 0) {
         console.log(`⚠️ [LAYOVER FILTER] No flights available with layovers <= ${parsed.flights.maxLayoverHours} hours`);
       } else {
         console.log(`✅ [LAYOVER FILTER] Found ${flights.length} flights with layovers <= ${parsed.flights.maxLayoverHours} hours`);
       }
+    }
+
+    // 🕐 NUEVO: Aplicar filtros de horario DURANTE la búsqueda
+    if (parsed?.flights?.departureTimePreference || parsed?.flights?.arrivalTimePreference) {
+      console.log('🕐 [TIME FILTER] Applying time filters during search');
+
+      // Importar mapper centralizado
+      const { timePreferenceToRange, isTimeInRange, timeStringToNumber } = await import('@/features/chat/utils/timeSlotMapper');
+
+      const departureRange = parsed.flights.departureTimePreference
+        ? timePreferenceToRange(parsed.flights.departureTimePreference)
+        : null;
+
+      const arrivalRange = parsed.flights.arrivalTimePreference
+        ? timePreferenceToRange(parsed.flights.arrivalTimePreference)
+        : null;
+
+      if (departureRange) {
+        console.log(`🕐 [TIME FILTER] Departure time filter: ${departureRange[0]}-${departureRange[1]}`);
+      }
+      if (arrivalRange) {
+        console.log(`🕐 [TIME FILTER] Arrival time filter: ${arrivalRange[0]}-${arrivalRange[1]}`);
+      }
+
+      flights = flights.filter(flight => {
+        let passes = true;
+
+        // Filtrar por hora de salida (primer leg)
+        if (departureRange) {
+          const departureTime = getFirstDepartureTime(flight);
+          const inRange = isTimeInRange(departureTime, departureRange);
+
+          if (!inRange) {
+            console.log(`❌ [TIME FILTER] Filtered out flight ${flight.id}: departure time ${departureTime} not in range ${departureRange[0]}-${departureRange[1]}`);
+          }
+
+          passes = passes && inRange;
+        }
+
+        // Filtrar por hora de llegada (último leg)
+        if (arrivalRange) {
+          const arrivalTime = getLastArrivalTime(flight);
+          const inRange = isTimeInRange(arrivalTime, arrivalRange);
+
+          if (!inRange) {
+            console.log(`❌ [TIME FILTER] Filtered out flight ${flight.id}: arrival time ${arrivalTime} not in range ${arrivalRange[0]}-${arrivalRange[1]}`);
+          }
+
+          passes = passes && inRange;
+        }
+
+        return passes;
+      });
+
+      console.log(`🕐 [TIME FILTER] After time filtering: ${flights.length} flights remain`);
     }
 
     // If user didn't specify stops, show mixed results (no filtering). Optionally we could prefer direct-first ordering later.
@@ -296,13 +387,34 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       })
     };
 
+    // Generate search ID and save ALL flights to localStorage for dynamic filtering
+    const searchId = generateSearchId({
+      origin: parsed.flights?.origin,
+      destination: parsed.flights?.destination,
+      departureDate: parsed.flights?.departureDate,
+      returnDate: parsed.flights?.returnDate,
+    });
+
+// Save all flights to IndexedDB (for dynamic filtering in UI)
+    await saveFlightsToStorage(searchId, flights, {
+      origin: parsed.flights?.origin,
+      destination: parsed.flights?.destination,
+      departureDate: parsed.flights?.departureDate,
+      returnDate: parsed.flights?.returnDate,
+    });
+
+    // Limit flights stored in DB to 5 (UI will get full list from localStorage)
+    const MAX_FLIGHTS_FOR_DB = 5;
+    const flightsForDb = flights.slice(0, MAX_FLIGHTS_FOR_DB);
+
     const result = {
       response: formattedResponse,
       data: {
         combinedData: {
-          flights,
+          flights: flightsForDb,
           hotels: [],
-          requestType: 'flights-only' as const
+          requestType: 'flights-only' as const,
+          flightSearchId: searchId, // ID to retrieve full results from localStorage
         },
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined
       }
@@ -353,6 +465,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     const enrichedParsed: ParsedTravelRequest = {
       ...parsed,
       hotels: {
+        ...parsed.hotels,
         // Prefer existing hotel fields
         city: parsed.hotels?.city || parsed.flights?.destination || '',
         checkinDate: parsed.hotels?.checkinDate || parsed.flights?.departureDate || '',
@@ -370,7 +483,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
         mealPlan: parsed.hotels?.mealPlan,
         hotelName: parsed.hotels?.hotelName,
         hotelChains: parsed.hotels?.hotelChains  // ✅ UPDATED: Changed from singular to plural array
-      } as any
+      }
     };
 
     console.log('🔍 [DEBUG] enrichedParsed.hotels.roomType:', enrichedParsed.hotels?.roomType);
@@ -411,13 +524,13 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     const hotelChains = enrichedParsed.hotels?.hotelChains || [];
     const hotelName = enrichedParsed.hotels?.hotelName || '';
 
-    let allHotels: any[] = [];
+    let allHotels: LocalHotelData[] = [];
 
     if (hotelChains.length > 0) {
       // MULTI-CHAIN: Make N requests (1 per chain)
       console.log(`🏨 [MULTI-CHAIN] Making ${hotelChains.length} API requests (1 per chain):`, hotelChains);
 
-      const hotelsByChain: Map<string, any[]> = new Map();
+      const hotelsByChain: Map<string, LocalHotelData[]> = new Map();
 
       for (const chain of hotelChains) {
         console.log(`📤 [MULTI-CHAIN] Request ${hotelChains.indexOf(chain) + 1}/${hotelChains.length}: Searching hotels for chain "${chain}"`);
@@ -452,7 +565,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
 
       // DEDUPLICATION: Remove duplicate hotels by hotel_id or name+city
       const seenHotels = new Set<string>();
-      const deduplicatedHotels: any[] = [];
+      const deduplicatedHotels: LocalHotelData[] = [];
 
       for (const hotel of allHotels) {
         // Use hotel_id if available, otherwise use name+city as unique key
@@ -536,12 +649,12 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
 
     // 🔍 DEBUG: Log all hotel names received from EUROVIPS
     console.log(`📋 [EUROVIPS RESPONSE] Received ${allHotels.length} hotels:`);
-    allHotels.forEach((hotel: any, index: number) => {
+    allHotels.forEach((hotel, index: number) => {
       console.log(`   ${index + 1}. "${hotel.name}"`);
     });
 
     // Fix hotel dates - EUROVIPS sometimes returns incorrect dates, so we force the correct ones
-    const correctedHotels = allHotels.map((hotel: any) => ({
+    const correctedHotels = allHotels.map((hotel) => ({
       ...hotel,
       check_in: enrichedParsed.hotels?.checkinDate || hotel.check_in,
       check_out: enrichedParsed.hotels?.checkoutDate || hotel.check_out,
@@ -607,21 +720,30 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     console.log('🔄 [NORMALIZATION] Room type:', enrichedParsed.hotels?.roomType, '→', normalizedRoomType);
     console.log('🔄 [NORMALIZATION] Meal plan:', enrichedParsed.hotels?.mealPlan, '→', normalizedMealPlan);
 
-    // ✅ FILTER HOTELS BY ROOM TYPE AND MEAL PLAN using advanced filtering system
+    // ✅ FILTER HOTELS BY MEAL PLAN (NOT by capacity - see note below)
     const filterHotelRooms = (hotel: LocalHotelData): LocalHotelData | null => {
-      // Apply advanced room filtering with both capacity and meal plan
+      // 🚨 CRITICAL: Do NOT filter by capacity (roomType)
+      // Reason: EUROVIPS already validates capacity in the request phase.
+      // All returned rooms are guaranteed to accommodate the requested number of adults.
+      // Filtering by roomType codes (TPL, DBL, etc.) rejects valid options because:
+      //   1. EUROVIPS uses inconsistent room codes (SGL, JSU, SUI, ROO, DBL for 3 adults)
+      //   2. "Triple" means CAPACITY (3 people) not CONFIGURATION (3 beds with TPL label)
+      //   3. Post-filtering caused "habitación triple" to return 0 results (all 4,136 rooms rejected)
+      //      while "habitación 3 adultos" worked fine (no filter applied)
+      // See: docs/guides/HOTEL_ROOMTYPE_FILTER_ANALYSIS.md for detailed analysis
+
       // Cast rooms to expected type since API response may have optional fields
       const filteredRooms = filterRooms(hotel.rooms as Parameters<typeof filterRooms>[0], {
-        capacity: normalizedRoomType,
+        capacity: undefined,  // Don't filter by capacity - provider already validated
         mealPlan: normalizedMealPlan
       });
 
       if (filteredRooms.length === 0) {
-        console.log(`🚫 [FILTER] Hotel "${hotel.name}" has no rooms matching criteria (capacity: ${normalizedRoomType || 'any'}, meal plan: ${normalizedMealPlan || 'any'})`);
+        console.log(`🚫 [FILTER] Hotel "${hotel.name}" has no rooms matching meal plan criteria (meal plan: ${normalizedMealPlan || 'any'})`);
         return null; // Skip hotel entirely
       }
 
-      console.log(`✅ [FILTER] Hotel "${hotel.name}": ${hotel.rooms.length} → ${filteredRooms.length} rooms after advanced filtering`);
+      console.log(`✅ [FILTER] Hotel "${hotel.name}": ${hotel.rooms.length} → ${filteredRooms.length} rooms after meal plan filtering`);
 
       // Return hotel with filtered rooms
       return {
@@ -635,7 +757,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       .map(filterHotelRooms)
       .filter((hotel): hotel is LocalHotelData => hotel !== null);
 
-    console.log(`📊 [FILTER] Hotels: ${destinationFilteredHotels.length} → ${filteredHotels.length} (after advanced room filtering)`);
+    console.log(`📊 [FILTER] Hotels: ${destinationFilteredHotels.length} → ${filteredHotels.length} (after meal plan filtering)`);
 
     // Sort hotels by lowest price (minimum room price)
     const sortedHotels = filteredHotels.sort((a: LocalHotelData, b: LocalHotelData) => {
@@ -675,7 +797,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       // Interleave hotels from different chains (round-robin)
       const interleaved: LocalHotelData[] = [];
       const maxPerChain = Math.ceil(5 / requestedChains.length); // Distribute 5 slots evenly
-      let slotsRemaining = 5;
+      const slotsRemaining = 5;
 
       // Round-robin: take one from each chain until we have 5 hotels
       let roundIndex = 0;
@@ -803,10 +925,10 @@ export const handlePackageSearch = async (parsed: ParsedTravelRequest): Promise<
       }
     });
 
-    const allPackages = response.data.results || [];
+    const allPackages: LocalPackageData[] = response.data.results || [];
     // Sort packages by price (lowest first) and limit to 5
     const packages = allPackages
-      .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
+      .sort((a, b) => (a.price || 0) - (b.price || 0))
       .slice(0, 5);
 
     return {
@@ -836,10 +958,10 @@ export const handleServiceSearch = async (parsed: ParsedTravelRequest): Promise<
       }
     });
 
-    const allServices = response.data.results || [];
+    const allServices: LocalServiceData[] = response.data.results || [];
     // Sort services by price (lowest first) and limit to 5
     const services = allServices
-      .sort((a: any, b: any) => (a.price || 0) - (b.price || 0))
+      .sort((a, b) => (a.price || 0) - (b.price || 0))
       .slice(0, 5);
 
     return {
@@ -924,7 +1046,8 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
       hotels: hotelResult.data?.combinedData?.hotels || [], // ✅ Already filtered
       requestType: 'combined' as const,
       requestedRoomType: hotelResult.data?.combinedData?.requestedRoomType,
-      requestedMealPlan: hotelResult.data?.combinedData?.requestedMealPlan
+      requestedMealPlan: hotelResult.data?.combinedData?.requestedMealPlan,
+      flightSearchId: flightResult.data?.combinedData?.flightSearchId, // Pass through for localStorage lookup
     };
 
     console.log('📊 [COMBINED SEARCH] Combined data summary:');
@@ -1048,3 +1171,18 @@ export const handleItineraryRequest = async (parsed: ParsedTravelRequest): Promi
     };
   }
 };
+
+// ✨ Helper functions for time filtering
+function getFirstDepartureTime(flight: FlightData): number {
+  const firstLeg = flight.legs[0];
+  const firstSegment = firstLeg?.options?.[0]?.segments?.[0];
+  return timeStringToNumber(firstSegment?.departure?.time || '');
+}
+
+function getLastArrivalTime(flight: FlightData): number {
+  const lastLeg = flight.legs[flight.legs.length - 1];
+  const lastOption = lastLeg?.options?.[0];
+  const segments = lastOption?.segments || [];
+  const lastSegment = segments[segments.length - 1];
+  return timeStringToNumber(lastSegment?.arrival?.time || '');
+}

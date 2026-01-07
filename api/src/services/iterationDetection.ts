@@ -107,7 +107,13 @@ const FLIGHT_MODIFICATION_PATTERNS = [
   /\bcon\s+(iberia|latam|avianca|aeromexico|copa|american|united|delta|air\s*europa|level|jetsmart|flybondi|aerolineas)\b/i,
   /\ben\s+(iberia|latam|avianca|aeromexico|copa|american|united|delta|air\s*europa|level|jetsmart|flybondi|aerolineas)\b/i,
   /\bescalas?\s+m[aá]xim[ao]?\s+de?\s+(\d+)\s*h/i,
-  /\bm[aá]xim[ao]?\s+(\d+)\s*h(oras?)?\s+de?\s+escala/i
+  /\bm[aá]xim[ao]?\s+(\d+)\s*h(oras?)?\s+de?\s+escala/i,
+  // ✨ Horarios de salida
+  /\b(que\s+)?(?:salga|sal[íi]|vuele)\s+(?:de\s+)?(?:la\s+)?(mañana|manana|tarde|noche|madrugada|dia|d[íi]a|temprano)\b/i,
+  // ✨ Horarios de llegada
+  /\b(que\s+)?(?:llegue|vuelva|regrese)\s+(?:de\s+)?(?:la\s+)?(mañana|manana|tarde|noche|dia|d[íi]a)\b/i,
+  // ✨ Máximo de escalas (duración)
+  /\bescalas?\s+(?:de\s+)?(?:no\s+)?m[aá]s\s+(?:de\s+)?(\d+)\s*(?:h|hs|hora|horas)\b/i
 ];
 
 // Patterns that indicate a NEW search (not iteration)

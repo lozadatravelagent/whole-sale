@@ -635,7 +635,7 @@ const IATA_TO_CITY: Record<string, string> = {
   'LRM': 'La Romana', 'BRX': 'Barahona',
 
   // Jamaica
-  'KIN': 'Kingston', 'MBJ': 'Montego Bay', 'NAN': 'Negril',
+  'KIN': 'Kingston', 'MBJ': 'Montego Bay',
 
   // Bahamas
   'NAS': 'Nassau', 'FPO': 'Freeport',
@@ -688,7 +688,7 @@ const IATA_TO_CITY: Record<string, string> = {
 
   // Francia
   'CDG': 'París', 'ORY': 'París', 'NCE': 'Niza', 'LYS': 'Lyon', 'MRS': 'Marsella',
-  'TLS': 'Toulouse', 'BSL': 'Basilea', 'BOD': 'Burdeos', 'NTE': 'Nantes',
+  'TLS': 'Toulouse', 'BOD': 'Burdeos', 'NTE': 'Nantes',
 
   // Italia
   'FCO': 'Roma', 'CIA': 'Roma', 'MXP': 'Milán', 'LIN': 'Milán', 'VCE': 'Venecia',

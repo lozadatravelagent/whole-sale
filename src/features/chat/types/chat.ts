@@ -192,9 +192,12 @@ export interface FlightData {
 export interface LocalHotelData {
   name: string;
   city: string;
+  category?: string;
+  address?: string;
   nights: number;
   check_in: string;
   check_out: string;
+  hotel_id?: string;  // Unique hotel identifier for deduplication
   rooms: Array<{
     type?: string;
     description?: string;
