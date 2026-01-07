@@ -18,7 +18,7 @@ interface MessageItemProps {
 
 // Markdown wrapper component that lazy loads remarkGfm
 const MarkdownContent = ({ content }: { content: string }) => {
-  const [remarkGfm, setRemarkGfm] = React.useState<any>(null);
+  const [remarkGfm, setRemarkGfm] = React.useState<(() => void) | null>(null);
 
   React.useEffect(() => {
     import('remark-gfm').then((module) => setRemarkGfm(() => module.default));
@@ -219,9 +219,9 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
         id: Math.random().toString(36),
         unique_id: Math.random().toString(36),
         name: hotel.name,
-        category: '',
+        category: hotel.category || '',
         city: hotel.city,
-        address: '',
+        address: hotel.address || '',
         rooms: hotel.rooms.map(room => ({
           type: room.type || 'Standard',
           description: translateRoomDescription(room.description || 'Habitación estándar'),
@@ -254,15 +254,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
   // Memoize the conversion to prevent recalculation on every render
   const memoizedCombinedData = useMemo(() => {
     return combinedTravelData ? convertToGlobalCombinedData(combinedTravelData) : null;
-  }, [
-    combinedTravelData?.requestType,
-    combinedTravelData?.flights?.length,
-    combinedTravelData?.hotels?.length,
-    combinedTravelData?.requestedRoomType,
-    combinedTravelData?.requestedMealPlan,
-    combinedTravelData?.flightSearchId,
-    msg.id // Use message ID as stable dependency
-  ]);
+  }, [combinedTravelData]);
 
   return (
     <div key={msg.id}>
