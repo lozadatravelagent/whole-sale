@@ -216,8 +216,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
         travel_assistance: flight.travel_assistance
       })),
       hotels: localData.hotels.map(hotel => ({
-        id: Math.random().toString(36),
-        unique_id: Math.random().toString(36),
+        id: hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
+        unique_id: hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
         name: hotel.name,
         category: hotel.category || '',
         city: hotel.city,
