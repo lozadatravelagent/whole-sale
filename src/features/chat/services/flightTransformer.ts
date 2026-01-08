@@ -639,34 +639,57 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       let allLegsMatch = true;
       const legResults = [];
 
+      // Helper function to detect if carry-on is a backpack based on dimensions
+      const isBackpackFromDimensions = (dimensions: string | null): boolean => {
+        if (!dimensions) return false;
+        const dim = dimensions.toLowerCase();
+        const backpackIndicators = ['mochila', 'backpack', 'personal item', 'item personal', 'bolso personal', 'personal'];
+        return backpackIndicators.some(indicator => dim.includes(indicator));
+      };
+
       for (let i = 0; i < baggageAnalysis.length; i++) {
         const leg = baggageAnalysis[i];
         const legHasChecked = leg.baggageQuantity > 0;
         const legHasCarryOn = parseInt(leg.carryOnQuantity || '0') > 0;
+        const legIsBackpack = isBackpackFromDimensions(leg.carryOnDimensions);
         const legName = leg.legNumber === 1 ? 'IDA' : 'VUELTA';
 
-        console.log(`   📦 ${legName} (Leg ${leg.legNumber}): Checked=${legHasChecked} (${leg.baggageQuantity}PC), CarryOn=${legHasCarryOn} (qty: ${leg.carryOnQuantity})`);
+        // Light fare airlines (typically only include backpack/personal item)
+        const lightFareAirlines = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
+        const isLightFareAirline = lightFareAirlines.includes(leg.airlineCode);
+
+        console.log(`   📦 ${legName} (Leg ${leg.legNumber}): Checked=${legHasChecked} (${leg.baggageQuantity}PC), CarryOn=${legHasCarryOn} (qty: ${leg.carryOnQuantity}), IsBackpack=${legIsBackpack}, LightFare=${isLightFareAirline}`);
 
         let legMatches = false;
 
         switch (luggagePreference) {
-          case 'checked':
-            legMatches = legHasChecked;
-            break;
-          case 'carry_on':
-            // New logic: distinguish between "1 Mochila" (light fare) vs real carry-on
-            if (legHasCarryOn) {
-              // Any airline with carry-on info is valid
+          case 'backpack':
+            // ONLY backpack/personal item - exclude real carry-on and checked baggage
+            if (legHasCarryOn && legIsBackpack && !legHasChecked) {
+              // Has explicit backpack and no checked baggage
               legMatches = true;
-            } else if (!legHasChecked && !legHasCarryOn) {
-              // 0PC + null case: check airline to distinguish "1 Mochila" vs carry-on básico
-              const lightTarifAirlines = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
-              const isLightFareAirline = lightTarifAirlines.includes(leg.airlineCode);
-              // Accept only if NOT a light fare airline (exclude "1 Mochila")
-              legMatches = !isLightFareAirline;
+            } else if (!legHasChecked && !legHasCarryOn && isLightFareAirline) {
+              // Light fare airline without explicit info → assume backpack only
+              legMatches = true;
             } else {
               legMatches = false;
             }
+            break;
+          case 'carry_on':
+            // ONLY real carry-on - exclude backpack and checked baggage
+            if (legHasCarryOn && !legIsBackpack && !legHasChecked) {
+              // Has explicit carry-on (not backpack) and no checked baggage
+              legMatches = true;
+            } else if (!legHasChecked && !legHasCarryOn && !isLightFareAirline) {
+              // Non-light-fare airline without explicit info → assume standard carry-on
+              legMatches = true;
+            } else {
+              legMatches = false;
+            }
+            break;
+          case 'checked':
+            // Has checked baggage (may also have carry-on)
+            legMatches = legHasChecked;
             break;
           case 'both':
             legMatches = legHasChecked && legHasCarryOn;

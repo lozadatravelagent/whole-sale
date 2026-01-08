@@ -17,7 +17,7 @@ export interface FlightContextParams {
   children: number;
   stops?: 'direct' | 'one_stop' | 'two_stops' | 'with_stops' | 'any';
   preferredAirline?: string;
-  luggage?: 'carry_on' | 'checked' | 'both' | 'none';
+  luggage?: 'backpack' | 'carry_on' | 'checked' | 'both' | 'none';
   maxLayoverHours?: number;
 }
 

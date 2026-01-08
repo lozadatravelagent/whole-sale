@@ -10,7 +10,7 @@ export interface ParsedTravelRequest {
         adults: number;
         children: number;
         // Nuevos campos requeridos
-        luggage?: 'carry_on' | 'checked' | 'both' | 'none'; // con o sin valija/equipaje
+        luggage?: 'backpack' | 'carry_on' | 'checked' | 'both' | 'none'; // con o sin valija/equipaje
         departureTimePreference?: string; // horario de salida preferido
         arrivalTimePreference?: string; // horario de llegada preferido
         stops?: 'direct' | 'one_stop' | 'two_stops' | 'with_stops' | 'any'; // vuelo directo o con escalas

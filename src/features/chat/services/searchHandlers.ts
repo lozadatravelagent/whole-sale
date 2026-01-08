@@ -378,11 +378,17 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     // 📊 BUILD EXTENDED METADATA for API responses
     const lightFareAirlines = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
     const userRequestedCarryOn = parsed?.flights?.luggage === 'carry_on';
+    const userRequestedBackpack = parsed?.flights?.luggage === 'backpack';
 
     const metadata = {
-      // Light fares exclusion (when user requests carry-on, light fare airlines are filtered)
+      // Light fares exclusion (when user requests carry_on, light fare airlines are filtered out)
+      // For backpack, light fare airlines are PREFERRED (they offer backpack)
       ...(userRequestedCarryOn && {
         light_fares_excluded: true,
+        light_fare_airlines: lightFareAirlines
+      }),
+      ...(userRequestedBackpack && {
+        light_fares_preferred: true,
         light_fare_airlines: lightFareAirlines
       })
     };
