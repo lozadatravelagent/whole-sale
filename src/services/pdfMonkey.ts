@@ -573,6 +573,42 @@ function formatPriceForTemplate(price: number | string): string {
   });
 }
 
+// Helper function to extract meal plan from room description or hotel data
+// Returns: 'all_inclusive' | 'breakfast' | 'half_board' | 'full_board' | 'room_only' | null
+function extractMealPlan(roomDescription?: string, hotelData?: any): string | null {
+  const desc = (roomDescription || '').toLowerCase();
+  const hotelName = (hotelData?.name || '').toLowerCase();
+  const hotelDesc = (hotelData?.description || '').toLowerCase();
+  const combinedText = `${desc} ${hotelName} ${hotelDesc}`;
+
+  // All Inclusive patterns
+  if (/todo\s*incluido|all\s*inclusive|ai\b|ti\b/i.test(combinedText)) {
+    return 'all_inclusive';
+  }
+
+  // Full Board patterns (pensión completa)
+  if (/pensión?\s*completa|full\s*board|fb\b|pc\b/i.test(combinedText)) {
+    return 'full_board';
+  }
+
+  // Half Board patterns (media pensión)
+  if (/media\s*pensión?|half\s*board|hb\b|mp\b/i.test(combinedText)) {
+    return 'half_board';
+  }
+
+  // Breakfast patterns (desayuno)
+  if (/desayuno|breakfast|bb\b|bed\s*&?\s*breakfast/i.test(combinedText)) {
+    return 'breakfast';
+  }
+
+  // Room Only patterns (solo habitación)
+  if (/solo\s*habitación?|room\s*only|ro\b|sin\s*comidas/i.test(combinedText)) {
+    return 'room_only';
+  }
+
+  return null;
+}
+
 // Helper function to extract star rating from EUROVIPS category format
 // EUROVIPS returns category as "3*", "4*", "5*", "3EST", "H2_5", etc. or text like "Standard"
 // Also tries to extract from hotel name if category is empty
@@ -1041,6 +1077,19 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   // Extract hotel destination for hotel-only PDFs
   const hotelDestination = firstHotel?.city || firstHotel?.address?.split(',')[0] || 'Destino';
 
+  // Extract meal plan from first hotel's room description
+  let mealPlan: string | null = null;
+  if (firstHotel) {
+    const hotelWithRoom = firstHotel as HotelDataWithSelectedRoom;
+    const roomToCheck = hotelWithRoom.selectedRoom || firstHotel.rooms?.[0];
+    mealPlan = extractMealPlan(roomToCheck?.description, firstHotel);
+    console.log('🍽️ [MEAL PLAN] Extracted:', {
+      roomDescription: roomToCheck?.description,
+      hotelName: firstHotel.name,
+      detectedMealPlan: mealPlan
+    });
+  }
+
   // Template-specific data structure (OBJETO DIRECTO, no array)
   const template_data = {
     // Core flight data (as expected by template)
@@ -1084,7 +1133,10 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     option_3_total: option3Hotel ? formatPriceForTemplate(option3Total) : null,
 
     // 🔄 PRICE MODIFICATION FLAG - Hide hotel prices when regenerating PDF with new price
-    is_price_modified: isPriceModified
+    is_price_modified: isPriceModified,
+
+    // 🍽️ MEAL PLAN - For "INCLUYE" section in PDF
+    meal_plan: mealPlan
   };
 
   console.log('✅ PREPARED TEMPLATE DATA:', {
