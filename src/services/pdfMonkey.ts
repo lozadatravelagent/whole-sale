@@ -736,7 +736,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     const hotelForTemplate: any = {
       name: hotel.name,
       stars: extractedStars, // Extract number from EUROVIPS format "3*", "4*", etc. or from hotel name
-      location: location, // Combined address and city, or just city if address is empty
+      location: hotel.city || 'Ubicación no especificada', // Solo mostrar país/ciudad, no dirección completa
+      roomDescription: roomToUse.description || '', // Descripción de habitación (ej: "HABITACION DOBLE /TODO INCLUIDO")
       price: formatPriceForTemplate(priceForAllNights), // Formato europeo - precio total por todas las noches
       link: `https://wholesale-connect.com/hotel/${hotel.id}` // Placeholder link
     };
@@ -910,14 +911,16 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         option1Hotel = {
           name: option1Name,
           stars: option1Data.stars || extractStars(option1Data.category, option1Name),
-          location: option1Data.location || option1Data.city || 'Ubicación no especificada',
+          location: option1Data.city || 'Ubicación no especificada',
+          roomDescription: option1Data.roomDescription || '',
           price: formatPriceForTemplate(option1HotelPrice)
         };
 
         option2Hotel = {
           name: option2Name,
           stars: option2Data.stars || extractStars(option2Data.category, option2Name),
-          location: option2Data.location || option2Data.city || 'Ubicación no especificada',
+          location: option2Data.city || 'Ubicación no especificada',
+          roomDescription: option2Data.roomDescription || '',
           price: formatPriceForTemplate(option2HotelPrice)
         };
 
@@ -933,7 +936,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
           option3Hotel = {
             name: option3Name,
             stars: option3Data.stars || extractStars(option3Data.category, option3Name),
-            location: option3Data.location || option3Data.city || 'Ubicación no especificada',
+            location: option3Data.city || 'Ubicación no especificada',
+            roomDescription: option3Data.roomDescription || '',
             price: formatPriceForTemplate(option3HotelPrice)
           };
         }
@@ -985,14 +989,16 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       option1Hotel = {
         name: cheapestHotel.name,
         stars: cheapestHotel.stars,
-        location: cheapestHotel.location,
+        location: cheapestHotel.city || cheapestHotel.location,
+        roomDescription: cheapestHotel.roomDescription || '',
         price: cheapestHotel.price
       };
 
       option2Hotel = {
         name: mostExpensiveHotel.name,
         stars: mostExpensiveHotel.stars,
-        location: mostExpensiveHotel.location,
+        location: mostExpensiveHotel.city || mostExpensiveHotel.location,
+        roomDescription: mostExpensiveHotel.roomDescription || '',
         price: mostExpensiveHotel.price
       };
 
@@ -1010,7 +1016,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         option3Hotel = {
           name: middleHotel.name,
           stars: middleHotel.stars,
-          location: middleHotel.location,
+          location: middleHotel.city || middleHotel.location,
+          roomDescription: middleHotel.roomDescription || '',
           price: middleHotel.price
         };
       }

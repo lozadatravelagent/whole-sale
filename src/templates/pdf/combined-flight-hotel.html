@@ -51,10 +51,15 @@
     }
 
     .hotel-option-stars,
-    .hotel-option-location {
+    .hotel-option-location,
+    .hotel-option-room {
       color: #666;
       font-size: 10px;
       margin-bottom: 2px;
+    }
+
+    .hotel-option-room {
+      font-style: italic;
     }
 
     .shared-flights {
@@ -86,6 +91,34 @@
       text-align: center !important;
       display: inline !important;
       width: auto !important;
+    }
+
+    /* Disclaimer final - posicionado al fondo del contenedor (que termina arriba del footer) */
+    .final-disclaimer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 0;
+      font-size: 7px;
+      color: #555;
+      line-height: 1.25;
+      border-top: 1px solid #ddd;
+    }
+
+    .final-disclaimer p {
+      margin: 0 0 3px 0;
+    }
+
+    .final-disclaimer p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Ajustar contenedores para dejar espacio al disclaimer (80px footer + 70px disclaimer) */
+    .content,
+    .quote-container,
+    .summary-container {
+      bottom: 150px !important;
     }
   </style>
 </head>
@@ -198,6 +231,7 @@
               <div class="hotel-option-name">🏨 {{ option_1_hotel.name }}</div>
               <div class="hotel-option-stars">{{ option_1_hotel.stars }} estrellas</div>
               <div class="hotel-option-location">{{ option_1_hotel.location }}</div>
+              {% if option_1_hotel.roomDescription %}<div class="hotel-option-room">🛏️ {{ option_1_hotel.roomDescription }}</div>{% endif %}
             </div>
           </div>
 
@@ -215,6 +249,7 @@
               <div class="hotel-option-name">🏨 {{ option_2_hotel.name }}</div>
               <div class="hotel-option-stars">{{ option_2_hotel.stars }} estrellas</div>
               <div class="hotel-option-location">{{ option_2_hotel.location }}</div>
+              {% if option_2_hotel.roomDescription %}<div class="hotel-option-room">🛏️ {{ option_2_hotel.roomDescription }}</div>{% endif %}
             </div>
           </div>
 
@@ -232,6 +267,7 @@
               <div class="hotel-option-name">🏨 {{ option_3_hotel.name }}</div>
               <div class="hotel-option-stars">{{ option_3_hotel.stars }} estrellas</div>
               <div class="hotel-option-location">{{ option_3_hotel.location }}</div>
+              {% if option_3_hotel.roomDescription %}<div class="hotel-option-room">🛏️ {{ option_3_hotel.roomDescription }}</div>{% endif %}
             </div>
           </div>
         </div>
@@ -312,6 +348,12 @@
                   <div class="sc-icon"></div>
                   <div class="sc-text">{{ option_1_hotel.location }}</div>
                 </div>
+                {% if option_1_hotel.roomDescription %}
+                <div class="sc-row">
+                  <div class="sc-icon">🛏️</div>
+                  <div class="sc-text">{{ option_1_hotel.roomDescription }}</div>
+                </div>
+                {% endif %}
                 </br>
 
                 {% if _ta_norm > 0 %}
@@ -398,6 +440,12 @@
                   <div class="sc-icon"></div>
                   <div class="sc-text">{{ option_2_hotel.location }}</div>
                 </div>
+                {% if option_2_hotel.roomDescription %}
+                <div class="sc-row">
+                  <div class="sc-icon">🛏️</div>
+                  <div class="sc-text">{{ option_2_hotel.roomDescription }}</div>
+                </div>
+                {% endif %}
                 </br>
 
                 {% if _ta_norm > 0 %}
@@ -492,6 +540,12 @@
                   <div class="sc-icon"></div>
                   <div class="sc-text">{{ best_hotels[0].location }}</div>
                 </div>
+                {% if best_hotels[0].roomDescription %}
+                <div class="sc-row">
+                  <div class="sc-icon">🛏️</div>
+                  <div class="sc-text">{{ best_hotels[0].roomDescription }}</div>
+                </div>
+                {% endif %}
                 </br>
 
                 {% if _ta_norm > 0 %}
@@ -682,10 +736,15 @@
         {% endif %}
       </div>
 
-      <div class="contact-section">
-        <div class="contact-text">Para confirmar tu reserva, contactanos por WhatsApp</div>
-        <div class="contact-text">o respondé este mensaje.</div>
+      {% if has_multiple_hotels %}{% unless has_flights %}
+      <div class="final-disclaimer">
+        <p>El presente presupuesto es orientativo y se encuentra sujeto a disponibilidad y modificación de tarifas al momento de realizar la reserva y/o emisión.</p>
+        <p>La agencia no se responsabiliza por la documentación personal de los pasajeros, siendo exclusiva responsabilidad de los mismos contar con pasaporte vigente, visas, vacunas, permisos de salida del país, requisitos migratorios y sanitarios exigidos por las autoridades de cada destino.</p>
+        <p>La confirmación de servicios queda sujeta al pago total o parcial, según condiciones del operador y proveedor interviniente.</p>
+        <p>- consultar por la asistencia al viajero</p>
       </div>
+      {% endunless %}{% endif %}
+
     </div>
   </div>
 
@@ -803,6 +862,14 @@
 
         <!-- Optional Notes -->
 
+        {% if forloop.last %}{% if has_multiple_hotels or best_hotels.size == 0 %}
+        <div class="final-disclaimer">
+          <p>El presente presupuesto es orientativo y se encuentra sujeto a disponibilidad y modificación de tarifas al momento de realizar la reserva y/o emisión.</p>
+          <p>La agencia no se responsabiliza por la documentación personal de los pasajeros, siendo exclusiva responsabilidad de los mismos contar con pasaporte vigente, visas, vacunas, permisos de salida del país, requisitos migratorios y sanitarios exigidos por las autoridades de cada destino.</p>
+          <p>La confirmación de servicios queda sujeta al pago total o parcial, según condiciones del operador y proveedor interviniente.</p>
+          <p>- consultar por la asistencia al viajero</p>
+        </div>
+        {% endif %}{% endif %}
 
       </div>
     </div>
@@ -835,21 +902,19 @@
           <span class="detail-value">{{ best_hotel.stars }} estrellas</span>
         </div>
 
+        {% if best_hotel.roomDescription %}
+        <div class="detail-row">
+          <div class="detail-icon">🛏️</div>
+          <span class="detail-label">Habitación:</span>
+          <span class="detail-value">{{ best_hotel.roomDescription }}</span>
+        </div>
+        {% endif %}
+
         <div class="detail-row">
           <div class="detail-icon">👥</div>
           <span class="detail-label">Ocupación:</span>
           <span class="detail-value">{{ adults }} {% if adults == 1 %}adulto{% else %}adultos{% endif %}{% if childrens > 0 %}, {{ childrens }} {% if childrens == 1 %}niño{% else %}niños{% endif %}{% endif %}{% if infants > 0 %}, {{ infants }} {% if infants == 1 %}infante{% else %}infantes{% endif %}{% endif %}</span>
         </div>
-      </div>
-
-      <div class="price-section">
-
-        <div class="price-note">Tarifa sujeta a disponibilidad al momento de reservar</div>
-        {%- comment -%}
-        <a href="{{ best_hotel.link }}">
-          <button class="reserve-button">Reservar Ahora</button>
-        </a>
-        {%- endcomment -%}
       </div>
 
       {% if best_hotel.alternatives %}
@@ -866,17 +931,15 @@
       <!-- Optional Notes -->
 
 
-      <div class="important-info-contact">
-        <div class="contact-text">Para confirmar tu reserva,</div>
-        <div class="contact-text">contactanos por WhatsApp o respondé este mensaje.</div>
-      </div>
 
-      <div class="price-section price-section--disclaimer">
-        <div class="price-note">Documentación y requisitos de ingreso a cada pais son reponsabilidad del pasajero.</div>
-        <div class="price-note">Los precios publicados son orientativos y pueden variar según disponibilidad y
-          condiciones de los proveedores y aerolíneas.<br> La agencia no se responsabiliza por cambios en tarifas,
-          horarios o servicios ajenos a nuestra gestión.</div>
+      {% if forloop.last %}
+      <div class="final-disclaimer">
+        <p>El presente presupuesto es orientativo y se encuentra sujeto a disponibilidad y modificación de tarifas al momento de realizar la reserva y/o emisión.</p>
+        <p>La agencia no se responsabiliza por la documentación personal de los pasajeros, siendo exclusiva responsabilidad de los mismos contar con pasaporte vigente, visas, vacunas, permisos de salida del país, requisitos migratorios y sanitarios exigidos por las autoridades de cada destino.</p>
+        <p>La confirmación de servicios queda sujeta al pago total o parcial, según condiciones del operador y proveedor interviniente.</p>
+        <p>Consultar por la asistencia al viajero.</p>
       </div>
+      {% endif %}
 
     </div>
   </div>
