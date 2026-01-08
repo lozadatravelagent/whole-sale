@@ -6,18 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flight & Hotel Information</title>
   <style>
-    /* Estilos para layout de 3 opciones de hotel */
+    /* Estilos para layout de 2-3 opciones de hotel en columnas */
     .hotel-options-grid {
       display: flex;
-      gap: 8px;
+      gap: 12px;
       margin-top: 10px;
+      justify-content: center;
     }
 
     .hotel-option-card {
       flex: 1;
+      max-width: 220px;
       border: 1px solid #e0e0e0;
       border-radius: 8px;
-      padding: 10px;
+      padding: 12px;
       background: #fafafa;
     }
 
@@ -168,54 +170,70 @@
         </div>
       </div>
 
-      <div class="package-combinations">
-        <h2 class="combinations-title">INCLUYE</h2>
+      {% if has_multiple_hotels %}
+      <!-- INCLUDES BOX - 4 Columnas (solo para multi-hotel) -->
+      <div class="includes-box">
+        <div class="includes-box-title">Incluye</div>
+        <div class="includes-grid">
+          <!-- Columna 1: Vuelo -->
+          <div class="includes-item{% unless has_flights %} includes-item--disabled{% endunless %}">
+            <div class="includes-item-icon">✈️</div>
+            <div class="includes-item-label">Vuelo {{ selected_flights[0].airline.name }}</div>
+            {% if has_flights %}
+            <div class="includes-item-value">{{ selected_flights[0].legs[0].departure.city_code }}</div>
+            <div class="includes-item-value">{{ selected_flights[0].legs[0].arrival.city_code }}</div>
+            <div class="includes-item-check">Incluido</div>
+            {% else %}
+            <div class="includes-item-na">No incluido</div>
+            {% endif %}
+          </div>
 
-        {% if has_multiple_hotels %}
-        <!-- MULTI-HOTEL MODE -->
+          <!-- Columna 2: Hotel -->
+          <div class="includes-item">
+            <div class="includes-item-icon">🏨</div>
+            <div class="includes-item-label">Hotel</div>
+            {% if meal_plan == 'all_inclusive' %}
+            <div class="includes-item-value">All Inclusive</div>
+            {% endif %}
+            <div class="includes-item-check">Incluido</div>
+          </div>
 
-        {% if option_3_hotel %}
-        <!-- THREE OPTIONS: Compact layout with shared flight info -->
+          <!-- Columna 3: Traslado -->
+          <div class="includes-item{% unless _tr_norm > 0 %} includes-item--disabled{% endunless %}">
+            <div class="includes-item-icon">🚐</div>
+            <div class="includes-item-label">Traslado</div>
+            {% if _tr_norm > 0 %}
+            <div class="includes-item-value">Aeropuerto - Hotel</div>
+            <div class="includes-item-check">Incluido</div>
+            {% else %}
+            <div class="includes-item-na">No incluido</div>
+            {% endif %}
+          </div>
 
-        {% if has_flights %}
-        <!-- Vuelos compartidos (una sola vez) - Solo si hay vuelos -->
-        <div class="package-card best-deal shared-flights">
-          <div class="package-section">
-            <div class="section-title">
-              <span class="section-icon">✈️</span>
-              Vuelos {{ selected_flights[0].airline.name }}
-            </div>
-            <div class="section-content">
-              <div class="sc-row">
-                <div class="sc-text">
-                  {{ selected_flights[0].legs[0].departure.city_name }} ⇄ {{
-                  selected_flights[0].legs[0].arrival.city_name }}
-                </div>
-              </div>
-              <div class="sc-row">
-                <div class="sc-text">{{ selected_flights[0].legs[0].flight_type }}</div>
-              </div>
-              <div class="sc-row">
-                <div class="sc-text">
-                  {% if selected_flights[0].luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif %}
-                </div>
-              </div>
-              {% if _tr_norm > 0 %}
-              <div class="sc-row">
-                <div class="sc-text">🚐 Traslados incluidos</div>
-              </div>
-              {% endif %}
-              {% if _ta_norm > 0 %}
-              <div class="sc-row">
-                <div class="sc-text">🏥 Asistencia médica incluida</div>
-              </div>
-              {% endif %}
-            </div>
+          <!-- Columna 4: Seguro -->
+          <div class="includes-item{% unless _ta_norm > 0 %} includes-item--disabled{% endunless %}">
+            <div class="includes-item-icon">🏥</div>
+            <div class="includes-item-label">Seguro</div>
+            {% if _ta_norm > 0 %}
+            <div class="includes-item-value">Asistencia médica</div>
+            <div class="includes-item-check">Incluido</div>
+            {% else %}
+            <div class="includes-item-na">No incluido</div>
+            {% endif %}
           </div>
         </div>
-        {% endif %}
+      </div>
+      {% endif %}
 
-        <!-- Tres opciones de hotel en columnas -->
+      <div class="package-combinations">
+        {% unless has_multiple_hotels %}
+        <h2 class="combinations-title">INCLUYE</h2>
+        {% endunless %}
+
+        {% if has_multiple_hotels %}
+        <!-- MULTI-HOTEL MODE: 2 or 3 options in columns -->
+
+        <!-- Opciones de hotel en columnas -->
         <div class="hotel-options-grid">
           <!-- Opción 1 -->
           <div class="hotel-option-card">
@@ -253,7 +271,8 @@
             </div>
           </div>
 
-          <!-- Opción 3 -->
+          {% if option_3_hotel %}
+          <!-- Opción 3 (si existe) -->
           <div class="hotel-option-card">
             <div class="hotel-option-header">
               <div class="hotel-option-title">Opción 3</div>
@@ -270,195 +289,8 @@
               {% if option_3_hotel.roomDescription %}<div class="hotel-option-room">🛏️ {{ option_3_hotel.roomDescription }}</div>{% endif %}
             </div>
           </div>
+          {% endif %}
         </div>
-
-        {% else %}
-        <!-- TWO OPTIONS: Original vertical layout -->
-
-        <!-- Opción Económica (cheapest hotel) -->
-        <div class="package-card best-deal">
-          <div class="package-header">
-            <div class="package-title">Opción 1</div>
-            <div class="package-price">
-              {% assign _opt1_str = option_1_total | default: 0 %}
-              {% assign _opt1 = _opt1_str | replace: ".", "" | replace: ",", "." | times: 1 %}
-              ${{ _opt1 }} {{ total_currency }}
-            </div>
-          </div>
-
-          <div class="package-details">
-            {% if has_flights %}
-            <!-- VUELOS - Solo si hay vuelos -->
-            <div class="package-section">
-              <div class="section-title">
-                <span class="section-icon">✈️</span>
-                Vuelos {{ selected_flights[0].airline.name }}
-              </div>
-
-              <div class="section-content">
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">
-                    {{ selected_flights[0].legs[0].departure.city_name }} ⇄ {{
-                    selected_flights[0].legs[0].arrival.city_name }}
-                  </div>
-                </div>
-
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">{{ selected_flights[0].legs[0].flight_type }}</div>
-                </div>
-
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">
-                    {% if selected_flights[0].luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif
-                    %}
-                  </div>
-                </div>
-                </br>
-
-                {% if _tr_norm > 0 %}
-                <div class="sc-row sc-row--van">
-                  <div class="sc-icon">🚐</div>
-                  <div class="sc-text">Traslados, por pasajero.</div>
-                </div>
-                {% endif %}
-              </div>
-            </div>
-            {% endif %}
-
-            <!-- HOTEL ECONÓMICO -->
-            <div class="package-section">
-              <div class="section-title">
-                <span class="section-icon">🏨</span>
-                Hotel
-              </div>
-
-              <div class="section-content">
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">{{ option_1_hotel.name }}</div>
-                </div>
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">{{ option_1_hotel.stars }} estrellas</div>
-                </div>
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">{{ option_1_hotel.location }}</div>
-                </div>
-                {% if option_1_hotel.roomDescription %}
-                <div class="sc-row">
-                  <div class="sc-icon">🛏️</div>
-                  <div class="sc-text">{{ option_1_hotel.roomDescription }}</div>
-                </div>
-                {% endif %}
-                </br>
-
-                {% if _ta_norm > 0 %}
-                <div class="sc-row">
-                  <div class="sc-icon">🏥</div>
-                  <div class="sc-text">Tarjeta de asistencia médica, por pasajero.</div>
-                </div>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Opción Premium (most expensive hotel) -->
-        <div class="package-card best-deal">
-          <div class="package-header">
-            <div class="package-title">Opción 2</div>
-            <div class="package-price">
-              {% assign _opt2_str = option_2_total | default: 0 %}
-              {% assign _opt2 = _opt2_str | replace: ".", "" | replace: ",", "." | times: 1 %}
-              ${{ _opt2 }} {{ total_currency }}
-            </div>
-          </div>
-
-          <div class="package-details">
-            {% if has_flights %}
-            <!-- VUELOS - Solo si hay vuelos -->
-            <div class="package-section">
-              <div class="section-title">
-                <span class="section-icon">✈️</span>
-                Vuelos {{ selected_flights[0].airline.name }}
-              </div>
-
-              <div class="section-content">
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">
-                    {{ selected_flights[0].legs[0].departure.city_name }} ⇄ {{
-                    selected_flights[0].legs[0].arrival.city_name }}
-                  </div>
-                </div>
-
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">{{ selected_flights[0].legs[0].flight_type }}</div>
-                </div>
-
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">
-                    {% if selected_flights[0].luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif
-                    %}
-                  </div>
-                </div>
-                </br>
-
-                {% if _tr_norm > 0 %}
-                <div class="sc-row sc-row--van">
-                  <div class="sc-icon">🚐</div>
-                  <div class="sc-text">Traslados, por pasajero.</div>
-                </div>
-                {% endif %}
-              </div>
-            </div>
-            {% endif %}
-
-            <!-- HOTEL PREMIUM -->
-            <div class="package-section">
-              <div class="section-title">
-                <span class="section-icon">🏨</span>
-                Hotel
-              </div>
-
-              <div class="section-content">
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">{{ option_2_hotel.name }}</div>
-                </div>
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">{{ option_2_hotel.stars }} estrellas</div>
-                </div>
-                <div class="sc-row">
-                  <div class="sc-icon"></div>
-                  <div class="sc-text">{{ option_2_hotel.location }}</div>
-                </div>
-                {% if option_2_hotel.roomDescription %}
-                <div class="sc-row">
-                  <div class="sc-icon">🛏️</div>
-                  <div class="sc-text">{{ option_2_hotel.roomDescription }}</div>
-                </div>
-                {% endif %}
-                </br>
-
-                {% if _ta_norm > 0 %}
-                <div class="sc-row">
-                  <div class="sc-icon">🏥</div>
-                  <div class="sc-text">Tarjeta de asistencia médica, por pasajero.</div>
-                </div>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-        </div>
-        {% endif %}
 
         {% else %}
         <!-- SINGLE HOTEL MODE: Original behavior -->

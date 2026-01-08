@@ -24,6 +24,8 @@ hotels?: Array<{
             nights: number;
             category?: string;
             packagePrice?: number;
+            roomDescription?: string;
+            roomType?: string;
         }>;
         totalPrice?: number;
         currency?: string;
@@ -1161,6 +1163,13 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
     const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
     const flights = analysis.content.flights;
 
+    // Check if any flights have valid leg data - if not, this is a hotel-only PDF
+    const hasValidLegData = flights.some(f => (f as any).legs && (f as any).legs.length > 0);
+    if (!hasValidLegData) {
+        console.log('⚠️ [RECONSTRUCT] No valid leg data found - this appears to be a hotel-only PDF');
+        return [];
+    }
+
     // Group flights into pairs (same airline, consecutive in array)
     const flightGroups: any[][] = [];
     for (let i = 0; i < flights.length; i += 2) {
@@ -1224,7 +1233,9 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
         });
 
         if (allLegs.length === 0) {
-            throw new Error('No leg data found in PDF for flight reconstruction');
+            // Skip this group if no legs - shouldn't happen after early check, but be safe
+            console.log(`⚠️ [RECONSTRUCT] Skipping group ${groupIndex + 1} - no leg data`);
+            return null;
         }
 
         // Parse dates
@@ -1310,7 +1321,7 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
             },
             legs: allLegs // All legs from ida + vuelta
         };
-    }).map((flight, index) => {
+    }).filter(Boolean).map((flight, index) => {
         // Verify legs are properly preserved before returning
         console.log(`✅ [RECONSTRUCT] Final flight ${index + 1} structure:`, {
             airline: flight.airline.name,
@@ -1426,19 +1437,39 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
         }
 
         const hotelId = `regenerated-hotel-${Date.now()}-${index}`;
+
+        // Preserve original room description and type if available
+        const roomDescription = hotel.roomDescription || 'Habitación estándar';
+        const roomType = hotel.roomType || 'Standard';
+
+        // Preserve original location - don't use default if we have data
+        const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
+            ? hotel.location
+            : 'Ubicación no especificada';
+
+        // Preserve original category/stars
+        const hotelCategory = hotel.category || "5";
+
+        console.log(`🏨 [RECONSTRUCT] Preserving hotel data for ${hotel.name}:`, {
+            location: hotelLocation,
+            category: hotelCategory,
+            roomDescription,
+            roomType
+        });
+
         const hotelData: any = {
             id: hotelId,
             unique_id: hotelId,
             name: hotel.name,
-            city: hotel.location,
-            address: hotel.location,
-            category: hotel.category || "5",
+            city: hotelLocation,
+            address: hotelLocation,
+            category: hotelCategory,
             nights: hotel.nights,
             check_in: checkIn,
             check_out: checkOut,
             rooms: [{
-                type: 'Standard',
-                description: 'Habitación estándar',
+                type: roomType,
+                description: roomDescription,
                 price_per_night: adjustedNightlyPrice,
                 total_price: adjustedTotalPrice,
                 currency: analysis.content?.currency || 'USD',
@@ -1689,19 +1720,27 @@ export async function generateModifiedPdfWithHotelPrice(
             }
 
             const hotelId = `hotel-price-modified-${Date.now()}-${index}`;
+
+            // Preserve original room description and type
+            const roomDescription = hotel.roomDescription || 'Habitación estándar';
+            const roomType = hotel.roomType || 'Standard';
+            const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
+                ? hotel.location : 'Ubicación no especificada';
+            const hotelCategory = hotel.category || '5';
+
             return {
                 id: hotelId,
                 unique_id: hotelId,
                 name: hotel.name,
-                city: hotel.location,
-                address: hotel.location,
-                category: hotel.category || '5',
+                city: hotelLocation,
+                address: hotelLocation,
+                category: hotelCategory,
                 check_in: checkIn,
                 check_out: checkOut,
                 nights: hotel.nights || 7,
                 rooms: [{
-                    type: 'Standard',
-                    description: 'Habitación estándar - precio modificado',
+                    type: roomType,
+                    description: roomDescription,
                     price_per_night: parseFloat((newHotelPrice / (hotel.nights || 7)).toFixed(2)),
                     total_price: newHotelPrice, // New hotel price
                     currency: analysis.content?.currency || 'USD',
@@ -1709,8 +1748,8 @@ export async function generateModifiedPdfWithHotelPrice(
                     occupancy_id: `room-${index}`
                 }],
                 selectedRoom: {
-                    type: 'Standard',
-                    description: 'Habitación estándar - precio modificado',
+                    type: roomType,
+                    description: roomDescription,
                     price_per_night: parseFloat((newHotelPrice / (hotel.nights || 7)).toFixed(2)),
                     total_price: newHotelPrice,
                     currency: analysis.content?.currency || 'USD',
@@ -1853,19 +1892,26 @@ async function generateModifiedPdfWithMultipleHotelPrices(
             const hotelId = `multi-hotel-modified-${Date.now()}-${index}`;
             const pricePerNight = parseFloat((finalPrice / (hotel.nights || 7)).toFixed(2));
 
+            // Preserve original room description and type
+            const roomDescription = hotel.roomDescription || 'Habitación estándar';
+            const roomType = hotel.roomType || 'Standard';
+            const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
+                ? hotel.location : 'Ubicación no especificada';
+            const hotelCategory = hotel.category || '5';
+
             return {
                 id: hotelId,
                 unique_id: hotelId,
                 name: hotel.name,
-                city: hotel.location,
-                address: hotel.location,
-                category: hotel.category || '5',
+                city: hotelLocation,
+                address: hotelLocation,
+                category: hotelCategory,
                 check_in: checkIn,
                 check_out: checkOut,
                 nights: hotel.nights || 7,
                 rooms: [{
-                    type: 'Standard',
-                    description: priceChange ? 'Precio modificado' : 'Precio original',
+                    type: roomType,
+                    description: roomDescription,
                     price_per_night: pricePerNight,
                     total_price: finalPrice,
                     currency: analysis.content?.currency || 'USD',
@@ -1873,8 +1919,8 @@ async function generateModifiedPdfWithMultipleHotelPrices(
                     occupancy_id: `room-${index}`
                 }],
                 selectedRoom: {
-                    type: 'Standard',
-                    description: priceChange ? 'Precio modificado' : 'Precio original',
+                    type: roomType,
+                    description: roomDescription,
                     price_per_night: pricePerNight,
                     total_price: finalPrice,
                     currency: analysis.content?.currency || 'USD',
@@ -2147,19 +2193,26 @@ export async function generateModifiedPdf(
                     roomTotalPrice = parseFloat((hotel.price * hotel.nights * priceRatio).toFixed(2));
                 }
 
+                // Preserve original room description and type
+                const roomDescription = hotel.roomDescription || 'Habitación estándar';
+                const roomType = hotel.roomType || 'Standard';
+                const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
+                    ? hotel.location : 'Ubicación no especificada';
+                const hotelCategory = hotel.category || '5';
+
                 const hotelData: any = {
                     id: hotelId,
                     unique_id: hotelId,
                     name: hotel.name,
-                    city: hotel.location,
-                    address: hotel.location,
-                    category: hotel.category || '5',
+                    city: hotelLocation,
+                    address: hotelLocation,
+                    category: hotelCategory,
                     nights: hotel.nights || 0,
                     check_in: checkIn,
                     check_out: checkOut,
                     rooms: [{
-                        type: 'Standard',
-                        description: 'Habitación estándar modificada',
+                        type: roomType,
+                        description: roomDescription,
                         total_price: roomTotalPrice,
                         currency: analysis.content?.currency || 'USD',
                         availability: 5,
@@ -2351,13 +2404,27 @@ export async function processPriceChangeRequest(
             }
 
             // From here on, we process hotel options (hasEnoughHotels is true)
-            // Identify option hotels by name
-            const option1Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+1\)/i));
-            const option2Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+2\)/i));
-            const option3Hotel = hasOption3 ? analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+3\)/i)) : null;
+            // Identify option hotels by name, with fallback to positional index
+            let option1Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+1\)/i));
+            let option2Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+2\)/i));
+            let option3Hotel = hasOption3 ? analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+3\)/i)) : null;
+
+            // Fallback to positional index if names don't have "(Opción N)" format
+            if (!option1Hotel && analysis.content.hotels.length >= 1) {
+                option1Hotel = analysis.content.hotels[0];
+                console.log('⚠️ [MULTI OPTIONS] Using positional index for Option 1:', option1Hotel.name);
+            }
+            if (!option2Hotel && analysis.content.hotels.length >= 2) {
+                option2Hotel = analysis.content.hotels[1];
+                console.log('⚠️ [MULTI OPTIONS] Using positional index for Option 2:', option2Hotel.name);
+            }
+            if (hasOption3 && !option3Hotel && analysis.content.hotels.length >= 3) {
+                option3Hotel = analysis.content.hotels[2];
+                console.log('⚠️ [MULTI OPTIONS] Using positional index for Option 3:', option3Hotel.name);
+            }
 
             if (!option1Hotel || !option2Hotel || (hasOption3 && !option3Hotel)) {
-                console.log('❌ [MULTI OPTIONS] Could not identify all option hotels by name');
+                console.log('❌ [MULTI OPTIONS] Could not identify all option hotels');
                 return {
                     response: `❌ No pude identificar las opciones ${hasOption3 ? '1, 2 y 3' : '1 y 2'} en el PDF. Verifica que el PDF tenga hoteles con "(Opción N)" en el nombre.`
                 };
@@ -3358,8 +3425,8 @@ function extractFlightInfo(text: string): Array<{
 /**
  * Extract hotel information from PDF text
  */
-function extractHotelInfo(text: string): Array<{ name: string, location: string, price: number, nights: number, category?: string }> {
-    const hotels: Array<{ name: string, location: string, price: number, nights: number, category?: string }> = [];
+function extractHotelInfo(text: string): Array<{ name: string, location: string, price: number, nights: number, category?: string, roomDescription?: string }> {
+    const hotels: Array<{ name: string, location: string, price: number, nights: number, category?: string, roomDescription?: string }> = [];
 
     // Patterns for hotel names
     const hotelPatterns = [
@@ -3386,6 +3453,13 @@ function extractHotelInfo(text: string): Array<{ name: string, location: string,
 
     // Pattern for stars/category
     const starsPattern = /(\d+)\s*(?:estrellas?|stars?|\*)/gi;
+
+    // Patterns for room description (🛏️ followed by room type)
+    const roomDescPatterns = [
+        /🛏️\s*([^\n]+)/gi,
+        /(?:habitación|room|hab\.?)\s*:?\s*([^\n,]+(?:doble|single|triple|individual|twin|suite|standard|superior|deluxe)[^\n,]*)/gi,
+        /(?:doble|single|triple|individual|twin|suite|standard|superior|deluxe)\s+[^\n,]+(?:uso\s+(?:individual|doble|triple))?[^\n,]*/gi
+    ];
 
     // Extract hotel names
     const hotelNames = [];
@@ -3420,6 +3494,14 @@ function extractHotelInfo(text: string): Array<{ name: string, location: string,
     const starsMatches = [...text.matchAll(starsPattern)];
     starsArray.push(...starsMatches.map(m => parseInt(m[1])).filter(n => n >= 1 && n <= 5));
 
+    // Extract room descriptions
+    const roomDescriptions: string[] = [];
+    for (const pattern of roomDescPatterns) {
+        const matches = [...text.matchAll(pattern)];
+        roomDescriptions.push(...matches.map(m => (m[1] || m[0])?.trim()).filter(Boolean));
+    }
+    console.log('🛏️ Extracted room descriptions:', roomDescriptions);
+
     // Combine extracted information
     const maxEntries = Math.max(hotelNames.length, locations.length, nightlyRates.length, nightsArray.length, 1);
 
@@ -3429,7 +3511,8 @@ function extractHotelInfo(text: string): Array<{ name: string, location: string,
             location: locations[i] || 'Ubicación no especificada',
             price: nightlyRates[i] || 0,
             nights: nightsArray[i] || 0,
-            category: starsArray[i] ? String(starsArray[i]) : undefined
+            category: starsArray[i] ? String(starsArray[i]) : undefined,
+            roomDescription: roomDescriptions[i] || undefined
         });
     }
 
@@ -4328,14 +4411,18 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
     location: string,
     price: number,
     nights: number,
-    packagePrice?: number
+    packagePrice?: number,
+    category?: string,
+    roomDescription?: string
 }> {
     const hotels: Array<{
         name: string,
         location: string,
         price: number,
         nights: number,
-        packagePrice?: number
+        packagePrice?: number,
+        category?: string,
+        roomDescription?: string
     }> = [];
 
     // Extract nights duration (shared across all hotels typically)
@@ -4424,15 +4511,31 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
                 hotelPrice = parsePrice(hotelPriceMatch[1]);
             }
 
+            // Extract room description (🛏️ followed by description)
+            let roomDescription: string | undefined;
+            const roomDescPatterns = [
+                /🛏️\s*([^\n]+)/i,
+                /(?:habitación|room|hab\.?)\s*:?\s*([^\n]+)/i
+            ];
+            for (const pattern of roomDescPatterns) {
+                const match = optionContent.match(pattern);
+                if (match && match[1]) {
+                    roomDescription = match[1].trim();
+                    break;
+                }
+            }
+
             // Create unique hotel name with option label
             const uniqueHotelName = `${hotelName} (Opción ${optionNumber})`;
 
-hotels.push({
+            hotels.push({
                 name: uniqueHotelName,
                 location,
                 price: hotelPrice,
                 nights,
-                packagePrice: packagePrice  // ✅ Guardar packagePrice para opciones
+                packagePrice: packagePrice,  // ✅ Guardar packagePrice para opciones
+                category: stars > 0 ? String(stars) : undefined,
+                roomDescription
             });
 
             console.log(`📦 [OPTION ${optionNumber} EXTRACTED]`, {
@@ -4440,7 +4543,9 @@ hotels.push({
                 location,
                 hotelPrice,
                 packagePrice,
-                nights
+                nights,
+                stars,
+                roomDescription
             });
         }
 
@@ -4612,11 +4717,27 @@ hotels.push({
             }
         }
 
-hotels.push({
+        // Extract room description (🛏️ followed by description)
+        let roomDescription: string | undefined;
+        const roomDescPatterns = [
+            /🛏️\s*([^\n]+)/i,
+            /(?:habitación|room|hab\.?)\s*:?\s*([^\n]+)/i
+        ];
+        for (const pattern of roomDescPatterns) {
+            const match = hotelSection.match(pattern);
+            if (match && match[1]) {
+                roomDescription = match[1].trim();
+                break;
+            }
+        }
+
+        hotels.push({
             name: hotelName,
             location,
             price: hotelPrice,
             nights,
+            category: hotelInfo.stars ? String(hotelInfo.stars) : undefined,
+            roomDescription
         });
 
         console.log(`🏨 [HOTEL ${i + 1} EXTRACTED]`, {
@@ -4624,7 +4745,8 @@ hotels.push({
             location,
             price: hotelPrice,
             nights,
-            stars: hotelInfo.stars
+            stars: hotelInfo.stars,
+            roomDescription
         });
     }
 

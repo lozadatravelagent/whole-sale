@@ -512,6 +512,13 @@ export function useMessages(conversationId: string | null) {
     // ✅ ALWAYS clear messages first when conversation changes (prevents stale data)
     setMessages([]);
 
+    // ✅ Clear global pending optimistic IDs when conversation changes
+    // This prevents cross-contamination between conversations
+    if (globalPendingOptimisticClientIds.size > 0) {
+      console.log('🧹 [MESSAGES] Clearing pending optimistic IDs on conversation change:', globalPendingOptimisticClientIds.size);
+      globalPendingOptimisticClientIds.clear();
+    }
+
     if (!conversationId) {
       return;
     }
@@ -869,6 +876,64 @@ export function useMessages(conversationId: string | null) {
   const refreshMessages = useCallback(() => {
     loadMessages();
   }, [loadMessages]);
+
+  // ✅ Handle page visibility changes (user returns from another tab)
+  // This prevents stale state and message mixing after being away
+  useEffect(() => {
+    if (!conversationId) return;
+
+    let lastHiddenTime: number | null = null;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        lastHiddenTime = Date.now();
+        console.log('👁️ [VISIBILITY] Tab hidden at:', new Date().toISOString());
+      } else if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        const wasHiddenFor = lastHiddenTime ? now - lastHiddenTime : 0;
+
+        console.log('👁️ [VISIBILITY] Tab visible again. Hidden for:', wasHiddenFor, 'ms');
+
+        // If tab was hidden for more than 30 seconds (heartbeat interval), refresh state
+        if (wasHiddenFor > 30000) {
+          console.log('🔄 [VISIBILITY] Tab was hidden for >30s, cleaning up and refreshing...');
+
+          // ✅ Clear global sets to prevent stale ID matching
+          // This prevents messages from being incorrectly deduplicated after a long absence
+          const processedSize = globalProcessedMessageIds.size;
+          const pendingSize = globalPendingOptimisticClientIds.size;
+
+          globalProcessedMessageIds.clear();
+          globalPendingOptimisticClientIds.clear();
+
+          console.log(`🧹 [VISIBILITY] Cleared global sets: processedIds=${processedSize}, pendingOptimistic=${pendingSize}`);
+
+          // ✅ Force reload messages from database to get fresh state
+          console.log('🔄 [VISIBILITY] Reloading messages from database...');
+          loadMessages();
+
+          // ✅ Check Realtime channel state
+          const channel = supabase.getChannels().find(ch => ch.topic === 'realtime:global-messages');
+          if (channel) {
+            console.log('📡 [VISIBILITY] Realtime channel state:', channel.state);
+            if (channel.state !== 'joined') {
+              console.warn('⚠️ [VISIBILITY] Realtime channel not in joined state, may need reconnection');
+            }
+          } else {
+            console.warn('⚠️ [VISIBILITY] Realtime channel not found, will be recreated on next effect');
+          }
+        }
+
+        lastHiddenTime = null;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [conversationId, loadMessages]);
 
   // ✅ Register refresh callback globally so useConversations can trigger message refresh
   useEffect(() => {

@@ -45,25 +45,43 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
   const hasPdf = typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content;
   const pdfUrl = hasPdf ? (msg.content as { pdfUrl?: string }).pdfUrl : null;
 
-  // Force download PDF using hidden iframe (prevents Windows freeze with save dialog)
-  const handleDownloadPdf = () => {
+  // Download PDF via proxy to avoid Brave/Chrome Windows save dialog freeze
+  const handleDownloadPdf = async () => {
     if (!pdfUrl || isDownloading) return;
 
     setIsDownloading(true);
+    try {
+      // Use cors-anywhere proxy or fetch directly
+      const response = await fetch(pdfUrl, { mode: 'cors' });
 
-    // Create hidden iframe to trigger download without freezing
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
+      if (!response.ok) {
+        throw new Error('Network error');
+      }
 
-    // Set iframe src to trigger download
-    iframe.src = pdfUrl;
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
 
-    // Clean up after a delay
-    setTimeout(() => {
-      document.body.removeChild(iframe);
+      // Create invisible link and click it - downloads without system dialog
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `cotizacion-${new Date().toISOString().split('T')[0]}.pdf`;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 100);
+
+    } catch (error) {
+      // Fallback: open in new tab if CORS blocks direct download
+      console.warn('Direct download failed, opening in new tab:', error);
+      window.open(pdfUrl, '_blank');
+    } finally {
       setIsDownloading(false);
-    }, 3000);
+    }
   };
 
   // Check for combined travel data
@@ -325,7 +343,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
                         size="sm"
                         onClick={handleDownloadPdf}
                         disabled={isDownloading}
-                        className="bg-blue-600 hover:bg-blue-700 flex-shrink-0 text-xs md:text-sm px-2 md:px-3"
+                        className="bg-blue-600 hover:bg-blue-700 flex-shrink-0 text-xs md:text-sm px-2 md:px-3 disabled:opacity-50"
                       >
                         {isDownloading ? (
                           <Loader2 className="h-3 md:h-4 w-3 md:w-4 animate-spin md:mr-1" />
