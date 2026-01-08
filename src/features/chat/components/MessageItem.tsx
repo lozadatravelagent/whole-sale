@@ -1,6 +1,6 @@
-import React, { useMemo, Suspense, lazy } from 'react';
+import React, { useMemo, Suspense, lazy, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { User, Bot, FileText, Download, Clock, Check, CheckCheck } from 'lucide-react';
+import { User, Bot, FileText, Download, Clock, Check, CheckCheck, Loader2 } from 'lucide-react';
 
 // Lazy load heavy components
 const ReactMarkdown = lazy(() => import('react-markdown'));
@@ -39,10 +39,38 @@ const MarkdownContent = ({ content }: { content: string }) => {
 // Memoized message component to prevent unnecessary re-renders
 const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
   const messageText = getMessageContent(msg);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Check for PDF content
   const hasPdf = typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content;
   const pdfUrl = hasPdf ? (msg.content as { pdfUrl?: string }).pdfUrl : null;
+
+  // Force download PDF instead of opening in browser (prevents freeze on Windows)
+  const handleDownloadPdf = async () => {
+    if (!pdfUrl || isDownloading) return;
+
+    setIsDownloading(true);
+    try {
+      const response = await fetch(pdfUrl);
+      if (!response.ok) throw new Error('Error descargando PDF');
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `cotizacion-${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      // Fallback to window.open if fetch fails (e.g., CORS issues)
+      window.open(pdfUrl, '_blank');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   // Check for combined travel data
   const hasCombinedTravel = msg.role === 'assistant' && (
@@ -301,11 +329,16 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
                       </div>
                       <Button
                         size="sm"
-                        onClick={() => window.open(pdfUrl, '_blank')}
+                        onClick={handleDownloadPdf}
+                        disabled={isDownloading}
                         className="bg-blue-600 hover:bg-blue-700 flex-shrink-0 text-xs md:text-sm px-2 md:px-3"
                       >
-                        <Download className="h-3 md:h-4 w-3 md:w-4 md:mr-1" />
-                        <span className="hidden md:inline">Descargar</span>
+                        {isDownloading ? (
+                          <Loader2 className="h-3 md:h-4 w-3 md:w-4 animate-spin md:mr-1" />
+                        ) : (
+                          <Download className="h-3 md:h-4 w-3 md:w-4 md:mr-1" />
+                        )}
+                        <span className="hidden md:inline">{isDownloading ? 'Descargando...' : 'Descargar'}</span>
                       </Button>
                     </div>
                   </div>
