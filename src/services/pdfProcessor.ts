@@ -33,6 +33,7 @@ hotels?: Array<{
         originalTemplate?: string;
         needsComplexTemplate?: boolean;
         extractedFromPdfMonkey?: boolean;
+        destination?: string;
     };
     suggestions?: string[];
     error?: string;
@@ -412,6 +413,24 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
     // Extract currency
     const currency = extractCurrencyFromPdfMonkeyTemplate(content);
 
+    // Extract destination from "DESTINO X" pattern (for hotel-only PDFs and as fallback)
+    let destination: string | undefined;
+    const destinationMatch = content.match(/DESTINO\s+([A-ZÑÁÉÍÓÚ][A-Za-zÀ-ÿ\s]+?)(?=\s*FECHAS|\s*\d{4}|\s*$)/i);
+    if (destinationMatch && destinationMatch[1]) {
+        destination = destinationMatch[1].trim();
+        console.log('📍 [DESTINATION] Extracted from DESTINO pattern:', destination);
+
+        // Use destination as fallback for hotel locations that weren't extracted
+        if (hotels && hotels.length > 0 && destination) {
+            hotels.forEach(hotel => {
+                if (hotel.location === 'Ubicación no especificada') {
+                    hotel.location = destination;
+                    console.log(`📍 [DESTINATION] Applied fallback location to ${hotel.name}:`, destination);
+                }
+            });
+        }
+    }
+
     // Determine original template ID based on content
     const originalTemplate = isCombinedTemplate ?
         "3E8394AC-84D4-4286-A1CD-A12D1AB001D5" : // COMBINED_TEMPLATE_ID
@@ -427,6 +446,7 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
             totalPrice,
             currency,
             passengers,
+            destination,
             // Additional metadata for regeneration
             originalTemplate,
             needsComplexTemplate,
@@ -4490,8 +4510,18 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
 
             // Extract location
             let location = 'Ubicación no especificada';
+
+            // Room type keywords that indicate START of room description (not location)
+            // When we see these UPPERCASE words after location, we know location has ended
+            const roomTypeKeywords = 'DOBLE|SINGLE|TRIPLE|CUADRUPLE|SUITE|STANDARD|ESTANDAR|ESTÁNDAR|SUPERIOR|DELUXE|JUNIOR|COURTYARD|GARDEN|OCEAN|POOL|VIEW|KING|QUEEN|TWIN|HABITACION|HABITACIÓN|ROOM';
+
             const locationPatterns = [
+                // Pattern 1: "N estrellas LOCATION" - stop at room type keywords OR lowercase text
+                // This handles cases like "PUNTA CANA  DOBLE ESTANDAR" where room desc is UPPERCASE
+                new RegExp(`(\\d+)\\s*[Ee]strellas\\s+([A-ZÑÁÉÍÓÚ]+(?:\\s+[A-ZÑÁÉÍÓÚ]+)*)(?=\\s+(?:${roomTypeKeywords}|[a-zñáéíóú])|\\s*[Oo]pci[oó]n|\\s*✈|\\s*🚐|\\s*🏥|\\s*$)`),
+                // Pattern 2: Original pattern with DETALLE/Precio
                 /(\d+)\s*estrellas\s*([A-Za-zÀ-ÿ\s,\(\)]+?)(?=\s*(?:DETALLE|Precio:|outbound|return))/i,
+                // Pattern 3: Location after 📍 emoji
                 /📍\s*(?:Ubicación:)?\s*([A-Za-zÀ-ÿ\s,\(\)]+?)(?=\s*(?:⭐|👥|DETALLE|Precio))/i
             ];
 
@@ -4511,17 +4541,27 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
                 hotelPrice = parsePrice(hotelPriceMatch[1]);
             }
 
-            // Extract room description (🛏️ followed by description)
+            // Extract room description (🛏️ followed by description, or text after location)
             let roomDescription: string | undefined;
+
+            // Reuse room type keywords for room description extraction
             const roomDescPatterns = [
+                // Pattern 1: 🛏️ emoji followed by description
                 /🛏️\s*([^\n]+)/i,
-                /(?:habitación|room|hab\.?)\s*:?\s*([^\n]+)/i
+                // Pattern 2: "habitación|room|hab" prefix
+                /(?:habitación|room|hab\.?)\s*:?\s*([^\n]+)/i,
+                // Pattern 3: Text after "N estrellas LOCATION" - captures lowercase text like "doble estándar / todo incluido"
+                /(\d+)\s*[Ee]strellas\s+[A-ZÑÁÉÍÓÚ]+(?:\s+[A-ZÑÁÉÍÓÚ]+)*\s+([a-zñáéíóú][^\n]*?(?:[Ii]ncluido|[Ii]nclusive|[Oo]nly|[Ee]st[aá]ndar|[Ss]tandard|[Ss]uperior|[Dd]eluxe|[Ss]uite)[^\n]*)/,
+                // Pattern 4: Text after "N estrellas LOCATION" - captures UPPERCASE room type keyword text
+                // e.g., "DOBLE ESTANDAR COURTYARD / todo incluido"
+                new RegExp(`(\\d+)\\s*[Ee]strellas\\s+[A-ZÑÁÉÍÓÚ]+(?:\\s+[A-ZÑÁÉÍÓÚ]+)*\\s+((?:${roomTypeKeywords})[A-Za-zÀ-ÿ\\s\\/]*?(?:[Ii]ncluido|[Ii]nclusive|[Oo]nly|[Ee]st[aá]ndar|[Ss]tandard|[Ss]uperior|[Dd]eluxe|[Cc]ourtyard|[Ss]uite)[^\\n]*)`)
             ];
             for (const pattern of roomDescPatterns) {
                 const match = optionContent.match(pattern);
-                if (match && match[1]) {
-                    roomDescription = match[1].trim();
-                    break;
+                if (match) {
+                    // For patterns 3 & 4, the room description is in match[2]
+                    roomDescription = (match[2] || match[1]).trim();
+                    if (roomDescription) break;
                 }
             }
 
