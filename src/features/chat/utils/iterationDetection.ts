@@ -24,6 +24,9 @@ export interface FlightModificationDetails {
   stops?: 'direct' | 'with_stops' | 'one_stop' | 'two_stops';
   luggage?: 'backpack' | 'carry_on' | 'checked';
   airline?: string;
+  departureTimePreference?: string;
+  arrivalTimePreference?: string;
+  maxLayoverHours?: number;
 }
 
 /**

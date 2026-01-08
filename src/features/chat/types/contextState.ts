@@ -19,6 +19,8 @@ export interface FlightContextParams {
   preferredAirline?: string;
   luggage?: 'backpack' | 'carry_on' | 'checked' | 'both' | 'none';
   maxLayoverHours?: number;
+  departureTimePreference?: string;
+  arrivalTimePreference?: string;
 }
 
 /**
