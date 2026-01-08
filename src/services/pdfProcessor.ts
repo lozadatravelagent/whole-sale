@@ -3277,6 +3277,13 @@ function extractFlightInfo(text: string): Array<{
     }
 
     // Combine extracted information with enhanced details
+    // CRITICAL: Only create flight entries if we have actual flight data (airline OR route)
+    // Prices alone are NOT sufficient - they could be hotel prices
+    if (airlines.length === 0 && routes.length === 0) {
+        console.log('✈️ No airlines or routes found - skipping flight extraction (prices may be from hotels)');
+        return [];
+    }
+
     const maxEntries = Math.max(airlines.length, routes.length, dates.length, prices.length, 1);
 
     for (let i = 0; i < maxEntries; i++) {
