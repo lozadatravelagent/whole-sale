@@ -21,6 +21,7 @@ export interface ParsedTravelRequest {
     hotels?: {
         city: string;
         hotelName?: string;
+        hotelNames?: string[]; // Nombres específicos de hoteles (ej: ["Riu Republica", "Iberostar Dominicana"])
         checkinDate: string;
         checkoutDate: string;
         adults: number;
@@ -621,18 +622,36 @@ export async function parseMessageWithAI(
         // Similar a airlines, pero para cadenas hoteleras y nombres de hotel
         // FLOW: Pre-parser → AI Parser (hints) → Post-search filtering
         // UPDATED: Now supports MULTIPLE hotel chains (e.g., "cadena riu y iberostar")
-        const { detectMultipleHotelChains } = await import('@/features/chat/data/hotelChainAliases');
+        const { detectMultipleHotelChains, detectMultipleHotelNames } = await import('@/features/chat/data/hotelChainAliases');
 
-        const detectedChains = detectMultipleHotelChains(message); // Detects multiple chains
-        if (detectedChains.length > 0) {
+        // Detect specific hotel names FIRST (more specific takes priority)
+        // Examples: "riu republica", "iberostar dominicana", "barcelo bavaro"
+        const detectedNames = detectMultipleHotelNames(message);
+        if (detectedNames.length > 0) {
             (quick as any).hotels = {
                 ...((quick as any).hotels || {}),
-                hotelChains: detectedChains // Array of chain names
+                hotelNames: detectedNames // Array of specific hotel names
             };
-            console.log(`🏨 [QUICK PRE-PARSER] Detected hotel chains:`, {
-                hotelChains: detectedChains,
-                count: detectedChains.length
+            console.log(`🏨 [QUICK PRE-PARSER] Detected specific hotel names:`, {
+                hotelNames: detectedNames,
+                count: detectedNames.length
             });
+        }
+
+        // Detect chains only if no specific names were detected
+        // (specific names already imply the chain, no need to double-filter)
+        if (detectedNames.length === 0) {
+            const detectedChains = detectMultipleHotelChains(message); // Detects multiple chains
+            if (detectedChains.length > 0) {
+                (quick as any).hotels = {
+                    ...((quick as any).hotels || {}),
+                    hotelChains: detectedChains // Array of chain names
+                };
+                console.log(`🏨 [QUICK PRE-PARSER] Detected hotel chains:`, {
+                    hotelChains: detectedChains,
+                    count: detectedChains.length
+                });
+            }
         }
     } catch (e) {
         console.warn('Quick pre-parse failed:', e);

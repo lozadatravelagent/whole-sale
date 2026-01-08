@@ -7,7 +7,7 @@ import { formatFlightResponse, formatHotelResponse, formatPackageResponse, forma
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
-import { hotelBelongsToChain, hotelBelongsToAnyChain, hotelNameMatches } from '../data/hotelChainAliases';
+import { hotelBelongsToChain, hotelBelongsToAnyChain, hotelNameMatches, hotelMatchesAnyName } from '../data/hotelChainAliases';
 import { generateSearchId, saveFlightsToStorage } from './flightStorageService';
 import { timeStringToNumber } from '@/features/chat/utils/timeSlotMapper';
 
@@ -522,17 +522,72 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     // - Cadena hotelera (Iberostar, Riu, Melia, etc.)
     // - Texto parcial del nombre del hotel (Ocean, Palace, etc.)
 
-    // ✅ MULTI-CHAIN STRATEGY:
-    // If multiple chains specified → Make N requests (1 per chain) + merge results
-    // If single chain → Single request with that chain as name filter
-    // If no chains but hotelName → Single request with hotelName as filter
+    // ✅ SEARCH STRATEGY (priority order):
+    // 1. hotelNames (specific hotels like "Riu Republica") → N requests + merge
+    // 2. hotelChains (chains like "RIU", "Iberostar") → N requests + merge
+    // 3. hotelName (single name filter) → 1 request
+    // 4. No filter → Get all hotels for city
 
+    const hotelNames = enrichedParsed.hotels?.hotelNames || [];
     const hotelChains = enrichedParsed.hotels?.hotelChains || [];
     const hotelName = enrichedParsed.hotels?.hotelName || '';
 
     let allHotels: LocalHotelData[] = [];
 
-    if (hotelChains.length > 0) {
+    if (hotelNames.length > 0) {
+      // MULTI-NAME: Make N requests (1 per specific hotel name)
+      // Example: ["Riu Republica", "Iberostar Dominicana"] → 2 requests
+      console.log(`🏨 [MULTI-NAME] Making ${hotelNames.length} API requests (1 per hotel name):`, hotelNames);
+
+      for (const name of hotelNames) {
+        console.log(`📤 [MULTI-NAME] Request ${hotelNames.indexOf(name) + 1}/${hotelNames.length}: Searching for "${name}"`);
+
+        const requestBody = {
+          action: 'searchHotels',
+          data: {
+            ...eurovipsParams.hotelParams,
+            cityCode: cityCode,
+            hotelName: name // ✅ Filtro por nombre específico en EUROVIPS
+          }
+        };
+
+        const response = await supabase.functions.invoke('eurovips-soap', {
+          body: requestBody
+        });
+
+        if (response.error) {
+          console.error(`❌ [MULTI-NAME] EUROVIPS API error for "${name}":`, response.error);
+          continue;
+        }
+
+        const nameHotels = response.data.results || [];
+        console.log(`✅ [MULTI-NAME] "${name}": Received ${nameHotels.length} hotels`);
+        allHotels.push(...nameHotels);
+      }
+
+      console.log(`🔗 [MULTI-NAME] Total hotels before deduplication: ${allHotels.length}`);
+
+      // DEDUPLICATION
+      const seenHotels = new Set<string>();
+      const deduplicatedHotels: LocalHotelData[] = [];
+
+      for (const hotel of allHotels) {
+        const uniqueKey = hotel.hotel_id
+          ? `id:${hotel.hotel_id}`
+          : `name:${hotel.name.toLowerCase().trim()}`;
+
+        if (!seenHotels.has(uniqueKey)) {
+          seenHotels.add(uniqueKey);
+          deduplicatedHotels.push(hotel);
+        } else {
+          console.log(`🗑️ [DEDUP] Removed duplicate: "${hotel.name}"`);
+        }
+      }
+
+      allHotels = deduplicatedHotels;
+      console.log(`✅ [MULTI-NAME] Total hotels after deduplication: ${allHotels.length}`);
+
+    } else if (hotelChains.length > 0) {
       // MULTI-CHAIN: Make N requests (1 per chain)
       console.log(`🏨 [MULTI-CHAIN] Making ${hotelChains.length} API requests (1 per chain):`, hotelChains);
 
@@ -700,8 +755,27 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       console.log(`📊 [CHAIN FILTER] Hotels after filter: ${destinationFilteredHotels.length}`);
     }
 
-    // 🏨 HOTEL NAME FILTER - Filter by specific hotel name if specified
-    if (enrichedParsed.hotels?.hotelName) {
+    // 🏨 HOTEL NAMES FILTER - Filter by specific hotel names if specified (supports multiple)
+    if (enrichedParsed.hotels?.hotelNames && enrichedParsed.hotels.hotelNames.length > 0) {
+      const namesFilter = enrichedParsed.hotels.hotelNames;
+      console.log(`🏨 [NAMES FILTER] Filtering hotels by specific names: ${namesFilter.join(', ')}`);
+      console.log(`📊 [NAMES FILTER] Hotels before filter: ${destinationFilteredHotels.length}`);
+
+      destinationFilteredHotels = destinationFilteredHotels.filter(hotel => {
+        const matches = hotelMatchesAnyName(hotel.name, namesFilter);
+        if (matches) {
+          console.log(`✅ [NAMES FILTER] Included: "${hotel.name}" (matches one of: ${namesFilter.join(', ')})`);
+        } else {
+          console.log(`🚫 [NAMES FILTER] Excluded: "${hotel.name}" (does not match any of: ${namesFilter.join(', ')})`);
+        }
+        return matches;
+      });
+
+      console.log(`📊 [NAMES FILTER] Hotels after filter: ${destinationFilteredHotels.length}`);
+    }
+
+    // 🏨 HOTEL NAME FILTER - Filter by specific hotel name if specified (single, legacy)
+    if (enrichedParsed.hotels?.hotelName && !enrichedParsed.hotels?.hotelNames?.length) {
       const nameFilter = enrichedParsed.hotels.hotelName;
       console.log(`🏨 [NAME FILTER] Filtering hotels by name: "${nameFilter}"`);
       console.log(`📊 [NAME FILTER] Hotels before filter: ${destinationFilteredHotels.length}`);

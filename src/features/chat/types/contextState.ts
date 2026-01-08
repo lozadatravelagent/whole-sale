@@ -32,8 +32,9 @@ export interface HotelContextParams {
   children: number;
   roomType?: 'single' | 'double' | 'triple';
   mealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
-  hotelChains?: string[]; // UPDATED: Changed from singular hotelChain to plural array
-  hotelName?: string;
+  hotelChains?: string[]; // Cadenas hoteleras (ej: ["RIU", "Iberostar"])
+  hotelNames?: string[];  // Nombres específicos de hoteles (ej: ["Riu Republica", "Iberostar Dominicana"])
+  hotelName?: string;     // Nombre único (deprecado, usar hotelNames)
   freeCancellation?: boolean;
 }
 

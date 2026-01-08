@@ -542,3 +542,247 @@ export function hotelBelongsToAnyChain(hotelName: string, chains: string[]): boo
     return false; // No match
 }
 
+/**
+ * Known specific hotels that don't follow the [chain] + [name] pattern
+ * These are detected by exact match or partial match
+ */
+export const KNOWN_SPECIFIC_HOTELS: { name: string; aliases: string[] }[] = [
+    {
+        name: 'Vista Sol Punta Cana',
+        aliases: ['vista sol', 'vista sol punta cana', 'vistasol', 'vista sol beach']
+    },
+    {
+        name: 'Bahia Principe Grand Punta Cana',
+        aliases: ['bahia principe grand punta cana', 'bahía príncipe grand punta cana', 'grand bahia principe punta cana']
+    },
+    {
+        name: 'Bahia Principe Fantasia',
+        aliases: ['bahia principe fantasia', 'bahía príncipe fantasia', 'fantasia punta cana']
+    },
+    {
+        name: 'Bahia Principe Bavaro',
+        aliases: ['bahia principe bavaro', 'bahía príncipe bavaro']
+    },
+    {
+        name: 'Bahia Principe Ambar',
+        aliases: ['bahia principe ambar', 'bahía príncipe ambar']
+    },
+    {
+        name: 'Ocean El Faro',
+        aliases: ['ocean el faro', 'el faro']
+    },
+    {
+        name: 'Ocean Blue & Sand',
+        aliases: ['ocean blue and sand', 'ocean blue & sand', 'ocean blue sand', 'blue and sand']
+    },
+    {
+        name: 'Majestic Colonial',
+        aliases: ['majestic colonial', 'majestic colonial punta cana']
+    },
+    {
+        name: 'Majestic Elegance',
+        aliases: ['majestic elegance', 'majestic elegance punta cana']
+    },
+    {
+        name: 'Lopesan Costa Bavaro',
+        aliases: ['lopesan costa bavaro', 'costa bavaro']
+    },
+    {
+        name: 'Paradisus Palma Real',
+        aliases: ['paradisus palma real', 'palma real']
+    },
+    {
+        name: 'Paradisus Punta Cana',
+        aliases: ['paradisus punta cana']
+    },
+    {
+        name: 'Now Onyx',
+        aliases: ['now onyx', 'now onyx punta cana']
+    },
+    {
+        name: 'Now Larimar',
+        aliases: ['now larimar', 'now larimar punta cana']
+    },
+    {
+        name: 'Breathless Punta Cana',
+        aliases: ['breathless punta cana']
+    },
+    {
+        name: 'Secrets Royal Beach',
+        aliases: ['secrets royal beach', 'royal beach punta cana']
+    },
+    {
+        name: 'Secrets Cap Cana',
+        aliases: ['secrets cap cana', 'cap cana']
+    },
+    {
+        name: 'Dreams Macao',
+        aliases: ['dreams macao', 'dreams macao beach']
+    },
+    {
+        name: 'Dreams Palm Beach',
+        aliases: ['dreams palm beach']
+    },
+    {
+        name: 'Excellence El Carmen',
+        aliases: ['excellence el carmen', 'el carmen']
+    },
+    {
+        name: 'Zoetry Agua',
+        aliases: ['zoetry agua', 'zoetry agua punta cana']
+    }
+];
+
+/**
+ * Detect MULTIPLE specific hotel names in text
+ *
+ * Detects patterns like:
+ * - "riu republica y iberostar dominicana"
+ * - "hotel riu republica o iberostar dominicana"
+ * - "quiero el riu bambu y el barcelo bavaro"
+ * - "vista sol y bahia principe grand punta cana" (known specific hotels)
+ *
+ * A specific hotel name is detected when:
+ * - It starts with a known chain name (riu, iberostar, barcelo, etc.)
+ * - Followed by a specific hotel identifier (republica, dominicana, bambu, palace, etc.)
+ * - OR it matches a known specific hotel from KNOWN_SPECIFIC_HOTELS
+ *
+ * @param text - User input text
+ * @returns Array of detected specific hotel names
+ *
+ * @example
+ * detectMultipleHotelNames("riu republica y iberostar dominicana") → ["RIU Republica", "Iberostar Dominicana"]
+ * detectMultipleHotelNames("quiero el barcelo bavaro") → ["Barcelo Bavaro"]
+ * detectMultipleHotelNames("vista sol y bahia principe grand") → ["Vista Sol Punta Cana", "Bahia Principe Grand Punta Cana"]
+ * detectMultipleHotelNames("hotel riu en cancun") → [] (solo cadena, no nombre específico)
+ */
+export function detectMultipleHotelNames(text: string): string[] {
+    const normalizedText = normalizeText(text);
+    const detectedNames: string[] = [];
+
+    console.log(`🏨 [HOTEL-NAMES] Detecting specific hotel names in: "${text}"`);
+
+    // FIRST: Check for known specific hotels (highest priority)
+    // Sort by alias length descending to match longer aliases first
+    const sortedKnownHotels = [...KNOWN_SPECIFIC_HOTELS]
+        .flatMap(hotel => hotel.aliases.map(alias => ({ name: hotel.name, alias })))
+        .sort((a, b) => b.alias.length - a.alias.length);
+
+    for (const { name, alias } of sortedKnownHotels) {
+        const normalizedAlias = normalizeText(alias);
+        if (normalizedText.includes(normalizedAlias)) {
+            if (!detectedNames.some(n => normalizeText(n) === normalizeText(name))) {
+                detectedNames.push(name);
+                console.log(`✅ [HOTEL-NAMES] Matched known hotel: "${alias}" → "${name}"`);
+            }
+        }
+    }
+
+    // SECOND: Build regex pattern for all known chain prefixes
+    const chainPrefixes = Object.values(HOTEL_CHAINS)
+        .flatMap(chain => [chain.name.toLowerCase(), ...chain.aliases])
+        .filter(alias => alias.length >= 3) // Only meaningful aliases
+        .sort((a, b) => b.length - a.length); // Longest first
+
+    // Create pattern: (chain prefix) + (one or more words that form the specific name)
+    // Examples: "riu republica", "iberostar dominicana", "barcelo bavaro beach"
+    const chainPrefixPattern = chainPrefixes.map(escapeRegex).join('|');
+
+    // Pattern to match: [chain] [specific name words]
+    // The specific name must have at least one word after the chain
+    // Stop at: y, e, o, or, and, comma, period, "en", "de", "para", "del", "habitacion", "all", "todo"
+    const hotelNamePattern = new RegExp(
+        `\\b(${chainPrefixPattern})\\s+([a-záéíóúñü]+(?:\\s+[a-záéíóúñü]+)*)(?=\\s+(?:y|e|o|or|and|en|de|para|del|habitacion|habitaci[oó]n|all|todo|doble|triple|con|sin)|[,.]|$)`,
+        'gi'
+    );
+
+    const matches = [...normalizedText.matchAll(hotelNamePattern)];
+
+    for (const match of matches) {
+        const chainPart = match[1].trim();
+        const namePart = match[2].trim();
+
+        // Skip if namePart is a common word that's not a hotel name
+        const commonWords = ['hotel', 'hoteles', 'hotels', 'resort', 'resorts', 'palace', 'beach', 'playa'];
+        const skipWords = ['en', 'de', 'para', 'del', 'la', 'el', 'las', 'los', 'un', 'una', 'con', 'sin'];
+
+        // If namePart is ONLY common/skip words, it's likely just a chain mention, not a specific hotel
+        const nameWords = namePart.split(/\s+/);
+        const meaningfulWords = nameWords.filter(w => !skipWords.includes(w.toLowerCase()));
+
+        if (meaningfulWords.length === 0) {
+            console.log(`⚠️ [HOTEL-NAMES] Skipping "${chainPart} ${namePart}" - no meaningful name words`);
+            continue;
+        }
+
+        // Check if first meaningful word is just a generic word like "hotel" or "resort"
+        if (meaningfulWords.length === 1 && commonWords.includes(meaningfulWords[0].toLowerCase())) {
+            console.log(`⚠️ [HOTEL-NAMES] Skipping "${chainPart} ${namePart}" - only generic word`);
+            continue;
+        }
+
+        // Build the full hotel name
+        const fullName = `${chainPart} ${namePart}`.toLowerCase();
+
+        // Normalize to canonical chain name + specific part
+        const chainInfo = findChainByAlias(chainPart);
+        const canonicalChain = chainInfo ? chainInfo.name : chainPart.charAt(0).toUpperCase() + chainPart.slice(1);
+        const canonicalName = `${canonicalChain} ${namePart.charAt(0).toUpperCase() + namePart.slice(1)}`;
+
+        if (!detectedNames.some(n => normalizeText(n) === normalizeText(canonicalName))) {
+            detectedNames.push(canonicalName);
+            console.log(`✅ [HOTEL-NAMES] Detected specific hotel: "${canonicalName}"`);
+        }
+    }
+
+    // If no specific names found, try alternative pattern for "el [chain] [name]"
+    if (detectedNames.length === 0) {
+        const elPattern = new RegExp(
+            `\\bel\\s+(${chainPrefixPattern})\\s+([a-záéíóúñü]+)`,
+            'gi'
+        );
+        const elMatches = [...normalizedText.matchAll(elPattern)];
+
+        for (const match of elMatches) {
+            const chainPart = match[1].trim();
+            const namePart = match[2].trim();
+
+            if (namePart.length >= 3) {
+                const chainInfo = findChainByAlias(chainPart);
+                const canonicalChain = chainInfo ? chainInfo.name : chainPart.charAt(0).toUpperCase() + chainPart.slice(1);
+                const canonicalName = `${canonicalChain} ${namePart.charAt(0).toUpperCase() + namePart.slice(1)}`;
+
+                if (!detectedNames.some(n => normalizeText(n) === normalizeText(canonicalName))) {
+                    detectedNames.push(canonicalName);
+                    console.log(`✅ [HOTEL-NAMES] Detected specific hotel (el pattern): "${canonicalName}"`);
+                }
+            }
+        }
+    }
+
+    console.log(`🏁 [HOTEL-NAMES] Final detected names:`, detectedNames);
+    return detectedNames;
+}
+
+/**
+ * Check if a hotel name matches ANY of the specified specific hotel names
+ *
+ * @param hotelName - Hotel name from API (e.g., "RIU REPUBLICA")
+ * @param specificNames - Array of specific names to match (e.g., ["Riu Republica", "Iberostar Dominicana"])
+ * @returns true if hotel matches any of the specific names
+ */
+export function hotelMatchesAnyName(hotelName: string, specificNames: string[]): boolean {
+    if (!specificNames || specificNames.length === 0) {
+        return true; // No filter, all hotels match
+    }
+
+    for (const name of specificNames) {
+        if (hotelNameMatches(hotelName, name)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
