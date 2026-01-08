@@ -45,31 +45,25 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
   const hasPdf = typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content;
   const pdfUrl = hasPdf ? (msg.content as { pdfUrl?: string }).pdfUrl : null;
 
-  // Force download PDF instead of opening in browser (prevents freeze on Windows)
-  const handleDownloadPdf = async () => {
+  // Force download PDF using hidden iframe (prevents Windows freeze with save dialog)
+  const handleDownloadPdf = () => {
     if (!pdfUrl || isDownloading) return;
 
     setIsDownloading(true);
-    try {
-      const response = await fetch(pdfUrl);
-      if (!response.ok) throw new Error('Error descargando PDF');
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `cotizacion-${new Date().toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error downloading PDF:', error);
-      // Fallback to window.open if fetch fails (e.g., CORS issues)
-      window.open(pdfUrl, '_blank');
-    } finally {
+    // Create hidden iframe to trigger download without freezing
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    // Set iframe src to trigger download
+    iframe.src = pdfUrl;
+
+    // Clean up after a delay
+    setTimeout(() => {
+      document.body.removeChild(iframe);
       setIsDownloading(false);
-    }
+    }, 3000);
   };
 
   // Check for combined travel data
