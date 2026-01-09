@@ -415,20 +415,45 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
 
     // Extract destination from "DESTINO X" pattern (for hotel-only PDFs and as fallback)
     let destination: string | undefined;
-    const destinationMatch = content.match(/DESTINO\s+([A-ZÑÁÉÍÓÚ][A-Za-zÀ-ÿ\s]+?)(?=\s*FECHAS|\s*\d{4}|\s*$)/i);
-    if (destinationMatch && destinationMatch[1]) {
-        destination = destinationMatch[1].trim();
-        console.log('📍 [DESTINATION] Extracted from DESTINO pattern:', destination);
+    let arrivalCity: string | undefined;
 
-        // Use destination as fallback for hotel locations that weren't extracted
-        if (hotels && hotels.length > 0 && destination) {
-            hotels.forEach(hotel => {
-                if (hotel.location === 'Ubicación no especificada') {
-                    hotel.location = destination;
-                    console.log(`📍 [DESTINATION] Applied fallback location to ${hotel.name}:`, destination);
-                }
-            });
+    // First, try to match flight route format: "DESTINO EZE -- MAD" or "DESTINO EZE - MAD"
+    const flightRouteMatch = content.match(/DESTINO\s+([A-Z]{3})\s*[-–—]+\s*([A-Z]{3})(?=\s*FECHAS|\s*\d{4}|\s*$)/i);
+    if (flightRouteMatch) {
+        const originCode = flightRouteMatch[1].toUpperCase();
+        const destCode = flightRouteMatch[2].toUpperCase();
+        destination = `${originCode} -- ${destCode}`;
+        arrivalCity = destCode; // Use arrival city code
+        console.log('📍 [DESTINATION] Extracted flight route:', { origin: originCode, destination: destCode, arrivalCity });
+    } else {
+        // Fallback: match city name format like "DESTINO PUNTA CANA"
+        const cityMatch = content.match(/DESTINO\s+([A-ZÑÁÉÍÓÚ][A-Za-zÀ-ÿ\s]+?)(?=\s*FECHAS|\s*\d{4}|\s*$)/i);
+        if (cityMatch && cityMatch[1]) {
+            destination = cityMatch[1].trim();
+            arrivalCity = destination;
+            console.log('📍 [DESTINATION] Extracted city name:', destination);
         }
+    }
+
+    // Try to get the full city name from the hotel location if we only have a code
+    // Look for the arrival city in the hotel descriptions (e.g., "MADRID" after "estrellas")
+    if (arrivalCity && arrivalCity.length === 3) {
+        // Search for full city name in content after "estrellas"
+        const cityNameMatch = content.match(/estrellas\s+([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]+?)(?=\s+[a-zñáéíóú]|\s+DOBLE|\s+SINGLE|\s+TRIPLE)/i);
+        if (cityNameMatch && cityNameMatch[1]) {
+            arrivalCity = cityNameMatch[1].trim();
+            console.log('📍 [DESTINATION] Found full city name from hotel:', arrivalCity);
+        }
+    }
+
+    // Use arrivalCity as fallback for hotel locations that weren't extracted
+    if (hotels && hotels.length > 0 && arrivalCity) {
+        hotels.forEach(hotel => {
+            if (hotel.location === 'Ubicación no especificada') {
+                hotel.location = arrivalCity!;
+                console.log(`📍 [DESTINATION] Applied fallback location to ${hotel.name}:`, arrivalCity);
+            }
+        });
     }
 
     // Determine original template ID based on content
@@ -4544,23 +4569,32 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
             // Extract room description (🛏️ followed by description, or text after location)
             let roomDescription: string | undefined;
 
-            // Room description patterns - capture everything after location until next "Opción" or stop markers
+            // Room description patterns - capture everything after location until stop markers
             const roomDescPatterns = [
                 // Pattern 1: 🛏️ emoji followed by description
                 /🛏️\s*([^\n]+)/i,
                 // Pattern 2: "habitación|room|hab" prefix
                 /(?:habitación|room|hab\.?)\s*:?\s*([^\n]+)/i,
-                // Pattern 3: Text after "N estrellas LOCATION" - captures ALL text until "Opción" or stop markers
-                // Handles both lowercase start (doble...) and UPPERCASE start (DOBLE...)
-                // Greedy capture until we hit Opción, ✈, Traslado, Seguro, DETALLE, or end
-                /(\d+)\s*[Ee]strellas\s+[A-ZÑÁÉÍÓÚ]+(?:\s+[A-ZÑÁÉÍÓÚ]+)*\s+([a-zA-ZñáéíóúÑÁÉÍÓÚ][^✈]*?)(?=\s*[Oo]pci[oó]n|\s*✈|\s*[Tt]raslado|\s*[Ss]eguro|\s*DETALLE|\s*$)/
+                // Pattern 3: Text after "N estrellas LOCATION" - captures text until stop markers
+                // Stop at: Traslado, Seguro, DETALLE, ✈, or double space followed by uppercase word that's not a room type
+                /(\d+)\s*[Ee]strellas\s+[A-ZÑÁÉÍÓÚ]+(?:\s+[A-ZÑÁÉÍÓÚ]+)*\s+(.+?)(?=\s{2,}[Tt]raslado|\s{2,}[Ss]eguro|\s+DETALLE|\s*✈|$)/
             ];
+
+            // Try each pattern
             for (const pattern of roomDescPatterns) {
                 const match = optionContent.match(pattern);
                 if (match) {
-                    // For patterns 3 & 4, the room description is in match[2]
-                    roomDescription = (match[2] || match[1]).trim();
-                    if (roomDescription) break;
+                    // For pattern 3, the room description is in match[2]
+                    let desc = (match[2] || match[1]).trim();
+
+                    // Clean up: remove trailing "Traslado", "Seguro", etc. if accidentally captured
+                    desc = desc.replace(/\s+(Traslado|Seguro|DETALLE).*$/i, '').trim();
+
+                    if (desc && desc.length > 0) {
+                        roomDescription = desc;
+                        console.log(`🛏️ [ROOM DESC] Extracted for option ${optionNumber}:`, roomDescription);
+                        break;
+                    }
                 }
             }
 
