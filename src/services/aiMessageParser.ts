@@ -521,15 +521,19 @@ export async function parseMessageWithAI(
             }
         }
 
-        // Extraer fechas con formato "desde X de mes al Y de mes"
-        const fechaMatch = normalized.match(/(\d{1,2})\s+de\s+([a-záéíóú]+)(?:\s+al\s+(\d{1,2})\s+de\s+([a-záéíóú]+))?/i);
+        // Extraer fechas con formato "X de mes al Y [de mes]" - mes de vuelta opcional
+        const fechaMatch = normalized.match(/(\d{1,2})\s+de\s+([a-záéíóú]+)(?:\s+al\s+(\d{1,2})(?:\s+de\s+([a-záéíóú]+))?)?/i);
+        // Formato alternativo: "del X al Y de mes" (mes al final aplica a ambas fechas)
+        const fechaAltMatch = !fechaMatch ? normalized.match(/del?\s+(\d{1,2})\s+al\s+(\d{1,2})\s+de\s+([a-záéíóú]+)/i) : null;
+
+        const meses = {
+            'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
+            'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
+            'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
+        };
+
         if (fechaMatch && quick.flights) {
             const mes = fechaMatch[2].toLowerCase();
-            const meses = {
-                'enero': '01', 'febrero': '02', 'marzo': '03', 'abril': '04',
-                'mayo': '05', 'junio': '06', 'julio': '07', 'agosto': '08',
-                'septiembre': '09', 'octubre': '10', 'noviembre': '11', 'diciembre': '12'
-            };
             const mesNum = meses[mes] || '10';
 
             // Dynamic year calculation: if month has already passed this year, use next year
@@ -541,15 +545,29 @@ export async function parseMessageWithAI(
 
             quick.flights.departureDate = `${año}-${mesNum}-${fechaMatch[1].padStart(2, '0')}`;
 
-            if (fechaMatch[3] && fechaMatch[4]) {
-                const mes2 = fechaMatch[4].toLowerCase();
-                const mes2Num = meses[mes2] || '11';
+            if (fechaMatch[3]) {
+                // Si hay mes de vuelta explícito, usarlo; sino usar el mismo mes de ida
+                const mes2 = fechaMatch[4] ? fechaMatch[4].toLowerCase() : mes;
+                const mes2Num = meses[mes2] || mesNum;
                 const requestedMonth2 = parseInt(mes2Num, 10);
                 // For return date, compare with current month and consider if it wraps to next year
                 const año2 = requestedMonth2 < currentMonth ? (currentYear + 1).toString() :
                     (requestedMonth2 < requestedMonth ? (parseInt(año) + 1).toString() : año);
                 quick.flights.returnDate = `${año2}-${mes2Num}-${fechaMatch[3].padStart(2, '0')}`;
             }
+        } else if (fechaAltMatch && quick.flights) {
+            // Formato "del X al Y de mes" - mismo mes para ambas fechas
+            const mes = fechaAltMatch[3].toLowerCase();
+            const mesNum = meses[mes] || '10';
+
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1;
+            const requestedMonth = parseInt(mesNum, 10);
+            const año = requestedMonth < currentMonth ? (currentYear + 1).toString() : currentYear.toString();
+
+            quick.flights.departureDate = `${año}-${mesNum}-${fechaAltMatch[1].padStart(2, '0')}`;
+            quick.flights.returnDate = `${año}-${mesNum}-${fechaAltMatch[2].padStart(2, '0')}`;
         }
 
         // Equipaje

@@ -187,6 +187,20 @@ export interface FlightData {
   fareCode?: string;
   fareFeatures?: any;
   fareCategory?: string;
+  // 🏥 Asistencia médica/seguro de viaje (travel_assistance)
+  // Indica si el usuario solicitó seguro de viaje (se muestra leyenda en PDF)
+  // Los seguros están incluidos en el precio del paquete, no tienen costo adicional
+  travel_assistance?: {
+    included: boolean; // Si el usuario lo solicitó
+    coverageAmount?: number; // Monto de cobertura solicitado (opcional)
+  };
+  // 🚗 Traslados aeropuerto-hotel (transfers)
+  // Indica si el usuario solicitó traslados (se muestra leyenda en PDF)
+  // Los traslados están incluidos en el precio del paquete, no tienen costo adicional
+  transfers?: {
+    included: boolean; // Si el usuario lo solicitó
+    type?: 'in' | 'out' | 'in_out'; // Tipo de traslado solicitado
+  };
 }
 
 export interface LocalHotelData {

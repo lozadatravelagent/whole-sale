@@ -154,6 +154,68 @@ export function normalizeText(text: string): string {
 }
 
 /**
+ * Calculates Levenshtein distance between two strings
+ * Used for fuzzy matching to correct typos
+ */
+function levenshteinDistance(a: string, b: string): number {
+    const matrix: number[][] = [];
+    for (let i = 0; i <= a.length; i++) {
+        matrix[i] = [i];
+        for (let j = 1; j <= b.length; j++) {
+            matrix[i][j] = i === 0 ? j : Math.min(
+                matrix[i - 1][j] + 1,
+                matrix[i][j - 1] + 1,
+                matrix[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+            );
+        }
+    }
+    return matrix[a.length][b.length];
+}
+
+/**
+ * Fuzzy match a string against a list of known strings
+ * Returns the best match if within the distance threshold
+ *
+ * @param input - The input string to match
+ * @param candidates - Array of candidate strings to match against
+ * @param maxDistance - Maximum Levenshtein distance allowed (default: 2)
+ * @param minLength - Minimum input length to attempt fuzzy match (default: 4)
+ * @returns The best match with distance, or null if no match found
+ */
+function fuzzyMatch(
+    input: string,
+    candidates: string[],
+    maxDistance: number = 2,
+    minLength: number = 4
+): { match: string; distance: number } | null {
+    const normalized = normalizeText(input);
+
+    // Skip fuzzy matching for short strings to avoid false positives
+    if (normalized.length < minLength) {
+        return null;
+    }
+
+    let bestMatch: { match: string; distance: number } | null = null;
+
+    for (const candidate of candidates) {
+        const normalizedCandidate = normalizeText(candidate);
+        const distance = levenshteinDistance(normalized, normalizedCandidate);
+
+        if (distance <= maxDistance && distance > 0) {
+            if (!bestMatch || distance < bestMatch.distance) {
+                bestMatch = { match: candidate, distance };
+            }
+        }
+    }
+
+    if (bestMatch) {
+        console.log(`🔧 [FUZZY] Corrected "${input}" → "${bestMatch.match}" (distance: ${bestMatch.distance})`);
+    }
+
+    return bestMatch;
+}
+
+/**
  * Detects if a hotel chain is mentioned in the text
  * 
  * @param text - The user's message
@@ -474,8 +536,12 @@ export function detectMultipleHotelChains(text: string): string[] {
 
                 console.log(`📋 [MULTI-CHAIN] Split into parts:`, parts);
 
+                // Collect all chain aliases for fuzzy matching
+                const allChainAliases = Object.values(HOTEL_CHAINS)
+                    .flatMap(chain => chain.aliases);
+
                 for (const part of parts) {
-                    // Try to find in known chains
+                    // Try to find in known chains (exact match)
                     const chainInfo = findChainByAlias(part);
                     if (chainInfo) {
                         if (!detectedChains.includes(chainInfo.name)) {
@@ -483,7 +549,18 @@ export function detectMultipleHotelChains(text: string): string[] {
                             console.log(`✅ [MULTI-CHAIN] Matched known chain: "${part}" → ${chainInfo.name}`);
                         }
                     } else {
-                        // Check if it might be a partial chain name
+                        // Try fuzzy match against known chain aliases
+                        const fuzzyResult = fuzzyMatch(part, allChainAliases, 2, 4);
+                        if (fuzzyResult) {
+                            const fuzzyChainInfo = findChainByAlias(fuzzyResult.match);
+                            if (fuzzyChainInfo && !detectedChains.includes(fuzzyChainInfo.name)) {
+                                detectedChains.push(fuzzyChainInfo.name);
+                                console.log(`🔧 [MULTI-CHAIN] Fuzzy corrected "${part}" → ${fuzzyChainInfo.name}`);
+                                continue;
+                            }
+                        }
+
+                        // Fallback: Check if it might be a partial chain name
                         const maybeChain = part
                             .split(/\s+/)
                             .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -543,10 +620,50 @@ export function hotelBelongsToAnyChain(hotelName: string, chains: string[]): boo
 }
 
 /**
- * Known specific hotels that don't follow the [chain] + [name] pattern
- * These are detected by exact match or partial match
+ * Known specific hotels with aliases (including common typos)
+ * These are detected by exact match, partial match, or fuzzy match
  */
 export const KNOWN_SPECIFIC_HOTELS: { name: string; aliases: string[] }[] = [
+    // Popular RIU hotels
+    {
+        name: 'RIU Republica',
+        aliases: ['riu republica', 'riu república', 'riu republic', 'riu republica punta cana']
+    },
+    {
+        name: 'RIU Bambu',
+        aliases: ['riu bambu', 'riu bambú', 'riu bambu punta cana']
+    },
+    {
+        name: 'RIU Palace Punta Cana',
+        aliases: ['riu palace punta cana', 'riu palace', 'riu palac punta cana']
+    },
+    // Popular Iberostar hotels
+    {
+        name: 'Iberostar Dominicana',
+        aliases: ['iberostar dominicana', 'iberostar domenicana', 'iberostar dominicana punta cana']
+    },
+    {
+        name: 'Iberostar Bavaro',
+        aliases: ['iberostar bavaro', 'iberostar bávaro', 'iberostar babaro']
+    },
+    {
+        name: 'Iberostar Punta Cana',
+        aliases: ['iberostar punta cana']
+    },
+    // Popular Barcelo hotels
+    {
+        name: 'Barcelo Bavaro Palace',
+        aliases: ['barcelo bavaro palace', 'barceló bávaro palace', 'barcelo bavaro']
+    },
+    {
+        name: 'Barcelo Bavaro Beach',
+        aliases: ['barcelo bavaro beach', 'barceló bávaro beach']
+    },
+    // Other popular chains
+    {
+        name: 'Hard Rock Punta Cana',
+        aliases: ['hard rock punta cana', 'hardrock punta cana', 'hard rock']
+    },
     {
         name: 'Vista Sol Punta Cana',
         aliases: ['vista sol', 'vista sol punta cana', 'vistasol', 'vista sol beach']
@@ -668,6 +785,9 @@ export function detectMultipleHotelNames(text: string): string[] {
         .flatMap(hotel => hotel.aliases.map(alias => ({ name: hotel.name, alias })))
         .sort((a, b) => b.alias.length - a.alias.length);
 
+    // Collect all aliases for fuzzy matching fallback
+    const allKnownAliases = sortedKnownHotels.map(h => h.alias);
+
     for (const { name, alias } of sortedKnownHotels) {
         const normalizedAlias = normalizeText(alias);
         if (normalizedText.includes(normalizedAlias)) {
@@ -727,7 +847,20 @@ export function detectMultipleHotelNames(text: string): string[] {
         // Normalize to canonical chain name + specific part
         const chainInfo = findChainByAlias(chainPart);
         const canonicalChain = chainInfo ? chainInfo.name : chainPart.charAt(0).toUpperCase() + chainPart.slice(1);
-        const canonicalName = `${canonicalChain} ${namePart.charAt(0).toUpperCase() + namePart.slice(1)}`;
+        let canonicalName = `${canonicalChain} ${namePart.charAt(0).toUpperCase() + namePart.slice(1)}`;
+
+        // Try fuzzy match against known hotels to correct typos
+        const fuzzyResult = fuzzyMatch(fullName, allKnownAliases, 2, 4);
+        if (fuzzyResult) {
+            // Found a close match - find the hotel name for this alias
+            const matchedHotel = sortedKnownHotels.find(h =>
+                normalizeText(h.alias) === normalizeText(fuzzyResult.match)
+            );
+            if (matchedHotel) {
+                canonicalName = matchedHotel.name;
+                console.log(`🔧 [HOTEL-NAMES] Fuzzy corrected "${fullName}" → "${canonicalName}"`);
+            }
+        }
 
         if (!detectedNames.some(n => normalizeText(n) === normalizeText(canonicalName))) {
             detectedNames.push(canonicalName);
