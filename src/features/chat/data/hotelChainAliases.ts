@@ -139,6 +139,10 @@ export const HOTEL_CHAINS: Record<string, HotelChainInfo> = {
     lti: {
         name: 'LTI Hotels',
         aliases: ['lti', 'lti hotels']
+    },
+    viva: {
+        name: 'Viva Wyndham',
+        aliases: ['viva', 'viva wyndham', 'viva resorts', 'viva wyndham resorts', 'viva hotels']
     }
 };
 
