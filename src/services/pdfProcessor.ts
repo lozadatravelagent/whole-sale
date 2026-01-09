@@ -4513,7 +4513,7 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
 
             // Room type keywords that indicate START of room description (not location)
             // When we see these UPPERCASE words after location, we know location has ended
-            const roomTypeKeywords = 'DOBLE|SINGLE|TRIPLE|CUADRUPLE|SUITE|STANDARD|ESTANDAR|ESTÁNDAR|SUPERIOR|DELUXE|JUNIOR|COURTYARD|GARDEN|OCEAN|POOL|VIEW|KING|QUEEN|TWIN|HABITACION|HABITACIÓN|ROOM';
+            const roomTypeKeywords = 'DOBLE|SINGLE|TRIPLE|CUADRUPLE|SUITE|STANDARD|ESTANDAR|ESTÁNDAR|SUPERIOR|DELUXE|JUNIOR|COURTYARD|GARDEN|OCEAN|POOL|VIEW|KING|QUEEN|TWIN|HABITACION|HABITACIÓN|ROOM|ADAPTED|CAPACITY|USO';
 
             const locationPatterns = [
                 // Pattern 1: "N estrellas LOCATION" - stop at room type keywords OR lowercase text
@@ -4544,17 +4544,16 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
             // Extract room description (🛏️ followed by description, or text after location)
             let roomDescription: string | undefined;
 
-            // Reuse room type keywords for room description extraction
+            // Room description patterns - capture everything after location until next "Opción" or stop markers
             const roomDescPatterns = [
                 // Pattern 1: 🛏️ emoji followed by description
                 /🛏️\s*([^\n]+)/i,
                 // Pattern 2: "habitación|room|hab" prefix
                 /(?:habitación|room|hab\.?)\s*:?\s*([^\n]+)/i,
-                // Pattern 3: Text after "N estrellas LOCATION" - captures lowercase text like "doble estándar / todo incluido"
-                /(\d+)\s*[Ee]strellas\s+[A-ZÑÁÉÍÓÚ]+(?:\s+[A-ZÑÁÉÍÓÚ]+)*\s+([a-zñáéíóú][^\n]*?(?:[Ii]ncluido|[Ii]nclusive|[Oo]nly|[Ee]st[aá]ndar|[Ss]tandard|[Ss]uperior|[Dd]eluxe|[Ss]uite)[^\n]*)/,
-                // Pattern 4: Text after "N estrellas LOCATION" - captures UPPERCASE room type keyword text
-                // e.g., "DOBLE ESTANDAR COURTYARD / todo incluido"
-                new RegExp(`(\\d+)\\s*[Ee]strellas\\s+[A-ZÑÁÉÍÓÚ]+(?:\\s+[A-ZÑÁÉÍÓÚ]+)*\\s+((?:${roomTypeKeywords})[A-Za-zÀ-ÿ\\s\\/]*?(?:[Ii]ncluido|[Ii]nclusive|[Oo]nly|[Ee]st[aá]ndar|[Ss]tandard|[Ss]uperior|[Dd]eluxe|[Cc]ourtyard|[Ss]uite)[^\\n]*)`)
+                // Pattern 3: Text after "N estrellas LOCATION" - captures ALL text until "Opción" or stop markers
+                // Handles both lowercase start (doble...) and UPPERCASE start (DOBLE...)
+                // Greedy capture until we hit Opción, ✈, Traslado, Seguro, DETALLE, or end
+                /(\d+)\s*[Ee]strellas\s+[A-ZÑÁÉÍÓÚ]+(?:\s+[A-ZÑÁÉÍÓÚ]+)*\s+([a-zA-ZñáéíóúÑÁÉÍÓÚ][^✈]*?)(?=\s*[Oo]pci[oó]n|\s*✈|\s*[Tt]raslado|\s*[Ss]eguro|\s*DETALLE|\s*$)/
             ];
             for (const pattern of roomDescPatterns) {
                 const match = optionContent.match(pattern);
