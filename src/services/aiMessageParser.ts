@@ -762,7 +762,7 @@ export async function parseMessageWithAI(
             ...((quick.flights as any)?.arrivalTimePreference && !parsedResult.flights?.arrivalTimePreference ? { arrivalTimePreference: (quick.flights as any).arrivalTimePreference } : {})
         } as any;
 
-        // 🏨 Merge hotel pre-parse hints if AI missed them (hotelChains, hotelName)
+        // 🏨 Merge hotel pre-parse hints if AI missed them (hotelChains, hotelName, hotelNames)
         // PRE-PARSER acts as fallback: if AI didn't detect chains/name but pre-parser did, use pre-parser values
         const quickHotels = (quick as any).hotels;
         const mergedHotels = {
@@ -770,11 +770,13 @@ export async function parseMessageWithAI(
             // If AI didn't detect hotelChains but pre-parser did → use pre-parser value (array)
             ...(quickHotels?.hotelChains && !parsedResult.hotels?.hotelChains ? { hotelChains: quickHotels.hotelChains } : {}),
             // If AI didn't detect hotelName but pre-parser did → use pre-parser value
-            ...(quickHotels?.hotelName && !parsedResult.hotels?.hotelName ? { hotelName: quickHotels.hotelName } : {})
+            ...(quickHotels?.hotelName && !parsedResult.hotels?.hotelName ? { hotelName: quickHotels.hotelName } : {}),
+            // If AI didn't detect hotelNames (plural) but pre-parser did → use pre-parser value (array of specific hotel names)
+            ...(quickHotels?.hotelNames && !parsedResult.hotels?.hotelNames ? { hotelNames: quickHotels.hotelNames } : {})
         } as any;
 
         // Log merge details for debugging
-        if (quickHotels?.hotelChains || quickHotels?.hotelName) {
+        if (quickHotels?.hotelChains || quickHotels?.hotelName || quickHotels?.hotelNames) {
             console.log(`🏨 [MERGE] Pre-parser hotel hints:`, quickHotels);
             console.log(`🏨 [MERGE] AI detected hotels:`, parsedResult.hotels);
             console.log(`🏨 [MERGE] Final merged hotels:`, mergedHotels);

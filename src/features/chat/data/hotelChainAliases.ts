@@ -143,6 +143,55 @@ export const HOTEL_CHAINS: Record<string, HotelChainInfo> = {
     viva: {
         name: 'Viva Wyndham',
         aliases: ['viva', 'viva wyndham', 'viva resorts', 'viva wyndham resorts', 'viva hotels']
+    },
+    // Additional chains from EUROVIPS inventory analysis
+    palladium: {
+        name: 'Palladium',
+        aliases: ['palladium', 'grand palladium', 'palladium hotels', 'palladium resorts', 'trs', 'trs hotels']
+    },
+    ocean: {
+        name: 'Ocean Hotels',
+        aliases: ['ocean', 'ocean hotels', 'ocean resorts', 'ocean by h10', 'h10 ocean']
+    },
+    majestic: {
+        name: 'Majestic',
+        aliases: ['majestic', 'majestic resorts', 'majestic elegance', 'majestic colonial', 'majestic mirage']
+    },
+    impressive: {
+        name: 'Impressive',
+        aliases: ['impressive', 'impressive resorts', 'impressive hotels', 'impressive premium']
+    },
+    paradisus: {
+        name: 'Paradisus',
+        aliases: ['paradisus', 'paradisus by melia', 'paradisus resorts', 'paradisus palma real', 'paradisus grand']
+    },
+    sirenis: {
+        name: 'Sirenis',
+        aliases: ['sirenis', 'grand sirenis', 'sirenis hotels', 'sirenis resorts']
+    },
+    nickelodeon: {
+        name: 'Nickelodeon',
+        aliases: ['nickelodeon', 'nickelodeon hotels', 'nickelodeon resorts', 'nick resort']
+    },
+    zoetry: {
+        name: 'Zoetry',
+        aliases: ['zoetry', 'zoetry wellness', 'zoetry resorts', 'zoetry agua']
+    },
+    sanctuary: {
+        name: 'Sanctuary',
+        aliases: ['sanctuary', 'sanctuary cap cana', 'sanctuary resorts']
+    },
+    zel: {
+        name: 'Zel',
+        aliases: ['zel', 'zel hotels', 'zel by melia']
+    },
+    serenade: {
+        name: 'Serenade',
+        aliases: ['serenade', 'serenade hotels', 'serenade resorts', 'serenade punta cana']
+    },
+    whala: {
+        name: 'Whala',
+        aliases: ['whala', 'whala hotels', 'whala urban', 'whala beach']
     }
 };
 
