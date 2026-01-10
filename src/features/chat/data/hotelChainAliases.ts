@@ -800,6 +800,229 @@ export const KNOWN_SPECIFIC_HOTELS: { name: string; aliases: string[] }[] = [
     {
         name: 'Zoetry Agua',
         aliases: ['zoetry agua', 'zoetry agua punta cana']
+    },
+    // ============================================
+    // EUROVIPS Inventory - Additional Hotels
+    // ============================================
+    // Sirenis
+    {
+        name: 'Grand Sirenis Punta Cana',
+        aliases: ['grand sirenis', 'grand sirenis punta cana', 'sirenis punta cana']
+    },
+    // Palladium / TRS
+    {
+        name: 'Grand Palladium Punta Cana',
+        aliases: ['grand palladium punta cana', 'grand palladium']
+    },
+    {
+        name: 'Grand Palladium Palace',
+        aliases: ['grand palladium palace', 'palladium palace']
+    },
+    {
+        name: 'Grand Palladium Select Bavaro',
+        aliases: ['grand palladium select', 'palladium select', 'grand palladium select bavaro']
+    },
+    {
+        name: 'TRS Turquesa',
+        aliases: ['trs turquesa', 'turquesa hotel', 'trs turquesa punta cana']
+    },
+    // Impressive
+    {
+        name: 'Impressive Punta Cana',
+        aliases: ['impressive punta cana', 'impressive resort']
+    },
+    {
+        name: 'Impressive Premium',
+        aliases: ['impressive premium', 'impressive premium punta cana']
+    },
+    // Nickelodeon
+    {
+        name: 'Nickelodeon Punta Cana',
+        aliases: ['nickelodeon punta cana', 'nickelodeon resort', 'nickelodeon hotel', 'nick hotel']
+    },
+    // Sanctuary
+    {
+        name: 'Sanctuary Cap Cana',
+        aliases: ['sanctuary cap cana', 'sanctuary']
+    },
+    // Zel
+    {
+        name: 'Zel Punta Cana',
+        aliases: ['zel punta cana', 'zel hotel']
+    },
+    // Serenade
+    {
+        name: 'Serenade Punta Cana',
+        aliases: ['serenade punta cana', 'serenade beach', 'serenade resort']
+    },
+    // Royalton
+    {
+        name: 'Royalton Splash Punta Cana',
+        aliases: ['royalton splash', 'royalton splash punta cana']
+    },
+    {
+        name: 'Royalton Chic Punta Cana',
+        aliases: ['royalton chic', 'royalton chic punta cana']
+    },
+    {
+        name: 'Royalton Bavaro',
+        aliases: ['royalton bavaro', 'royalton bávaro']
+    },
+    {
+        name: 'Royalton Hideaway',
+        aliases: ['royalton hideaway', 'royalton hideaway punta cana', 'hideaway punta cana']
+    },
+    {
+        name: 'Royalton Punta Cana',
+        aliases: ['royalton punta cana']
+    },
+    // Dreams
+    {
+        name: 'Dreams Royal Beach',
+        aliases: ['dreams royal beach', 'dreams royal beach punta cana']
+    },
+    {
+        name: 'Dreams Onyx',
+        aliases: ['dreams onyx', 'dreams onyx punta cana', 'dreams onyx resort']
+    },
+    // Catalonia
+    {
+        name: 'Catalonia Punta Cana',
+        aliases: ['catalonia punta cana']
+    },
+    {
+        name: 'Catalonia Royal Bavaro',
+        aliases: ['catalonia royal', 'catalonia royal bavaro', 'catalonia royal bávaro']
+    },
+    // Sunscape
+    {
+        name: 'Sunscape Coco Punta Cana',
+        aliases: ['sunscape coco', 'sunscape coco punta cana', 'sunscape punta cana']
+    },
+    // Wyndham
+    {
+        name: 'Wyndham Alltra Punta Cana',
+        aliases: ['wyndham alltra', 'wyndham alltra punta cana', 'alltra punta cana']
+    },
+    // Occidental (Barcelo)
+    {
+        name: 'Occidental Punta Cana',
+        aliases: ['occidental punta cana']
+    },
+    {
+        name: 'Occidental Caribe',
+        aliases: ['occidental caribe']
+    },
+    // Paradisus
+    {
+        name: 'Paradisus Grand Cana',
+        aliases: ['paradisus grand cana', 'paradisus grand']
+    },
+    // Iberostar
+    {
+        name: 'Iberostar Selection Bavaro',
+        aliases: ['iberostar selection bavaro', 'iberostar selection', 'selection bavaro']
+    },
+    {
+        name: 'Iberostar Selection Coral',
+        aliases: ['iberostar selection coral', 'iberostar coral', 'selection coral']
+    },
+    {
+        name: 'Iberostar Waves Punta Cana',
+        aliases: ['iberostar waves punta cana', 'iberostar waves']
+    },
+    {
+        name: 'Iberostar Waves Dominicana',
+        aliases: ['iberostar waves dominicana']
+    },
+    {
+        name: 'Joia Bavaro',
+        aliases: ['joia bavaro', 'joia by iberostar', 'joia bavaro by iberostar']
+    },
+    {
+        name: 'Iberostar Grand Bavaro',
+        aliases: ['iberostar grand bavaro', 'iberostar grand']
+    },
+    // RIU
+    {
+        name: 'RIU Palace Punta Cana',
+        aliases: ['riu palace punta cana']
+    },
+    {
+        name: 'RIU Palace Bavaro',
+        aliases: ['riu palace bavaro', 'riu palace bávaro']
+    },
+    {
+        name: 'RIU Palace Macao',
+        aliases: ['riu palace macao']
+    },
+    {
+        name: 'RIU Bambu',
+        aliases: ['riu bambu', 'riu bambú']
+    },
+    {
+        name: 'RIU Republica',
+        aliases: ['riu republica', 'riu república']
+    },
+    // Princess
+    {
+        name: 'Tropical Deluxe Princess',
+        aliases: ['tropical deluxe princess', 'tropical deluxe', 'tropical princess']
+    },
+    {
+        name: 'Caribe Deluxe Princess',
+        aliases: ['caribe deluxe princess', 'caribe deluxe', 'caribe princess']
+    },
+    {
+        name: 'Grand Bavaro Princess',
+        aliases: ['grand bavaro princess', 'bavaro princess']
+    },
+    {
+        name: 'Punta Cana Princess',
+        aliases: ['punta cana princess']
+    },
+    {
+        name: 'Princess Family Club',
+        aliases: ['princess family club', 'family club bavaro', 'princess family']
+    },
+    // Bahia Principe
+    {
+        name: 'Bahia Principe Grand Aquamarine',
+        aliases: ['bahia principe aquamarine', 'grand aquamarine', 'bahia principe grand aquamarine']
+    },
+    {
+        name: 'Bahia Principe Luxury Ambar',
+        aliases: ['bahia principe ambar', 'bahia principe luxury ambar', 'luxury ambar']
+    },
+    {
+        name: 'Bahia Principe Luxury Esmeralda',
+        aliases: ['bahia principe esmeralda', 'bahia principe luxury esmeralda', 'luxury esmeralda']
+    },
+    // Lopesan
+    {
+        name: 'Unique Club at Lopesan',
+        aliases: ['unique club lopesan', 'unique club at lopesan', 'lopesan unique']
+    },
+    {
+        name: 'Adults Only Club at Lopesan',
+        aliases: ['adults only lopesan', 'lopesan adults only', 'adults only club lopesan']
+    },
+    // Independent / Other
+    {
+        name: 'Tortuga Bay',
+        aliases: ['tortuga bay', 'tortuga bay punta cana']
+    },
+    {
+        name: 'Westin Puntacana',
+        aliases: ['westin puntacana', 'westin punta cana', 'the westin puntacana']
+    },
+    {
+        name: 'Four Points Sheraton Punta Cana',
+        aliases: ['four points punta cana', 'four points sheraton', 'sheraton punta cana']
+    },
+    {
+        name: 'AC Hotel Punta Cana',
+        aliases: ['ac hotel punta cana', 'ac marriott punta cana', 'ac hotel marriott']
     }
 ];
 
