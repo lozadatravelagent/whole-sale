@@ -4500,12 +4500,14 @@ function extractHotelsFromPdfMonkeyTemplate(content: string): Array<{
             }
 
             const packagePrice = parsePrice(optionMatch[2]);
-            const optionStartPos = optionMatch.index || 0;
+            const optionEndPos = (optionMatch.index || 0) + optionMatch[0].length;
 
-            // Define section boundaries
-            const optionEndPos = i < optionMatches.length - 1
-                ? optionMatches[i + 1].index || content.length
-                : content.length;
+            // FIX: Hotel details appear BEFORE the "Opción X $PRICE" line, not after
+            // So we need to look BACKWARDS from the option marker to find hotel info
+            // Section boundaries: from previous option's end (or document start) to current option's end
+            const optionStartPos = i === 0
+                ? 0
+                : (optionMatches[i - 1].index || 0) + optionMatches[i - 1][0].length;
 
             const optionContent = content.substring(optionStartPos, optionEndPos);
 

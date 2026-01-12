@@ -1096,7 +1096,22 @@ export function detectMultipleHotelNames(text: string): string[] {
 
     for (const match of matches) {
         const chainPart = match[1].trim();
-        const namePart = match[2].trim();
+        let namePart = match[2].trim();
+
+        // NEW: Skip if namePart starts with a separator word (y, e, o, or, and)
+        // This happens when the regex incorrectly captures "riu y vista sol" as a single hotel
+        if (/^(y|e|o|or|and)\s+/i.test(namePart)) {
+            console.log(`⚠️ [HOTEL-NAMES] Skipping "${chainPart} ${namePart}" - starts with separator word`);
+            continue;
+        }
+
+        // NEW: Truncate namePart at separator words (y, e, o, or, and) to handle cases like "palace y bavaro"
+        const separatorMatch = namePart.match(/^(.+?)\s+(?:y|e|o|or|and)(?:\s+|$)/i);
+        if (separatorMatch) {
+            const originalNamePart = namePart;
+            namePart = separatorMatch[1].trim();
+            console.log(`🔧 [HOTEL-NAMES] Truncated "${chainPart} ${originalNamePart}" → "${chainPart} ${namePart}" (at separator)`);
+        }
 
         // Skip if namePart is a common word that's not a hotel name
         const commonWords = ['hotel', 'hoteles', 'hotels', 'resort', 'resorts', 'palace', 'beach', 'playa'];
