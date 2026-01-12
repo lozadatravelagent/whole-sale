@@ -562,9 +562,25 @@ async function generatePdfDocument(request: any): Promise<PdfMonkeyResponse> {
 }
 
 // Helper function to convert price to European format (with comma as decimal separator)
+// FIXED: Now handles European format string input (1.577,18) correctly
 function formatPriceForTemplate(price: number | string): string {
-  const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-  if (isNaN(numPrice)) return '0,00';
+  let numPrice: number;
+
+  if (typeof price === 'string') {
+    // Handle European format input (1.577,18 -> 1577.18)
+    const cleaned = price
+      .replace(/[^\d.,]/g, '')           // Remove currency symbols and spaces
+      .replace(/\.(?=.*,)/g, '')         // Remove thousands dots (dots that appear before a comma)
+      .replace(',', '.');                 // Convert decimal comma to dot
+    numPrice = parseFloat(cleaned);
+  } else {
+    numPrice = price;
+  }
+
+  if (isNaN(numPrice) || numPrice < 0) return '0,00';
+
+  // Round to 2 decimals to avoid floating point issues
+  numPrice = Math.round(numPrice * 100) / 100;
 
   // Convert to European format: 1577.18 -> "1.577,18"
   return numPrice.toLocaleString('de-DE', {
@@ -575,34 +591,36 @@ function formatPriceForTemplate(price: number | string): string {
 
 // Helper function to extract meal plan from room description or hotel data
 // Returns: 'all_inclusive' | 'breakfast' | 'half_board' | 'full_board' | 'room_only' | null
+// EXPANDED: Added more patterns for meal plan detection
 function extractMealPlan(roomDescription?: string, hotelData?: any): string | null {
   const desc = (roomDescription || '').toLowerCase();
   const hotelName = (hotelData?.name || '').toLowerCase();
   const hotelDesc = (hotelData?.description || '').toLowerCase();
-  const combinedText = `${desc} ${hotelName} ${hotelDesc}`;
+  const roomDesc = ((hotelData?.roomDescription) || '').toLowerCase();
+  const combinedText = `${desc} ${hotelName} ${hotelDesc} ${roomDesc}`;
 
-  // All Inclusive patterns
-  if (/todo\s*incluido|all\s*inclusive|ai\b|ti\b/i.test(combinedText)) {
+  // All Inclusive patterns - EXPANDED
+  if (/todo\s*incluid[oa]?|all\s*inclusive|ai\b|ti\b|incluye\s*todo/i.test(combinedText)) {
     return 'all_inclusive';
   }
 
-  // Full Board patterns (pensión completa)
-  if (/pensión?\s*completa|full\s*board|fb\b|pc\b/i.test(combinedText)) {
+  // Full Board patterns (pensión completa) - EXPANDED with FAP
+  if (/pensión?\s*completa|full\s*board|fb\b|pc\b|fap\b/i.test(combinedText)) {
     return 'full_board';
   }
 
-  // Half Board patterns (media pensión)
-  if (/media\s*pensión?|half\s*board|hb\b|mp\b/i.test(combinedText)) {
+  // Half Board patterns (media pensión) - EXPANDED with MAP
+  if (/media\s*pensión?|half\s*board|hb\b|mp\b|map\b/i.test(combinedText)) {
     return 'half_board';
   }
 
-  // Breakfast patterns (desayuno)
-  if (/desayuno|breakfast|bb\b|bed\s*&?\s*breakfast/i.test(combinedText)) {
+  // Breakfast patterns (desayuno) - EXPANDED with continental
+  if (/desayuno|breakfast|bb\b|bed\s*&?\s*breakfast|continental/i.test(combinedText)) {
     return 'breakfast';
   }
 
-  // Room Only patterns (solo habitación)
-  if (/solo\s*habitación?|room\s*only|ro\b|sin\s*comidas/i.test(combinedText)) {
+  // Room Only patterns (solo habitación) - EXPANDED with EP
+  if (/solo\s*habitación?|room\s*only|ro\b|sin\s*comidas|ep\b/i.test(combinedText)) {
     return 'room_only';
   }
 
@@ -612,9 +630,18 @@ function extractMealPlan(roomDescription?: string, hotelData?: any): string | nu
 // Helper function to extract star rating from EUROVIPS category format
 // EUROVIPS returns category as "3*", "4*", "5*", "3EST", "H2_5", etc. or text like "Standard"
 // Also tries to extract from hotel name if category is empty
+// IMPROVED: Added support for H2_5 format (half stars, rounded up)
 function extractStars(category: string | undefined, hotelName?: string): string {
   // First try to extract from category
   if (category && category.trim()) {
+    // NEW: Handle H2_5 format (2.5 stars, round to 3)
+    const halfMatch = category.match(/H(\d+)_5/i);
+    if (halfMatch) {
+      const stars = String(parseInt(halfMatch[1]) + 1); // Round up half stars
+      console.log(`⭐ [EXTRACT STARS] Found half-star format, rounded to "${stars}" from category "${category}"`);
+      return stars;
+    }
+
     // Try to match numbers at the start (e.g., "3EST", "3*", "4*")
     const match = category.match(/^(\d+)/);
     if (match) {
@@ -772,8 +799,13 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     const hotelForTemplate: any = {
       name: hotel.name,
       stars: extractedStars, // Extract number from EUROVIPS format "3*", "4*", etc. or from hotel name
-      location: hotel.city || 'Ubicación no especificada', // Solo mostrar país/ciudad, no dirección completa
-      roomDescription: roomToUse.description || '', // Descripción de habitación (ej: "HABITACION DOBLE /TODO INCLUIDO")
+      location: location || hotel.city || 'Ubicación no especificada', // FIXED: Usar variable 'location' construida arriba
+      // FIXED: Múltiples fuentes para roomDescription con prioridad
+      roomDescription:
+        roomToUse.description ||           // Priority 1: Selected room description
+        (hotel as any).roomDescription ||  // Priority 2: Extracted from PDF analysis
+        hotel.description ||               // Priority 3: Hotel-level description
+        '',
       price: formatPriceForTemplate(priceForAllNights), // Formato europeo - precio total por todas las noches
       link: `https://wholesale-connect.com/hotel/${hotel.id}` // Placeholder link
     };
