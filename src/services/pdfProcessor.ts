@@ -17,7 +17,7 @@ export interface PdfAnalysisResult {
             price: number;
             dates: string;
         }>;
-hotels?: Array<{
+        hotels?: Array<{
             name: string;
             location: string;
             price: number;
@@ -26,6 +26,8 @@ hotels?: Array<{
             packagePrice?: number;
             roomDescription?: string;
             roomType?: string;
+            mealPlan?: string;
+            optionNumber?: number;
         }>;
         totalPrice?: number;
         currency?: string;
@@ -33,6 +35,7 @@ hotels?: Array<{
         originalTemplate?: string;
         needsComplexTemplate?: boolean;
         extractedFromPdfMonkey?: boolean;
+        extractedFromAI?: boolean;
         destination?: string;
     };
     suggestions?: string[];
@@ -57,6 +60,67 @@ export interface CheaperFlightSearchResult {
     savings?: number;
     message?: string;
     error?: string;
+}
+
+/**
+ * City name lookup table for common airport codes
+ * Used as fallback when AI doesn't provide city names
+ */
+const AIRPORT_TO_CITY: Record<string, string> = {
+    // Argentina
+    'EZE': 'Buenos Aires',
+    'AEP': 'Buenos Aires',
+    'COR': 'Córdoba',
+    'MDZ': 'Mendoza',
+    'BRC': 'Bariloche',
+    'IGR': 'Iguazú',
+    // Mexico
+    'CUN': 'Cancún',
+    'MEX': 'Ciudad de México',
+    'GDL': 'Guadalajara',
+    'SJD': 'Los Cabos',
+    'PVR': 'Puerto Vallarta',
+    // Caribbean
+    'PUJ': 'Punta Cana',
+    'SDQ': 'Santo Domingo',
+    'HAV': 'La Habana',
+    'SJU': 'San Juan',
+    'MBJ': 'Montego Bay',
+    // USA
+    'MIA': 'Miami',
+    'JFK': 'Nueva York',
+    'LAX': 'Los Ángeles',
+    'MCO': 'Orlando',
+    'LAS': 'Las Vegas',
+    'ATL': 'Atlanta',
+    'DFW': 'Dallas',
+    'ORD': 'Chicago',
+    // South America
+    'SCL': 'Santiago',
+    'LIM': 'Lima',
+    'BOG': 'Bogotá',
+    'GRU': 'São Paulo',
+    'GIG': 'Río de Janeiro',
+    'MVD': 'Montevideo',
+    'ASU': 'Asunción',
+    'UIO': 'Quito',
+    'CCS': 'Caracas',
+    // Europe
+    'MAD': 'Madrid',
+    'BCN': 'Barcelona',
+    'FCO': 'Roma',
+    'CDG': 'París',
+    'LHR': 'Londres',
+    'AMS': 'Ámsterdam',
+    'FRA': 'Frankfurt',
+    'LIS': 'Lisboa',
+};
+
+/**
+ * Get city name from airport code
+ */
+function getCityNameFromCode(code: string): string {
+    return AIRPORT_TO_CITY[code?.toUpperCase()] || code;
 }
 
 /**
@@ -531,6 +595,165 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
 
         console.log('📄 Extracted PDF text:', extractedText.substring(0, 500) + '...');
 
+        // Use AI-powered extraction for better accuracy
+        console.log('🤖 Sending PDF text to AI analyzer for structured extraction...');
+
+        const { data: aiResult, error: aiError } = await supabase.functions.invoke('pdf-ai-analyzer', {
+            body: {
+                pdfText: extractedText,
+                fileName: file.name
+            }
+        });
+
+        if (aiError) {
+            console.warn('⚠️ AI analyzer error, falling back to regex extraction:', aiError);
+            // Fallback to regex-based extraction
+            if (isPdfMonkeyTemplate(file.name, extractedText)) {
+                return extractPdfMonkeyDataFromContent(file.name, extractedText);
+            }
+            const parsedData = parseExtractedTravelData(extractedText);
+            return {
+                success: true,
+                content: parsedData,
+                suggestions: generateDefaultSuggestions()
+            };
+        }
+
+        if (aiResult?.success && aiResult?.data) {
+            console.log('✅ AI extraction successful:', JSON.stringify(aiResult.data, null, 2));
+
+            // Convert AI response to our expected format
+            const aiData = aiResult.data;
+
+            // Get passenger counts
+            const adults = aiData.passengers?.adults || 2;
+            const children = aiData.passengers?.children || 0;
+            const totalPassengers = aiData.passengers?.total || adults + children;
+
+            // Build flights array with full structure including legs
+            const flights = (aiData.flights || []).map((f: any) => {
+                const origin = f.origin || 'XXX';
+                const destination = f.destination || 'XXX';
+                const date = f.date || '';
+
+                // Get city names from AI or use lookup table as fallback
+                const originCity = f.originCity || getCityNameFromCode(origin);
+                const destinationCity = f.destinationCity || getCityNameFromCode(destination);
+
+                // Get times and duration from AI (with fallbacks)
+                const departureTime = f.departureTime || '00:00';
+                const arrivalTime = f.arrivalTime || '00:00';
+                const duration = f.duration || '0h 0m';
+
+                // Process layovers from AI
+                const layovers = (f.layovers || []).map((l: any) => ({
+                    airport: {
+                        code: l.airport || '',
+                        city: l.city || getCityNameFromCode(l.airport || '')
+                    },
+                    duration: l.waitTime || '0h 0m'
+                }));
+
+                // Create leg structure with complete data from AI
+                const leg = {
+                    departure: {
+                        city_code: origin,
+                        city_name: originCity,
+                        time: departureTime
+                    },
+                    arrival: {
+                        city_code: destination,
+                        city_name: destinationCity,
+                        time: arrivalTime
+                    },
+                    duration: duration,
+                    flight_type: f.direction === 'return' ? 'return' : 'outbound',
+                    layovers: layovers
+                };
+
+                console.log(`✈️ [AI] Flight ${f.direction}: ${originCity} (${origin}) → ${destinationCity} (${destination}), ${departureTime}-${arrivalTime}, duration: ${duration}, layovers: ${layovers.length}`);
+
+                return {
+                    airline: f.airline || 'Aerolínea no especificada',
+                    airlineCode: f.airlineCode || '',
+                    route: f.route || `${origin} → ${destination}`,
+                    origin: origin,
+                    destination: destination,
+                    originCity: originCity,
+                    destinationCity: destinationCity,
+                    price: f.price || 0,
+                    dates: date,
+                    direction: f.direction || 'outbound',
+                    departureTime: departureTime,
+                    arrivalTime: arrivalTime,
+                    duration: duration,
+                    // Include leg structure for PDF generation
+                    legs: [leg],
+                    adults: adults,
+                    childrens: children
+                };
+            });
+
+            // Build hotels array with proper structure
+            const hotels = (aiData.hotels || []).map((h: any) => {
+                // Use address from AI if available, otherwise use location
+                const address = h.address || h.location || '';
+                const location = h.location || '';
+
+                console.log(`🏨 [AI] Hotel "${h.name}": location="${location}", address="${address}"`);
+
+                return {
+                    name: h.name || 'Hotel no especificado',
+                    location: location,
+                    address: address, // Full address for PDF
+                    price: 0, // Individual hotel price not available when bundled
+                    nights: h.nights || aiData.nights || 7,
+                    category: h.stars ? String(h.stars) : undefined,
+                    packagePrice: h.packagePrice || 0,
+                    roomDescription: h.roomType || undefined,
+                    roomType: h.roomType || undefined,
+                    mealPlan: h.mealPlan || undefined,
+                    optionNumber: h.optionNumber || 0,
+                    // Add check-in/check-out from flight dates
+                    check_in: aiData.dates?.departure || '',
+                    check_out: aiData.dates?.return || ''
+                };
+            });
+
+            // Calculate destination from flights (use route format)
+            let destination = '';
+            if (aiData.flights && aiData.flights.length > 0) {
+                const outbound = aiData.flights.find((f: any) => f.direction === 'outbound') || aiData.flights[0];
+                destination = `${outbound.origin || '???'} -- ${outbound.destination || '???'}`;
+            }
+
+            // Find total price (max of all package prices)
+            const totalPrice = hotels.length > 0
+                ? Math.max(...hotels.map((h: any) => h.packagePrice || 0))
+                : flights.reduce((sum: number, f: any) => sum + (f.price || 0), 0);
+
+            return {
+                success: true,
+                content: {
+                    flights,
+                    hotels,
+                    totalPrice,
+                    currency: aiData.currency || 'USD',
+                    passengers: totalPassengers,
+                    adults: adults,
+                    children: children,
+                    destination,
+                    extractedFromAI: true,
+                    // Store dates for PDF generation
+                    dates: aiData.dates
+                },
+                suggestions: generateDefaultSuggestions()
+            };
+        }
+
+        // Fallback to regex-based extraction if AI fails
+        console.warn('⚠️ AI extraction returned no data, falling back to regex extraction');
+
         // Check if this is a PDF generated by our PdfMonkey template using both filename and content
         if (isPdfMonkeyTemplate(file.name, extractedText)) {
             console.log('🎯 PDF recognized as PdfMonkey template - using structured extraction');
@@ -547,12 +770,7 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
         return {
             success: true,
             content: parsedData,
-            suggestions: [
-                "Puedo buscar vuelos con mejores horarios o conexiones más cortas",
-                "Hay hoteles con mejor ubicación disponibles en las mismas fechas",
-                "Podría encontrar opciones más económicas con fechas flexibles",
-                "¿Te interesa agregar servicios adicionales como traslados o seguro de viaje?"
-            ]
+            suggestions: generateDefaultSuggestions()
         };
 
     } catch (error) {
@@ -572,11 +790,13 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
         return generateManualDataEntryPrompt();
     }
 
-    const { content, suggestions } = analysis;
+    const { content } = analysis;
 
-    // Check if we have meaningful data extracted
+    // Check if we have meaningful data extracted - also check for packagePrice in hotels (AI extraction)
+    const hasHotelsWithPackagePrice = content.hotels && content.hotels.some((h: any) => h.packagePrice > 0);
     const hasValidData = (content.flights && content.flights.length > 0 && content.flights[0].price > 0) ||
         (content.hotels && content.hotels.length > 0 && content.hotels[0].price > 0) ||
+        hasHotelsWithPackagePrice ||
         (content.totalPrice && content.totalPrice > 0);
 
     if (!hasValidData) {
@@ -591,126 +811,131 @@ export function generatePriceChangeSuggestions(analysis: PdfAnalysisResult): str
 
         content.flights.forEach((flight, index) => {
             // Airline, route and date on the same line
-            response += `${flight.airline} - ${flight.route} 📅 ${flight.dates}`;
+            response += `${flight.airline} - ${flight.route}`;
+
+            if (flight.dates) {
+                response += ` 📅 ${flight.dates}`;
+            }
 
             // Show price if available
             if (flight.price > 0) {
-                response += ` | 💰 $${flight.price}\n\n`;
+                response += ` | 💰 $${flight.price.toFixed(2)}\n\n`;
             } else {
                 response += `\n💡 _Precio incluido en el total del paquete_\n\n`;
             }
-
-            // Add extra blank line after every pair of flights (odd indices: 1, 3, 5...)
-            if (index % 2 === 1) {
-                response += `\n`;
-            }
         });
 
-        // Add final line break after all flights
         response += `\n`;
     }
 
-    // Hotel information
+    // Hotel information - handle both AI-extracted (with optionNumber) and regex-extracted data
     if (content.hotels && content.hotels.length > 0) {
         response += `🏨 **Hoteles Encontrados:**\n\n`;
-        content.hotels.forEach((hotel, index) => {
-            response += `${hotel.name} - ${hotel.location}\n`;
 
-            // Only show price breakdown if we have a valid hotel price
-            if (hotel.price > 0) {
-                // hotel.price is the TOTAL price for all nights, calculate per-night if needed
-                const pricePerNight = hotel.nights > 0 ? (hotel.price / hotel.nights).toFixed(2) : hotel.price.toFixed(2);
-                const totalPrice = hotel.price.toFixed(2);
-                response += `🌙 ${hotel.nights} ${hotel.nights === 1 ? 'noche' : 'noches'} | 💰 $${totalPrice} total ($${pricePerNight}/noche)\n\n`;
-            } else {
-                // No individual hotel price available - show nights only
-                response += `🌙 ${hotel.nights} ${hotel.nights === 1 ? 'noche' : 'noches'}\n`;
-                response += `💡 _Precio incluido en el total del paquete_\n\n`;
+        // Sort hotels by optionNumber if available, otherwise keep original order
+        const sortedHotels = [...content.hotels].sort((a: any, b: any) => {
+            if (a.optionNumber && b.optionNumber) {
+                return a.optionNumber - b.optionNumber;
             }
+            return 0;
+        });
+
+        sortedHotels.forEach((hotel: any) => {
+            // Clean hotel name - remove "(Opción X)" suffix if present
+            const cleanName = hotel.name.replace(/\s*\(Opción\s+\d+\)/i, '');
+
+            // Build hotel line with category (stars) if available
+            let hotelLine = cleanName;
+            if (hotel.category) {
+                hotelLine += ` ⭐ ${hotel.category} estrellas`;
+            }
+            if (hotel.location && hotel.location !== 'Ubicación no especificada') {
+                hotelLine += ` - ${hotel.location}`;
+            }
+            response += `${hotelLine}\n`;
+
+            // Show room type and meal plan if available (AI extraction)
+            if (hotel.roomType || hotel.roomDescription) {
+                response += `🛏️ ${hotel.roomType || hotel.roomDescription}\n`;
+            }
+            if (hotel.mealPlan) {
+                response += `🍽️ ${hotel.mealPlan}\n`;
+            }
+
+            // Show nights
+            if (hotel.nights > 0) {
+                response += `🌙 ${hotel.nights} ${hotel.nights === 1 ? 'noche' : 'noches'}\n`;
+            }
+
+            // Only show price if we have a valid individual hotel price
+            if (hotel.price > 0) {
+                const pricePerNight = hotel.nights > 0 ? (hotel.price / hotel.nights).toFixed(2) : hotel.price.toFixed(2);
+                response += `💰 $${hotel.price.toFixed(2)} total ($${pricePerNight}/noche)\n`;
+            } else {
+                response += `💡 _Precio incluido en el total del paquete_\n`;
+            }
+
+            response += `\n`;
         });
     }
 
-    // NUEVO: Mostrar opciones de precio cuando hay 2+ hoteles
-    if (content.hotels && content.hotels.length >= 2 && content.flights && content.flights.length > 0) {
-        // Check if hotels have package prices (from multi-option PDFs)
-        const option1Hotel = content.hotels.find((h: any) => h.name.match(/\(Opción\s+1\)/i));
-        const option2Hotel = content.hotels.find((h: any) => h.name.match(/\(Opción\s+2\)/i));
-        const option3Hotel = content.hotels.find((h: any) => h.name.match(/\(Opción\s+3\)/i));
+    // Show price options when there are multiple hotels with package prices
+    const hotelsWithPackagePrice = (content.hotels || []).filter((h: any) => h.packagePrice > 0);
 
-        let precio1: number;
-        let precio2: number;
-        let precio3: number | null = null;
-        let hotel1: any;
-        let hotel2: any;
-        let hotel3: any = null;
+    if (hotelsWithPackagePrice.length >= 2) {
+        // Sort by optionNumber or packagePrice
+        const sortedOptions = [...hotelsWithPackagePrice].sort((a: any, b: any) => {
+            if (a.optionNumber && b.optionNumber) return a.optionNumber - b.optionNumber;
+            return a.packagePrice - b.packagePrice;
+        });
 
-        if (option1Hotel?.packagePrice !== undefined && option2Hotel?.packagePrice !== undefined) {
-            // Use packagePrice directly from options (for regenerated PDFs)
-            precio1 = option1Hotel.packagePrice;
-            precio2 = option2Hotel.packagePrice;
-            hotel1 = option1Hotel;
-            hotel2 = option2Hotel;
-
-            if (option3Hotel?.packagePrice !== undefined) {
-                precio3 = option3Hotel.packagePrice;
-                hotel3 = option3Hotel;
-            }
-        } else {
-            // Calculate by summing flights + hotel (original behavior)
-            const hotelsSortedByPrice = [...content.hotels].sort((a, b) => a.price - b.price);
-            hotel1 = hotelsSortedByPrice[0];
-            hotel2 = hotelsSortedByPrice[hotelsSortedByPrice.length - 1];
-
-            const flightsTotalPrice = content.flights.reduce((sum, f) => sum + f.price, 0);
-            precio1 = flightsTotalPrice + hotel1.price;
-            precio2 = flightsTotalPrice + hotel2.price;
-
-            // Si hay 3+ hoteles, tomar el del medio
-            if (hotelsSortedByPrice.length >= 3) {
-                const middleIndex = Math.floor(hotelsSortedByPrice.length / 2);
-                hotel3 = hotelsSortedByPrice[middleIndex];
-                precio3 = flightsTotalPrice + hotel3.price;
-            }
-        }
-
-        // Mostrar opciones
         response += `💰 **Opciones de Precio:**\n\n`;
-        response += `• **Opción 1:** $${precio1.toFixed(2)} ${content.currency || 'USD'}\n`;
-        response += `  (${hotel1.name.replace(/\s*\(Opción\s+\d+\)/i, '')})\n\n`;
-        response += `• **Opción 2:** $${precio2.toFixed(2)} ${content.currency || 'USD'}\n`;
-        response += `  (${hotel2.name.replace(/\s*\(Opción\s+\d+\)/i, '')})\n\n`;
 
-        if (hotel3 && precio3 !== null) {
-            response += `• **Opción 3:** $${precio3.toFixed(2)} ${content.currency || 'USD'}\n`;
-            response += `  (${hotel3.name.replace(/\s*\(Opción\s+\d+\)/i, '')})\n\n`;
-        }
-    } else if (content.totalPrice) {
-        // Comportamiento original para 0-1 hoteles
-        response += `💰 **Precio Total:** $${content.totalPrice} ${content.currency || 'USD'}  \n`;
+        sortedOptions.forEach((hotel: any, idx: number) => {
+            const optionNum = hotel.optionNumber || (idx + 1);
+            const cleanName = hotel.name.replace(/\s*\(Opción\s+\d+\)/i, '');
+            response += `• **Opción ${optionNum}:** $${hotel.packagePrice.toFixed(2)} ${content.currency || 'USD'} (${cleanName})\n\n`;
+        });
+    } else if (content.totalPrice && content.totalPrice > 0) {
+        // Single price display for simple quotes
+        response += `💰 **Precio Total:** $${content.totalPrice.toFixed(2)} ${content.currency || 'USD'}\n\n`;
     }
 
-    // Pasajeros (común a ambos casos)
+    // Passengers
     if (content.passengers) {
         response += `👥 **Pasajeros:** ${content.passengers}\n\n`;
     }
 
+    // Price change suggestions
     response += `💬 **¿Qué te gustaría modificar?**\n\n`;
     response += `Puedes pedirme:\n\n`;
 
-    if (content.hotels && content.hotels.length >= 3) {
+    if (hotelsWithPackagePrice.length >= 3) {
         response += `• "Cambia el precio de la opción 1 a [cantidad]"\n`;
         response += `• "Cambia el precio de la opción 2 a [cantidad]"\n`;
         response += `• "Cambia el precio de la opción 3 a [cantidad]"\n`;
-        response += `• "Cambia el precio total a [cantidad]"\n\n`;
-    } else if (content.hotels && content.hotels.length >= 2) {
+        response += `• "Cambia el precio total a [cantidad]"\n`;
+    } else if (hotelsWithPackagePrice.length >= 2) {
         response += `• "Cambia el precio de la opción 1 a [cantidad]"\n`;
         response += `• "Cambia el precio de la opción 2 a [cantidad]"\n`;
-        response += `• "Cambia el precio total a [cantidad]"\n\n`;
+        response += `• "Cambia el precio total a [cantidad]"\n`;
     } else {
-        response += `• "Cambia el precio total a [cantidad]"\n\n`;
+        response += `• "Cambia el precio total a [cantidad]"\n`;
     }
 
     return response;
+}
+
+/**
+ * Generate default suggestions for PDF analysis
+ */
+function generateDefaultSuggestions(): string[] {
+    return [
+        "Puedo buscar vuelos con mejores horarios o conexiones más cortas",
+        "Hay hoteles con mejor ubicación disponibles en las mismas fechas",
+        "Podría encontrar opciones más económicas con fechas flexibles",
+        "¿Te interesa agregar servicios adicionales como traslados o seguro de viaje?"
+    ];
 }
 
 /**
@@ -1390,9 +1615,11 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
 function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, targetOption?: 1 | 2 | 3): any[] {
     if (!analysis.content?.hotels) return [];
 
-    // Check if hotels are package options
+    // Check if hotels are package options - by optionNumber (AI) or name pattern (regex)
     const arePackageOptions = analysis.content.hotels.length >= 2 &&
-        analysis.content.hotels.every(h => /\(Opción\s+\d+\)/i.test(h.name));
+        analysis.content.hotels.every(h =>
+            (h as any).optionNumber !== undefined || /\(Opción\s+\d+\)/i.test(h.name)
+        );
 
     console.log(`🏨 [RECONSTRUCT] Hotels: ${analysis.content.hotels.length}, arePackageOptions: ${arePackageOptions}, targetOption: ${targetOption}`);
 
@@ -1420,9 +1647,9 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
         }
         // PRIORITY 2: If this is a package option PDF and targetOption is specified
         else if (arePackageOptions && targetOption) {
-            // Extract option number from hotel name (e.g., "RIU LUPITA (Opción 1)" -> 1)
-            const optionMatch = hotel.name.match(/\(Opción\s+(\d+)\)/i);
-            const hotelOptionNumber = optionMatch ? parseInt(optionMatch[1]) : undefined;
+            // Get option number from optionNumber field (AI) or extract from name (regex)
+            const hotelOptionNumber = (hotel as any).optionNumber ||
+                (hotel.name.match(/\(Opción\s+(\d+)\)/i)?.[1] ? parseInt(hotel.name.match(/\(Opción\s+(\d+)\)/i)![1]) : undefined);
 
             if (hotelOptionNumber === targetOption) {
                 // This is the hotel to modify - calculate new price based on package price
@@ -1484,8 +1711,14 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
         const hotelId = `regenerated-hotel-${Date.now()}-${index}`;
 
         // Preserve original room description and type if available
-        const roomDescription = hotel.roomDescription || 'Habitación estándar';
-        const roomType = hotel.roomType || 'Standard';
+        const roomDescription = hotel.roomDescription || hotel.roomType || 'Habitación estándar';
+        const roomType = hotel.roomType || hotel.roomDescription || 'Standard';
+
+        // Preserve mealPlan from AI extraction
+        const mealPlan = (hotel as any).mealPlan || undefined;
+
+        // Preserve optionNumber from AI extraction
+        const optionNumber = (hotel as any).optionNumber || undefined;
 
         // Preserve original location - don't use default if we have data
         const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
@@ -1499,7 +1732,9 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
             location: hotelLocation,
             category: hotelCategory,
             roomDescription,
-            roomType
+            roomType,
+            mealPlan,
+            optionNumber
         });
 
         const hotelData: any = {
@@ -1522,6 +1757,16 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
                 occupancy_id: `room-${index}-modified`
             }]
         };
+
+        // Add mealPlan if available (from AI extraction)
+        if (mealPlan) {
+            hotelData.mealPlan = mealPlan;
+        }
+
+        // Add optionNumber if available (from AI extraction)
+        if (optionNumber !== undefined) {
+            hotelData.optionNumber = optionNumber;
+        }
 
         // Add _packageMetadata if present (for dual price changes)
         if (packageMetadata) {
@@ -2142,42 +2387,71 @@ export async function generateModifiedPdf(
                 }
             }
         } else {
-            // For external PDFs, use ONLY real data from PDF
+            // For external PDFs or AI-extracted data, adapt the data
             console.log('🔄 Adapting external PDF data with real data only');
             const priceRatio = originalPrice > 0 ? newPrice / originalPrice : 1;
 
+            // Get passenger counts from analysis
+            const adultsCount = (analysis.content as any)?.adults || analysis.content?.passengers || 2;
+            const childrenCount = (analysis.content as any)?.children || 0;
+
             adjustedFlights = analysis.content.flights?.map((flight, index) => {
-                // Use ONLY real leg data from PDF - no mock data
-                if ((flight as any).legs && (flight as any).legs.length > 0) {
-                    console.log(`✅ [EXTERNAL] Flight ${index + 1} leg data:`, {
+                // Check if flight has legs data (from AI extraction or PDF parsing)
+                const hasLegs = (flight as any).legs && (flight as any).legs.length > 0;
+
+                if (hasLegs) {
+                    console.log(`✅ [EXTERNAL] Flight ${index + 1} has leg data:`, {
                         legs_count: (flight as any).legs.length,
                         legs: (flight as any).legs.map((leg: any) => ({
                             flight_type: leg.flight_type,
                             route: `${leg.departure?.city_code} → ${leg.arrival?.city_code}`,
-                            layovers_count: leg.layovers?.length || 0,
-                            layovers: leg.layovers || []
+                            layovers_count: leg.layovers?.length || 0
                         }))
                     });
+
+                    // Parse dates
+                    let departureDate = '';
+                    let returnDate = '';
+
+                    if (flight.dates) {
+                        if (flight.dates.includes(' / ')) {
+                            departureDate = flight.dates.split(' / ')[0].trim();
+                            returnDate = flight.dates.split(' / ')[1]?.trim() || '';
+                        } else {
+                            const parsed = parseDateRange(flight.dates);
+                            departureDate = parsed.departureDate;
+                            returnDate = parsed.returnDate;
+                        }
+                    } else if ((flight as any).dates) {
+                        // AI extraction stores date directly
+                        departureDate = flight.dates;
+                    }
+
+                    // If no dates from flight, try to get from content.dates (AI extraction)
+                    if (!departureDate && (analysis.content as any)?.dates) {
+                        departureDate = (analysis.content as any).dates.departure || '';
+                        returnDate = (analysis.content as any).dates.return || '';
+                    }
 
                     return {
                         id: `external-modified-${Date.now()}-${index}`,
                         airline: {
-                            code: extractAirlineCode(flight.airline),
+                            code: (flight as any).airlineCode || extractAirlineCode(flight.airline),
                             name: flight.airline
                         },
                         price: {
                             amount: parseFloat((flight.price * priceRatio).toFixed(2)),
                             currency: analysis.content?.currency || 'USD'
                         },
-                        adults: analysis.content?.passengers || 1,
-                        childrens: 0,
-                        departure_date: flight.dates.includes(' / ') ?
-                            flight.dates.split(' / ')[0].trim() :
-                            parseDateRange(flight.dates).departureDate,
-                        return_date: flight.dates.includes(' / ') ?
-                            flight.dates.split(' / ')[1].trim() :
-                            parseDateRange(flight.dates).returnDate,
-                        legs: (flight as any).legs // Use real legs from PDF with layovers preserved
+                        adults: adultsCount,
+                        childrens: childrenCount,
+                        departure_date: departureDate,
+                        return_date: returnDate || departureDate,
+                        legs: (flight as any).legs,
+                        // Preserve additional data from AI
+                        origin: (flight as any).origin,
+                        destination: (flight as any).destination,
+                        direction: (flight as any).direction
                     };
                 } else {
                     console.warn('⚠️ External PDF has no leg data - skipping flight');
@@ -2185,12 +2459,64 @@ export async function generateModifiedPdf(
                 }
             }).filter(flight => flight !== null) || [];
 
-            adjustedHotels = analysis.content.hotels?.map((hotel, index) => {
-                // Extract check-in and check-out dates from flights
-                let checkIn = '2025-11-01';
-                let checkOut = '2025-11-15';
+            // COMBINE outbound + return flights into single flight with multiple legs
+            // This ensures the PDF shows ONE flight card with both ida and vuelta, not 2 separate cards
+            if (adjustedFlights.length === 2) {
+                const [flight1, flight2] = adjustedFlights;
+                const sameAirline = flight1.airline?.name === flight2.airline?.name;
+                const isOutboundReturn =
+                    flight1.legs?.[0]?.flight_type === 'outbound' &&
+                    flight2.legs?.[0]?.flight_type === 'return';
 
-                if (analysis.content?.flights && analysis.content.flights.length > 0) {
+                if (sameAirline && isOutboundReturn) {
+                    console.log('🔗 [EXTERNAL PDF] Combining outbound + return into single flight');
+
+                    // Combine legs from both flights into one flight object
+                    const combinedFlight = {
+                        ...flight1,
+                        return_date: flight2.departure_date,
+                        legs: [
+                            ...flight1.legs,  // outbound legs
+                            ...flight2.legs   // return legs
+                        ]
+                    };
+
+                    adjustedFlights = [combinedFlight];
+
+                    console.log('✅ [EXTERNAL PDF] Combined flight:', {
+                        airline: combinedFlight.airline?.name,
+                        departure_date: combinedFlight.departure_date,
+                        return_date: combinedFlight.return_date,
+                        legs_count: combinedFlight.legs.length,
+                        legs: combinedFlight.legs.map((l: any) => ({
+                            type: l.flight_type,
+                            route: `${l.departure?.city_code} → ${l.arrival?.city_code}`
+                        }))
+                    });
+                }
+            }
+
+            adjustedHotels = analysis.content.hotels?.map((hotel, index) => {
+                // Extract check-in and check-out dates
+                let checkIn = '';
+                let checkOut = '';
+
+                // Priority 1: Use dates from AI extraction (content.dates)
+                if ((analysis.content as any)?.dates) {
+                    checkIn = (analysis.content as any).dates.departure || '';
+                    checkOut = (analysis.content as any).dates.return || '';
+                }
+
+                // Priority 2: Use dates from hotel itself (from AI extraction)
+                if (!checkIn && (hotel as any).check_in) {
+                    checkIn = (hotel as any).check_in;
+                }
+                if (!checkOut && (hotel as any).check_out) {
+                    checkOut = (hotel as any).check_out;
+                }
+
+                // Priority 3: Extract from flights
+                if (!checkIn && analysis.content?.flights && analysis.content.flights.length > 0) {
                     const firstFlight = analysis.content.flights[0];
                     const lastFlight = analysis.content.flights[analysis.content.flights.length - 1];
 
@@ -2206,20 +2532,32 @@ export async function generateModifiedPdf(
                     }
 
                     // Get check-out date from last flight (return)
-                    if (lastFlight.dates && analysis.content.flights.length > 1) {
-                        if (lastFlight.dates.includes(' / ')) {
-                            checkOut = lastFlight.dates.split(' / ')[1]?.trim() || lastFlight.dates.split(' / ')[0].trim();
-                        } else if (lastFlight.dates.includes(' | ')) {
-                            checkOut = lastFlight.dates.split(' | ')[0].replace('📅', '').trim();
-                        } else {
-                            checkOut = lastFlight.dates.replace('📅', '').trim();
+                    if (!checkOut) {
+                        if (lastFlight.dates && analysis.content.flights.length > 1) {
+                            if (lastFlight.dates.includes(' / ')) {
+                                checkOut = lastFlight.dates.split(' / ')[1]?.trim() || lastFlight.dates.split(' / ')[0].trim();
+                            } else if (lastFlight.dates.includes(' | ')) {
+                                checkOut = lastFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                            } else {
+                                checkOut = lastFlight.dates.replace('📅', '').trim();
+                            }
                         }
-                    } else if (hotel.nights > 0) {
-                        // Calculate check-out based on nights
-                        const checkInDate = new Date(checkIn);
-                        checkInDate.setDate(checkInDate.getDate() + hotel.nights);
-                        checkOut = checkInDate.toISOString().split('T')[0];
                     }
+                }
+
+                // Priority 4: Calculate check-out based on nights if we have check-in
+                if (checkIn && !checkOut && hotel.nights > 0) {
+                    const checkInDate = new Date(checkIn);
+                    checkInDate.setDate(checkInDate.getDate() + hotel.nights);
+                    checkOut = checkInDate.toISOString().split('T')[0];
+                }
+
+                // Fallback to default dates if still empty
+                if (!checkIn) checkIn = new Date().toISOString().split('T')[0];
+                if (!checkOut) {
+                    const checkOutDate = new Date();
+                    checkOutDate.setDate(checkOutDate.getDate() + (hotel.nights || 7));
+                    checkOut = checkOutDate.toISOString().split('T')[0];
                 }
 
                 console.log(`🏨 Hotel dates: check_in=${checkIn}, check_out=${checkOut}, nights=${hotel.nights}`);
@@ -2238,19 +2576,31 @@ export async function generateModifiedPdf(
                     roomTotalPrice = parseFloat((hotel.price * hotel.nights * priceRatio).toFixed(2));
                 }
 
-                // Preserve original room description and type
+                // Preserve original room description, type, meal plan and option number from AI
                 const roomDescription = hotel.roomDescription || 'Habitación estándar';
                 const roomType = hotel.roomType || 'Standard';
-                const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
-                    ? hotel.location : 'Ubicación no especificada';
+                // Use address from AI if available, otherwise fall back to location
+                const hotelAddress = (hotel as any).address || hotel.location || '';
+                const hotelCity = hotel.location || '';
                 const hotelCategory = hotel.category || '5';
+                const mealPlan = (hotel as any).mealPlan || undefined;
+                const optionNumber = (hotel as any).optionNumber;
+
+                console.log(`🏨 [EXTERNAL] Hotel "${hotel.name}" AI data:`, {
+                    city: hotelCity,
+                    address: hotelAddress,
+                    mealPlan,
+                    optionNumber,
+                    roomType,
+                    packagePrice: (hotel as any).packagePrice
+                });
 
                 const hotelData: any = {
                     id: hotelId,
                     unique_id: hotelId,
                     name: hotel.name,
-                    city: hotelLocation,
-                    address: hotelLocation,
+                    city: hotelCity || hotelAddress, // City/zone name
+                    address: hotelAddress || hotelCity, // Full address for display
                     category: hotelCategory,
                     nights: hotel.nights || 0,
                     check_in: checkIn,
@@ -2261,8 +2611,12 @@ export async function generateModifiedPdf(
                         total_price: roomTotalPrice,
                         currency: analysis.content?.currency || 'USD',
                         availability: 5,
-                        occupancy_id: `external-room-${index}`
-                    }]
+                        occupancy_id: `external-room-${index}`,
+                        meal_plan: mealPlan
+                    }],
+                    // Preserve AI-extracted fields for PDF generation
+                    mealPlan: mealPlan,
+                    optionNumber: optionNumber
                 };
 
                 // Preserve _packageMetadata if it exists (from dual price change)
@@ -2449,12 +2803,18 @@ export async function processPriceChangeRequest(
             }
 
             // From here on, we process hotel options (hasEnoughHotels is true)
-            // Identify option hotels by name, with fallback to positional index
-            let option1Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+1\)/i));
-            let option2Hotel = analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+2\)/i));
-            let option3Hotel = hasOption3 ? analysis.content.hotels.find((h: any) => h.name.match(/\(Opción\s+3\)/i)) : null;
+            // Identify option hotels by optionNumber (AI extraction), then name pattern, then positional index
+            let option1Hotel = analysis.content.hotels.find((h: any) =>
+                h.optionNumber === 1 || h.name.match(/\(Opción\s+1\)/i)
+            );
+            let option2Hotel = analysis.content.hotels.find((h: any) =>
+                h.optionNumber === 2 || h.name.match(/\(Opción\s+2\)/i)
+            );
+            let option3Hotel = hasOption3 ? analysis.content.hotels.find((h: any) =>
+                h.optionNumber === 3 || h.name.match(/\(Opción\s+3\)/i)
+            ) : null;
 
-            // Fallback to positional index if names don't have "(Opción N)" format
+            // Fallback to positional index if neither optionNumber nor "(Opción N)" format
             if (!option1Hotel && analysis.content.hotels.length >= 1) {
                 option1Hotel = analysis.content.hotels[0];
                 console.log('⚠️ [MULTI OPTIONS] Using positional index for Option 1:', option1Hotel.name);

@@ -291,6 +291,10 @@ const useMessageHandler = (
           // Add to local messages immediately (Realtime will replace with real message from DB)
           addOptimisticMessage(optimisticUserMessage as any);
 
+          // Show typing indicator while processing price change
+          setIsTyping(true, currentConversationId);
+          setTypingMessage('Cambiando el precio...', currentConversationId);
+
           // Add user message to database (in background)
           await addMessageViaSupabase({
             conversation_id: currentConversationId,
@@ -298,6 +302,9 @@ const useMessageHandler = (
             content: { text: currentMessage.trim() },
             meta: { status: 'sent', messageType: 'price_change_request', client_id: clientId }
           });
+
+          // Update typing message while generating PDF
+          setTypingMessage('Generando nuevo PDF...', currentConversationId);
 
           const result = await handlePriceChangeRequest(currentMessage);
 
@@ -318,6 +325,9 @@ const useMessageHandler = (
               }
             });
 
+            // Clear typing indicator AND message
+            setTypingMessage('', currentConversationId);
+            setIsTyping(false, currentConversationId);
             setIsLoading(false);
             return; // Exit early - PDF validation failed
           }
@@ -371,6 +381,9 @@ const useMessageHandler = (
             variant: "destructive",
           });
         } finally {
+          // Clear typing indicator AND message
+          setTypingMessage('', currentConversationId);
+          setIsTyping(false, currentConversationId);
           setIsLoading(false);
         }
       })();

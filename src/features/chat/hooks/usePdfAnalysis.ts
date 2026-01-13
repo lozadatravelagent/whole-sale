@@ -8,7 +8,10 @@ import type { MessageRow } from '../types/chat';
 const usePdfAnalysis = (
   selectedConversation: string | null,
   messages: MessageRow[],
-  updateConversationTitle: (conversationId: string, title: string) => Promise<void>
+  updateConversationTitle: (conversationId: string, title: string) => Promise<void>,
+  setIsTyping: (isTyping: boolean, conversationId?: string | null) => void,
+  setTypingMessage: (message: string, conversationId?: string | null) => void,
+  addOptimisticMessage: (message: any) => void
 ) => {
   const [lastPdfAnalysis, setLastPdfAnalysis] = useState<any>(null);
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
@@ -50,6 +53,9 @@ const usePdfAnalysis = (
     try {
       console.log('📄 Starting PDF analysis for:', file.name);
 
+      // Update typing message to show analysis progress
+      setTypingMessage('Analizando contenido del PDF...', conversationId);
+
       // Analyze PDF content using the new service
       const analysis = await analyzePdfContent(file);
 
@@ -75,6 +81,11 @@ const usePdfAnalysis = (
             client_id: crypto.randomUUID() // Add client_id for idempotency
           }
         });
+
+        // Clear typing IMMEDIATELY after assistant message is added
+        // This prevents race conditions with subsequent async operations (like title update)
+        setTypingMessage('', conversationId);
+        setIsTyping(false, conversationId);
 
         console.log('✅ PDF analysis completed successfully');
 
@@ -121,7 +132,7 @@ const usePdfAnalysis = (
         }
       });
     }
-  }, [updateConversationTitle]);
+  }, [updateConversationTitle, setTypingMessage, setIsTyping]);
 
   // Handle PDF upload
   const handlePdfUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,8 +183,33 @@ const usePdfAnalysis = (
 
       // Send PDF analysis request
       const analysisMessage = `He subido el PDF "${file.name}" para análisis. ¿Podrías revisar el contenido y ayudarme con cualquier cambio que necesite?`;
+      const clientId = crypto.randomUUID();
 
-      // Add user message with PDF attachment info
+      // Add OPTIMISTIC user message - appears IMMEDIATELY
+      const optimisticUserMessage = {
+        id: `temp-${clientId}`,
+        conversation_id: selectedConversation,
+        role: 'user' as const,
+        content: {
+          text: analysisMessage,
+          metadata: {
+            type: 'pdf_upload',
+            fileName: file.name,
+            fileSize: file.size,
+            uploadedAt: new Date().toISOString()
+          }
+        },
+        meta: { status: 'sending', client_id: clientId },
+        created_at: new Date().toISOString()
+      };
+
+      addOptimisticMessage(optimisticUserMessage);
+
+      // Show typing indicator while processing PDF
+      setIsTyping(true, selectedConversation);
+      setTypingMessage('Estoy leyendo el PDF...', selectedConversation);
+
+      // Add user message with PDF attachment info (DB save - realtime will replace optimistic)
       await addMessageViaSupabase({
         conversation_id: selectedConversation,
         role: 'user' as const,
@@ -189,7 +225,7 @@ const usePdfAnalysis = (
         meta: {
           status: 'sent',
           messageType: 'pdf_upload',
-          client_id: crypto.randomUUID() // Add client_id for idempotency
+          client_id: clientId
         }
       });
 
@@ -209,9 +245,12 @@ const usePdfAnalysis = (
         variant: "destructive",
       });
     } finally {
+      // Clear typing indicator AND message to prevent stale message from showing
+      setTypingMessage('', selectedConversation);
+      setIsTyping(false, selectedConversation);
       setIsUploadingPdf(false);
     }
-  }, [selectedConversation, messages, processPdfContent, toast]);
+  }, [selectedConversation, messages, processPdfContent, toast, setIsTyping, addOptimisticMessage, setTypingMessage]);
 
   // Handle cheaper flights search
   const handleCheaperFlightsSearch = useCallback(async (message: string) => {

@@ -725,10 +725,11 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         duration: leg.duration,
         flight_type: leg.flight_type,
         // Preserve layovers (escalas) for combined PDF generation
+        // Support both API format (waiting_time/destination_*) and AI format (duration/airport.*)
         layovers: leg.layovers?.map(layover => ({
-          waiting_time: layover.waiting_time,
-          destination_city: layover.destination_city,
-          destination_code: layover.destination_code
+          waiting_time: layover.waiting_time || layover.duration || '',
+          destination_city: layover.destination_city || layover.airport?.city || '',
+          destination_code: layover.destination_code || layover.airport?.code || ''
         })) || []
       })),
       price: {
@@ -804,11 +805,24 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       roomDescription:
         roomToUse.description ||           // Priority 1: Selected room description
         (hotel as any).roomDescription ||  // Priority 2: Extracted from PDF analysis
-        hotel.description ||               // Priority 3: Hotel-level description
+        (hotel as any).roomType ||         // Priority 3: Room type from AI extraction
+        hotel.description ||               // Priority 4: Hotel-level description
         '',
       price: formatPriceForTemplate(priceForAllNights), // Formato europeo - precio total por todas las noches
       link: `https://wholesale-connect.com/hotel/${hotel.id}` // Placeholder link
     };
+
+    // Preserve mealPlan if available (from AI extraction or PDF analysis)
+    if ((hotel as any).mealPlan) {
+      hotelForTemplate.mealPlan = (hotel as any).mealPlan;
+      console.log(`🍽️ [TEMPLATE] Preserved mealPlan for ${hotel.name}:`, (hotel as any).mealPlan);
+    }
+
+    // Preserve optionNumber if available (from AI extraction)
+    if ((hotel as any).optionNumber !== undefined) {
+      hotelForTemplate.optionNumber = (hotel as any).optionNumber;
+      console.log(`🔢 [TEMPLATE] Preserved optionNumber for ${hotel.name}:`, (hotel as any).optionNumber);
+    }
 
     // CRITICAL: Preserve _packageMetadata if it exists (from dual price change)
     if ((hotel as any)._packageMetadata) {
@@ -979,7 +993,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         option1Hotel = {
           name: option1Name,
           stars: option1Data.stars || extractStars(option1Data.category, option1Name),
-          location: option1Data.city || 'Ubicación no especificada',
+          location: option1Data.location || option1Data.city || 'Ubicación no especificada',
           roomDescription: option1Data.roomDescription || '',
           price: formatPriceForTemplate(option1HotelPrice)
         };
@@ -987,7 +1001,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         option2Hotel = {
           name: option2Name,
           stars: option2Data.stars || extractStars(option2Data.category, option2Name),
-          location: option2Data.city || 'Ubicación no especificada',
+          location: option2Data.location || option2Data.city || 'Ubicación no especificada',
           roomDescription: option2Data.roomDescription || '',
           price: formatPriceForTemplate(option2HotelPrice)
         };
@@ -1004,7 +1018,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
           option3Hotel = {
             name: option3Name,
             stars: option3Data.stars || extractStars(option3Data.category, option3Name),
-            location: option3Data.city || 'Ubicación no especificada',
+            location: option3Data.location || option3Data.city || 'Ubicación no especificada',
             roomDescription: option3Data.roomDescription || '',
             price: formatPriceForTemplate(option3HotelPrice)
           };
