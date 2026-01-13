@@ -726,8 +726,21 @@ const useMessageHandler = (
       // Combined flow: validate both and send ONE aggregated prompt
       if (parsedRequest.requestType === 'combined') {
         console.log('🌟 [VALIDATION] Combined request - validating flights and hotels');
-        const flightVal = validateFlightRequiredFields(parsedRequest.flights);
+
+        // Only validate flights if flight data was actually provided
+        // This handles cases like "hotel + transfers + insurance" where AI returns combined but no flights
+        const hasFlightData = parsedRequest.flights && (
+          parsedRequest.flights.origin ||
+          parsedRequest.flights.destination ||
+          parsedRequest.flights.departureDate
+        );
+
+        const flightVal = hasFlightData
+          ? validateFlightRequiredFields(parsedRequest.flights)
+          : { isValid: true, missingFields: [], missingFieldsSpanish: [] }; // Skip flight validation if no flight data
         const hotelVal = validateHotelRequiredFields(parsedRequest.hotels);
+
+        console.log(`📊 [VALIDATION] hasFlightData: ${hasFlightData}, flightVal.isValid: ${flightVal.isValid}, hotelVal.isValid: ${hotelVal.isValid}`);
 
         const missingAny = !flightVal.isValid || !hotelVal.isValid;
         console.log('🧾 [VALIDATION] Combined results:', { flight: flightVal, hotel: hotelVal });

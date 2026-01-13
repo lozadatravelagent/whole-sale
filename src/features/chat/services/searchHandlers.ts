@@ -534,9 +534,29 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
 
     let allHotels: LocalHotelData[] = [];
 
+    // =====================================================================
+    // COMBINED SEARCH: Search by specific names AND chains (not exclusive)
+    // When user says "cadena iberostar y riu lupita":
+    // - hotelNames = ["RIU Lupita"] → search for this specific hotel
+    // - hotelChains = ["Iberostar", "Riu"] → but "Riu" is covered by "RIU Lupita"
+    // - So we search: Iberostar (chain) + RIU Lupita (specific name)
+    // =====================================================================
+
+    // Determine which chains are NOT covered by specific hotel names
+    // A chain is "covered" if there's a specific hotel name starting with that chain
+    const uncoveredChains = hotelChains.filter(chain => {
+      const chainLower = chain.toLowerCase();
+      const isCovered = hotelNames.some(name => name.toLowerCase().startsWith(chainLower));
+      if (isCovered) {
+        console.log(`🔗 [CHAIN COVERAGE] Chain "${chain}" is covered by a specific hotel name - will search by name instead`);
+      }
+      return !isCovered;
+    });
+
+    console.log(`🔍 [SEARCH STRATEGY] hotelNames: ${hotelNames.length}, hotelChains: ${hotelChains.length}, uncoveredChains: ${uncoveredChains.length}`);
+
+    // STEP 1: Search by specific hotel names (if any)
     if (hotelNames.length > 0) {
-      // MULTI-NAME: Make N requests (1 per specific hotel name)
-      // Example: ["Riu Republica", "Iberostar Dominicana"] → 2 requests
       console.log(`🏨 [MULTI-NAME] Making ${hotelNames.length} API requests (1 per hotel name):`, hotelNames);
 
       for (const name of hotelNames) {
@@ -547,7 +567,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
           data: {
             ...eurovipsParams.hotelParams,
             cityCode: cityCode,
-            hotelName: name // ✅ Filtro por nombre específico en EUROVIPS
+            hotelName: name
           }
         };
 
@@ -565,9 +585,46 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
         allHotels.push(...nameHotels);
       }
 
-      console.log(`🔗 [MULTI-NAME] Total hotels before deduplication: ${allHotels.length}`);
+      console.log(`🔗 [MULTI-NAME] Hotels from specific names: ${allHotels.length}`);
+    }
 
-      // DEDUPLICATION
+    // STEP 2: Search by uncovered chains (chains not already covered by specific names)
+    if (uncoveredChains.length > 0) {
+      console.log(`🏨 [MULTI-CHAIN] Making ${uncoveredChains.length} API requests (1 per uncovered chain):`, uncoveredChains);
+
+      for (const chain of uncoveredChains) {
+        console.log(`📤 [MULTI-CHAIN] Searching hotels for chain "${chain}"`);
+
+        const requestBody = {
+          action: 'searchHotels',
+          data: {
+            ...eurovipsParams.hotelParams,
+            cityCode: cityCode,
+            hotelName: chain
+          }
+        };
+
+        const response = await supabase.functions.invoke('eurovips-soap', {
+          body: requestBody
+        });
+
+        if (response.error) {
+          console.error(`❌ [MULTI-CHAIN] EUROVIPS API error for chain "${chain}":`, response.error);
+          continue;
+        }
+
+        const chainHotels = response.data.results || [];
+        console.log(`✅ [MULTI-CHAIN] Chain "${chain}": Received ${chainHotels.length} hotels`);
+        allHotels.push(...chainHotels);
+      }
+
+      console.log(`🔗 [MULTI-CHAIN] Total hotels after adding chains: ${allHotels.length}`);
+    }
+
+    // STEP 3: Deduplication (if we had any searches)
+    if (hotelNames.length > 0 || uncoveredChains.length > 0) {
+      console.log(`🔗 [COMBINED] Total hotels before deduplication: ${allHotels.length}`);
+
       const seenHotels = new Set<string>();
       const deduplicatedHotels: LocalHotelData[] = [];
 
@@ -585,7 +642,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       }
 
       allHotels = deduplicatedHotels;
-      console.log(`✅ [MULTI-NAME] Total hotels after deduplication: ${allHotels.length}`);
+      console.log(`✅ [COMBINED] Total hotels after deduplication: ${allHotels.length}`);
 
     } else if (hotelChains.length > 0) {
       // MULTI-CHAIN: Make N requests (1 per chain)
@@ -756,7 +813,9 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     }
 
     // 🏨 HOTEL NAMES FILTER - Filter by specific hotel names if specified (supports multiple)
-    if (enrichedParsed.hotels?.hotelNames && enrichedParsed.hotels.hotelNames.length > 0) {
+    // Only apply names filter if we searched ONLY by names (no uncovered chains)
+    // If we also searched by chains, don't filter out the chain results
+    if (enrichedParsed.hotels?.hotelNames && enrichedParsed.hotels.hotelNames.length > 0 && uncoveredChains.length === 0) {
       const namesFilter = enrichedParsed.hotels.hotelNames;
       console.log(`🏨 [NAMES FILTER] Filtering hotels by specific names: ${namesFilter.join(', ')}`);
       console.log(`📊 [NAMES FILTER] Hotels before filter: ${destinationFilteredHotels.length}`);

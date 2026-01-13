@@ -571,8 +571,9 @@ export function detectMultipleHotelChains(text: string): string[] {
     console.log(`🏨 [MULTI-CHAIN] Detecting chains in: "${text}"`);
 
     // Pattern 1: "cadena X y Y" or "cadenas X, Y, Z"
+    // Uses lookahead to stop at service keywords (agregar, traslados, seguro, etc.)
     const chainPatterns = [
-        /(?:cadena|cadenas|chain|chains)\s+([^.?!]+)/gi,
+        /(?:cadena|cadenas|chain|chains)\s+([a-záéíóúñü\s,\/&y]+?)(?=\s+(?:habitacion|habitaci[oó]n|all|todo|doble|simple|triple|para|en|con|agregar|sumar|traslado|traslados|seguro|seguros|transfer|transfers|excursion|excursiones|asistencia)|[,.?!]|$)/gi,
         /hoteles?\s+([a-záéíóúñü\s,\/&y]+?)(?:\s+(?:en|de|para|habitaci[oó]n|doble|triple|todo|all|con|desayuno)|\.|,|$)/gi
     ];
 
@@ -619,8 +620,8 @@ export function detectMultipleHotelChains(text: string): string[] {
                             .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
                             .join(' ');
 
-                        // Only add if it looks like a chain name (2-20 chars, not common words)
-                        const commonWords = ['hotel', 'hoteles', 'habitacion', 'doble', 'triple', 'todo', 'incluido', 'inclusive', 'con', 'sin', 'para', 'en', 'de', 'la', 'el'];
+                        // Only add if it looks like a chain name (2-20 chars, not common words or service keywords)
+                        const commonWords = ['hotel', 'hoteles', 'habitacion', 'doble', 'triple', 'todo', 'incluido', 'inclusive', 'con', 'sin', 'para', 'en', 'de', 'la', 'el', 'agregar', 'sumar', 'traslados', 'traslado', 'seguro', 'seguros', 'transfer', 'transfers', 'excursion', 'excursiones', 'asistencia'];
                         if (maybeChain.length >= 2 && maybeChain.length <= 20 && !commonWords.includes(part.toLowerCase())) {
                             if (!detectedChains.includes(maybeChain)) {
                                 detectedChains.push(maybeChain);
@@ -1087,8 +1088,10 @@ export function detectMultipleHotelNames(text: string): string[] {
     // Pattern to match: [chain] [specific name words]
     // The specific name must have at least one word after the chain
     // Stop at: y, e, o, or, and, comma, period, "en", "de", "para", "del", "habitacion", "all", "todo"
+    // Negative lookahead (?!(?:y|e|o|or|and)(?:\s|$)) ensures first word of name is NOT a separator
+    // This prevents "iberostar y riu lupita" from matching as one block (skipping "iberostar y..." and allowing "riu lupita" to match)
     const hotelNamePattern = new RegExp(
-        `\\b(${chainPrefixPattern})\\s+([a-záéíóúñü]+(?:\\s+[a-záéíóúñü]+)*)(?=\\s+(?:y|e|o|or|and|en|de|para|del|habitacion|habitaci[oó]n|all|todo|doble|triple|con|sin)|[,.]|$)`,
+        `\\b(${chainPrefixPattern})\\s+((?!(?:y|e|o|or|and)(?:\\s|$))[a-záéíóúñü]+(?:\\s+[a-záéíóúñü]+)*)(?=\\s+(?:y|e|o|or|and|en|de|para|del|habitacion|habitaci[oó]n|all|todo|doble|triple|con|sin|agregar|sumar)|[,.]|$)`,
         'gi'
     );
 
@@ -1111,6 +1114,30 @@ export function detectMultipleHotelNames(text: string): string[] {
             const originalNamePart = namePart;
             namePart = separatorMatch[1].trim();
             console.log(`🔧 [HOTEL-NAMES] Truncated "${chainPart} ${originalNamePart}" → "${chainPart} ${namePart}" (at separator)`);
+        }
+
+        // NEW: Filter out service-related keywords that may be appended after hotel name
+        // User says: "cadena riu lupita agregar traslados" → should extract "riu lupita" not "riu lupita agregar traslados"
+        const serviceKeywords = ['agregar', 'sumar', 'traslado', 'traslados', 'seguro', 'seguros', 'transfer', 'transfers', 'excursion', 'excursiones'];
+        const nameWords2 = namePart.split(/\s+/);
+        const filteredNameWords: string[] = [];
+        for (const word of nameWords2) {
+            if (serviceKeywords.includes(word.toLowerCase())) {
+                console.log(`🔧 [HOTEL-NAMES] Removed service keyword "${word}" from hotel name`);
+                break; // Stop at first service keyword - everything after is likely service-related
+            }
+            filteredNameWords.push(word);
+        }
+        if (filteredNameWords.length < nameWords2.length) {
+            const originalNamePart = namePart;
+            namePart = filteredNameWords.join(' ').trim();
+            console.log(`🔧 [HOTEL-NAMES] Filtered "${chainPart} ${originalNamePart}" → "${chainPart} ${namePart}" (removed service keywords)`);
+        }
+
+        // Skip if namePart became empty after filtering
+        if (!namePart || namePart.length === 0) {
+            console.log(`⚠️ [HOTEL-NAMES] Skipping "${chainPart}" - no name left after filtering service keywords (chain only, no specific hotel)`);
+            continue;
         }
 
         // Skip if namePart is a common word that's not a hotel name
