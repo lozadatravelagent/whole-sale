@@ -473,14 +473,20 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     setIsGenerating(true);
 
     try {
-      // 🔍 DEBUG: Log combinedData flights BEFORE filtering
-      console.log('🔍 [CombinedTravelSelector] Flights in combinedData BEFORE filter:');
-      combinedData.flights.forEach((flight, idx) => {
-        console.log(`   Flight ${idx + 1}: transfers=${JSON.stringify(flight.transfers)}, travel_assistance=${JSON.stringify(flight.travel_assistance)}`);
+      // Usar vuelos del cache filtrado cuando está activo, sino los originales
+      // Esto es CRÍTICO: cuando hay filtros activos, los vuelos mostrados vienen de filteredFlights
+      // (cache completo filtrado), no de combinedData.flights (solo Top 5 original)
+      const flightsSource = hasCache ? filteredFlights : combinedData.flights;
+
+      // 🔍 DEBUG: Log flights source BEFORE filtering
+      console.log('🔍 [CombinedTravelSelector] Flights source:', hasCache ? 'filteredFlights (cache)' : 'combinedData.flights (original)');
+      console.log(`🔍 [CombinedTravelSelector] Total flights in source: ${flightsSource.length}`);
+      flightsSource.forEach((flight, idx) => {
+        console.log(`   Flight ${idx + 1}: id=${flight.id}, transfers=${JSON.stringify(flight.transfers)}, travel_assistance=${JSON.stringify(flight.travel_assistance)}`);
       });
 
-      // Get selected data
-      const selectedFlightData = combinedData.flights.filter(flight =>
+      // Get selected data from the correct source
+      const selectedFlightData = flightsSource.filter(flight =>
         selectedFlights.includes(flight.id!)
       );
 
