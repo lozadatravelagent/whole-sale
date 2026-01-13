@@ -37,6 +37,8 @@ export interface PdfAnalysisResult {
         extractedFromPdfMonkey?: boolean;
         extractedFromAI?: boolean;
         destination?: string;
+        hasTransfers?: boolean;
+        hasTravelAssistance?: boolean;
     };
     suggestions?: string[];
     error?: string;
@@ -732,6 +734,9 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
                 ? Math.max(...hotels.map((h: any) => h.packagePrice || 0))
                 : flights.reduce((sum: number, f: any) => sum + (f.price || 0), 0);
 
+            console.log('🚗 [ANALYZE PDF] Transfers from AI:', aiData.hasTransfers);
+            console.log('🏥 [ANALYZE PDF] Travel assistance from AI:', aiData.hasTravelAssistance);
+
             return {
                 success: true,
                 content: {
@@ -745,7 +750,10 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
                     destination,
                     extractedFromAI: true,
                     // Store dates for PDF generation
-                    dates: aiData.dates
+                    dates: aiData.dates,
+                    // Preserve transfers and travel assistance from AI extraction
+                    hasTransfers: aiData.hasTransfers || false,
+                    hasTravelAssistance: aiData.hasTravelAssistance || false
                 },
                 suggestions: generateDefaultSuggestions()
             };
@@ -1589,14 +1597,24 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
                 validatingCarrier: airlineCode,
                 fareType: 'P'
             },
-            legs: allLegs // All legs from ida + vuelta
+            legs: allLegs, // All legs from ida + vuelta
+            // Preserve transfers and travel_assistance from PDF extraction
+            transfers: analysis.content?.hasTransfers ? {
+                included: true,
+                type: 'in_out' as const
+            } : undefined,
+            travel_assistance: analysis.content?.hasTravelAssistance ? {
+                included: true
+            } : undefined
         };
     }).filter(Boolean).map((flight, index) => {
-        // Verify legs are properly preserved before returning
+        // Verify legs and services are properly preserved before returning
         console.log(`✅ [RECONSTRUCT] Final flight ${index + 1} structure:`, {
             airline: flight.airline.name,
             price: flight.price.amount,
             legs_count: flight.legs.length,
+            has_transfers: !!flight.transfers?.included,
+            has_travel_assistance: !!flight.travel_assistance?.included,
             legs_detail: flight.legs.map((leg: any, legIdx: number) => ({
                 index: legIdx,
                 flight_type: leg.flight_type,
@@ -2131,7 +2149,15 @@ async function generateModifiedPdfWithMultipleHotelPrices(
                     return_date: flight.dates.includes(' / ') ?
                         flight.dates.split(' / ')[1].trim() :
                         parseDateRange(flight.dates).returnDate,
-                    legs: (flight as any).legs
+                    legs: (flight as any).legs,
+                    // Preserve transfers and travel_assistance from PDF extraction
+                    transfers: analysis.content?.hasTransfers ? {
+                        included: true,
+                        type: 'in_out' as const
+                    } : undefined,
+                    travel_assistance: analysis.content?.hasTravelAssistance ? {
+                        included: true
+                    } : undefined
                 };
             }
             return null;
@@ -2451,7 +2477,15 @@ export async function generateModifiedPdf(
                         // Preserve additional data from AI
                         origin: (flight as any).origin,
                         destination: (flight as any).destination,
-                        direction: (flight as any).direction
+                        direction: (flight as any).direction,
+                        // Preserve transfers and travel_assistance from PDF extraction
+                        transfers: analysis.content?.hasTransfers ? {
+                            included: true,
+                            type: 'in_out' as const
+                        } : undefined,
+                        travel_assistance: analysis.content?.hasTravelAssistance ? {
+                            included: true
+                        } : undefined
                     };
                 } else {
                     console.warn('⚠️ External PDF has no leg data - skipping flight');
