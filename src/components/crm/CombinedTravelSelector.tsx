@@ -10,7 +10,8 @@ import { FlightData, HotelData, HotelDataWithSelectedRoom, CombinedTravelResults
 import { generateFlightPdf, generateCombinedTravelPdf } from '@/services/pdfMonkey';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import { useSearchResultsCache } from '@/features/chat/hooks/useSearchResultsCache';
-import { FilterChips } from '@/features/chat/components';
+import { useHotelResultsCache } from '@/features/chat/hooks/useHotelResultsCache';
+import { FilterChips, HotelFilterChips } from '@/features/chat/components';
 import {
   Plane,
   Hotel,
@@ -356,7 +357,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
 
-  // Hook para cache de resultados y filtrado dinámico
+  // Hook para cache de resultados y filtrado dinámico de vuelos
   // Pasa el searchId para cargar todos los vuelos desde localStorage
   const {
     displayedResults: cachedFlights,
@@ -368,6 +369,19 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     toggleAirline,
     hasCache,
   } = useSearchResultsCache(combinedData.flightSearchId);
+
+  // Hook para cache de resultados y filtrado dinámico de hoteles
+  // Pasa el searchId para cargar TODOS los hoteles desde IndexedDB
+  const {
+    displayedResults: filteredHotels,
+    activeFilters: hotelActiveFilters,
+    distribution: hotelDistribution,
+    filterStats: hotelFilterStats,
+    applyFilter: applyHotelFilter,
+    clearAllFilters: clearAllHotelFilters,
+    toggleHotelChain,
+    hasCache: hasHotelCache,
+  } = useHotelResultsCache(combinedData.hotelSearchId);
 
   // Convertir vuelos del cache a formato de display
   const filteredFlights = useMemo(() => {
@@ -623,7 +637,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     }).format(price);
   };
 
-  const formatPassengerText = (adults: number, children: number = 0) => {
+  const formatPassengerText = (adults: number, children: number = 0, infants: number = 0) => {
     const parts = [];
 
     if (adults > 0) {
@@ -634,11 +648,15 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       parts.push(`${children} niñ${children > 1 ? 'os' : 'o'}`);
     }
 
+    if (infants > 0) {
+      parts.push(`${infants} bebé${infants > 1 ? 's' : ''}`);
+    }
+
     if (parts.length === 0) {
       return 'por persona';
     }
 
-    const totalPassengers = adults + children;
+    const totalPassengers = adults + children + infants;
     const passengerText = parts.join(' + ');
 
     return `para ${passengerText} (${totalPassengers} ${totalPassengers > 1 ? 'personas' : 'persona'})`;
@@ -702,6 +720,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                               <Users className="h-3 w-3" />
                               <span>{flight.adults} adult{flight.adults > 1 ? 'os' : 'o'}</span>
                               {flight.childrens > 0 && <span>, {flight.childrens} niño{flight.childrens > 1 ? 's' : ''}</span>}
+                              {flight.infants > 0 && <span>, {flight.infants} bebé{flight.infants > 1 ? 's' : ''}</span>}
                             </div>
                           </div>
                         </div>
@@ -711,7 +730,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                           {formatPrice(flight.price.amount, flight.price.currency)}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {formatPassengerText(flight.adults, flight.childrens)}
+                          {formatPassengerText(flight.adults, flight.childrens, flight.infants)}
                         </div>
                       </div>
                     </div>
@@ -768,7 +787,20 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         {/* Hotels Tab */}
         {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
           <TabsContent value="hotels" className="space-y-2">
-            {combinedData.hotels.map((hotel) => {
+            {/* Dynamic Filter Chips for Hotels */}
+            {hasHotelCache && hotelDistribution && hotelFilterStats && (
+              <HotelFilterChips
+                distribution={hotelDistribution}
+                activeFilters={hotelActiveFilters}
+                filterStats={hotelFilterStats}
+                onFilterChange={applyHotelFilter}
+                onClearAll={clearAllHotelFilters}
+                onToggleChain={toggleHotelChain}
+              />
+            )}
+
+            {/* Usar hoteles filtrados cuando hay cache, sino los originales */}
+            {(hasHotelCache ? filteredHotels : combinedData.hotels).map((hotel) => {
               const isSelected = selectedHotels.includes(hotel.id);
 
               return (
@@ -830,6 +862,23 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               );
             })}
 
+            {/* Mensaje cuando no hay hoteles después de filtrar */}
+            {hasHotelCache && filteredHotels.length === 0 && combinedData.hotels.length > 0 && (
+              <Card>
+                <CardContent className="p-6 text-center">
+                  <Hotel className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="text-muted-foreground">No hay hoteles con los filtros seleccionados</p>
+                  <p className="text-sm text-muted-foreground mt-1">Prueba cambiando o limpiando los filtros</p>
+                  <div className="mt-3">
+                    <Button variant="outline" onClick={clearAllHotelFilters}>
+                      Limpiar filtros
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Mensaje cuando no hay hoteles en la búsqueda original */}
             {combinedData.hotels.length === 0 && (
               <Card>
                 <CardContent className="p-6 text-center">

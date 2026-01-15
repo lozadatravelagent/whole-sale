@@ -40,7 +40,7 @@ const useMessageHandler = (
   // Track active domain for this conversation to avoid cross responses
   let activeDomain: 'flights' | 'hotels' | null = null;
 
-  // Helper: extract last flight context (destination/dates/adults/children) from recent assistant message
+  // Helper: extract last flight context (destination/dates/adults/children/infants) from recent assistant message
   const getContextFromLastFlights = useCallback(() => {
     try {
       const lastWithFlights = [...(messages || [])]
@@ -57,7 +57,8 @@ const useMessageHandler = (
       const returnDate = first.return_date || undefined;
       const adults = first.adults || 1;
       const children = first.childrens || 0;
-      return { origin, destination, departureDate, returnDate, adults, children };
+      const infants = first.infants || 0;
+      return { origin, destination, departureDate, returnDate, adults, children, infants };
     } catch (e) {
       console.warn('⚠️ [CONTEXT] Could not extract last flight context:', e);
       return null;
@@ -173,7 +174,8 @@ const useMessageHandler = (
           departureDate: previousParsedRequest.flights.departureDate,
           returnDate: previousParsedRequest.flights.returnDate,
           adults: previousParsedRequest.flights.adults,
-          children: previousParsedRequest.flights.children || 0
+          children: previousParsedRequest.flights.children || 0,
+          infants: previousParsedRequest.flights.infants || 0
         } : null);
       if (flightCtx) {
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
@@ -216,6 +218,7 @@ const useMessageHandler = (
               checkoutDate: flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0],
               adults: flightCtx.adults,
               children: flightCtx.children,
+              infants: flightCtx.infants,
               roomType: 'doble',
               mealPlan: 'desayuno'
             },
@@ -712,7 +715,8 @@ const useMessageHandler = (
           checkinDate: existingHotels.checkinDate || (f?.departureDate as any),
           checkoutDate: existingHotels.checkoutDate || (f?.returnDate as any),
           adults: existingHotels.adults || (f?.adults as any),
-          children: existingHotels.children ?? (f?.children as any) ?? 0
+          children: existingHotels.children ?? (f?.children as any) ?? 0,
+          infants: existingHotels.infants ?? (f?.infants as any) ?? 0
         } as any;
       }
 
@@ -846,7 +850,8 @@ const useMessageHandler = (
             departureDate: previousParsedRequest.flights.departureDate,
             returnDate: previousParsedRequest.flights.returnDate,
             adults: previousParsedRequest.flights.adults,
-            children: previousParsedRequest.flights.children || 0
+            children: previousParsedRequest.flights.children || 0,
+            infants: previousParsedRequest.flights.infants || 0
           } : null);
 
           if (flightCtx) {
@@ -859,7 +864,8 @@ const useMessageHandler = (
               checkinDate: parsedRequest.hotels?.checkinDate || flightCtx.departureDate,
               checkoutDate: parsedRequest.hotels?.checkoutDate || (flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0]),
               adults: parsedRequest.hotels?.adults || flightCtx.adults,
-              children: parsedRequest.hotels?.children ?? flightCtx.children ?? 0
+              children: parsedRequest.hotels?.children ?? flightCtx.children ?? 0,
+              infants: parsedRequest.hotels?.infants ?? flightCtx.infants ?? 0
             } as any;
             console.log('🏨 [ENRICH] Preserved hotel preferences:', {
               hotelChains: parsedRequest.hotels?.hotelChains,
@@ -1111,6 +1117,7 @@ const useMessageHandler = (
                   returnDate: actualReturnDate || parsedRequest.flights.returnDate,
                   adults: parsedRequest.flights.adults || 1,
                   children: parsedRequest.flights.children || 0,
+                  infants: parsedRequest.flights.infants || 0,
                   stops: parsedRequest.flights.stops,
                   preferredAirline: parsedRequest.flights.preferredAirline,
                   luggage: parsedRequest.flights.luggage,
@@ -1125,6 +1132,7 @@ const useMessageHandler = (
                   checkoutDate: parsedRequest.hotels.checkoutDate,
                   adults: parsedRequest.hotels.adults || 1,
                   children: parsedRequest.hotels.children || 0,
+                  infants: parsedRequest.hotels.infants || 0,
                   roomType: parsedRequest.hotels.roomType,
                   mealPlan: parsedRequest.hotels.mealPlan,
                   hotelChains: parsedRequest.hotels.hotelChains,

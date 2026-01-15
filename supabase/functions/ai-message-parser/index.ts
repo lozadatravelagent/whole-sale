@@ -215,10 +215,19 @@ CRITICAL INSTRUCTION:
 - Be intelligent about regional airports vs major hubs
 
 **LUGGAGE INTERPRETATION (ONLY when explicitly mentioned):**
-- "carry_on": equipaje de mano, cabina, carry on, solo mochila, solo equipaje de mano
-- "checked": valija, equipaje facturado, equipaje en bodega, maleta, bodega, despachado, con valija
+- "backpack": mochila, solo mochila, con mochila, item personal, bolso personal, personal item
+- "carry_on": carry on, equipaje de mano, cabina, solo carry on, solo equipaje de mano, sin bodega, sin valija (NO mochila, NO bodega)
+- "checked": valija, equipaje facturado, equipaje en bodega, maleta, bodega, despachado, con valija, con equipaje
 - "both": ambos tipos, equipaje completo, mano y bodega, con equipaje de mano y valija
-- "none": sin equipaje, solo personal, nada de equipaje
+- "none": sin equipaje, nada de equipaje
+
+🚨 **CRITICAL DISTINCTION: backpack vs carry_on vs checked:**
+- "backpack": ONLY personal item/backpack (smallest, typically light fare airlines like LATAM, Avianca, JetSmart)
+- "carry_on": ONLY standard cabin baggage (larger than backpack, fits in overhead bin) - NO checked baggage, NO backpack
+- "checked": Flights with checked baggage in hold (may also include carry-on)
+- If user says "mochila" or "item personal" → use "backpack"
+- If user says "carry on" or "equipaje de mano" or "cabina" or "sin bodega" → use "carry_on"
+- If user says "valija" or "bodega" or "facturado" or "maleta" → use "checked"
 
 🚨 **CRITICAL LUGGAGE RULE - READ CAREFULLY:**
 - IF the user message contains NO baggage/luggage/equipaje/valija/carry-on/mochila words → DO NOT include "luggage" field
@@ -258,6 +267,31 @@ CRITICAL INSTRUCTION:
 - If NO airline is explicitly mentioned by user, DO NOT include preferredAirline field at all
 - Do not make route-based assumptions (e.g., EZE-MAD does NOT automatically mean Iberia)
 - Be intelligent about airline recognition but ONLY when explicitly mentioned
+
+**HORARIOS DE SALIDA Y LLEGADA (departureTimePreference / arrivalTimePreference):**
+🚨 **CRITICAL RULE - ONLY include when user EXPLICITLY mentions time of day:**
+- Extract ONLY when user says: "que salga de noche", "que vuelva de día", "salida por la mañana", "llegada en la tarde", "que salga temprano", "que llegue de noche"
+- Valid values: 'morning' (6-12h), 'afternoon' (12-18h), 'evening' (18-22h), 'night' (22-6h)
+- Map Spanish to English:
+  * "mañana" / "temprano" → "morning"
+  * "tarde" / "mediodía" / "día" → "afternoon"
+  * "noche" → "evening"
+  * "madrugada" → "night"
+- departureTimePreference: Aplica al primer leg (IDA)
+- arrivalTimePreference: Aplica al último leg (VUELTA en round trip, o IDA en one-way)
+
+**Examples:**
+- "vuelo que salga de noche" → departureTimePreference: "evening"
+- "que llegue de día" → arrivalTimePreference: "afternoon"
+- "salida por la mañana y llegada en la tarde" → departureTimePreference: "morning", arrivalTimePreference: "afternoon"
+- "que salga temprano" → departureTimePreference: "morning"
+- "que vuelva de noche" → arrivalTimePreference: "evening"
+
+❌ **DO NOT include if:**
+- User only says "vuelo" without time reference
+- User mentions flight type ("directo", "con escalas") but NOT time
+- Example: "vuelo directo" → NO departureTimePreference/arrivalTimePreference fields
+- Example: "vuelo a madrid" → NO time fields
 
 **COMBINED SEARCH TRIGGERS:**
 - "vuelo y hotel", "con hotel", "hotel incluido", "paquete", "agrega hotel"
@@ -374,12 +408,14 @@ User: "Armame un plan de viaje de 7 días"
 - Required: origin, destination, departureDate
 - Optional: returnDate (only if round trip mentioned)
 - **DEFAULT: adults = 1** (if not specified, always assume 1 adult)
-- children = 0 (default if not specified)
+- children = 0 (default if not specified) - Niños de 2-12 años
+- infants = 0 (default if not specified) - Bebés/infantes de 0-2 años (viajan en brazos)
 
 **HOTELS:**
 - Required: city, checkinDate, checkoutDate
 - **DEFAULT: adults = 1** (if not specified, always assume 1 adult)
-- children = 0 (default if not specified)
+- children = 0 (default if not specified) - Niños de 2-12 años
+- infants = 0 (default if not specified) - Bebés/infantes de 0-2 años
 - roomType, mealPlan (OPTIONAL - ONLY include if user explicitly mentions them)
 
 🚨 **CRITICAL HOTEL PREFERENCE RULES - READ CAREFULLY:**
@@ -622,11 +658,36 @@ User: "Paquete a Cancún todo incluido con traslados y seguro de viaje"
 - If either is missing, set requestType to "itinerary" but include missingFields array and message
 
 **IMPORTANT PASSENGER RULES:**
-1. If NO passenger count mentioned → adults = 1, children = 0
-2. If "para 2" or "2 personas" mentioned → adults = 2, children = 0
-3. If "con un niño" mentioned → adults = 1, children = 1
-4. If "familia de 4" mentioned → infer adults = 2, children = 2
+1. If NO passenger count mentioned → adults = 1, children = 0, infants = 0
+2. If "para 2" or "2 personas" mentioned → adults = 2, children = 0, infants = 0
+3. If "con un niño" mentioned → adults = 1, children = 1, infants = 0
+4. If "familia de 4" mentioned → infer adults = 2, children = 2, infants = 0
 5. NEVER ask for passenger count if not mentioned - default to 1 adult
+
+**INFANT/BABY DETECTION RULES (0-2 años):**
+Detect infants when user mentions babies. Keywords to detect:
+- "bebé", "bebe", "bebés", "bebes"
+- "infante", "infantes"
+- "lactante", "lactantes"
+- "menor de 2 años", "menor de dos años"
+- "en brazos"
+- "baby", "babies", "infant"
+
+**Examples:**
+- "2 adultos y 1 bebé" → adults = 2, children = 0, infants = 1
+- "vuelo para familia con un niño y un bebé" → adults = 2, children = 1, infants = 1
+- "3 adultos, 2 niños y 1 infante" → adults = 3, children = 2, infants = 1
+- "con un menor de 2 años" → infants = 1
+- "niño en brazos" → infants = 1
+
+**IMPORTANT INFANT RESTRICTION:**
+- Infants (0-2 años) travel on adult's lap - MAX 1 infant per adult
+- If infants > adults, warn or adjust: "Necesitas 1 adulto por cada bebé"
+
+**CHILDREN vs INFANTS DISTINCTION:**
+- "niño", "niños", "menor", "menores", "chico", "chicos", "hijo", "hijos" (without age) → children (2-12 años)
+- "bebé", "bebe", "infante", "menor de 2", "en brazos" → infants (0-2 años)
+- If user specifies age: "niño de 5 años" → children; "niño de 1 año" → infants
 
 ## RESPONSE EXAMPLES
 
@@ -640,6 +701,7 @@ User: "Quiero un vuelo de [origen] a [destino] para [mes] de [año]"
     "departureDate": "[fecha de salida]",
     "adults": 1,
     "children": 0,
+    "infants": 0,
     "stops": "any"
   },
   "confidence": 0.9
@@ -655,6 +717,7 @@ User: "Necesito vuelo para 2 adultos de [origen] a [destino]"
     "departureDate": "[FECHA_SALIDA]",
     "adults": 2,
     "children": 0,
+    "infants": 0,
     "stops": "any"
   },
   "confidence": 0.9
@@ -670,12 +733,31 @@ Example 3 - Flight with preferences (include optional fields only when mentioned
     "returnDate": "[FECHA_REGRESO]",
     "adults": 1,
     "children": 0,
+    "infants": 0,
     "luggage": "checked",
     "stops": "one_stop",
     "maxLayoverHours": 3,
-    "preferredAirline": "[CODIGO_AEROLINEA]"
+    "preferredAirline": "[CODIGO_AEROLINEA]",
+    "departureTimePreference": "morning",
+    "arrivalTimePreference": "afternoon"
   },
   "confidence": 0.9
+}
+
+Example 3b - Flight with children and infant:
+User: "Vuelo de Buenos Aires a Miami para 2 adultos, 1 niño y 1 bebé"
+{
+  "requestType": "flights",
+  "flights": {
+    "origin": "Buenos Aires",
+    "destination": "Miami",
+    "departureDate": "[FECHA_SALIDA]",
+    "adults": 2,
+    "children": 1,
+    "infants": 1,
+    "stops": "any"
+  },
+  "confidence": 0.95
 }
 
 Example 4 - Missing critical info (ONLY ask for origin/destination/dates, NOT passengers):
@@ -696,7 +778,8 @@ User: "quiero un hotel en Cancún"
     "checkinDate": "[DATE]",
     "checkoutDate": "[DATE]",
     "adults": 1,
-    "children": 0
+    "children": 0,
+    "infants": 0
   },
   "confidence": 0.9
 }
@@ -712,6 +795,7 @@ User: "habitación doble en Cancún"
     "checkoutDate": "[DATE]",
     "adults": 2,
     "children": 0,
+    "infants": 0,
     "roomType": "double"
   },
   "confidence": 0.9
@@ -723,7 +807,7 @@ Example 7 - Hotel request with context from previous flight search (CRITICAL PAT
 - Previous flight destination → becomes hotel city
 - Previous flight departureDate → becomes hotel checkinDate
 - Previous flight returnDate → becomes hotel checkoutDate
-- Previous flight adults/children → becomes hotel adults/children
+- Previous flight adults/children/infants → becomes hotel adults/children/infants
 
 User: "también quiero hotel para esas fechas" (after previous flight search)
 {
@@ -733,7 +817,8 @@ User: "también quiero hotel para esas fechas" (after previous flight search)
     "checkinDate": "[EXTRACT from previous flight DEPARTURE DATE]",
     "checkoutDate": "[EXTRACT from previous flight RETURN DATE]",
     "adults": "[EXTRACT from current message OR previous flight]",
-    "children": "[EXTRACT from current message OR previous flight OR 0]"
+    "children": "[EXTRACT from current message OR previous flight OR 0]",
+    "infants": "[EXTRACT from current message OR previous flight OR 0]"
   },
   "confidence": 0.95
 }
@@ -749,6 +834,7 @@ User: "habitación doble all inclusive en Cancún"
     "checkoutDate": "[DATE]",
     "adults": 2,
     "children": 0,
+    "infants": 0,
     "roomType": "double",
     "mealPlan": "all_inclusive"
   },
@@ -771,7 +857,8 @@ User: "hotel en Cancún" (after previous flight search to Cancún)
     "checkinDate": "[EXTRACT from previous flight to this city]",
     "checkoutDate": "[EXTRACT from previous flight to this city]",
     "adults": "[EXTRACT from previous flight]",
-    "children": "[EXTRACT from previous flight OR 0]"
+    "children": "[EXTRACT from previous flight OR 0]",
+    "infants": "[EXTRACT from previous flight OR 0]"
   },
   "confidence": 0.9
 }
@@ -788,6 +875,7 @@ User: "quiero un vuelo desde buenos aires a cancun para dos personas desde el 5 
     "returnDate": "2026-01-15",
     "adults": 2,
     "children": 0,
+    "infants": 0,
     "stops": "any",
     "maxLayoverHours": 3
   },
@@ -797,6 +885,7 @@ User: "quiero un vuelo desde buenos aires a cancun para dos personas desde el 5 
     "checkoutDate": "2026-01-15",
     "adults": 2,
     "children": 0,
+    "infants": 0,
     "roomType": "double"
   },
   "confidence": 0.95
@@ -815,6 +904,7 @@ User: "habitacion doble en cancun para 2 personas"
     "checkoutDate": "[DATE]",
     "adults": 2,
     "children": 0,
+    "infants": 0,
     "roomType": "double"
   },
   "confidence": 0.9
@@ -832,6 +922,7 @@ User: "quiero un hotel de la cadena Riu all inclusive habitacion doble"
     "checkoutDate": "[DATE]",
     "adults": 2,
     "children": 0,
+    "infants": 0,
     "roomType": "double",
     "mealPlan": "all_inclusive",
     "hotelChains": ["Riu"]
@@ -852,6 +943,7 @@ User: "quiero cadena riu y iberostar all inclusive habitacion doble"
     "checkoutDate": "[DATE]",
     "adults": 2,
     "children": 0,
+    "infants": 0,
     "roomType": "double",
     "mealPlan": "all_inclusive",
     "hotelChains": ["Riu", "Iberostar"]
@@ -872,6 +964,7 @@ User: "quiero reservar el hotel Riu Bambu en Punta Cana"
     "checkoutDate": "[DATE]",
     "adults": 1,
     "children": 0,
+    "infants": 0,
     "hotelName": "Riu Bambu",
     "hotelChains": ["Riu"]
   },
@@ -891,6 +984,7 @@ User: "para las mismas fechas quiero un hotel Iberostar habitacion doble"
     "checkoutDate": "[EXTRACT from previous flight RETURN DATE]",
     "adults": "[EXTRACT from previous flight]",
     "children": "[EXTRACT from previous flight OR 0]",
+    "infants": "[EXTRACT from previous flight OR 0]",
     "roomType": "double",
     "hotelChains": ["Iberostar"]
   },
@@ -910,6 +1004,7 @@ User: "hotel melia todo incluido doble" or "hoteles meliá" or "un sol melia"
     "checkoutDate": "[DATE]",
     "adults": 2,
     "children": 0,
+    "infants": 0,
     "roomType": "double",
     "mealPlan": "all_inclusive",
     "hotelChains": ["Melia"]

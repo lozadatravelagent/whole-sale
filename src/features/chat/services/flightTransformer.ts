@@ -314,6 +314,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       },
       adults: parsedRequest?.flights?.adults || 1,
       childrens: parsedRequest?.flights?.children || 0,
+      infants: parsedRequest?.flights?.infants || 0,
       departure_date: firstSegment.Departure?.Date || '',
       departure_time: firstSegment.Departure?.Time || '',
       arrival_date: lastSegment.Arrival?.Date || '',

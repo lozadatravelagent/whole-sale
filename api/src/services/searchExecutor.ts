@@ -237,20 +237,37 @@ async function executeFlightSearch(
   // Build Starling API request - passengers
   const passengers: Array<{ Count: number; Type: string }> = [];
 
-  // Add adults
-  if ((flights.adults || 1) > 0) {
+  // Add adults (ADT)
+  const adultsCount = flights.adults || 1;
+  if (adultsCount > 0) {
     passengers.push({
-      Count: flights.adults || 1,
+      Count: adultsCount,
       Type: 'ADT'
     });
   }
 
-  // Add children if present
+  // Add children if present (CHD - 2-12 años)
   if (flights.children && flights.children > 0) {
     passengers.push({
       Count: flights.children,
       Type: 'CHD'
     });
+  }
+
+  // Add infants if present (INF - 0-2 años, viajan en brazos de adulto)
+  // IMPORTANTE: No puede haber más infantes que adultos
+  if (flights.infants && flights.infants > 0) {
+    // Validar restricción: max 1 infante por adulto
+    const validInfants = Math.min(flights.infants, adultsCount);
+    if (validInfants !== flights.infants) {
+      console.warn(`[FLIGHT_SEARCH] ⚠️ Infants adjusted from ${flights.infants} to ${validInfants} (max 1 infant per adult)`);
+    }
+    if (validInfants > 0) {
+      passengers.push({
+        Count: validInfants,
+        Type: 'INF'
+      });
+    }
   }
 
   const starlingRequest: any = {

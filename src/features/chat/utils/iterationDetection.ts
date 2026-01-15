@@ -501,6 +501,7 @@ function getAllFlightFields(): string[] {
     'flights.returnDate',
     'flights.adults',
     'flights.children',
+    'flights.infants',
     'flights.stops',
     'flights.preferredAirline',
     'flights.luggage',
@@ -518,6 +519,7 @@ function getAllHotelFields(): string[] {
     'hotels.checkoutDate',
     'hotels.adults',
     'hotels.children',
+    'hotels.infants',
     'hotels.roomType',
     'hotels.mealPlan',
     'hotels.hotelChains',  // ✅ UPDATED: Changed from singular to plural
@@ -566,6 +568,7 @@ export function mergeIterationContext(
         returnDate: lastSearch.flightsParams?.returnDate,
         adults: lastSearch.flightsParams?.adults || 1,
         children: lastSearch.flightsParams?.children || 0,
+        infants: lastSearch.flightsParams?.infants || 0,
         stops: lastSearch.flightsParams?.stops,
         preferredAirline: lastSearch.flightsParams?.preferredAirline,
         luggage: lastSearch.flightsParams?.luggage,
@@ -582,6 +585,7 @@ export function mergeIterationContext(
         checkoutDate: lastSearch.hotelsParams?.checkoutDate || lastSearch.flightsParams?.returnDate || '',
         adults: lastSearch.hotelsParams?.adults || lastSearch.flightsParams?.adults || 1,
         children: lastSearch.hotelsParams?.children ?? lastSearch.flightsParams?.children ?? 0,
+        infants: lastSearch.hotelsParams?.infants ?? lastSearch.flightsParams?.infants ?? 0,
 
         // Preservar preferencias anteriores a menos que se cambien explícitamente
         roomType: newParsedRequest.hotels?.roomType || lastSearch.hotelsParams?.roomType,
@@ -630,6 +634,7 @@ export function mergeIterationContext(
         returnDate: lastSearch.flightsParams?.returnDate,
         adults: lastSearch.flightsParams?.adults || 1,
         children: lastSearch.flightsParams?.children || 0,
+        infants: lastSearch.flightsParams?.infants || 0,
         // Preservar valores anteriores por defecto
         stops: lastSearch.flightsParams?.stops,
         preferredAirline: lastSearch.flightsParams?.preferredAirline,
@@ -661,6 +666,7 @@ export function mergeIterationContext(
           checkoutDate: lastSearch.hotelsParams.checkoutDate,
           adults: lastSearch.hotelsParams.adults,
           children: lastSearch.hotelsParams.children || 0,
+          infants: lastSearch.hotelsParams.infants || 0,
           roomType: lastSearch.hotelsParams.roomType,
           mealPlan: lastSearch.hotelsParams.mealPlan,
           hotelChains: lastSearch.hotelsParams.hotelChains,  // ✅ UPDATED: Changed to plural

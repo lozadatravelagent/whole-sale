@@ -9,6 +9,7 @@ import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
 import { hotelBelongsToChain, hotelBelongsToAnyChain, hotelNameMatches, hotelMatchesAnyName } from '../data/hotelChainAliases';
 import { generateSearchId, saveFlightsToStorage } from './flightStorageService';
+import { generateHotelSearchId, saveHotelsToStorage } from './hotelStorageService';
 import { timeStringToNumber } from '@/features/chat/utils/timeSlotMapper';
 
 // =====================================================================
@@ -484,7 +485,8 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
               .split('T')[0]
             : ''),
         adults: inferredAdults,  // ✅ Use inferred adults from roomType
-        children: parsed.hotels?.children || parsed.flights?.children || 0,
+        children: parsed.hotels?.children || parsed.flights?.children || 0,    // Niños 2-12 años
+        infants: parsed.hotels?.infants || parsed.flights?.infants || 0,       // Infantes 0-2 años
         roomType: parsed.hotels?.roomType,
         mealPlan: parsed.hotels?.mealPlan,
         hotelName: parsed.hotels?.hotelName,
@@ -965,6 +967,21 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       hotels = sortedHotels.slice(0, 5);
     }
 
+    // 📦 Save ALL hotels to IndexedDB for dynamic filtering in UI
+    const hotelSearchId = generateHotelSearchId({
+      destination: enrichedParsed.hotels?.city || enrichedParsed.flights?.destination,
+      checkIn: enrichedParsed.hotels?.checkIn,
+      checkOut: enrichedParsed.hotels?.checkOut,
+    });
+
+    // Save all sorted hotels (before the slice) for dynamic filtering
+    await saveHotelsToStorage(hotelSearchId, sortedHotels, {
+      destination: enrichedParsed.hotels?.city || enrichedParsed.flights?.destination,
+      checkIn: enrichedParsed.hotels?.checkIn,
+      checkOut: enrichedParsed.hotels?.checkOut,
+    });
+    console.log(`📦 [HOTEL SEARCH] Saved ${sortedHotels.length} hotels to IndexedDB with searchId: ${hotelSearchId}`);
+
     console.log('✅ [HOTEL SEARCH] Step 5: Hotel data filtered, sorted by price, and limited');
     console.log('🏨 Hotels after filtering:', filteredHotels.length, '| Final count (top 5):', hotels.length);
     if (hotels.length > 0) {
@@ -1017,10 +1034,11 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
         eurovipsData: { hotels },
         combinedData: {
           flights: [],
-          hotels, // ✅ Now contains ONLY hotels with matching rooms
+          hotels, // ✅ Now contains ONLY hotels with matching rooms (Top 5)
           requestType: 'hotels-only' as const,
           requestedRoomType: normalizedRoomType,
-          requestedMealPlan: normalizedMealPlan
+          requestedMealPlan: normalizedMealPlan,
+          hotelSearchId, // 🔑 Key to retrieve ALL hotels from IndexedDB
         },
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined
       }
@@ -1187,6 +1205,7 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
       requestedRoomType: hotelResult.data?.combinedData?.requestedRoomType,
       requestedMealPlan: hotelResult.data?.combinedData?.requestedMealPlan,
       flightSearchId: flightResult.data?.combinedData?.flightSearchId, // Pass through for localStorage lookup
+      hotelSearchId: hotelResult.data?.combinedData?.hotelSearchId, // Pass through for IndexedDB lookup (hotel filter chips)
     };
 
     console.log('📊 [COMBINED SEARCH] Combined data summary:');

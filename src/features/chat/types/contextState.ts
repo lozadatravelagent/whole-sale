@@ -14,7 +14,8 @@ export interface FlightContextParams {
   departureDate: string;
   returnDate?: string;
   adults: number;
-  children: number;
+  children: number;   // Niños 2-12 años (CHD)
+  infants: number;    // Infantes 0-2 años (INF) - viajan en brazos de adulto
   stops?: 'direct' | 'one_stop' | 'two_stops' | 'with_stops' | 'any';
   preferredAirline?: string;
   luggage?: 'backpack' | 'carry_on' | 'checked' | 'both' | 'none';
@@ -31,7 +32,8 @@ export interface HotelContextParams {
   checkinDate: string;
   checkoutDate: string;
   adults: number;
-  children: number;
+  children: number;   // Niños 2-12 años
+  infants: number;    // Infantes 0-2 años
   roomType?: 'single' | 'double' | 'triple';
   mealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
   hotelChains?: string[]; // Cadenas hoteleras (ej: ["RIU", "Iberostar"])

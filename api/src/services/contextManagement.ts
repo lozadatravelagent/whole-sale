@@ -191,7 +191,8 @@ function extractFlightContext(flightData: any): any {
     departure_date: flightData.departureDate || flightData.departure_date,
     return_date: flightData.returnDate || flightData.return_date,
     adults: flightData.adults,
-    children: flightData.children || 0,
+    children: flightData.children || 0,   // Niños 2-12 años (CHD)
+    infants: flightData.infants || 0,     // Infantes 0-2 años (INF)
     // Optional fields (preserve if exist)
     ...(flightData.luggage && { luggage: flightData.luggage }),
     ...(flightData.stops && { stops: flightData.stops }),
@@ -209,7 +210,8 @@ function extractHotelContext(hotelData: any): any {
     checkin_date: hotelData.checkinDate || hotelData.checkin_date,
     checkout_date: hotelData.checkoutDate || hotelData.checkout_date,
     adults: hotelData.adults,
-    children: hotelData.children || 0,
+    children: hotelData.children || 0,   // Niños 2-12 años
+    infants: hotelData.infants || 0,     // Infantes 0-2 años
     // Optional fields (preserve if exist)
     ...(hotelData.roomType && { roomType: hotelData.roomType }),
     ...(hotelData.mealPlan && { mealPlan: hotelData.mealPlan }),

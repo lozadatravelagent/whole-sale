@@ -125,6 +125,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
         price: flight.price,
         adults: flight.adults,
         childrens: flight.childrens,
+        infants: flight.infants,
         departure_date: flight.departure_date,
         return_date: flight.return_date,
         legs: flight.legs.map((leg, legIndex) => {
@@ -287,7 +288,9 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
       requestedRoomType: localData.requestedRoomType,
       requestedMealPlan: localData.requestedMealPlan,
       // Pass flight search ID for localStorage lookup (dynamic filtering)
-      flightSearchId: localData.flightSearchId
+      flightSearchId: localData.flightSearchId,
+      // Pass hotel search ID for IndexedDB lookup (dynamic filtering)
+      hotelSearchId: localData.hotelSearchId
     };
   };
 

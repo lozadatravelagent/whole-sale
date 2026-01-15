@@ -270,7 +270,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                     <div className="flex items-center text-sm text-muted-foreground space-x-4 mt-1">
                       <span className="flex items-center">
                         <Users className="h-3 w-3 mr-1" />
-                        {flight.adults || 1} adultos{(flight.childrens || 0) > 0 ? `, ${flight.childrens} niños` : ''}
+                        {flight.adults || 1} adultos{(flight.childrens || 0) > 0 ? `, ${flight.childrens} niños` : ''}{(flight.infants || 0) > 0 ? `, ${flight.infants} bebés` : ''}
                       </span>
                       {flight.luggage && (
                         <span className="flex items-center">

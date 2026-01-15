@@ -305,7 +305,8 @@ export interface FlightData {
     currency: string;
   };
   adults: number;
-  childrens: number;
+  childrens: number;  // Niños 2-12 años (CHD)
+  infants: number;    // Infantes 0-2 años (INF)
   departure_date: string;
   return_date?: string;
   legs: FlightLeg[];
@@ -346,7 +347,8 @@ export interface HotelSearchParams {
   city?: string;
   hotelName?: string;
   adults?: number;
-  children?: number;
+  children?: number;  // Niños 2-12 años
+  infants?: number;   // Infantes 0-2 años
   occupancy?: number;
 }
 
@@ -489,7 +491,8 @@ export interface AirfareSearchParams {
   departureDate: string;
   returnDate?: string;
   adults?: number;
-  children?: number;
+  children?: number;  // Niños 2-12 años (CHD)
+  infants?: number;   // Infantes 0-2 años (INF) - max 1 por adulto
 }
 
 export interface CombinedTravelRequest {
@@ -505,8 +508,10 @@ export interface CombinedTravelResults {
   // Hotel filter preferences from user request
   requestedRoomType?: 'single' | 'double' | 'triple';
   requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
-  // Flight search ID for localStorage lookup (dynamic filtering)
+  // Flight search ID for IndexedDB lookup (dynamic filtering)
   flightSearchId?: string;
+  // Hotel search ID for IndexedDB lookup (dynamic filtering)
+  hotelSearchId?: string;
 }
 
 // EUROVIPS WebService types
@@ -518,7 +523,8 @@ export interface EurovipsSearchParams {
   city?: string;
   hotelName?: string;
   adults?: number;
-  children?: number;
+  children?: number;  // Niños 2-12 años
+  infants?: number;   // Infantes 0-2 años
   currency?: string;
 }
 

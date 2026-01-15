@@ -25,7 +25,8 @@ export interface FlightData {
     };
   };
   adults: number;
-  childrens: number;
+  childrens: number;  // Niños 2-12 años (CHD)
+  infants: number;    // Infantes 0-2 años (INF)
   departure_date: string;
   departure_time?: string;
   arrival_date?: string;
@@ -223,7 +224,8 @@ export interface LocalHotelData {
   }>;
   // Search params - occupancy requested by user (for PDF generation)
   search_adults?: number;
-  search_children?: number;
+  search_children?: number;   // Niños 2-12 años
+  search_infants?: number;    // Infantes 0-2 años
 }
 
 export interface LocalCombinedTravelResults {
@@ -235,6 +237,8 @@ export interface LocalCombinedTravelResults {
   requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
   // Flight search ID for localStorage lookup (dynamic filtering)
   flightSearchId?: string;
+  // Hotel search ID for IndexedDB lookup (dynamic filtering)
+  hotelSearchId?: string;
 }
 
 export interface LocalPackageData {
