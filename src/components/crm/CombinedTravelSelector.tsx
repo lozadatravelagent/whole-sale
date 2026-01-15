@@ -374,13 +374,12 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   // Pasa el searchId para cargar TODOS los hoteles desde IndexedDB
   const {
     displayedResults: filteredHotels,
-    activeFilters: hotelActiveFilters,
+    activeMealPlan,
     distribution: hotelDistribution,
-    filterStats: hotelFilterStats,
-    applyFilter: applyHotelFilter,
-    clearAllFilters: clearAllHotelFilters,
-    toggleHotelChain,
+    totalCount: hotelTotalCount,
+    filteredCount: hotelFilteredCount,
     hasCache: hasHotelCache,
+    setMealPlan,
   } = useHotelResultsCache(combinedData.hotelSearchId);
 
   // Convertir vuelos del cache a formato de display
@@ -787,15 +786,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         {/* Hotels Tab */}
         {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
           <TabsContent value="hotels" className="space-y-2">
-            {/* Dynamic Filter Chips for Hotels */}
-            {hasHotelCache && hotelDistribution && hotelFilterStats && (
+            {/* Dynamic Filter Chips for Hotels - Solo Plan de Comidas */}
+            {hasHotelCache && hotelDistribution && (
               <HotelFilterChips
                 distribution={hotelDistribution}
-                activeFilters={hotelActiveFilters}
-                filterStats={hotelFilterStats}
-                onFilterChange={applyHotelFilter}
-                onClearAll={clearAllHotelFilters}
-                onToggleChain={toggleHotelChain}
+                activeMealPlan={activeMealPlan}
+                totalCount={hotelTotalCount}
+                filteredCount={hotelFilteredCount}
+                onMealPlanChange={setMealPlan}
               />
             )}
 
@@ -867,11 +865,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               <Card>
                 <CardContent className="p-6 text-center">
                   <Hotel className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground">No hay hoteles con los filtros seleccionados</p>
-                  <p className="text-sm text-muted-foreground mt-1">Prueba cambiando o limpiando los filtros</p>
+                  <p className="text-muted-foreground">No hay hoteles con el plan de comidas seleccionado</p>
+                  <p className="text-sm text-muted-foreground mt-1">Prueba seleccionando otro plan de comidas</p>
                   <div className="mt-3">
-                    <Button variant="outline" onClick={clearAllHotelFilters}>
-                      Limpiar filtros
+                    <Button variant="outline" onClick={() => setMealPlan(null)}>
+                      Limpiar filtro
                     </Button>
                   </div>
                 </CardContent>

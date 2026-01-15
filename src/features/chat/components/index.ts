@@ -7,3 +7,4 @@ export { default as EmptyState } from './EmptyState';
 export { default as ChatHeader } from './ChatHeader';
 export { default as TypingIndicator } from './TypingIndicator';
 export { FilterChips } from './FilterChips';
+export { HotelFilterChips } from './HotelFilterChips';
