@@ -1,20 +1,15 @@
 // Refactored Hotel Selector component with enhanced functionality
-import React, { useState, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
+import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Label } from '@/components/ui/label';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import { calculateHotelPrice } from '../../services/priceCalculator';
 import { makeBudget, buildPassengerList } from '@/services/hotelSearch';
 import {
   Hotel,
   MapPin,
-  Calendar,
-  DollarSign,
   Star,
   Phone,
   Globe,
@@ -22,11 +17,7 @@ import {
   Users,
   CheckCircle,
   AlertCircle,
-  Clock,
-  Wifi,
-  Car,
-  Coffee,
-  Utensils
+  Clock
 } from 'lucide-react';
 import type { HotelSelectorProps } from '../../types/travel';
 import { formatCurrency } from '../../utils';
@@ -133,8 +124,15 @@ export function HotelSelector({
     }
   }, [hotels, exactPrices]);
 
+  // Helper function to parse stars from category (e.g., "3EST" -> 3)
+  const parseStarsFromCategory = (category: string): number => {
+    const match = category.match(/(\d+)EST/i);
+    return match ? parseInt(match[1], 10) : 0;
+  };
+
   // Helper function to render star rating
   const renderStarRating = (rating: number) => {
+    if (rating <= 0) return null;
     return (
       <div className="flex items-center gap-1">
         {[...Array(5)].map((_, i) => (
@@ -147,16 +145,6 @@ export function HotelSelector({
         <span className="text-xs text-muted-foreground ml-1">({rating})</span>
       </div>
     );
-  };
-
-  // Helper function to get amenity icon
-  const getAmenityIcon = (amenity: string) => {
-    const lowerAmenity = amenity.toLowerCase();
-    if (lowerAmenity.includes('wifi')) return <Wifi className="h-3 w-3" />;
-    if (lowerAmenity.includes('parking')) return <Car className="h-3 w-3" />;
-    if (lowerAmenity.includes('breakfast')) return <Coffee className="h-3 w-3" />;
-    if (lowerAmenity.includes('restaurant')) return <Utensils className="h-3 w-3" />;
-    return <CheckCircle className="h-3 w-3" />;
   };
 
   if (!hotels || hotels.length === 0) {
@@ -236,27 +224,19 @@ export function HotelSelector({
                       </div>
 
                       {/* Location */}
-                      <div className="flex items-center gap-1 mb-2">
-                        <MapPin className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          {hotel.location || hotel.address}
-                        </span>
-                      </div>
-
-                      {/* Rating */}
-                      {hotel.rating && (
-                        <div className="mb-2">
-                          {renderStarRating(hotel.rating)}
+                      {(hotel.city || hotel.address) && (
+                        <div className="flex items-center gap-1 mb-2">
+                          <MapPin className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">
+                            {hotel.city}{hotel.city && hotel.address ? ' - ' : ''}{hotel.address}
+                          </span>
                         </div>
                       )}
 
-                      {/* Distance from center */}
-                      {hotel.distance_from_center && (
-                        <div className="flex items-center gap-1 mb-2">
-                          <MapPin className="h-3 w-3 text-blue-600" />
-                          <span className="text-xs text-blue-600">
-                            {hotel.distance_from_center} del centro
-                          </span>
+                      {/* Category/Stars */}
+                      {hotel.category && (
+                        <div className="mb-2">
+                          {renderStarRating(parseStarsFromCategory(hotel.category))}
                         </div>
                       )}
                     </div>
@@ -316,31 +296,11 @@ export function HotelSelector({
                     <div className="flex items-center justify-between text-sm">
                       <span className="flex items-center gap-1">
                         <Users className="h-3 w-3" />
-                        Ocupación máxima
+                        Ocupación
                       </span>
                       <span className="font-medium">
-                        {(selectedRoom || bestRoom)?.max_occupancy || 2} personas
+                        {((selectedRoom || bestRoom)?.adults || 0) + ((selectedRoom || bestRoom)?.children || 0) || 2} personas
                       </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Amenities */}
-                {hotel.amenities && hotel.amenities.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium">Servicios incluidos:</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {hotel.amenities.slice(0, 6).map((amenity: string, amenityIndex: number) => (
-                        <Badge key={amenityIndex} variant="outline" className="flex items-center gap-1 text-xs">
-                          {getAmenityIcon(amenity)}
-                          {amenity}
-                        </Badge>
-                      ))}
-                      {hotel.amenities.length > 6 && (
-                        <Badge variant="outline" className="text-xs">
-                          +{hotel.amenities.length - 6} más
-                        </Badge>
-                      )}
                     </div>
                   </div>
                 )}
@@ -364,18 +324,18 @@ export function HotelSelector({
                 )}
 
                 {/* Policies */}
-                {hotel.policies && (
+                {(hotel.policy_cancellation || hotel.policy_lodging) && (
                   <div className="text-xs text-muted-foreground space-y-1">
-                    {hotel.policies.cancellation && (
+                    {hotel.policy_cancellation && (
                       <div className="flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        <span>Cancelación: {hotel.policies.cancellation}</span>
+                        <span>Cancelación: {hotel.policy_cancellation}</span>
                       </div>
                     )}
-                    {hotel.policies.checkin && (
+                    {hotel.policy_lodging && (
                       <div className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        <span>Check-in: {hotel.policies.checkin}</span>
+                        <span>Alojamiento: {hotel.policy_lodging}</span>
                       </div>
                     )}
                   </div>
