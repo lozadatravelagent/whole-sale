@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import { useSearchResultsCache } from '@/features/chat/hooks/useSearchResultsCache';
 import { useHotelResultsCache } from '@/features/chat/hooks/useHotelResultsCache';
 import { FilterChips, HotelFilterChips } from '@/features/chat/components';
+import { makeBudget, buildPassengerList, MakeBudgetResponse } from '@/services/hotelSearch';
 import {
   Plane,
   Hotel,
@@ -354,6 +355,9 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     combinedData.requestType === 'combined' ? 'flights' :
       combinedData.requestType === 'flights-only' ? 'flights' : 'hotels'
   );
+  // Exact price states for makeBudget integration
+  const [exactPrices, setExactPrices] = useState<Record<string, { price: number; currency: string; budgetId: string }>>({});
+  const [loadingPrices, setLoadingPrices] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
 
@@ -465,12 +469,79 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     });
   };
 
-  const handleRoomSelect = (hotelId: string, roomId: string) => {
+  const handleRoomSelect = useCallback(async (hotelId: string, roomId: string) => {
+    // 1. Update selection immediately for responsive UI
     setSelectedRooms(prev => ({
       ...prev,
       [hotelId]: roomId
     }));
-  };
+
+    // 2. Find hotel and room data
+    const hotelsSource = hasHotelCache ? filteredHotels : combinedData.hotels;
+    const hotel = hotelsSource.find(h => h.id === hotelId);
+    const room = hotel?.rooms.find(r => r.occupancy_id === roomId);
+
+    // 3. Check if we have required data for makeBudget
+    if (!room?.fare_id_broker || !hotel?.unique_id) {
+      console.log('⚠️ [EXACT_PRICE] Missing fare_id_broker or unique_id, skipping makeBudget');
+      return;
+    }
+
+    // 4. Generate price key for caching
+    const priceKey = `${hotelId}-${roomId}`;
+
+    // 5. Check if we already have exact price cached
+    if (exactPrices[priceKey]) {
+      console.log('✅ [EXACT_PRICE] Already have exact price for:', priceKey);
+      return;
+    }
+
+    // 6. Show loading state
+    setLoadingPrices(prev => ({ ...prev, [priceKey]: true }));
+
+    try {
+      console.log('💰 [EXACT_PRICE] Calling makeBudget for hotel:', hotel.name);
+
+      // 7. Build passenger list from hotel search params or room data
+      const adults = room.adults || hotel.search_adults || 1;
+      const children = room.children || hotel.search_children || 0;
+      const infants = room.infants || 0;
+      const passengers = buildPassengerList(adults, children, infants);
+
+      // 8. Call makeBudget
+      const result = await makeBudget({
+        fareId: hotel.unique_id,
+        fareIdBroker: room.fare_id_broker,
+        checkinDate: hotel.check_in,
+        checkoutDate: hotel.check_out,
+        occupancies: [{
+          occupancyId: room.occupancy_id,
+          passengers
+        }]
+      });
+
+      // 9. Save exact price if successful
+      if (result.success && result.subTotalAmount && result.subTotalAmount > 0) {
+        console.log('✅ [EXACT_PRICE] Got exact price:', result.subTotalAmount, result.currency);
+        setExactPrices(prev => ({
+          ...prev,
+          [priceKey]: {
+            price: result.subTotalAmount!,
+            currency: result.currency || 'USD',
+            budgetId: result.budgetId || ''
+          }
+        }));
+      } else {
+        console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', result.error);
+        // Keep using approximate price, no UI change needed
+      }
+    } catch (error) {
+      console.error('❌ [EXACT_PRICE] Error getting exact price:', error);
+      // Keep using approximate price on error
+    } finally {
+      setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
+    }
+  }, [combinedData.hotels, filteredHotels, hasHotelCache, exactPrices]);
 
   const handleGeneratePdf = async () => {
     // Validate selections
@@ -509,7 +580,12 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         console.log(`   Flight ${idx + 1}: transfers=${JSON.stringify(flight.transfers)}, travel_assistance=${JSON.stringify(flight.travel_assistance)}`);
       });
 
-      const selectedHotelData = combinedData.hotels.filter(hotel =>
+      // Use hotels from cache when available, same as display (line 889)
+      const hotelsSource = hasHotelCache ? filteredHotels : combinedData.hotels;
+      console.log('🔍 [CombinedTravelSelector] Hotels source:', hasHotelCache ? 'filteredHotels (cache)' : 'combinedData.hotels (original)');
+      console.log(`🔍 [CombinedTravelSelector] Total hotels in source: ${hotelsSource.length}`);
+
+      const selectedHotelData = hotelsSource.filter(hotel =>
         selectedHotels.includes(hotel.id)
       );
 
@@ -530,10 +606,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
       let pdfUrl;
 
-      // Prepare hotel data with selected rooms
+      // Prepare hotel data with selected rooms (using exact prices when available)
       const selectedHotelDataWithRooms = selectedHotelData.map(hotel => {
         const selectedRoomId = selectedRooms[hotel.id];
         const selectedRoom = hotel.rooms.find(room => room.occupancy_id === selectedRoomId);
+
+        // Check for exact price
+        const priceKey = `${hotel.id}-${selectedRoomId}`;
+        const exactPrice = exactPrices[priceKey];
 
         console.log(`🏨 Preparing hotel ${hotel.name} for PDF:`, {
           hotel_id: hotel.id,
@@ -543,6 +623,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           address: hotel.address,
           city: hotel.city,
           selected_room_id: selectedRoomId,
+          has_exact_price: !!exactPrice,
+          exact_price: exactPrice?.price,
           selected_room: selectedRoom ? {
             type: selectedRoom.type,
             price_per_night: selectedRoom.price_per_night,
@@ -557,13 +639,22 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           } : 'NO_ROOMS_AVAILABLE'
         });
 
+        // Build room with exact price if available
+        const roomToUse = selectedRoom || hotel.rooms[0];
+        const roomWithExactPrice = exactPrice && roomToUse ? {
+          ...roomToUse,
+          total_price: exactPrice.price,
+          price_per_night: hotel.nights > 0 ? exactPrice.price / hotel.nights : exactPrice.price,
+          currency: exactPrice.currency
+        } : roomToUse;
+
         // Explicitly preserve all hotel fields including category
         const hotelWithRoom: HotelDataWithSelectedRoom = {
           ...hotel,
           category: hotel.category || '', // Explicitly preserve category
           address: hotel.address || '', // Explicitly preserve address
           city: hotel.city || '', // Explicitly preserve city
-          selectedRoom: selectedRoom || hotel.rooms[0] // fallback to first room if none selected
+          selectedRoom: roomWithExactPrice // Use room with exact price if available
         };
 
         console.log(`✅ Hotel ${hotel.name} prepared with category:`, {
@@ -571,7 +662,9 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           prepared_category: hotelWithRoom.category,
           has_category: !!hotelWithRoom.category,
           original_address: hotel.address,
-          prepared_address: hotelWithRoom.address
+          prepared_address: hotelWithRoom.address,
+          using_exact_price: !!exactPrice,
+          final_total_price: hotelWithRoom.selectedRoom?.total_price
         });
 
         return hotelWithRoom;
@@ -854,6 +947,9 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       maxInitialRooms={3}
                       requestedRoomType={combinedData.requestedRoomType}
                       requestedMealPlan={combinedData.requestedMealPlan}
+                      exactPrices={exactPrices}
+                      loadingPrices={loadingPrices}
+                      hotelId={hotel.id}
                     />
                   </CardContent>
                 </Card>
