@@ -961,6 +961,10 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
     const pricePerNight = nights > 0 ? totalPrice / nights : totalPrice;
     console.log(`🏷️ [NETO AGENCIA PER NIGHT] ${totalPrice.toFixed(2)} / ${nights} nights = ${pricePerNight.toFixed(2)} per night`);
 
+    // Extract OccupancyId from Fare element (use index+1 as fallback)
+    const occupancyId = fareEl.getAttribute('OccupancyId') || (index + 1).toString();
+    console.log(`🔑 [FARE] type=${fareType}, OccupancyId=${occupancyId}, FareIdBroker=${fareIdBroker}`);
+
     return {
       type: roomType,
       description: description,
@@ -968,7 +972,7 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
       total_price: totalPrice, // NETO AGENCIA: (Base - 15% comisión) + gastos + IVA
       currency: currency,
       availability: availability,
-      occupancy_id: (index + 1).toString(),
+      occupancy_id: occupancyId,
       fare_id_broker: fareIdBroker
     };
   } catch (error) {

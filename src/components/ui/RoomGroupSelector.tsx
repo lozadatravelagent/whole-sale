@@ -70,23 +70,46 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     };
 
     // Helper to calculate per-night price from exact total price
-    // Handles edge cases where price_per_night is 0 or undefined
-    const calculateExactPricePerNight = (exactPrice: ExactPriceData, room: Room): number => {
+    // Returns null if per-night price cannot be calculated (prevents showing total as per-night)
+    const calculateExactPricePerNight = (exactPrice: ExactPriceData, room: Room): number | null => {
+        // Validate exactPrice.price is a valid positive number
+        if (!exactPrice.price || !isFinite(exactPrice.price) || exactPrice.price <= 0) {
+            console.warn('⚠️ [EXACT_PRICE] Invalid exactPrice.price:', exactPrice.price);
+            return null; // Return null instead of 0 to indicate calculation not possible
+        }
+
         // If price_per_night exists and is valid (> 0), use the ratio method
-        if (room.price_per_night && room.price_per_night > 0 && room.total_price > 0) {
+        if (room.price_per_night && room.price_per_night > 0 && room.total_price > 0 && isFinite(room.total_price)) {
             // Calculate ratio: price_per_night / total_price
             // Then apply to exact total: exactPrice.price * ratio
-            return exactPrice.price * (room.price_per_night / room.total_price);
+            const ratio = room.price_per_night / room.total_price;
+            if (isFinite(ratio) && ratio > 0) {
+                const perNight = exactPrice.price * ratio;
+                // Validate result is finite and positive
+                if (isFinite(perNight) && perNight > 0) {
+                    return perNight;
+                }
+            }
         }
 
         // Fallback: use nights if available
-        if (nights && nights > 0) {
-            return exactPrice.price / nights;
+        if (nights && nights > 0 && isFinite(nights)) {
+            const perNight = exactPrice.price / nights;
+            // Validate result is finite and positive
+            if (isFinite(perNight) && perNight > 0) {
+                return perNight;
+            }
         }
 
-        // Last resort: if we can't calculate per-night, return total price
-        // (This shouldn't happen in normal cases, but prevents division by zero)
-        return exactPrice.price;
+        // Return null if we can't calculate per-night safely
+        // This prevents showing total price as per-night price
+        console.warn('⚠️ [EXACT_PRICE] Could not calculate per-night price:', {
+            hasPricePerNight: !!room.price_per_night,
+            totalPrice: room.total_price,
+            nights,
+            exactTotalPrice: exactPrice.price
+        });
+        return null;
     };
 
     // Agrupar habitaciones por tipo y ordenar por precio
@@ -266,28 +289,39 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                                 <Loader2 className="h-3 w-3 animate-spin text-primary" />
                                                                 <span className="text-xs text-muted-foreground">Calculando...</span>
                                                             </div>
-                                                        ) : getExactPrice(room.occupancy_id) ? (
-                                                            <div className="flex items-center space-x-1">
-                                                                <span className="font-medium text-sm text-primary">
-                                                                    {formatPrice(
-                                                                        calculateExactPricePerNight(getExactPrice(room.occupancy_id)!, room),
-                                                                        getExactPrice(room.occupancy_id)!.currency
-                                                                    )}
-                                                                </span>
-                                                                <Badge variant="outline" className="text-[10px] px-1 py-0 bg-green-50 text-green-700 border-green-200">
-                                                                    Exacto
-                                                                </Badge>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center space-x-1">
-                                                                <span className="font-medium text-sm">
-                                                                    {formatPrice(room.price_per_night, room.currency)}
-                                                                </span>
-                                                                {room.fare_id_broker && (
-                                                                    <span className="text-[10px] text-muted-foreground">(aprox.)</span>
-                                                                )}
-                                                            </div>
-                                                        )}
+                                                        ) : (() => {
+                                                            const exactPrice = getExactPrice(room.occupancy_id);
+                                                            const exactPricePerNight = exactPrice ? calculateExactPricePerNight(exactPrice, room) : null;
+
+                                                            // Only show exact per-night price if we successfully calculated it
+                                                            if (exactPricePerNight !== null) {
+                                                                return (
+                                                                    <div className="flex items-center space-x-1">
+                                                                        <span className="font-medium text-sm text-primary">
+                                                                            {formatPrice(exactPricePerNight, exactPrice!.currency)}
+                                                                        </span>
+                                                                        <Badge variant="outline" className="text-[10px] px-1 py-0 bg-green-50 text-green-700 border-green-200">
+                                                                            Exacto
+                                                                        </Badge>
+                                                                    </div>
+                                                                );
+                                                            }
+
+                                                            // If we have exact total but can't calculate per-night, show approximate per-night
+                                                            // The exact total will be shown below
+                                                            return (
+                                                                <div className="flex items-center space-x-1">
+                                                                    <span className="font-medium text-sm">
+                                                                        {formatPrice(room.price_per_night, room.currency)}
+                                                                    </span>
+                                                                    {exactPrice ? (
+                                                                        <span className="text-[10px] text-muted-foreground">(aprox. por noche)</span>
+                                                                    ) : room.fare_id_broker ? (
+                                                                        <span className="text-[10px] text-muted-foreground">(aprox.)</span>
+                                                                    ) : null}
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
 
                                                     {priceInfo.isCheapest && !getExactPrice(room.occupancy_id) && (
