@@ -1,57 +1,129 @@
-import { useIntersectionObserver } from '@/hooks/useIntersectionObserver';
+import { motion } from "framer-motion"
+import {
+  LayoutDashboard,
+  Users,
+  Plane,
+  DollarSign,
+  Bot,
+  MessageCircle,
+  Calendar,
+  Bell,
+  FileText,
+  TrendingUp
+} from "lucide-react"
+
+const features = [
+  {
+    icon: LayoutDashboard,
+    title: "Dashboard Inteligente",
+    description: "KPIs, metricas de ventas y rendimiento en tiempo real.",
+  },
+  {
+    icon: Users,
+    title: "Gestion de Clientes",
+    description: "Base de datos completa con historial y segmentacion.",
+  },
+  {
+    icon: Plane,
+    title: "Operaciones",
+    description: "Control de viajes: pasajeros, documentos y pagos.",
+  },
+  {
+    icon: DollarSign,
+    title: "Finanzas & Caja",
+    description: "Ingresos, egresos y control financiero completo.",
+  },
+  {
+    icon: Bot,
+    title: "Emilia - IA",
+    description: "Asistente IA que cotiza y genera propuestas.",
+  },
+  {
+    icon: MessageCircle,
+    title: "WhatsApp",
+    description: "Mensajes automaticos y recordatorios.",
+  },
+  {
+    icon: Calendar,
+    title: "Calendario",
+    description: "Salidas, regresos y eventos importantes.",
+  },
+  {
+    icon: Bell,
+    title: "Alertas",
+    description: "Recordatorios automaticos de pagos y documentos.",
+  },
+  {
+    icon: FileText,
+    title: "CRM",
+    description: "Pipeline visual y seguimiento de leads.",
+  },
+  {
+    icon: TrendingUp,
+    title: "Reportes",
+    description: "Analisis de ventas y proyecciones.",
+  }
+]
 
 export function Features() {
-  const section = useIntersectionObserver();
-
-  const features = [
-    {
-      emoji: '💡',
-      title: 'Propuestas inteligentes',
-      description:
-        'Armá ofertas claras, personalizadas y listas para enviar en segundos. La IA te ayuda a destacar lo mejor de cada viaje, sin esfuerzo.',
-    },
-    {
-      emoji: '⚡',
-      title: 'Cotizaciones rápidas',
-      description:
-        'Generá itinerarios y presupuestos completos en cuestión de segundos. Más agilidad, más respuestas, más ventas.',
-    },
-    {
-      emoji: '📁',
-      title: 'Seguimiento simple',
-      description:
-        'Todo el historial de cotizaciones y clientes en un solo lugar. Nada se pierde, todo queda registrado y a un clic de distancia.',
-    },
-    {
-      emoji: '🤖',
-      title: 'IA como copiloto',
-      description:
-        'Una IA que entiende cómo trabajás y te acompaña en cada paso. Más precisión, menos tareas repetitivas, todo fluye.',
-    },
-  ];
-
   return (
-    <section
-      ref={section.ref}
-      className={`py-8 sm:py-12 md:py-16 px-4 sm:px-6 bg-muted/30 transition-all duration-1000 ${
-        section.isIntersecting ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
-      }`}
-    >
-      <div className="container mx-auto max-w-7xl">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+    <section id="features" className="py-32 bg-[#0a0a0f] relative overflow-hidden">
+      {/* Background elements */}
+      <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />
+      <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />
+
+      <div className="container mx-auto px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="text-center mb-20"
+        >
+          <motion.span
+            className="inline-block text-blue-400 text-sm font-medium tracking-wider uppercase mb-4"
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            viewport={{ once: true }}
+          >
+            Funcionalidades
+          </motion.span>
+          <h2 className="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6">
+            Todo lo que necesitas
+          </h2>
+          <p className="text-2xl md:text-3xl text-gray-400 max-w-2xl mx-auto">
+            Un sistema completo disenado especificamente para agencias de viajes
+          </p>
+        </motion.div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
           {features.map((feature, index) => (
-            <div
+            <motion.div
               key={index}
-              className="space-y-2 sm:space-y-3 text-center sm:text-left p-4 sm:p-0 hover:scale-105 transition-smooth"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: index * 0.05 }}
+              whileHover={{ y: -8, transition: { duration: 0.2 } }}
+              className="group relative"
             >
-              <h3 className="text-base sm:text-lg md:text-xl font-semibold">
-                {feature.emoji} {feature.title}
-              </h3>
-              <p className="text-xs sm:text-sm md:text-base text-muted-foreground">{feature.description}</p>
-            </div>
+              <div className="relative bg-white/[0.03] border border-white/[0.08] rounded-2xl p-6 h-full backdrop-blur-sm hover:bg-white/[0.06] hover:border-white/[0.15] transition-all duration-300">
+                {/* Gradient glow on hover - unified blue/cyan */}
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-cyan-500 opacity-0 group-hover:opacity-[0.08] rounded-2xl transition-opacity duration-300" />
+
+                {/* Icon - unified blue/cyan */}
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                  <feature.icon className="w-7 h-7 text-white" />
+                </div>
+
+                {/* Content */}
+                <h3 className="text-lg font-semibold text-white mb-2">{feature.title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{feature.description}</p>
+              </div>
+            </motion.div>
           ))}
         </div>
       </div>
     </section>
-  );
+  )
 }

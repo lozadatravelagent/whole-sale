@@ -1,117 +1,135 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Menu, X } from 'lucide-react';
-import { useTheme } from '@/components/theme-provider';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
+import { motion } from "framer-motion"
+import { Menu, X, ChevronRight } from "lucide-react"
 
-interface NavigationProps {
-  onNavigate: (sectionId: string) => void;
-}
-
-export function Navigation({ onNavigate }: NavigationProps) {
-  const navigate = useNavigate();
-  const { theme, setTheme } = useTheme();
-  const [scrolled, setScrolled] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+export function Navigation() {
+  const navigate = useNavigate()
+  const [scrolled, setScrolled] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 50);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+      setScrolled(window.scrollY > 50)
+    }
+    window.addEventListener("scroll", handleScroll)
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
 
-  const navItems = [
-    { label: 'Inicio', id: 'inicio' },
-    { label: 'Cómo funciona', id: 'como-funciona' },
-    { label: 'Precios', id: 'precios' },
-    { label: 'Contacto', id: 'contacto' },
-    { label: 'FAQs', id: 'faqs' },
-  ];
-
-  const handleNavClick = (id: string) => {
-    onNavigate(id);
-    setMobileMenuOpen(false);
-  };
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id)
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" })
+    }
+    setMobileOpen(false)
+  }
 
   return (
-    <nav
-      className={`fixed top-0 w-full z-50 transition-all duration-300 ${
+    <motion.nav
+      initial={{ y: -100 }}
+      animate={{ y: 0 }}
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
         scrolled
-          ? 'bg-background/95 backdrop-blur-xl border-b border-border/40 shadow-lg'
-          : 'bg-transparent border-b border-transparent'
+          ? "bg-[#0a0a0f]/80 backdrop-blur-2xl border-b border-white/[0.08]"
+          : "bg-transparent"
       }`}
-      role="navigation"
-      aria-label="Navegación principal"
     >
-      <div className="container mx-auto px-4 sm:px-6 py-2 sm:py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <img
-              src={theme === 'dark' ? '/vibook-white.png' : '/vibook-black.png'}
-              alt="ViBook Logo"
-              className="h-12 sm:h-14 md:h-16"
-            />
-          </div>
+      <div className="container mx-auto px-6">
+        <div className="flex items-center justify-between h-18 md:h-24">
+          {/* Logo */}
+          <a href="/" className="flex items-center group">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <span className="text-white font-bold text-xl">V</span>
+              </div>
+              <span className="text-2xl font-bold text-white">Vibook</span>
+            </div>
+          </a>
 
-          <div className="hidden lg:flex items-center space-x-6">
-            {navItems.map((item) => (
+          {/* Desktop nav - Centered */}
+          <div className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+            {[
+              { label: "Funcionalidades", id: "features" },
+              { label: "Modulos", id: "modules" },
+              { label: "Emilia IA", id: "emilia" },
+              { label: "Precios", id: "pricing" },
+            ].map((item) => (
               <button
                 key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className="text-sm hover:text-primary transition-smooth"
+                onClick={() => scrollToSection(item.id)}
+                className="relative px-5 py-2.5 text-base text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/[0.05]"
               >
                 {item.label}
               </button>
             ))}
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-2">
-            <ThemeToggle variant="default" />
-            <Button
-              variant="outline"
-              size="sm"
+          {/* CTA buttons */}
+          <div className="hidden md:flex items-center gap-3">
+            <button
               onClick={() => navigate('/login')}
-              className="hidden md:inline-flex text-xs sm:text-sm hover:border-primary hover:text-primary transition-smooth"
+              className="px-5 py-2.5 text-base text-gray-300 hover:text-white transition-colors rounded-lg hover:bg-white/[0.05]"
             >
-              Demo
-            </Button>
-            <Button
-              size="sm"
+              Iniciar sesion
+            </button>
+            <button
               onClick={() => navigate('/login')}
-              className="bg-gradient-hero hover:opacity-90 text-white text-xs sm:text-sm px-2 sm:px-4 shadow-primary transition-smooth hover:scale-105"
+              className="group flex items-center gap-2 bg-white text-gray-900 px-5 py-2.5 text-base rounded-lg font-medium hover:bg-gray-100 transition-all"
             >
-              Iniciar sesión
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="lg:hidden p-2"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Menú de navegación"
-            >
-              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
+              Comenzar gratis
+              <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
+            </button>
           </div>
+
+          {/* Mobile menu button */}
+          <button
+            className="md:hidden text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
+            onClick={() => setMobileOpen(!mobileOpen)}
+          >
+            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="lg:hidden mt-4 pb-4 space-y-2 border-t border-border pt-4 animate-fade-in">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className="block w-full text-left px-4 py-2 hover:bg-muted rounded-lg transition-colors text-sm"
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+        {/* Mobile menu */}
+        {mobileOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="md:hidden pb-6 pt-2"
+          >
+            <div className="flex flex-col gap-1">
+              {[
+                { label: "Funcionalidades", id: "features" },
+                { label: "Modulos", id: "modules" },
+                { label: "Emilia IA", id: "emilia" },
+                { label: "Precios", id: "pricing" },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => scrollToSection(item.id)}
+                  className="text-left px-4 py-3 text-gray-400 hover:text-white hover:bg-white/[0.05] rounded-lg transition-colors"
+                >
+                  {item.label}
+                </button>
+              ))}
+              <div className="flex flex-col gap-2 pt-4 mt-2 border-t border-white/10">
+                <button
+                  onClick={() => navigate('/login')}
+                  className="w-full py-3 text-center text-gray-300 hover:text-white rounded-lg border border-white/10 hover:bg-white/[0.05] transition-colors"
+                >
+                  Iniciar sesion
+                </button>
+                <button
+                  onClick={() => navigate('/login')}
+                  className="w-full py-3 text-center bg-white text-gray-900 rounded-lg font-medium hover:bg-gray-100 transition-colors"
+                >
+                  Comenzar gratis
+                </button>
+              </div>
+            </div>
+          </motion.div>
         )}
       </div>
-    </nav>
-  );
+    </motion.nav>
+  )
 }

@@ -1,87 +1,136 @@
-import { useNavigate } from 'react-router-dom';
-import { useTheme } from '@/components/theme-provider';
+import { useNavigate } from "react-router-dom"
 
-interface FooterProps {
-  onNavigate: (sectionId: string) => void;
-}
+export function Footer() {
+  const navigate = useNavigate()
 
-export function Footer({ onNavigate }: FooterProps) {
-  const navigate = useNavigate();
-  const { theme } = useTheme();
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id)
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" })
+    }
+  }
 
   return (
-    <footer className="border-t border-border py-8 sm:py-10 md:py-12 px-4 sm:px-6 mt-12 sm:mt-16 md:mt-20" role="contentinfo">
-      <div className="container mx-auto max-w-6xl">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 sm:gap-10 md:gap-12 mb-8 sm:mb-10 md:mb-12">
-          <div className="space-y-3 text-center sm:text-left">
-            <img
-              src={theme === 'dark' ? '/vibook-white.png' : '/vibook-black.png'}
-              alt="ViBook"
-              className="h-12 sm:h-14 md:h-16 mx-auto sm:mx-0"
-            />
-            <p className="text-xs sm:text-sm text-muted-foreground">La forma más rápida de cotizar y vender viajes</p>
+    <footer className="py-20 bg-[#050508] border-t border-white/5">
+      <div className="container mx-auto px-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-10 md:gap-12 mb-14">
+          {/* Brand */}
+          <div className="md:col-span-1">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                <span className="text-white font-bold text-xl">V</span>
+              </div>
+              <span className="text-2xl font-bold text-white">Vibook</span>
+            </div>
+            <p className="text-gray-500 text-base leading-relaxed">
+              El sistema de gestion mas completo para agencias de viajes.
+            </p>
           </div>
 
-          <div className="text-center sm:text-left">
-            <h4 className="font-semibold mb-3 sm:mb-4 text-sm sm:text-base">Producto</h4>
-            <ul className="space-y-2 text-xs sm:text-sm text-muted-foreground">
+          {/* Links */}
+          <div>
+            <h4 className="text-white font-semibold text-lg mb-5">Producto</h4>
+            <ul className="space-y-4">
               <li>
-                <button onClick={() => onNavigate('como-funciona')} className="hover:text-primary transition-smooth">
-                  Cómo funciona
+                <button
+                  onClick={() => scrollToSection('features')}
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
+                  Funcionalidades
                 </button>
               </li>
               <li>
-                <button onClick={() => onNavigate('precios')} className="hover:text-primary transition-smooth">
-                  Precios
+                <button
+                  onClick={() => scrollToSection('modules')}
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
+                  Modulos
                 </button>
               </li>
               <li>
-                <button onClick={() => navigate('/login')} className="hover:text-primary transition-smooth">
-                  Demo
-                </button>
+              <button
+                onClick={() => scrollToSection('emilia')}
+                className="text-gray-500 hover:text-white transition-colors text-base"
+              >
+                Emilia IA
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => scrollToSection('pricing')}
+                className="text-gray-500 hover:text-white transition-colors text-base"
+              >
+                Precios
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => navigate('/login')}
+                className="text-gray-500 hover:text-white transition-colors text-base"
+              >
+                Iniciar sesion
+              </button>
               </li>
             </ul>
           </div>
 
-          <div className="text-center sm:text-left">
-            <h4 className="font-semibold mb-3 sm:mb-4 text-sm sm:text-base">Recursos</h4>
-            <ul className="space-y-2 text-xs sm:text-sm text-muted-foreground">
+          <div>
+            <h4 className="text-white font-semibold text-lg mb-5">Recursos</h4>
+            <ul className="space-y-4">
               <li>
-                <button onClick={() => onNavigate('faqs')} className="hover:text-primary transition-smooth">
-                  FAQs
-                </button>
+                <a href="#" className="text-gray-500 hover:text-white transition-colors text-base">
+                  Documentacion
+                </a>
               </li>
               <li>
-                <button onClick={() => onNavigate('contacto')} className="hover:text-primary transition-smooth">
+                <a href="#" className="text-gray-500 hover:text-white transition-colors text-base">
+                  Soporte
+                </a>
+              </li>
+              <li>
+                <button
+                  onClick={() => scrollToSection('cta')}
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
                   Contacto
                 </button>
               </li>
             </ul>
           </div>
 
-          <div className="text-center sm:text-left">
-            <h4 className="font-semibold mb-3 sm:mb-4 text-sm sm:text-base">Empresa</h4>
-            <ul className="space-y-2 text-xs sm:text-sm text-muted-foreground">
+          <div>
+            <h4 className="text-white font-semibold text-lg mb-5">Legal</h4>
+            <ul className="space-y-4">
               <li>
-                <a href="#" className="hover:text-primary transition-smooth">
-                  Sobre nosotros
+                <a
+                  href="#"
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
+                  Terminos de servicio
                 </a>
               </li>
               <li>
-                <a href="#" className="hover:text-primary transition-smooth">
-                  Blog
+                <a
+                  href="#"
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
+                  Privacidad
                 </a>
               </li>
             </ul>
           </div>
         </div>
 
-        <div className="pt-6 sm:pt-8 border-t border-border">
-          <p className="text-center text-xs sm:text-sm text-muted-foreground">
-            © 2025 ViBook. Todos los derechos reservados.
+        {/* Bottom */}
+        <div className="pt-10 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
+          <p className="text-gray-600 text-base">
+            © {new Date().getFullYear()} Vibook. Todos los derechos reservados.
           </p>
+          <div className="flex items-center gap-6">
+            <span className="text-gray-600 text-base">Hecho con ❤️ en Argentina</span>
+          </div>
         </div>
       </div>
     </footer>
-  );
+  )
 }
