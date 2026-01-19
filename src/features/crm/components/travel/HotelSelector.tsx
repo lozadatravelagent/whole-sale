@@ -32,6 +32,7 @@ export function HotelSelector({
   // Exact price states for makeBudget integration
   const [exactPrices, setExactPrices] = useState<Record<string, { price: number; currency: string; budgetId: string }>>({});
   const [loadingPrices, setLoadingPrices] = useState<Record<string, boolean>>({});
+  const [failedPrices, setFailedPrices] = useState<Record<string, boolean>>({});
 
   const handleHotelToggle = (hotel: any) => {
     const isSelected = selectedHotels.some(h => h.id === hotel.id);
@@ -117,9 +118,14 @@ export function HotelSelector({
             budgetId: result.budgetId || ''
           }
         }));
+      } else {
+        // Mark as failed - show "Consultar disponibilidad" in UI
+        setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
       }
     } catch (error) {
       console.error('❌ [EXACT_PRICE] Error:', error);
+      // Mark as failed on error
+      setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
     } finally {
       setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
     }
@@ -271,6 +277,7 @@ export function HotelSelector({
                     maxInitialRooms={3}
                     exactPrices={exactPrices}
                     loadingPrices={loadingPrices}
+                    failedPrices={failedPrices}
                     hotelId={hotel.id}
                     nights={hotel.nights}
                   />

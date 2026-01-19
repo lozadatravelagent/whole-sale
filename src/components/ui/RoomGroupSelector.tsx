@@ -39,6 +39,7 @@ interface RoomGroupSelectorProps {
     // New props for exact price display
     exactPrices?: Record<string, ExactPriceData>;
     loadingPrices?: Record<string, boolean>;
+    failedPrices?: Record<string, boolean>; // Rooms where makeBudget failed
     hotelId?: string;
     nights?: number; // Number of nights for per-night price calculation
 }
@@ -53,6 +54,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     requestedMealPlan,
     exactPrices = {},
     loadingPrices = {},
+    failedPrices = {},
     hotelId = '',
     nights
 }) => {
@@ -68,6 +70,12 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     const isLoadingPrice = (roomId: string): boolean => {
         const priceKey = `${hotelId}-${roomId}`;
         return loadingPrices[priceKey] || false;
+    };
+
+    // Helper to check if price fetch failed for a room (needs availability check)
+    const isPriceFailed = (roomId: string): boolean => {
+        const priceKey = `${hotelId}-${roomId}`;
+        return failedPrices[priceKey] || false;
     };
 
     // Helper to calculate per-night price from exact total price
@@ -315,7 +323,11 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                                     <span className="font-medium text-sm">
                                                                         {formatPrice(room.price_per_night, room.currency)}
                                                                     </span>
-                                                                    {exactPrice ? (
+                                                                    {isPriceFailed(room.occupancy_id) ? (
+                                                                        <Badge variant="outline" className="text-[10px] px-1 py-0 bg-yellow-50 text-yellow-700 border-yellow-200">
+                                                                            Consultar disponibilidad
+                                                                        </Badge>
+                                                                    ) : exactPrice ? (
                                                                         <span className="text-[10px] text-muted-foreground">(aprox. por noche)</span>
                                                                     ) : room.fare_id_broker ? (
                                                                         <span className="text-[10px] text-muted-foreground">(aprox.)</span>

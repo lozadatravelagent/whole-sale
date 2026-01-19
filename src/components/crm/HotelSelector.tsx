@@ -41,6 +41,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
   // Exact price states for makeBudget integration
   const [exactPrices, setExactPrices] = useState<Record<string, { price: number; currency: string; budgetId: string }>>({});
   const [loadingPrices, setLoadingPrices] = useState<Record<string, boolean>>({});
+  const [failedPrices, setFailedPrices] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   console.log('🎯 HotelSelector rendered with hotels:', hotels.length);
@@ -144,9 +145,13 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
         }));
       } else {
         console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', result.error);
+        // Mark as failed - show "Consultar disponibilidad" in UI
+        setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
       }
     } catch (error) {
       console.error('❌ [EXACT_PRICE] Error getting exact price:', error);
+      // Mark as failed on error
+      setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
     } finally {
       setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
     }
@@ -329,6 +334,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                     maxInitialRooms={4}
                     exactPrices={exactPrices}
                     loadingPrices={loadingPrices}
+                    failedPrices={failedPrices}
                     hotelId={hotel.id}
                     nights={hotel.nights}
                   />

@@ -358,6 +358,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   // Exact price states for makeBudget integration
   const [exactPrices, setExactPrices] = useState<Record<string, { price: number; currency: string; budgetId: string }>>({});
   const [loadingPrices, setLoadingPrices] = useState<Record<string, boolean>>({});
+  const [failedPrices, setFailedPrices] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
 
@@ -534,11 +535,13 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         }));
       } else {
         console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', result.error);
-        // Keep using approximate price, no UI change needed
+        // Mark as failed - show "Consultar disponibilidad" in UI
+        setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
       }
     } catch (error) {
       console.error('❌ [EXACT_PRICE] Error getting exact price:', error);
-      // Keep using approximate price on error
+      // Mark as failed on error
+      setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
     } finally {
       setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
     }
@@ -950,6 +953,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       requestedMealPlan={combinedData.requestedMealPlan}
                       exactPrices={exactPrices}
                       loadingPrices={loadingPrices}
+                      failedPrices={failedPrices}
                       hotelId={hotel.id}
                       nights={hotel.nights}
                     />
