@@ -961,9 +961,14 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
     const pricePerNight = nights > 0 ? totalPrice / nights : totalPrice;
     console.log(`🏷️ [NETO AGENCIA PER NIGHT] ${totalPrice.toFixed(2)} / ${nights} nights = ${pricePerNight.toFixed(2)} per night`);
 
-    // Extract OccupancyId from Fare element (use index+1 as fallback)
-    const occupancyId = fareEl.getAttribute('OccupancyId') || (index + 1).toString();
-    console.log(`🔑 [FARE] type=${fareType}, OccupancyId=${occupancyId}, FareIdBroker=${fareIdBroker}`);
+    // Extract OccupancyId from Fare element for makeBudget
+    // Note: OccupancyId in XML is the requested occupancy, not a unique room identifier
+    const xmlOccupancyId = fareEl.getAttribute('OccupancyId') || '1';
+
+    // Use index+1 as unique identifier for UI selection
+    const uniqueRoomId = (index + 1).toString();
+
+    console.log(`🔑 [FARE] type=${fareType}, uniqueRoomId=${uniqueRoomId}, xmlOccupancyId=${xmlOccupancyId}, FareIdBroker=${fareIdBroker}`);
 
     return {
       type: roomType,
@@ -972,7 +977,8 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
       total_price: totalPrice, // NETO AGENCIA: (Base - 15% comisión) + gastos + IVA
       currency: currency,
       availability: availability,
-      occupancy_id: occupancyId,
+      occupancy_id: uniqueRoomId,
+      xml_occupancy_id: xmlOccupancyId,
       fare_id_broker: fareIdBroker
     };
   } catch (error) {

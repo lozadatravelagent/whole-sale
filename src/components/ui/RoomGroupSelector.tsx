@@ -7,6 +7,7 @@ import { translateRoomDescription } from '@/features/chat/utils/translations';
 
 interface Room {
     occupancy_id: string;
+    xml_occupancy_id?: string; // Real OccupancyId from XML for makeBudget
     type: string;
     description?: string;
     total_price: number;

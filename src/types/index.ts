@@ -360,6 +360,7 @@ export interface HotelRoom {
   currency: string;
   availability: number;
   occupancy_id: string;
+  xml_occupancy_id?: string; // Real OccupancyId from XML for makeBudget
   fare_id_broker?: string;
   // Occupancy info from SOAP Ocuppancy node (more reliable than type attribute)
   adults?: number;

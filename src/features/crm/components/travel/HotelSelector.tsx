@@ -95,13 +95,14 @@ export function HotelSelector({
       const passengers = buildPassengerList(adults, children, infants);
 
       // 8. Call makeBudget
+      // Use xml_occupancy_id (from EUROVIPS XML) for makeBudget, fallback to occupancy_id
       const result = await makeBudget({
         fareId: hotel.unique_id,
         fareIdBroker: room.fare_id_broker,
         checkinDate: hotel.check_in,
         checkoutDate: hotel.check_out,
         occupancies: [{
-          occupancyId: room.occupancy_id,
+          occupancyId: room.xml_occupancy_id || room.occupancy_id,
           passengers
         }]
       });
