@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -7,6 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { HotelData } from '@/types';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
+import { makeBudget, buildPassengerList } from '@/services/hotelSearch';
 import {
   Hotel,
   MapPin,
@@ -37,6 +38,9 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
   const [selectedHotels, setSelectedHotels] = useState<string[]>([]);
   const [selectedRooms, setSelectedRooms] = useState<Record<string, string>>({});
   const [isGenerating, setIsGenerating] = useState(false);
+  // Exact price states for makeBudget integration
+  const [exactPrices, setExactPrices] = useState<Record<string, { price: number; currency: string; budgetId: string }>>({});
+  const [loadingPrices, setLoadingPrices] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   console.log('🎯 HotelSelector rendered with hotels:', hotels.length);
@@ -76,12 +80,76 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
     });
   };
 
-  const handleRoomSelection = (hotelId: string, roomOccupancyId: string) => {
+  const handleRoomSelection = useCallback(async (hotelId: string, roomOccupancyId: string) => {
+    // 1. Update selection immediately for responsive UI
     setSelectedRooms(prev => ({
       ...prev,
       [hotelId]: roomOccupancyId
     }));
-  };
+
+    // 2. Find hotel and room data
+    const hotel = hotels.find(h => h.id === hotelId);
+    const room = hotel?.rooms.find(r => r.occupancy_id === roomOccupancyId);
+
+    // 3. Check if we have required data for makeBudget
+    if (!room?.fare_id_broker || !hotel?.unique_id) {
+      console.log('⚠️ [EXACT_PRICE] Missing fare_id_broker or unique_id, skipping makeBudget');
+      return;
+    }
+
+    // 4. Generate price key for caching
+    const priceKey = `${hotelId}-${roomOccupancyId}`;
+
+    // 5. Check if we already have exact price cached
+    if (exactPrices[priceKey]) {
+      console.log('✅ [EXACT_PRICE] Already have exact price for:', priceKey);
+      return;
+    }
+
+    // 6. Show loading state
+    setLoadingPrices(prev => ({ ...prev, [priceKey]: true }));
+
+    try {
+      console.log('💰 [EXACT_PRICE] Calling makeBudget for hotel:', hotel.name);
+
+      // 7. Build passenger list from hotel search params or room data
+      const adults = room.adults || hotel.search_adults || 1;
+      const children = room.children || hotel.search_children || 0;
+      const infants = room.infants || 0;
+      const passengers = buildPassengerList(adults, children, infants);
+
+      // 8. Call makeBudget
+      const result = await makeBudget({
+        fareId: hotel.unique_id,
+        fareIdBroker: room.fare_id_broker,
+        checkinDate: hotel.check_in,
+        checkoutDate: hotel.check_out,
+        occupancies: [{
+          occupancyId: room.occupancy_id,
+          passengers
+        }]
+      });
+
+      // 9. Save exact price if successful
+      if (result.success && result.subTotalAmount && result.subTotalAmount > 0) {
+        console.log('✅ [EXACT_PRICE] Got exact price:', result.subTotalAmount, result.currency);
+        setExactPrices(prev => ({
+          ...prev,
+          [priceKey]: {
+            price: result.subTotalAmount!,
+            currency: result.currency || 'USD',
+            budgetId: result.budgetId || ''
+          }
+        }));
+      } else {
+        console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', result.error);
+      }
+    } catch (error) {
+      console.error('❌ [EXACT_PRICE] Error getting exact price:', error);
+    } finally {
+      setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
+    }
+  }, [hotels, exactPrices]);
 
   const handleGeneratePdf = async () => {
     if (selectedHotels.length === 0) {
@@ -258,6 +326,9 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                     }}
                     isDisabled={!isSelected}
                     maxInitialRooms={4}
+                    exactPrices={exactPrices}
+                    loadingPrices={loadingPrices}
+                    hotelId={hotel.id}
                   />
                 )}
 
