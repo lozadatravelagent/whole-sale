@@ -1,0 +1,611 @@
+{
+  "metadata": {
+    "version": "2.0",
+    "description": "Comprehensive patterns for detecting price change requests for Option 1 and Option 2 in PDF quotes",
+    "language": "Spanish (Argentina - Rioplatense)",
+    "updated": "2025-12-20"
+  },
+
+  "option_1_keywords": {
+    "description": "Keywords and phrases that indicate price changes for Option 1 (economic/cheapest option)",
+    "by_intention": {
+      "set_specific_price": [
+        "opción 1",
+        "opcion 1",
+        "la opción 1",
+        "la opcion 1",
+        "opción económica",
+        "opcion economica",
+        "la opción económica",
+        "la economica",
+        "precio económico",
+        "precio economico",
+        "la primera opción",
+        "la primera opcion",
+        "primer opción",
+        "primer opcion",
+        "opción uno",
+        "opcion uno"
+      ],
+      "indirect_references": [
+        "la primera",
+        "el primero",
+        "la más barata",
+        "la mas barata",
+        "la económica",
+        "la economica",
+        "la de arriba",
+        "la que sale menos",
+        "la más económica",
+        "la mas economica",
+        "esa opción",
+        "esa opcion",
+        "esta opción",
+        "esta opcion"
+      ],
+      "increase": [
+        "subí el precio de la opción 1",
+        "subi el precio de la opcion 1",
+        "aumentá la primera",
+        "aumenta la primera",
+        "que la opción 1 cueste más",
+        "hacé más cara la primera",
+        "hace mas cara la primera"
+      ],
+      "decrease": [
+        "bajá el precio de la opción 1",
+        "baja el precio de la opcion 1",
+        "reducí la primera",
+        "reduci la primera",
+        "que la opción 1 cueste menos",
+        "hacé más barata la primera",
+        "hace mas barata la primera",
+        "descontá de la primera",
+        "desconta de la primera"
+      ],
+      "discount_promo": [
+        "aplicá descuento a la opción 1",
+        "aplica descuento a la opcion 1",
+        "hacé promo en la primera",
+        "hace promo en la primera",
+        "oferta en la opción 1",
+        "rebajá la primera",
+        "rebaja la primera"
+      ],
+      "recalculate_update": [
+        "actualizá la opción 1",
+        "actualiza la opcion 1",
+        "modificá la primera",
+        "modifica la primera",
+        "ajustá el precio de la opción 1",
+        "ajusta el precio de la opcion 1",
+        "corregí la primera",
+        "corregi la primera"
+      ]
+    }
+  },
+
+  "option_2_keywords": {
+    "description": "Keywords and phrases that indicate price changes for Option 2 (premium/most expensive option)",
+    "by_intention": {
+      "set_specific_price": [
+        "opción 2",
+        "opcion 2",
+        "la opción 2",
+        "la opcion 2",
+        "opción premium",
+        "opcion premium",
+        "la opción premium",
+        "la premium",
+        "precio premium",
+        "la segunda opción",
+        "la segunda opcion",
+        "segunda opción",
+        "segunda opcion",
+        "opción dos",
+        "opcion dos"
+      ],
+      "indirect_references": [
+        "la segunda",
+        "el segundo",
+        "la más cara",
+        "la mas cara",
+        "la premium",
+        "la de abajo",
+        "la que sale más",
+        "la que sale mas",
+        "la más costosa",
+        "la mas costosa",
+        "esa opción",
+        "esa opcion",
+        "esta opción",
+        "esta opcion"
+      ],
+      "increase": [
+        "subí el precio de la opción 2",
+        "subi el precio de la opcion 2",
+        "aumentá la segunda",
+        "aumenta la segunda",
+        "que la opción 2 cueste más",
+        "hacé más cara la segunda",
+        "hace mas cara la segunda"
+      ],
+      "decrease": [
+        "bajá el precio de la opción 2",
+        "baja el precio de la opcion 2",
+        "reducí la segunda",
+        "reduci la segunda",
+        "que la opción 2 cueste menos",
+        "hacé más barata la segunda",
+        "hace mas barata la segunda",
+        "descontá de la segunda",
+        "desconta de la segunda"
+      ],
+      "discount_promo": [
+        "aplicá descuento a la opción 2",
+        "aplica descuento a la opcion 2",
+        "hacé promo en la segunda",
+        "hace promo en la segunda",
+        "oferta en la opción 2",
+        "rebajá la segunda",
+        "rebaja la segunda"
+      ],
+      "recalculate_update": [
+        "actualizá la opción 2",
+        "actualiza la opcion 2",
+        "modificá la segunda",
+        "modifica la segunda",
+        "ajustá el precio de la opción 2",
+        "ajusta el precio de la opcion 2",
+        "corregí la segunda",
+        "corregi la segunda"
+      ]
+    }
+  },
+
+  "shared_keywords": {
+    "description": "Common keywords that apply to both options - must be combined with option-specific keywords",
+    "change_verbs": [
+      "cambia",
+      "cambiar",
+      "cambiá",
+      "modificá",
+      "modifica",
+      "modificar",
+      "actualizá",
+      "actualiza",
+      "actualizar",
+      "ajustá",
+      "ajusta",
+      "ajustar",
+      "poné",
+      "pone",
+      "poner",
+      "establecé",
+      "establece",
+      "establecer",
+      "seteá",
+      "setea",
+      "setear",
+      "dejá",
+      "deja",
+      "dejar"
+    ],
+    "increase_verbs": [
+      "subí",
+      "sube",
+      "subir",
+      "aumentá",
+      "aumenta",
+      "aumentar",
+      "incrementá",
+      "incrementa",
+      "incrementar",
+      "elevá",
+      "eleva",
+      "elevar"
+    ],
+    "decrease_verbs": [
+      "bajá",
+      "baja",
+      "bajar",
+      "reducí",
+      "reduce",
+      "reducir",
+      "disminuí",
+      "disminuye",
+      "disminuir",
+      "descontá",
+      "desconta",
+      "descontar",
+      "rebajá",
+      "rebaja",
+      "rebajar"
+    ],
+    "price_nouns": [
+      "precio",
+      "total",
+      "monto",
+      "importe",
+      "valor",
+      "costo",
+      "tarifa"
+    ],
+    "connectors": [
+      "a",
+      "en",
+      "por",
+      "de",
+      "que quede en",
+      "que sea",
+      "que cueste"
+    ],
+    "currencies": {
+      "usd": ["USD", "usd", "dólares", "dolares", "dólar", "dolar", "$", "U$D", "u$d"],
+      "ars": ["ARS", "ars", "pesos", "peso", "$", "AR$", "ar$"]
+    },
+    "number_formats": [
+      "1000",
+      "1.000",
+      "1,000",
+      "1.000,00",
+      "1,000.00",
+      "$1000",
+      "$ 1000",
+      "1000 USD",
+      "USD 1000"
+    ]
+  },
+
+  "negative_keywords": {
+    "description": "Phrases that look like price changes but should NOT trigger the price change function",
+    "false_positives": [
+      "cual es el precio",
+      "cuál es el precio",
+      "decime el precio",
+      "mostrame el precio",
+      "mostrá el precio",
+      "qué precio tiene",
+      "que precio tiene",
+      "cuánto sale",
+      "cuanto sale",
+      "cuánto cuesta",
+      "cuanto cuesta",
+      "precio actual",
+      "ver precio",
+      "consultar precio",
+      "comparar precios",
+      "diferencia de precio",
+      "por qué el precio",
+      "porque el precio",
+      "explicame el precio",
+      "explicá el precio",
+      "precio incluye",
+      "está incluido en el precio",
+      "esta incluido en el precio"
+    ],
+    "informational_requests": [
+      "cual es la diferencia entre opción 1 y 2",
+      "cuál es la diferencia entre opcion 1 y 2",
+      "qué incluye la opción 1",
+      "que incluye la opcion 1",
+      "qué incluye la opción 2",
+      "que incluye la opcion 2",
+      "comparame las opciones",
+      "compará las opciones"
+    ]
+  },
+
+  "regex_patterns": {
+    "description": "Regular expressions to detect price changes with specific amounts",
+    "patterns": [
+      {
+        "name": "option_1_explicit_price",
+        "regex": "(?:opci[oó]n|opcion)\\s+1\\s+(?:a|en|que\\s+(?:cueste|quede|sea))\\s*(?:\\$|USD|usd)?\\s*(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)",
+        "description": "Detects 'opción 1 a 5000' or 'opción 1 que cueste $5000'",
+        "capture_group": 1,
+        "target": "option_1"
+      },
+      {
+        "name": "option_2_explicit_price",
+        "regex": "(?:opci[oó]n|opcion)\\s+2\\s+(?:a|en|que\\s+(?:cueste|quede|sea))\\s*(?:\\$|USD|usd)?\\s*(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)",
+        "description": "Detects 'opción 2 a 8000' or 'opción 2 que cueste $8000'",
+        "capture_group": 1,
+        "target": "option_2"
+      },
+      {
+        "name": "option_economic_price",
+        "regex": "(?:opci[oó]n|opcion)?\\s*(?:econ[oó]mica|economica)\\s+(?:a|en|que\\s+(?:cueste|quede|sea))\\s*(?:\\$|USD|usd)?\\s*(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)",
+        "description": "Detects 'opción económica a 4500' or 'económica en $4500'",
+        "capture_group": 1,
+        "target": "option_1"
+      },
+      {
+        "name": "option_premium_price",
+        "regex": "(?:opci[oó]n|opcion)?\\s*premium\\s+(?:a|en|que\\s+(?:cueste|quede|sea))\\s*(?:\\$|USD|usd)?\\s*(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)",
+        "description": "Detects 'opción premium a 9000' or 'premium en $9000'",
+        "capture_group": 1,
+        "target": "option_2"
+      },
+      {
+        "name": "change_price_option_1",
+        "regex": "(?:cambi[aá]|modific[aá]|actualiz[aá]|ajust[aá]|pon[eé])\\s+(?:el\\s+)?precio\\s+(?:de\\s+)?(?:la\\s+)?(?:opci[oó]n|opcion)\\s+1\\s+(?:a|en|por)\\s*(?:\\$|USD|usd)?\\s*(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)",
+        "description": "Detects 'cambia el precio de la opción 1 a 5000'",
+        "capture_group": 1,
+        "target": "option_1"
+      },
+      {
+        "name": "change_price_option_2",
+        "regex": "(?:cambi[aá]|modific[aá]|actualiz[aá]|ajust[aá]|pon[eé])\\s+(?:el\\s+)?precio\\s+(?:de\\s+)?(?:la\\s+)?(?:opci[oó]n|opcion)\\s+2\\s+(?:a|en|por)\\s*(?:\\$|USD|usd)?\\s*(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)",
+        "description": "Detects 'cambia el precio de la opción 2 a 8000'",
+        "capture_group": 1,
+        "target": "option_2"
+      },
+      {
+        "name": "indirect_first_option",
+        "regex": "(?:cambi[aá]|modific[aá])\\s+(?:el\\s+precio\\s+de\\s+)?(?:la\\s+)?(?:primera|m[aá]s\\s+barata|econ[oó]mica)\\s+(?:a|en|por)\\s*(?:\\$|USD|usd)?\\s*(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)",
+        "description": "Detects 'cambia la primera a 5000' or 'cambia la más barata a 5000'",
+        "capture_group": 1,
+        "target": "option_1"
+      },
+      {
+        "name": "indirect_second_option",
+        "regex": "(?:cambi[aá]|modific[aá])\\s+(?:el\\s+precio\\s+de\\s+)?(?:la\\s+)?(?:segunda|m[aá]s\\s+cara|premium)\\s+(?:a|en|por)\\s*(?:\\$|USD|usd)?\\s*(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)",
+        "description": "Detects 'cambia la segunda a 8000' or 'cambia la más cara a 8000'",
+        "capture_group": 1,
+        "target": "option_2"
+      },
+      {
+        "name": "percentage_increase_option_1",
+        "regex": "(?:sum[aá]|aument[aá]|increment[aá])\\s+(?:un\\s+)?(\\d{1,3})%\\s+(?:a\\s+)?(?:la\\s+)?(?:opci[oó]n|opcion)\\s+1",
+        "description": "Detects 'sumá 10% a la opción 1' or 'aumentá un 15% la opción 1'",
+        "capture_group": 1,
+        "target": "option_1",
+        "operation": "percent_increase"
+      },
+      {
+        "name": "percentage_decrease_option_2",
+        "regex": "(?:rest[aá]|baj[aá]|reduc[ií]|descont[aá])\\s+(?:un\\s+)?(\\d{1,3})%\\s+(?:a\\s+)?(?:la\\s+)?(?:opci[oó]n|opcion)\\s+2",
+        "description": "Detects 'restá 10% a la opción 2' or 'bajá un 20% la opción 2'",
+        "capture_group": 1,
+        "target": "option_2",
+        "operation": "percent_decrease"
+      },
+      {
+        "name": "absolute_increase",
+        "regex": "(?:sum[aá]le|aument[aá]le)\\s+(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)\\s+(?:a\\s+)?(?:la\\s+)?(?:opci[oó]n|opcion)\\s+([12])",
+        "description": "Detects 'sumale 500 a la opción 1' or 'aumentále 1000 a la opción 2'",
+        "capture_groups": [1, 2],
+        "operation": "absolute_increase"
+      },
+      {
+        "name": "absolute_decrease",
+        "regex": "(?:rest[aá]le|baj[aá]le|descont[aá]le)\\s+(\\d{1,10}(?:[.,]\\d{1,3})+|\\d+)\\s+(?:a\\s+)?(?:la\\s+)?(?:opci[oó]n|opcion)\\s+([12])",
+        "description": "Detects 'restale 300 a la opción 1' or 'bajale 700 a la opción 2'",
+        "capture_groups": [1, 2],
+        "operation": "absolute_decrease"
+      }
+    ]
+  },
+
+  "examples": {
+    "description": "Real-world examples with expected behavior",
+    "test_cases": [
+      {
+        "id": 1,
+        "user_message": "cambia el precio de la opción 1 a 5000",
+        "option_target": 1,
+        "should_trigger": true,
+        "extracted_price": 5000,
+        "currency": "USD",
+        "operation": "set_specific_price",
+        "notes": "Most common pattern - explicit option number with price"
+      },
+      {
+        "id": 2,
+        "user_message": "cambia el precio de la opcion 2 a 8500",
+        "option_target": 2,
+        "should_trigger": true,
+        "extracted_price": 8500,
+        "currency": "USD",
+        "operation": "set_specific_price",
+        "notes": "Without accent marks (común en español informal)"
+      },
+      {
+        "id": 3,
+        "user_message": "modificá la opción económica a $4.200",
+        "option_target": 1,
+        "should_trigger": true,
+        "extracted_price": 4200,
+        "currency": "USD",
+        "operation": "set_specific_price",
+        "notes": "Using 'económica' as alias for option 1 + thousand separator"
+      },
+      {
+        "id": 4,
+        "user_message": "actualizá la premium a 9000 USD",
+        "option_target": 2,
+        "should_trigger": true,
+        "extracted_price": 9000,
+        "currency": "USD",
+        "operation": "set_specific_price",
+        "notes": "Using 'premium' as alias for option 2"
+      },
+      {
+        "id": 5,
+        "user_message": "cambia la primera a 3500",
+        "option_target": 1,
+        "should_trigger": true,
+        "extracted_price": 3500,
+        "currency": "USD",
+        "operation": "set_specific_price",
+        "notes": "Indirect reference using 'la primera' (requires context)"
+      },
+      {
+        "id": 6,
+        "user_message": "poné la más cara en 12000",
+        "option_target": 2,
+        "should_trigger": true,
+        "extracted_price": 12000,
+        "currency": "USD",
+        "operation": "set_specific_price",
+        "notes": "Indirect reference using 'la más cara' (requires sorting by price)"
+      },
+      {
+        "id": 7,
+        "user_message": "sumale 500 a la opción 1",
+        "option_target": 1,
+        "should_trigger": true,
+        "extracted_price": 500,
+        "currency": "USD",
+        "operation": "absolute_increase",
+        "notes": "Relative adjustment - add $500 to current price"
+      },
+      {
+        "id": 8,
+        "user_message": "bajale 1000 a la opción 2",
+        "option_target": 2,
+        "should_trigger": true,
+        "extracted_price": 1000,
+        "currency": "USD",
+        "operation": "absolute_decrease",
+        "notes": "Relative adjustment - subtract $1000 from current price"
+      },
+      {
+        "id": 9,
+        "user_message": "aumentá 15% la opción económica",
+        "option_target": 1,
+        "should_trigger": true,
+        "extracted_price": 15,
+        "currency": "percent",
+        "operation": "percent_increase",
+        "notes": "Percentage increase"
+      },
+      {
+        "id": 10,
+        "user_message": "hacé un descuento del 20% en la premium",
+        "option_target": 2,
+        "should_trigger": true,
+        "extracted_price": 20,
+        "currency": "percent",
+        "operation": "percent_decrease",
+        "notes": "Percentage decrease using discount terminology"
+      },
+      {
+        "id": 11,
+        "user_message": "cuál es el precio de la opción 1?",
+        "option_target": null,
+        "should_trigger": false,
+        "extracted_price": null,
+        "currency": null,
+        "operation": null,
+        "notes": "Informational question - should NOT trigger price change"
+      },
+      {
+        "id": 12,
+        "user_message": "la opción 1 incluye desayuno?",
+        "option_target": null,
+        "should_trigger": false,
+        "extracted_price": null,
+        "currency": null,
+        "operation": null,
+        "notes": "Question about option contents - NOT a price change"
+      },
+      {
+        "id": 13,
+        "user_message": "cambia opción 1 a 0",
+        "option_target": 1,
+        "should_trigger": false,
+        "extracted_price": 0,
+        "currency": "USD",
+        "operation": "set_specific_price",
+        "notes": "Edge case - price of 0 should be rejected as invalid"
+      },
+      {
+        "id": 14,
+        "user_message": "opción 1 en 2.549,32 USD",
+        "option_target": 1,
+        "should_trigger": true,
+        "extracted_price": 2549.32,
+        "currency": "USD",
+        "operation": "set_specific_price",
+        "notes": "Decimal price with thousand separator (European format)"
+      },
+      {
+        "id": 15,
+        "user_message": "que la segunda opción quede en 7,800 dólares",
+        "option_target": 2,
+        "should_trigger": true,
+        "extracted_price": 7800,
+        "currency": "USD",
+        "operation": "set_specific_price",
+        "notes": "Alternative verb 'quede' + decimal separator"
+      }
+    ]
+  },
+
+  "disambiguation_rules": {
+    "description": "Rules to determine which option when user doesn't explicitly mention option 1 or 2",
+    "priority_order": [
+      {
+        "rank": 1,
+        "rule": "explicit_option_number",
+        "pattern": "opción [12]",
+        "confidence": "high",
+        "action": "use_explicit_number"
+      },
+      {
+        "rank": 2,
+        "rule": "economic_premium_keywords",
+        "pattern": "económica|económico|premium",
+        "confidence": "high",
+        "action": "map_to_option (económica=1, premium=2)"
+      },
+      {
+        "rank": 3,
+        "rule": "ordinal_references",
+        "pattern": "primera|segundo|primero|segunda",
+        "confidence": "high",
+        "action": "map_to_option (primera/primero=1, segunda/segundo=2)"
+      },
+      {
+        "rank": 4,
+        "rule": "price_comparatives",
+        "pattern": "más barata|más cara|menos costosa|más costosa",
+        "confidence": "medium",
+        "action": "sort_by_price_and_select (barata=min, cara=max)",
+        "requires": "current_prices_available"
+      },
+      {
+        "rank": 5,
+        "rule": "positional_references",
+        "pattern": "de arriba|de abajo|la superior|la inferior",
+        "confidence": "low",
+        "action": "use_display_order",
+        "requires": "visual_context"
+      },
+      {
+        "rank": 6,
+        "rule": "contextual_pronouns",
+        "pattern": "esa|esta|aquella",
+        "confidence": "very_low",
+        "action": "use_conversation_context",
+        "requires": "previous_messages"
+      }
+    ],
+    "fallback_behavior": "If no disambiguation rule matches with medium+ confidence, ask user to clarify: '¿Querés cambiar la Opción 1 o la Opción 2?'"
+  },
+
+  "implementation_notes": {
+    "regex_compilation": "All regex patterns should be compiled with 'gi' flags (global, case-insensitive)",
+    "normalization": "Before matching, normalize text by removing extra spaces, converting to lowercase",
+    "priority": "Apply more specific patterns before generic ones to avoid false matches",
+    "validation": "After extraction, validate: price > 0, price < 100000, option in [1,2]",
+    "edge_cases": [
+      "Handle both European (1.234,56) and American (1,234.56) decimal separators",
+      "Support prices with and without currency symbols",
+      "Handle 'vos' conjugations (cambiá, poné, actualizá) common in Rioplatense Spanish",
+      "Detect when user mentions 'opción 1' in the text but it's just the option identifier in the PDF"
+    ]
+  }
+}

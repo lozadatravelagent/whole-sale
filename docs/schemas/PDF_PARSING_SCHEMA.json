@@ -1,0 +1,456 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PdfAnalysisResult",
+  "description": "Schema for PDF parsing results in WholeSale Connect AI",
+  "type": "object",
+  "required": ["success"],
+  "properties": {
+    "success": {
+      "type": "boolean",
+      "description": "Indicates if PDF parsing was successful"
+    },
+    "content": {
+      "type": "object",
+      "description": "Extracted content from PDF",
+      "properties": {
+        "flights": {
+          "type": "array",
+          "description": "Flights extracted from PDF",
+          "items": {
+            "$ref": "#/definitions/ExtractedFlight"
+          }
+        },
+        "hotels": {
+          "type": "array",
+          "description": "Hotels extracted from PDF",
+          "items": {
+            "$ref": "#/definitions/ExtractedHotel"
+          }
+        },
+        "totalPrice": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Total calculated or extracted price"
+        },
+        "currency": {
+          "type": "string",
+          "enum": ["USD", "EUR", "ARS", "BRL", "MXN", "COP", "CLP", "PEN"],
+          "default": "USD",
+          "description": "Currency code (ISO 4217)"
+        },
+        "passengers": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 1,
+          "description": "Total number of passengers"
+        },
+        "originalTemplate": {
+          "type": "string",
+          "enum": [
+            "3E8394AC-84D4-4286-A1CD-A12D1AB001D5",
+            "30B142BF-1DD9-432D-8261-5287556DC9FC",
+            "67B7F3A5-7BFE-4F52-BE6B-110371CB9376"
+          ],
+          "description": "PDFMonkey template ID used to generate this PDF"
+        },
+        "needsComplexTemplate": {
+          "type": "boolean",
+          "description": "Whether this PDF requires complex flight template (roundtrip + layovers)"
+        },
+        "extractedFromPdfMonkey": {
+          "type": "boolean",
+          "description": "true = our template, false = external PDF"
+        }
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "description": "Contextual suggestions for the user",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10
+    },
+    "error": {
+      "type": "string",
+      "description": "Error message if success = false"
+    },
+    "_validation": {
+      "$ref": "#/definitions/ValidationMetadata",
+      "description": "Validation metadata (internal use)"
+    }
+  },
+  "definitions": {
+    "ExtractedFlight": {
+      "type": "object",
+      "required": ["airline", "route", "price", "dates"],
+      "properties": {
+        "airline": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Airline name or code + name (e.g., 'AA American Airlines')"
+        },
+        "route": {
+          "type": "string",
+          "pattern": "^[A-Z]{3} → [A-Z]{3}$",
+          "description": "Route in format 'XXX → YYY' (IATA codes)"
+        },
+        "price": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50000,
+          "description": "Flight price in specified currency"
+        },
+        "dates": {
+          "type": "string",
+          "description": "Departure date (ISO 8601) or date range"
+        },
+        "departureTime": {
+          "type": "string",
+          "pattern": "^\\d{2}:\\d{2}$",
+          "description": "Departure time in HH:MM format"
+        },
+        "arrivalTime": {
+          "type": "string",
+          "pattern": "^\\d{2}:\\d{2}$",
+          "description": "Arrival time in HH:MM format"
+        },
+        "originCode": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Origin airport IATA code"
+        },
+        "destinationCode": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Destination airport IATA code"
+        },
+        "originCity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Origin city name"
+        },
+        "destinationCity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Destination city name"
+        },
+        "legs": {
+          "type": "array",
+          "description": "Flight legs (segments)",
+          "items": {
+            "$ref": "#/definitions/FlightLeg"
+          }
+        }
+      }
+    },
+    "FlightLeg": {
+      "type": "object",
+      "required": ["departure", "arrival", "duration", "flight_type"],
+      "properties": {
+        "departure": {
+          "$ref": "#/definitions/AirportInfo"
+        },
+        "arrival": {
+          "$ref": "#/definitions/AirportInfo"
+        },
+        "duration": {
+          "type": "string",
+          "pattern": "^\\d+h(\\s*\\d+m)?$",
+          "description": "Flight duration (e.g., '8h 30m')"
+        },
+        "flight_type": {
+          "type": "string",
+          "enum": ["outbound", "return"],
+          "description": "Leg type"
+        },
+        "price": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Price for this specific leg (if available)"
+        },
+        "airline": {
+          "type": "string",
+          "description": "Airline for this leg (may differ from main flight)"
+        },
+        "layovers": {
+          "type": "array",
+          "description": "Layovers during this leg",
+          "items": {
+            "$ref": "#/definitions/LayoverInfo"
+          }
+        }
+      }
+    },
+    "AirportInfo": {
+      "type": "object",
+      "required": ["city_code", "city_name", "time"],
+      "properties": {
+        "city_code": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "IATA airport code"
+        },
+        "city_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "City name"
+        },
+        "time": {
+          "type": "string",
+          "pattern": "^\\d{2}:\\d{2}$",
+          "description": "Time in HH:MM format"
+        }
+      }
+    },
+    "LayoverInfo": {
+      "type": "object",
+      "required": ["destination_city", "destination_code", "waiting_time"],
+      "properties": {
+        "destination_city": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Layover city name"
+        },
+        "destination_code": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Layover airport IATA code"
+        },
+        "waiting_time": {
+          "type": "string",
+          "pattern": "^\\d+h(\\s*\\d+m)?$",
+          "description": "Waiting time at layover (e.g., '2h 30m')"
+        }
+      }
+    },
+    "ExtractedHotel": {
+      "type": "object",
+      "required": ["name", "location", "price", "nights"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hotel name (may include '(Opción X)' suffix for package options)"
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Hotel location (city, country)"
+        },
+        "price": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50000,
+          "description": "Total hotel price for all nights"
+        },
+        "nights": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 365,
+          "description": "Number of nights"
+        }
+      }
+    },
+    "ValidationMetadata": {
+      "type": "object",
+      "description": "Validation metadata for internal use",
+      "properties": {
+        "overallConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Overall confidence score (0.0 - 1.0)"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ValidationError"
+          }
+        },
+        "confidenceScores": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FieldConfidence"
+          }
+        }
+      }
+    },
+    "ValidationError": {
+      "type": "object",
+      "required": ["field", "severity", "message"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "Field path (e.g., 'flights[0].route')"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["fatal", "recoverable", "warning"],
+          "description": "Error severity"
+        },
+        "message": {
+          "type": "string",
+          "description": "Error message"
+        },
+        "suggestedFix": {
+          "type": "string",
+          "description": "Suggested fix (optional)"
+        }
+      }
+    },
+    "FieldConfidence": {
+      "type": "object",
+      "required": ["field", "value", "confidence", "extractionMethod"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "Field path"
+        },
+        "value": {
+          "description": "Extracted value (any type)"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Confidence score (0.0 - 1.0)"
+        },
+        "extractionMethod": {
+          "type": "string",
+          "enum": ["pattern_match", "fallback", "inferred", "calculated"],
+          "description": "How the value was extracted"
+        },
+        "source": {
+          "type": "string",
+          "description": "Source pattern/function that extracted this value"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "success": true,
+      "content": {
+        "flights": [
+          {
+            "airline": "AA American Airlines",
+            "route": "EZE → MIA",
+            "price": 714.93,
+            "dates": "2025-01-15",
+            "departureTime": "08:35",
+            "arrivalTime": "16:40",
+            "originCode": "EZE",
+            "destinationCode": "MIA",
+            "originCity": "Buenos Aires",
+            "destinationCity": "Miami",
+            "legs": [
+              {
+                "departure": {
+                  "city_code": "EZE",
+                  "city_name": "Buenos Aires",
+                  "time": "08:35"
+                },
+                "arrival": {
+                  "city_code": "MIA",
+                  "city_name": "Miami",
+                  "time": "16:40"
+                },
+                "duration": "8h 5m",
+                "flight_type": "outbound",
+                "price": 714.93,
+                "airline": "AA American Airlines",
+                "layovers": []
+              }
+            ]
+          },
+          {
+            "airline": "AA American Airlines",
+            "route": "MIA → EZE",
+            "price": 714.93,
+            "dates": "2025-01-22",
+            "departureTime": "18:00",
+            "arrivalTime": "06:30",
+            "originCode": "MIA",
+            "destinationCode": "EZE",
+            "originCity": "Miami",
+            "destinationCity": "Buenos Aires",
+            "legs": [
+              {
+                "departure": {
+                  "city_code": "MIA",
+                  "city_name": "Miami",
+                  "time": "18:00"
+                },
+                "arrival": {
+                  "city_code": "EZE",
+                  "city_name": "Buenos Aires",
+                  "time": "06:30"
+                },
+                "duration": "9h 30m",
+                "flight_type": "return",
+                "price": 714.93,
+                "airline": "AA American Airlines",
+                "layovers": []
+              }
+            ]
+          }
+        ],
+        "hotels": [
+          {
+            "name": "SOLYMAR BEACH RESORT (Opción 1)",
+            "location": "Punta Cana, República Dominicana",
+            "price": 450.50,
+            "nights": 7
+          },
+          {
+            "name": "GRAND PALLADIUM (Opción 2)",
+            "location": "Punta Cana, República Dominicana",
+            "price": 680.00,
+            "nights": 7
+          }
+        ],
+        "totalPrice": 1165.43,
+        "currency": "USD",
+        "passengers": 2,
+        "originalTemplate": "3E8394AC-84D4-4286-A1CD-A12D1AB001D5",
+        "needsComplexTemplate": false,
+        "extractedFromPdfMonkey": true
+      },
+      "suggestions": [
+        "Como este PDF fue generado por nuestro sistema, puedo regenerarlo con cualquier precio que especifiques",
+        "Mantendré todos los detalles originales: vuelos, hoteles, fechas, pasajeros",
+        "Solo cambiaré los precios según tu solicitud"
+      ],
+      "_validation": {
+        "overallConfidence": 0.92,
+        "warnings": [],
+        "confidenceScores": [
+          {
+            "field": "flights[0].airline",
+            "value": "AA American Airlines",
+            "confidence": 0.95,
+            "extractionMethod": "pattern_match",
+            "source": "Pattern 0: ✈\\s*Vuelos\\s+([A-Z0-9]{2,3})\\s+([A-Z][A-Za-z\\s\\.]+?)"
+          },
+          {
+            "field": "flights[0].price",
+            "value": 714.93,
+            "confidence": 0.90,
+            "extractionMethod": "calculated",
+            "source": "Sum of leg prices"
+          },
+          {
+            "field": "hotels[0].price",
+            "value": 450.50,
+            "confidence": 0.85,
+            "extractionMethod": "pattern_match",
+            "source": "Pattern 1: Precio:\\s*\\$?\\s*(\\d+[.,\\d]*)\\s*USD"
+          }
+        ]
+      }
+    }
+  ]
+}
