@@ -1,4 +1,30 @@
 import { HotelData, HotelRoom, HotelSearchParams } from '@/types';
+import { getCityCode } from '@/services/cityCodeMapping';
+
+// ===== MAKE BUDGET TYPES =====
+export interface MakeBudgetParams {
+  fareId: string;           // UniqueId del hotel (ej: "AP|5168-59588")
+  fareIdBroker: string;     // FareIdBroker de la habitación seleccionada
+  checkinDate: string;      // Fecha check-in YYYY-MM-DD
+  checkoutDate: string;     // Fecha check-out YYYY-MM-DD
+  occupancies: Array<{
+    occupancyId: string;
+    passengers: Array<{ type: 'ADT' | 'CHD' | 'INF'; age?: number }>
+  }>;
+  reference?: string;       // Referencia opcional para tracking
+}
+
+export interface MakeBudgetResponse {
+  success: boolean;
+  budgetId?: string;
+  subTotalAmount?: number;  // NETO AGENCIA EXACTO
+  totalAmount?: number;
+  fareIdInternal?: string;
+  currency?: string;
+  error?: string;
+  errorCode?: string;
+  timestamp?: string;
+}
 
 // Configuration for LOZADA WebService
 const WS_CONFIG = {
@@ -780,32 +806,100 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
   }
 }
 
+interface AdditionalCostsResult {
+  fixedCosts: number;      // XRVA: Cargos fijos (ej: $5 USD)
+  percentageCosts: number; // PORC: Porcentaje administrativo (ej: 2.2%)
+}
+
+// Constantes de pricing para LOZADA según acuerdo comercial con SOFTUR/Eurovips
+const AGENCY_COMMISSION_RATE = 0.15; // 15% comisión agencia
+const IVA_RATE = 0.21; // 21% IVA sobre gastos
+
 /**
  * Parse AdditionalCosts from hotel element (AdditionalCostsList)
- * These are extra charges that must be added to Base + Tax for the final price
+ *
+ * Tipos de costos según documentación SOFTUR/Eurovips:
+ * - XRVA: Cargo fijo por reserva (ej: $5 USD) → Se suma directamente
+ * - PORC: Porcentaje administrativo (ej: 2.2%) → Se calcula sobre el neto sin comisión
  */
-function parseAdditionalCosts(hotelEl: Element): number {
+function parseAdditionalCosts(hotelEl: Element): AdditionalCostsResult {
   try {
-    let additionalTotal = 0;
-    const costElements = hotelEl.querySelectorAll('AdditionalCostsList AdditionalCost Amount');
+    let fixedCosts = 0;
+    let percentageCosts = 0;
+    const costElements = hotelEl.querySelectorAll('AdditionalCostsList AdditionalCost');
 
     costElements.forEach(costEl => {
-      const amount = parseFloat(costEl.textContent || '0');
+      const type = costEl.getAttribute('type') || '';
+      const amount = parseFloat(costEl.querySelector('Amount')?.textContent || '0');
+      const description = costEl.querySelector('Description')?.textContent || 'Unknown';
+
       if (amount > 0) {
-        additionalTotal += amount;
-        console.log(`💰 [ADDITIONAL COST] +${amount} (${costEl.parentElement?.querySelector('Description')?.textContent || 'Unknown'})`);
+        if (type === 'PORC') {
+          // Porcentaje: se acumula para calcular después sobre el neto
+          percentageCosts += amount;
+          console.log(`💰 [ADDITIONAL COST - PERCENTAGE] ${amount}% (${description})`);
+        } else {
+          // XRVA u otros tipos: cargo fijo
+          fixedCosts += amount;
+          console.log(`💰 [ADDITIONAL COST - FIXED] +$${amount} (${description})`);
+        }
       }
     });
 
-    if (additionalTotal > 0) {
-      console.log(`💰 [TOTAL ADDITIONAL COSTS] ${additionalTotal}`);
+    if (fixedCosts > 0 || percentageCosts > 0) {
+      console.log(`💰 [TOTAL ADDITIONAL COSTS] Fixed: $${fixedCosts}, Percentage: ${percentageCosts}%`);
     }
 
-    return additionalTotal;
+    return { fixedCosts, percentageCosts };
   } catch (error) {
     console.error('❌ Error parsing additional costs:', error);
-    return 0;
+    return { fixedCosts: 0, percentageCosts: 0 };
   }
+}
+
+/**
+ * Calcula el Neto Agencia según la fórmula de SOFTUR/Eurovips
+ *
+ * Fórmula:
+ * 1. netoSinComision = Base × (1 - 15%)     // Restar comisión de agencia
+ * 2. gastoPorcentaje = netoSinComision × PORC%  // Gasto administrativo
+ * 3. baseGravada = gastosFijos + gastoPorcentaje
+ * 4. iva = baseGravada × 21%
+ * 5. netoAgencia = netoSinComision + gastosFijos + gastoPorcentaje + iva
+ */
+function calculateAgencyNetPrice(
+  basePrice: number,
+  fixedCosts: number,
+  percentageCosts: number
+): { netoAgencia: number; breakdown: { bruto: number; comision: number; netoSinComision: number; gastoFijo: number; gastoPorcentaje: number; baseGravada: number; iva: number } } {
+  // 1. Calcular neto sin comisión (Base - 15%)
+  const comision = basePrice * AGENCY_COMMISSION_RATE;
+  const netoSinComision = basePrice - comision;
+
+  // 2. Calcular gasto porcentaje sobre el neto sin comisión
+  const gastoPorcentaje = netoSinComision * (percentageCosts / 100);
+
+  // 3. Calcular base gravada (gastos sobre los que se aplica IVA)
+  const baseGravada = fixedCosts + gastoPorcentaje;
+
+  // 4. Calcular IVA sobre los gastos
+  const iva = baseGravada * IVA_RATE;
+
+  // 5. Calcular neto agencia final
+  const netoAgencia = netoSinComision + fixedCosts + gastoPorcentaje + iva;
+
+  return {
+    netoAgencia,
+    breakdown: {
+      bruto: basePrice,
+      comision,
+      netoSinComision,
+      gastoFijo: fixedCosts,
+      gastoPorcentaje,
+      baseGravada,
+      iva
+    }
+  };
 }
 
 function parseFareElement(fareEl: Element, index: number, defaultRoomType: string, hotelEl: Element, nights: number): HotelRoom | null {
@@ -819,16 +913,29 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
     const fareIdBroker = fareEl.getAttribute('FareIdBroker') || fareType;
     console.log(`🔑 [FARE ID BROKER] ${fareIdBroker}`);
 
-    // Extract pricing information
+    // Extract pricing information from XML
+    // IMPORTANTE: <Base> es el Importe Bruto (CommissionablePrice)
+    // <Tax> son impuestos adicionales del XML (no se usan en el cálculo del Neto Agencia)
     const basePrice = parseFloat(getTextContent(fareEl, 'Base') || '0');
     const taxPrice = parseFloat(getTextContent(fareEl, 'Tax') || '0');
 
-    // ✅ FIX #2: Parse and add AdditionalCosts to the total price
-    // AdditionalCosts are at hotel level, not fare level
-    const additionalCosts = parseAdditionalCosts(hotelEl);
-    const totalPrice = basePrice + taxPrice + additionalCosts;
+    // Parse additional costs (XRVA fijo, PORC porcentaje)
+    const { fixedCosts, percentageCosts } = parseAdditionalCosts(hotelEl);
 
-    console.log(`💵 [PRICE BREAKDOWN] Base: ${basePrice} + Tax: ${taxPrice} + Additional: ${additionalCosts} = Total: ${totalPrice}`);
+    // ✅ Calcular NETO AGENCIA según fórmula SOFTUR/Eurovips:
+    // Neto = (Base - 15% comisión) + GastosFijos + GastosPorcentaje + IVA_sobre_gastos
+    const { netoAgencia, breakdown } = calculateAgencyNetPrice(basePrice, fixedCosts, percentageCosts);
+    const totalPrice = netoAgencia;
+
+    console.log(`💵 [PRICE BREAKDOWN - NETO AGENCIA]`);
+    console.log(`   Importe Bruto (Base XML):     ${breakdown.bruto.toFixed(2)}`);
+    console.log(`   - Comisión 15%:               -${breakdown.comision.toFixed(2)}`);
+    console.log(`   = Neto sin comisión:          ${breakdown.netoSinComision.toFixed(2)}`);
+    console.log(`   + Gasto fijo (XRVA):          +${breakdown.gastoFijo.toFixed(2)}`);
+    console.log(`   + Gasto admin (${percentageCosts}%):        +${breakdown.gastoPorcentaje.toFixed(2)}`);
+    console.log(`   + IVA 21% s/gastos:           +${breakdown.iva.toFixed(2)}`);
+    console.log(`   = NETO AGENCIA:               ${netoAgencia.toFixed(2)}`);
+    console.log(`   (Tax XML ignorado: ${taxPrice.toFixed(2)})`);
 
     // Get currency from parent FareList element
     const fareList = fareEl.closest('FareList');
@@ -850,19 +957,19 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
       return null;
     }
 
-    // ✅ FIX #1: Calculate REAL price per night by dividing total / nights
+    // Calcular precio por noche basado en el Neto Agencia
     const pricePerNight = nights > 0 ? totalPrice / nights : totalPrice;
-    console.log(`🏷️ [PRICE PER NIGHT] ${totalPrice} / ${nights} nights = ${pricePerNight} per night`);
+    console.log(`🏷️ [NETO AGENCIA PER NIGHT] ${totalPrice.toFixed(2)} / ${nights} nights = ${pricePerNight.toFixed(2)} per night`);
 
     return {
       type: roomType,
       description: description,
-      price_per_night: pricePerNight, // ✅ FIXED: Real price per night
-      total_price: totalPrice, // ✅ FIXED: Includes Base + Tax + AdditionalCosts
+      price_per_night: pricePerNight, // Neto Agencia por noche
+      total_price: totalPrice, // NETO AGENCIA: (Base - 15% comisión) + gastos + IVA
       currency: currency,
       availability: availability,
       occupancy_id: (index + 1).toString(),
-      fare_id_broker: fareIdBroker // ✅ FIXED: Correct FareIdBroker from attribute
+      fare_id_broker: fareIdBroker
     };
   } catch (error) {
     console.error('❌ Error parsing fare element:', error);
@@ -1012,3 +1119,139 @@ function calculateNights(checkIn: string, checkOut: string): number {
 }
 
 
+// ===== MAKE BUDGET - GET EXACT PRICE =====
+
+// Cache for makeBudget results to avoid repeated API calls
+const makeBudgetCache = new Map<string, { data: MakeBudgetResponse; timestamp: number }>();
+const MAKE_BUDGET_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+
+/**
+ * makeBudget - Obtiene el precio EXACTO (Neto Agencia) de EUROVIPS
+ *
+ * Este método es CRÍTICO para obtener el precio final exacto que se muestra al cliente.
+ * Los precios de searchHotelFares son aproximados (fórmula: Base - 15% + gastos).
+ * makeBudget devuelve el precio exacto calculado por EUROVIPS.
+ *
+ * @param params - Parámetros de la reserva
+ * @returns Promise<MakeBudgetResponse> con el precio exacto
+ */
+export async function makeBudget(params: MakeBudgetParams): Promise<MakeBudgetResponse> {
+  console.log('💰 [MAKE_BUDGET] Requesting exact price for:', {
+    fareId: params.fareId,
+    fareIdBroker: params.fareIdBroker,
+    dates: `${params.checkinDate} -> ${params.checkoutDate}`
+  });
+
+  // Generate cache key
+  const cacheKey = `${params.fareId}|${params.fareIdBroker}|${params.checkinDate}|${params.checkoutDate}`;
+
+  // Check cache first
+  const cached = makeBudgetCache.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp) < MAKE_BUDGET_CACHE_TTL) {
+    console.log('✅ [MAKE_BUDGET] Cache hit for:', cacheKey);
+    return cached.data;
+  }
+
+  try {
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqaWd5YXprZXRibHdsemNvbXZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY3ODk2MTEsImV4cCI6MjA3MjM2NTYxMX0.X6YvJfgQnCAzFXa37nli47yQxuRG-7WJnJeIDrqg5EA';
+
+    // IMPORTANT: Always use Edge Function for makeBudget (even in dev mode)
+    // The dev proxy doesn't handle SOAP conversion for makeBudget
+    const EDGE_FUNCTION_URL = 'https://ujigyazketblwlzcomve.supabase.co/functions/v1/eurovips-soap';
+
+    const requestData = {
+      action: 'makeBudget',
+      data: params
+    };
+
+    console.log('🚀 [MAKE_BUDGET] Request:', JSON.stringify(requestData, null, 2));
+
+    // Set timeout for makeBudget (35 seconds to allow for Edge Function's 30s internal timeout)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 35000);
+
+    const response = await fetch(EDGE_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify(requestData),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.error(`❌ [MAKE_BUDGET] HTTP Error: ${response.status} ${response.statusText}`);
+      return {
+        success: false,
+        error: `HTTP Error: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    console.log('📥 [MAKE_BUDGET] Response:', result);
+
+    if (result.success && result.results) {
+      const budgetResult: MakeBudgetResponse = result.results;
+
+      // Cache successful results
+      if (budgetResult.success) {
+        makeBudgetCache.set(cacheKey, { data: budgetResult, timestamp: Date.now() });
+        console.log('💾 [MAKE_BUDGET] Cached result for:', cacheKey);
+      }
+
+      return budgetResult;
+    } else {
+      return {
+        success: false,
+        error: result.error || 'Unknown error from makeBudget'
+      };
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('⏱️ [MAKE_BUDGET] Request timed out');
+      return {
+        success: false,
+        error: 'La solicitud tardó demasiado. Intente nuevamente.'
+      };
+    }
+
+    console.error('❌ [MAKE_BUDGET] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Error getting exact price'
+    };
+  }
+}
+
+/**
+ * Helper function to build passenger list for makeBudget from hotel data
+ */
+export function buildPassengerList(
+  adults: number = 1,
+  children: number = 0,
+  infants: number = 0,
+  childrenAges?: number[]
+): Array<{ type: 'ADT' | 'CHD' | 'INF'; age?: number }> {
+  const passengers: Array<{ type: 'ADT' | 'CHD' | 'INF'; age?: number }> = [];
+
+  // Add adults
+  for (let i = 0; i < adults; i++) {
+    passengers.push({ type: 'ADT' });
+  }
+
+  // Add children with ages
+  for (let i = 0; i < children; i++) {
+    const age = childrenAges?.[i] || 8; // Default age 8 if not specified
+    passengers.push({ type: 'CHD', age });
+  }
+
+  // Add infants
+  for (let i = 0; i < infants; i++) {
+    passengers.push({ type: 'INF', age: 1 });
+  }
+
+  return passengers;
+}

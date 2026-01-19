@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { CheckCircle, AlertCircle, Bed, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, AlertCircle, Bed, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { translateRoomDescription } from '@/features/chat/utils/translations';
 
 interface Room {
@@ -13,11 +13,18 @@ interface Room {
     currency: string;
     availability: number;
     price_per_night?: number;
+    fare_id_broker?: string;
     // Campos adicionales para diferencias de precio
     amenities?: string[];
     view?: string;
     floor?: number;
     size?: string;
+}
+
+interface ExactPriceData {
+    price: number;
+    currency: string;
+    budgetId: string;
 }
 
 interface RoomGroupSelectorProps {
@@ -28,6 +35,10 @@ interface RoomGroupSelectorProps {
     maxInitialRooms?: number;
     requestedRoomType?: 'single' | 'double' | 'triple';
     requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
+    // New props for exact price display
+    exactPrices?: Record<string, ExactPriceData>;
+    loadingPrices?: Record<string, boolean>;
+    hotelId?: string;
 }
 
 const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
@@ -37,9 +48,24 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     isDisabled = false,
     maxInitialRooms = 3,
     requestedRoomType,
-    requestedMealPlan
+    requestedMealPlan,
+    exactPrices = {},
+    loadingPrices = {},
+    hotelId = ''
 }) => {
     const [showAllRooms, setShowAllRooms] = useState(false);
+
+    // Helper to get exact price for a room
+    const getExactPrice = (roomId: string): ExactPriceData | null => {
+        const priceKey = `${hotelId}-${roomId}`;
+        return exactPrices[priceKey] || null;
+    };
+
+    // Helper to check if price is loading for a room
+    const isLoadingPrice = (roomId: string): boolean => {
+        const priceKey = `${hotelId}-${roomId}`;
+        return loadingPrices[priceKey] || false;
+    };
 
     // Agrupar habitaciones por tipo y ordenar por precio
     // ✅ Rooms are already filtered by handleHotelSearch, no need to filter again
@@ -212,14 +238,44 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center space-x-2">
                                                         <Bed className="h-4 w-4 text-muted-foreground" />
-                                                        <span className="font-medium text-sm">
-                                                            {formatPrice(room.price_per_night, room.currency)}
-                                                        </span>
+                                                        {/* Price display with exact price support */}
+                                                        {isLoadingPrice(room.occupancy_id) ? (
+                                                            <div className="flex items-center space-x-1">
+                                                                <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                                                                <span className="text-xs text-muted-foreground">Calculando...</span>
+                                                            </div>
+                                                        ) : getExactPrice(room.occupancy_id) ? (
+                                                            <div className="flex items-center space-x-1">
+                                                                <span className="font-medium text-sm text-primary">
+                                                                    {formatPrice(
+                                                                        getExactPrice(room.occupancy_id)!.price / (room.total_price / (room.price_per_night || room.total_price)),
+                                                                        getExactPrice(room.occupancy_id)!.currency
+                                                                    )}
+                                                                </span>
+                                                                <Badge variant="outline" className="text-[10px] px-1 py-0 bg-green-50 text-green-700 border-green-200">
+                                                                    Exacto
+                                                                </Badge>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center space-x-1">
+                                                                <span className="font-medium text-sm">
+                                                                    {formatPrice(room.price_per_night, room.currency)}
+                                                                </span>
+                                                                {room.fare_id_broker && (
+                                                                    <span className="text-[10px] text-muted-foreground">(aprox.)</span>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
 
-                                                    {priceInfo.isCheapest && (
+                                                    {priceInfo.isCheapest && !getExactPrice(room.occupancy_id) && (
                                                         <Badge variant={priceInfo.badgeVariant} className="text-xs">
                                                             💰 Mejor precio
+                                                        </Badge>
+                                                    )}
+                                                    {getExactPrice(room.occupancy_id) && priceInfo.isCheapest && (
+                                                        <Badge variant="default" className="text-xs bg-green-600">
+                                                            ✓ Precio verificado
                                                         </Badge>
                                                     )}
                                                 </div>
@@ -265,7 +321,15 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
 
                                                 {room.total_price && room.price_per_night !== room.total_price && (
                                                     <div className="text-xs text-muted-foreground">
-                                                        {formatPrice(room.total_price, room.currency)} total
+                                                        {getExactPrice(room.occupancy_id) ? (
+                                                            <span className="text-green-700 font-medium">
+                                                                {formatPrice(getExactPrice(room.occupancy_id)!.price, getExactPrice(room.occupancy_id)!.currency)} total
+                                                            </span>
+                                                        ) : (
+                                                            <span>
+                                                                {formatPrice(room.total_price, room.currency)} total {room.fare_id_broker && <span className="text-[10px]">(aprox.)</span>}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>

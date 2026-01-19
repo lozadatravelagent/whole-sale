@@ -1,5 +1,5 @@
 // Refactored Hotel Selector component with enhanced functionality
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import { calculateHotelPrice } from '../../services/priceCalculator';
+import { makeBudget, buildPassengerList } from '@/services/hotelSearch';
 import {
   Hotel,
   MapPin,
@@ -37,6 +38,9 @@ export function HotelSelector({
   maxSelections = 3
 }: HotelSelectorProps) {
   const [selectedRooms, setSelectedRooms] = useState<Record<string, string>>({});
+  // Exact price states for makeBudget integration
+  const [exactPrices, setExactPrices] = useState<Record<string, { price: number; currency: string; budgetId: string }>>({});
+  const [loadingPrices, setLoadingPrices] = useState<Record<string, boolean>>({});
 
   const handleHotelToggle = (hotel: any) => {
     const isSelected = selectedHotels.some(h => h.id === hotel.id);
@@ -64,12 +68,70 @@ export function HotelSelector({
     onSelectionChange(newSelectedHotels);
   };
 
-  const handleRoomChange = (hotelId: string, roomId: string) => {
+  const handleRoomChange = useCallback(async (hotelId: string, roomId: string) => {
+    // 1. Update selection immediately
     setSelectedRooms(prev => ({
       ...prev,
       [hotelId]: roomId
     }));
-  };
+
+    // 2. Find hotel and room data
+    const hotel = hotels.find(h => h.id === hotelId);
+    const room = hotel?.rooms?.find((r: any) => r.occupancy_id === roomId);
+
+    // 3. Check if we have required data for makeBudget
+    if (!room?.fare_id_broker || !hotel?.unique_id) {
+      console.log('⚠️ [EXACT_PRICE] Missing fare_id_broker or unique_id, skipping makeBudget');
+      return;
+    }
+
+    // 4. Generate price key
+    const priceKey = `${hotelId}-${roomId}`;
+
+    // 5. Check if already cached
+    if (exactPrices[priceKey]) {
+      return;
+    }
+
+    // 6. Show loading
+    setLoadingPrices(prev => ({ ...prev, [priceKey]: true }));
+
+    try {
+      // 7. Build passenger list
+      const adults = room.adults || hotel.search_adults || 1;
+      const children = room.children || hotel.search_children || 0;
+      const infants = room.infants || 0;
+      const passengers = buildPassengerList(adults, children, infants);
+
+      // 8. Call makeBudget
+      const result = await makeBudget({
+        fareId: hotel.unique_id,
+        fareIdBroker: room.fare_id_broker,
+        checkinDate: hotel.check_in,
+        checkoutDate: hotel.check_out,
+        occupancies: [{
+          occupancyId: room.occupancy_id,
+          passengers
+        }]
+      });
+
+      // 9. Save exact price if successful
+      if (result.success && result.subTotalAmount && result.subTotalAmount > 0) {
+        setExactPrices(prev => ({
+          ...prev,
+          [priceKey]: {
+            price: result.subTotalAmount!,
+            currency: result.currency || 'USD',
+            budgetId: result.budgetId || ''
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('❌ [EXACT_PRICE] Error:', error);
+    } finally {
+      setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
+    }
+  }, [hotels, exactPrices]);
 
   // Helper function to render star rating
   const renderStarRating = (rating: number) => {
@@ -226,6 +288,9 @@ export function HotelSelector({
                     onRoomSelect={(roomId) => handleRoomChange(hotel.id, roomId)}
                     isDisabled={false}
                     maxInitialRooms={3}
+                    exactPrices={exactPrices}
+                    loadingPrices={loadingPrices}
+                    hotelId={hotel.id}
                   />
                 )}
 
