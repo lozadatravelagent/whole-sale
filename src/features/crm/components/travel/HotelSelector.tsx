@@ -271,6 +271,7 @@ export function HotelSelector({
                     exactPrices={exactPrices}
                     loadingPrices={loadingPrices}
                     hotelId={hotel.id}
+                    nights={hotel.nights}
                   />
                 )}
 

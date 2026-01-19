@@ -329,6 +329,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                     exactPrices={exactPrices}
                     loadingPrices={loadingPrices}
                     hotelId={hotel.id}
+                    nights={hotel.nights}
                   />
                 )}
 

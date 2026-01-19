@@ -39,6 +39,7 @@ interface RoomGroupSelectorProps {
     exactPrices?: Record<string, ExactPriceData>;
     loadingPrices?: Record<string, boolean>;
     hotelId?: string;
+    nights?: number; // Number of nights for per-night price calculation
 }
 
 const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
@@ -51,7 +52,8 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     requestedMealPlan,
     exactPrices = {},
     loadingPrices = {},
-    hotelId = ''
+    hotelId = '',
+    nights
 }) => {
     const [showAllRooms, setShowAllRooms] = useState(false);
 
@@ -65,6 +67,26 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     const isLoadingPrice = (roomId: string): boolean => {
         const priceKey = `${hotelId}-${roomId}`;
         return loadingPrices[priceKey] || false;
+    };
+
+    // Helper to calculate per-night price from exact total price
+    // Handles edge cases where price_per_night is 0 or undefined
+    const calculateExactPricePerNight = (exactPrice: ExactPriceData, room: Room): number => {
+        // If price_per_night exists and is valid (> 0), use the ratio method
+        if (room.price_per_night && room.price_per_night > 0 && room.total_price > 0) {
+            // Calculate ratio: price_per_night / total_price
+            // Then apply to exact total: exactPrice.price * ratio
+            return exactPrice.price * (room.price_per_night / room.total_price);
+        }
+
+        // Fallback: use nights if available
+        if (nights && nights > 0) {
+            return exactPrice.price / nights;
+        }
+
+        // Last resort: if we can't calculate per-night, return total price
+        // (This shouldn't happen in normal cases, but prevents division by zero)
+        return exactPrice.price;
     };
 
     // Agrupar habitaciones por tipo y ordenar por precio
@@ -248,7 +270,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                             <div className="flex items-center space-x-1">
                                                                 <span className="font-medium text-sm text-primary">
                                                                     {formatPrice(
-                                                                        getExactPrice(room.occupancy_id)!.price / (room.total_price / (room.price_per_night || room.total_price)),
+                                                                        calculateExactPricePerNight(getExactPrice(room.occupancy_id)!, room),
                                                                         getExactPrice(room.occupancy_id)!.currency
                                                                     )}
                                                                 </span>

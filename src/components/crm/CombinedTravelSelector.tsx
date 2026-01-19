@@ -950,6 +950,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       exactPrices={exactPrices}
                       loadingPrices={loadingPrices}
                       hotelId={hotel.id}
+                      nights={hotel.nights}
                     />
                   </CardContent>
                 </Card>
