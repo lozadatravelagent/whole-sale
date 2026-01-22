@@ -855,7 +855,8 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
             checkinDate: parsed.hotels.checkinDate,
             checkoutDate: parsed.hotels.checkoutDate,
             adults: parsed.hotels.adults,
-            children: parsed.hotels.children
+            children: parsed.hotels.children,
+            infants: parsed.hotels.infants
         };
     }
 

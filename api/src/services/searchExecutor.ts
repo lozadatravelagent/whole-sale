@@ -606,7 +606,8 @@ async function executeHotelSearch(
     checkinDate: hotels.checkinDate,
     checkoutDate: hotels.checkoutDate,
     adults: inferredAdults,
-    children: hotels.children || 0
+    children: hotels.children || 0,
+    infants: hotels.infants || 0
   };
 
   let allHotels: any[] = [];

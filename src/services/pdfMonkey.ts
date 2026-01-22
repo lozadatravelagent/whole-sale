@@ -857,18 +857,22 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     // Get from flight data (matches the search input)
     adults = firstFlight.adults ?? 1;
     childrens = firstFlight.childrens ?? 0;
+    infants = firstFlight.infants ?? 0;
   } else if (firstHotel) {
     // For hotel-only PDFs, use search_adults/search_children from hotel
     // These come from the original search params, not from room capacity
     adults = firstHotel.search_adults ?? 1;
     childrens = firstHotel.search_children ?? 0;
+    infants = firstHotel.search_infants ?? 0;
 
     console.log('👥 [HOTEL-ONLY] Using search params from hotel:', {
       hotel_name: firstHotel.name,
       search_adults: firstHotel.search_adults,
       search_children: firstHotel.search_children,
+      search_infants: firstHotel.search_infants,
       final_adults: adults,
-      final_children: childrens
+      final_children: childrens,
+      final_infants: infants
     });
   }
 

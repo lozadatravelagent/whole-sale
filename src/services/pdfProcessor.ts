@@ -5279,10 +5279,15 @@ function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
  * Extract passenger count from PdfMonkey template content
  */
 function extractPassengersFromPdfMonkeyTemplate(content: string): number {
-    const passengerMatch = content.match(/(\d+)\s*(?:Adulto|Adultos|adulto|adultos)/i);
-    const passengers = passengerMatch ? parseInt(passengerMatch[1]) : 1;
-    console.log('👥 Extracted passengers from PdfMonkey template:', passengers);
-    return passengers;
+    const adultMatch = content.match(/(\d+)\s*(?:Adulto|Adultos|adulto|adultos)/i);
+    const infantMatch = content.match(/(\d+)\s*(?:Infante|Infantes|infante|infantes|Bebé|Bebés|bebé|bebés)/i);
+
+    const adults = adultMatch ? parseInt(adultMatch[1]) : 1;
+    const infants = infantMatch ? parseInt(infantMatch[1]) : 0;
+
+    const total = adults + infants;
+    console.log('👥 Extracted passengers from PdfMonkey template:', { adults, infants, total });
+    return total;
 }
 
 /**

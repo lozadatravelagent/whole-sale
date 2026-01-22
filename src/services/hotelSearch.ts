@@ -585,9 +585,10 @@ async function buildHotelSearchRequest(params: HotelSearchParams): Promise<strin
     nameFilter = '';
   }
 
-  // Build occupancy based on adults/children (matching production Edge Function)
+  // Build occupancy based on adults/children/infants (matching production Edge Function)
   const adults = params.adults || 1; // Default to 1 adult
   const children = params.children || 0;
+  const infants = params.infants || 0;
 
   // Create occupants XML
   let occupantsXml = '';
@@ -596,6 +597,9 @@ async function buildHotelSearchRequest(params: HotelSearchParams): Promise<strin
   }
   for (let i = 0; i < children; i++) {
     occupantsXml += '        <Occupants type="CHD" />\n';
+  }
+  for (let i = 0; i < infants; i++) {
+    occupantsXml += '        <Occupants type="INF" Age="1" />\n';
   }
 
   // Build request with working format discovered from testing
