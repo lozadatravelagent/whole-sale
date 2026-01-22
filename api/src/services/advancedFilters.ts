@@ -375,13 +375,19 @@ export function isLightFareAirline(airlineCode: string): boolean {
 
 /**
  * Filter out light fare flights if user requested carry-on luggage
- * (light fares typically only include personal item, not carry-on)
+ * (light fares typically only include personal item/backpack, not real carry-on)
+ *
+ * Logic:
+ * - backpack: DO NOT exclude light fares (they offer backpack)
+ * - carry_on: EXCLUDE light fares (they only offer backpack, not real carry-on)
+ * - checked: DO NOT exclude (handled by checked filter)
  */
 export function shouldExcludeLightFare(
   airlineCode: string,
   requestedLuggage?: string
 ): boolean {
-  // Only exclude light fares if user specifically requested carry_on
+  // Only exclude light fares if user specifically requested carry_on (real cabin baggage)
+  // For backpack, we WANT light fare airlines
   if (requestedLuggage !== 'carry_on') {
     return false;
   }
