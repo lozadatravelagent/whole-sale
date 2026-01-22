@@ -32,6 +32,9 @@ export interface PdfAnalysisResult {
         totalPrice?: number;
         currency?: string;
         passengers?: number;
+        adults?: number;
+        childrens?: number;
+        infants?: number;
         originalTemplate?: string;
         needsComplexTemplate?: boolean;
         extractedFromPdfMonkey?: boolean;
@@ -474,7 +477,7 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
     });
 
     // Extract passenger information
-    const passengers = extractPassengersFromPdfMonkeyTemplate(content);
+    const passengerInfo = extractPassengersFromPdfMonkeyTemplate(content);
 
     // Extract currency
     const currency = extractCurrencyFromPdfMonkeyTemplate(content);
@@ -536,7 +539,10 @@ function extractPdfMonkeyDataFromContent(fileName: string, content: string): Pdf
             hotels,
             totalPrice,
             currency,
-            passengers,
+            passengers: passengerInfo.total,
+            adults: passengerInfo.adults,
+            childrens: passengerInfo.childrens,
+            infants: passengerInfo.infants,
             destination,
             // Additional metadata for regeneration
             originalTemplate,
@@ -1573,8 +1579,9 @@ function reconstructFlightData(analysis: PdfAnalysisResult, newPrice: number): a
                     commissionAmount: 0
                 }
             },
-            adults: analysis.content?.passengers || 1,
-            childrens: 0,
+            adults: analysis.content?.adults ?? analysis.content?.passengers ?? 1,
+            childrens: analysis.content?.childrens ?? 0,
+            infants: analysis.content?.infants ?? 0,
             departure_date: departureDate,
             return_date: returnDate,
             departure_time: allLegs[0].departure.time,
@@ -5278,16 +5285,18 @@ function extractTotalPriceFromPdfMonkeyTemplate(content: string): number {
 /**
  * Extract passenger count from PdfMonkey template content
  */
-function extractPassengersFromPdfMonkeyTemplate(content: string): number {
+function extractPassengersFromPdfMonkeyTemplate(content: string): { adults: number; childrens: number; infants: number; total: number } {
     const adultMatch = content.match(/(\d+)\s*(?:Adulto|Adultos|adulto|adultos)/i);
+    const childMatch = content.match(/(\d+)\s*(?:Niño|Niños|niño|niños)/i);
     const infantMatch = content.match(/(\d+)\s*(?:Infante|Infantes|infante|infantes|Bebé|Bebés|bebé|bebés)/i);
 
     const adults = adultMatch ? parseInt(adultMatch[1]) : 1;
+    const childrens = childMatch ? parseInt(childMatch[1]) : 0;
     const infants = infantMatch ? parseInt(infantMatch[1]) : 0;
+    const total = adults + childrens + infants;
 
-    const total = adults + infants;
-    console.log('👥 Extracted passengers from PdfMonkey template:', { adults, infants, total });
-    return total;
+    console.log('👥 Extracted passengers from PdfMonkey template:', { adults, childrens, infants, total });
+    return { adults, childrens, infants, total };
 }
 
 /**
