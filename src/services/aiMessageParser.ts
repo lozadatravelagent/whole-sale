@@ -844,7 +844,8 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
             departureDate: parsed.flights.departureDate,
             returnDate: parsed.flights.returnDate,
             adults: parsed.flights.adults,
-            children: parsed.flights.children
+            children: parsed.flights.children,
+            infants: parsed.flights.infants
         };
     }
 
