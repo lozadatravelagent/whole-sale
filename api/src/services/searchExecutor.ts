@@ -7,15 +7,15 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import type { ParsedRequest, SearchResults } from './contextManagement';
+import type { ParsedRequest, SearchResults } from './contextManagement.js';
 import {
   applyDestinationWhitelist,
   applyRoomFiltering,
   inferAdultsFromRoomType,
   shouldExcludeLightFare,
   getLightFareAirlines
-} from './advancedFilters';
-import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver';
+} from './advancedFilters.js';
+import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.js';
 
 // =============================================================================
 // HELPER FUNCTIONS

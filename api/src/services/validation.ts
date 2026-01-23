@@ -5,7 +5,7 @@
  * Based on src/services/aiMessageParser.ts validation logic
  */
 
-import type { ParsedRequest } from './contextManagement';
+import type { ParsedRequest } from './contextManagement.js';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -86,6 +86,24 @@ function validateFlightRequiredFields(parsed: ParsedRequest): ValidationResult {
 
   const missing: Array<{ field: string; description: string; examples: string[] }> = [];
 
+  // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants traveling without adults
+  const hasOnlyMinors = (!parsed.flights.adults || parsed.flights.adults === 0) &&
+                        (((parsed.flights.children ?? 0) > 0) || ((parsed.flights.infants ?? 0) > 0));
+
+  if (hasOnlyMinors) {
+    return {
+      isValid: false,
+      message: '⚠️ **Los menores no pueden viajar solos**\n\nPor normativa de las aerolíneas, los niños y bebés deben viajar acompañados por al menos un adulto.\n\n**¿Cuántos adultos los acompañarán?**\n\nPor ejemplo: "agrega 1 adulto", "con 2 adultos"',
+      missingFields: [
+        {
+          field: 'adults',
+          description: 'Los menores no pueden viajar solos',
+          examples: ['agrega 1 adulto', 'con 2 adultos', '1 adulto y 1 niño']
+        }
+      ]
+    };
+  }
+
   if (!parsed.flights.origin) {
     missing.push({
       field: 'origin',
@@ -165,6 +183,24 @@ function validateHotelRequiredFields(parsed: ParsedRequest): ValidationResult {
   }
 
   const missing: Array<{ field: string; description: string; examples: string[] }> = [];
+
+  // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants without adults
+  const hasOnlyMinors = (!parsed.hotels.adults || parsed.hotels.adults === 0) &&
+                        (((parsed.hotels.children ?? 0) > 0) || ((parsed.hotels.infants ?? 0) > 0));
+
+  if (hasOnlyMinors) {
+    return {
+      isValid: false,
+      message: '⚠️ **Los menores no pueden hospedarse solos**\n\nLos niños y bebés deben estar acompañados por al menos un adulto responsable.\n\n**¿Cuántos adultos los acompañarán?**\n\nPor ejemplo: "agrega 1 adulto", "con 2 adultos"',
+      missingFields: [
+        {
+          field: 'adults',
+          description: 'Los menores no pueden hospedarse solos',
+          examples: ['agrega 1 adulto', 'con 2 adultos', '1 adulto y 1 niño']
+        }
+      ]
+    };
+  }
 
   if (!parsed.hotels.city) {
     missing.push({
