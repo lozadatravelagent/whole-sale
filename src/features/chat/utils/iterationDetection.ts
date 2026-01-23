@@ -27,6 +27,7 @@ export interface FlightModificationDetails {
   departureTimePreference?: string;
   arrivalTimePreference?: string;
   maxLayoverHours?: number;
+  adults?: number; // Used when adding adults after "only minors" error
 }
 
 /**
@@ -169,6 +170,12 @@ const FLIGHT_MODIFICATION_PATTERNS = [
     name: 'max_layover',
     extractHours: true
   },
+  // ✨ Agregar adultos (después de error "solo menores")
+  {
+    pattern: /\b(?:agrega|agregá|suma|sumá|añade|añadí|con)\s+(\d+)\s+adultos?\b/i,
+    name: 'add_adults',
+    addAdultsCapture: true
+  },
 ];
 
 /**
@@ -225,7 +232,7 @@ export function detectIterationIntent(
     }
   }
 
-  // Detectar modificación de vuelo (escalas, aerolínea, equipaje, horarios, max layover)
+  // Detectar modificación de vuelo (escalas, aerolínea, equipaje, horarios, max layover, agregar adultos)
   let hasFlightMod = false;
   let flightModPattern = '';
   let flightModDetails: {
@@ -235,8 +242,17 @@ export function detectIterationIntent(
     departureTimePreference?: string;
     arrivalTimePreference?: string;
     maxLayoverHours?: number;
+    adultsToAdd?: number;
   } = {};
-  for (const { pattern, name, stopsValue, luggageValue, airlineChange, timeType, extractHours } of FLIGHT_MODIFICATION_PATTERNS) {
+  for (const patternObj of FLIGHT_MODIFICATION_PATTERNS) {
+    const { pattern, name } = patternObj;
+    const stopsValue = (patternObj as any).stopsValue;
+    const luggageValue = (patternObj as any).luggageValue;
+    const airlineChange = (patternObj as any).airlineChange;
+    const timeType = (patternObj as any).timeType;
+    const extractHours = (patternObj as any).extractHours;
+    const addAdultsCapture = (patternObj as any).addAdultsCapture;
+
     const match = pattern.exec(norm);
     if (match) {
       hasFlightMod = true;
@@ -254,6 +270,12 @@ export function detectIterationIntent(
       // ✨ Extraer horas máximas de escala
       if (extractHours && match[1]) {
         flightModDetails.maxLayoverHours = parseInt(match[1], 10);
+      }
+
+      // ✨ Extraer cantidad de adultos a agregar (para "agrega X adultos")
+      if (addAdultsCapture && match[1]) {
+        flightModDetails.adultsToAdd = parseInt(match[1], 10);
+        console.log(`✅ [ITERATION] Adults to add detected: ${flightModDetails.adultsToAdd}`);
       }
 
       console.log(`✅ [ITERATION] Flight modification detected: "${name}"`, flightModDetails);
@@ -478,6 +500,27 @@ export function detectIterationIntent(
     } as IterationContext & { flightModification?: { stops?: string; luggage?: string; airline?: string } };
   }
 
+  // CASO 11: "agrega X adultos" después de error "solo menores"
+  // Este caso permite al usuario corregir búsquedas donde solo especificó menores
+  if (hasFlightMod && flightModDetails.adultsToAdd && flightModDetails.adultsToAdd > 0) {
+    const baseType = lastSearch.requestType;
+    const preserveHotel = baseType === 'combined';
+
+    console.log(`✅ [ITERATION] CASE 11: Add ${flightModDetails.adultsToAdd} adults → flight_modification (passenger_update)`);
+    return {
+      isIteration: true,
+      iterationType: 'flight_modification',
+      baseRequestType: baseType,
+      modifiedComponent: 'flights',
+      preserveFields: preserveHotel ? getAllHotelFields() : [],
+      confidence: 0.95,
+      matchedPattern: 'add_adults',
+      flightModification: {
+        adults: flightModDetails.adultsToAdd
+      }
+    } as IterationContext;
+  }
+
   // DEFAULT: Nueva búsqueda
   console.log('ℹ️ [ITERATION] No iteration pattern matched → new_search');
   return {
@@ -617,10 +660,16 @@ export function mergeIterationContext(
     return mergedRequest;
   }
 
-  // Para iteración de vuelo (escalas, equipaje, aerolínea)
+  // Para iteración de vuelo (escalas, equipaje, aerolínea, agregar adultos)
   if (iterationContext.iterationType === 'flight_modification') {
     const flightMod = iterationContext.flightModification;
     const preserveHotel = lastSearch.requestType === 'combined';
+
+    // Determinar el número de adultos:
+    // 1. Si hay flightMod.adults (de "agrega X adultos"), usarlo
+    // 2. Si no, usar el contexto anterior (puede ser 0 si era "solo menores")
+    // 3. Fallback a 1
+    const adultsCount = flightMod?.adults ?? lastSearch.flightsParams?.adults ?? 1;
 
     const mergedRequest: ParsedTravelRequest = {
       ...newParsedRequest,
@@ -632,7 +681,7 @@ export function mergeIterationContext(
         destination: lastSearch.flightsParams?.destination || '',
         departureDate: lastSearch.flightsParams?.departureDate || '',
         returnDate: lastSearch.flightsParams?.returnDate,
-        adults: lastSearch.flightsParams?.adults || 1,
+        adults: adultsCount,  // ✨ Usar adultos calculados (puede venir de "agrega X adultos")
         children: lastSearch.flightsParams?.children || 0,
         infants: lastSearch.flightsParams?.infants || 0,
         // Preservar valores anteriores por defecto
@@ -658,13 +707,13 @@ export function mergeIterationContext(
         ...(newParsedRequest.flights?.maxLayoverHours !== undefined && { maxLayoverHours: newParsedRequest.flights.maxLayoverHours }),
       },
 
-      // Preservar hotel si era búsqueda combined
+      // Preservar hotel si era búsqueda combined (actualizando adultos también)
       ...(preserveHotel && lastSearch.hotelsParams && {
         hotels: {
           city: lastSearch.hotelsParams.city,
           checkinDate: lastSearch.hotelsParams.checkinDate,
           checkoutDate: lastSearch.hotelsParams.checkoutDate,
-          adults: lastSearch.hotelsParams.adults,
+          adults: flightMod?.adults ?? lastSearch.hotelsParams.adults,  // ✨ Actualizar adultos en hotel también
           children: lastSearch.hotelsParams.children || 0,
           infants: lastSearch.hotelsParams.infants || 0,
           roomType: lastSearch.hotelsParams.roomType,
@@ -688,6 +737,9 @@ export function mergeIterationContext(
       stops: mergedRequest.flights?.stops,
       luggage: mergedRequest.flights?.luggage,
       airline: mergedRequest.flights?.preferredAirline,
+      adults: mergedRequest.flights?.adults,  // ✨ Log adults count
+      children: mergedRequest.flights?.children,
+      infants: mergedRequest.flights?.infants,
       preservedHotel: preserveHotel
     });
 

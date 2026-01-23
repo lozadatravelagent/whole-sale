@@ -795,7 +795,8 @@ const useMessageHandler = (
         console.log('📋 [VALIDATION] Validation result:', {
           isValid: validation.isValid,
           missingFields: validation.missingFields,
-          missingFieldsSpanish: validation.missingFieldsSpanish
+          missingFieldsSpanish: validation.missingFieldsSpanish,
+          errorMessage: validation.errorMessage // ✨ Log custom error message if present
         });
 
         if (!validation.isValid) {
@@ -805,8 +806,32 @@ const useMessageHandler = (
           setPreviousParsedRequest(parsedRequest);
           await saveContextualMemory(finalConversationId, parsedRequest);
 
-          // Generate message asking for missing information
-          const missingInfoMessage = generateMissingInfoMessage(
+          // ✨ CRITICAL: Also save to context state for iteration detection (e.g., "agrega X adultos")
+          // This ensures the iteration system can access the failed search context
+          const contextStateForFailedSearch: ContextState = {
+            lastSearch: {
+              requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
+              flightsParams: parsedRequest.flights ? {
+                origin: parsedRequest.flights.origin,
+                destination: parsedRequest.flights.destination,
+                departureDate: parsedRequest.flights.departureDate,
+                returnDate: parsedRequest.flights.returnDate,
+                adults: parsedRequest.flights.adults || 0,
+                children: parsedRequest.flights.children || 0,
+                infants: (parsedRequest.flights as any).infants || 0,
+                stops: parsedRequest.flights.stops,
+                luggage: parsedRequest.flights.luggage,
+                preferredAirline: parsedRequest.flights.preferredAirline,
+                maxLayoverHours: parsedRequest.flights.maxLayoverHours
+              } : undefined
+            },
+            turnNumber: (persistentState?.turnNumber || 0) + 1
+          };
+          await saveContextState(finalConversationId, contextStateForFailedSearch);
+          console.log('💾 [CONTEXT] Saved context state for failed validation (enables "agrega X adultos")');
+
+          // ✨ Use custom errorMessage if available (e.g., "only minors" case), otherwise generate standard message
+          const missingInfoMessage = validation.errorMessage || generateMissingInfoMessage(
             validation.missingFieldsSpanish,
             parsedRequest.requestType
           );
@@ -820,13 +845,15 @@ const useMessageHandler = (
             content: { text: missingInfoMessage },
             meta: {
               status: 'sent',
-              messageType: 'missing_info_request',
+              messageType: validation.errorMessage ? 'only_minors_error' : 'missing_info_request',
               missingFields: validation.missingFields,
               originalRequest: parsedRequest
             }
           });
 
           console.log('✅ [VALIDATION] Missing info message sent, stopping process');
+          setIsTyping(false, conversationIdForThisSearch);
+          setIsLoading(false);
           return; // Stop processing here, wait for user response
         }
 
@@ -843,6 +870,52 @@ const useMessageHandler = (
         });
 
         if (!validation.isValid) {
+          // ✨ CRITICAL: Check if this is a "only minors" error (has custom errorMessage)
+          // If so, don't try to auto-enrich - the issue is specifically about adults
+          if (validation.errorMessage) {
+            console.log('⚠️ [VALIDATION] "Only minors" error detected - skipping auto-enrich');
+
+            // Store context for iteration detection (enables "agrega X adultos")
+            setPreviousParsedRequest(parsedRequest);
+            await saveContextualMemory(finalConversationId, parsedRequest);
+
+            const contextStateForFailedSearch: ContextState = {
+              lastSearch: {
+                requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
+                hotelsParams: parsedRequest.hotels ? {
+                  city: parsedRequest.hotels.city,
+                  checkinDate: parsedRequest.hotels.checkinDate,
+                  checkoutDate: parsedRequest.hotels.checkoutDate,
+                  adults: parsedRequest.hotels.adults || 0,
+                  children: parsedRequest.hotels.children || 0,
+                  infants: (parsedRequest.hotels as any).infants || 0,
+                  roomType: parsedRequest.hotels.roomType,
+                  mealPlan: parsedRequest.hotels.mealPlan,
+                  hotelChains: parsedRequest.hotels.hotelChains
+                } : undefined
+              },
+              turnNumber: (persistentState?.turnNumber || 0) + 1
+            };
+            await saveContextState(finalConversationId, contextStateForFailedSearch);
+            console.log('💾 [CONTEXT] Saved context state for failed hotel validation');
+
+            await addMessageViaSupabase({
+              conversation_id: finalConversationId,
+              role: 'assistant' as const,
+              content: { text: validation.errorMessage },
+              meta: {
+                status: 'sent',
+                messageType: 'only_minors_error',
+                missingFields: validation.missingFields,
+                originalRequest: parsedRequest
+              }
+            });
+
+            setIsTyping(false, conversationIdForThisSearch);
+            setIsLoading(false);
+            return;
+          }
+
           // Attempt to auto-enrich hotel params from last flight context
           const flightCtx = getContextFromLastFlights() || (previousParsedRequest?.flights ? {
             origin: previousParsedRequest.flights.origin,
@@ -889,7 +962,8 @@ const useMessageHandler = (
               setPreviousParsedRequest(parsedRequest);
               await saveContextualMemory(finalConversationId, parsedRequest);
 
-              const missingInfoMessage = generateMissingInfoMessage(
+              // ✨ Use custom errorMessage if available
+              const missingInfoMessage = reval.errorMessage || generateMissingInfoMessage(
                 reval.missingFieldsSpanish,
                 parsedRequest.requestType
               );
@@ -900,12 +974,14 @@ const useMessageHandler = (
                 content: { text: missingInfoMessage },
                 meta: {
                   status: 'sent',
-                  messageType: 'missing_info_request',
+                  messageType: reval.errorMessage ? 'only_minors_error' : 'missing_info_request',
                   missingFields: reval.missingFields,
                   originalRequest: parsedRequest
                 }
               });
 
+              setIsTyping(false, conversationIdForThisSearch);
+              setIsLoading(false);
               return; // wait for user response
             }
           } else {
@@ -914,7 +990,8 @@ const useMessageHandler = (
             setPreviousParsedRequest(parsedRequest);
             await saveContextualMemory(finalConversationId, parsedRequest);
 
-            const missingInfoMessage = generateMissingInfoMessage(
+            // ✨ Use custom errorMessage if available
+            const missingInfoMessage = validation.errorMessage || generateMissingInfoMessage(
               validation.missingFieldsSpanish,
               parsedRequest.requestType
             );
@@ -925,12 +1002,14 @@ const useMessageHandler = (
               content: { text: missingInfoMessage },
               meta: {
                 status: 'sent',
-                messageType: 'missing_info_request',
+                messageType: validation.errorMessage ? 'only_minors_error' : 'missing_info_request',
                 missingFields: validation.missingFields,
                 originalRequest: parsedRequest
               }
             });
 
+            setIsTyping(false, conversationIdForThisSearch);
+            setIsLoading(false);
             return;
           }
         }

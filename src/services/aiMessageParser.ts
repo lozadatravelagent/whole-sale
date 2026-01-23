@@ -9,6 +9,7 @@ export interface ParsedTravelRequest {
         returnDate?: string;
         adults: number;
         children: number;
+        infants?: number; // Bebés de 0-2 años (viajan en brazos)
         // Nuevos campos requeridos
         luggage?: 'backpack' | 'carry_on' | 'checked' | 'both' | 'none'; // con o sin valija/equipaje
         departureTimePreference?: string; // horario de salida preferido
@@ -26,6 +27,7 @@ export interface ParsedTravelRequest {
         checkoutDate: string;
         adults: number;
         children: number;
+        infants?: number; // Bebés de 0-2 años
         // Campos opcionales de preferencias
         roomType?: 'single' | 'double' | 'triple'; // Tipo de habitación (OPCIONAL - solo filtrar si usuario lo especifica)
         hotelChains?: string[]; // Cadenas hoteleras - soporta múltiples cadenas (opcional)
@@ -102,6 +104,7 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
     isValid: boolean;
     missingFields: string[];
     missingFieldsSpanish: string[];
+    errorMessage?: string;
 } {
     if (!flights) {
         return {
@@ -113,6 +116,20 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
 
     const missingFields: string[] = [];
     const missingFieldsSpanish: string[] = [];
+
+    // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants traveling without adults
+    const hasOnlyMinors = (flights.adults === 0 || !flights.adults) &&
+                          (((flights.children ?? 0) > 0) || ((flights.infants ?? 0) > 0));
+
+    if (hasOnlyMinors) {
+        console.log('⚠️ [VALIDATION] Only minors detected without adults - rejecting search');
+        return {
+            isValid: false,
+            missingFields: ['adults'],
+            missingFieldsSpanish: ['adulto acompañante'],
+            errorMessage: '⚠️ **Los menores no pueden viajar solos**\n\nPor normativa de las aerolíneas, los niños y bebés deben viajar acompañados por al menos un adulto.\n\n**¿Cuántos adultos los acompañarán?**\n\nPor ejemplo: "agrega 1 adulto", "con 2 adultos"'
+        };
+    }
 
     // Validar campos requeridos
     if (!flights.origin) {
@@ -144,6 +161,7 @@ export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels
     isValid: boolean;
     missingFields: string[];
     missingFieldsSpanish: string[];
+    errorMessage?: string;
 } {
     if (!hotels) {
         return {
@@ -155,6 +173,20 @@ export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels
 
     const missingFields: string[] = [];
     const missingFieldsSpanish: string[] = [];
+
+    // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants without adults
+    const hasOnlyMinors = (hotels.adults === 0 || !hotels.adults) &&
+                          (((hotels.children ?? 0) > 0) || ((hotels.infants ?? 0) > 0));
+
+    if (hasOnlyMinors) {
+        console.log('⚠️ [VALIDATION] Only minors detected in hotel search without adults - rejecting');
+        return {
+            isValid: false,
+            missingFields: ['adults'],
+            missingFieldsSpanish: ['adulto acompañante'],
+            errorMessage: '⚠️ **Los menores no pueden hospedarse solos**\n\nLos niños y bebés deben estar acompañados por al menos un adulto responsable.\n\n**¿Cuántos adultos los acompañarán?**\n\nPor ejemplo: "agrega 1 adulto", "con 2 adultos"'
+        };
+    }
 
     // Validar campos requeridos (roomType y mealPlan son OPCIONALES)
     if (!hotels.city) {
