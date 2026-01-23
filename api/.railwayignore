@@ -1,0 +1,41 @@
+# Railway Ignore - API Gateway Deployment
+# Excludes files not needed for the Fastify API build
+
+# Documentation
+docs/
+*.md
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__/
+coverage/
+
+# Development files
+.env.local
+.env.development
+*.local
+
+# Editor and IDE
+.vscode/
+.idea/
+.cursor/
+.claude/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Source maps (if not needed in production)
+*.map
