@@ -1,9 +1,9 @@
 /**
- * Redis Client and Rate Limiting/Idempotency Functions
- *
- * Centralized Redis client using Upstash REST API
- * Provides rate limiting (sliding window) and idempotency caching
- */
+* Redis Client and Rate Limiting/Idempotency Functions
+*
+* Centralized Redis client using Upstash REST API
+* Provides rate limiting (sliding window) and idempotency caching
+*/
 
 import { Redis } from '@upstash/redis';
 
