@@ -5,7 +5,7 @@
  * Middleware chain: CORS → Correlation ID → Auth → Rate Limit → Execute
  */
 
-console.log('[SERVER] 🚀 Starting server initialization.....');
+console.log('[SERVER] 🚀 Starting server initialization v1.0.1.....');
 
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
