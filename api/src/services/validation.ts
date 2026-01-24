@@ -87,7 +87,8 @@ function validateFlightRequiredFields(parsed: ParsedRequest): ValidationResult {
   const missing: Array<{ field: string; description: string; examples: string[] }> = [];
 
   // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants traveling without adults
-  const hasOnlyMinors = (!parsed.flights.adults || parsed.flights.adults === 0) &&
+  // NOTE: undefined adults defaults to 1 elsewhere in the system, so only check for explicit adults === 0
+  const hasOnlyMinors = parsed.flights.adults === 0 &&
                         (((parsed.flights.children ?? 0) > 0) || ((parsed.flights.infants ?? 0) > 0));
 
   if (hasOnlyMinors) {
@@ -185,7 +186,8 @@ function validateHotelRequiredFields(parsed: ParsedRequest): ValidationResult {
   const missing: Array<{ field: string; description: string; examples: string[] }> = [];
 
   // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants without adults
-  const hasOnlyMinors = (!parsed.hotels.adults || parsed.hotels.adults === 0) &&
+  // NOTE: undefined adults defaults to 1 elsewhere in the system, so only check for explicit adults === 0
+  const hasOnlyMinors = parsed.hotels.adults === 0 &&
                         (((parsed.hotels.children ?? 0) > 0) || ((parsed.hotels.infants ?? 0) > 0));
 
   if (hasOnlyMinors) {
