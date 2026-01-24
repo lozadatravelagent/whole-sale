@@ -119,7 +119,7 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
 
     // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants traveling without adults
     const hasOnlyMinors = (flights.adults === 0 || !flights.adults) &&
-                          (((flights.children ?? 0) > 0) || ((flights.infants ?? 0) > 0));
+        (((flights.children ?? 0) > 0) || ((flights.infants ?? 0) > 0));
 
     if (hasOnlyMinors) {
         console.log('⚠️ [VALIDATION] Only minors detected without adults - rejecting search');
@@ -176,7 +176,7 @@ export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels
 
     // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants without adults
     const hasOnlyMinors = (hotels.adults === 0 || !hotels.adults) &&
-                          (((hotels.children ?? 0) > 0) || ((hotels.infants ?? 0) > 0));
+        (((hotels.children ?? 0) > 0) || ((hotels.infants ?? 0) > 0));
 
     if (hasOnlyMinors) {
         console.log('⚠️ [VALIDATION] Only minors detected in hotel search without adults - rejecting');
