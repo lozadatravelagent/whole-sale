@@ -9,7 +9,17 @@
  * - Room-level filtering (capacity + meal plan)
  * - Light fare detection
  * - Inferred adults logic
+ * - Hotel chain detection and matching
  */
+
+import {
+  HOTEL_CHAINS,
+  normalizeText as normalizeHotelText,
+  detectHotelChainInText,
+  hotelBelongsToChain as chainMatchesHotel,
+  hotelBelongsToAnyChain,
+  detectMultipleHotelChains
+} from '../data/hotelChainAliases.js';
 
 // =============================================================================
 // HOTEL TYPES (simplified for Edge Functions)
@@ -440,4 +450,56 @@ export function inferAdultsFromRoomType(
   }
 
   return specifiedAdults || 1;
+}
+
+// =============================================================================
+// HOTEL CHAIN DETECTION (using centralized aliases)
+// =============================================================================
+
+/**
+ * Detect hotel chain from text using centralized aliases
+ * Re-exports from hotelChainAliases for convenience
+ */
+export function detectHotelChain(text: string): { key: string; name: string; matchedAlias: string } | null {
+  return detectHotelChainInText(text);
+}
+
+/**
+ * Check if a hotel belongs to a specific chain
+ * Uses flexible matching with normalization
+ *
+ * @param hotelName - Full hotel name from API (e.g., "RIU BAMBU")
+ * @param chainName - Chain to check (e.g., "RIU", "riu", "Riu")
+ * @returns true if hotel belongs to the chain
+ */
+export function hotelBelongsToChain(hotelName: string, chainName: string): boolean {
+  return chainMatchesHotel(hotelName, chainName);
+}
+
+/**
+ * Check if a hotel belongs to any of the specified chains
+ *
+ * @param hotelName - Hotel name to check
+ * @param chains - Array of chain names to check against
+ * @returns true if hotel belongs to any chain in the array
+ */
+export function hotelMatchesAnyChain(hotelName: string, chains: string[]): boolean {
+  return hotelBelongsToAnyChain(hotelName, chains);
+}
+
+/**
+ * Detect multiple hotel chains mentioned in text
+ *
+ * @param text - User input text
+ * @returns Array of detected chain names
+ */
+export function detectMultipleChains(text: string): string[] {
+  return detectMultipleHotelChains(text);
+}
+
+/**
+ * Get all known hotel chain keys
+ */
+export function getKnownHotelChains(): string[] {
+  return Object.keys(HOTEL_CHAINS);
 }

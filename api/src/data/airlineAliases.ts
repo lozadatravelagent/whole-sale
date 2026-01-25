@@ -1,158 +1,623 @@
 /**
- * Airline IATA Codes and Aliases
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * AIRLINE ALIASES - Mapeo centralizado de nombres de aerolíneas a códigos IATA
+ * ═══════════════════════════════════════════════════════════════════════════════
  *
- * Minimal version for API search - contains essential airlines for filtering
- * Full version with aliases is in: src/features/chat/data/airlineAliases.ts
+ * Este archivo contiene TODAS las variaciones de nombres de aerolíneas que el
+ * sistema puede detectar en el input del usuario.
+ *
+ * CÓMO FUNCIONA:
+ * 1. El usuario escribe: "quiero volar con latam a madrid"
+ * 2. El detector busca "latam" en este mapeo
+ * 3. Encuentra el código IATA: "LA"
+ * 4. El filtro usa "LA" para filtrar los resultados de Starling
+ *
+ * ÚLTIMA ACTUALIZACIÓN: 2025-11-25
+ * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-export interface AirlineInfo {
-  code: string;
-  name: string;
-  aliases?: string[];
-}
+// ═══════════════════════════════════════════════════════════════════════════════
+// CÓDIGOS IATA → NOMBRE OFICIAL
+// ═══════════════════════════════════════════════════════════════════════════════
+export const AIRLINE_IATA_CODES: Record<string, string> = {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // LATAM GROUP
+    // ─────────────────────────────────────────────────────────────────────────────
+    'LA': 'LATAM Airlines',
+    'JJ': 'LATAM Airlines Brasil',
+    'LP': 'LATAM Airlines Peru',
+    'XL': 'LATAM Airlines Ecuador',
+    '4C': 'LATAM Airlines Colombia',
+    '4M': 'LATAM Airlines Argentina',
 
-/**
- * Essential airlines for search filtering
- */
-export const AIRLINES: Record<string, AirlineInfo> = {
-  // === LATAM Group ===
-  LA: { code: 'LA', name: 'LATAM Airlines', aliases: ['latam'] },
-  JJ: { code: 'JJ', name: 'LATAM Brasil' },
-  LP: { code: 'LP', name: 'LATAM Peru' },
-  XL: { code: 'XL', name: 'LATAM Ecuador' },
-  '4M': { code: '4M', name: 'LATAM Argentina' },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // AVIANCA GROUP
+    // ─────────────────────────────────────────────────────────────────────────────
+    'AV': 'Avianca',
+    '2K': 'Avianca Ecuador',
+    'LR': 'Avianca Costa Rica',
+    'TA': 'TACA',
 
-  // === Avianca Group ===
-  AV: { code: 'AV', name: 'Avianca', aliases: ['avianca'] },
-  '2K': { code: '2K', name: 'Avianca Ecuador' },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // IBERIA GROUP (IAG)
+    // ─────────────────────────────────────────────────────────────────────────────
+    'IB': 'Iberia',
+    'I2': 'Iberia Express',
+    'VY': 'Vueling',
 
-  // === Aerolineas Argentinas Group ===
-  AR: { code: 'AR', name: 'Aerolineas Argentinas', aliases: ['aerolineas', 'aerolineas argentinas'] },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // US CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'AA': 'American Airlines',
+    'UA': 'United Airlines',
+    'DL': 'Delta Air Lines',
+    'WN': 'Southwest Airlines',
+    'B6': 'JetBlue Airways',
+    'AS': 'Alaska Airlines',
+    'NK': 'Spirit Airlines',
+    'F9': 'Frontier Airlines',
+    'G4': 'Allegiant Air',
+    'SY': 'Sun Country Airlines',
 
-  // === Copa Airlines ===
-  CM: { code: 'CM', name: 'Copa Airlines', aliases: ['copa'] },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // EUROPEAN CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'AF': 'Air France',
+    'KL': 'KLM',
+    'LH': 'Lufthansa',
+    'CL': 'Lufthansa CityLine',
+    'EN': 'Air Dolomiti',
+    'BA': 'British Airways',
+    'AZ': 'ITA Airways',
+    'LX': 'Swiss International Air Lines',
+    'OS': 'Austrian Airlines',
+    'TP': 'TAP Air Portugal',
+    'FR': 'Ryanair',
+    'U2': 'easyJet',
+    'W6': 'Wizz Air',
+    'SN': 'Brussels Airlines',
+    'UX': 'Air Europa',
+    'SU': 'Aeroflot',
+    'SK': 'SAS Scandinavian Airlines',
+    'AY': 'Finnair',
+    'LO': 'LOT Polish Airlines',
+    'OK': 'Czech Airlines',
+    'RO': 'TAROM',
+    'JU': 'Air Serbia',
+    'OU': 'Croatia Airlines',
+    'A3': 'Aegean Airlines',
+    'BT': 'airBaltic',
+    'EI': 'Aer Lingus',
+    'IG': 'Air Italy',
+    '2L': 'Helvetic Airways',
+    'WK': 'Edelweiss Air',
+    'EB': 'Wamos Air',
+    '2W': 'World2Fly',
+    'NT': 'Binter Canarias',
+    'YW': 'Air Nostrum',
+    'V7': 'Volotea',
 
-  // === Aeromexico ===
-  AM: { code: 'AM', name: 'Aeromexico', aliases: ['aeromexico'] },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // SOUTH AMERICAN CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'AR': 'Aerolíneas Argentinas',
+    'G3': 'Gol',
+    'AD': 'Azul Brazilian Airlines',
+    'CM': 'Copa Airlines',
+    'AM': 'Aeroméxico',
+    '5D': 'Aeroméxico Connect',
+    'H2': 'Sky Airline',
+    'OB': 'Boliviana de Aviación',
+    'PZ': 'LATAM Paraguay',
+    'P5': 'Wingo',
+    'VE': 'EasyFly',
+    'JA': 'JetSMART',
+    '2Z': 'Voepass',
+    'T0': 'Avianca Argentina',
+    'DM': 'Arajet',
 
-  // === JetSMART ===
-  JA: { code: 'JA', name: 'JetSMART', aliases: ['jetsmart'] },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CENTRAL AMERICAN & CARIBBEAN
+    // ─────────────────────────────────────────────────────────────────────────────
+    'BW': 'Caribbean Airlines',
+    'UP': 'Bahamasair',
+    '6Y': 'SmartWings',
 
-  // === Sky Airline ===
-  H2: { code: 'H2', name: 'Sky Airline', aliases: ['sky airline', 'sky'] },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // MIDDLE EAST CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'EK': 'Emirates',
+    'QR': 'Qatar Airways',
+    'EY': 'Etihad Airways',
+    'TK': 'Turkish Airlines',
+    'LY': 'El Al Israel Airlines',
+    'GF': 'Gulf Air',
+    'WY': 'Oman Air',
+    'SV': 'Saudia',
+    'MS': 'EgyptAir',
+    'RJ': 'Royal Jordanian',
+    'ME': 'Middle East Airlines',
+    'PC': 'Pegasus Airlines',
 
-  // === Iberia Group (IAG) ===
-  IB: { code: 'IB', name: 'Iberia', aliases: ['iberia'] },
-  I2: { code: 'I2', name: 'Iberia Express' },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // AFRICAN CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'ET': 'Ethiopian Airlines',
+    'SA': 'South African Airways',
+    'KQ': 'Kenya Airways',
+    'AT': 'Royal Air Maroc',
+    'WB': 'RwandAir',
+    'HF': 'Air Côte d\'Ivoire',
 
-  // === American Airlines ===
-  AA: { code: 'AA', name: 'American Airlines', aliases: ['american'] },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ASIA-PACIFIC CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'CX': 'Cathay Pacific',
+    'SQ': 'Singapore Airlines',
+    'TG': 'Thai Airways',
+    'JL': 'Japan Airlines',
+    'NH': 'All Nippon Airways',
+    'KE': 'Korean Air',
+    'OZ': 'Asiana Airlines',
+    'CI': 'China Airlines',
+    'BR': 'EVA Air',
+    'MH': 'Malaysia Airlines',
+    'GA': 'Garuda Indonesia',
+    'PR': 'Philippine Airlines',
+    'VN': 'Vietnam Airlines',
+    'AI': 'Air India',
+    '6E': 'IndiGo',
+    'UK': 'Vistara',
+    'SG': 'SpiceJet',
+    'AK': 'AirAsia',
+    'FD': 'Thai AirAsia',
+    'QZ': 'Indonesia AirAsia',
+    'D7': 'AirAsia X',
+    'TR': 'Scoot',
+    'SL': 'Thai Lion Air',
+    'QG': 'Citilink',
+    'Z2': 'Philippines AirAsia',
+    '5J': 'Cebu Pacific',
 
-  // === Delta ===
-  DL: { code: 'DL', name: 'Delta Air Lines', aliases: ['delta'] },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // OCEANIA CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'QF': 'Qantas',
+    'VA': 'Virgin Australia',
+    'NZ': 'Air New Zealand',
+    'JQ': 'Jetstar',
+    'FJ': 'Fiji Airways',
 
-  // === United ===
-  UA: { code: 'UA', name: 'United Airlines', aliases: ['united'] },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CANADIAN CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'AC': 'Air Canada',
+    'WS': 'WestJet',
+    'PD': 'Porter Airlines',
+    'TS': 'Air Transat',
+    'WG': 'Sunwing Airlines',
 
-  // === Air France ===
-  AF: { code: 'AF', name: 'Air France', aliases: ['air france'] },
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CHINESE CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'CA': 'Air China',
+    'MU': 'China Eastern',
+    'CZ': 'China Southern',
+    'HU': 'Hainan Airlines',
+    '3U': 'Sichuan Airlines',
+    'MF': 'Xiamen Airlines',
+    'ZH': 'Shenzhen Airlines',
+    'FM': 'Shanghai Airlines',
+    'SC': 'Shandong Airlines',
+    'GS': 'Tianjin Airlines',
+    'PN': 'West Air',
+    '9C': 'Spring Airlines',
+    'HO': 'Juneyao Airlines',
 
-  // === KLM ===
-  KL: { code: 'KL', name: 'KLM Royal Dutch Airlines', aliases: ['klm'] },
-
-  // === Lufthansa ===
-  LH: { code: 'LH', name: 'Lufthansa', aliases: ['lufthansa'] },
-
-  // === Air Europa ===
-  UX: { code: 'UX', name: 'Air Europa', aliases: ['air europa'] },
-
-  // === Turkish Airlines ===
-  TK: { code: 'TK', name: 'Turkish Airlines', aliases: ['turkish'] },
-
-  // === Emirates ===
-  EK: { code: 'EK', name: 'Emirates', aliases: ['emirates'] },
-
-  // === Qatar Airways ===
-  QR: { code: 'QR', name: 'Qatar Airways', aliases: ['qatar'] },
-
-  // === British Airways ===
-  BA: { code: 'BA', name: 'British Airways', aliases: ['british airways'] },
-
-  // === Air Canada ===
-  AC: { code: 'AC', name: 'Air Canada', aliases: ['air canada'] },
-
-  // === Gol ===
-  G3: { code: 'G3', name: 'Gol Linhas Aereas', aliases: ['gol'] },
-
-  // === Azul ===
-  AD: { code: 'AD', name: 'Azul Brazilian Airlines', aliases: ['azul'] },
-
-  // === Viva Air ===
-  VH: { code: 'VH', name: 'Viva Air', aliases: ['viva', 'viva air'] },
-
-  // === Wingo ===
-  P5: { code: 'P5', name: 'Wingo', aliases: ['wingo'] },
-
-  // === Spirit ===
-  NK: { code: 'NK', name: 'Spirit Airlines', aliases: ['spirit'] },
-
-  // === JetBlue ===
-  B6: { code: 'B6', name: 'JetBlue Airways', aliases: ['jetblue'] },
-
-  // === Southwest ===
-  WN: { code: 'WN', name: 'Southwest Airlines', aliases: ['southwest'] },
-
-  // === Frontier ===
-  F9: { code: 'F9', name: 'Frontier Airlines', aliases: ['frontier'] },
-
-  // === Volaris ===
-  Y4: { code: 'Y4', name: 'Volaris', aliases: ['volaris'] },
-
-  // === VivaAerobus ===
-  VB: { code: 'VB', name: 'VivaAerobus', aliases: ['vivaaerobus'] },
-
-  // === Interjet (historical) ===
-  '4O': { code: '4O', name: 'Interjet', aliases: ['interjet'] },
-
-  // === Plus Ultra ===
-  PU: { code: 'PU', name: 'Plus Ultra', aliases: ['plus ultra'] },
-
-  // === Air China ===
-  CA: { code: 'CA', name: 'Air China', aliases: ['air china'] },
-
-  // === Singapore Airlines ===
-  SQ: { code: 'SQ', name: 'Singapore Airlines', aliases: ['singapore'] },
-
-  // === Cathay Pacific ===
-  CX: { code: 'CX', name: 'Cathay Pacific', aliases: ['cathay'] },
-
-  // === Japan Airlines ===
-  JL: { code: 'JL', name: 'Japan Airlines', aliases: ['jal', 'japan airlines'] },
-
-  // === ANA ===
-  NH: { code: 'NH', name: 'All Nippon Airways', aliases: ['ana'] },
-
-  // === Korean Air ===
-  KE: { code: 'KE', name: 'Korean Air', aliases: ['korean'] },
-
-  // === Etihad ===
-  EY: { code: 'EY', name: 'Etihad Airways', aliases: ['etihad'] },
-
-  // === Swiss ===
-  LX: { code: 'LX', name: 'Swiss International Air Lines', aliases: ['swiss'] },
-
-  // === Austrian ===
-  OS: { code: 'OS', name: 'Austrian Airlines', aliases: ['austrian'] },
-
-  // === TAP Portugal ===
-  TP: { code: 'TP', name: 'TAP Air Portugal', aliases: ['tap', 'tap portugal'] },
-
-  // === Alitalia (historical) ===
-  AZ: { code: 'AZ', name: 'Alitalia', aliases: ['alitalia'] },
-
-  // === ITA Airways ===
-  AZ2: { code: 'AZ', name: 'ITA Airways', aliases: ['ita', 'ita airways'] }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // RUSSIAN CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'S7': 'S7 Airlines',
+    'UT': 'UTair',
+    'U6': 'Ural Airlines',
+    'N4': 'Nordwind Airlines',
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ALIASES → CÓDIGO IATA
+// Todas las variaciones de nombres que un usuario podría escribir
+// ═══════════════════════════════════════════════════════════════════════════════
+export const AIRLINE_ALIASES: Record<string, string> = {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // LATAM GROUP
+    // ─────────────────────────────────────────────────────────────────────────────
+    'latam': 'LA',
+    'latam airlines': 'LA',
+    'latam airlines group': 'LA',
+    'lan': 'LA',
+    'lan chile': 'LA',
+    'lanchile': 'LA',
+    // LATAM Brasil
+    'tam': 'JJ',
+    'tam airlines': 'JJ',
+    'latam brasil': 'JJ',
+    'latam brazil': 'JJ',
+    'latam airlines brasil': 'JJ',
+    // LATAM Perú
+    'latam peru': 'LP',
+    'latam perú': 'LP',
+    'latam airlines peru': 'LP',
+    'latam airlines perú': 'LP',
+    'lan peru': 'LP',
+    'lan perú': 'LP',
+    // LATAM Ecuador
+    'latam ecuador': 'XL',
+    'latam airlines ecuador': 'XL',
+    'lan ecuador': 'XL',
+    // LATAM Colombia
+    'latam colombia': '4C',
+    'latam airlines colombia': '4C',
+    'lan colombia': '4C',
+    // LATAM Argentina
+    'latam argentina': '4M',
+    'latam airlines argentina': '4M',
+    'lan argentina': '4M',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // AVIANCA GROUP
+    // ─────────────────────────────────────────────────────────────────────────────
+    'avianca': 'AV',
+    'avianca holdings': 'AV',
+    'avianca el salvador': 'AV',
+    'avianca guatemala': 'AV',
+    'avianca honduras': 'AV',
+    // Avianca Ecuador
+    'avianca ecuador': '2K',
+    // Avianca Costa Rica
+    'avianca costa rica': 'LR',
+    'lacsa': 'LR',
+    // TACA
+    'taca': 'TA',
+    'taca airlines': 'TA',
+    'taca peru': 'TA',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // IBERIA GROUP (IAG)
+    // ─────────────────────────────────────────────────────────────────────────────
+    'iberia': 'IB',
+    'iberia lineas aereas': 'IB',
+    'iberia líneas aéreas': 'IB',
+    // Level opera con código IB
+    'level': 'IB',
+    'level iberia': 'IB',
+    'level spain': 'IB',
+    // Iberia Express
+    'iberia express': 'I2',
+    'ib express': 'I2',
+    // Vueling
+    'vueling': 'VY',
+    'vueling airlines': 'VY',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // US CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'american airlines': 'AA',
+    'american': 'AA',
+    'american eagle': 'AA',
+    'aa': 'AA',
+    // United
+    'united airlines': 'UA',
+    'united': 'UA',
+    // Delta
+    'delta': 'DL',
+    'delta air lines': 'DL',
+    'delta airlines': 'DL',
+    // Southwest
+    'southwest': 'WN',
+    'southwest airlines': 'WN',
+    // JetBlue
+    'jetblue': 'B6',
+    'jetblue airways': 'B6',
+    'jet blue': 'B6',
+    // Alaska
+    'alaska': 'AS',
+    'alaska airlines': 'AS',
+    // Spirit
+    'spirit': 'NK',
+    'spirit airlines': 'NK',
+    // Frontier
+    'frontier': 'F9',
+    'frontier airlines': 'F9',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // EUROPEAN CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'air france': 'AF',
+    'airfrance': 'AF',
+    // KLM
+    'klm': 'KL',
+    'klm royal dutch': 'KL',
+    'klm royal dutch airlines': 'KL',
+    // Lufthansa
+    'lufthansa': 'LH',
+    'lufthansa german airlines': 'LH',
+    'lufthansa cityline': 'CL',
+    'cityline': 'CL',
+    // British Airways
+    'british airways': 'BA',
+    'british': 'BA',
+    'ba': 'BA',
+    // ITA Airways (ex-Alitalia)
+    'alitalia': 'AZ',
+    'ita airways': 'AZ',
+    'ita': 'AZ',
+    // Swiss
+    'swiss': 'LX',
+    'swiss air': 'LX',
+    'swiss international': 'LX',
+    'swiss international air lines': 'LX',
+    // Austrian
+    'austrian': 'OS',
+    'austrian airlines': 'OS',
+    // TAP Portugal
+    'tap air portugal': 'TP',
+    'tap portugal': 'TP',
+    'tap': 'TP',
+    // Ryanair
+    'ryanair': 'FR',
+    'ryan air': 'FR',
+    // easyJet
+    'easyjet': 'U2',
+    'easy jet': 'U2',
+    // Wizz Air
+    'wizz air': 'W6',
+    'wizzair': 'W6',
+    'wizz': 'W6',
+    // Brussels
+    'brussels airlines': 'SN',
+    'brussels': 'SN',
+    // Air Europa
+    'air europa': 'UX',
+    'aireuropa': 'UX',
+    // Aeroflot
+    'aeroflot': 'SU',
+    'aeroflot russian': 'SU',
+    // SAS
+    'sas': 'SK',
+    'scandinavian': 'SK',
+    'scandinavian airlines': 'SK',
+    // Finnair
+    'finnair': 'AY',
+    // LOT
+    'lot': 'LO',
+    'lot polish': 'LO',
+    'lot polish airlines': 'LO',
+    // Others
+    'aegean': 'A3',
+    'aegean airlines': 'A3',
+    'aer lingus': 'EI',
+    'aerlingus': 'EI',
+    'air baltic': 'BT',
+    'airbaltic': 'BT',
+    // Charter / Regional
+    'helvetic': '2L',
+    'helvetic airways': '2L',
+    'edelweiss': 'WK',
+    'edelweiss air': 'WK',
+    'wamos': 'EB',
+    'wamos air': 'EB',
+    'world2fly': '2W',
+    'world 2 fly': '2W',
+    'binter': 'NT',
+    'binter canarias': 'NT',
+    'air nostrum': 'YW',
+    'volotea': 'V7',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // SOUTH AMERICAN CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'aerolineas argentinas': 'AR',
+    'aerolíneas argentinas': 'AR',
+    'aerolineas': 'AR',
+    'aerolíneas': 'AR',
+    // Gol
+    'gol': 'G3',
+    'gol linhas': 'G3',
+    'gol linhas aereas': 'G3',
+    'gol transportes': 'G3',
+    // Azul
+    'azul': 'AD',
+    'azul brazilian': 'AD',
+    'azul airlines': 'AD',
+    'azul brazilian airlines': 'AD',
+    // Copa
+    'copa': 'CM',
+    'copa airlines': 'CM',
+    // Aeroméxico
+    'aeromexico': 'AM',
+    'aeroméxico': 'AM',
+    'aeromex': 'AM',
+    'aeromexico connect': '5D',
+    // Sky Airline (Chile)
+    'sky': 'H2',
+    'sky airline': 'H2',
+    'sky airlines': 'H2',
+    'sky chile': 'H2',
+    // Boliviana de Aviación
+    'boa': 'OB',
+    'boliviana': 'OB',
+    'boliviana de aviacion': 'OB',
+    'boliviana de aviación': 'OB',
+    // JetSMART
+    'jetsmart': 'JA',
+    'jet smart': 'JA',
+    // Wingo
+    'wingo': 'P5',
+    // Arajet
+    'arajet': 'DM',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // MIDDLE EAST CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'emirates': 'EK',
+    'fly emirates': 'EK',
+    // Qatar
+    'qatar': 'QR',
+    'qatar airways': 'QR',
+    // Etihad
+    'etihad': 'EY',
+    'etihad airways': 'EY',
+    // Turkish
+    'turkish': 'TK',
+    'turkish airlines': 'TK',
+    'thy': 'TK',
+    'turk hava yollari': 'TK',
+    // El Al
+    'el al': 'LY',
+    'elal': 'LY',
+    'el al israel': 'LY',
+    // Saudia
+    'saudia': 'SV',
+    'saudi arabian': 'SV',
+    'saudi arabian airlines': 'SV',
+    // EgyptAir
+    'egyptair': 'MS',
+    'egypt air': 'MS',
+    // Royal Jordanian
+    'royal jordanian': 'RJ',
+    // Pegasus
+    'pegasus': 'PC',
+    'pegasus airlines': 'PC',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // AFRICAN CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'ethiopian': 'ET',
+    'ethiopian airlines': 'ET',
+    // South African
+    'south african': 'SA',
+    'south african airways': 'SA',
+    'saa': 'SA',
+    // Kenya Airways
+    'kenya airways': 'KQ',
+    // Royal Air Maroc
+    'royal air maroc': 'AT',
+    'ram': 'AT',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ASIA-PACIFIC CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'cathay pacific': 'CX',
+    'cathay': 'CX',
+    // Singapore Airlines
+    'singapore airlines': 'SQ',
+    'singapore': 'SQ',
+    'sq': 'SQ',
+    // Thai Airways
+    'thai airways': 'TG',
+    'thai': 'TG',
+    // Japan Airlines
+    'japan airlines': 'JL',
+    'jal': 'JL',
+    // ANA
+    'ana': 'NH',
+    'all nippon': 'NH',
+    'all nippon airways': 'NH',
+    // Korean Air
+    'korean air': 'KE',
+    'korean': 'KE',
+    // Asiana
+    'asiana': 'OZ',
+    'asiana airlines': 'OZ',
+    // China Airlines
+    'china airlines': 'CI',
+    // EVA Air
+    'eva air': 'BR',
+    'eva': 'BR',
+    // Malaysia Airlines
+    'malaysia airlines': 'MH',
+    'malaysia': 'MH',
+    'mas': 'MH',
+    // Garuda
+    'garuda': 'GA',
+    'garuda indonesia': 'GA',
+    // Philippine Airlines
+    'philippine airlines': 'PR',
+    'philippine': 'PR',
+    'pal': 'PR',
+    // Vietnam Airlines
+    'vietnam airlines': 'VN',
+    'vietnam': 'VN',
+    // Air India
+    'air india': 'AI',
+    // IndiGo
+    'indigo': '6E',
+    // AirAsia
+    'airasia': 'AK',
+    'air asia': 'AK',
+    'airasia x': 'D7',
+    // Scoot
+    'scoot': 'TR',
+    // Cebu Pacific
+    'cebu pacific': '5J',
+    'cebu': '5J',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // OCEANIA CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'qantas': 'QF',
+    // Virgin Australia
+    'virgin australia': 'VA',
+    // Air New Zealand
+    'air new zealand': 'NZ',
+    'air nz': 'NZ',
+    // Jetstar
+    'jetstar': 'JQ',
+    // Fiji Airways
+    'fiji airways': 'FJ',
+    'fiji': 'FJ',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CANADIAN CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'air canada': 'AC',
+    'air canada rouge': 'AC',
+    'ac rouge': 'AC',
+    // WestJet
+    'westjet': 'WS',
+    'west jet': 'WS',
+    // Porter
+    'porter': 'PD',
+    'porter airlines': 'PD',
+    // Air Transat
+    'air transat': 'TS',
+    'transat': 'TS',
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CHINESE CARRIERS
+    // ─────────────────────────────────────────────────────────────────────────────
+    'air china': 'CA',
+    // China Eastern
+    'china eastern': 'MU',
+    'china eastern airlines': 'MU',
+    // China Southern
+    'china southern': 'CZ',
+    'china southern airlines': 'CZ',
+    // Hainan
+    'hainan': 'HU',
+    'hainan airlines': 'HU',
+    // Xiamen
+    'xiamen': 'MF',
+    'xiamen airlines': 'MF',
+    // Spring Airlines
+    'spring airlines': '9C',
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PATRONES DE DETECCIÓN
+// Lista de nombres para búsqueda con patrones contextuales
+// ═══════════════════════════════════════════════════════════════════════════════
+export const AIRLINE_DETECTION_PATTERNS: string[] = Object.keys(AIRLINE_ALIASES);
 
 /**
  * Light fare airlines (typically no checked baggage)
@@ -161,49 +626,111 @@ export const AIRLINES: Record<string, AirlineInfo> = {
 export const LIGHT_FARE_AIRLINES = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
 
 /**
- * Get airline info by IATA code
+ * Escapa caracteres especiales de regex
  */
-export function getAirlineByCode(code: string): AirlineInfo | undefined {
-  return AIRLINES[code.toUpperCase()];
+function escapeRegex(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
- * Get airline name by IATA code
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * detectAirlineInText - Detecta aerolíneas en el texto del usuario
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * Busca menciones de aerolíneas usando múltiples estrategias:
+ * 1. Patrones contextuales: "con [airline]", "en [airline]", etc.
+ * 2. Búsqueda directa de nombres en el mapeo
+ *
+ * @param text - Texto del usuario a analizar
+ * @returns Objeto con código IATA y nombre si encuentra, null si no
+ */
+export function detectAirlineInText(text: string): {
+    code: string;
+    name: string;
+    confidence: 'high' | 'medium' | 'low';
+} | null {
+    const normalizedText = text.toLowerCase().trim();
+
+    // Ordenar aliases por longitud descendente (preferir matches más largos)
+    const sortedAliases = Object.keys(AIRLINE_ALIASES).sort((a, b) => b.length - a.length);
+
+    for (const alias of sortedAliases) {
+        // Patrones de alta confianza
+        const highConfidencePatterns = [
+            new RegExp(`\\b(?:con|de|en|vuelo|prefiero|quiero|operado por|volando)\\s+${escapeRegex(alias)}\\b`, 'i'),
+            new RegExp(`\\b${escapeRegex(alias)}\\s+(?:a|hacia|para|desde|business|economy|primera)\\b`, 'i'),
+            new RegExp(`\\baerolinea\\s+${escapeRegex(alias)}\\b`, 'i'),
+            new RegExp(`\\baeroli[ńn]ea\\s+${escapeRegex(alias)}\\b`, 'i'),
+        ];
+
+        for (const pattern of highConfidencePatterns) {
+            if (pattern.test(normalizedText)) {
+                return {
+                    code: AIRLINE_ALIASES[alias],
+                    name: alias,
+                    confidence: 'high'
+                };
+            }
+        }
+    }
+
+    // Búsqueda directa (confianza media)
+    for (const alias of sortedAliases) {
+        if (alias.length > 3) {
+            const directPattern = new RegExp(`\\b${escapeRegex(alias)}\\b`, 'i');
+            if (directPattern.test(normalizedText)) {
+                return {
+                    code: AIRLINE_ALIASES[alias],
+                    name: alias,
+                    confidence: 'medium'
+                };
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Obtiene el código IATA de un nombre de aerolínea
+ * @param name - Nombre de la aerolínea (cualquier variación)
+ * @returns Código IATA o null si no se encuentra
+ */
+export function getAirlineCode(name: string): string | null {
+    const normalized = name.toLowerCase().trim();
+    return AIRLINE_ALIASES[normalized] || null;
+}
+
+/**
+ * Obtiene el nombre oficial de una aerolínea por su código IATA
+ * @param code - Código IATA (2 caracteres)
+ * @returns Nombre oficial o el código si no se encuentra
  */
 export function getAirlineName(code: string): string {
-  const airline = getAirlineByCode(code);
-  return airline ? airline.name : code;
+    return AIRLINE_IATA_CODES[code.toUpperCase()] || code;
+}
+
+/**
+ * Verifica si un código IATA es válido
+ * @param code - Código a verificar
+ * @returns true si es un código IATA conocido
+ */
+export function isValidAirlineCode(code: string): boolean {
+    return code.toUpperCase() in AIRLINE_IATA_CODES;
 }
 
 /**
  * Check if airline is a light fare carrier
  */
 export function isLightFareAirline(code: string): boolean {
-  return LIGHT_FARE_AIRLINES.includes(code.toUpperCase());
+    return LIGHT_FARE_AIRLINES.includes(code.toUpperCase());
 }
 
-/**
- * Find airline code by name or alias
- */
-export function findAirlineCode(query: string): string | undefined {
-  const normalizedQuery = query.toLowerCase().trim();
-
-  for (const [code, info] of Object.entries(AIRLINES)) {
-    // Check exact code match
-    if (code.toLowerCase() === normalizedQuery) {
-      return code;
-    }
-
-    // Check name match
-    if (info.name.toLowerCase().includes(normalizedQuery)) {
-      return code;
-    }
-
-    // Check aliases
-    if (info.aliases?.some(alias => alias.toLowerCase().includes(normalizedQuery))) {
-      return code;
-    }
-  }
-
-  return undefined;
-}
+// ═══════════════════════════════════════════════════════════════════════════════
+// ESTADÍSTICAS DEL ARCHIVO
+// ═══════════════════════════════════════════════════════════════════════════════
+export const AIRLINE_STATS = {
+    totalCodes: Object.keys(AIRLINE_IATA_CODES).length,
+    totalAliases: Object.keys(AIRLINE_ALIASES).length,
+    lastUpdated: '2025-11-25'
+};

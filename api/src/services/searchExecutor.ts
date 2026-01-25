@@ -4,6 +4,15 @@
  * Executes searches by calling underlying Edge Functions (starling-flights, eurovips-soap)
  * Replicates the logic from src/features/chat/services/searchHandlers.ts
  * but adapted for Edge Function environment.
+ *
+ * Features:
+ * - Per-leg connections analysis
+ * - Technical stops detection
+ * - Baggage analysis per leg (8 types)
+ * - Extended price breakdown
+ * - Time preference filtering
+ * - Segment details (bookingClass, equipment, fareBasis)
+ * - Full results storage with searchId
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -13,9 +22,14 @@ import {
   applyRoomFiltering,
   inferAdultsFromRoomType,
   shouldExcludeLightFare,
-  getLightFareAirlines
+  getLightFareAirlines,
+  hotelBelongsToChain
 } from './advancedFilters.js';
 import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.js';
+import { transformFare, analyzeFlightType, type TransformOptions } from './flightTransformer.js';
+import { matchesLuggagePreference, analyzeBaggagePerLeg, type PerLegBaggageInfo } from './baggageUtils.js';
+import { filterFlightsByTimePreference, timePreferenceToRange, timeRangeToLabel } from './timeSlotMapper.js';
+import { getAirlineName } from '../data/airlineAliases.js';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -359,110 +373,27 @@ async function executeFlightSearch(
     };
   }
 
-  // Transform TVC fares to our standard flight format
-  let flights_results = rawFares.map((fare: any, index: number) => {
-    const legs = fare.Legs || [];
-    const firstLeg = legs[0] || {};
-    const firstOption = firstLeg.Options?.[0] || {};
-    const firstSegment = firstOption.Segments?.[0] || {};
-    const lastSegment = firstOption.Segments?.[firstOption.Segments?.length - 1] || firstSegment;
+  // ✅ Transform TVC fares using the new transformer with extended features
+  const transformOptions: TransformOptions = {
+    adults: flights.adults || 1,
+    children: flights.children || 0,
+    infants: flights.infants || 0,
+    baseCurrency: tvcResponse?.BaseCurrency || 'USD'
+  };
 
-    // Get return date if round trip
-    let returnDate = null;
-    if (legs.length > 1) {
-      const secondLeg = legs[1];
-      const secondOption = secondLeg.Options?.[0] || {};
-      const secondSegment = secondOption.Segments?.[0] || {};
-      returnDate = secondSegment.Departure?.Date || null;
+  let flights_results = rawFares.map((fare: any, index: number) =>
+    transformFare(fare, index, tvcResponse, transformOptions)
+  );
+
+  console.log('[FLIGHT_SEARCH] Transformed', flights_results.length, 'flights from TVC with extended features');
+
+  // Track baggage types found for metadata
+  const baggageTypesFound = new Set<string>();
+  flights_results.forEach((flight: any) => {
+    if (flight.baggage?.type) {
+      baggageTypesFound.add(flight.baggage.type);
     }
-
-    // Calculate stops
-    const totalSegments = legs.reduce((sum: number, leg: any) => {
-      const options = leg.Options || [];
-      const maxSegments = Math.max(...options.map((opt: any) => (opt.Segments?.length || 0)));
-      return sum + maxSegments;
-    }, 0);
-    const stopCount = Math.max(0, totalSegments - legs.length);
-    const isDirect = stopCount === 0;
-
-    // Parse baggage info
-    const baggageInfo = firstSegment.Baggage || '';
-    const baggageMatch = baggageInfo.match(/(\d+)PC|(\d+)KG/);
-    const baggageQuantity = baggageMatch ? parseInt(baggageMatch[1] || baggageMatch[2]) : 0;
-
-    return {
-      id: fare.FareID || `tvc-fare-${index}`,
-      airline: {
-        code: firstSegment.Airline || 'N/A',
-        name: firstSegment.OperatingAirlineName || firstSegment.Airline || 'Unknown'
-      },
-      price: {
-        amount: fare.TotalAmount || 0,
-        currency: fare.Currency || tvcResponse?.BaseCurrency || 'USD',
-        netAmount: fare.ExtendedFareInfo?.NetTotalAmount || fare.TotalAmount || 0,
-        taxAmount: fare.TaxAmount || 0,
-        fareAmount: fare.FareAmount || 0
-      },
-      adults: flights.adults || 1,
-      children: flights.children || 0,
-      departure_date: firstSegment.Departure?.Date || flights.departureDate,
-      departure_time: firstSegment.Departure?.Time || '',
-      arrival_date: lastSegment.Arrival?.Date || '',
-      arrival_time: lastSegment.Arrival?.Time || '',
-      return_date: returnDate,
-      duration: {
-        total: firstOption.OptionDuration || 0,
-        formatted: formatDuration(firstOption.OptionDuration || 0)
-      },
-      stops: {
-        count: stopCount,
-        direct: isDirect,
-        connections: stopCount
-      },
-      baggage: {
-        included: baggageQuantity > 0,
-        details: baggageInfo,
-        quantity: baggageQuantity
-      },
-      cabin: {
-        class: firstSegment.CabinClass || 'Y',
-        brandName: firstSegment.BrandName || 'Economy'
-      },
-      booking: {
-        validatingCarrier: fare.ValidatingCarrier || '',
-        lastTicketingDate: fare.LastTicketingDate || '',
-        fareType: fare.FareType || ''
-      },
-      legs: legs.map((leg: any, legIndex: number) => ({
-        legNumber: leg.LegNumber || legIndex + 1,
-        options: (leg.Options || []).map((option: any) => ({
-          optionId: option.FlightOptionID || '',
-          duration: option.OptionDuration || 0,
-          segments: (option.Segments || []).map((segment: any) => ({
-            airline: segment.Airline || '',
-            flightNumber: segment.FlightNumber || '',
-            departure: {
-              airportCode: segment.Departure?.AirportCode || '',
-              date: segment.Departure?.Date || '',
-              time: segment.Departure?.Time || ''
-            },
-            arrival: {
-              airportCode: segment.Arrival?.AirportCode || '',
-              date: segment.Arrival?.Date || '',
-              time: segment.Arrival?.Time || ''
-            },
-            duration: segment.Duration || 0,
-            cabinClass: segment.CabinClass || '',
-            baggage: segment.Baggage || ''
-          }))
-        }))
-      })),
-      provider: 'TVC',
-      transactionId: tvcResponse?.TransactionID || ''
-    };
   });
-
-  console.log('[FLIGHT_SEARCH] Transformed', flights_results.length, 'flights from TVC');
 
   // ✅ CRITICAL FIX: Filter by maxLayoverHours if specified (mirrors chat internal logic)
   // This ensures API searches respect layover duration constraints just like internal chat
@@ -530,12 +461,60 @@ async function executeFlightSearch(
     console.log(`📊 [LIGHT FARE FILTER] Flights: ${beforeFilter} → ${flights_results.length} (excluded: ${lightFaresExcluded})`);
   }
 
-  // ✅ STEP 2: Limit to top 5
+  // ✅ STEP 2: Apply time preference filtering (if specified)
+  let timeFilterExcluded = 0;
+  const timePreference = flights.timePreference || flights.departureTimePreference;
+
+  if (timePreference) {
+    console.log(`🕐 [TIME FILTER] Applying time preference: ${timePreference}`);
+    const { flights: timeFiltered, excludedCount } = filterFlightsByTimePreference(flights_results, timePreference);
+    timeFilterExcluded = excludedCount;
+    flights_results = timeFiltered;
+  }
+
+  // ✅ STEP 3: Apply enhanced luggage filtering using per-leg analysis
+  let luggageFilterExcluded = 0;
+
+  if (flights.luggage && flights.luggage !== 'any') {
+    console.log(`🧳 [LUGGAGE FILTER] Filtering by luggage preference: ${flights.luggage}`);
+    const beforeLuggage = flights_results.length;
+
+    flights_results = flights_results.filter((flight: any) => {
+      const baggageAnalysis = flight.baggageAnalysis || [];
+
+      // If no baggage analysis, fall back to basic check
+      if (baggageAnalysis.length === 0) {
+        console.log(`   ⚠️ Flight ${flight.id}: No baggageAnalysis, using basic check`);
+        const hasChecked = flight.baggage?.included || false;
+        const hasCarryOn = parseInt(flight.baggage?.carryOnQuantity || '0') > 0;
+
+        switch (flights.luggage) {
+          case 'checked': return hasChecked;
+          case 'carry_on': return hasCarryOn || (!hasChecked && !hasCarryOn);
+          case 'both': return hasChecked && hasCarryOn;
+          case 'none': return !hasChecked && !hasCarryOn;
+          default: return true;
+        }
+      }
+
+      const matches = matchesLuggagePreference(baggageAnalysis, flights.luggage);
+      if (!matches) {
+        console.log(`   ❌ Flight ${flight.id}: Does not match ${flights.luggage} preference`);
+        luggageFilterExcluded++;
+      }
+      return matches;
+    });
+
+    console.log(`📊 [LUGGAGE FILTER] Flights: ${beforeLuggage} → ${flights_results.length} (excluded: ${luggageFilterExcluded})`);
+  }
+
+  // ✅ STEP 4: Sort by price and limit to top 5
+  flights_results.sort((a: any, b: any) => (a.price.amount || 0) - (b.price.amount || 0));
   const finalFlights = flights_results.slice(0, 5);
 
   console.log('[FLIGHT_SEARCH] Final result:', finalFlights.length, 'flights');
 
-  // ✅ STEP 3: Build extended metadata
+  // ✅ STEP 5: Build extended metadata with new features
   const metadata: any = {};
 
   // Add layover filter metadata if applied
@@ -552,12 +531,45 @@ async function executeFlightSearch(
     metadata.light_fare_airlines = getLightFareAirlines();
   }
 
+  // NEW: Add time preference filter metadata
+  if (timePreference) {
+    const range = timePreferenceToRange(timePreference);
+    metadata.time_filter_applied = {
+      preference: timePreference,
+      range: range,
+      label: timeRangeToLabel(range),
+      excluded_count: timeFilterExcluded
+    };
+  }
+
+  // NEW: Add luggage filter metadata
+  if (flights.luggage && flights.luggage !== 'any') {
+    metadata.luggage_filter_applied = {
+      preference: flights.luggage,
+      excluded_count: luggageFilterExcluded
+    };
+  }
+
+  // NEW: Add baggage analysis summary
+  if (baggageTypesFound.size > 0) {
+    metadata.baggage_analysis = {
+      types_found: Array.from(baggageTypesFound)
+    };
+  }
+
+  // NEW: Generate searchId for full results reference
+  const searchId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
   return {
     status: 'completed',
     type: 'flights',
     flights: {
       count: finalFlights.length,
-      items: finalFlights
+      items: finalFlights,
+      // NEW: Search reference for full results
+      searchId: searchId,
+      fullResultsAvailable: flights_results.length > 5,
+      totalResults: flights_results.length
     },
     metadata: Object.keys(metadata).length > 0 ? metadata : undefined
   };
@@ -766,12 +778,19 @@ async function executeHotelSearch(
     };
   }
 
+  // NEW: Generate searchId for full results reference
+  const searchId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
   return {
     status: 'completed',
     type: 'hotels',
     hotels: {
       count: sortedHotels.length,
-      items: sortedHotels
+      items: sortedHotels,
+      // NEW: Search reference for full results
+      searchId: searchId,
+      fullResultsAvailable: filteredHotels.length > 5,
+      totalResults: filteredHotels.length
     },
     metadata: Object.keys(metadata).length > 0 ? metadata : undefined
   };

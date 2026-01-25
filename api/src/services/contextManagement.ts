@@ -262,3 +262,129 @@ export function shouldClearContext(
 
   return false;
 }
+
+// =============================================================================
+// AUTO-ENRICHMENT: Hotel context from Flight context
+// =============================================================================
+
+/**
+ * Auto-enrich hotel search parameters from flight context
+ *
+ * When user searches for hotels after a flight search,
+ * automatically infer hotel parameters from the flight context:
+ * - City from flight destination
+ * - Check-in date from flight arrival date
+ * - Adults/children/infants from flight passengers
+ *
+ * @param hotelParams - Current hotel search parameters
+ * @param flightContext - Previous flight context
+ * @returns Enriched hotel parameters
+ */
+export function enrichHotelFromFlightContext(
+  hotelParams: any,
+  flightContext: any
+): any {
+  if (!flightContext) {
+    return hotelParams;
+  }
+
+  console.log('[AUTO-ENRICH] Enriching hotel params from flight context');
+
+  const enriched = { ...hotelParams };
+
+  // Infer city from flight destination if not specified
+  if (!enriched.city && flightContext.destination) {
+    enriched.city = flightContext.destination;
+    console.log(`[AUTO-ENRICH] City from flight destination: ${enriched.city}`);
+  }
+
+  // Infer check-in date from flight departure if not specified
+  if (!enriched.checkinDate && flightContext.departureDate) {
+    enriched.checkinDate = flightContext.departureDate;
+    console.log(`[AUTO-ENRICH] Check-in from flight departure: ${enriched.checkinDate}`);
+  }
+
+  // Infer checkout date from flight return if not specified
+  if (!enriched.checkoutDate && flightContext.returnDate) {
+    enriched.checkoutDate = flightContext.returnDate;
+    console.log(`[AUTO-ENRICH] Check-out from flight return: ${enriched.checkoutDate}`);
+  }
+
+  // Infer adults from flight passengers if not specified
+  if (!enriched.adults && flightContext.adults) {
+    enriched.adults = flightContext.adults;
+    console.log(`[AUTO-ENRICH] Adults from flight: ${enriched.adults}`);
+  }
+
+  // Infer children from flight passengers if not specified
+  if (enriched.children === undefined && flightContext.children !== undefined) {
+    enriched.children = flightContext.children;
+    console.log(`[AUTO-ENRICH] Children from flight: ${enriched.children}`);
+  }
+
+  // Infer infants from flight passengers if not specified
+  if (enriched.infants === undefined && flightContext.infants !== undefined) {
+    enriched.infants = flightContext.infants;
+    console.log(`[AUTO-ENRICH] Infants from flight: ${enriched.infants}`);
+  }
+
+  return enriched;
+}
+
+/**
+ * Auto-enrich flight search parameters from hotel context
+ *
+ * When user searches for flights after a hotel search,
+ * automatically infer flight parameters from the hotel context:
+ * - Destination from hotel city
+ * - Dates from hotel check-in/check-out
+ * - Adults/children from hotel guests
+ *
+ * @param flightParams - Current flight search parameters
+ * @param hotelContext - Previous hotel context
+ * @returns Enriched flight parameters
+ */
+export function enrichFlightFromHotelContext(
+  flightParams: any,
+  hotelContext: any
+): any {
+  if (!hotelContext) {
+    return flightParams;
+  }
+
+  console.log('[AUTO-ENRICH] Enriching flight params from hotel context');
+
+  const enriched = { ...flightParams };
+
+  // Infer destination from hotel city if not specified
+  if (!enriched.destination && hotelContext.city) {
+    enriched.destination = hotelContext.city;
+    console.log(`[AUTO-ENRICH] Destination from hotel city: ${enriched.destination}`);
+  }
+
+  // Infer departure date from hotel check-in if not specified
+  if (!enriched.departureDate && hotelContext.checkinDate) {
+    enriched.departureDate = hotelContext.checkinDate;
+    console.log(`[AUTO-ENRICH] Departure from hotel check-in: ${enriched.departureDate}`);
+  }
+
+  // Infer return date from hotel checkout if not specified
+  if (!enriched.returnDate && hotelContext.checkoutDate) {
+    enriched.returnDate = hotelContext.checkoutDate;
+    console.log(`[AUTO-ENRICH] Return from hotel check-out: ${enriched.returnDate}`);
+  }
+
+  // Infer adults from hotel guests if not specified
+  if (!enriched.adults && hotelContext.adults) {
+    enriched.adults = hotelContext.adults;
+    console.log(`[AUTO-ENRICH] Adults from hotel: ${enriched.adults}`);
+  }
+
+  // Infer children from hotel guests if not specified
+  if (enriched.children === undefined && hotelContext.children !== undefined) {
+    enriched.children = hotelContext.children;
+    console.log(`[AUTO-ENRICH] Children from hotel: ${enriched.children}`);
+  }
+
+  return enriched;
+}
