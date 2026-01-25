@@ -35,7 +35,8 @@ class EurovipsSOAPClient {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`❌ SOAP Error ${response.status}:`, errorText);
-      throw new Error(`SOAP request failed: ${response.status} ${response.statusText}`);
+      // Include error details in exception for debugging
+      throw new Error(`SOAP request failed: ${response.status} - ${errorText.substring(0, 500)}`);
     }
     const xmlResponse = await response.text();
     console.log(`📥 SOAP RESPONSE [${soapAction}]:`, xmlResponse.length, 'chars');
@@ -85,9 +86,10 @@ class EurovipsSOAPClient {
     return this.parseAirlineListResponse(xmlResponse);
   }
   async searchHotels(params) {
-    // Build occupancy based on adults/children
+    // Build occupancy based on adults/children/infants
     const adults = params.adults || 1; // Default to 1 adult
     const children = params.children || 0;
+    const infants = params.infants || 0;
     // Create occupants XML
     let occupantsXml = '';
     for (let i = 0; i < adults; i++) {
@@ -95,6 +97,9 @@ class EurovipsSOAPClient {
     }
     for (let i = 0; i < children; i++) {
       occupantsXml += '      <Occupants type="CHD" />\n';
+    }
+    for (let i = 0; i < infants; i++) {
+      occupantsXml += '      <Occupants type="INF" Age="1" />\n';
     }
     const soapBody = `
     <searchHotelFaresRQ1 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
@@ -168,6 +173,227 @@ ${occupantsXml}        </Ocuppancy>
     </searchServiceFaresRQ1>`;
     const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchServiceFares');
     return this.parseServiceSearchResponse(xmlResponse, params);
+  }
+
+  /**
+   * makeBudget - Obtiene el precio EXACTO (Neto Agencia) para una habitación seleccionada
+   *
+   * Este método es CRÍTICO para obtener el precio final que se cobra al cliente.
+   * El precio de searchHotelFares es aproximado; makeBudget da el precio exacto.
+   *
+   * @param params - Parámetros de la reserva
+   * @returns Budget con precio exacto y budgetId para posterior conversión a reserva
+   */
+  async makeBudget(params: {
+    fareId: string;           // UniqueId del hotel (ej: "AP|5168-59588")
+    fareIdBroker: string;     // FareIdBroker de la habitación seleccionada
+    checkinDate: string;      // Fecha check-in YYYY-MM-DD
+    checkoutDate: string;     // Fecha check-out YYYY-MM-DD
+    occupancies: Array<{
+      occupancyId: string;
+      passengers: Array<{ type: 'ADT' | 'CHD' | 'INF'; age?: number }>
+    }>;
+    reference?: string;       // Referencia opcional para tracking
+  }) {
+    console.log('📋 [MAKE_BUDGET] Creating budget for hotel:', params.fareId);
+    console.log('📋 [MAKE_BUDGET] FareIdBroker:', params.fareIdBroker);
+    console.log('📋 [MAKE_BUDGET] Dates:', params.checkinDate, '->', params.checkoutDate);
+
+    // Build FareTypeSelection XML
+    const buildFareTypeSelectionXml = () => {
+      return `<bud1:FareTypeSelection FareIdBroker="${params.fareIdBroker}" OccupancyId="${params.occupancies[0]?.occupancyId || '1'}">1</bud1:FareTypeSelection>`;
+    };
+
+    // Build Occupancy XML - INSIDE FareTypeSelectionList
+    const buildOccupancyXml = () => {
+      let xml = '';
+      params.occupancies.forEach((occ) => {
+        xml += `            <bud1:Ocuppancy OccupancyId="${occ.occupancyId}">\n`;
+        occ.passengers.forEach((pax) => {
+          if (pax.type === 'ADT') {
+            xml += `               <bud1:Occupants type="ADT"/>\n`;
+          } else {
+            const age = pax.age || (pax.type === 'INF' ? 1 : 8);
+            xml += `               <bud1:Occupants type="${pax.type === 'CHD' ? 'CNN' : 'INF'}" Age="${age}"/>\n`;
+          }
+        });
+        xml += `            </bud1:Ocuppancy>\n`;
+      });
+      return xml;
+    };
+
+    // SOAP Envelope COMPLETO con namespaces correctos
+    const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+                  xmlns:bud="http://www.softur.com.ar/wsbridge/budget.wsdl"
+                  xmlns:bud1="http://www.softur.com.ar/wsbridge/budget.xsd">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <bud:BudgetType1>
+         <pos>
+            <id>${this.username}</id>
+            <clave>${this.password}</clave>
+         </pos>
+         <rq UniqueId="">
+            <bud1:HotelBudget ItemId="001">
+               <bud1:FareId>${params.fareId}</bud1:FareId>
+               <bud1:InDate>${params.checkinDate}</bud1:InDate>
+               <bud1:OutDate>${params.checkoutDate}</bud1:OutDate>
+               <bud1:SubTotalAmount>0</bud1:SubTotalAmount>
+               <bud1:FareTypeSelectionList>
+                  ${buildFareTypeSelectionXml()}
+${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
+            </bud1:HotelBudget>
+            <bud1:Summary CreationDate="${new Date().toISOString()}" StartDate="${params.checkinDate}" User="${this.username}" Reference="${params.reference || ''}" Status="0" Comments="" Agent="${this.agency}" Currency="USD"/>
+            <bud1:ExtraInfoList>
+               <bud1:ExtendedData type="PRESUPU">
+                  <bud1:Name>cod_agcia</bud1:Name>
+                  <bud1:Value>${this.agency}</bud1:Value>
+               </bud1:ExtendedData>
+            </bud1:ExtraInfoList>
+         </rq>
+      </bud:BudgetType1>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+    // Llamada directa con timeout de 30 segundos
+    console.log('📋 [MAKE_BUDGET] Sending SOAP request...');
+    console.log('📋 [MAKE_BUDGET] Envelope preview:', soapEnvelope.substring(0, 800));
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          'SOAPAction': 'makeBudget'
+        },
+        body: soapEnvelope,
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      console.log('📋 [MAKE_BUDGET] Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [MAKE_BUDGET] Error:', response.status, errorText.substring(0, 1000));
+        throw new Error(`makeBudget failed: ${response.status} - ${errorText.substring(0, 500)}`);
+      }
+
+      const xmlResponse = await response.text();
+      console.log('📋 [MAKE_BUDGET] Response length:', xmlResponse.length);
+      console.log('📋 [MAKE_BUDGET] Response preview:', xmlResponse.substring(0, 1000));
+      return this.parseMakeBudgetResponse(xmlResponse);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.error('❌ [MAKE_BUDGET] Request timed out after 30 seconds');
+        throw new Error('makeBudget request timed out - the provider is not responding');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Parsea la respuesta de makeBudget para extraer el precio exacto
+   */
+  parseMakeBudgetResponse(xmlResponse: string) {
+    try {
+      console.log('📋 [MAKE_BUDGET] Parsing response, length:', xmlResponse.length);
+
+      // Log sample for debugging
+      console.log('📋 [MAKE_BUDGET] Response sample:', xmlResponse.substring(0, 500));
+
+      // Extract resultado/codigo to check for errors
+      const codigoMatch = xmlResponse.match(/<codigo[^>]*>(\d+)<\/codigo>/i);
+      const textoMatch = xmlResponse.match(/<texto[^>]*>([^<]*)<\/texto>/i);
+
+      const codigo = codigoMatch ? codigoMatch[1] : null;
+      const texto = textoMatch ? textoMatch[1] : null;
+
+      console.log('📋 [MAKE_BUDGET] Result code:', codigo, 'text:', texto);
+
+      if (codigo && codigo !== '0') {
+        console.error('❌ [MAKE_BUDGET] Error from EUROVIPS:', texto);
+        return {
+          success: false,
+          error: texto || `Error code: ${codigo}`,
+          errorCode: codigo
+        };
+      }
+
+      // Extract budgetId from rs UniqueId attribute
+      const budgetIdMatch = xmlResponse.match(/<rs[^>]*UniqueId="([^"]+)"/i);
+      const budgetId = budgetIdMatch ? budgetIdMatch[1] : null;
+
+      // Extract SubTotalAmount (NETO AGENCIA EXACTO)
+      // This appears in multiple places, we want the one from Summary or HotelBudget
+      const subTotalMatches = xmlResponse.match(/<SubTotalAmount[^>]*>([\d.]+)<\/SubTotalAmount>/gi);
+      let subTotalAmount = 0;
+
+      if (subTotalMatches && subTotalMatches.length > 0) {
+        // Get the last (most specific) SubTotalAmount which is usually the final price
+        const lastMatch = subTotalMatches[subTotalMatches.length - 1];
+        const valueMatch = lastMatch.match(/([\d.]+)/);
+        if (valueMatch) {
+          subTotalAmount = parseFloat(valueMatch[1]);
+        }
+      }
+
+      // Alternative: Extract from Summary tag specifically
+      const summaryMatch = xmlResponse.match(/<Summary[^>]*SubTotalAmount="([\d.]+)"/i);
+      if (summaryMatch) {
+        subTotalAmount = parseFloat(summaryMatch[1]);
+      }
+
+      // Extract TotalAmount from Summary if available
+      const totalAmountMatch = xmlResponse.match(/<Summary[^>]*TotalAmount="([\d.]+)"/i);
+      const totalAmount = totalAmountMatch ? parseFloat(totalAmountMatch[1]) : subTotalAmount;
+
+      // Extract internal FareId (EV code) if present
+      const fareIdInternalMatch = xmlResponse.match(/<FareId[^>]*>(EV\d+)<\/FareId>/i);
+      const fareIdInternal = fareIdInternalMatch ? fareIdInternalMatch[1] : null;
+
+      // Extract currency
+      const currencyMatch = xmlResponse.match(/currency="([A-Z]{3})"/i);
+      const currency = currencyMatch ? currencyMatch[1] : 'USD';
+
+      console.log('📋 [MAKE_BUDGET] Parsed successfully:');
+      console.log('   budgetId:', budgetId);
+      console.log('   subTotalAmount (NETO AGENCIA):', subTotalAmount);
+      console.log('   totalAmount:', totalAmount);
+      console.log('   fareIdInternal:', fareIdInternal);
+      console.log('   currency:', currency);
+
+      if (!budgetId || subTotalAmount <= 0) {
+        console.warn('⚠️ [MAKE_BUDGET] Missing data - budgetId:', budgetId, 'subTotalAmount:', subTotalAmount);
+        return {
+          success: false,
+          error: 'No se pudo obtener el precio exacto del proveedor',
+          rawResponse: xmlResponse.substring(0, 1000)
+        };
+      }
+
+      return {
+        success: true,
+        budgetId,
+        subTotalAmount,  // NETO AGENCIA EXACTO - This is the price to show to the client
+        totalAmount,
+        fareIdInternal,
+        currency,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('❌ [MAKE_BUDGET] Error parsing response:', error);
+      return {
+        success: false,
+        error: error.message || 'Error parsing makeBudget response'
+      };
+    }
   }
   parseCountryListResponse(xmlResponse) {
     try {
@@ -263,7 +489,7 @@ ${occupantsXml}        </Ocuppancy>
     try {
       // 🚀 STREAMING-STYLE PROCESSING: Process hotels one-by-one WITHOUT loading full XML
       // This allows handling 15-20MB responses without memory issues
-      const MAX_HOTELS_TO_PROCESS = 50;
+      const MAX_HOTELS_TO_PROCESS = 75;
 
       console.log(`📊 [MEMORY] Original XML size: ${(xmlResponse.length / 1024 / 1024).toFixed(2)}MB`);
       console.log(`🔄 [STREAMING] Processing hotels incrementally (max ${MAX_HOTELS_TO_PROCESS})`);
@@ -453,6 +679,17 @@ ${occupantsXml}        </Ocuppancy>
           if (roomTotal > 0) {
             // Calculate price per night
             const pricePerNight = nights > 0 ? roomTotal / nights : roomTotal;
+
+            // Extract OccupancyId from Fare element for makeBudget
+            // Note: OccupancyId in XML is the requested occupancy, not a unique room identifier
+            const xmlOccupancyId = fareEl.getAttribute('OccupancyId') || '1';
+            const fareIdBroker = fareEl.getAttribute('FareIdBroker') || undefined;
+
+            // Use index+1 as unique identifier for UI selection
+            const uniqueRoomId = (index + 1).toString();
+
+            console.log(`🔑 [FARE] type=${fareType}, uniqueRoomId=${uniqueRoomId}, xmlOccupancyId=${xmlOccupancyId}, FareIdBroker=${fareIdBroker}`);
+
             rooms.push({
               type: fareType,
               description: description,
@@ -460,8 +697,9 @@ ${occupantsXml}        </Ocuppancy>
               total_price: roomTotal,
               currency: currency,
               availability: availability,
-              occupancy_id: (index + 1).toString(),
-              fare_id_broker: fareEl.getAttribute('FareIdBroker') || undefined,
+              occupancy_id: uniqueRoomId,
+              xml_occupancy_id: xmlOccupancyId,
+              fare_id_broker: fareIdBroker,
               // Add occupancy info from SOAP response
               adults: adults,
               children: children,
@@ -473,6 +711,9 @@ ${occupantsXml}        </Ocuppancy>
       // Fallback if no rooms found
       if (rooms.length === 0) {
         const pricePerNight = nights > 0 ? totalPrice / nights : totalPrice;
+        // Use search params for occupancy in fallback room
+        const fallbackAdults = params.adults || 1;
+        const fallbackChildren = params.children || 0;
         rooms.push({
           type: 'Standard',
           description: 'Standard Room',
@@ -481,7 +722,11 @@ ${occupantsXml}        </Ocuppancy>
           currency: currency,
           availability: 0,
           occupancy_id: '1',
-          fare_id_broker: undefined
+          fare_id_broker: undefined,
+          // Include occupancy from search params for fallback room
+          adults: fallbackAdults,
+          children: fallbackChildren,
+          infants: 0
         });
       }
       return {
@@ -501,8 +746,9 @@ ${occupantsXml}        </Ocuppancy>
         rooms: rooms,
         policy_cancellation: this.getTextContent(hotelEl, 'CancellationPolicy') || '',
         policy_lodging: this.getTextContent(hotelEl, 'LodgingPolicy') || '',
-        adults: params.adults || 1,
-        children: params.children || 0,
+        // Search params - occupancy requested by user (for PDF generation)
+        search_adults: params.adults || 1,
+        search_children: params.children || 0,
         provider: 'EUROVIPS'
       };
     } catch (error) {
@@ -905,11 +1151,12 @@ serve(async (req) => {
     supabase,
     { action: 'search', resource: 'eurovips' },
     async () => {
+      let body: { action?: string; data?: any; jobId?: string } = {};
       try {
         if (req.method !== 'POST') {
           throw new Error('Only POST method is allowed');
         }
-        const body = await req.json();
+        body = await req.json();
         console.log('📦 EUROVIPS REQUEST:', body.action, body.data ? Object.keys(body.data) : 'no-data');
         const { action, data, jobId } = body;
 
@@ -974,6 +1221,12 @@ serve(async (req) => {
             case 'searchServices':
               if (!data) throw new Error('Service search data is required');
               results = await client.searchServices(data);
+              break;
+            case 'makeBudget':
+              if (!data) throw new Error('makeBudget data is required');
+              if (!data.fareId) throw new Error('fareId is required for makeBudget');
+              if (!data.fareIdBroker) throw new Error('fareIdBroker is required for makeBudget');
+              results = await client.makeBudget(data);
               break;
             default:
               throw new Error(`Unknown action: ${action}`);

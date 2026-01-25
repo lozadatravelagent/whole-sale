@@ -112,11 +112,18 @@ CONTEXT MERGING RULES:
 2. If current message adds missing info, merge with previous context
 3. If current message is completely new request (new origin/destination), ignore previous context
 4. NEVER ask for info already in context
+5. **PASSENGER MODIFICATION AFTER ERROR:** If user says "agrega X adultos", "agregá X adultos", "con X adultos", "suma X adultos" after a previous search that had only minors:
+   - Extract origin, destination, dates, children, infants from previousContext or conversationHistory
+   - Set adults = X (the number user specified)
+   - Preserve ALL other fields from the previous failed search
+   - Return complete search request with updated adults count
 
 EXAMPLES:
 - Previous has complete flight + current "con escalas" → Return complete flight with stops: "any"
 - Previous has complete flight + current "sin escalas" → Return complete flight with stops: "direct"
 - Previous has complete flight + current "con valija" → Return complete flight with luggage: "checked"
+- Previous had "vuelo a Madrid para 2 menores" (failed, adults=0) + current "agrega 2 adultos" → Return complete flight with adults: 2, children: 2, preserving all other fields
+- Previous had search with only infants + current "con 1 adulto" → Return complete search with adults: 1, preserving infants and other fields
 ` : ''}
 
 TASK: Extract structured data for flights, hotels, packages, services, combined, or itinerary requests.
@@ -407,13 +414,19 @@ User: "Armame un plan de viaje de 7 días"
 **FLIGHTS:**
 - Required: origin, destination, departureDate
 - Optional: returnDate (only if round trip mentioned)
-- **DEFAULT: adults = 1** (if not specified, always assume 1 adult)
+- **adults:**
+  * DEFAULT = 1 if NO passengers mentioned at all (e.g., "vuelo a Madrid")
+  * = 0 if ONLY children/infants mentioned (e.g., "vuelo para 2 niños" → adults = 0, "vuelo para un menor" → adults = 0, "un niño" → adults = 0). CRITICAL: "un" = 1
+  * = X if user explicitly says X adults
 - children = 0 (default if not specified) - Niños de 2-12 años
 - infants = 0 (default if not specified) - Bebés/infantes de 0-2 años (viajan en brazos)
 
 **HOTELS:**
 - Required: city, checkinDate, checkoutDate
-- **DEFAULT: adults = 1** (if not specified, always assume 1 adult)
+- **adults:**
+  * DEFAULT = 1 if NO passengers mentioned at all (e.g., "hotel en Cancún")
+  * = 0 if ONLY children/infants mentioned (e.g., "hotel para 2 niños" → adults = 0, "hotel para un menor" → adults = 0, "un niño" → adults = 0). CRITICAL: "un" = 1
+  * = X if user explicitly says X adults
 - children = 0 (default if not specified) - Niños de 2-12 años
 - infants = 0 (default if not specified) - Bebés/infantes de 0-2 años
 - roomType, mealPlan (OPTIONAL - ONLY include if user explicitly mentions them)
@@ -658,11 +671,13 @@ User: "Paquete a Cancún todo incluido con traslados y seguro de viaje"
 - If either is missing, set requestType to "itinerary" but include missingFields array and message
 
 **IMPORTANT PASSENGER RULES:**
-1. If NO passenger count mentioned → adults = 1, children = 0, infants = 0
+1. If NO passenger count mentioned at all → adults = 1, children = 0, infants = 0
 2. If "para 2" or "2 personas" mentioned → adults = 2, children = 0, infants = 0
-3. If "con un niño" mentioned → adults = 1, children = 1, infants = 0
-4. If "familia de 4" mentioned → infer adults = 2, children = 2, infants = 0
-5. NEVER ask for passenger count if not mentioned - default to 1 adult
+3. If ONLY children/infants mentioned WITHOUT adults (e.g., "1 menor", "un menor", "2 niños", "un niño", "1 bebé", "un bebé") → adults = 0, children = X, infants = Y (extract exactly what user says, do NOT assume adults). CRITICAL: "un" = 1
+4. If "con un niño" with context of adults (e.g., "para 2 adultos con un niño") → adults = 2, children = 1, infants = 0
+5. If "familia de 4" mentioned → infer adults = 2, children = 2, infants = 0
+6. CRITICAL: When user mentions ONLY minors (children/infants) without any adults, set adults = 0. The validation layer will handle the error message.
+7. NEVER add implicit adults when user explicitly requests only children/infants
 
 **INFANT/BABY DETECTION RULES (0-2 años):**
 Detect infants when user mentions babies. Keywords to detect:
@@ -677,8 +692,22 @@ Detect infants when user mentions babies. Keywords to detect:
 - "2 adultos y 1 bebé" → adults = 2, children = 0, infants = 1
 - "vuelo para familia con un niño y un bebé" → adults = 2, children = 1, infants = 1
 - "3 adultos, 2 niños y 1 infante" → adults = 3, children = 2, infants = 1
-- "con un menor de 2 años" → infants = 1
-- "niño en brazos" → infants = 1
+- "con un menor de 2 años" → adults = 0, infants = 1 (ONLY infant mentioned, no adults)
+- "niño en brazos" → adults = 0, infants = 1 (ONLY infant mentioned, no adults)
+- "1 menor de 12 años" → adults = 0, children = 1 (ONLY child mentioned, no adults)
+- "2 niños" → adults = 0, children = 2 (ONLY children mentioned, no adults)
+- "1 bebé y 1 niño" → adults = 0, children = 1, infants = 1 (ONLY minors mentioned)
+- "un menor" → adults = 0, children = 1 (CRITICAL: "un" = 1, ONLY minor mentioned, no adults)
+- "un niño" → adults = 0, children = 1 (CRITICAL: "un" = 1, ONLY child mentioned, no adults)
+- "un bebé" → adults = 0, infants = 1 (CRITICAL: "un" = 1, ONLY infant mentioned, no adults)
+- "para un menor" → adults = 0, children = 1 (ONLY minor, no adults)
+- "vuelo para un menor" → adults = 0, children = 1 (ONLY minor, no adults)
+- "dos menores" → adults = 0, children = 2 (CRITICAL: "dos" = 2, ONLY minors, no adults)
+- "tres niños" → adults = 0, children = 3 (CRITICAL: "tres" = 3, ONLY children, no adults)
+- "dos bebés" → adults = 0, infants = 2 (CRITICAL: "dos" = 2, ONLY infants, no adults)
+- "cuatro menores" → adults = 0, children = 4 (ONLY minors, no adults)
+- "para dos niños" → adults = 0, children = 2 (ONLY children, no adults)
+- "hotel para tres menores" → adults = 0, children = 3 (ONLY minors, no adults)
 
 **IMPORTANT INFANT RESTRICTION:**
 - Infants (0-2 años) travel on adult's lap - MAX 1 infant per adult
