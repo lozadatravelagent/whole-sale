@@ -31,7 +31,7 @@ src/
 ├── hooks/                # Custom hooks (useChat, useLeads, useReports)
 ├── services/             # API integrations (hotelSearch, airfareSearch, pdfProcessor)
 ├── utils/                # Utilities (parsers, filters, formatters)
-api/
+api/                          # PUBLIC API for third-party integrations
 ├── src/routes/v1/        # /search, /health
 ├── src/middleware/       # CORS, auth, rate limiting, correlation
 ├── src/services/         # searchExecutor, advancedFilters, cityCodeResolver
@@ -104,8 +104,9 @@ api/
 - **Role-Based**: OWNER → tenants, ADMIN → team, SELLER → personal
 - **Dashboard**: Personal performance, team tracking, tenant aggregation
 
-### 9. Fastify API Gateway
+### 9. Public API (Fastify API Gateway)
 **Location**: `api/` (separate directory, deployed on Railway)
+- **Purpose**: Public REST API for third-party integrations (external clients, partners, WhatsApp bots)
 - **Middleware Chain**: CORS → Correlation ID → Auth → Rate Limit → Execute
 - **Rate Limiting**: Redis sliding window (minute/hour/day), ~80-160ms faster than PostgreSQL
 - **Idempotency**: 5-min cache, 95%+ faster on retries
@@ -155,7 +156,7 @@ api/
 
 ## Deployment
 - **Frontend**: Railway (production build via `npm run start`)
-- **API Gateway**: Railway (Docker multi-stage build, health check on `/v1/health`)
+- **Public API**: Railway (Docker multi-stage build, health check on `/v1/health`)
 - **Edge Functions**: Supabase (starling-search, eurovips-soap, ai-message-parser, travel-itinerary)
 - **Proxy**: Cloudflare Worker (routes `/v1/*` → Railway API, `/search` → Supabase Edge Functions)
 
