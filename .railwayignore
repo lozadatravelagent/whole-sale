@@ -1,0 +1,61 @@
+# Railway Ignore - Frontend Deployment
+# Excludes files not needed for the React frontend build
+
+# API Gateway (deployed separately)
+api/
+
+# Supabase Edge Functions (deployed via Supabase CLI)
+supabase/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Scripts and tools
+scripts/
+
+# Test files
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__/
+playwright-report/
+playwright.config.ts
+
+# Development files
+.env.local
+.env.development
+.env.mcp
+*.local
+
+# Editor and IDE
+.vscode/
+.idea/
+.cursor/
+.claude/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+nul
+
+# Git
+.git/
+.gitignore
+
+# JSON data files (development only)
+*.json
+!package.json
+!package-lock.json
+!tsconfig*.json
+!components.json
+!postcss.config.json

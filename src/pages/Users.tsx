@@ -107,9 +107,14 @@ const Users = () => {
     try {
       // Determine tenant_id based on role and user permissions
       let finalTenantId = null;
-      if (isOwner && newTenantId && newTenantId !== 'none') {
-        // OWNER can explicitly select tenant
-        finalTenantId = newTenantId;
+      if (isOwner) {
+        // OWNER can explicitly select tenant for any role
+        if (newTenantId && newTenantId !== 'none') {
+          finalTenantId = newTenantId;
+        } else {
+          // OWNER can set tenant to null (when 'none' selected or empty)
+          finalTenantId = null;
+        }
       } else {
         // Non-OWNER users inherit current user's tenant
         finalTenantId = currentUser?.tenant_id || null;
@@ -120,7 +125,7 @@ const Users = () => {
         password: newPassword,
         name: newName || undefined,
         role: newRole,
-        agency_id: newAgencyId && newAgencyId !== 'none' ? newAgencyId : null,
+        agency_id: (newRole === 'OWNER' || newRole === 'SUPERADMIN') ? null : (newAgencyId && newAgencyId !== 'none' ? newAgencyId : null),
         tenant_id: finalTenantId
       });
 
@@ -144,12 +149,14 @@ const Users = () => {
     try {
       // Determine tenant_id based on role and user permissions
       let finalTenantId = undefined;
-      if (isOwner && editTenantId && editTenantId !== 'none') {
-        // OWNER can explicitly change tenant
-        finalTenantId = editTenantId;
-      } else if (isOwner && editTenantId === 'none') {
-        // OWNER can set tenant to null
-        finalTenantId = null;
+      if (isOwner) {
+        // OWNER can explicitly change tenant for any role
+        if (editTenantId && editTenantId !== 'none') {
+          finalTenantId = editTenantId;
+        } else if (editTenantId === 'none') {
+          // OWNER can set tenant to null
+          finalTenantId = null;
+        }
       }
       // If not owner, don't update tenant_id (undefined means don't change)
 
@@ -157,7 +164,7 @@ const Users = () => {
         id: selectedUser.id,
         name: editName,
         role: editRole,
-        agency_id: editAgencyId && editAgencyId !== 'none' ? editAgencyId : null,
+        agency_id: (editRole === 'OWNER' || editRole === 'SUPERADMIN') ? null : (editAgencyId && editAgencyId !== 'none' ? editAgencyId : null),
         tenant_id: finalTenantId
       });
 
@@ -385,8 +392,8 @@ const Users = () => {
                 <Label htmlFor="new-role">Role *</Label>
                 <Select value={newRole} onValueChange={(val) => {
                   setNewRole(val as Role);
-                  // Reset agency when SUPERADMIN is selected
-                  if (val === 'SUPERADMIN') {
+                  // Reset agency when SUPERADMIN or OWNER is selected
+                  if (val === 'SUPERADMIN' || val === 'OWNER') {
                     setNewAgencyId('');
                   }
                 }}>
@@ -401,15 +408,17 @@ const Users = () => {
                     ))}
                   </SelectContent>
                 </Select>
-                {newRole === 'SUPERADMIN' && (
+                {(newRole === 'SUPERADMIN' || newRole === 'OWNER') && (
                   <p className="text-xs text-muted-foreground">
-                    SUPERADMIN users belong to the tenant, not to a specific agency
+                    {newRole === 'SUPERADMIN' 
+                      ? 'SUPERADMIN users belong to the tenant, not to a specific agency'
+                      : 'OWNER users can optionally belong to a tenant, but not to a specific agency'}
                   </p>
                 )}
               </div>
-              {isOwner && newRole === 'SUPERADMIN' && (
+              {isOwner && (newRole === 'SUPERADMIN' || newRole === 'OWNER') && (
                 <div className="space-y-2">
-                  <Label htmlFor="new-tenant">Tenant *</Label>
+                  <Label htmlFor="new-tenant">Tenant {newRole === 'SUPERADMIN' ? '*' : ''}</Label>
                   <Select value={newTenantId} onValueChange={setNewTenantId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select tenant..." />
@@ -424,11 +433,13 @@ const Users = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Assign SUPERADMIN to a tenant to manage its agencies and users
+                    {newRole === 'SUPERADMIN' 
+                      ? 'Assign SUPERADMIN to a tenant to manage its agencies and users'
+                      : 'Assign OWNER to a tenant (optional)'}
                   </p>
                 </div>
               )}
-              {newRole !== 'SUPERADMIN' && (
+              {newRole !== 'SUPERADMIN' && newRole !== 'OWNER' && (
                 <div className="space-y-2">
                   <Label htmlFor="new-agency">Agency {newRole === 'ADMIN' || newRole === 'SELLER' ? '*' : ''}</Label>
                   <Select value={newAgencyId} onValueChange={setNewAgencyId}>
@@ -491,8 +502,8 @@ const Users = () => {
                   value={editRole}
                   onValueChange={(val) => {
                     setEditRole(val as Role);
-                    // Reset agency when SUPERADMIN is selected
-                    if (val === 'SUPERADMIN') {
+                    // Reset agency when SUPERADMIN or OWNER is selected
+                    if (val === 'SUPERADMIN' || val === 'OWNER') {
                       setEditAgencyId('');
                     }
                   }}
@@ -514,15 +525,17 @@ const Users = () => {
                     ⚠️ Solo usuarios con rol OWNER pueden cambiar el rol de otros OWNER
                   </p>
                 )}
-                {editRole === 'SUPERADMIN' && (
+                {(editRole === 'SUPERADMIN' || editRole === 'OWNER') && (
                   <p className="text-xs text-muted-foreground">
-                    SUPERADMIN users belong to the tenant, not to a specific agency
+                    {editRole === 'SUPERADMIN' 
+                      ? 'SUPERADMIN users belong to the tenant, not to a specific agency'
+                      : 'OWNER users can optionally belong to a tenant, but not to a specific agency'}
                   </p>
                 )}
               </div>
-              {isOwner && editRole === 'SUPERADMIN' && (
+              {isOwner && (editRole === 'SUPERADMIN' || editRole === 'OWNER') && (
                 <div className="space-y-2">
-                  <Label htmlFor="edit-tenant">Tenant *</Label>
+                  <Label htmlFor="edit-tenant">Tenant {editRole === 'SUPERADMIN' ? '*' : ''}</Label>
                   <Select value={editTenantId} onValueChange={setEditTenantId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select tenant..." />
@@ -537,11 +550,13 @@ const Users = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Assign SUPERADMIN to a tenant to manage its agencies and users
+                    {editRole === 'SUPERADMIN' 
+                      ? 'Assign SUPERADMIN to a tenant to manage its agencies and users'
+                      : 'Assign OWNER to a tenant (optional)'}
                   </p>
                 </div>
               )}
-              {editRole !== 'SUPERADMIN' && (
+              {editRole !== 'SUPERADMIN' && editRole !== 'OWNER' && (
                 <div className="space-y-2">
                   <Label htmlFor="edit-agency">Agency {editRole === 'ADMIN' || editRole === 'SELLER' ? '*' : ''}</Label>
                   <Select value={editAgencyId} onValueChange={setEditAgencyId}>

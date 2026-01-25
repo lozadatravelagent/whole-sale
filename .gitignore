@@ -21,6 +21,15 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+.claude/
+.cursor/
+
+# Supabase temp files
+supabase/.temp/
+
+# Playwright
+playwright-report/
+playwright.config.ts
 *.suo
 *.ntvs*
 *.njsproj
