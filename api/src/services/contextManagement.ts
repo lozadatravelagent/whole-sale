@@ -24,10 +24,16 @@ export interface SearchResults {
   flights?: {
     count: number;
     items: any[];
+    searchId?: string;
+    fullResultsAvailable?: boolean;
+    totalResults?: number;
   };
   hotels?: {
     count: number;
     items: any[];
+    searchId?: string;
+    fullResultsAvailable?: boolean;
+    totalResults?: number;
   };
   packages?: {
     count: number;

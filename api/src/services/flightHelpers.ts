@@ -84,7 +84,6 @@ export const matchesAirlinePreference = (airlineCode: string, operatingAirlineNa
     if (!preference) return true;
 
     const normalizedPreference = preference.toLowerCase().trim();
-    const normalizedCode = airlineCode.toLowerCase();
     const normalizedOperatingName = operatingAirlineName?.toLowerCase() || '';
 
     // Check if preference is already a code (2-3 characters)

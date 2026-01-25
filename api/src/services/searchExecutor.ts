@@ -22,14 +22,12 @@ import {
   applyRoomFiltering,
   inferAdultsFromRoomType,
   shouldExcludeLightFare,
-  getLightFareAirlines,
-  hotelBelongsToChain
+  getLightFareAirlines
 } from './advancedFilters.js';
 import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.js';
-import { transformFare, analyzeFlightType, type TransformOptions } from './flightTransformer.js';
-import { matchesLuggagePreference, analyzeBaggagePerLeg, type PerLegBaggageInfo } from './baggageUtils.js';
+import { transformFare, type TransformOptions } from './flightTransformer.js';
+import { matchesLuggagePreference } from './baggageUtils.js';
 import { filterFlightsByTimePreference, timePreferenceToRange, timeRangeToLabel } from './timeSlotMapper.js';
-import { getAirlineName } from '../data/airlineAliases.js';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -88,18 +86,6 @@ async function invokeWithTimeout<T>(
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-/**
- * Format flight duration from minutes to human-readable string
- */
-function formatDuration(minutes: number): string {
-  if (!minutes || minutes <= 0) return 'N/A';
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours === 0) return `${mins}m`;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}m`;
 }
 
 /**

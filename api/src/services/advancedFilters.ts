@@ -14,7 +14,6 @@
 
 import {
   HOTEL_CHAINS,
-  normalizeText as normalizeHotelText,
   detectHotelChainInText,
   hotelBelongsToChain as chainMatchesHotel,
   hotelBelongsToAnyChain,

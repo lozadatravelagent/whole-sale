@@ -10,8 +10,8 @@
  * - Segment details (bookingClass, equipment, fareBasis)
  */
 
-import { formatDuration, getTaxDescription, getAirlineNameFromCode, calculateLayoverHours } from './flightHelpers.js';
-import { analyzeBaggagePerLeg, getBaggageType, type PerLegBaggageInfo } from './baggageUtils.js';
+import { formatDuration, getTaxDescription, getAirlineNameFromCode } from './flightHelpers.js';
+import { analyzeBaggagePerLeg, getBaggageType } from './baggageUtils.js';
 
 // =============================================================================
 // FLIGHT ANALYSIS TYPES
@@ -220,7 +220,6 @@ export function transformFare(fare: any, index: number, tvcData: any, options: T
 
     // Carry-on info
     const carryOnQuantity = firstSegment.CarryOnBagInfo?.Quantity || firstSegment.carryOnBagInfo?.quantity || '0';
-    const hasCarryOn = parseInt(carryOnQuantity) > 0;
     const carryOnWeight = firstSegment.CarryOnBagInfo?.Weight || firstSegment.carryOnBagInfo?.weight || null;
     const carryOnDimensions = firstSegment.CarryOnBagInfo?.Dimensions || firstSegment.carryOnBagInfo?.dimensions || null;
 
