@@ -51,6 +51,7 @@ interface PdfExtractedData {
   currency: string;
   hasTransfers: boolean;
   hasTravelAssistance: boolean;
+  totalPrice: number;
 }
 
 serve(async (req) => {
@@ -130,7 +131,8 @@ Analiza el texto del PDF y extrae la información en el siguiente formato JSON:
   "nights": 7,
   "currency": "USD",
   "hasTransfers": true,
-  "hasTravelAssistance": true
+  "hasTravelAssistance": true,
+  "totalPrice": 0
 }
 
 REGLAS CRÍTICAS:
@@ -154,7 +156,8 @@ REGLAS CRÍTICAS:
 6. SERVICIOS INCLUIDOS: Busca la sección "INCLUYE" del PDF:
    - hasTransfers: true si menciona "Traslado", "Transfer", "Aeropuerto - Hotel" o similar
    - hasTravelAssistance: true si menciona "Seguro", "Asistencia médica", "Asistencia" o similar
-   - Si no encuentras la sección INCLUYE o no hay mención de estos servicios, pon false`;
+   - Si no encuentras la sección INCLUYE o no hay mención de estos servicios, pon false
+7. PRECIO TOTAL: Busca "Precio total", "Total:", "$X.XXX" o montos con "USD/ARS" y extrae el valor numérico total de la cotización en totalPrice. SIEMPRE extrae el precio total aunque no haya hoteles.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -219,8 +222,10 @@ REGLAS CRÍTICAS:
     if (!extractedData.currency) extractedData.currency = 'USD';
     if (extractedData.hasTransfers === undefined) extractedData.hasTransfers = false;
     if (extractedData.hasTravelAssistance === undefined) extractedData.hasTravelAssistance = false;
+    if (extractedData.totalPrice === undefined) extractedData.totalPrice = 0;
 
     console.log('🚗 [PDF-AI-ANALYZER] Transfers included:', extractedData.hasTransfers);
+    console.log('💰 [PDF-AI-ANALYZER] Total price extracted:', extractedData.totalPrice);
     console.log('🏥 [PDF-AI-ANALYZER] Travel assistance included:', extractedData.hasTravelAssistance);
 
     console.log('✅ [PDF-AI-ANALYZER] Successfully extracted data:', JSON.stringify(extractedData, null, 2));

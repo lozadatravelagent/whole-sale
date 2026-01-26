@@ -212,6 +212,9 @@ CRITICAL INSTRUCTION:
 - "[número] personas" = that many adults, 0 children
 - "una persona" = 1 adult, 0 children
 - "para [número] persona(s)" = that many adults, 0 children
+- "X adultos y Y menores/niños" = adults = X, children = Y
+- "X adultos e Y niños" = adults = X, children = Y
+- "X adultos, Y niños y Z bebés" = adults = X, children = Y, infants = Z
 
 **LOCATION INTERPRETATION:**
 - Convert ANY city/airport name to appropriate IATA code using your knowledge
@@ -675,9 +678,10 @@ User: "Paquete a Cancún todo incluido con traslados y seguro de viaje"
 2. If "para 2" or "2 personas" mentioned → adults = 2, children = 0, infants = 0
 3. If ONLY children/infants mentioned WITHOUT adults (e.g., "1 menor", "un menor", "2 niños", "un niño", "1 bebé", "un bebé") → adults = 0, children = X, infants = Y (extract exactly what user says, do NOT assume adults). CRITICAL: "un" = 1
 4. If "con un niño" with context of adults (e.g., "para 2 adultos con un niño") → adults = 2, children = 1, infants = 0
-5. If "familia de 4" mentioned → infer adults = 2, children = 2, infants = 0
-6. CRITICAL: When user mentions ONLY minors (children/infants) without any adults, set adults = 0. The validation layer will handle the error message.
-7. NEVER add implicit adults when user explicitly requests only children/infants
+5. If adults AND children/infants mentioned together (e.g., "3 adultos y 1 menor", "2 adultos y 2 niños", "4 adultos e 1 niño y 1 bebé") → extract BOTH values: adults = X, children = Y, infants = Z
+6. If "familia de 4" mentioned → infer adults = 2, children = 2, infants = 0
+7. CRITICAL: When user mentions ONLY minors (children/infants) without any adults, set adults = 0. The validation layer will handle the error message.
+8. NEVER add implicit adults when user explicitly requests only children/infants
 
 **INFANT/BABY DETECTION RULES (0-2 años):**
 Detect infants when user mentions babies. Keywords to detect:
@@ -708,6 +712,11 @@ Detect infants when user mentions babies. Keywords to detect:
 - "cuatro menores" → adults = 0, children = 4 (ONLY minors, no adults)
 - "para dos niños" → adults = 0, children = 2 (ONLY children, no adults)
 - "hotel para tres menores" → adults = 0, children = 3 (ONLY minors, no adults)
+- "3 adultos y 1 menor" → adults = 3, children = 1, infants = 0
+- "2 adultos y 2 niños" → adults = 2, children = 2, infants = 0
+- "4 adultos e 1 niño" → adults = 4, children = 1, infants = 0
+- "2 adultos, 1 niño y 1 bebé" → adults = 2, children = 1, infants = 1
+- "para 3 adultos y 2 menores" → adults = 3, children = 2, infants = 0
 
 **IMPORTANT INFANT RESTRICTION:**
 - Infants (0-2 años) travel on adult's lap - MAX 1 infant per adult

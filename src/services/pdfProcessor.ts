@@ -735,10 +735,12 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
                 destination = `${outbound.origin || '???'} -- ${outbound.destination || '???'}`;
             }
 
-            // Find total price (max of all package prices)
-            const totalPrice = hotels.length > 0
-                ? Math.max(...hotels.map((h: any) => h.packagePrice || 0))
-                : flights.reduce((sum: number, f: any) => sum + (f.price || 0), 0);
+            // Find total price - prefer AI-extracted totalPrice, then max packagePrice, then sum of flight prices
+            const totalPrice = aiData.totalPrice && aiData.totalPrice > 0
+                ? aiData.totalPrice
+                : (hotels.length > 0
+                    ? Math.max(...hotels.map((h: any) => h.packagePrice || 0))
+                    : flights.reduce((sum: number, f: any) => sum + (f.price || 0), 0));
 
             console.log('🚗 [ANALYZE PDF] Transfers from AI:', aiData.hasTransfers);
             console.log('🏥 [ANALYZE PDF] Travel assistance from AI:', aiData.hasTravelAssistance);
