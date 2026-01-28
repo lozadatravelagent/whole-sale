@@ -25,6 +25,7 @@ export interface FlightParams {
   preferredAirline?: string;
   luggage?: string;
   maxLayoverHours?: number;
+  cabinClass?: 'economy' | 'premium_economy' | 'business' | 'first';
 }
 
 export interface HotelParams {
@@ -113,7 +114,12 @@ const FLIGHT_MODIFICATION_PATTERNS = [
   // ✨ Horarios de llegada
   /\b(que\s+)?(?:llegue|vuelva|regrese)\s+(?:de\s+)?(?:la\s+)?(mañana|manana|tarde|noche|dia|d[íi]a)\b/i,
   // ✨ Máximo de escalas (duración)
-  /\bescalas?\s+(?:de\s+)?(?:no\s+)?m[aá]s\s+(?:de\s+)?(\d+)\s*(?:h|hs|hora|horas)\b/i
+  /\bescalas?\s+(?:de\s+)?(?:no\s+)?m[aá]s\s+(?:de\s+)?(\d+)\s*(?:h|hs|hora|horas)\b/i,
+  // ✈️ Cabin class patterns
+  /\b(?:en\s+)?(?:clase\s+)?(econ[oó]mica?|economy|turista|coach|clase\s+turista)\b/i,
+  /\b(?:en\s+)?(?:clase\s+)?(premium|premium\s+economy|econ[oó]mica\s+premium)\b/i,
+  /\b(?:en\s+)?(?:clase\s+)?(business|ejecutiva?|negocios|preferente|premium\s+business)\b/i,
+  /\b(?:en\s+)?(?:clase\s+)?(primera|first|first\s+class)\b/i
 ];
 
 // Patterns that indicate a NEW search (not iteration)
@@ -338,6 +344,21 @@ export function mergeIterationContext(
       console.log(`[ITERATION_MERGE] Applied: maxLayoverHours=${merged.flights.maxLayoverHours}`);
     }
 
+    // Cabin class detection
+    if (/\b(?:en\s+)?(?:clase\s+)?(econ[oó]mica?|economy|turista|coach|clase\s+turista)\b/i.test(originalMessage)) {
+      merged.flights.cabinClass = 'economy';
+      console.log('[ITERATION_MERGE] Applied: cabinClass=economy');
+    } else if (/\b(?:en\s+)?(?:clase\s+)?(premium|premium\s+economy|econ[oó]mica\s+premium)\b/i.test(originalMessage)) {
+      merged.flights.cabinClass = 'premium_economy';
+      console.log('[ITERATION_MERGE] Applied: cabinClass=premium_economy');
+    } else if (/\b(?:en\s+)?(?:clase\s+)?(business|ejecutiva?|negocios|preferente|premium\s+business)\b/i.test(originalMessage)) {
+      merged.flights.cabinClass = 'business';
+      console.log('[ITERATION_MERGE] Applied: cabinClass=business');
+    } else if (/\b(?:en\s+)?(?:clase\s+)?(primera|first|first\s+class)\b/i.test(originalMessage)) {
+      merged.flights.cabinClass = 'first';
+      console.log('[ITERATION_MERGE] Applied: cabinClass=first');
+    }
+
     // Preserve hotel params if previous was combined
     if (lastSearch.requestType === 'combined' && lastSearch.hotelsParams) {
       merged.hotels = {
@@ -408,7 +429,8 @@ export function buildContextFromSearch(
       stops: parsedRequest.flights.stops,
       preferredAirline: parsedRequest.flights.preferredAirline,
       luggage: parsedRequest.flights.luggage,
-      maxLayoverHours: parsedRequest.flights.maxLayoverHours
+      maxLayoverHours: parsedRequest.flights.maxLayoverHours,
+      cabinClass: parsedRequest.flights.cabinClass
     };
   }
 

@@ -793,7 +793,7 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
       address,
       phone: phone || undefined,
       description: roomFeatures || undefined,
-      images: [], // Could be extracted from Pictures elements if available
+      images: extractPictures(hotelEl),
       rooms,
       check_in: checkIn,
       check_out: checkOut,
@@ -1117,6 +1117,32 @@ function getTextContent(element: Element, selectors: string): string {
   }
 
   return '';
+}
+
+/**
+ * Extract hotel image URLs from Pictures elements
+ * XML structure: <Pictures type="img">http://images.gta-travel.com/...</Pictures>
+ * type="img" → image URL (extract these)
+ * type="web" → hotel website (ignore)
+ */
+function extractPictures(hotelEl: Element): string[] {
+  const images: string[] = [];
+
+  // Try both cases: Pictures (original XML) and pictures (if parsed as HTML)
+  const pictureElements = hotelEl.querySelectorAll('Pictures, pictures');
+
+  pictureElements.forEach((pictureEl) => {
+    const type = pictureEl.getAttribute('type')?.toLowerCase();
+    const url = pictureEl.textContent?.trim();
+
+    if (type === 'img' && url) {
+      // Ensure URL has protocol
+      const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+      images.push(fullUrl);
+    }
+  });
+
+  return images;
 }
 
 function calculateNights(checkIn: string, checkOut: string): number {

@@ -18,6 +18,7 @@ export interface ParsedTravelRequest {
         layoverDuration?: string; // tiempo de escala preferido (ej: "3 hours", "10 hours")
         maxLayoverHours?: number; // duración máxima de escalas en horas
         preferredAirline?: string; // aerolínea preferida
+        cabinClass?: 'economy' | 'premium_economy' | 'business' | 'first'; // clase de cabina
     };
     hotels?: {
         city: string;
@@ -377,7 +378,8 @@ export function combineWithPreviousRequest(
             ...(parsedNewRequest.flights?.arrivalTimePreference && { arrivalTimePreference: parsedNewRequest.flights.arrivalTimePreference }),
             ...(parsedNewRequest.flights?.layoverDuration && { layoverDuration: parsedNewRequest.flights.layoverDuration }),
             ...(parsedNewRequest.flights?.maxLayoverHours && { maxLayoverHours: parsedNewRequest.flights.maxLayoverHours }),
-            ...(parsedNewRequest.flights?.preferredAirline && { preferredAirline: parsedNewRequest.flights.preferredAirline })
+            ...(parsedNewRequest.flights?.preferredAirline && { preferredAirline: parsedNewRequest.flights.preferredAirline }),
+            ...(parsedNewRequest.flights?.cabinClass && { cabinClass: parsedNewRequest.flights.cabinClass })
         };
 
         parsedNewRequest.flights = combinedFlights;

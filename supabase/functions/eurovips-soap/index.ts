@@ -739,7 +739,7 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
         phone: this.getTextContent(hotelEl, 'Phone, Telephone') || '',
         website: this.getTextContent(hotelEl, 'Website') || undefined,
         description: this.getTextContent(hotelEl, 'Description') || undefined,
-        images: [],
+        images: this.extractPictures(hotelEl),
         check_in: params.checkinDate,
         check_out: params.checkoutDate,
         nights: nights,
@@ -1131,6 +1131,32 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
     }
 
     return '';
+  }
+
+  /**
+   * Extract hotel image URLs from Pictures elements
+   * XML structure: <Pictures type="img">http://images.gta-travel.com/...</Pictures>
+   * type="img" → image URL (extract these)
+   * type="web" → hotel website (ignore)
+   */
+  extractPictures(hotelEl) {
+    const images: string[] = [];
+
+    // DOMParser with 'text/html' converts tags to lowercase
+    const pictureElements = hotelEl.querySelectorAll('pictures');
+
+    pictureElements.forEach((pictureEl) => {
+      const type = pictureEl.getAttribute('type')?.toLowerCase();
+      const url = pictureEl.textContent?.trim();
+
+      if (type === 'img' && url) {
+        // Ensure URL has protocol
+        const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+        images.push(fullUrl);
+      }
+    });
+
+    return images;
   }
 }
 serve(async (req) => {

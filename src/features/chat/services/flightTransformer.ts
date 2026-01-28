@@ -4,6 +4,51 @@ import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnec
 import { translateFlightInfo, translateBaggage } from '../utils/translations';
 import { airlineResolver } from './airlineResolver';
 
+// Starling CabinClass codes (NOT BookingClass tariff codes)
+// Y = Economy, W = Premium Economy, C/J = Business, F = First
+const CABIN_CLASS_MAP: Record<string, string[]> = {
+  'economy': ['Y'],
+  'premium_economy': ['W'],
+  'business': ['C', 'J'],
+  'first': ['F']
+};
+
+/**
+ * Get cabin class category from IATA booking class code
+ */
+function getCabinClassFromCode(iataCode: string): string {
+  const upperCode = (iataCode || 'Y').toUpperCase();
+  for (const [cabinClass, codes] of Object.entries(CABIN_CLASS_MAP)) {
+    if (codes.includes(upperCode)) return cabinClass;
+  }
+  return 'economy'; // Default to economy if unknown
+}
+
+/**
+ * Fallback: Get cabin class from BrandName when CabinClass code is unreliable
+ * Useful when API returns Y (economy) but BrandName indicates a premium product
+ */
+function getCabinClassFromBrandName(brandName: string): string | null {
+  if (!brandName) return null;
+  const lower = brandName.toLowerCase();
+
+  // First class
+  if (lower.includes('first') || lower.includes('primera')) return 'first';
+
+  // Business class
+  if (lower.includes('business') || lower.includes('ejecutiv') || lower.includes('negocio')) return 'business';
+
+  // Premium economy
+  if ((lower.includes('premium') && lower.includes('econom')) ||
+      lower.includes('premium economy') ||
+      lower.includes('económica premium')) return 'premium_economy';
+
+  // Premium (alone, not with economy) often means business
+  if (lower.includes('premium') && !lower.includes('econom')) return 'business';
+
+  return null; // No fallback match
+}
+
 // Improved flight analysis functions
 function analyzeFlightType(fare: any) {
   const legs = fare.Legs || [];
@@ -725,6 +770,37 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     console.log(`🧳 [LUGGAGE FILTER] Filtering complete: ${filteredFlights.length} flights remain out of ${allTransformedFlights.length} total flights`);
   }
 
+  // Filter by cabin class preference (economy, premium_economy, business, first)
+  if (parsedRequest?.flights?.cabinClass) {
+    const cabinPreference = parsedRequest.flights.cabinClass;
+    const beforeCount = filteredFlights.length;
+    console.log(`💺 [CABIN CLASS FILTER] Filtering by cabin class: ${cabinPreference}`);
+
+    filteredFlights = filteredFlights.filter(flight => {
+      // Get cabin class from the first segment of the first leg (primary cabin)
+      const cabinCode = flight.cabin?.class || 'Y';
+      let flightCabinClass = getCabinClassFromCode(cabinCode);
+
+      // If cabin class is economy (default) but brandName suggests otherwise, use brandName as fallback
+      if (flightCabinClass === 'economy' && flight.cabin?.brandName) {
+        const brandNameClass = getCabinClassFromBrandName(flight.cabin.brandName);
+        if (brandNameClass) {
+          console.log(`💺 [CABIN FALLBACK] Flight ${flight.id}: CabinClass=${cabinCode} (economy) but BrandName="${flight.cabin.brandName}" → using ${brandNameClass}`);
+          flightCabinClass = brandNameClass;
+        }
+      }
+
+      const matches = flightCabinClass === cabinPreference;
+
+      if (!matches) {
+        console.log(`❌ Filtering out flight ${flight.id}: cabin class ${cabinCode} (${flightCabinClass}) doesn't match ${cabinPreference}`);
+      }
+
+      return matches;
+    });
+
+    console.log(`💺 [CABIN CLASS FILTER] ${beforeCount} → ${filteredFlights.length} flights (${cabinPreference})`);
+  }
 
   // Sort by price (lowest first) - do NOT limit here
   // All flights are returned for localStorage caching, limit happens in searchHandlers

@@ -278,6 +278,27 @@ CRITICAL INSTRUCTION:
 - Do not make route-based assumptions (e.g., EZE-MAD does NOT automatically mean Iberia)
 - Be intelligent about airline recognition but ONLY when explicitly mentioned
 
+**CABIN CLASS EXTRACTION (cabinClass):**
+🚨 **CRITICAL RULE - ONLY include when user EXPLICITLY mentions cabin class:**
+- Extract ONLY when user explicitly mentions class preference
+- Valid values: 'economy', 'premium_economy', 'business', 'first'
+- Map Spanish to value:
+  * "económica" / "turista" / "economy" / "coach" → "economy"
+  * "premium" / "premium economy" / "económica premium" → "premium_economy"
+  * "business" / "ejecutiva" / "negocios" / "clase ejecutiva" → "business"
+  * "primera" / "first" / "first class" / "primera clase" → "first"
+- Examples:
+  * "vuelo en business a Miami" → cabinClass: "business"
+  * "clase ejecutiva a Madrid" → cabinClass: "business"
+  * "en primera clase" → cabinClass: "first"
+  * "vuelo económico" → cabinClass: "economy"
+
+❌ **DO NOT include cabinClass if:**
+- User only mentions basic flight request without class preference
+- User says nothing about cabin class
+- Example: "vuelo a Madrid" → NO cabinClass field
+- Example: "vuelo directo" → NO cabinClass field
+
 **HORARIOS DE SALIDA Y LLEGADA (departureTimePreference / arrivalTimePreference):**
 🚨 **CRITICAL RULE - ONLY include when user EXPLICITLY mentions time of day:**
 - Extract ONLY when user says: "que salga de noche", "que vuelva de día", "salida por la mañana", "llegada en la tarde", "que salga temprano", "que llegue de noche"

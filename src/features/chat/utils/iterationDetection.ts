@@ -28,6 +28,7 @@ export interface FlightModificationDetails {
   arrivalTimePreference?: string;
   maxLayoverHours?: number;
   adults?: number; // Used when adding adults after "only minors" error
+  cabinClass?: 'economy' | 'premium_economy' | 'business' | 'first';
 }
 
 /**
@@ -176,6 +177,27 @@ const FLIGHT_MODIFICATION_PATTERNS = [
     name: 'add_adults',
     addAdultsCapture: true
   },
+  // ✈️ Cabin class patterns
+  {
+    pattern: /\b(?:en\s+)?(?:clase\s+)?(econ[oó]mica?|economy|turista|coach|clase\s+turista)\b/i,
+    name: 'cabin_economy',
+    cabinClassValue: 'economy'
+  },
+  {
+    pattern: /\b(?:en\s+)?(?:clase\s+)?(premium|premium\s+economy|econ[oó]mica\s+premium)\b/i,
+    name: 'cabin_premium',
+    cabinClassValue: 'premium_economy'
+  },
+  {
+    pattern: /\b(?:en\s+)?(?:clase\s+)?(business|ejecutiva?|negocios|preferente|premium\s+business)\b/i,
+    name: 'cabin_business',
+    cabinClassValue: 'business'
+  },
+  {
+    pattern: /\b(?:en\s+)?(?:clase\s+)?(primera|first|first\s+class)\b/i,
+    name: 'cabin_first',
+    cabinClassValue: 'first'
+  },
 ];
 
 /**
@@ -232,7 +254,7 @@ export function detectIterationIntent(
     }
   }
 
-  // Detectar modificación de vuelo (escalas, aerolínea, equipaje, horarios, max layover, agregar adultos)
+  // Detectar modificación de vuelo (escalas, aerolínea, equipaje, horarios, max layover, agregar adultos, cabin class)
   let hasFlightMod = false;
   let flightModPattern = '';
   let flightModDetails: {
@@ -243,6 +265,7 @@ export function detectIterationIntent(
     arrivalTimePreference?: string;
     maxLayoverHours?: number;
     adultsToAdd?: number;
+    cabinClassValue?: 'economy' | 'premium_economy' | 'business' | 'first';
   } = {};
   for (const patternObj of FLIGHT_MODIFICATION_PATTERNS) {
     const { pattern, name } = patternObj;
@@ -252,6 +275,7 @@ export function detectIterationIntent(
     const timeType = (patternObj as any).timeType;
     const extractHours = (patternObj as any).extractHours;
     const addAdultsCapture = (patternObj as any).addAdultsCapture;
+    const cabinClassValue = (patternObj as any).cabinClassValue;
 
     const match = pattern.exec(norm);
     if (match) {
@@ -276,6 +300,12 @@ export function detectIterationIntent(
       if (addAdultsCapture && match[1]) {
         flightModDetails.adultsToAdd = parseInt(match[1], 10);
         console.log(`✅ [ITERATION] Adults to add detected: ${flightModDetails.adultsToAdd}`);
+      }
+
+      // ✈️ Extraer cabin class
+      if (cabinClassValue) {
+        flightModDetails.cabinClassValue = cabinClassValue;
+        console.log(`✅ [ITERATION] Cabin class detected: ${cabinClassValue}`);
       }
 
       console.log(`✅ [ITERATION] Flight modification detected: "${name}"`, flightModDetails);
@@ -521,6 +551,26 @@ export function detectIterationIntent(
     } as IterationContext;
   }
 
+  // CASO 12: Modificación de cabin class (business, primera, economy, premium)
+  if (hasFlightMod && flightModDetails.cabinClassValue && !hasNewFlightParams) {
+    const baseType = lastSearch.requestType;
+    const preserveHotel = baseType === 'combined';
+
+    console.log(`✅ [ITERATION] CASE 12: Cabin class modification → flight_modification (${flightModDetails.cabinClassValue})`);
+    return {
+      isIteration: true,
+      iterationType: 'flight_modification',
+      baseRequestType: baseType,
+      modifiedComponent: 'flights',
+      preserveFields: preserveHotel ? getAllHotelFields() : [],
+      confidence: 0.9,
+      matchedPattern: flightModPattern,
+      flightModification: {
+        cabinClass: flightModDetails.cabinClassValue
+      }
+    } as IterationContext;
+  }
+
   // DEFAULT: Nueva búsqueda
   console.log('ℹ️ [ITERATION] No iteration pattern matched → new_search');
   return {
@@ -548,7 +598,8 @@ function getAllFlightFields(): string[] {
     'flights.stops',
     'flights.preferredAirline',
     'flights.luggage',
-    'flights.maxLayoverHours'
+    'flights.maxLayoverHours',
+    'flights.cabinClass'
   ];
 }
 
@@ -616,6 +667,7 @@ export function mergeIterationContext(
         preferredAirline: lastSearch.flightsParams?.preferredAirline,
         luggage: lastSearch.flightsParams?.luggage,
         maxLayoverHours: lastSearch.flightsParams?.maxLayoverHours,
+        cabinClass: lastSearch.flightsParams?.cabinClass,
         // NO hacemos override de origin/destination en hotel_modification
         // El AI puede inventar datos que no corresponden al contexto real
       },
@@ -691,6 +743,7 @@ export function mergeIterationContext(
         maxLayoverHours: lastSearch.flightsParams?.maxLayoverHours,
         departureTimePreference: lastSearch.flightsParams?.departureTimePreference,
         arrivalTimePreference: lastSearch.flightsParams?.arrivalTimePreference,
+        cabinClass: lastSearch.flightsParams?.cabinClass,
         // Aplicar la modificación específica
         ...(flightMod?.stops && { stops: flightMod.stops as any }),
         ...(flightMod?.luggage && { luggage: flightMod.luggage as any }),
@@ -698,6 +751,7 @@ export function mergeIterationContext(
         ...(flightMod?.departureTimePreference && { departureTimePreference: flightMod.departureTimePreference }),
         ...(flightMod?.arrivalTimePreference && { arrivalTimePreference: flightMod.arrivalTimePreference }),
         ...(flightMod?.maxLayoverHours !== undefined && { maxLayoverHours: flightMod.maxLayoverHours }),
+        ...(flightMod?.cabinClass && { cabinClass: flightMod.cabinClass }),
         // También permitir overrides del AI parser
         ...(newParsedRequest.flights?.stops && { stops: newParsedRequest.flights.stops }),
         ...(newParsedRequest.flights?.preferredAirline && { preferredAirline: newParsedRequest.flights.preferredAirline }),
@@ -705,6 +759,7 @@ export function mergeIterationContext(
         ...(newParsedRequest.flights?.departureTimePreference && { departureTimePreference: newParsedRequest.flights.departureTimePreference }),
         ...(newParsedRequest.flights?.arrivalTimePreference && { arrivalTimePreference: newParsedRequest.flights.arrivalTimePreference }),
         ...(newParsedRequest.flights?.maxLayoverHours !== undefined && { maxLayoverHours: newParsedRequest.flights.maxLayoverHours }),
+        ...(newParsedRequest.flights?.cabinClass && { cabinClass: newParsedRequest.flights.cabinClass }),
       },
 
       // Preservar hotel si era búsqueda combined (actualizando adultos también)

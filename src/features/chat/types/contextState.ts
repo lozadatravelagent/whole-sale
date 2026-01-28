@@ -22,6 +22,7 @@ export interface FlightContextParams {
   maxLayoverHours?: number;
   departureTimePreference?: string;
   arrivalTimePreference?: string;
+  cabinClass?: 'economy' | 'premium_economy' | 'business' | 'first';
 }
 
 /**

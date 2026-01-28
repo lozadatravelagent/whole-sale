@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
@@ -359,6 +360,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const [exactPrices, setExactPrices] = useState<Record<string, { price: number; currency: string; budgetId: string }>>({});
   const [loadingPrices, setLoadingPrices] = useState<Record<string, boolean>>({});
   const [failedPrices, setFailedPrices] = useState<Record<string, boolean>>({});
+  // Hotel gallery state
+  const [galleryHotel, setGalleryHotel] = useState<HotelData | null>(null);
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
 
@@ -810,6 +813,17 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                             <Plane className="h-3 w-3 text-primary" />
                             <span className="font-medium text-sm">{flight.airline.name}</span>
                             <Badge variant="secondary" className="text-xs px-1 py-0">{flight.airline.code}</Badge>
+                            {flight.cabin?.brandName && (
+                              <Badge
+                                variant={
+                                  flight.cabin.class === 'F' ? 'destructive' :
+                                  ['C', 'J'].includes(flight.cabin.class) ? 'default' : 'secondary'
+                                }
+                                className="text-xs px-1 py-0"
+                              >
+                                {flight.cabin.brandName}
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
                             <div className="flex items-center space-x-1">
@@ -901,40 +915,66 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               return (
                 <Card key={hotel.id} className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
                   <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center space-x-3">
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => handleHotelToggle(hotel.id)}
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1">
-                            <Hotel className="h-3 w-3 text-primary" />
-                            <span className="font-medium text-sm">{hotel.name}</span>
-                            {hotel.category && (
-                              <Badge variant="outline" className="text-xs px-1 py-0">
-                                {hotel.category}
-                              </Badge>
-                            )}
-                          </div>
+                    <div className="flex items-start gap-3 mb-2">
+                      {/* Checkbox */}
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => handleHotelToggle(hotel.id)}
+                        className="mt-1"
+                      />
 
-                          <div className="space-y-0.5 text-xs text-muted-foreground">
-                            {hotel.city && (
-                              <div className="flex items-center space-x-1">
-                                <MapPin className="h-3 w-3" />
-                                <span>{hotel.city}</span>
-                              </div>
-                            )}
-                            {hotel.address && (
-                              <div className="text-xs">{hotel.address}</div>
-                            )}
-                            <div className="flex items-center space-x-4">
-                              <div className="flex items-center space-x-1">
-                                <Calendar className="h-3 w-3" />
-                                <span>{hotel.check_in || 'N/A'} → {hotel.check_out || 'N/A'}</span>
-                              </div>
-                              <span>({hotel.nights} noche{hotel.nights > 1 ? 's' : ''})</span>
+                      {/* Hotel thumbnail */}
+                      <div
+                        className={`relative w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0 ${hotel.images?.length ? 'cursor-pointer hover:opacity-90' : ''} transition-opacity`}
+                        onClick={() => hotel.images?.length && setGalleryHotel(hotel)}
+                      >
+                        {hotel.images?.[0] ? (
+                          <img
+                            src={hotel.images[0]}
+                            alt={hotel.name}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Hotel className="h-6 w-6 text-muted-foreground/50" />
+                          </div>
+                        )}
+                        {hotel.images && hotel.images.length > 1 && (
+                          <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded">
+                            +{hotel.images.length - 1}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Hotel info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <Hotel className="h-3 w-3 text-primary flex-shrink-0" />
+                          <span className="font-medium text-sm truncate">{hotel.name}</span>
+                          {hotel.category && (
+                            <Badge variant="outline" className="text-xs px-1 py-0 flex-shrink-0">
+                              {hotel.category}
+                            </Badge>
+                          )}
+                        </div>
+
+                        <div className="space-y-0.5 text-xs text-muted-foreground">
+                          {hotel.city && (
+                            <div className="flex items-center space-x-1">
+                              <MapPin className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">{hotel.city}</span>
                             </div>
+                          )}
+                          {hotel.address && (
+                            <div className="text-xs truncate">{hotel.address}</div>
+                          )}
+                          <div className="flex items-center space-x-4">
+                            <div className="flex items-center space-x-1">
+                              <Calendar className="h-3 w-3 flex-shrink-0" />
+                              <span>{hotel.check_in || 'N/A'} → {hotel.check_out || 'N/A'}</span>
+                            </div>
+                            <span>({hotel.nights} noche{hotel.nights > 1 ? 's' : ''})</span>
                           </div>
                         </div>
                       </div>
@@ -1021,6 +1061,40 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           </CardContent>
         </Card>
       )}
+
+      {/* Hotel Gallery Dialog */}
+      <Dialog open={!!galleryHotel} onOpenChange={() => setGalleryHotel(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Hotel className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold text-lg">{galleryHotel?.name}</h3>
+              {galleryHotel?.category && (
+                <Badge variant="outline" className="text-xs">
+                  {galleryHotel.category}
+                </Badge>
+              )}
+            </div>
+            {galleryHotel?.city && (
+              <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                <span>{galleryHotel.city}</span>
+              </div>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {galleryHotel?.images?.map((img, idx) => (
+                <img
+                  key={idx}
+                  src={img}
+                  alt={`${galleryHotel.name} - ${idx + 1}`}
+                  className="w-full aspect-[4/3] object-cover rounded-lg hover:opacity-95 transition-opacity"
+                  loading="lazy"
+                />
+              ))}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
