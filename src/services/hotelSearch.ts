@@ -725,9 +725,12 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
 
     // Location has code attribute and city name as text content
     const locationEl = hotelEl.querySelector('Location');
-    const city = locationEl ? locationEl.textContent?.trim() || params.city || '' : params.city || '';
+    const rawCity = locationEl ? locationEl.textContent?.trim() || params.city || '' : params.city || '';
+    const city = rawCity.substring(0, 50);
 
-    const address = getTextContent(hotelEl, 'HotelAddress') || '';
+    const rawAddress = getTextContent(hotelEl, 'HotelAddress') || '';
+    // Clean address: remove URLs, long garbage text, limit to reasonable length
+    const address = cleanAddress(rawAddress);
     const phone = getTextContent(hotelEl, 'HotelPhone') || '';
     const roomFeatures = getTextContent(hotelEl, 'RoomFeatures') || '';
     const roomType = getTextContent(hotelEl, 'RoomType') || '';
@@ -1106,13 +1109,65 @@ function parseDefaultRoom(hotelEl: Element): HotelRoom | null {
   }
 }
 
+/**
+ * Clean address string by removing garbage data (URLs, policy text, etc.)
+ * and limiting to reasonable length
+ */
+function cleanAddress(raw: string): string {
+  if (!raw) return '';
+
+  // Remove URLs
+  let cleaned = raw.replace(/https?:\/\/[^\s]+/g, '');
+
+  // Cut at common garbage patterns
+  const cutPatterns = [
+    /Si selecciona dos/i,
+    /POLITICA NO REEMBOLSABLE/i,
+    /Cargo de Cancelación/i,
+    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, // ISO dates
+    /\(\d+\)\s+[A-Z]{2,}/, // Room codes like (1) JUNIOR SUITE
+  ];
+
+  for (const pattern of cutPatterns) {
+    const match = cleaned.match(pattern);
+    if (match && match.index !== undefined) {
+      cleaned = cleaned.substring(0, match.index);
+    }
+  }
+
+  // Remove phone numbers (10+ digits)
+  cleaned = cleaned.replace(/\d{10,}/g, '');
+
+  // Trim and limit length
+  cleaned = cleaned.trim();
+  if (cleaned.length > 100) {
+    cleaned = cleaned.substring(0, 100).trim();
+  }
+
+  return cleaned;
+}
+
 function getTextContent(element: Element, selectors: string): string {
   const selectorList = selectors.split(', ');
 
   for (const selector of selectorList) {
     const found = element.querySelector(selector);
-    if (found && found.textContent?.trim()) {
-      return found.textContent.trim();
+    if (found) {
+      // Get only direct text nodes, not text from nested elements
+      let directText = '';
+      for (const node of Array.from(found.childNodes)) {
+        if (node.nodeType === 3) { // TEXT_NODE
+          directText += node.textContent || '';
+        }
+      }
+      const trimmed = directText.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+      // Fallback to full textContent if no direct text
+      if (found.textContent?.trim()) {
+        return found.textContent.trim();
+      }
     }
   }
 

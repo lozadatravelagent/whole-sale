@@ -963,11 +963,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                           {hotel.city && (
                             <div className="flex items-center space-x-1">
                               <MapPin className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{hotel.city}</span>
+                              <span className="truncate">{hotel.city.slice(0, 50)}</span>
                             </div>
                           )}
                           {hotel.address && (
-                            <div className="text-xs truncate">{hotel.address}</div>
+                            <div className="text-xs truncate">{hotel.address.slice(0, 80)}</div>
                           )}
                           <div className="flex items-center space-x-4">
                             <div className="flex items-center space-x-1">

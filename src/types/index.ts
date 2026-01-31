@@ -311,6 +311,10 @@ export interface FlightData {
   return_date?: string;
   legs: FlightLeg[];
   luggage?: boolean;
+  cabin?: {
+    class: string;      // F = First, C/J = Business, Y = Economy
+    brandName?: string; // e.g. "Economy", "Business", "Light"
+  };
   // 🏥 Asistencia médica/seguro de viaje (travel_assistance)
   // Indica si el usuario solicitó seguro de viaje (se muestra leyenda en PDF)
   // Los seguros están incluidos en el precio del paquete, no tienen costo adicional
