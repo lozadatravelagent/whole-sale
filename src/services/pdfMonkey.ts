@@ -398,17 +398,35 @@ function preparePdfData(flights: FlightData[]) {
 
   console.log('✅ PREPARED SELECTED FLIGHTS:', selected_flights.length, 'flights');
 
+  // Calculate root-level travel_assistance and transfers from any flight
+  // (these are used by the template for the INCLUDES box)
+  let hasTravelAssistance = false;
+  let hasTransfers = false;
+  flights.forEach(flight => {
+    if (flight.travel_assistance?.included) {
+      hasTravelAssistance = true;
+    }
+    if (flight.transfers?.included) {
+      hasTransfers = true;
+    }
+  });
+
   // For multiple flights (2-4), use flights-multiple.html template structure
   if (flights.length >= 2) {
     console.log(`🎯 USING FLIGHTS-MULTIPLE.HTML TEMPLATE STRUCTURE - Sending ${flights.length} flights`);
 
     const multiFlightData = {
-      selected_flights: selected_flights
+      selected_flights: selected_flights,
+      // Root-level flags for the INCLUDES box in the template
+      travel_assistance: hasTravelAssistance ? 1 : 0,
+      transfers: hasTransfers ? 1 : 0
     };
 
     console.log('🎯 SENDING MULTI-FLIGHT DATA:', {
       template: 'flights-multiple.html',
       flights_count: multiFlightData.selected_flights.length,
+      travel_assistance: multiFlightData.travel_assistance,
+      transfers: multiFlightData.transfers,
       flights_preview: multiFlightData.selected_flights.map((flight, i) => ({
         index: i,
         airline: flight.airline.name,
@@ -425,12 +443,17 @@ function preparePdfData(flights: FlightData[]) {
   console.log('🎯 USING FLIGHTS-SIMPLE.HTML TEMPLATE STRUCTURE - Sending selected_flights array');
 
   const singleFlightData = {
-    selected_flights: selected_flights
+    selected_flights: selected_flights,
+    // Root-level flags for the INCLUDES box in the template
+    travel_assistance: hasTravelAssistance ? 1 : 0,
+    transfers: hasTransfers ? 1 : 0
   };
 
   console.log('🎯 SENDING SINGLE FLIGHT DATA AS ARRAY:', {
     template: 'flights-simple.html',
     flights_count: singleFlightData.selected_flights.length,
+    travel_assistance: singleFlightData.travel_assistance,
+    transfers: singleFlightData.transfers,
     legs_count: singleFlightData.selected_flights[0].legs.length,
     legs_preview: singleFlightData.selected_flights[0].legs.map((leg, i) => ({
       index: i,

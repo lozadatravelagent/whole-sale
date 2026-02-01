@@ -170,15 +170,15 @@
         </div>
       </div>
 
-      {% if has_multiple_hotels %}
-      <!-- INCLUDES BOX - 4 Columnas (solo para multi-hotel) -->
+      {% if has_multiple_hotels or has_flights == false %}
+      <!-- INCLUDES BOX - 4 Columnas (para multi-hotel o hotel-only) -->
       <div class="includes-box">
         <div class="includes-box-title">Incluye</div>
         <div class="includes-grid">
           <!-- Columna 1: Vuelo -->
           <div class="includes-item{% unless has_flights %} includes-item--disabled{% endunless %}">
             <div class="includes-item-icon">✈️</div>
-            <div class="includes-item-label">Vuelo {{ selected_flights[0].airline.name }}</div>
+            <div class="includes-item-label">Vuelo{% if has_flights %} {{ selected_flights[0].airline.name }}{% endif %}</div>
             {% if has_flights %}
             <div class="includes-item-value">{{ selected_flights[0].legs[0].departure.city_code }}</div>
             <div class="includes-item-value">{{ selected_flights[0].legs[0].arrival.city_code }}</div>
@@ -226,7 +226,7 @@
       {% endif %}
 
       <div class="package-combinations">
-        {% unless has_multiple_hotels %}
+        {% unless has_multiple_hotels or has_flights == false %}
         <h2 class="combinations-title">INCLUYE</h2>
         {% endunless %}
 
@@ -568,14 +568,14 @@
         {% endif %}
       </div>
 
-      {% if has_multiple_hotels %}{% unless has_flights %}
+      {% unless has_flights %}
       <div class="final-disclaimer">
         <p>El presente presupuesto es orientativo y se encuentra sujeto a disponibilidad y modificación de tarifas al momento de realizar la reserva y/o emisión.</p>
         <p>La agencia no se responsabiliza por la documentación personal de los pasajeros, siendo exclusiva responsabilidad de los mismos contar con pasaporte vigente, visas, vacunas, permisos de salida del país, requisitos migratorios y sanitarios exigidos por las autoridades de cada destino.</p>
         <p>La confirmación de servicios queda sujeta al pago total o parcial, según condiciones del operador y proveedor interviniente.</p>
-        <p>- consultar por la asistencia al viajero</p>
+        <p>Consultar por la asistencia al viajero.</p>
       </div>
-      {% endunless %}{% endif %}
+      {% endunless %}
 
     </div>
   </div>

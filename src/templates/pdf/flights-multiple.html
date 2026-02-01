@@ -5,13 +5,123 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flight Information</title>
+  <style>
+    .final-disclaimer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 0;
+      font-size: 7px;
+      color: #555;
+      line-height: 1.25;
+      border-top: 1px solid #ddd;
+    }
+
+    .final-disclaimer p {
+      margin: 0 0 3px 0;
+    }
+
+    .final-disclaimer p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Ajustar contenedores para dejar espacio al disclaimer */
+    .content {
+      bottom: 150px !important;
+    }
+
+    /* ========== INCLUDES BOX - 4 COLUMNS ========== */
+    .includes-box {
+      background: #f8f9fa;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 15px 20px;
+      margin: 20px 0;
+    }
+
+    .includes-box-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #333;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .includes-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .includes-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 10px 8px;
+      background: white;
+      border-radius: 6px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .includes-item--disabled {
+      opacity: 0.4;
+      background: #f5f5f5;
+    }
+
+    .includes-item-icon {
+      font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+      font-size: 24px;
+      margin-bottom: 6px;
+      line-height: 1;
+    }
+
+    .includes-item-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 2px;
+    }
+
+    .includes-item-value {
+      font-size: 10px;
+      color: #6b7280;
+      line-height: 1.3;
+    }
+
+    .includes-item-check {
+      font-size: 10px;
+      color: #10b981;
+      font-weight: 600;
+      margin-top: 3px;
+    }
+
+    .includes-item-na {
+      font-size: 10px;
+      color: #9ca3af;
+      font-style: italic;
+    }
+  </style>
 </head>
 
 <body>
+  {%- comment -%}
+  Helpers: normalize numbers that might come as "5.745,60" or "5745.60".
+  We also coerce missing values to 0.
+  {%- endcomment -%}
+  {% assign _ta_str = travel_assistance | default: 0 %}
+  {% assign _ta_norm = _ta_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+  {% assign _tr_str = transfers | default: 0 %}
+  {% assign _tr_norm = _tr_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+
   {% for flight in selected_flights %}
   <div class="page">
     <main class="content">
       <div class="flight-card">
+        <h2 class="combinations-title">DETALLE DEL VUELO{% if selected_flights.size > 1 %} - OPCIÓN {{ forloop.index }}{% endif %}</h2>
         <div class="flight-header">
           <div class="airline-info">
             <div class="airline-logo">{{ flight.airline.code }}</div>
@@ -19,13 +129,54 @@
               <div class="price-amount">{{ flight.airline.name }}</div>
               <div class="detail-row">
                 <span class="detail-label">Ocupación:</span>
-                <span class="detail-value">{{ flight.adults }} adultos {{ flight.childrens }} niños</span>
+                <span class="detail-value">{{ flight.adults }} adultos{% if flight.childrens > 0 %}, {{ flight.childrens }} niños{% endif %}</span>
               </div>
             </div>
           </div>
-          <div class="total-price">
-            <div class="price-amount">{{ flight.price.amount }} {{ flight.price.currency }}</div>
-            <div class="price-currency">Precio total</div>
+        </div>
+
+        <!-- INCLUDES BOX - 4 Columnas -->
+        <div class="includes-box">
+          <div class="includes-box-title">Incluye</div>
+          <div class="includes-grid">
+            <!-- Columna 1: Vuelo -->
+            <div class="includes-item">
+              <div class="includes-item-icon">✈️</div>
+              <div class="includes-item-label">Vuelo</div>
+              <div class="includes-item-value">{{ flight.airline.name }}</div>
+              <div class="includes-item-check">Incluido</div>
+            </div>
+
+            <!-- Columna 2: Hotel -->
+            <div class="includes-item includes-item--disabled">
+              <div class="includes-item-icon">🏨</div>
+              <div class="includes-item-label">Hotel</div>
+              <div class="includes-item-na">No incluido</div>
+            </div>
+
+            <!-- Columna 3: Traslado -->
+            <div class="includes-item{% unless _tr_norm > 0 %} includes-item--disabled{% endunless %}">
+              <div class="includes-item-icon">🚐</div>
+              <div class="includes-item-label">Traslado</div>
+              {% if _tr_norm > 0 %}
+              <div class="includes-item-value">Aeropuerto - Hotel</div>
+              <div class="includes-item-check">Incluido</div>
+              {% else %}
+              <div class="includes-item-na">No incluido</div>
+              {% endif %}
+            </div>
+
+            <!-- Columna 4: Seguro -->
+            <div class="includes-item{% unless _ta_norm > 0 %} includes-item--disabled{% endunless %}">
+              <div class="includes-item-icon">🏥</div>
+              <div class="includes-item-label">Seguro</div>
+              {% if _ta_norm > 0 %}
+              <div class="includes-item-value">Asistencia médica</div>
+              <div class="includes-item-check">Incluido</div>
+              {% else %}
+              <div class="includes-item-na">No incluido</div>
+              {% endif %}
+            </div>
           </div>
         </div>
 
@@ -75,8 +226,7 @@
             {% for layover in leg.layovers %}
             <div class="layover-title">Escala en {{ layover.destination_city }}</div>
             <div class="layover-details">
-              Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{
-              layover.destination_city }})
+              Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{ layover.destination_city }})
             </div>
             {% endfor %}
           </div>
@@ -99,6 +249,16 @@
           <span class="highlight">USD {{ transfers_amount }}</span>
         </div>
         {% endif %}
+
+        {% if forloop.last %}
+        <div class="final-disclaimer">
+          <p>El presente presupuesto es orientativo y se encuentra sujeto a disponibilidad y modificación de tarifas al momento de realizar la reserva y/o emisión.</p>
+          <p>La agencia no se responsabiliza por la documentación personal de los pasajeros, siendo exclusiva responsabilidad de los mismos contar con pasaporte vigente, visas, vacunas, permisos de salida del país, requisitos migratorios y sanitarios exigidos por las autoridades de cada destino.</p>
+          <p>La confirmación de servicios queda sujeta al pago total o parcial, según condiciones del operador y proveedor interviniente.</p>
+          <p>Consultar por la asistencia al viajero.</p>
+        </div>
+        {% endif %}
+
       </div>
     </main>
   </div>

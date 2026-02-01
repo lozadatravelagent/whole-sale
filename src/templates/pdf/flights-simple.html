@@ -5,139 +5,374 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flight Information</title>
+  <style>
+    /* Disclaimer final - posicionado al fondo del contenedor */
+    .final-disclaimer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 0;
+      font-size: 7px;
+      color: #555;
+      line-height: 1.25;
+      border-top: 1px solid #ddd;
+    }
+
+    .final-disclaimer p {
+      margin: 0 0 3px 0;
+    }
+
+    .final-disclaimer p:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Ajustar contenedores para dejar espacio al disclaimer */
+    .content,
+    .summary-container {
+      bottom: 150px !important;
+    }
+
+    /* ========== INCLUDES BOX - 4 COLUMNS ========== */
+    .includes-box {
+      background: #f8f9fa;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 15px 20px;
+      margin-bottom: 20px;
+    }
+
+    .includes-box-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #333;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+
+    .includes-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .includes-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 10px 8px;
+      background: white;
+      border-radius: 6px;
+      border: 1px solid #e5e7eb;
+    }
+
+    .includes-item--disabled {
+      opacity: 0.4;
+      background: #f5f5f5;
+    }
+
+    .includes-item-icon {
+      font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+      font-size: 24px;
+      margin-bottom: 6px;
+      line-height: 1;
+    }
+
+    .includes-item-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 2px;
+    }
+
+    .includes-item-value {
+      font-size: 10px;
+      color: #6b7280;
+      line-height: 1.3;
+    }
+
+    .includes-item-check {
+      font-size: 10px;
+      color: #10b981;
+      font-weight: 600;
+      margin-top: 3px;
+    }
+
+    .includes-item-na {
+      font-size: 10px;
+      color: #9ca3af;
+      font-style: italic;
+    }
+  </style>
 </head>
 
 <body>
+  {%- comment -%}
+  Helpers: normalize numbers that might come as "5.745,60" or "5745.60".
+  We also coerce missing values to 0.
+  {%- endcomment -%}
+  {% assign _ta_str = travel_assistance | default: 0 %}
+  {% assign _ta_norm = _ta_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+  {% assign _tr_str = transfers | default: 0 %}
+  {% assign _tr_norm = _tr_str | replace: ".", "" | replace: ",", "." | times: 1 %}
+
   {% for flight in selected_flights %}
-  <main class="content">
-    <div class="flight-card">
-      <div class="flight-header">
-        <div class="airline-info">
-          <div class="airline-logo">{{ flight.airline.code }}</div>
-          <div class="airline-name">
-            <div class="price-amount">{{ flight.airline.name }}</div>
-            <div class="detail-row">
-              <span class="detail-label">Ocupación:</span>
-              <span class="detail-value">{{ flight.adults }} adultos {{ flight.childrens }} niños</span>
+  <!-- SUMMARY PAGE -->
+  <div class="page">
+    <div class="summary-container">
+      <h1 class="summary-title">PRESUPUESTO DE VIAJE</h1>
+
+      <div class="trip-info">
+        <div class="trip-details">
+          <div class="trip-detail">
+            <div class="trip-detail-label">Destino</div>
+            <div class="trip-detail-value">
+              {{ flight.legs[0].departure.city_code }} -- {{ flight.legs[0].arrival.city_code }}
+            </div>
+          </div>
+          <div class="trip-detail">
+            <div class="trip-detail-label">Fechas</div>
+            <div class="trip-detail-value">
+              {{ flight.departure_date }} - {{ flight.return_date }}
+            </div>
+          </div>
+          <div class="trip-detail">
+            <div class="trip-detail-label">Pasajeros</div>
+            <div class="trip-detail-value">
+              {{ flight.adults }} {% if flight.adults == 1 %}Adulto{% else %}Adultos{% endif %}{% if flight.childrens > 0 %}, {{ flight.childrens }} {% if flight.childrens == 1 %}Niño{% else %}Niños{% endif %}{% endif %}
             </div>
           </div>
         </div>
-        <div class="total-price">
-          <div class="price-amount">{{ flight.price.amount }} {{ flight.price.currency }}</div>
-          <div class="price-currency">Precio total</div>
-        </div>
       </div>
 
-      <!-- Outbound Flight -->
-      <div class="flight-leg">
-        <div class="leg-header">
-          <div class="leg-title">Vuelo de ida <span class="flight-type">{{ flight.departure_date }}</span></div>
-          <div class="leg-header">
-            {% if flight.luggage == true %}
-            <div class="flight-type">Equipaje de bodega incluido</div>
+      <!-- INCLUDES BOX - 4 Columnas -->
+      <div class="includes-box">
+        <div class="includes-box-title">Incluye</div>
+        <div class="includes-grid">
+          <!-- Columna 1: Vuelo -->
+          <div class="includes-item">
+            <div class="includes-item-icon">✈️</div>
+            <div class="includes-item-label">Vuelo {{ flight.airline.name }}</div>
+            <div class="includes-item-value">{{ flight.legs[0].departure.city_code }}</div>
+            <div class="includes-item-value">{{ flight.legs[0].arrival.city_code }}</div>
+            <div class="includes-item-check">Incluido</div>
+          </div>
+
+          <!-- Columna 2: Hotel -->
+          <div class="includes-item includes-item--disabled">
+            <div class="includes-item-icon">🏨</div>
+            <div class="includes-item-label">Hotel</div>
+            <div class="includes-item-na">No incluido</div>
+          </div>
+
+          <!-- Columna 3: Traslado -->
+          <div class="includes-item{% unless _tr_norm > 0 %} includes-item--disabled{% endunless %}">
+            <div class="includes-item-icon">🚐</div>
+            <div class="includes-item-label">Traslado</div>
+            {% if _tr_norm > 0 %}
+            <div class="includes-item-value">Aeropuerto - Hotel</div>
+            <div class="includes-item-check">Incluido</div>
             {% else %}
-            <div class="flight-type">Carry On incluido</div>
+            <div class="includes-item-na">No incluido</div>
             {% endif %}
-            <div class="flight-type">{{ flight.legs[0].flight_type }}</div>
           </div>
-        </div>
-        <div class="flight-route">
-          <div class="airport-info">
-            <div class="airport-code">{{ flight.legs[0].departure.city_code }}</div>
-            <div class="airport-name">{{ flight.legs[0].departure.city_name }}</div>
-            <div class="time">{{ flight.legs[0].departure.time }}</div>
-          </div>
-          <div class="flight-arrow">
-            <div class="arrow-line">
-              <div class="arrow-head"></div>
-              <div class="duration-info">{{ flight.legs[0].duration }}</div>
-            </div>
-          </div>
-          <div class="airport-info">
-            <div class="airport-code">{{ flight.legs[0].arrival.city_code }}</div>
-            <div class="airport-name">{{ flight.legs[0].arrival.city_name }}</div>
-            <div class="time">{{ flight.legs[0].arrival.time }}</div>
-          </div>
-        </div>
 
-        {% if flight.legs[0].layovers and flight.legs[0].layovers.size > 0 %}
-        <div class="layover-info">
-          {% for layover in flight.legs[0].layovers %}
-          <div class="layover-title">Escala en {{ layover.destination_city }}</div>
-          <div class="layover-details">
-            Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{ layover.destination_city
-            }})
-          </div>
-          {% endfor %}
-        </div>
-        {% endif %}
-      </div>
-
-      <!-- Return Flight -->
-      {% if flight.legs.size > 1 %}
-      <div class="flight-leg">
-        <div class="leg-header">
-          <div class="leg-title">Vuelo de regreso <span class="flight-type">{{ flight.return_date }}</span></div>
-          <div class="leg-header">
-            {% if flight.luggage == true %}
-            <div class="flight-type">Equipaje de bodega incluido</div>
+          <!-- Columna 4: Seguro -->
+          <div class="includes-item{% unless _ta_norm > 0 %} includes-item--disabled{% endunless %}">
+            <div class="includes-item-icon">🏥</div>
+            <div class="includes-item-label">Seguro</div>
+            {% if _ta_norm > 0 %}
+            <div class="includes-item-value">Asistencia médica</div>
+            <div class="includes-item-check">Incluido</div>
             {% else %}
-            <div class="flight-type">Carry On incluido</div>
+            <div class="includes-item-na">No incluido</div>
             {% endif %}
-            <div class="flight-type">{{ flight.legs[1].flight_type }}</div>
           </div>
         </div>
-        <div class="flight-route">
-          <div class="airport-info">
-            <div class="airport-code">{{ flight.legs[1].departure.city_code }}</div>
-            <div class="airport-name">{{ flight.legs[1].departure.city_name }}</div>
-            <div class="time">{{ flight.legs[1].departure.time }}</div>
+      </div>
+
+      <!-- Package Card with Price -->
+      <div class="package-combinations">
+        <div class="package-card best-deal">
+          <div class="package-header">
+            <div class="package-title"></div>
+            <div class="package-price">${{ flight.price.amount }} {{ flight.price.currency }}</div>
           </div>
-          <div class="flight-arrow">
-            <div class="arrow-line">
-              <div class="arrow-head"></div>
-              <div class="duration-info">{{ flight.legs[1].duration }}</div>
+
+          <div class="package-details">
+            <!-- VUELOS -->
+            <div class="package-section">
+              <div class="section-title">
+                <span class="section-icon">✈️</span>
+                Vuelos {{ flight.airline.name }}
+              </div>
+
+              <div class="section-content">
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">
+                    {{ flight.legs[0].departure.city_name }} ⇄ {{ flight.legs[0].arrival.city_name }}
+                  </div>
+                </div>
+
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">{{ flight.legs[0].flight_type }}</div>
+                </div>
+
+                <div class="sc-row">
+                  <div class="sc-icon"></div>
+                  <div class="sc-text">
+                    {% if flight.luggage %}Equipaje de bodega incluido{% else %}Carry On incluido{% endif %}
+                  </div>
+                </div>
+                </br>
+
+                {% if _tr_norm > 0 %}
+                <div class="sc-row sc-row--van">
+                  <div class="sc-icon">🚐</div>
+                  <div class="sc-text">Traslados, por pasajero.</div>
+                </div>
+                {% endif %}
+
+                {% if _ta_norm > 0 %}
+                <div class="sc-row">
+                  <div class="sc-icon">🏥</div>
+                  <div class="sc-text">Tarjeta de asistencia médica, por pasajero.</div>
+                </div>
+                {% endif %}
+              </div>
             </div>
           </div>
-          <div class="airport-info">
-            <div class="airport-code">{{ flight.legs[1].arrival.city_code }}</div>
-            <div class="airport-name">{{ flight.legs[1].arrival.city_name }}</div>
-            <div class="time">{{ flight.legs[1].arrival.time }}</div>
-          </div>
         </div>
-
-        {% if flight.legs[1].layovers and flight.legs[1].layovers.size > 0 %}
-        <div class="layover-info">
-          {% for layover in flight.legs[1].layovers %}
-          <div class="layover-title">Escala en {{ layover.destination_city }}</div>
-          <div class="layover-details">
-            Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{ layover.destination_city
-            }})
-          </div>
-          {% endfor %}
-        </div>
-        {% endif %}
       </div>
-      {% endif %}
 
-      <!-- Optional Services: Travel Assistance and Transfers -->
-      {% assign travel_assistance_amount = flight.travel_assistance | default: 0 | plus: 0 %}
-      {% if travel_assistance_amount > 0 %}
-      <div class="travel-assistance">
-        <div class="service-icon">🏥</div>
-        <div class="service-text">Tarjeta de asistencia médica, por pasajero.</div>
-      </div>
-      {% endif %}
-
-      {% assign transfers_amount = flight.transfers | default: 0 | plus: 0 %}
-      {% if transfers_amount > 0 %}
-      <div class="travel-assistance">
-        <div class="service-icon">🚐</div>
-        <div class="service-text">Traslados, por pasajero.</div>
-      </div>
-      {% endif %}
     </div>
-  </main>
+  </div>
+
+  <!-- FLIGHT DETAIL PAGE -->
+  <div class="page">
+    <main class="content">
+      <div class="flight-card">
+        <h2 class="combinations-title">DETALLE DEL VUELO</h2>
+        <div class="flight-header">
+          <div class="airline-info">
+            <div class="airline-logo">{{ flight.airline.code }}</div>
+            <div class="airline-name">
+              <div class="price-amount">{{ flight.airline.name }}</div>
+              <div class="detail-row">
+                <span class="detail-label">Ocupación:</span>
+                <span class="detail-value">{{ flight.adults }} adultos{% if flight.childrens > 0 %}, {{ flight.childrens }} niños{% endif %}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Outbound Flight -->
+        <div class="flight-leg">
+          <div class="leg-header">
+            <div class="leg-title">Vuelo de ida <span class="flight-type">{{ flight.departure_date }}</span></div>
+            <div class="leg-header">
+              {% if flight.luggage == true %}
+              <div class="flight-type">Equipaje de bodega incluido</div>
+              {% else %}
+              <div class="flight-type">Carry On incluido</div>
+              {% endif %}
+              <div class="flight-type">{{ flight.legs[0].flight_type }}</div>
+            </div>
+          </div>
+          <div class="flight-route">
+            <div class="airport-info">
+              <div class="airport-code">{{ flight.legs[0].departure.city_code }}</div>
+              <div class="airport-name">{{ flight.legs[0].departure.city_name }}</div>
+              <div class="time">{{ flight.legs[0].departure.time }}</div>
+            </div>
+            <div class="flight-arrow">
+              <div class="arrow-line">
+                <div class="arrow-head"></div>
+                <div class="duration-info">{{ flight.legs[0].duration }}</div>
+              </div>
+            </div>
+            <div class="airport-info">
+              <div class="airport-code">{{ flight.legs[0].arrival.city_code }}</div>
+              <div class="airport-name">{{ flight.legs[0].arrival.city_name }}</div>
+              <div class="time">{{ flight.legs[0].arrival.time }}</div>
+            </div>
+          </div>
+
+          {% if flight.legs[0].layovers and flight.legs[0].layovers.size > 0 %}
+          <div class="layover-info">
+            {% for layover in flight.legs[0].layovers %}
+            <div class="layover-title">Escala en {{ layover.destination_city }}</div>
+            <div class="layover-details">
+              Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{ layover.destination_city }})
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Return Flight -->
+        {% if flight.legs.size > 1 %}
+        <div class="flight-leg">
+          <div class="leg-header">
+            <div class="leg-title">Vuelo de regreso <span class="flight-type">{{ flight.return_date }}</span></div>
+            <div class="leg-header">
+              {% if flight.luggage == true %}
+              <div class="flight-type">Equipaje de bodega incluido</div>
+              {% else %}
+              <div class="flight-type">Carry On incluido</div>
+              {% endif %}
+              <div class="flight-type">{{ flight.legs[1].flight_type }}</div>
+            </div>
+          </div>
+          <div class="flight-route">
+            <div class="airport-info">
+              <div class="airport-code">{{ flight.legs[1].departure.city_code }}</div>
+              <div class="airport-name">{{ flight.legs[1].departure.city_name }}</div>
+              <div class="time">{{ flight.legs[1].departure.time }}</div>
+            </div>
+            <div class="flight-arrow">
+              <div class="arrow-line">
+                <div class="arrow-head"></div>
+                <div class="duration-info">{{ flight.legs[1].duration }}</div>
+              </div>
+            </div>
+            <div class="airport-info">
+              <div class="airport-code">{{ flight.legs[1].arrival.city_code }}</div>
+              <div class="airport-name">{{ flight.legs[1].arrival.city_name }}</div>
+              <div class="time">{{ flight.legs[1].arrival.time }}</div>
+            </div>
+          </div>
+
+          {% if flight.legs[1].layovers and flight.legs[1].layovers.size > 0 %}
+          <div class="layover-info">
+            {% for layover in flight.legs[1].layovers %}
+            <div class="layover-title">Escala en {{ layover.destination_city }}</div>
+            <div class="layover-details">
+              Tiempo de espera: {{ layover.waiting_time }} en {{ layover.destination_code }} ({{ layover.destination_city }})
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if forloop.last %}
+        <div class="final-disclaimer">
+          <p>El presente presupuesto es orientativo y se encuentra sujeto a disponibilidad y modificación de tarifas al momento de realizar la reserva y/o emisión.</p>
+          <p>La agencia no se responsabiliza por la documentación personal de los pasajeros, siendo exclusiva responsabilidad de los mismos contar con pasaporte vigente, visas, vacunas, permisos de salida del país, requisitos migratorios y sanitarios exigidos por las autoridades de cada destino.</p>
+          <p>La confirmación de servicios queda sujeta al pago total o parcial, según condiciones del operador y proveedor interviniente.</p>
+          <p>Consultar por la asistencia al viajero.</p>
+        </div>
+        {% endif %}
+
+      </div>
+    </main>
+  </div>
   {% endfor %}
 </body>
 
