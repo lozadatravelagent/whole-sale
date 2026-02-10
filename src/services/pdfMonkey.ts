@@ -783,6 +783,10 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       }
     }
 
+    if (location.length > 20) {
+      location = location.substring(0, 20).trim();
+    }
+
     console.log(`🔧 Processing hotel ${index + 1} for template:`, {
       name: hotel.name,
       category: hotel.category,
@@ -1020,7 +1024,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         option1Hotel = {
           name: option1Name,
           stars: option1Data.stars || extractStars(option1Data.category, option1Name),
-          location: option1Data.location || option1Data.city || 'Ubicación no especificada',
+          location: (option1Data.location || option1Data.city || 'Ubicación no especificada').substring(0, 20),
           roomDescription: option1Data.roomDescription || '',
           price: formatPriceForTemplate(option1HotelPrice)
         };
@@ -1028,7 +1032,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         option2Hotel = {
           name: option2Name,
           stars: option2Data.stars || extractStars(option2Data.category, option2Name),
-          location: option2Data.location || option2Data.city || 'Ubicación no especificada',
+          location: (option2Data.location || option2Data.city || 'Ubicación no especificada').substring(0, 20),
           roomDescription: option2Data.roomDescription || '',
           price: formatPriceForTemplate(option2HotelPrice)
         };
@@ -1045,7 +1049,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
           option3Hotel = {
             name: option3Name,
             stars: option3Data.stars || extractStars(option3Data.category, option3Name),
-            location: option3Data.location || option3Data.city || 'Ubicación no especificada',
+            location: (option3Data.location || option3Data.city || 'Ubicación no especificada').substring(0, 20),
             roomDescription: option3Data.roomDescription || '',
             price: formatPriceForTemplate(option3HotelPrice)
           };

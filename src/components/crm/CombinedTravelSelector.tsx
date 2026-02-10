@@ -51,10 +51,12 @@ interface CombinedTravelSelectorProps {
 }
 
 // Función para obtener información de equipaje del primer segmento de un leg
-const getBaggageInfoFromLeg = (leg: any) => {
+// optionIndex allows selecting which option's baggage info to retrieve
+const getBaggageInfoFromLeg = (leg: any, optionIndex: number = 0) => {
   // Buscar en la estructura legs -> options -> segments
-  if (leg?.options?.[0]?.segments?.[0]) {
-    const segment = leg.options[0].segments[0];
+  const option = leg?.options?.[optionIndex] || leg?.options?.[0];
+  if (option?.segments?.[0]) {
+    const segment = option.segments[0];
     return {
       baggage: segment.baggage,
       carryOnBagInfo: segment.carryOnBagInfo
@@ -64,8 +66,8 @@ const getBaggageInfoFromLeg = (leg: any) => {
 };
 
 // Función para obtener texto corto del equipaje para mostrar al lado de IDA/REGRESO
-const getBaggageTextFromLeg = (leg: any, airlineCode?: string): string => {
-  const baggageInfo = getBaggageInfoFromLeg(leg);
+const getBaggageTextFromLeg = (leg: any, airlineCode?: string, optionIndex: number = 0): string => {
+  const baggageInfo = getBaggageInfoFromLeg(leg, optionIndex);
 
   if (!baggageInfo.baggage && !baggageInfo.carryOnBagInfo) {
     return '';
@@ -233,8 +235,48 @@ const convertCachedFlightToDisplayFormat = (flight: any): FlightData => {
   } as FlightData;
 };
 
+// Helper function to format option summary for tab display
+const formatOptionSummary = (option: any): string => {
+  const segments = option?.segments || [];
+  if (segments.length <= 1) return 'Directo';
+
+  // Calculate max layover duration for this option
+  let maxLayoverMinutes = 0;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const currentSeg = segments[i];
+    const nextSeg = segments[i + 1];
+
+    if (currentSeg?.arrival?.time && currentSeg?.arrival?.date &&
+        nextSeg?.departure?.time && nextSeg?.departure?.date) {
+      try {
+        const arrival = new Date(`${currentSeg.arrival.date}T${currentSeg.arrival.time}:00`);
+        const departure = new Date(`${nextSeg.departure.date}T${nextSeg.departure.time}:00`);
+        const layoverMinutes = (departure.getTime() - arrival.getTime()) / (1000 * 60);
+        if (layoverMinutes > maxLayoverMinutes) {
+          maxLayoverMinutes = layoverMinutes;
+        }
+      } catch (e) { /* ignore parse errors */ }
+    }
+  }
+
+  const hours = Math.floor(maxLayoverMinutes / 60);
+  const minutes = Math.round(maxLayoverMinutes % 60);
+  const durationStr = hours > 0
+    ? (minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`)
+    : `${minutes}m`;
+
+  const stops = segments.length - 1;
+  return `${stops} escala${stops > 1 ? 's' : ''} (${durationStr})`;
+};
+
 // Component to display flight itinerary with visual connections
-const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
+interface FlightItineraryProps {
+  flight: FlightData;
+  selectedOptionPerLeg?: Record<number, number>;
+  onSelectOption?: (legIndex: number, optionIndex: number) => void;
+}
+
+const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptionPerLeg = {}, onSelectOption }) => {
   const formatDate = (iso?: string) => (iso ? iso : '');
   const addDays = (iso: string, days: number) => {
     try {
@@ -251,7 +293,27 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
         const legType = leg.flight_type === 'outbound' ? 'IDA' : 'REGRESO';
         const legIcon = leg.flight_type === 'outbound' ? <Plane className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />;
         const baseDate = leg.flight_type === 'outbound' ? flight.departure_date : (flight.return_date || flight.departure_date);
-        const arrivalDate = leg.arrival_next_day ? addDays(baseDate, 1) : baseDate;
+
+        // Get options from the leg (local structure: leg.options[])
+        const legOptions = (leg as any).options || [];
+        const hasMultipleOptions = legOptions.length > 1;
+        const selectedOptionIndex = selectedOptionPerLeg[legIndex] ?? 0;
+        const selectedOption = legOptions[selectedOptionIndex] || legOptions[0];
+
+        // Calculate arrival_next_day from selected option's segments
+        let arrivalNextDay = leg.arrival_next_day;
+        if (selectedOption?.segments?.length > 0) {
+          const firstSeg = selectedOption.segments[0];
+          const lastSeg = selectedOption.segments[selectedOption.segments.length - 1];
+          if (firstSeg?.departure?.date && lastSeg?.arrival?.date) {
+            arrivalNextDay = new Date(lastSeg.arrival.date).getTime() > new Date(firstSeg.departure.date).getTime();
+          }
+        }
+
+        const arrivalDate = arrivalNextDay ? addDays(baseDate, 1) : baseDate;
+
+        // Get baggage info from selected option
+        const baggageInfo = getBaggageInfoFromLeg(leg, selectedOptionIndex);
 
         return (
           <div key={legIndex} className="border border-border rounded-lg p-3 bg-background">
@@ -259,16 +321,36 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
               {React.cloneElement(legIcon, { className: "h-4 w-4 text-foreground" })}
               <span className="font-semibold text-sm text-foreground">{legType}</span>
               <BaggageIcon
-                {...getBaggageInfoFromLeg(leg)}
+                {...baggageInfo}
                 size="sm"
                 showTooltip={true}
                 className="text-foreground"
               />
               {/* Mostrar texto del equipaje al lado */}
               <span className="text-sm text-foreground font-bold">
-                {getBaggageTextFromLeg(leg, flight.airline.code)}
+                {getBaggageTextFromLeg(leg, flight.airline.code, selectedOptionIndex)}
               </span>
             </div>
+
+            {/* Option selection tabs when multiple options exist */}
+            {hasMultipleOptions && onSelectOption && (
+              <div className="flex flex-wrap gap-1 mb-3">
+                {legOptions.map((option: any, optIdx: number) => (
+                  <Button
+                    key={optIdx}
+                    variant={selectedOptionIndex === optIdx ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs h-7 px-2"
+                    onClick={() => onSelectOption(legIndex, optIdx)}
+                  >
+                    Opción {optIdx + 1}
+                    <span className="ml-1 opacity-70">
+                      ({formatOptionSummary(option)})
+                    </span>
+                  </Button>
+                ))}
+              </div>
+            )}
 
             {/* Simplified display for current FlightLeg structure */}
             <div className="space-y-2">
@@ -304,7 +386,7 @@ const FlightItinerary: React.FC<{ flight: FlightData }> = ({ flight }) => {
                   <div className="font-bold text-lg text-foreground">{leg.arrival.city_code}</div>
                   <div className="text-sm font-medium text-foreground flex items-center justify-center space-x-1">
                     <span>{formatTime(leg.arrival.time)}</span>
-                    {leg.arrival_next_day && (
+                    {arrivalNextDay && (
                       <span className="text-[10px] px-1 py-0.5 rounded bg-background text-foreground border border-orange-500">+1</span>
                     )}
                   </div>
@@ -350,6 +432,22 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [selectedHotels, setSelectedHotels] = useState<string[]>([]);
   const [selectedRooms, setSelectedRooms] = useState<Record<string, string>>({});
+  // Track selected option per leg for each flight: flightId -> { legIndex -> optionIndex }
+  const [selectedFlightOptions, setSelectedFlightOptions] = useState<Record<string, Record<number, number>>>({});
+
+  const getSelectedOptionIndex = useCallback((flightId: string, legIndex: number): number => {
+    return selectedFlightOptions[flightId]?.[legIndex] ?? 0;
+  }, [selectedFlightOptions]);
+
+  const setSelectedOption = useCallback((flightId: string, legIndex: number, optionIndex: number) => {
+    setSelectedFlightOptions(prev => ({
+      ...prev,
+      [flightId]: {
+        ...(prev[flightId] || {}),
+        [legIndex]: optionIndex
+      }
+    }));
+  }, []);
   const [isGenerating, setIsGenerating] = useState(false);
   const [agencyId, setAgencyId] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState(
@@ -577,9 +675,86 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       });
 
       // Get selected data from the correct source
-      const selectedFlightData = flightsSource.filter(flight =>
+      const selectedFlightDataRaw = flightsSource.filter(flight =>
         selectedFlights.includes(flight.id!)
       );
+
+      // Transform flights to use selected options for each leg
+      // This ensures PDF shows the itinerary options the user selected
+      const selectedFlightData = selectedFlightDataRaw.map(flight => {
+        const flightOptions = selectedFlightOptions[flight.id!] || {};
+
+        // If no options were selected (all use default 0), return as-is
+        if (Object.keys(flightOptions).length === 0) {
+          return flight;
+        }
+
+        // Transform legs to use selected option data
+        const transformedLegs = flight.legs.map((leg, legIndex) => {
+          const legAny = leg as any;
+          const options = legAny.options || [];
+          const selectedOptionIndex = flightOptions[legIndex] ?? 0;
+          const selectedOption = options[selectedOptionIndex] || options[0];
+
+          // If no options or only one option, return leg as-is
+          if (!selectedOption || options.length <= 1) {
+            return leg;
+          }
+
+          // Extract data from selected option's segments
+          const segments = selectedOption.segments || [];
+          const firstSegment = segments[0];
+          const lastSegment = segments[segments.length - 1] || firstSegment;
+
+          // Calculate layovers from selected option
+          const layovers: any[] = [];
+          if (segments.length > 1) {
+            for (let i = 0; i < segments.length - 1; i++) {
+              const seg = segments[i];
+              const nextSeg = segments[i + 1];
+              layovers.push({
+                destination_city: getCityNameFromCode(seg.arrival?.airportCode || ''),
+                destination_code: seg.arrival?.airportCode || '',
+                waiting_time: calculateConnectionTime(seg, nextSeg)
+              });
+            }
+          }
+
+          // Calculate duration
+          const duration = selectedOption.duration
+            ? `${Math.floor(selectedOption.duration / 60)}h ${selectedOption.duration % 60}m`
+            : leg.duration;
+
+          // Check if arrival is next day
+          const arrivalNextDay = (firstSegment?.departure?.date && lastSegment?.arrival?.date)
+            ? new Date(lastSegment.arrival.date).getTime() > new Date(firstSegment.departure.date).getTime()
+            : leg.arrival_next_day;
+
+          return {
+            ...leg,
+            departure: {
+              city_code: firstSegment?.departure?.airportCode || leg.departure.city_code,
+              city_name: getCityNameFromCode(firstSegment?.departure?.airportCode || '') || leg.departure.city_name,
+              time: firstSegment?.departure?.time || leg.departure.time
+            },
+            arrival: {
+              city_code: lastSegment?.arrival?.airportCode || leg.arrival.city_code,
+              city_name: getCityNameFromCode(lastSegment?.arrival?.airportCode || '') || leg.arrival.city_name,
+              time: lastSegment?.arrival?.time || leg.arrival.time
+            },
+            duration,
+            layovers,
+            arrival_next_day: arrivalNextDay,
+            // Preserve options with selected one at index 0 for PDF processing
+            options: [selectedOption, ...options.filter((_: any, i: number) => i !== selectedOptionIndex)]
+          };
+        });
+
+        return {
+          ...flight,
+          legs: transformedLegs
+        };
+      });
 
       // 🔍 DEBUG: Log selected flights AFTER filtering
       console.log('🔍 [CombinedTravelSelector] Selected flights AFTER filter:');
@@ -848,7 +1023,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                     <Separator className="my-2" />
 
                     {/* Visual Flight Itinerary with Connections */}
-                    <FlightItinerary flight={flight} />
+                    <FlightItinerary
+                      flight={flight}
+                      selectedOptionPerLeg={selectedFlightOptions[flight.id!] || {}}
+                      onSelectOption={(legIndex, optionIndex) => setSelectedOption(flight.id!, legIndex, optionIndex)}
+                    />
                   </CardContent>
                 </Card>
               );

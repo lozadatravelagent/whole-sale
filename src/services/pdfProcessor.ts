@@ -1749,7 +1749,7 @@ function reconstructHotelData(analysis: PdfAnalysisResult, newPrice: number, tar
 
         // Preserve original location - don't use default if we have data
         const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
-            ? hotel.location
+            ? hotel.location.substring(0, 20)
             : 'Ubicación no especificada';
 
         // Preserve original category/stars
@@ -2042,7 +2042,7 @@ export async function generateModifiedPdfWithHotelPrice(
             const roomDescription = hotel.roomDescription || 'Habitación estándar';
             const roomType = hotel.roomType || 'Standard';
             const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
-                ? hotel.location : 'Ubicación no especificada';
+                ? hotel.location.substring(0, 20) : 'Ubicación no especificada';
             const hotelCategory = hotel.category || '5';
 
             return {
@@ -2221,7 +2221,7 @@ async function generateModifiedPdfWithMultipleHotelPrices(
             const roomDescription = hotel.roomDescription || 'Habitación estándar';
             const roomType = hotel.roomType || 'Standard';
             const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
-                ? hotel.location : 'Ubicación no especificada';
+                ? hotel.location.substring(0, 20) : 'Ubicación no especificada';
             const hotelCategory = hotel.category || '5';
 
             return {
@@ -2642,8 +2642,8 @@ export async function generateModifiedPdf(
                     id: hotelId,
                     unique_id: hotelId,
                     name: hotel.name,
-                    city: hotelCity || hotelAddress, // City/zone name
-                    address: hotelAddress || hotelCity, // Full address for display
+                    city: (hotelCity || hotelAddress).substring(0, 20), // City/zone name
+                    address: (hotelAddress || hotelCity).substring(0, 20), // Full address for display
                     category: hotelCategory,
                     nights: hotel.nights || 0,
                     check_in: checkIn,

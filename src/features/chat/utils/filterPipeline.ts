@@ -301,60 +301,48 @@ export function getTimeSlotName(slot: keyof Distribution['departureTimeSlots']):
  * Calcula el tiempo de espera entre segmentos consecutivos dentro de cada tramo,
  * y retorna el máximo en horas.
  *
+ * IMPORTANT: Only uses Options[0] for each leg because that's what users see by default
+ * in the UI. This ensures the filter matches what users actually see.
+ *
  * @param flight - El vuelo a analizar
  * @returns Duración máxima de escala en horas
  */
 function getMaxLayoverDuration(flight: FlightData): number {
-  // Para cada leg, encontrar la opción con la MENOR escala máxima
-  // Esto representa la mejor combinación posible de itinerario
-  const minLayoverPerLeg: number[] = [];
+  let maxLayoverHours = 0;
 
   for (const leg of flight.legs || []) {
     // Estructura local: legs[].options[].segments[]
     if ('options' in leg && Array.isArray((leg as any).options)) {
-      const options = (leg as any).options;
-      let minLayoverForThisLeg = Infinity;
+      // Only use Options[0] - what users see by default
+      const firstOption = (leg as any).options[0];
+      if (!firstOption) continue;
 
-      for (const option of options) {
-        const segments = option.segments || [];
-        let maxLayoverInOption = 0;
+      const segments = firstOption.segments || [];
 
-        // Calcular la escala máxima dentro de esta opción
-        for (let i = 0; i < segments.length - 1; i++) {
-          const currentSegment = segments[i];
-          const nextSegment = segments[i + 1];
+      // Calculate layover duration between consecutive segments
+      for (let i = 0; i < segments.length - 1; i++) {
+        const currentSegment = segments[i];
+        const nextSegment = segments[i + 1];
 
-          const arrivalTime = currentSegment.arrival?.time || '';
-          const arrivalDate = currentSegment.arrival?.date || '';
-          const departureTime = nextSegment.departure?.time || '';
-          const departureDate = nextSegment.departure?.date || '';
+        const arrivalTime = currentSegment.arrival?.time || '';
+        const arrivalDate = currentSegment.arrival?.date || '';
+        const departureTime = nextSegment.departure?.time || '';
+        const departureDate = nextSegment.departure?.date || '';
 
-          if (arrivalTime && arrivalDate && departureTime && departureDate) {
-            const arrival = new Date(`${arrivalDate}T${arrivalTime}:00`);
-            const departure = new Date(`${departureDate}T${departureTime}:00`);
-            const layoverHours = (departure.getTime() - arrival.getTime()) / (1000 * 60 * 60);
+        if (arrivalTime && arrivalDate && departureTime && departureDate) {
+          const arrival = new Date(`${arrivalDate}T${arrivalTime}:00`);
+          const departure = new Date(`${departureDate}T${departureTime}:00`);
+          const layoverHours = (departure.getTime() - arrival.getTime()) / (1000 * 60 * 60);
 
-            if (layoverHours > maxLayoverInOption) {
-              maxLayoverInOption = layoverHours;
-            }
+          if (layoverHours > maxLayoverHours) {
+            maxLayoverHours = layoverHours;
           }
         }
-
-        // Guardar la mejor opción (menor escala) para este leg
-        if (maxLayoverInOption < minLayoverForThisLeg) {
-          minLayoverForThisLeg = maxLayoverInOption;
-        }
-      }
-
-      // Si hay opciones válidas, guardar el mínimo
-      if (minLayoverForThisLeg !== Infinity) {
-        minLayoverPerLeg.push(minLayoverForThisLeg);
       }
     }
     // Estructura alternativa: legs[].layovers[] con duration (legacy)
     else if ('layovers' in leg && Array.isArray((leg as any).layovers)) {
       const layovers = (leg as any).layovers;
-      let minLayoverForThisLeg = Infinity;
 
       for (const layover of layovers) {
         if (layover.duration) {
@@ -370,19 +358,13 @@ function getMaxLayoverDuration(flight: FlightData): number {
             if (minMatch) hours += parseInt(minMatch[1], 10) / 60;
           }
 
-          if (hours < minLayoverForThisLeg) {
-            minLayoverForThisLeg = hours;
+          if (hours > maxLayoverHours) {
+            maxLayoverHours = hours;
           }
         }
-      }
-
-      if (minLayoverForThisLeg !== Infinity) {
-        minLayoverPerLeg.push(minLayoverForThisLeg);
       }
     }
   }
 
-  // Retornar el máximo de los mínimos de cada leg
-  // Esto representa la mejor combinación posible de ida+vuelta
-  return minLayoverPerLeg.length > 0 ? Math.max(...minLayoverPerLeg) : 0;
+  return maxLayoverHours;
 }
