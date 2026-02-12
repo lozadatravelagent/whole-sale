@@ -6,14 +6,14 @@ import { useState } from "react"
 const plans = [
   {
     name: "Starter",
-    description: "Para emprendedores y agencias pequenas",
+    description: "Para agencias pequeñas que están ordenando su operación",
     monthlyPrice: 49,
     annualPrice: 39,
     features: [
       "1 usuario",
       "100 conversaciones/mes",
-      "50 cotizaciones IA",
-      "Integracion con 1 mayorista",
+      "50 cotizaciones asistidas",
+      "Integración con 1 mayorista",
       "Chat web",
       "Soporte por email",
     ],
@@ -22,14 +22,14 @@ const plans = [
   },
   {
     name: "Professional",
-    description: "Para agencias en crecimiento",
+    description: "Para equipos comerciales en crecimiento",
     monthlyPrice: 149,
     annualPrice: 119,
     features: [
       "Hasta 5 usuarios",
       "Conversaciones ilimitadas",
-      "500 cotizaciones IA/mes",
-      "Integracion con 3 mayoristas",
+      "500 cotizaciones asistidas/mes",
+      "Integración con 3 mayoristas",
       "WhatsApp + Chat web",
       "CRM completo",
       "Reportes avanzados",
@@ -40,19 +40,19 @@ const plans = [
   },
   {
     name: "Enterprise",
-    description: "Para operaciones a gran escala",
+    description: "Para operaciones de gran volumen",
     monthlyPrice: 399,
     annualPrice: 319,
     features: [
       "Usuarios ilimitados",
       "Todo ilimitado",
-      "Cotizaciones IA ilimitadas",
-      "Integraciones ilimitadas",
+      "Cotizaciones asistidas ilimitadas",
+      "Escalado de integraciones",
       "Multi-tenancy",
-      "API access",
-      "Onboarding dedicado",
-      "Soporte 24/7",
-      "SLA garantizado",
+      "Acceso API",
+      "Onboarding guiado",
+      "Soporte dedicado",
+      "SLA opcional (según contrato)",
     ],
     color: "purple",
     popular: false
@@ -63,8 +63,17 @@ export function Pricing() {
   const navigate = useNavigate()
   const [isAnnual, setIsAnnual] = useState(true)
 
+  const handlePlanCTA = (planName: string) => {
+    if (planName === "Enterprise") {
+      navigate('/contacto')
+      return
+    }
+
+    navigate('/login')
+  }
+
   return (
-    <section id="pricing" className="py-32 bg-[#0a0a0f] relative overflow-hidden">
+    <section id="pricing" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f] relative overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[150px]" />
@@ -88,10 +97,13 @@ export function Pricing() {
             Precios
           </motion.span>
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-            Planes pensados para escalar
+            Planes pensados para agencias reales
           </h2>
           <p className="text-xl md:text-2xl text-gray-400 max-w-2xl mx-auto mb-10">
-            Elegi la opcion que mejor se adapta al tamano de tu equipo
+            Elegí el plan que mejor se adapta al tamaño de tu equipo
+          </p>
+          <p className="text-sm md:text-base text-cyan-300 mb-8">
+            Todos los planes incluyen prueba de 7 días gratis
           </p>
 
           {/* Toggle */}
@@ -136,7 +148,7 @@ export function Pricing() {
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
                   <div className="flex items-center gap-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg shadow-blue-500/30">
                     <Sparkles className="w-3 h-3" />
-                    Mas popular
+                    Más popular
                   </div>
                 </div>
               )}
@@ -162,21 +174,21 @@ export function Pricing() {
                   </div>
                   {isAnnual && (
                     <p className="text-base text-gray-500 mt-1">
-                      Facturado anualmente
+                      Facturación anual
                     </p>
                   )}
                 </div>
 
                 {/* CTA */}
                 <button
-                  onClick={() => navigate('/login')}
+                  onClick={() => handlePlanCTA(plan.name)}
                   className={`block w-full py-4 text-center text-lg rounded-xl font-medium transition-all mb-8 ${
                     plan.popular
                       ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white hover:shadow-lg hover:shadow-blue-500/25 hover:scale-[1.02]'
                       : 'bg-white/10 text-white hover:bg-white/20'
                   }`}
                 >
-                  {plan.name === 'Enterprise' ? 'Contactar ventas' : 'Comenzar prueba gratis'}
+                  {plan.name === 'Enterprise' ? 'Hablar con ventas' : 'Probar 7 días gratis'}
                 </button>
 
                 {/* Features */}
@@ -205,7 +217,7 @@ export function Pricing() {
           viewport={{ once: true }}
           className="text-center text-gray-500 text-sm mt-12"
         >
-          15 dias de prueba gratuita en todos los planes - Sin tarjeta de credito - Cancela cuando quieras
+          7 días de prueba gratis en todos los planes - Sin tarjeta de crédito - Cancelá cuando quieras
         </motion.p>
       </div>
     </section>

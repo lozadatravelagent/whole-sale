@@ -66,7 +66,7 @@ export function TextScramble({ text, className = "", delay = 0 }: TextScramblePr
   return (
     <motion.span
       ref={ref}
-      className={`font-mono ${className}`}
+      className={className}
       initial={{ opacity: 0 }}
       animate={{ opacity: isInView ? 1 : 0 }}
     >

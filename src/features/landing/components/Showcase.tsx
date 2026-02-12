@@ -11,7 +11,7 @@ export function Showcase() {
   const y = useTransform(scrollYProgress, [0, 1], [100, -100])
 
   return (
-    <section id="showcase" ref={containerRef} className="py-32 bg-gradient-to-b from-[#0a0a0f] via-[#0d0d15] to-[#0a0a0f] relative overflow-hidden">
+    <section id="showcase" ref={containerRef} className="scroll-mt-28 md:scroll-mt-32 py-16 md:py-20 bg-gradient-to-b from-[#0a0a0f] via-[#0d0d15] to-[#0a0a0f] relative overflow-hidden">
       {/* Animated background */}
       <motion.div
         className="absolute inset-0"
@@ -38,10 +38,10 @@ export function Showcase() {
             Interfaz
           </motion.span>
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-            Disenado para tu flujo de trabajo
+            Diseñado para la operación diaria
           </h2>
           <p className="text-xl md:text-2xl text-gray-400 max-w-2xl mx-auto">
-            Interfaz moderna e intuitiva que te permite trabajar mas rapido
+            Una interfaz clara para que tu equipo responda rápido y no pierda oportunidades.
           </p>
         </motion.div>
 
@@ -145,6 +145,24 @@ export function Showcase() {
                   </div>
                 </div>
 
+                {/* Emilia quick preview inside interface */}
+                <div className="absolute right-4 top-[110px] w-[250px] hidden lg:block z-10">
+                  <div className="rounded-xl border border-white/15 bg-[#0e1019]/90 backdrop-blur-sm p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white text-sm font-semibold">Emilia</span>
+                      <span className="text-[11px] text-green-400">En línea</span>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="rounded-lg bg-blue-500/20 border border-blue-400/20 px-2.5 py-2 text-gray-100">
+                        Cliente: ¿Tenés vuelo y hotel para Río?
+                      </div>
+                      <div className="rounded-lg bg-white/10 border border-white/10 px-2.5 py-2 text-gray-200">
+                        Emilia: Sí, ya encontré opciones y te preparo la propuesta.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Overlay gradient */}
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f]/50 to-transparent pointer-events-none" />
               </div>
@@ -156,7 +174,7 @@ export function Showcase() {
               whileInView={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.8 }}
               viewport={{ once: true }}
-              className="absolute -left-4 top-1/4 bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-3 rounded-lg shadow-lg shadow-blue-500/25 text-base font-medium hidden lg:block"
+              className="absolute left-4 top-6 bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-3 rounded-lg shadow-lg shadow-blue-500/25 text-base font-medium hidden xl:block z-20"
             >
               +23% ventas este mes
             </motion.div>
@@ -166,7 +184,7 @@ export function Showcase() {
               whileInView={{ opacity: 1, x: 0 }}
               transition={{ delay: 1 }}
               viewport={{ once: true }}
-              className="absolute -right-4 bottom-1/3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-3 rounded-lg shadow-lg shadow-blue-500/25 text-base font-medium hidden lg:block"
+              className="absolute right-4 bottom-8 bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-3 rounded-lg shadow-lg shadow-blue-500/25 text-base font-medium hidden xl:block z-20"
             >
               156 operaciones activas
             </motion.div>

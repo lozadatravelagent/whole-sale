@@ -54,12 +54,12 @@ const Dashboard = () => {
     leads_won: metrics.leadsWon || 0,
     leads_lost: metrics.leadsLost || 0,
     conversion_rate: Math.round(metrics.conversionRate || 0),
-    response_time: 4.2, // TODO: Calculate from real data
-    satisfaction: 4.8, // TODO: Calculate from real data
+    response_time: 4.2, // Estimado temporal
+    satisfaction: 4.8, // Estimado temporal
     monthly_revenue: Math.round(metrics.totalRevenue || 0),
-    monthly_goal: 200000, // TODO: Get from settings
-    active_integrations: 6, // TODO: Get from integrations table
-    total_integrations: 8, // TODO: Get from integrations table
+    monthly_goal: 200000, // Referencia por defecto
+    active_integrations: 6, // Referencia por defecto
+    total_integrations: 8, // Referencia por defecto
     pending_followups: metrics.pendingFollowups || 0,
     urgent_leads: metrics.urgentLeads || 0
   } : {
@@ -165,15 +165,13 @@ const Dashboard = () => {
         navigate('/crm');
         break;
       case 'Ver agenda':
-        // TODO: Implementar navegación a agenda
-        console.log('Navegando a agenda...');
+        navigate('/crm');
         break;
       case 'Revisar':
-        // TODO: Implementar revisión de integraciones
-        console.log('Revisando integraciones...');
+        navigate('/marketplace');
         break;
       default:
-        console.log(`Acción no implementada: ${action}`);
+        navigate('/dashboard');
     }
   };
 
@@ -191,7 +189,7 @@ const Dashboard = () => {
     if (isSuperAdmin) return 'Gestión y supervisión de todas tus agencias';
     if (isAdmin) return 'Supervisión del equipo de vendedores y métricas de agencia';
     if (isSeller) return 'Tus leads asignados y métricas personales de rendimiento';
-    return 'Overview of your travel agency performance';
+    return 'Resumen del rendimiento comercial de tu agencia';
   };
 
   // Show loading state
@@ -221,7 +219,7 @@ const Dashboard = () => {
             </p>
           </div>
           <Badge variant="outline" className="h-6 text-xs md:text-sm w-fit">
-            Today, {new Date().toLocaleDateString()}
+            Hoy, {new Date().toLocaleDateString()}
           </Badge>
         </div>
 

@@ -1,6 +1,7 @@
 import { Navigation } from '@/features/landing/components/Navigation';
 import { Hero } from '@/features/landing/components/Hero';
-import { Marquee } from '@/features/landing/components/Marquee';
+import { AboutUs } from '@/features/landing/components/AboutUs';
+import { Integrations } from '@/features/landing/components/Integrations';
 import { Features } from '@/features/landing/components/Features';
 import { Showcase } from '@/features/landing/components/Showcase';
 import { Modules } from '@/features/landing/components/Modules';
@@ -12,11 +13,12 @@ import { Footer } from '@/features/landing/components/Footer';
 import { CursorGlow } from '@/features/landing/components/CursorGlow';
 
 const Index = () => (
-  <main className="min-h-screen bg-[#0a0a0f] relative">
+  <main className="landing-shell min-h-screen bg-[#0a0a0f] relative">
     <CursorGlow />
     <Navigation />
     <Hero />
-    <Marquee />
+    <AboutUs />
+    <Integrations />
     <Features />
     <Showcase />
     <Modules />

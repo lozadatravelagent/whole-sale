@@ -3,17 +3,17 @@ import { motion } from "framer-motion"
 import { ArrowRight, Check } from "lucide-react"
 
 const benefits = [
-  "15 dias de prueba gratis",
-  "Sin tarjeta de credito",
+  "7 días de prueba gratis",
+  "Sin tarjeta de crédito",
   "Soporte personalizado",
-  "Setup guiado"
+  "Implementación guiada"
 ]
 
 export function CTA() {
   const navigate = useNavigate()
 
   return (
-    <section id="cta" className="py-32 bg-[#0a0a0f] relative overflow-hidden">
+    <section id="cta" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f] relative overflow-hidden">
       {/* Background effects */}
       <div className="absolute inset-0">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/10 rounded-full blur-[200px]" />
@@ -78,7 +78,7 @@ export function CTA() {
                 transition={{ delay: 0.1 }}
                 viewport={{ once: true }}
               >
-                Unite a las agencias que ya estan creciendo con Vibook
+                Sumate a las agencias que ya están vendiendo mejor con Vibook
               </motion.p>
 
               {/* Benefits */}
@@ -110,7 +110,7 @@ export function CTA() {
                   onClick={() => navigate('/login')}
                   className="group inline-flex items-center gap-3 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white px-12 py-6 text-xl rounded-xl font-medium shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300 hover:scale-105"
                 >
-                  Comenzar prueba gratuita
+                  Probar 7 días gratis
                   <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
                 </button>
               </motion.div>
@@ -122,7 +122,7 @@ export function CTA() {
                 viewport={{ once: true }}
                 className="text-gray-500 text-sm mt-6"
               >
-                Configuracion en minutos - Sin compromiso - Cancela cuando quieras
+                Configuración en minutos - Sin compromiso - Cancelá cuando quieras
               </motion.p>
             </div>
           </div>

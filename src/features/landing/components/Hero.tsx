@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
-import { ArrowRight, Play } from "lucide-react"
+import { ArrowRight, Play, Layers3, Route, LineChart } from "lucide-react"
 import { MagneticButton } from "./MagneticButton"
 import { TextScramble } from "./TextScramble"
 
@@ -8,7 +8,7 @@ export function Hero() {
   const navigate = useNavigate()
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-[#0a0a0f] pt-20">
+    <section className="relative min-h-[calc(100vh-5rem)] md:min-h-[calc(100vh-6rem)] flex items-center justify-center overflow-hidden bg-[#0a0a0f] pt-12 md:pt-16">
       {/* Animated background gradient orbs */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-500/20 rounded-full blur-[120px] animate-pulse-glow" />
@@ -70,7 +70,7 @@ export function Hero() {
 
       {/* Floating card elements */}
       <motion.div
-        className="absolute top-[30%] left-[8%] hidden lg:block"
+        className="absolute top-[18%] left-[3%] hidden lg:block"
         animate={{ y: [0, -15, 0], rotate: [-2, 2, -2] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
       >
@@ -88,7 +88,7 @@ export function Hero() {
       </motion.div>
 
       <motion.div
-        className="absolute top-[25%] right-[8%] hidden lg:block"
+        className="absolute top-[16%] right-[3%] hidden lg:block"
         animate={{ y: [0, 20, 0], rotate: [2, -2, 2] }}
         transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 1 }}
       >
@@ -106,7 +106,7 @@ export function Hero() {
       </motion.div>
 
       <motion.div
-        className="absolute bottom-[25%] right-[12%] hidden lg:block"
+        className="absolute bottom-[14%] right-[4%] hidden lg:block"
         animate={{ y: [0, -20, 0], rotate: [-1, 3, -1] }}
         transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut", delay: 2 }}
       >
@@ -123,7 +123,7 @@ export function Hero() {
         </div>
       </motion.div>
 
-      <div className="relative z-10 container mx-auto px-6 text-center">
+      <div className="relative z-10 container mx-auto px-6 text-center pb-28 md:pb-32">
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
@@ -141,21 +141,21 @@ export function Hero() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
             </span>
             <TextScramble
-              text="Sistema de Gestion para Agencias de Viajes"
+              text="Plataforma de gestión para agencias de viajes"
               className="text-sm text-gray-300"
               delay={500}
             />
           </motion.div>
 
           {/* Main Title */}
-          <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-tight mb-8">
+          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-8">
             <motion.span
               className="text-white block"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
             >
-              Toda tu <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-purple-400 bg-clip-text text-transparent">AGENCIA</span>
+              Tu agencia en orden.
             </motion.span>
             <motion.span
               className="bg-gradient-to-r from-blue-400 via-cyan-400 to-purple-400 bg-clip-text text-transparent block mt-2"
@@ -163,7 +163,7 @@ export function Hero() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
             >
-              en un solo lugar
+              Tu rentabilidad en alza.
             </motion.span>
           </h1>
 
@@ -174,8 +174,7 @@ export function Hero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
           >
-            Vibook es el sistema de gestion mas completo para agencias de viajes.
-            Gestiona clientes, operaciones, finanzas, CRM y mas con inteligencia artificial.
+            Vibook te ayuda a cotizar más rápido, organizar operaciones y dar seguimiento comercial sin complicar el trabajo de tu equipo.
           </motion.p>
 
           {/* CTAs with magnetic effect */}
@@ -187,7 +186,7 @@ export function Hero() {
           >
             <MagneticButton onClick={() => navigate('/login')}>
               <span className="group relative inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white px-8 py-4 text-lg rounded-xl font-medium shadow-xl shadow-blue-500/25 hover:shadow-blue-500/40 transition-all duration-300">
-                Comenzar gratis
+                Probar 7 días gratis
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </span>
             </MagneticButton>
@@ -199,7 +198,7 @@ export function Hero() {
                 <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
                   <Play className="w-4 h-4 ml-0.5" />
                 </div>
-                Ver demo
+                Ver interfaz
               </button>
             </MagneticButton>
           </motion.div>
@@ -209,22 +208,25 @@ export function Hero() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.8 }}
-            className="mt-20 grid grid-cols-3 gap-8 max-w-xl mx-auto"
+            className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 max-w-5xl mx-auto"
           >
             {[
-              { value: "500+", label: "Operaciones/mes" },
-              { value: "50+", label: "Agencias activas" },
-              { value: "99.9%", label: "Uptime" },
-            ].map((stat, i) => (
+              { title: "Orden", description: "Operación centralizada", icon: Layers3 },
+              { title: "Seguimiento", description: "Leads y clientes activos", icon: Route },
+              { title: "Control", description: "Ventas, cobros y reportes", icon: LineChart },
+            ].map((item, i) => (
               <motion.div
                 key={i}
-                className="text-center"
+                className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 md:p-6 text-left hover:bg-white/[0.05] hover:border-white/[0.18] transition-all"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.9 + i * 0.1 }}
               >
-                <div className="text-4xl md:text-5xl font-bold text-white">{stat.value}</div>
-                <div className="text-base text-gray-500 mt-2">{stat.label}</div>
+                <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-400/20 flex items-center justify-center mb-3">
+                  <item.icon className="w-5 h-5 text-blue-300" />
+                </div>
+                <div className="text-xl md:text-2xl font-semibold text-white">{item.title}</div>
+                <div className="text-sm md:text-base text-gray-400 mt-1.5">{item.description}</div>
               </motion.div>
             ))}
           </motion.div>
@@ -236,7 +238,7 @@ export function Hero() {
 
       {/* Scroll indicator */}
       <motion.div
-        className="absolute bottom-8 left-1/2 -translate-x-1/2"
+        className="hidden md:block absolute bottom-8 left-1/2 -translate-x-1/2"
         animate={{ y: [0, 10, 0] }}
         transition={{ duration: 2, repeat: Infinity }}
       >

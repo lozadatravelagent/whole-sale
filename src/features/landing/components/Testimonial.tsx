@@ -4,20 +4,20 @@ import { Quote } from "lucide-react"
 
 const testimonials = [
   {
-    quote: "Desde que usamos Vibook hacemos en una manana lo que antes nos llevaba todo el dia. Los clientes reciben sus cotizaciones al instante.",
-    author: "Maria Garcia",
-    role: "Duena de agencia",
+    quote: "Pasamos de responder cotizaciones en horas a responder en minutos. El equipo trabaja más ordenado y el cliente lo percibe enseguida.",
+    author: "María García",
+    role: "Dueña de agencia",
     company: "Viajes Maravilla"
   },
   {
-    quote: "La integracion con los mayoristas es increible. Ya no tengo que entrar a 5 sitios diferentes para armar una cotizacion.",
-    author: "Carlos Rodriguez",
+    quote: "Con las integraciones de mayoristas dejamos de saltar entre sistemas. Hoy cotizamos más rápido y con menos errores.",
+    author: "Carlos Rodríguez",
     role: "Gerente comercial",
     company: "Turismo Total"
   },
   {
-    quote: "Emilia nos cambio la vida. Responde consultas 24/7 y genera propuestas profesionales en segundos.",
-    author: "Laura Fernandez",
+    quote: "Emilia le sacó presión al equipo en los horarios pico. Podemos atender más consultas sin perder calidad comercial.",
+    author: "Laura Fernández",
     role: "CEO",
     company: "Destinos Premium"
   }
@@ -58,7 +58,7 @@ export function Testimonial() {
   const current = testimonials[currentIndex]
 
   return (
-    <section className="py-24 bg-gradient-to-b from-[#0a0a0f] to-[#0d0d15] relative overflow-hidden">
+    <section className="py-20 md:py-24 bg-gradient-to-b from-[#0a0a0f] to-[#0d0d15] relative overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-[150px]" />
@@ -66,6 +66,25 @@ export function Testimonial() {
 
       <div className="container mx-auto px-6 relative z-10">
         <div className="max-w-4xl mx-auto text-center">
+          <motion.p
+            className="text-cyan-300 uppercase tracking-wider text-sm font-semibold mb-4"
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            Comentarios de agencias
+          </motion.p>
+
+          <motion.h3
+            className="text-3xl md:text-4xl font-bold text-white mb-8"
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            viewport={{ once: true }}
+          >
+            Lo que dicen equipos como el tuyo
+          </motion.h3>
+
           {/* Quote icon */}
           <motion.div
             initial={{ scale: 0 }}

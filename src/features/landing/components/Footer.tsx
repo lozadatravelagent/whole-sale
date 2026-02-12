@@ -17,13 +17,14 @@ export function Footer() {
           {/* Brand */}
           <div className="md:col-span-1">
             <div className="flex items-center gap-3 mb-5">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <span className="text-white font-bold text-xl">V</span>
-              </div>
-              <span className="text-2xl font-bold text-white">Vibook</span>
+              <img
+                src="/vibook-white.png"
+                alt="Vibook"
+                className="h-12 w-auto"
+              />
             </div>
             <p className="text-gray-500 text-base leading-relaxed">
-              El sistema de gestion mas completo para agencias de viajes.
+              Plataforma de gestión comercial y operativa para agencias de viajes.
             </p>
           </div>
 
@@ -31,6 +32,22 @@ export function Footer() {
           <div>
             <h4 className="text-white font-semibold text-lg mb-5">Producto</h4>
             <ul className="space-y-4">
+              <li>
+                <button
+                  onClick={() => scrollToSection('about')}
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
+                  Quiénes somos
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => scrollToSection('integrations')}
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
+                  Integraciones
+                </button>
+              </li>
               <li>
                 <button
                   onClick={() => scrollToSection('features')}
@@ -44,7 +61,7 @@ export function Footer() {
                   onClick={() => scrollToSection('modules')}
                   className="text-gray-500 hover:text-white transition-colors text-base"
                 >
-                  Modulos
+                  Módulos
                 </button>
               </li>
               <li>
@@ -52,7 +69,7 @@ export function Footer() {
                 onClick={() => scrollToSection('emilia')}
                 className="text-gray-500 hover:text-white transition-colors text-base"
               >
-                Emilia IA
+                Emilia
               </button>
             </li>
             <li>
@@ -64,12 +81,12 @@ export function Footer() {
               </button>
             </li>
             <li>
-              <button
-                onClick={() => navigate('/login')}
-                className="text-gray-500 hover:text-white transition-colors text-base"
-              >
-                Iniciar sesion
-              </button>
+                <button
+                  onClick={() => navigate('/login')}
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
+                  Iniciar sesión
+                </button>
               </li>
             </ul>
           </div>
@@ -78,14 +95,20 @@ export function Footer() {
             <h4 className="text-white font-semibold text-lg mb-5">Recursos</h4>
             <ul className="space-y-4">
               <li>
-                <a href="#" className="text-gray-500 hover:text-white transition-colors text-base">
-                  Documentacion
-                </a>
+                <button
+                  onClick={() => navigate('/documentacion')}
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
+                  Documentación
+                </button>
               </li>
               <li>
-                <a href="#" className="text-gray-500 hover:text-white transition-colors text-base">
+                <button
+                  onClick={() => navigate('/soporte')}
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
                   Soporte
-                </a>
+                </button>
               </li>
               <li>
                 <button
@@ -102,20 +125,20 @@ export function Footer() {
             <h4 className="text-white font-semibold text-lg mb-5">Legal</h4>
             <ul className="space-y-4">
               <li>
-                <a
-                  href="#"
+                <button
+                  onClick={() => navigate('/terminos')}
                   className="text-gray-500 hover:text-white transition-colors text-base"
                 >
-                  Terminos de servicio
-                </a>
+                  Términos de servicio
+                </button>
               </li>
               <li>
-                <a
-                  href="#"
+                <button
+                  onClick={() => navigate('/privacidad')}
                   className="text-gray-500 hover:text-white transition-colors text-base"
                 >
                   Privacidad
-                </a>
+                </button>
               </li>
             </ul>
           </div>
@@ -127,7 +150,7 @@ export function Footer() {
             © {new Date().getFullYear()} Vibook. Todos los derechos reservados.
           </p>
           <div className="flex items-center gap-6">
-            <span className="text-gray-600 text-base">Hecho con ❤️ en Argentina</span>
+            <span className="text-gray-600 text-base">Hecho en Argentina para la industria del turismo</span>
           </div>
         </div>
       </div>

@@ -3,6 +3,22 @@ import { useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
 import { Menu, X, ChevronRight } from "lucide-react"
 
+const desktopItems = [
+  { label: "Quiénes somos", id: "about" },
+  { label: "Funcionalidades", id: "features" },
+  { label: "Emilia", id: "emilia" },
+  { label: "Precios", id: "pricing" },
+]
+
+const mobileItems = [
+  { label: "Quiénes somos", id: "about" },
+  { label: "Integraciones", id: "integrations" },
+  { label: "Funcionalidades", id: "features" },
+  { label: "Módulos", id: "modules" },
+  { label: "Emilia", id: "emilia" },
+  { label: "Precios", id: "pricing" },
+]
+
 export function Navigation() {
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
@@ -19,7 +35,7 @@ export function Navigation() {
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id)
     if (element) {
-      element.scrollIntoView({ behavior: "smooth" })
+      element.scrollIntoView({ behavior: "smooth", block: "start" })
     }
     setMobileOpen(false)
   }
@@ -28,36 +44,30 @@ export function Navigation() {
     <motion.nav
       initial={{ y: -100 }}
       animate={{ y: 0 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
+      className={`sticky top-0 z-50 transition-all duration-500 ${
         scrolled
           ? "bg-[#0a0a0f]/80 backdrop-blur-2xl border-b border-white/[0.08]"
-          : "bg-transparent"
+          : "bg-[#0a0a0f]/55 backdrop-blur-xl border-b border-white/[0.05]"
       }`}
     >
       <div className="container mx-auto px-6">
-        <div className="flex items-center justify-between h-18 md:h-24">
+        <div className="flex items-center justify-between h-20 md:h-24 gap-4">
           {/* Logo */}
-          <a href="/" className="flex items-center group">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <span className="text-white font-bold text-xl">V</span>
-              </div>
-              <span className="text-2xl font-bold text-white">Vibook</span>
-            </div>
+          <a href="/" className="flex items-center group lg:flex-1">
+            <img
+              src="/vibook-white.png"
+              alt="Vibook"
+              className="h-10 md:h-11 w-auto"
+            />
           </a>
 
-          {/* Desktop nav - Centered */}
-          <div className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
-            {[
-              { label: "Funcionalidades", id: "features" },
-              { label: "Modulos", id: "modules" },
-              { label: "Emilia IA", id: "emilia" },
-              { label: "Precios", id: "pricing" },
-            ].map((item) => (
+          {/* Desktop nav */}
+          <div className="hidden lg:flex items-center justify-center gap-1 flex-1">
+            {desktopItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => scrollToSection(item.id)}
-                className="relative px-5 py-2.5 text-base text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-white/[0.05]"
+                className="relative px-3 py-2.5 text-sm text-gray-300 hover:text-white transition-colors rounded-lg hover:bg-white/[0.06]"
               >
                 {item.label}
               </button>
@@ -65,25 +75,25 @@ export function Navigation() {
           </div>
 
           {/* CTA buttons */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden lg:flex items-center justify-end gap-3 flex-1">
             <button
               onClick={() => navigate('/login')}
               className="px-5 py-2.5 text-base text-gray-300 hover:text-white transition-colors rounded-lg hover:bg-white/[0.05]"
             >
-              Iniciar sesion
+              Iniciar sesión
             </button>
             <button
               onClick={() => navigate('/login')}
               className="group flex items-center gap-2 bg-white text-gray-900 px-5 py-2.5 text-base rounded-lg font-medium hover:bg-gray-100 transition-all"
             >
-              Comenzar gratis
+              Probar 7 días gratis
               <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
 
           {/* Mobile menu button */}
           <button
-            className="md:hidden text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
+            className="lg:hidden text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -95,15 +105,10 @@ export function Navigation() {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="md:hidden pb-6 pt-2"
+            className="lg:hidden pb-6 pt-2"
           >
             <div className="flex flex-col gap-1">
-              {[
-                { label: "Funcionalidades", id: "features" },
-                { label: "Modulos", id: "modules" },
-                { label: "Emilia IA", id: "emilia" },
-                { label: "Precios", id: "pricing" },
-              ].map((item) => (
+              {mobileItems.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => scrollToSection(item.id)}
@@ -117,13 +122,13 @@ export function Navigation() {
                   onClick={() => navigate('/login')}
                   className="w-full py-3 text-center text-gray-300 hover:text-white rounded-lg border border-white/10 hover:bg-white/[0.05] transition-colors"
                 >
-                  Iniciar sesion
+                  Iniciar sesión
                 </button>
                 <button
                   onClick={() => navigate('/login')}
                   className="w-full py-3 text-center bg-white text-gray-900 rounded-lg font-medium hover:bg-gray-100 transition-colors"
                 >
-                  Comenzar gratis
+                  Probar 7 días gratis
                 </button>
               </div>
             </div>

@@ -4,7 +4,8 @@ import {
   Plane,
   DollarSign,
   FileText,
-  Calculator,
+  BarChart3,
+  Link2,
   ShoppingCart
 } from "lucide-react"
 import { Card3D } from "./Card3D"
@@ -13,38 +14,38 @@ const modules = [
   {
     icon: Users,
     title: "Clientes",
-    features: ["Base de datos completa", "Historial de viajes", "Documentos asociados", "Segmentacion avanzada"],
+    features: ["Base de datos completa", "Historial de viajes", "Documentos asociados", "Segmentación avanzada"],
   },
   {
     icon: Plane,
     title: "Operaciones",
-    features: ["Gestion de viajes", "Pasajeros y documentos", "Pagos y comisiones", "Estados automaticos"],
+    features: ["Gestión de viajes", "Pasajeros y documentos", "Pagos y comisiones", "Estados automáticos"],
   },
   {
     icon: ShoppingCart,
     title: "CRM",
-    features: ["Pipeline visual", "Seguimiento de leads", "Conversion automatica", "Metricas de venta"],
+    features: ["Pipeline visual", "Seguimiento de leads", "Conversión automática", "Métricas de venta"],
   },
   {
     icon: DollarSign,
     title: "Finanzas",
-    features: ["Control de caja", "Ingresos y egresos", "Conciliacion bancaria", "Reportes financieros"],
+    features: ["Control de caja", "Ingresos y egresos", "Conciliación bancaria", "Reportes financieros"],
   },
   {
-    icon: Calculator,
-    title: "Contabilidad",
-    features: ["Plan de cuentas", "Asientos contables", "Balance general", "Estados de resultado"],
+    icon: BarChart3,
+    title: "Reportes",
+    features: ["KPI comerciales", "Evolución de ventas", "Rendimiento por vendedor", "Tableros accionables"],
   },
   {
-    icon: FileText,
-    title: "Facturacion",
-    features: ["Facturas automaticas", "Notas de credito", "Integracion AFIP", "Cobranzas"],
+    icon: Link2,
+    title: "Integraciones",
+    features: ["Mayoristas compatibles", "Conexiones por credenciales", "Marketplace de proveedores", "Estado de integraciones"],
   }
 ]
 
 export function Modules() {
   return (
-    <section id="modules" className="py-32 bg-[#0a0a0f] relative overflow-hidden">
+    <section id="modules" className="scroll-mt-28 md:scroll-mt-32 py-16 md:py-20 bg-[#0a0a0f] relative overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0">
         <div className="absolute top-1/2 left-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl" />
@@ -65,13 +66,13 @@ export function Modules() {
             transition={{ delay: 0.2 }}
             viewport={{ once: true }}
           >
-            Modulos
+            Módulos
           </motion.span>
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-            Modulos integrados
+            Módulos que trabajan juntos
           </h2>
           <p className="text-xl md:text-2xl text-gray-400 max-w-2xl mx-auto">
-            Todos los modulos que necesitas para gestionar tu agencia, trabajando juntos de forma seamless
+            Todo lo que tu agencia necesita, funcionando de forma integrada y simple para el equipo.
           </p>
         </motion.div>
 

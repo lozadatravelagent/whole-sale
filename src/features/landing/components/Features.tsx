@@ -15,59 +15,59 @@ import {
 const features = [
   {
     icon: LayoutDashboard,
-    title: "Dashboard Inteligente",
-    description: "KPIs, metricas de ventas y rendimiento en tiempo real.",
+    title: "Panel de gestión",
+    description: "Ventas, oportunidades y tareas en una sola vista.",
   },
   {
     icon: Users,
-    title: "Gestion de Clientes",
-    description: "Base de datos completa con historial y segmentacion.",
+    title: "Clientes centralizados",
+    description: "Historial de viajes, preferencias y seguimiento comercial.",
   },
   {
     icon: Plane,
-    title: "Operaciones",
-    description: "Control de viajes: pasajeros, documentos y pagos.",
+    title: "Operación de viajes",
+    description: "Control de pasajeros, fechas, servicios y documentación.",
   },
   {
     icon: DollarSign,
-    title: "Finanzas & Caja",
-    description: "Ingresos, egresos y control financiero completo.",
+    title: "Finanzas y caja",
+    description: "Ingresos, egresos y control diario de cada venta.",
   },
   {
     icon: Bot,
-    title: "Emilia - IA",
-    description: "Asistente IA que cotiza y genera propuestas.",
+    title: "Emilia asistente",
+    description: "Te ayuda a responder, cotizar y avanzar oportunidades.",
   },
   {
     icon: MessageCircle,
-    title: "WhatsApp",
-    description: "Mensajes automaticos y recordatorios.",
+    title: "WhatsApp integrado",
+    description: "Atención comercial en el canal que ya usa tu cliente.",
   },
   {
     icon: Calendar,
     title: "Calendario",
-    description: "Salidas, regresos y eventos importantes.",
+    description: "Fechas de salida, regreso y pendientes de equipo.",
   },
   {
     icon: Bell,
     title: "Alertas",
-    description: "Recordatorios automaticos de pagos y documentos.",
+    description: "Recordatorios de cobros, vencimientos y acciones urgentes.",
   },
   {
     icon: FileText,
-    title: "CRM",
-    description: "Pipeline visual y seguimiento de leads.",
+    title: "Embudo comercial",
+    description: "Seguimiento de leads por etapa y probabilidad de cierre.",
   },
   {
     icon: TrendingUp,
     title: "Reportes",
-    description: "Analisis de ventas y proyecciones.",
+    description: "Métricas de rendimiento para decidir con datos reales.",
   }
 ]
 
 export function Features() {
   return (
-    <section id="features" className="py-32 bg-[#0a0a0f] relative overflow-hidden">
+    <section id="features" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f] relative overflow-hidden">
       {/* Background elements */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />
       <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />
@@ -89,10 +89,10 @@ export function Features() {
             Funcionalidades
           </motion.span>
           <h2 className="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6">
-            Todo lo que necesitas
+            Lo esencial para vender mejor
           </h2>
           <p className="text-2xl md:text-3xl text-gray-400 max-w-2xl mx-auto">
-            Un sistema completo disenado especificamente para agencias de viajes
+            Un sistema completo diseñado para agencias de viajes
           </p>
         </motion.div>
 

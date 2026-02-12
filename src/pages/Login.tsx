@@ -102,7 +102,7 @@ const Login = () => {
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center p-4">
         <div className="text-center">
           <div className="w-8 h-8 mx-auto mb-4 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">Cargando...</p>
         </div>
       </div>
     );
@@ -116,20 +116,20 @@ const Login = () => {
           <img
             src="/vibook-black.png"
             alt="Vibook"
-            className="h-12 dark:hidden"
+            className="h-14 dark:hidden"
           />
           <img
             src="/vibook-white.png"
             alt="Vibook"
-            className="h-12 hidden dark:block"
+            className="h-14 hidden dark:block"
           />
         </div>
 
         <Card className="shadow-card">
           <CardHeader className="space-y-1 text-center">
-            <CardTitle className="text-2xl">Welcome back</CardTitle>
+            <CardTitle className="text-2xl">Bienvenido de nuevo</CardTitle>
             <CardDescription>
-              Sign in to your travel management account
+              Ingresá a tu cuenta de gestión turística
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -143,7 +143,7 @@ const Login = () => {
             )}
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">Correo</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -159,7 +159,7 @@ const Login = () => {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">Contraseña</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -179,7 +179,7 @@ const Login = () => {
                 className="w-full bg-gradient-hero hover:opacity-90 transition-opacity shadow-primary"
                 disabled={loading}
               >
-                {loading ? 'Signing in...' : 'Sign In'}
+                {loading ? 'Ingresando...' : 'Iniciar sesión'}
               </Button>
             </form>
 
@@ -189,7 +189,7 @@ const Login = () => {
               </div>
               <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-background px-2 text-muted-foreground">
-                  Or continue with
+                  o continuar con
                 </span>
               </div>
             </div>
@@ -218,13 +218,17 @@ const Login = () => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              Continue with Google
+              Continuar con Google
             </Button>
 
             <div className="text-center text-sm text-muted-foreground">
-              Need access?{' '}
-              <Button variant="link" className="p-0 h-auto font-normal">
-                Contact your wholesaler
+              ¿Necesitás acceso?{' '}
+              <Button
+                variant="link"
+                className="p-0 h-auto font-normal"
+                onClick={() => navigate('/contacto')}
+              >
+                Contactar a ventas
               </Button>
             </div>
           </CardContent>

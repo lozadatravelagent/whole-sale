@@ -22,6 +22,11 @@ const Reports = lazy(() => import("./pages/Reports"));
 const Users = lazy(() => import("./pages/Users"));
 const Agencies = lazy(() => import("./pages/Agencies"));
 const Tenants = lazy(() => import("./pages/Tenants"));
+const Documentation = lazy(() => import("./pages/Documentation"));
+const Support = lazy(() => import("./pages/Support"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Contact = lazy(() => import("./pages/Contact"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Loading component
@@ -54,6 +59,11 @@ const App = () => (
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/documentacion" element={<Documentation />} />
+                <Route path="/soporte" element={<Support />} />
+                <Route path="/terminos" element={<Terms />} />
+                <Route path="/privacidad" element={<Privacy />} />
+                <Route path="/contacto" element={<Contact />} />
               <Route
                 path="/dashboard"
                 element={

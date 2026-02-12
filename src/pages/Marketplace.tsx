@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,6 @@ import { Label } from '@/components/ui/label';
 import { 
   Plane, 
   Building, 
-  Car, 
   Ship, 
   CheckCircle,
   AlertCircle,
@@ -17,6 +17,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import type { ProviderCode } from '@/types';
+import { useToast } from '@/hooks/use-toast';
 
 interface Provider {
   code: ProviderCode;
@@ -29,7 +30,9 @@ interface Provider {
 }
 
 const Marketplace = () => {
-  const [providers] = useState<Provider[]>([
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [providers, setProviders] = useState<Provider[]>([
     {
       code: 'EUROVIPS',
       name: 'Eurovips',
@@ -95,14 +98,42 @@ const Marketplace = () => {
     }
   };
 
+  const getStatusLabel = (status: Provider['status']) => {
+    switch (status) {
+      case 'active':
+        return 'activo';
+      case 'pending':
+        return 'pendiente';
+      case 'disabled':
+        return 'inactivo';
+      default:
+        return status;
+    }
+  };
+
   const handleActivateProvider = (provider: Provider) => {
-    // TODO: Implement provider activation logic
-    console.log('Activating provider:', provider.code);
+    setProviders((prev) =>
+      prev.map((item) =>
+        item.code === provider.code
+          ? { ...item, status: provider.requiresContract ? 'pending' : 'active' }
+          : item
+      )
+    );
+
+    toast({
+      title: provider.requiresContract ? 'Solicitud enviada' : 'Proveedor activado',
+      description: provider.requiresContract
+        ? `Enviamos la solicitud de activación para ${provider.name}.`
+        : `${provider.name} quedó activo para operar.`,
+    });
   };
 
   const handleConfigureProvider = (provider: Provider) => {
-    // TODO: Open configuration modal or redirect
-    console.log('Configuring provider:', provider.code);
+    navigate('/settings');
+    toast({
+      title: 'Configurar integración',
+      description: `Abrimos configuración para ajustar ${provider.name}.`,
+    });
   };
 
   return (
@@ -111,7 +142,7 @@ const Marketplace = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Marketplace</h1>
-            <p className="text-muted-foreground mt-1">Connect with travel providers and expand your inventory</p>
+            <p className="text-muted-foreground mt-1">Conectá mayoristas y expandí el inventario de tu agencia</p>
           </div>
         </div>
 
@@ -145,7 +176,7 @@ const Marketplace = () => {
                           className="text-xs mt-1"
                         >
                           <StatusIcon className="h-3 w-3 mr-1" />
-                          {provider.status}
+                          {getStatusLabel(provider.status)}
                         </Badge>
                       </div>
                     </div>
@@ -158,7 +189,7 @@ const Marketplace = () => {
                   </CardDescription>
 
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Category:</span>
+                    <span className="text-muted-foreground">Categoría:</span>
                     <Badge variant="outline" className="capitalize">
                       {provider.category}
                     </Badge>
@@ -167,7 +198,7 @@ const Marketplace = () => {
                   {provider.requiresContract && (
                     <div className="flex items-center space-x-2 p-2 bg-warning/10 rounded-lg">
                       <AlertCircle className="h-4 w-4 text-warning" />
-                      <span className="text-xs text-warning">Requires contract approval</span>
+                      <span className="text-xs text-warning">Requiere aprobación de contrato</span>
                     </div>
                   )}
 
@@ -181,15 +212,19 @@ const Marketplace = () => {
                           onClick={() => handleConfigureProvider(provider)}
                         >
                           <Settings className="h-4 w-4 mr-2" />
-                          Configure
+                          Configurar
                         </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate('/documentacion')}
+                        >
                           <ExternalLink className="h-4 w-4" />
                         </Button>
                       </>
                     ) : provider.status === 'pending' ? (
                       <Button variant="outline" size="sm" className="flex-1" disabled>
-                        Pending Approval
+                        Pendiente de aprobación
                       </Button>
                     ) : (
                       <Dialog>
@@ -203,11 +238,11 @@ const Marketplace = () => {
                         </DialogTrigger>
                         <DialogContent>
                           <DialogHeader>
-                            <DialogTitle>Activate {provider.name}</DialogTitle>
+                            <DialogTitle>Activar {provider.name}</DialogTitle>
                             <DialogDescription>
                               {provider.requiresContract 
-                                ? 'This provider requires contract approval. We\'ll create a request for your wholesaler.'
-                                : 'Enter your credentials to connect with this provider.'
+                                ? 'Este proveedor requiere aprobación de contrato. Vamos a generar una solicitud para tu mayorista.'
+                                : 'Ingresá tus credenciales para conectar este proveedor.'
                               }
                             </DialogDescription>
                           </DialogHeader>
@@ -215,22 +250,22 @@ const Marketplace = () => {
                           {!provider.requiresContract ? (
                             <div className="space-y-4 py-4">
                               <div className="space-y-2">
-                                <Label htmlFor="username">Username/API Key</Label>
-                                <Input id="username" placeholder="Enter your credentials" />
+                                <Label htmlFor="username">Usuario / API Key</Label>
+                                <Input id="username" placeholder="Ingresá tus credenciales" />
                               </div>
                               <div className="space-y-2">
-                                <Label htmlFor="password">Password/Secret</Label>
-                                <Input id="password" type="password" placeholder="Enter your password" />
+                                <Label htmlFor="password">Contraseña / Secret</Label>
+                                <Input id="password" type="password" placeholder="Ingresá tu contraseña" />
                               </div>
                               <div className="space-y-2">
-                                <Label htmlFor="endpoint">Endpoint URL (optional)</Label>
-                                <Input id="endpoint" placeholder="https://api.provider.com" />
+                                <Label htmlFor="endpoint">URL de endpoint (opcional)</Label>
+                                <Input id="endpoint" placeholder="https://api.proveedor.com" />
                               </div>
                               <Button 
                                 className="w-full bg-gradient-hero shadow-primary"
                                 onClick={() => handleActivateProvider(provider)}
                               >
-                                Test Connection & Activate
+                                Probar conexión y activar
                               </Button>
                             </div>
                           ) : (
@@ -239,14 +274,14 @@ const Marketplace = () => {
                                 <AlertCircle className="h-8 w-8 text-warning" />
                               </div>
                               <p className="text-sm text-muted-foreground">
-                                Your request will be sent to your wholesaler for approval. 
-                                You'll be notified once the contract is processed.
+                                Tu solicitud se enviará al mayorista para aprobación.
+                                Te avisaremos cuando el contrato esté procesado.
                               </p>
                               <Button 
                                 className="w-full"
                                 onClick={() => handleActivateProvider(provider)}
                               >
-                                Request Activation
+                                Solicitar activación
                               </Button>
                             </div>
                           )}
@@ -263,8 +298,8 @@ const Marketplace = () => {
         {/* Integration Status Summary */}
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Integration Summary</CardTitle>
-            <CardDescription>Overview of your current provider connections</CardDescription>
+            <CardTitle>Resumen de integraciones</CardTitle>
+            <CardDescription>Estado actual de tus conexiones con proveedores</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -272,19 +307,19 @@ const Marketplace = () => {
                 <div className="text-2xl font-bold text-success">
                   {providers.filter(p => p.status === 'active').length}
                 </div>
-                <p className="text-sm text-muted-foreground">Active Integrations</p>
+                <p className="text-sm text-muted-foreground">Integraciones activas</p>
               </div>
               <div className="text-center p-4 bg-warning/10 rounded-lg">
                 <div className="text-2xl font-bold text-warning">
                   {providers.filter(p => p.status === 'pending').length}
                 </div>
-                <p className="text-sm text-muted-foreground">Pending Approval</p>
+                <p className="text-sm text-muted-foreground">Pendientes de aprobación</p>
               </div>
               <div className="text-center p-4 bg-muted rounded-lg">
                 <div className="text-2xl font-bold">
                   {providers.filter(p => p.status === 'disabled').length}
                 </div>
-                <p className="text-sm text-muted-foreground">Available to Activate</p>
+                <p className="text-sm text-muted-foreground">Disponibles para activar</p>
               </div>
             </div>
           </CardContent>
