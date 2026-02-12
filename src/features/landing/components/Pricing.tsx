@@ -7,8 +7,8 @@ const plans = [
   {
     name: "Starter",
     description: "Para agencias pequeñas que están ordenando su operación",
-    monthlyPrice: 49,
-    annualPrice: 39,
+    monthlyPrice: 79999,
+    annualPrice: 79999,
     features: [
       "1 usuario",
       "100 conversaciones/mes",
@@ -23,8 +23,8 @@ const plans = [
   {
     name: "Professional",
     description: "Para equipos comerciales en crecimiento",
-    monthlyPrice: 149,
-    annualPrice: 119,
+    monthlyPrice: 99999,
+    annualPrice: 99999,
     features: [
       "Hasta 5 usuarios",
       "Conversaciones ilimitadas",
@@ -41,8 +41,9 @@ const plans = [
   {
     name: "Enterprise",
     description: "Para operaciones de gran volumen",
-    monthlyPrice: 399,
-    annualPrice: 319,
+    monthlyPrice: 0,
+    annualPrice: 0,
+    customPrice: "Contactar",
     features: [
       "Usuarios ilimitados",
       "Todo ilimitado",
@@ -62,6 +63,7 @@ const plans = [
 export function Pricing() {
   const navigate = useNavigate()
   const [isAnnual, setIsAnnual] = useState(true)
+  const formatPrice = (value: number) => new Intl.NumberFormat("es-AR").format(value)
 
   const handlePlanCTA = (planName: string) => {
     if (planName === "Enterprise") {
@@ -168,11 +170,13 @@ export function Pricing() {
                 <div className="mb-8">
                   <div className="flex items-baseline gap-1">
                     <span className="text-5xl font-bold text-white">
-                      ${isAnnual ? plan.annualPrice : plan.monthlyPrice}
+                      {plan.customPrice
+                        ? plan.customPrice
+                        : `$${formatPrice(isAnnual ? plan.annualPrice : plan.monthlyPrice)}`}
                     </span>
-                    <span className="text-gray-500 text-lg">/mes</span>
+                    {!plan.customPrice && <span className="text-gray-500 text-lg">/mes</span>}
                   </div>
-                  {isAnnual && (
+                  {isAnnual && !plan.customPrice && (
                     <p className="text-base text-gray-500 mt-1">
                       Facturación anual
                     </p>
