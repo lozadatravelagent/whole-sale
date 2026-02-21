@@ -24,7 +24,7 @@ const values = [
 
 export function AboutUs() {
   return (
-    <section id="about" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f] relative overflow-hidden">
+    <section id="about" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f]/90 relative overflow-hidden">
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-10 right-10 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />
         <div className="absolute bottom-10 left-10 w-72 h-72 bg-cyan-500/5 rounded-full blur-3xl" />

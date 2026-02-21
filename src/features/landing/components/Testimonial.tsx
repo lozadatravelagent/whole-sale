@@ -58,7 +58,7 @@ export function Testimonial() {
   const current = testimonials[currentIndex]
 
   return (
-    <section className="py-20 md:py-24 bg-gradient-to-b from-[#0a0a0f] to-[#0d0d15] relative overflow-hidden">
+    <section className="py-20 md:py-24 bg-gradient-to-b from-[#0a0a0f]/90 to-[#0d0d15]/90 relative overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-[150px]" />

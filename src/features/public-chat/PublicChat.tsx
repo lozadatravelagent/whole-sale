@@ -52,7 +52,7 @@ export function PublicChat() {
   };
 
   return (
-    <section className="relative min-h-[calc(100vh-5rem)] md:min-h-[calc(100vh-6rem)] flex flex-col items-center justify-center overflow-hidden bg-[#0a0a0f] pt-8 md:pt-12 pb-16">
+    <section className="relative min-h-[calc(100vh-5rem)] md:min-h-[calc(100vh-6rem)] flex flex-col items-center justify-center overflow-hidden bg-transparent pt-8 md:pt-12 pb-16">
       {/* Background effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-500/15 rounded-full blur-[120px] animate-pulse-glow" />
@@ -207,6 +207,9 @@ export function PublicChat() {
           </div>
         </motion.div>
       </div>
+
+      {/* Bottom gradient fade */}
+      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#0a0a0f] to-transparent" />
 
       {/* Paywall modal */}
       <PaywallModal open={showPaywall} onOpenChange={setShowPaywall} />

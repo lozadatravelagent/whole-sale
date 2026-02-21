@@ -67,7 +67,7 @@ const features = [
 
 export function Features() {
   return (
-    <section id="features" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f] relative overflow-hidden">
+    <section id="features" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f]/90 relative overflow-hidden">
       {/* Background elements */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />
       <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />

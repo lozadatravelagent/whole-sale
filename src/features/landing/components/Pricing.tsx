@@ -75,7 +75,7 @@ export function Pricing() {
   }
 
   return (
-    <section id="pricing" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f] relative overflow-hidden">
+    <section id="pricing" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f]/90 relative overflow-hidden">
       {/* Background */}
       <div className="absolute inset-0">
         <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[150px]" />

@@ -11,7 +11,7 @@ export function Showcase() {
   const y = useTransform(scrollYProgress, [0, 1], [100, -100])
 
   return (
-    <section id="showcase" ref={containerRef} className="scroll-mt-28 md:scroll-mt-32 py-16 md:py-20 bg-gradient-to-b from-[#0a0a0f] via-[#0d0d15] to-[#0a0a0f] relative overflow-hidden">
+    <section id="showcase" ref={containerRef} className="scroll-mt-28 md:scroll-mt-32 py-16 md:py-20 bg-gradient-to-b from-[#0a0a0f]/90 via-[#0d0d15]/90 to-[#0a0a0f]/90 relative overflow-hidden">
       {/* Animated background */}
       <motion.div
         className="absolute inset-0"
