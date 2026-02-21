@@ -334,6 +334,35 @@ export function detectIterationIntent(
     console.log('⚠️ [ITERATION] New flight params detected - likely NOT hotel-only iteration');
   }
 
+  // Detectar si parece una NUEVA búsqueda de hotel completa (no una iteración)
+  // Ejemplo: "Hotel all inclusive en Punta Cana del 15 al 22 de marzo, 2 adultos"
+  const hasHotelKeyword = /\b(hotel|hoteles|alojamiento|hospedaje|resort)\b/i.test(norm);
+  const hasHotelDateRange =
+    /\b(?:del?|desde)\s+\d{1,2}\s+(?:al|a|hasta)\s+\d{1,2}(?:\s+de\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre))?\b/i.test(norm) ||
+    /\b\d{4}-\d{2}-\d{2}\b/.test(norm);
+  const hasHotelPassengerInfo = /\b\d+\s+(?:adult(?:o|os|a|as)|persona(?:s)?|pax)\b/i.test(norm);
+  const startsWithHotelIntent = /^(?:quiero|necesito|busco|cotiza|cotizame)?\s*(?:un|una|el|la|los|las)?\s*hoteles?\b/.test(norm);
+  const likelyNewHotelSearch =
+    hasHotelKeyword &&
+    !hasContextRef &&
+    !/\bmismo\s+vuelo\b/i.test(norm) &&
+    !/\blo\s+mismo\b/i.test(norm) &&
+    !/\bcomo\s+antes\b/i.test(norm) &&
+    (hasHotelDateRange || hasHotelPassengerInfo || startsWithHotelIntent);
+
+  if (likelyNewHotelSearch && !hasNewFlightParams) {
+    console.log('✅ [ITERATION] New full hotel search detected → not an iteration');
+    return {
+      isIteration: false,
+      iterationType: 'new_search',
+      baseRequestType: lastSearch.requestType,
+      modifiedComponent: null,
+      preserveFields: [],
+      confidence: 0.95,
+      matchedPattern: 'new_hotel_search'
+    };
+  }
+
   // === REGLAS DE DECISIÓN ===
 
   // CASO 1: "misma búsqueda pero con hotel X" sobre combined
@@ -351,7 +380,7 @@ export function detectIterationIntent(
   }
 
   // CASO 2: Modificación de hotel sin nuevo vuelo, después de combined
-  if (hasHotelMod && !hasNewFlightParams && lastSearch.requestType === 'combined') {
+  if (hasHotelMod && !hasNewFlightParams && !likelyNewHotelSearch && lastSearch.requestType === 'combined') {
     console.log('✅ [ITERATION] CASE 2: Hotel mod without new flight on combined → hotel_modification');
     return {
       isIteration: true,
@@ -365,7 +394,7 @@ export function detectIterationIntent(
   }
 
   // CASO 3: Solo menciona cadena hotelera sin params de vuelo, después de combined
-  if (mentionsHotelChain && !hasNewFlightParams && lastSearch.requestType === 'combined') {
+  if (mentionsHotelChain && !hasNewFlightParams && !likelyNewHotelSearch && lastSearch.requestType === 'combined') {
     // Verificar que no sea una búsqueda completamente nueva
     const seemsLikeNewSearch = /\bquiero\s+(?:un\s+)?(?:vuelo|viaje|paquete)\b/i.test(norm);
     if (!seemsLikeNewSearch) {
@@ -898,4 +927,3 @@ export function generateIterationExplanation(
 
   return '🔄 **Búsqueda actualizada con tus preferencias anteriores**\n\n';
 }
-

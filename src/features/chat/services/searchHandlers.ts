@@ -179,6 +179,7 @@ interface StarlingRequestParams {
   Passengers: Array<{ Count: number; Type: string }>;
   Legs: Array<{ DepartureAirportCity: string; ArrivalAirportCity: string; FlightDate: string }>;
   Airlines: string[] | null;
+  stops?: 'direct' | 'one_stop' | 'two_stops' | 'with_stops' | 'any' | string;
 }
 
 // Handler functions WITHOUT N8N
@@ -213,13 +214,17 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       console.log(`ℹ️ [PRE-FILTER] No preferred airline specified, searching all airlines`);
     }
 
+    const invokeStarlingSearch = async (params: unknown) => {
+      return supabase.functions.invoke('starling-flights', {
+        body: {
+          action: 'searchFlights',
+          data: params
+        }
+      });
+    };
+
     console.log('📤 [FLIGHT SEARCH] Step 2: About to call Starling API (Supabase Edge Function)');
-    const response = await supabase.functions.invoke('starling-flights', {
-      body: {
-        action: 'searchFlights',
-        data: starlingParams
-      }
-    });
+    const response = await invokeStarlingSearch(starlingParams);
 
     console.log('✅ [FLIGHT SEARCH] Step 3: Starling API response received');
     console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
@@ -234,6 +239,67 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     console.log('🔄 [FLIGHT SEARCH] Step 4: Transforming Starling results');
     const flightData = response.data?.data || response.data;
     let flights = await transformStarlingResults(flightData, parsed);
+    let broadenedSearchRetry = false;
+    let forcedResultFallback = false;
+
+    // Hard gate: if initial search returns no flights, retry once with broader stops criteria.
+    const shouldRetryBroadenedSearch =
+      flights.length === 0 &&
+      !parsed?.flights?.maxLayoverHours &&
+      parsed?.flights?.stops !== 'any';
+
+    if (shouldRetryBroadenedSearch) {
+      const broadenedParams: StarlingRequestParams = {
+        ...(starlingParams as StarlingRequestParams),
+        stops: 'any'
+      };
+
+      console.log('🔁 [FLIGHT SEARCH] No results on first attempt, retrying with broader stops criteria (stops=any)');
+
+      try {
+        const broadenedResponse = await invokeStarlingSearch(broadenedParams);
+        if (!broadenedResponse.error && broadenedResponse.data) {
+          const broadenedFlightData = broadenedResponse.data?.data || broadenedResponse.data;
+          const broadenedParsed: ParsedTravelRequest = {
+            ...parsed,
+            flights: parsed.flights
+              ? { ...parsed.flights, stops: 'any' }
+              : parsed.flights,
+          };
+          const broadenedFlights = await transformStarlingResults(broadenedFlightData, broadenedParsed);
+          broadenedSearchRetry = true;
+          console.log(`📊 [FLIGHT SEARCH] Broadened retry returned ${broadenedFlights.length} flights`);
+
+          if (broadenedFlights.length > 0) {
+            flights = broadenedFlights;
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [FLIGHT SEARCH] Broadened retry failed, keeping original result set:', error);
+      }
+    }
+
+    // Hard gate: do not return zero when provider has inventory but strict filters removed everything.
+    if (flights.length === 0) {
+      const emergencyParsed: ParsedTravelRequest = {
+        ...parsed,
+        flights: parsed.flights
+          ? {
+            ...parsed.flights,
+            stops: 'any',
+            maxLayoverHours: undefined,
+            departureTimePreference: undefined,
+            arrivalTimePreference: undefined,
+          }
+          : parsed.flights,
+      };
+      const emergencyFlights = await transformStarlingResults(flightData, emergencyParsed);
+      if (emergencyFlights.length > 0) {
+        flights = emergencyFlights;
+        forcedResultFallback = true;
+        console.log(`🛟 [FLIGHT SEARCH] Applied emergency relaxed-filter fallback: ${emergencyFlights.length} flights`);
+      }
+    }
 
     // If user specified maximum layover duration, we need to do a NEW SEARCH with more permissive stops
     // to find more options that can then be filtered by layover time
@@ -391,6 +457,12 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       ...(userRequestedBackpack && {
         light_fares_preferred: true,
         light_fare_airlines: lightFareAirlines
+      }),
+      ...(broadenedSearchRetry && {
+        broadened_search_retry: true
+      }),
+      ...(forcedResultFallback && {
+        forced_result_fallback: true
       })
     };
 
@@ -773,19 +845,42 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       console.log(`   ${index + 1}. "${hotel.name}"`);
     });
 
-    // Fix hotel dates - EUROVIPS sometimes returns incorrect dates, so we force the correct ones
-    const correctedHotels = allHotels.map((hotel) => ({
-      ...hotel,
-      check_in: enrichedParsed.hotels?.checkinDate || hotel.check_in,
-      check_out: enrichedParsed.hotels?.checkoutDate || hotel.check_out,
-      nights: hotel.nights // Keep calculated nights
-    }));
+    // Fix hotel dates - EUROVIPS sometimes returns incorrect dates, so we force the correct ones.
+    // Also enforce city alignment to avoid mixed-destination UI in a single search.
+    const requestedCity = enrichedParsed.hotels?.city || '';
+    const normalizedRequestedCity = normalizeText(requestedCity);
+    let cityAlignmentFixes = 0;
+
+    const correctedHotels = allHotels.map((hotel) => {
+      const normalizedHotelCity = normalizeText(hotel.city || '');
+      const cityMatchesRequested =
+        !normalizedRequestedCity ||
+        !normalizedHotelCity ||
+        normalizedHotelCity === normalizedRequestedCity ||
+        normalizedHotelCity.includes(normalizedRequestedCity) ||
+        normalizedRequestedCity.includes(normalizedHotelCity);
+
+      if (!cityMatchesRequested && requestedCity) {
+        cityAlignmentFixes += 1;
+      }
+
+      return {
+        ...hotel,
+        city: !cityMatchesRequested && requestedCity ? requestedCity : hotel.city,
+        check_in: enrichedParsed.hotels?.checkinDate || hotel.check_in,
+        check_out: enrichedParsed.hotels?.checkoutDate || hotel.check_out,
+        nights: hotel.nights // Keep calculated nights
+      };
+    });
 
     console.log('🔧 [HOTEL SEARCH] Corrected hotel dates:', {
       original: allHotels[0]?.check_in,
       corrected: correctedHotels[0]?.check_in,
       params: enrichedParsed.hotels?.checkinDate
     });
+    if (cityAlignmentFixes > 0) {
+      console.log(`🛡️ [HOTEL SEARCH] Enforced city alignment on ${cityAlignmentFixes} hotels: ${requestedCity}`);
+    }
 
     // 🌴 Apply destination-specific filters (e.g., Punta Cana whitelist)
     // IMPORTANT: Pass hotelChains so the filter respects user's chain preference
@@ -894,11 +989,27 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     };
 
     // Apply filter and remove null hotels
-    const filteredHotels = destinationFilteredHotels
+    let filteredHotels = destinationFilteredHotels
       .map(filterHotelRooms)
       .filter((hotel): hotel is LocalHotelData => hotel !== null);
 
+    let relaxedHotelFiltersApplied = false;
+    let forcedHotelResultFallback = false;
+
     console.log(`📊 [FILTER] Hotels: ${destinationFilteredHotels.length} → ${filteredHotels.length} (after meal plan filtering)`);
+
+    // Hard gate: if filtering removed everything but provider returned hotels, relax filters to keep results.
+    if (filteredHotels.length === 0 && destinationFilteredHotels.length > 0) {
+      filteredHotels = destinationFilteredHotels.filter((hotel) => (hotel.rooms?.length || 0) > 0);
+      relaxedHotelFiltersApplied = true;
+      console.log(`🛟 [HOTEL SEARCH] Relaxed meal/room filters to avoid zero-results: ${filteredHotels.length} hotels`);
+    }
+
+    if (filteredHotels.length === 0 && correctedHotels.length > 0) {
+      filteredHotels = correctedHotels.filter((hotel) => (hotel.rooms?.length || 0) > 0);
+      forcedHotelResultFallback = true;
+      console.log(`🛟 [HOTEL SEARCH] Applied provider-level fallback to avoid zero-results: ${filteredHotels.length} hotels`);
+    }
 
     // Sort hotels by lowest price (minimum room price)
     const sortedHotels = filteredHotels.sort((a: LocalHotelData, b: LocalHotelData) => {
@@ -1025,6 +1136,12 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
           ...(normalizedRoomType && { capacity: normalizedRoomType }),
           ...(normalizedMealPlan && { meal_plan: normalizedMealPlan })
         }
+      }),
+      ...(relaxedHotelFiltersApplied && {
+        relaxed_hotel_filters_applied: true
+      }),
+      ...(forcedHotelResultFallback && {
+        forced_hotel_result_fallback: true
       })
     };
 
@@ -1170,6 +1287,55 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
         adults: inferredAdults
       } : undefined
     };
+
+    // Hard gate: round-trip flight and hotel checkout must be aligned.
+    if (enrichedParsed.flights && enrichedParsed.hotels) {
+      const desiredCheckin = enrichedParsed.flights.departureDate;
+      const desiredCheckout = enrichedParsed.flights.returnDate;
+      const desiredCity = enrichedParsed.flights.destination;
+      const dateFixes: string[] = [];
+
+      if (desiredCheckin && enrichedParsed.hotels.checkinDate !== desiredCheckin) {
+        const currentCheckin = enrichedParsed.hotels.checkinDate;
+        enrichedParsed.hotels = {
+          ...enrichedParsed.hotels,
+          checkinDate: desiredCheckin
+        };
+        dateFixes.push(`checkin ${currentCheckin} -> ${desiredCheckin}`);
+      }
+
+      if (desiredCheckout && enrichedParsed.hotels.checkoutDate !== desiredCheckout) {
+        const currentCheckout = enrichedParsed.hotels.checkoutDate;
+        enrichedParsed.hotels = {
+          ...enrichedParsed.hotels,
+          checkoutDate: desiredCheckout
+        };
+        dateFixes.push(`checkout ${currentCheckout} -> ${desiredCheckout}`);
+      }
+
+      if (dateFixes.length > 0) {
+        console.log('🛡️ [COMBINED SEARCH] Enforced round-trip/hotel date alignment:', dateFixes.join(', '));
+      }
+
+      // Hard gate: combined destination must also be aligned.
+      if (desiredCity) {
+        const normalizedFlightDestination = normalizeText(desiredCity);
+        const normalizedHotelDestination = normalizeText(enrichedParsed.hotels.city || '');
+        const destinationsAligned =
+          normalizedHotelDestination === normalizedFlightDestination ||
+          normalizedHotelDestination.includes(normalizedFlightDestination) ||
+          normalizedFlightDestination.includes(normalizedHotelDestination);
+
+        if (!destinationsAligned) {
+          const currentHotelCity = enrichedParsed.hotels.city;
+          enrichedParsed.hotels = {
+            ...enrichedParsed.hotels,
+            city: desiredCity
+          };
+          console.log(`🛡️ [COMBINED SEARCH] Enforced destination alignment: city ${currentHotelCity} -> ${desiredCity}`);
+        }
+      }
+    }
 
     // 🔍 DEBUG: Verify services are preserved in enrichedParsed
     console.log('🔍 [COMBINED SEARCH] Services in enrichedParsed:', {

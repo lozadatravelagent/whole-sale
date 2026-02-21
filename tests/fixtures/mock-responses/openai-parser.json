@@ -1,0 +1,31 @@
+{
+  "success": true,
+  "parsed": {
+    "requestType": "combined",
+    "confidence": 0.95,
+    "flights": {
+      "origin": "Buenos Aires",
+      "destination": "Cancún",
+      "departureDate": "2026-03-15",
+      "returnDate": "2026-03-22",
+      "adults": 2,
+      "children": 0,
+      "infants": 0,
+      "stops": "any",
+      "luggage": "checked",
+      "cabinClass": "economy"
+    },
+    "hotels": {
+      "city": "Cancún",
+      "checkinDate": "2026-03-15",
+      "checkoutDate": "2026-03-22",
+      "adults": 2,
+      "children": 0,
+      "infants": 0,
+      "roomType": "double",
+      "mealPlan": "all_inclusive"
+    }
+  },
+  "aiResponse": "Entendido, busco vuelos y hotel en Cancún del 15 al 22 de marzo para 2 adultos.",
+  "timestamp": "2026-03-01T12:00:00.000Z"
+}

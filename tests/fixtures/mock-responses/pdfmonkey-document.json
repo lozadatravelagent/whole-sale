@@ -1,0 +1,6 @@
+{
+  "success": true,
+  "documentId": "doc-mock-001",
+  "downloadUrl": "https://api.pdfmonkey.io/documents/doc-mock-001/download",
+  "status": "success"
+}

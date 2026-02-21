@@ -940,15 +940,15 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     <div className="space-y-4 w-full">
       {/* Tabs for flights and hotels */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-2" data-testid="results-tabs">
           {(combinedData.requestType === 'combined' || combinedData.requestType === 'flights-only') && (
-            <TabsTrigger value="flights" className="flex items-center space-x-2">
+            <TabsTrigger value="flights" className="flex items-center space-x-2" data-testid="results-tab-flights">
               <Plane className="h-4 w-4" />
               <span>Vuelos ({hasCache ? filteredFlights.length : combinedData.flights.length})</span>
             </TabsTrigger>
           )}
           {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
-            <TabsTrigger value="hotels" className="flex items-center space-x-2">
+            <TabsTrigger value="hotels" className="flex items-center space-x-2" data-testid="results-tab-hotels">
               <Hotel className="h-4 w-4" />
               <span>Hoteles ({combinedData.hotels.length})</span>
             </TabsTrigger>
@@ -975,11 +975,16 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               const isSelected = selectedFlights.includes(flight.id!);
 
               return (
-                <Card key={flight.id} className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
+                <Card
+                  key={flight.id}
+                  data-testid={`flight-card-${flight.id || index}`}
+                  className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-3">
                         <Checkbox
+                          data-testid={`select-flight-${flight.id || index}`}
                           checked={isSelected}
                           onCheckedChange={() => handleFlightToggle(flight.id!)}
                         />
@@ -1035,7 +1040,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
             {/* Mensaje cuando no hay vuelos después de filtrar */}
             {hasCache && filteredFlights.length === 0 && combinedData.flights.length > 0 && (
-              <Card>
+              <Card data-testid="flights-empty-state">
                 <CardContent className="p-6 text-center">
                   <Plane className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
                   <p className="text-muted-foreground">No hay vuelos con los filtros seleccionados</p>
@@ -1051,7 +1056,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
             {/* Mensaje cuando no hay vuelos en la búsqueda original */}
             {combinedData.flights.length === 0 && (
-              <Card>
+              <Card data-testid="flights-empty-state">
                 <CardContent className="p-6 text-center">
                   <Plane className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
                   <p className="text-muted-foreground">No se encontraron vuelos directos para este itinerario</p>
@@ -1092,11 +1097,16 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               const isSelected = selectedHotels.includes(hotel.id);
 
               return (
-                <Card key={hotel.id} className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
+                <Card
+                  key={hotel.id}
+                  data-testid={`hotel-card-${hotel.id || 'unknown'}`}
+                  className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3 mb-2">
                       {/* Checkbox */}
                       <Checkbox
+                        data-testid={`select-hotel-${hotel.id || 'unknown'}`}
                         checked={isSelected}
                         onCheckedChange={() => handleHotelToggle(hotel.id)}
                         className="mt-1"
@@ -1183,7 +1193,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
             {/* Mensaje cuando no hay hoteles después de filtrar */}
             {hasHotelCache && filteredHotels.length === 0 && combinedData.hotels.length > 0 && (
-              <Card>
+              <Card data-testid="hotels-empty-state">
                 <CardContent className="p-6 text-center">
                   <Hotel className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
                   <p className="text-muted-foreground">No hay hoteles con el plan de comidas seleccionado</p>
@@ -1199,7 +1209,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
             {/* Mensaje cuando no hay hoteles en la búsqueda original */}
             {combinedData.hotels.length === 0 && (
-              <Card>
+              <Card data-testid="hotels-empty-state">
                 <CardContent className="p-6 text-center">
                   <Hotel className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
                   <p className="text-muted-foreground">No se encontraron hoteles disponibles</p>
@@ -1225,6 +1235,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                 </p>
               </div>
               <Button
+                data-testid="generate-pdf-button"
                 onClick={handleGeneratePdf}
                 disabled={(selectedFlights.length === 0 && selectedHotels.length === 0) || isGenerating}
                 className="flex items-center space-x-2"

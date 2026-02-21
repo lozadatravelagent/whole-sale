@@ -1149,6 +1149,27 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         option_3_total: option3Total || null
       });
     }
+  } else if (hotels.length === 1) {
+    // Single hotel: populate option_1 so the template renders the same box design
+    const singleHotel = best_hotels[0];
+    const singleHotelPrice = typeof singleHotel.price === 'string'
+      ? parseFloat(singleHotel.price.replace(/\./g, '').replace(',', '.'))
+      : singleHotel.price;
+
+    option1Hotel = {
+      name: singleHotel.name,
+      stars: singleHotel.stars,
+      location: (singleHotel.location || singleHotel.city || 'Ubicación no especificada').substring(0, 20),
+      roomDescription: singleHotel.roomDescription || '',
+      price: singleHotel.price
+    };
+    option1Total = totalPrice;
+
+    console.log('🏨 [PDF GENERATION] Single hotel populated into option_1:', {
+      hotel: option1Hotel.name,
+      hotel_price: singleHotelPrice,
+      option_1_total: option1Total
+    });
   }
 
   // Extract hotel destination for hotel-only PDFs
@@ -1202,10 +1223,11 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
     // 🏨 MULTI-HOTEL SUPPORT - Comparative options
     has_multiple_hotels: hasMultipleHotels,
+    hotel_options_count: hotels.length,
     option_1_hotel: option1Hotel,
-    option_1_total: hasMultipleHotels ? formatPriceForTemplate(option1Total) : null,
+    option_1_total: option1Hotel ? formatPriceForTemplate(option1Total) : null,
     option_2_hotel: option2Hotel,
-    option_2_total: hasMultipleHotels ? formatPriceForTemplate(option2Total) : null,
+    option_2_total: option2Hotel ? formatPriceForTemplate(option2Total) : null,
     option_3_hotel: option3Hotel,
     option_3_total: option3Hotel ? formatPriceForTemplate(option3Total) : null,
 

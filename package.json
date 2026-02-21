@@ -16,7 +16,9 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:prompt:smoke": "playwright test tests/e2e/prompt/emilia-prompt.contract.spec.ts",
+    "test:e2e:prompt:full": "playwright test tests/e2e/prompt tests/e2e/workflows/parser-to-ui.live.spec.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

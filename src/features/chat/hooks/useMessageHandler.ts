@@ -701,6 +701,68 @@ const useMessageHandler = (
       const explicitlyWantsHotel = /\b(hotel|alojamiento|hospedaje|donde quedarme|donde alojarme)\b/.test(lowerMsg);
       const explicitlyWantsFlight = /\b(vuelo|vuelos|avion|aereo)\b/.test(lowerMsg);
       const explicitlyRejectsHotel = /\b(no quiero hotel|sin hotel|solo vuelo|solo el vuelo|no necesito hotel)\b/.test(lowerMsg);
+      const explicitlyReferencesPreviousContext = /\b(mism[ao]s?\s+busqueda|misma\s+consulta|mismo\s+vuelo|mismas?\s+fechas?|esas?\s+fechas?|lo\s+mismo\s+pero|igual\s+que\s+antes|como\s+antes|busqueda\s+anterior|busqueda\s+previa)\b/.test(lowerMsg);
+      const normalizeIntentText = (value?: string) =>
+        (value || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .trim();
+      const normalizedMessageForIntent = normalizeIntentText(currentMessage);
+      const messageMentions = (value?: string) => {
+        const normalizedValue = normalizeIntentText(value);
+        return normalizedValue.length > 0 && normalizedMessageForIntent.includes(normalizedValue);
+      };
+
+      // If combined intent has mismatched destinations, prefer the destination explicitly present in the message.
+      // This avoids stale destination leakage from previous context (e.g., old Cancún overriding new Punta Cana).
+      if (explicitlyWantsHotel && explicitlyWantsFlight && !explicitlyReferencesPreviousContext) {
+        const flightDestination = parsedRequest.flights?.destination;
+        const hotelCity = parsedRequest.hotels?.city;
+        const normalizedFlightDestination = normalizeIntentText(flightDestination);
+        const normalizedHotelCity = normalizeIntentText(hotelCity);
+
+        if (
+          normalizedFlightDestination &&
+          normalizedHotelCity &&
+          normalizedFlightDestination !== normalizedHotelCity
+        ) {
+          const mentionsFlightDestination = messageMentions(flightDestination);
+          const mentionsHotelCity = messageMentions(hotelCity);
+
+          if (mentionsHotelCity && !mentionsFlightDestination && parsedRequest.flights) {
+            console.log(`🛡️ [INTENT] Aligning flight destination to explicit hotel city mention: ${flightDestination} -> ${hotelCity}`);
+            parsedRequest.flights.destination = hotelCity as any;
+          } else if (mentionsFlightDestination && !mentionsHotelCity && parsedRequest.hotels) {
+            console.log(`🛡️ [INTENT] Aligning hotel city to explicit flight destination mention: ${hotelCity} -> ${flightDestination}`);
+            parsedRequest.hotels.city = flightDestination as any;
+          }
+        }
+      }
+
+      // Strong guard: if user clearly asks ONLY hotel (no flight mention, no context-ref),
+      // never carry flights from previous context in this turn.
+      if (explicitlyWantsHotel && !explicitlyWantsFlight && !explicitlyReferencesPreviousContext) {
+        const flightsSnapshot = parsedRequest.flights;
+        if (parsedRequest.requestType !== 'hotels') {
+          console.log('🏨 [INTENT] Forcing hotels-only request based on explicit hotel intent');
+          parsedRequest.requestType = 'hotels';
+        }
+
+        // If AI returned only flights but user explicitly asked hotel, map minimal hotel base.
+        if (!parsedRequest.hotels && flightsSnapshot?.destination) {
+          parsedRequest.hotels = {
+            city: flightsSnapshot.destination as any,
+            checkinDate: flightsSnapshot.departureDate as any,
+            checkoutDate: flightsSnapshot.returnDate as any,
+            adults: (flightsSnapshot.adults as any) || 1,
+            children: (flightsSnapshot.children as any) ?? 0,
+            infants: (flightsSnapshot.infants as any) ?? 0
+          } as any;
+        }
+
+        parsedRequest.flights = undefined;
+      }
 
       // Only coerce to combined if user explicitly mentions both services AND doesn't reject hotel
       if (explicitlyWantsHotel && explicitlyWantsFlight && !explicitlyRejectsHotel && parsedRequest.requestType !== 'combined') {

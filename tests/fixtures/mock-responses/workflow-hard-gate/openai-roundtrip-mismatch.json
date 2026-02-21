@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "parsed": {
+    "requestType": "combined",
+    "confidence": 0.96,
+    "flights": {
+      "origin": "Buenos Aires",
+      "destination": "Cancún",
+      "departureDate": "2026-03-15",
+      "returnDate": "2026-03-22",
+      "adults": 2,
+      "children": 0,
+      "infants": 0,
+      "stops": "any",
+      "cabinClass": "economy"
+    },
+    "hotels": {
+      "city": "Punta Cana",
+      "checkinDate": "2026-03-15",
+      "checkoutDate": "2026-03-24",
+      "adults": 2,
+      "children": 0,
+      "roomType": "double",
+      "mealPlan": "all_inclusive"
+    }
+  },
+  "aiResponse": "Busco vuelos y hotel para esas fechas.",
+  "timestamp": "2026-03-01T12:00:00.000Z"
+}

@@ -1,0 +1,89 @@
+{
+  "results": [
+    {
+      "name": "Hotel Riu Bambu",
+      "city": "Punta Cana",
+      "category": "5",
+      "address": "Arena Gorda, Bavaro, Punta Cana",
+      "nights": 7,
+      "check_in": "2026-03-15",
+      "check_out": "2026-03-22",
+      "hotel_id": "AP|5168-59588",
+      "search_adults": 2,
+      "search_children": 0,
+      "search_infants": 0,
+      "rooms": [
+        {
+          "type": "DWL",
+          "description": "Double Room - All Inclusive",
+          "price_per_night": 171.43,
+          "total_price": 1200,
+          "currency": "USD",
+          "availability": 10,
+          "occupancy_id": "OCC-002"
+        },
+        {
+          "type": "TPL",
+          "description": "Triple Room - All Inclusive",
+          "price_per_night": 150,
+          "total_price": 1050,
+          "currency": "USD",
+          "availability": 3,
+          "occupancy_id": "OCC-003"
+        }
+      ]
+    },
+    {
+      "name": "Barcelo Bavaro Palace",
+      "city": "Punta Cana",
+      "category": "5",
+      "address": "Playa Bavaro, Punta Cana",
+      "nights": 7,
+      "check_in": "2026-03-15",
+      "check_out": "2026-03-22",
+      "hotel_id": "AP|5200-60100",
+      "search_adults": 2,
+      "search_children": 0,
+      "search_infants": 0,
+      "rooms": [
+        {
+          "type": "DWL",
+          "description": "Deluxe Double Room - All Inclusive",
+          "price_per_night": 221.43,
+          "total_price": 1550,
+          "currency": "USD",
+          "availability": 8,
+          "occupancy_id": "OCC-011"
+        }
+      ]
+    },
+    {
+      "name": "Iberostar Dominicana",
+      "city": "Punta Cana",
+      "category": "5",
+      "address": "Bavaro Beach, Punta Cana",
+      "nights": 7,
+      "check_in": "2026-03-15",
+      "check_out": "2026-03-22",
+      "hotel_id": "AP|5300-70010",
+      "search_adults": 2,
+      "search_children": 0,
+      "search_infants": 0,
+      "rooms": [
+        {
+          "type": "DWL",
+          "description": "Double Room - All Inclusive",
+          "price_per_night": 200,
+          "total_price": 1400,
+          "currency": "USD",
+          "availability": 6,
+          "occupancy_id": "OCC-021"
+        }
+      ]
+    }
+  ],
+  "resultado": {
+    "codigo": "0",
+    "texto": ""
+  }
+}

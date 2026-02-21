@@ -1,0 +1,420 @@
+{
+  "TransactionID": "TVC-MOCK-001",
+  "BaseCurrency": "USD",
+  "Fares": [
+    {
+      "FareID": "FARE-001",
+      "TotalAmount": 1250.00,
+      "Currency": "USD",
+      "FareAmount": 900.00,
+      "TaxAmount": 350.00,
+      "ServiceAmount": 0,
+      "CommissionAmount": 45.00,
+      "ValidatingCarrier": "LA",
+      "LastTicketingDate": "2026-03-10",
+      "FareType": "PUB",
+      "FareSupplier": "STARLING",
+      "FareSupplierCode": "1S",
+      "MaxInstallments": 0,
+      "IataTotalAmount": 1250.00,
+      "IataCurrency": "USD",
+      "Legs": [
+        {
+          "LegNumber": 1,
+          "Options": [
+            {
+              "FlightOptionID": "OPT-IDA-1",
+              "OptionDuration": 600,
+              "Segments": [
+                {
+                  "SegmentNumber": 1,
+                  "Airline": "LA",
+                  "OperatingAirline": "LA",
+                  "OperatingAirlineName": "LATAM Airlines",
+                  "FlightNumber": "7510",
+                  "BookingClass": "T",
+                  "CabinClass": "Y",
+                  "BrandName": "Light",
+                  "Departure": {
+                    "AirportCode": "EZE",
+                    "Date": "2026-03-15",
+                    "Time": "08:30"
+                  },
+                  "Arrival": {
+                    "AirportCode": "LIM",
+                    "Date": "2026-03-15",
+                    "Time": "12:45"
+                  },
+                  "Duration": 315,
+                  "Equipment": "789",
+                  "Baggage": "0PC",
+                  "CarryOnBagInfo": {
+                    "Quantity": "1",
+                    "Weight": "10KG",
+                    "Dimensions": "55x35x25"
+                  },
+                  "Stops": [],
+                  "FareBasis": "TOWE0A0L",
+                  "Features": null
+                },
+                {
+                  "SegmentNumber": 2,
+                  "Airline": "LA",
+                  "OperatingAirline": "LA",
+                  "OperatingAirlineName": "LATAM Airlines",
+                  "FlightNumber": "2478",
+                  "BookingClass": "T",
+                  "CabinClass": "Y",
+                  "BrandName": "Light",
+                  "Departure": {
+                    "AirportCode": "LIM",
+                    "Date": "2026-03-15",
+                    "Time": "14:20"
+                  },
+                  "Arrival": {
+                    "AirportCode": "CUN",
+                    "Date": "2026-03-15",
+                    "Time": "18:30"
+                  },
+                  "Duration": 370,
+                  "Equipment": "320",
+                  "Baggage": "0PC",
+                  "CarryOnBagInfo": {
+                    "Quantity": "1",
+                    "Weight": "10KG",
+                    "Dimensions": "55x35x25"
+                  },
+                  "Stops": [],
+                  "FareBasis": "TOWE0A0L",
+                  "Features": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "LegNumber": 2,
+          "Options": [
+            {
+              "FlightOptionID": "OPT-VTA-1",
+              "OptionDuration": 720,
+              "Segments": [
+                {
+                  "SegmentNumber": 1,
+                  "Airline": "LA",
+                  "OperatingAirline": "LA",
+                  "OperatingAirlineName": "LATAM Airlines",
+                  "FlightNumber": "2479",
+                  "BookingClass": "T",
+                  "CabinClass": "Y",
+                  "BrandName": "Light",
+                  "Departure": {
+                    "AirportCode": "CUN",
+                    "Date": "2026-03-22",
+                    "Time": "06:00"
+                  },
+                  "Arrival": {
+                    "AirportCode": "LIM",
+                    "Date": "2026-03-22",
+                    "Time": "11:30"
+                  },
+                  "Duration": 390,
+                  "Equipment": "320",
+                  "Baggage": "0PC",
+                  "CarryOnBagInfo": {
+                    "Quantity": "1",
+                    "Weight": "10KG",
+                    "Dimensions": "55x35x25"
+                  },
+                  "Stops": [],
+                  "FareBasis": "TOWE0A0L",
+                  "Features": null
+                },
+                {
+                  "SegmentNumber": 2,
+                  "Airline": "LA",
+                  "OperatingAirline": "LA",
+                  "OperatingAirlineName": "LATAM Airlines",
+                  "FlightNumber": "7511",
+                  "BookingClass": "T",
+                  "CabinClass": "Y",
+                  "BrandName": "Light",
+                  "Departure": {
+                    "AirportCode": "LIM",
+                    "Date": "2026-03-22",
+                    "Time": "13:15"
+                  },
+                  "Arrival": {
+                    "AirportCode": "EZE",
+                    "Date": "2026-03-22",
+                    "Time": "18:00"
+                  },
+                  "Duration": 345,
+                  "Equipment": "789",
+                  "Baggage": "0PC",
+                  "CarryOnBagInfo": {
+                    "Quantity": "1",
+                    "Weight": "10KG",
+                    "Dimensions": "55x35x25"
+                  },
+                  "Stops": [],
+                  "FareBasis": "TOWE0A0L",
+                  "Features": null
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "PaxFares": [
+        {
+          "PaxFareAmount": 450.00,
+          "PaxTaxAmount": 175.00,
+          "PaxCommissionAmount": 22.50,
+          "PaxTotalAmount": 625.00,
+          "PaxType": "ADT",
+          "PaxSubType": null,
+          "Count": 2,
+          "PaxTaxDetail": [
+            { "Code": "YQ", "Amount": 80.00, "Currency": "USD" },
+            { "Code": "AR", "Amount": 45.00, "Currency": "USD" },
+            { "Code": "MX", "Amount": 50.00, "Currency": "USD" }
+          ]
+        }
+      ],
+      "ExtendedFareInfo": {
+        "RuleId": null,
+        "NetFareAmount": 765.00,
+        "NetTaxAmount": 350.00,
+        "NetTotalAmount": 1115.00,
+        "NetTotalAmountWithFee": 1115.00,
+        "Fee": {
+          "Amount": 0,
+          "PaxDetail": [{ "PTC": "ADT", "AmountPerPax": 0 }]
+        },
+        "Commission": {
+          "Amount": 45.00,
+          "PaxDetail": []
+        }
+      },
+      "Commission": {
+        "Percentage": 5,
+        "Over": 0,
+        "OverCalculation": null,
+        "PassengerTypes": null
+      },
+      "TaxDetail": [
+        { "Code": "YQ", "Amount": 160.00, "Currency": "USD" },
+        { "Code": "AR", "Amount": 90.00, "Currency": "USD" },
+        { "Code": "MX", "Amount": 100.00, "Currency": "USD" }
+      ]
+    },
+    {
+      "FareID": "FARE-002",
+      "TotalAmount": 980.00,
+      "Currency": "USD",
+      "FareAmount": 700.00,
+      "TaxAmount": 280.00,
+      "ServiceAmount": 0,
+      "CommissionAmount": 35.00,
+      "ValidatingCarrier": "AM",
+      "LastTicketingDate": "2026-03-12",
+      "FareType": "PUB",
+      "FareSupplier": "STARLING",
+      "FareSupplierCode": "1S",
+      "MaxInstallments": 0,
+      "IataTotalAmount": 980.00,
+      "IataCurrency": "USD",
+      "Legs": [
+        {
+          "LegNumber": 1,
+          "Options": [
+            {
+              "FlightOptionID": "OPT-IDA-2",
+              "OptionDuration": 360,
+              "Segments": [
+                {
+                  "SegmentNumber": 1,
+                  "Airline": "AM",
+                  "OperatingAirline": "AM",
+                  "OperatingAirlineName": "Aeromexico",
+                  "FlightNumber": "30",
+                  "BookingClass": "V",
+                  "CabinClass": "Y",
+                  "BrandName": "Basico",
+                  "Departure": {
+                    "AirportCode": "EZE",
+                    "Date": "2026-03-15",
+                    "Time": "22:00"
+                  },
+                  "Arrival": {
+                    "AirportCode": "MEX",
+                    "Date": "2026-03-16",
+                    "Time": "05:00"
+                  },
+                  "Duration": 600,
+                  "Equipment": "787",
+                  "Baggage": "1PC",
+                  "CarryOnBagInfo": {
+                    "Quantity": "1",
+                    "Weight": "10KG",
+                    "Dimensions": "55x40x20"
+                  },
+                  "Stops": [],
+                  "FareBasis": "VL3OA0M",
+                  "Features": null
+                },
+                {
+                  "SegmentNumber": 2,
+                  "Airline": "AM",
+                  "OperatingAirline": "AM",
+                  "OperatingAirlineName": "Aeromexico",
+                  "FlightNumber": "580",
+                  "BookingClass": "V",
+                  "CabinClass": "Y",
+                  "BrandName": "Basico",
+                  "Departure": {
+                    "AirportCode": "MEX",
+                    "Date": "2026-03-16",
+                    "Time": "08:00"
+                  },
+                  "Arrival": {
+                    "AirportCode": "CUN",
+                    "Date": "2026-03-16",
+                    "Time": "10:30"
+                  },
+                  "Duration": 150,
+                  "Equipment": "738",
+                  "Baggage": "1PC",
+                  "CarryOnBagInfo": {
+                    "Quantity": "1",
+                    "Weight": "10KG",
+                    "Dimensions": "55x40x20"
+                  },
+                  "Stops": [],
+                  "FareBasis": "VL3OA0M",
+                  "Features": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "LegNumber": 2,
+          "Options": [
+            {
+              "FlightOptionID": "OPT-VTA-2",
+              "OptionDuration": 480,
+              "Segments": [
+                {
+                  "SegmentNumber": 1,
+                  "Airline": "AM",
+                  "OperatingAirline": "AM",
+                  "OperatingAirlineName": "Aeromexico",
+                  "FlightNumber": "581",
+                  "BookingClass": "V",
+                  "CabinClass": "Y",
+                  "BrandName": "Basico",
+                  "Departure": {
+                    "AirportCode": "CUN",
+                    "Date": "2026-03-22",
+                    "Time": "12:00"
+                  },
+                  "Arrival": {
+                    "AirportCode": "MEX",
+                    "Date": "2026-03-22",
+                    "Time": "14:30"
+                  },
+                  "Duration": 150,
+                  "Equipment": "738",
+                  "Baggage": "1PC",
+                  "CarryOnBagInfo": {
+                    "Quantity": "1",
+                    "Weight": "10KG",
+                    "Dimensions": "55x40x20"
+                  },
+                  "Stops": [],
+                  "FareBasis": "VL3OA0M",
+                  "Features": null
+                },
+                {
+                  "SegmentNumber": 2,
+                  "Airline": "AM",
+                  "OperatingAirline": "AM",
+                  "OperatingAirlineName": "Aeromexico",
+                  "FlightNumber": "31",
+                  "BookingClass": "V",
+                  "CabinClass": "Y",
+                  "BrandName": "Basico",
+                  "Departure": {
+                    "AirportCode": "MEX",
+                    "Date": "2026-03-22",
+                    "Time": "17:00"
+                  },
+                  "Arrival": {
+                    "AirportCode": "EZE",
+                    "Date": "2026-03-23",
+                    "Time": "05:00"
+                  },
+                  "Duration": 600,
+                  "Equipment": "787",
+                  "Baggage": "1PC",
+                  "CarryOnBagInfo": {
+                    "Quantity": "1",
+                    "Weight": "10KG",
+                    "Dimensions": "55x40x20"
+                  },
+                  "Stops": [],
+                  "FareBasis": "VL3OA0M",
+                  "Features": null
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "PaxFares": [
+        {
+          "PaxFareAmount": 350.00,
+          "PaxTaxAmount": 140.00,
+          "PaxCommissionAmount": 17.50,
+          "PaxTotalAmount": 490.00,
+          "PaxType": "ADT",
+          "PaxSubType": null,
+          "Count": 2,
+          "PaxTaxDetail": [
+            { "Code": "YQ", "Amount": 60.00, "Currency": "USD" },
+            { "Code": "AR", "Amount": 40.00, "Currency": "USD" },
+            { "Code": "MX", "Amount": 40.00, "Currency": "USD" }
+          ]
+        }
+      ],
+      "ExtendedFareInfo": {
+        "RuleId": null,
+        "NetFareAmount": 595.00,
+        "NetTaxAmount": 280.00,
+        "NetTotalAmount": 875.00,
+        "NetTotalAmountWithFee": 875.00,
+        "Fee": {
+          "Amount": 0,
+          "PaxDetail": [{ "PTC": "ADT", "AmountPerPax": 0 }]
+        },
+        "Commission": {
+          "Amount": 35.00,
+          "PaxDetail": []
+        }
+      },
+      "Commission": {
+        "Percentage": 5,
+        "Over": 0,
+        "OverCalculation": null,
+        "PassengerTypes": null
+      },
+      "TaxDetail": [
+        { "Code": "YQ", "Amount": 120.00, "Currency": "USD" },
+        { "Code": "AR", "Amount": 80.00, "Currency": "USD" },
+        { "Code": "MX", "Amount": 80.00, "Currency": "USD" }
+      ]
+    }
+  ]
+}
