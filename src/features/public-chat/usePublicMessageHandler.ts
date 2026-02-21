@@ -16,12 +16,14 @@ import {
   validateItineraryRequiredFields,
   generateMissingInfoMessage,
 } from '@/services/aiMessageParser';
+import type { LocalCombinedTravelResults } from '@/features/chat/types/chat';
 
 export interface PublicMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
   timestamp: string;
+  data?: { combinedData?: LocalCombinedTravelResults };
 }
 
 const SEARCH_TYPES = new Set(['flights', 'hotels', 'combined', 'packages', 'services', 'itinerary']);
@@ -50,12 +52,13 @@ export function usePublicMessageHandler() {
       }));
   }, [messages]);
 
-  const addMessage = useCallback((role: 'user' | 'assistant', text: string): PublicMessage => {
+  const addMessage = useCallback((role: 'user' | 'assistant', text: string, data?: PublicMessage['data']): PublicMessage => {
     const msg: PublicMessage = {
       id: `msg-${Date.now()}-${messageIdCounter.current++}`,
       role,
       text,
       timestamp: new Date().toISOString(),
+      ...(data ? { data } : {}),
     };
     setMessages(prev => [...prev, msg]);
     return msg;
@@ -136,21 +139,25 @@ export function usePublicMessageHandler() {
 
         // Route to appropriate handler
         let responseText: string;
+        let resultData: PublicMessage['data'] | undefined;
 
         switch (parsed.requestType) {
           case 'flights': {
             const result = await handleFlightSearch(parsed);
             responseText = result.response;
+            resultData = result.data?.combinedData ? { combinedData: result.data.combinedData } : undefined;
             break;
           }
           case 'hotels': {
             const result = await handleHotelSearch(parsed);
             responseText = result.response;
+            resultData = result.data?.combinedData ? { combinedData: result.data.combinedData } : undefined;
             break;
           }
           case 'combined': {
             const result = await handleCombinedSearch(parsed);
             responseText = result.response;
+            resultData = result.data?.combinedData ? { combinedData: result.data.combinedData } : undefined;
             break;
           }
           case 'packages': {
@@ -190,7 +197,7 @@ export function usePublicMessageHandler() {
         }
 
         previousContext.current = parsed;
-        addMessage('assistant', responseText);
+        addMessage('assistant', responseText, resultData);
       } catch (error) {
         console.error('[PublicChat] Error processing message:', error);
         addMessage(

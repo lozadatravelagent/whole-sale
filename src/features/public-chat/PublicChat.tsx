@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { usePublicMessageHandler } from './usePublicMessageHandler';
 import { usePublicSearchLimit } from '@/hooks/usePublicSearchLimit';
 import { PaywallModal } from './PaywallModal';
+import { PublicSearchResults } from './components/PublicSearchResults';
 
 const quickPrompts = [
   'Vuelos Buenos Aires a Cancun, 15 al 22 de marzo, 2 adultos con valija',
@@ -103,28 +104,39 @@ export function PublicChat() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 md:px-5 py-4 space-y-3">
-            {messages.map(message => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+            {messages.map(message => {
+              const hasCards = message.role === 'assistant' && message.data?.combinedData &&
+                (message.data.combinedData.flights.length > 0 || message.data.combinedData.hotels.length > 0);
+
+              return (
                 <div
-                  className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm md:text-base ${
-                    message.role === 'user'
-                      ? 'bg-blue-500/20 border border-blue-400/30 text-gray-100 rounded-br-md'
-                      : 'bg-white/[0.08] border border-white/10 text-gray-200 rounded-bl-md'
-                  }`}
+                  key={message.id}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {message.role === 'assistant' ? (
-                    <div className="prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
-                      <ReactMarkdown>{message.text}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    message.text
-                  )}
+                  <div
+                    className={`rounded-2xl px-4 py-3 text-sm md:text-base ${
+                      hasCards ? 'max-w-[95%] w-full' : 'max-w-[88%]'
+                    } ${
+                      message.role === 'user'
+                        ? 'bg-blue-500/20 border border-blue-400/30 text-gray-100 rounded-br-md'
+                        : 'bg-white/[0.08] border border-white/10 text-gray-200 rounded-bl-md'
+                    }`}
+                  >
+                    {message.role === 'assistant' ? (
+                      hasCards ? (
+                        <PublicSearchResults combinedData={message.data!.combinedData!} />
+                      ) : (
+                        <div className="prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
+                          <ReactMarkdown>{message.text}</ReactMarkdown>
+                        </div>
+                      )
+                    ) : (
+                      message.text
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Typing indicator */}
             {isProcessing && (
