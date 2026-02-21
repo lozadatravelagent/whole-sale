@@ -18,14 +18,17 @@ export function PublicChat() {
   const { searchesUsed, canSearch, incrementSearch, isLimitReached, maxSearches } = usePublicSearchLimit();
   const [inputValue, setInputValue] = useState('');
   const [showPaywall, setShowPaywall] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const hasUserMessages = messages.some(m => m.role === 'user');
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
   }, [messages, isProcessing]);
 
   const handleSend = useCallback(
@@ -103,7 +106,7 @@ export function PublicChat() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 md:px-5 py-4 space-y-3">
+          <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 md:px-5 py-4 space-y-3">
             {messages.map(message => {
               const hasCards = message.role === 'assistant' && message.data?.combinedData &&
                 (message.data.combinedData.flights.length > 0 || message.data.combinedData.hotels.length > 0);
@@ -150,8 +153,6 @@ export function PublicChat() {
                 </div>
               </div>
             )}
-
-            <div ref={messagesEndRef} />
           </div>
 
           {/* Quick prompts + input */}
