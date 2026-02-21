@@ -6,7 +6,6 @@ import { Menu, X, ChevronRight } from "lucide-react"
 const desktopItems = [
   { label: "Quiénes somos", id: "about" },
   { label: "Funcionalidades", id: "features" },
-  { label: "Emilia", id: "emilia" },
   { label: "Precios", id: "pricing" },
 ]
 
@@ -15,7 +14,6 @@ const mobileItems = [
   { label: "Integraciones", id: "integrations" },
   { label: "Funcionalidades", id: "features" },
   { label: "Módulos", id: "modules" },
-  { label: "Emilia", id: "emilia" },
   { label: "Precios", id: "pricing" },
 ]
 
@@ -83,10 +81,10 @@ export function Navigation() {
               Iniciar sesión
             </button>
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
               className="group flex items-center gap-2 bg-white text-gray-900 px-5 py-2.5 text-base rounded-lg font-medium hover:bg-gray-100 transition-all"
             >
-              Probar 7 días gratis
+              Probar Emilia
               <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
@@ -125,10 +123,10 @@ export function Navigation() {
                   Iniciar sesión
                 </button>
                 <button
-                  onClick={() => navigate('/login')}
+                  onClick={() => { setMobileOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                   className="w-full py-3 text-center bg-white text-gray-900 rounded-lg font-medium hover:bg-gray-100 transition-colors"
                 >
-                  Probar 7 días gratis
+                  Probar Emilia
                 </button>
               </div>
             </div>
