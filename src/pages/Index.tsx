@@ -1,13 +1,10 @@
 import { Navigation } from '@/features/landing/components/Navigation';
 import { PublicChat } from '@/features/public-chat/PublicChat';
 import { AboutUs } from '@/features/landing/components/AboutUs';
-import { Integrations } from '@/features/landing/components/Integrations';
 import { Features } from '@/features/landing/components/Features';
 import { Showcase } from '@/features/landing/components/Showcase';
-import { Modules } from '@/features/landing/components/Modules';
 import { Testimonial } from '@/features/landing/components/Testimonial';
 import { Pricing } from '@/features/landing/components/Pricing';
-import { CTA } from '@/features/landing/components/CTA';
 import { Footer } from '@/features/landing/components/Footer';
 import { CursorGlow } from '@/features/landing/components/CursorGlow';
 
@@ -17,13 +14,10 @@ const Index = () => (
     <Navigation />
     <PublicChat />
     <AboutUs />
-    <Integrations />
     <Features />
     <Showcase />
-    <Modules />
     <Testimonial />
     <Pricing />
-    <CTA />
     <Footer />
   </main>
 );
