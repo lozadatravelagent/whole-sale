@@ -81,7 +81,7 @@ export function Navigation() {
               className="group flex items-center gap-2 bg-white text-gray-900 px-5 py-2.5 text-base rounded-lg font-medium hover:bg-gray-100 transition-all"
             >
               Probar Vibook
-              <img src="/favicon-32x32.png" alt="" className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
+              <img src="/vibook-black.png" alt="" className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
             </a>
           </div>
 
