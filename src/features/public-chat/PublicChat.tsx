@@ -86,7 +86,7 @@ export function PublicChat() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="w-full rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-sm shadow-2xl flex flex-col"
+          className="w-full rounded-3xl border border-white/15 bg-[#0a0a0f]/80 backdrop-blur-md shadow-2xl flex flex-col"
           style={{ maxHeight: 'calc(100vh - 280px)', minHeight: '480px' }}
         >
           {/* Chat header */}

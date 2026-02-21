@@ -67,12 +67,21 @@ const features = [
 
 export function Features() {
   return (
-    <section id="features" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-[#0a0a0f]/90 relative overflow-hidden">
-      {/* Background elements */}
-      <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />
-      <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl" />
+    <section id="features" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-transparent relative overflow-hidden">
+      {/* Travel background image */}
+      <div className="absolute inset-0 z-0">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80')" }}
+        />
+        <div className="absolute inset-0 bg-[#0a0a0f]/85" />
+      </div>
 
-      <div className="container mx-auto px-6">
+      {/* Background elements */}
+      <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl z-[1]" />
+      <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl z-[1]" />
+
+      <div className="relative z-10 container mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
