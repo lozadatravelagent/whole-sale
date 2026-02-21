@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
 import { motion } from "framer-motion"
 import { Menu, X } from "lucide-react"
 
@@ -16,7 +15,6 @@ const mobileItems = [
 ]
 
 export function Navigation() {
-  const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -72,19 +70,19 @@ export function Navigation() {
 
           {/* CTA buttons */}
           <div className="hidden lg:flex items-center justify-end gap-3 flex-1">
-            <button
-              onClick={() => navigate('/login')}
+            <a
+              href="https://app.vibook.ai"
               className="px-5 py-2.5 text-base text-gray-300 hover:text-white transition-colors rounded-lg hover:bg-white/[0.05]"
             >
               Iniciar sesión
-            </button>
-            <button
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            </a>
+            <a
+              href="https://app.vibook.ai"
               className="group flex items-center gap-2 bg-white text-gray-900 px-5 py-2.5 text-base rounded-lg font-medium hover:bg-gray-100 transition-all"
             >
               Probar Vibook
               <img src="/vibook-black.png" alt="" className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-            </button>
+            </a>
           </div>
 
           {/* Mobile menu button */}
@@ -114,18 +112,18 @@ export function Navigation() {
                 </button>
               ))}
               <div className="flex flex-col gap-2 pt-4 mt-2 border-t border-white/10">
-                <button
-                  onClick={() => navigate('/login')}
+                <a
+                  href="https://app.vibook.ai"
                   className="w-full py-3 text-center text-gray-300 hover:text-white rounded-lg border border-white/10 hover:bg-white/[0.05] transition-colors"
                 >
                   Iniciar sesión
-                </button>
-                <button
-                  onClick={() => { setMobileOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                </a>
+                <a
+                  href="https://app.vibook.ai"
                   className="w-full py-3 text-center bg-white text-gray-900 rounded-lg font-medium hover:bg-gray-100 transition-colors"
                 >
                   Probar Vibook
-                </button>
+                </a>
               </div>
             </div>
           </motion.div>

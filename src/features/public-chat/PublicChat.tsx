@@ -56,7 +56,7 @@ export function PublicChat() {
         <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-cyan-500/10 rounded-full blur-[120px] animate-pulse-glow" style={{ animationDelay: '1s' }} />
       </div>
 
-      <div className="relative z-10 container mx-auto px-4 md:px-6 flex flex-col items-center w-full max-w-3xl">
+      <div className="relative z-10 container mx-auto px-4 md:px-6 flex flex-col items-center w-full max-w-4xl">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -84,7 +84,7 @@ export function PublicChat() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
           className="w-full rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.06] to-white/[0.02] backdrop-blur-sm shadow-2xl flex flex-col"
-          style={{ maxHeight: 'calc(100vh - 320px)', minHeight: '400px' }}
+          style={{ maxHeight: 'calc(100vh - 280px)', minHeight: '480px' }}
         >
           {/* Chat header */}
           <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 shrink-0">
