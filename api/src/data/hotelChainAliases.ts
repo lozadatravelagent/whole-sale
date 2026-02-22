@@ -8,6 +8,7 @@
 export interface HotelChainInfo {
     name: string;           // Canonical name
     aliases: string[];      // All known aliases/variations
+    searchTerm?: string;    // Override for EUROVIPS <name> field when canonical name doesn't match inventory
 }
 
 /**
@@ -142,7 +143,8 @@ export const HOTEL_CHAINS: Record<string, HotelChainInfo> = {
     },
     viva: {
         name: 'Viva Wyndham',
-        aliases: ['viva', 'viva wyndham', 'viva resorts', 'viva wyndham resorts', 'viva hotels']
+        aliases: ['viva', 'viva wyndham', 'viva resorts', 'viva wyndham resorts', 'viva hotels'],
+        searchTerm: 'Viva' // EUROVIPS stores as "VIVA MAYA", "VIVA AZTECA", etc.
     },
     // Additional chains from EUROVIPS inventory analysis
     palladium: {
@@ -194,6 +196,19 @@ export const HOTEL_CHAINS: Record<string, HotelChainInfo> = {
         aliases: ['whala', 'whala hotels', 'whala urban', 'whala beach']
     }
 };
+
+/**
+ * Returns the search term to use when querying EUROVIPS for a given chain.
+ * Uses searchTerm override if defined, otherwise falls back to canonical name.
+ */
+export function getSearchTermForChain(canonicalName: string): string {
+    for (const chain of Object.values(HOTEL_CHAINS)) {
+        if (chain.name === canonicalName) {
+            return chain.searchTerm || chain.name;
+        }
+    }
+    return canonicalName;
+}
 
 /**
  * Normalizes text for comparison: lowercase, no accents, trimmed

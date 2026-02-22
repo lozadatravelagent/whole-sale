@@ -104,6 +104,8 @@
       color: #9ca3af;
       font-style: italic;
     }
+
+    .flight-header-price { font-size: 20px; font-weight: 700; color: #d93; }
   </style>
 </head>
 
@@ -133,6 +135,7 @@
               </div>
             </div>
           </div>
+          <div class="flight-header-price">${{ flight.price.amount }} {{ flight.price.currency }}</div>
         </div>
 
         <!-- INCLUDES BOX - 4 Columnas -->

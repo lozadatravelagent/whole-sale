@@ -28,6 +28,7 @@ import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.js';
 import { transformFare, type TransformOptions } from './flightTransformer.js';
 import { matchesLuggagePreference } from './baggageUtils.js';
 import { filterFlightsByTimePreference, timePreferenceToRange, timeRangeToLabel } from './timeSlotMapper.js';
+import { getSearchTermForChain } from '../data/hotelChainAliases.js';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -622,7 +623,7 @@ async function executeHotelSearch(
           try {
             const result = await invokeWithTimeout(supabase, 'eurovips-soap', {
               action: 'searchHotels',
-              data: { ...baseParams, hotelName: chain }
+              data: { ...baseParams, hotelName: getSearchTermForChain(chain) }
             });
             const hotels = (result as any)?.results || [];
             console.log(`✅ [MULTI-CHAIN] Chain "${chain}": received ${hotels.length} hotels`);
@@ -661,7 +662,7 @@ async function executeHotelSearch(
 
     } else {
       // ✅ SINGLE REQUEST: Use first chain, hotelName, or no filter
-      const nameFilter = hotelChains[0] || hotelName || '';
+      const nameFilter = hotelChains[0] ? getSearchTermForChain(hotelChains[0]) : (hotelName || '');
 
       if (nameFilter) {
         console.log(`🏨 [HOTEL_SEARCH] Applying name filter to EUROVIPS: "${nameFilter}"`);

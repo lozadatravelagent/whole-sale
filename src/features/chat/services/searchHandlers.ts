@@ -7,7 +7,7 @@ import { formatFlightResponse, formatHotelResponse, formatPackageResponse, forma
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
-import { hotelBelongsToChain, hotelBelongsToAnyChain, hotelNameMatches, hotelMatchesAnyName } from '../data/hotelChainAliases';
+import { hotelBelongsToChain, hotelBelongsToAnyChain, hotelNameMatches, hotelMatchesAnyName, getSearchTermForChain } from '../data/hotelChainAliases';
 import { generateSearchId, saveFlightsToStorage } from './flightStorageService';
 import { generateHotelSearchId, saveHotelsToStorage } from './hotelStorageService';
 import { timeStringToNumber } from '@/features/chat/utils/timeSlotMapper';
@@ -674,7 +674,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
           data: {
             ...eurovipsParams.hotelParams,
             cityCode: cityCode,
-            hotelName: chain
+            hotelName: getSearchTermForChain(chain)
           }
         };
 
@@ -732,7 +732,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
           data: {
             ...eurovipsParams.hotelParams,
             cityCode: cityCode,
-            hotelName: chain // ✅ Filtro por <name> en EUROVIPS (una cadena por request)
+            hotelName: getSearchTermForChain(chain) // ✅ Filtro por <name> en EUROVIPS (una cadena por request)
           }
         };
 
