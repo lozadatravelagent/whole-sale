@@ -1292,7 +1292,6 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     if (enrichedParsed.flights && enrichedParsed.hotels) {
       const desiredCheckin = enrichedParsed.flights.departureDate;
       const desiredCheckout = enrichedParsed.flights.returnDate;
-      const desiredCity = enrichedParsed.flights.destination;
       const dateFixes: string[] = [];
 
       if (desiredCheckin && enrichedParsed.hotels.checkinDate !== desiredCheckin) {
@@ -1317,24 +1316,7 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
         console.log('🛡️ [COMBINED SEARCH] Enforced round-trip/hotel date alignment:', dateFixes.join(', '));
       }
 
-      // Hard gate: combined destination must also be aligned.
-      if (desiredCity) {
-        const normalizedFlightDestination = normalizeText(desiredCity);
-        const normalizedHotelDestination = normalizeText(enrichedParsed.hotels.city || '');
-        const destinationsAligned =
-          normalizedHotelDestination === normalizedFlightDestination ||
-          normalizedHotelDestination.includes(normalizedFlightDestination) ||
-          normalizedFlightDestination.includes(normalizedHotelDestination);
 
-        if (!destinationsAligned) {
-          const currentHotelCity = enrichedParsed.hotels.city;
-          enrichedParsed.hotels = {
-            ...enrichedParsed.hotels,
-            city: desiredCity
-          };
-          console.log(`🛡️ [COMBINED SEARCH] Enforced destination alignment: city ${currentHotelCity} -> ${desiredCity}`);
-        }
-      }
     }
 
     // 🔍 DEBUG: Verify services are preserved in enrichedParsed
