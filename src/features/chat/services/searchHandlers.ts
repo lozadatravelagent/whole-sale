@@ -523,9 +523,11 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     // This is a CRITICAL fallback in case the AI parser didn't correctly infer adults
     let inferredAdults = parsed.hotels?.adults || parsed.flights?.adults || 1;
     const roomType = parsed.hotels?.roomType;
+    const totalChildren = (parsed.hotels?.children || parsed.flights?.children || 0)
+      + (parsed.hotels?.infants || parsed.flights?.infants || 0);
 
-    if (inferredAdults === 1 && roomType) {
-      // If adults is default (1) but roomType is specified, infer adults from roomType
+    if (inferredAdults === 1 && totalChildren === 0 && roomType) {
+      // If adults is default (1), no children/infants specified, but roomType is specified, infer adults from roomType
       const normalizedRoomType = roomType.toLowerCase().trim();
       if (normalizedRoomType === 'double' || normalizedRoomType === 'twin' || normalizedRoomType === 'doble') {
         inferredAdults = 2;
@@ -1259,8 +1261,10 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     // When user says "habitación doble", they need 2 adults for BOTH flight AND hotel
     let inferredAdults = parsed.hotels?.adults || parsed.flights?.adults || 1;
     const roomType = parsed.hotels?.roomType;
+    const totalChildren = (parsed.hotels?.children || parsed.flights?.children || 0)
+      + (parsed.hotels?.infants || parsed.flights?.infants || 0);
 
-    if (inferredAdults === 1 && roomType) {
+    if (inferredAdults === 1 && totalChildren === 0 && roomType) {
       const normalizedRoomType = roomType.toLowerCase().trim();
       if (normalizedRoomType === 'double' || normalizedRoomType === 'twin' || normalizedRoomType === 'doble') {
         inferredAdults = 2;
