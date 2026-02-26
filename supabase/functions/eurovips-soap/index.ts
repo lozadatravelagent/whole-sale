@@ -2,7 +2,6 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.45/deno-dom-wasm.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { getCachedSearch, setCachedSearch, triggerBackgroundRefresh } from "../_shared/cache.ts";
 import { withRateLimit, extractIdentifiers } from "../_shared/rateLimit.ts";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1346,34 +1345,9 @@ serve(async (req) => {
             .eq('id', jobId);
         }
 
-        // Actions that should be cached (heavy API calls)
-        const cacheableActions = ['searchHotels', 'searchFlights', 'searchPackages', 'searchServices'];
-        const shouldCache = cacheableActions.includes(action);
-
         let results;
-        let cacheHit = false;
 
-        // Try to get from cache first (with smart TTL)
-        if (shouldCache && data) {
-          const cached = await getCachedSearch(supabase, action, data);
-          if (cached) {
-            console.log(`✅ Cache HIT for ${action} - Status: ${cached.status}`);
-            results = cached.results;
-            cacheHit = true;
-
-            // If cache is STALE, trigger background refresh (fire-and-forget)
-            if (cached.needsRefresh && !req.url.includes('_background_refresh')) {
-              console.log(`🔄 Cache is STALE - triggering background refresh for ${action}`);
-              const functionUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/eurovips-soap`;
-              triggerBackgroundRefresh(supabase, action, data, functionUrl);
-            }
-          } else {
-            console.log(`❌ Cache MISS for ${action}`);
-          }
-        }
-
-        // If not cached, call the API
-        if (!cacheHit) {
+        {
           const client = new EurovipsSOAPClient();
 
           switch (action) {
@@ -1431,11 +1405,6 @@ serve(async (req) => {
               throw new Error(`Unknown action: ${action}`);
           }
 
-          // Store in cache for future requests
-          if (shouldCache && data && results) {
-            await setCachedSearch(supabase, action, data, results);
-            console.log(`💾 Cached results for ${action}`);
-          }
         }
 
         // If jobId exists, update job with results (async mode)
@@ -1446,7 +1415,7 @@ serve(async (req) => {
             .update({
               status: 'completed',
               results: results,
-              cache_hit: cacheHit,
+              cache_hit: false,
               completed_at: new Date().toISOString()
             })
             .eq('id', jobId);
@@ -1459,7 +1428,7 @@ serve(async (req) => {
           action,
           results,
           provider: 'EUROVIPS',
-          cached: cacheHit,
+          cached: false,
           jobId: jobId,
           timestamp: new Date().toISOString()
         }), {
