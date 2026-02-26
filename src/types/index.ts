@@ -352,6 +352,7 @@ export interface HotelSearchParams {
   hotelName?: string;
   adults?: number;
   children?: number;  // Niños 2-12 años
+  childrenAges?: number[]; // Edades individuales de cada niño (default 8 si no se especifica)
   infants?: number;   // Infantes 0-2 años
   occupancy?: number;
 }

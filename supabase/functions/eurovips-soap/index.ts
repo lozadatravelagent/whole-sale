@@ -90,16 +90,18 @@ class EurovipsSOAPClient {
     const adults = params.adults || 1; // Default to 1 adult
     const children = params.children || 0;
     const infants = params.infants || 0;
-    // Create occupants XML
+    const childrenAges: number[] = params.childrenAges || [];
+    // Create occupants XML - Age is required for CHD/INFOA to get correct pricing
     let occupantsXml = '';
     for (let i = 0; i < adults; i++) {
       occupantsXml += '      <Occupants type="ADT" />\n';
     }
     for (let i = 0; i < children; i++) {
-      occupantsXml += '      <Occupants type="CHD" />\n';
+      const age = childrenAges[i] || 8;
+      occupantsXml += `      <Occupants type="CHD" Age="${age}" />\n`;
     }
     for (let i = 0; i < infants; i++) {
-      occupantsXml += '      <Occupants type="INFOA" />\n';
+      occupantsXml += '      <Occupants type="INFOA" Age="1" />\n';
     }
     const soapBody = `
     <searchHotelFaresRQ1 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
@@ -119,11 +121,7 @@ class EurovipsSOAPClient {
 ${occupantsXml}        </Ocuppancy>
       </FareTypeSelectionList>
     </searchHotelFaresRQ1>`;
-    console.log('[EUROVIPS searchHotels] Occupants XML:', occupantsXml.trim());
-    console.log('[EUROVIPS searchHotels] Params:', JSON.stringify({ city: params.cityCode, checkin: params.checkinDate, checkout: params.checkoutDate, adults, children, infants, hotelName: params.hotelName || '' }));
     const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchHotelFares');
-    console.log('[EUROVIPS searchHotels] Response length:', xmlResponse?.length || 0);
-    console.log('[EUROVIPS searchHotels] Response preview:', xmlResponse?.substring(0, 500));
     return this.parseHotelSearchResponse(xmlResponse, params);
   }
   async searchFlights(params) {
