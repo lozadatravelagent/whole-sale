@@ -119,7 +119,11 @@ class EurovipsSOAPClient {
 ${occupantsXml}        </Ocuppancy>
       </FareTypeSelectionList>
     </searchHotelFaresRQ1>`;
+    console.log('[EUROVIPS searchHotels] Occupants XML:', occupantsXml.trim());
+    console.log('[EUROVIPS searchHotels] Params:', JSON.stringify({ city: params.cityCode, checkin: params.checkinDate, checkout: params.checkoutDate, adults, children, infants, hotelName: params.hotelName || '' }));
     const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchHotelFares');
+    console.log('[EUROVIPS searchHotels] Response length:', xmlResponse?.length || 0);
+    console.log('[EUROVIPS searchHotels] Response preview:', xmlResponse?.substring(0, 500));
     return this.parseHotelSearchResponse(xmlResponse, params);
   }
   async searchFlights(params) {
