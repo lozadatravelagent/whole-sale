@@ -184,6 +184,27 @@ function normalizeChildrenAges(childrenAges: unknown, childrenCount: number): nu
   return normalized;
 }
 
+function resolveAdultsWithExplicitGuard(
+  hotels: any,
+  flights?: any
+): number {
+  const explicitAdults = hotels?.adults ?? flights?.adults ?? 1;
+  const adultsExplicit = Boolean(hotels?.adultsExplicit || flights?.adultsExplicit);
+  const roomType = hotels?.roomType;
+  const totalChildren = (hotels?.children ?? flights?.children ?? 0) +
+    (hotels?.infants ?? flights?.infants ?? 0);
+
+  if (adultsExplicit && explicitAdults > 0) {
+    return explicitAdults;
+  }
+
+  if (explicitAdults !== 1 || totalChildren > 0 || !roomType) {
+    return explicitAdults;
+  }
+
+  return inferAdultsFromRoomType(explicitAdults, roomType);
+}
+
 function getMinRoomPrice(hotel: any): number {
   if (!Array.isArray(hotel?.rooms) || hotel.rooms.length === 0) return Number.POSITIVE_INFINITY;
   return Math.min(...hotel.rooms.map((room: any) => room?.total_price || Number.POSITIVE_INFINITY));
@@ -625,10 +646,7 @@ async function executeHotelSearch(
   const { hotels } = parsedRequest;
 
   // ✅ STEP 0: Infer adults from roomType if not specified
-  const inferredAdults = inferAdultsFromRoomType(
-    hotels.adults,
-    hotels.roomType
-  );
+  const inferredAdults = resolveAdultsWithExplicitGuard(hotels, parsedRequest.flights);
 
   console.log(`📊 [HOTEL_SEARCH] Adults: ${inferredAdults} (roomType: ${hotels.roomType || 'not specified'})`);
 
@@ -852,10 +870,7 @@ async function executeCombinedSearch(
   console.log('[COMBINED_SEARCH] Starting combined search');
 
   // ✅ STEP 0: Infer adults from roomType for BOTH flights and hotels
-  const inferredAdults = inferAdultsFromRoomType(
-    parsedRequest.hotels?.adults || parsedRequest.flights?.adults,
-    parsedRequest.hotels?.roomType
-  );
+  const inferredAdults = resolveAdultsWithExplicitGuard(parsedRequest.hotels, parsedRequest.flights);
 
   console.log(`📊 [COMBINED_SEARCH] Using adults: ${inferredAdults} for both searches`);
 

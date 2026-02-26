@@ -229,4 +229,85 @@ test.describe('Workflow Hard Gate: Roundtrip Hotel Alignment', () => {
     expect(capturedHotelRequest?.data?.infants).toBe(0);
     expect(capturedHotelRequest?.data?.childrenAges).toEqual([8]);
   });
+
+  test('should keep explicit 1 adult in combined search even when room type is double', async ({ page }) => {
+    let capturedHotelRequest: any = null;
+    let capturedFlightRequest: any = null;
+
+    await page.route('**/functions/v1/eurovips-soap', async (route) => {
+      try {
+        capturedHotelRequest = JSON.parse(route.request().postData() || '{}');
+      } catch {
+        capturedHotelRequest = null;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(EUROVIPS_FIXTURE),
+      });
+    });
+
+    await page.route('**/functions/v1/starling-flights', async (route) => {
+      try {
+        capturedFlightRequest = JSON.parse(route.request().postData() || '{}');
+      } catch {
+        capturedFlightRequest = null;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(STARLING_FIXTURE),
+      });
+    });
+
+    await mockAIParser(page, {
+      success: true,
+      parsed: {
+        requestType: 'combined',
+        confidence: 0.96,
+        flights: {
+          origin: 'Rosario',
+          destination: 'Santo Domingo',
+          departureDate: '2026-05-05',
+          returnDate: '2026-05-12',
+          adults: 1,
+          adultsExplicit: true,
+          children: 0,
+          infants: 0,
+          stops: 'any',
+          cabinClass: 'economy',
+        },
+        hotels: {
+          city: 'Punta Cana',
+          checkinDate: '2026-05-05',
+          checkoutDate: '2026-05-12',
+          adults: 1,
+          adultsExplicit: true,
+          children: 0,
+          roomType: 'double',
+          mealPlan: 'all_inclusive',
+        },
+      },
+      aiResponse: 'Busco vuelo y hotel para 1 adulto.',
+      timestamp: '2026-03-01T12:00:00.000Z',
+    });
+
+    await loginAndGoToChat(page);
+    const chatInput = await getChatInput(page);
+
+    await chatInput.fill('vuelo y hotel para 1 adulto, habitacion doble all inclusive');
+    await chatInput.press('Enter');
+
+    await expect.poll(() => capturedHotelRequest, { timeout: 20_000 }).not.toBeNull();
+    await expect.poll(() => capturedFlightRequest, { timeout: 20_000 }).not.toBeNull();
+    await expectStructuredResults(page);
+
+    expect(capturedHotelRequest?.action).toBe('searchHotels');
+    expect(capturedHotelRequest?.data?.adults).toBe(1);
+
+    const adtPassenger = capturedFlightRequest?.data?.Passengers?.find((p: any) => p?.Type === 'ADT');
+    expect(adtPassenger?.Count).toBe(1);
+  });
 });

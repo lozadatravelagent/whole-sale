@@ -1344,8 +1344,9 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     const roomType = parsed.hotels?.roomType;
     const totalChildren = (parsed.hotels?.children || parsed.flights?.children || 0)
       + (parsed.hotels?.infants || parsed.flights?.infants || 0);
+    const adultsExplicit = parsed.hotels?.adultsExplicit || parsed.flights?.adultsExplicit || false;
 
-    if (inferredAdults === 1 && totalChildren === 0 && roomType) {
+    if (inferredAdults === 1 && totalChildren === 0 && roomType && !adultsExplicit) {
       const normalizedRoomType = roomType.toLowerCase().trim();
       if (normalizedRoomType === 'double' || normalizedRoomType === 'twin' || normalizedRoomType === 'doble') {
         inferredAdults = 2;
@@ -1357,6 +1358,8 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
         inferredAdults = 4;
         console.log('🔄 [COMBINED ADULTS INFERENCE] roomType="quad" → adults=4 for BOTH flight and hotel');
       }
+    } else if (adultsExplicit && inferredAdults > 0) {
+      console.log(`🧷 [COMBINED ADULTS INFERENCE] Keeping explicit adults=${inferredAdults} despite roomType=${roomType || 'none'}`);
     }
     console.log(`📊 [COMBINED ADULTS] Final adults count: ${inferredAdults} (roomType: ${roomType || 'not specified'})`);
 
