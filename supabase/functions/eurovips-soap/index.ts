@@ -307,8 +307,10 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
     try {
       console.log('📋 [MAKE_BUDGET] Parsing response, length:', xmlResponse.length);
 
-      // Log sample for debugging
-      console.log('📋 [MAKE_BUDGET] Response sample:', xmlResponse.substring(0, 500));
+      // Log sample for debugging (head + tail to capture Summary/Pricing at the end)
+      console.log('📋 [MAKE_BUDGET] Response HEAD:', xmlResponse.substring(0, 500));
+      console.log('📋 [MAKE_BUDGET] Response TAIL:', xmlResponse.substring(Math.max(0, xmlResponse.length - 2000)));
+      console.log('📋 [MAKE_BUDGET] Contains Pricing?', xmlResponse.includes('Pricing'), 'Contains Summary?', xmlResponse.includes('Summary'), 'Contains Target?', xmlResponse.includes('Target'));
 
       // Extract resultado/codigo to check for errors
       const codigoMatch = xmlResponse.match(/<codigo[^>]*>(\d+)<\/codigo>/i);
@@ -350,16 +352,17 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
       let agencyTotal = 0;
       let commissionablePrice = 0;
 
-      const pricingBlocks = xmlResponse.match(/<Pricing>[\s\S]*?<\/Pricing>/gi);
+      // Match Pricing blocks with or without namespace prefixes (e.g. <Pricing>, <bud1:Pricing>, <ns1:Pricing>)
+      const pricingBlocks = xmlResponse.match(/<(?:\w+:)?Pricing>[\s\S]*?<\/(?:\w+:)?Pricing>/gi);
       if (pricingBlocks) {
         for (const block of pricingBlocks) {
-          const targetMatch = block.match(/<Target>([^<]+)<\/Target>/i);
+          const targetMatch = block.match(/<(?:\w+:)?Target>([^<]+)<\/(?:\w+:)?Target>/i);
           if (targetMatch && targetMatch[1] === 'AGENCY') {
-            const totalMatch = block.match(/<Total>([\d.]+)<\/Total>/i);
+            const totalMatch = block.match(/<(?:\w+:)?Total>([\d.]+)<\/(?:\w+:)?Total>/i);
             if (totalMatch) {
               agencyTotal = parseFloat(totalMatch[1]);
             }
-            const commMatch = block.match(/<CommissionablePrice>([\d.]+)<\/CommissionablePrice>/i);
+            const commMatch = block.match(/<(?:\w+:)?CommissionablePrice>([\d.]+)<\/(?:\w+:)?CommissionablePrice>/i);
             if (commMatch) {
               commissionablePrice = parseFloat(commMatch[1]);
             }
@@ -436,16 +439,17 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
       let agencyTotal = 0;
       let commissionablePrice = 0;
 
-      const pricingBlocks = xmlResponse.match(/<Pricing>[\s\S]*?<\/Pricing>/gi);
+      // Match Pricing blocks with or without namespace prefixes (e.g. <Pricing>, <bud1:Pricing>, <ns1:Pricing>)
+      const pricingBlocks = xmlResponse.match(/<(?:\w+:)?Pricing>[\s\S]*?<\/(?:\w+:)?Pricing>/gi);
       if (pricingBlocks) {
         for (const block of pricingBlocks) {
-          const targetMatch = block.match(/<Target>([^<]+)<\/Target>/i);
+          const targetMatch = block.match(/<(?:\w+:)?Target>([^<]+)<\/(?:\w+:)?Target>/i);
           if (targetMatch && targetMatch[1] === 'AGENCY') {
-            const totalMatch = block.match(/<Total>([\d.]+)<\/Total>/i);
+            const totalMatch = block.match(/<(?:\w+:)?Total>([\d.]+)<\/(?:\w+:)?Total>/i);
             if (totalMatch) {
               agencyTotal = parseFloat(totalMatch[1]);
             }
-            const commMatch = block.match(/<CommissionablePrice>([\d.]+)<\/CommissionablePrice>/i);
+            const commMatch = block.match(/<(?:\w+:)?CommissionablePrice>([\d.]+)<\/(?:\w+:)?CommissionablePrice>/i);
             if (commMatch) {
               commissionablePrice = parseFloat(commMatch[1]);
             }
