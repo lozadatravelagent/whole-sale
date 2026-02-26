@@ -57,6 +57,21 @@ function normalizeText(text: string): string {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+function normalizeChildrenAges(childrenAges: number[] | undefined, childrenCount: number): number[] {
+  if (childrenCount <= 0) return [];
+
+  const safeAges = (childrenAges || [])
+    .filter((age) => Number.isFinite(age) && age > 0)
+    .map((age) => Math.round(age));
+
+  const normalized = safeAges.slice(0, childrenCount);
+  while (normalized.length < childrenCount) {
+    normalized.push(8);
+  }
+
+  return normalized;
+}
+
 /**
  * Verifica si el destino corresponde a Punta Cana.
  */
@@ -545,6 +560,10 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     }
     console.log(`📊 [ADULTS] Final adults count: ${inferredAdults} (roomType: ${roomType || 'not specified'})`);
 
+    const inferredChildren = parsed.hotels?.children || parsed.flights?.children || 0;
+    const inferredInfants = parsed.hotels?.infants || parsed.flights?.infants || 0;
+    const normalizedChildrenAges = normalizeChildrenAges(parsed.hotels?.childrenAges, inferredChildren);
+
     // Enrich hotel params from flight context if missing (city/dates/pax)
     const enrichedParsed: ParsedTravelRequest = {
       ...parsed,
@@ -562,8 +581,9 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
               .split('T')[0]
             : ''),
         adults: inferredAdults,  // ✅ Use inferred adults from roomType
-        children: parsed.hotels?.children || parsed.flights?.children || 0,    // Niños 2-12 años
-        infants: parsed.hotels?.infants || parsed.flights?.infants || 0,       // Infantes 0-2 años
+        children: inferredChildren,    // Niños 2-12 años
+        childrenAges: normalizedChildrenAges, // Siempre enviar edades para paridad con portal
+        infants: inferredInfants,       // Infantes 0-2 años
         roomType: parsed.hotels?.roomType,
         mealPlan: parsed.hotels?.mealPlan,
         hotelName: parsed.hotels?.hotelName,
@@ -854,7 +874,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     const searchAdults = enrichedParsed.hotels?.adults || 1;
     const searchChildren = enrichedParsed.hotels?.children || 0;
     const searchInfants = enrichedParsed.hotels?.infants || 0;
-    const searchChildrenAges = enrichedParsed.hotels?.childrenAges || [];
+    const searchChildrenAges = normalizeChildrenAges(enrichedParsed.hotels?.childrenAges, searchChildren);
 
     allHotels = allHotels.map(hotel => ({
       ...hotel,

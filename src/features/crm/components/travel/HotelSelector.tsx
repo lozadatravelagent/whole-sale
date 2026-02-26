@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import { calculateHotelPrice } from '../../services/priceCalculator';
-import { makeBudget, buildPassengerList } from '@/services/hotelSearch';
+import { makeBudget, resolveHotelOccupancyForBudget } from '@/services/hotelSearch';
 import {
   Hotel,
   MapPin,
@@ -90,10 +90,14 @@ export function HotelSelector({
 
     try {
       // 7. Build passenger list
-      const adults = hotel.search_adults ?? (room.adults > 0 ? room.adults : 1);
-      const children = hotel.search_children ?? (room.children > 0 ? room.children : 0);
-      const infants = hotel.search_infants ?? (room.infants > 0 ? room.infants : 0);
-      const passengers = buildPassengerList(adults, children, infants, hotel.search_childrenAges);
+      const occupancy = resolveHotelOccupancyForBudget(hotel, room);
+      console.log('👥 [EXACT_PRICE] Resolved occupancy:', {
+        adults: occupancy.adults,
+        children: occupancy.children,
+        infants: occupancy.infants,
+        childrenAges: occupancy.childrenAges,
+        signature: occupancy.signature
+      });
 
       // 8. Call makeBudget
       // Use xml_occupancy_id (from EUROVIPS XML) for makeBudget, fallback to occupancy_id
@@ -104,20 +108,26 @@ export function HotelSelector({
         checkoutDate: hotel.check_out,
         occupancies: [{
           occupancyId: room.xml_occupancy_id || room.occupancy_id,
-          passengers
+          passengers: occupancy.passengers
         }]
       });
 
-      // 9. Save exact price if successful
-      if (result.success && result.subTotalAmount && result.subTotalAmount > 0) {
+      // 9. Save exact price only when agency net is available
+      const exactAgencyNet = result.agencyPricing?.netoAgencia;
+      if (result.success && exactAgencyNet && exactAgencyNet > 0) {
         setExactPrices(prev => ({
           ...prev,
           [priceKey]: {
-            price: result.subTotalAmount!,
+            price: exactAgencyNet,
             currency: result.currency || 'USD',
             budgetId: result.budgetId || ''
           }
         }));
+      } else if (result.success) {
+        console.warn('⚠️ [EXACT_PRICE] makeBudget succeeded without agency net parity, keeping approximate label:', {
+          hasAgencyPricing: !!result.agencyPricing,
+          subTotalAmount: result.subTotalAmount
+        });
       } else {
         // Mark as failed - show "Consultar disponibilidad" in UI
         setFailedPrices(prev => ({ ...prev, [priceKey]: true }));

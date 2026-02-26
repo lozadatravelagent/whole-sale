@@ -166,4 +166,67 @@ test.describe('Workflow Hard Gate: Roundtrip Hotel Alignment', () => {
     expect(capturedHotelRequest?.data?.cityCode).toBe('PUJ');
     expect(capturedHotelRequest?.data?.cityCode).not.toBe('CUN');
   });
+
+  test('should preserve child occupancy details for EUROVIPS parity (childrenAges default + infants)', async ({ page }) => {
+    let capturedHotelRequest: any = null;
+
+    await page.route('**/functions/v1/eurovips-soap', async (route) => {
+      try {
+        capturedHotelRequest = JSON.parse(route.request().postData() || '{}');
+      } catch {
+        capturedHotelRequest = null;
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(EUROVIPS_FIXTURE),
+      });
+    });
+
+    await mockAIParser(page, {
+      success: true,
+      parsed: {
+        requestType: 'combined',
+        confidence: 0.95,
+        flights: {
+          origin: 'Rosario',
+          destination: 'Punta Cana',
+          departureDate: '2026-05-07',
+          returnDate: '2026-05-14',
+          adults: 1,
+          children: 1,
+          infants: 0,
+          stops: 'any',
+          cabinClass: 'economy',
+        },
+        hotels: {
+          city: 'Punta Cana',
+          checkinDate: '2026-05-07',
+          checkoutDate: '2026-05-14',
+          adults: 1,
+          // children omitted on purpose to verify fallback from flights
+          mealPlan: 'all_inclusive',
+        },
+      },
+      aiResponse: 'Busco vuelo y hotel para 1 adulto y 1 menor.',
+      timestamp: '2026-03-01T12:00:00.000Z',
+    });
+
+    await loginAndGoToChat(page);
+    const chatInput = await getChatInput(page);
+
+    await chatInput.fill('Vuelo y hotel en Punta Cana del 7 al 14 de mayo para 1 adulto y 1 menor');
+    await chatInput.press('Enter');
+
+    await expect.poll(() => capturedHotelRequest, { timeout: 20_000 }).not.toBeNull();
+    await expectStructuredResults(page);
+
+    expect(capturedHotelRequest?.action).toBe('searchHotels');
+    expect(capturedHotelRequest?.data?.cityCode).toBe('PUJ');
+    expect(capturedHotelRequest?.data?.adults).toBe(1);
+    expect(capturedHotelRequest?.data?.children).toBe(1);
+    expect(capturedHotelRequest?.data?.infants).toBe(0);
+    expect(capturedHotelRequest?.data?.childrenAges).toEqual([8]);
+  });
 });

@@ -30,6 +30,7 @@ export interface ParsedTravelRequest {
         adults: number;
         adultsExplicit?: boolean;
         children: number;
+        childrenAges?: number[]; // Edades de niños para paridad exacta con EUROVIPS
         infants?: number; // Bebés de 0-2 años
         // Campos opcionales de preferencias
         roomType?: 'single' | 'double' | 'triple'; // Tipo de habitación (OPCIONAL - solo filtrar si usuario lo especifica)
@@ -398,6 +399,10 @@ export function combineWithPreviousRequest(
             ...(parsedNewRequest.hotels?.checkoutDate && { checkoutDate: parsedNewRequest.hotels.checkoutDate }),
             ...(parsedNewRequest.hotels?.adults && { adults: parsedNewRequest.hotels.adults }),
             ...(parsedNewRequest.hotels?.children && { children: parsedNewRequest.hotels.children }),
+            ...(parsedNewRequest.hotels?.childrenAges && parsedNewRequest.hotels.childrenAges.length > 0 && {
+                childrenAges: parsedNewRequest.hotels.childrenAges
+            }),
+            ...(parsedNewRequest.hotels?.infants !== undefined && { infants: parsedNewRequest.hotels.infants }),
             ...(parsedNewRequest.hotels?.roomType && { roomType: parsedNewRequest.hotels.roomType }),
             ...(parsedNewRequest.hotels?.mealPlan && { mealPlan: parsedNewRequest.hotels.mealPlan }),
             ...(parsedNewRequest.hotels?.hotelChains && { hotelChains: parsedNewRequest.hotels.hotelChains }),
@@ -893,6 +898,7 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
             checkoutDate: parsed.hotels.checkoutDate,
             adults: parsed.hotels.adults,
             children: parsed.hotels.children,
+            childrenAges: parsed.hotels.childrenAges || [],
             infants: parsed.hotels.infants
         };
     }

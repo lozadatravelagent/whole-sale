@@ -410,7 +410,9 @@ serve(async (req) => {
           checkoutDate: existingHotels.checkoutDate || f?.returnDate,
           // If hotel adults not specified, use flight adults
           adults: existingHotels.adults || f?.adults,
-          children: existingHotels.children ?? f?.children ?? 0
+          children: existingHotels.children ?? f?.children ?? 0,
+          infants: existingHotels.infants ?? f?.infants ?? 0,
+          childrenAges: existingHotels.childrenAges ?? []
         };
 
         console.log('🔀 [API_SEARCH] POST-PROCESS: Final hotels config:', parsedRequest.hotels);

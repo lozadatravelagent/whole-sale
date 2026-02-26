@@ -169,6 +169,21 @@ function calculateLayoverHours(arrivalSegment: any, departureSegment: any): numb
   }
 }
 
+function normalizeChildrenAges(childrenAges: unknown, childrenCount: number): number[] {
+  if (!childrenCount || childrenCount <= 0) return [];
+  if (!Array.isArray(childrenAges)) return Array.from({ length: childrenCount }, () => 8);
+
+  const validAges = childrenAges
+    .filter((age) => typeof age === 'number' && Number.isFinite(age) && age > 0)
+    .map((age) => Math.round(age));
+
+  const normalized = validAges.slice(0, childrenCount);
+  while (normalized.length < childrenCount) {
+    normalized.push(8);
+  }
+  return normalized;
+}
+
 // =============================================================================
 // EXECUTE SEARCH - Main entry point
 // =============================================================================
@@ -600,12 +615,15 @@ async function executeHotelSearch(
   const hotelName = hotels.hotelName || '';
 
   // Base params for all requests
+  const childrenCount = hotels.children || 0;
+  const childrenAges = normalizeChildrenAges((hotels as any).childrenAges, childrenCount);
   const baseParams = {
     cityCode: cityCode,
     checkinDate: hotels.checkinDate,
     checkoutDate: hotels.checkoutDate,
     adults: inferredAdults,
-    children: hotels.children || 0,
+    children: childrenCount,
+    childrenAges,
     infants: hotels.infants || 0
   };
 

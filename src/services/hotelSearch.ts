@@ -9,7 +9,7 @@ export interface MakeBudgetParams {
   checkoutDate: string;     // Fecha check-out YYYY-MM-DD
   occupancies: Array<{
     occupancyId: string;
-    passengers: Array<{ type: 'ADT' | 'CHD' | 'INF'; age?: number }>
+    passengers: Array<{ type: 'ADT' | 'CHD' | 'CNN' | 'INF'; age?: number }>
   }>;
   reference?: string;       // Referencia opcional para tracking
 }
@@ -21,6 +21,11 @@ export interface MakeBudgetResponse {
   totalAmount?: number;
   fareIdInternal?: string;
   currency?: string;
+  agencyPricing?: {
+    netoAgencia: number;
+    importeBruto: number;
+    comision: number;
+  };
   error?: string;
   errorCode?: string;
   timestamp?: string;
@@ -1352,18 +1357,20 @@ export function buildPassengerList(
   children: number = 0,
   infants: number = 0,
   childrenAges?: number[]
-): Array<{ type: 'ADT' | 'CHD' | 'INF'; age?: number }> {
-  const passengers: Array<{ type: 'ADT' | 'CHD' | 'INF'; age?: number }> = [];
+): Array<{ type: 'ADT' | 'CHD' | 'CNN' | 'INF'; age?: number }> {
+  const passengers: Array<{ type: 'ADT' | 'CHD' | 'CNN' | 'INF'; age?: number }> = [];
 
   // Add adults
   for (let i = 0; i < adults; i++) {
     passengers.push({ type: 'ADT' });
   }
 
-  // Add children with ages
+  // Add children with ages.
+  // IMPORTANT: For HOTEL makeBudget parity with EUROVIPS portal, child type must be CNN.
+  // CHD is used in searchHotelFares occupancy, but CNN is required in makeBudget pricing.
   for (let i = 0; i < children; i++) {
     const age = childrenAges?.[i] || 8; // Default age 8 if not specified
-    passengers.push({ type: 'CHD', age });
+    passengers.push({ type: 'CNN', age });
   }
 
   // Add infants
@@ -1372,4 +1379,53 @@ export function buildPassengerList(
   }
 
   return passengers;
+}
+
+/**
+ * Resolve occupancy for makeBudget by reconciling search-level and room-level data.
+ * Uses the maximum count per pax type to avoid under-sending minors.
+ */
+export function resolveHotelOccupancyForBudget(
+  hotel: Pick<HotelData, 'search_adults' | 'search_children' | 'search_infants' | 'search_childrenAges'>,
+  room: Pick<HotelRoom, 'adults' | 'children' | 'infants'>
+): {
+  adults: number;
+  children: number;
+  infants: number;
+  childrenAges: number[];
+  passengers: Array<{ type: 'ADT' | 'CHD' | 'CNN' | 'INF'; age?: number }>;
+  signature: string;
+} {
+  const searchAdults = Math.max(0, Number(hotel.search_adults || 0));
+  const searchChildren = Math.max(0, Number(hotel.search_children || 0));
+  const searchInfants = Math.max(0, Number(hotel.search_infants || 0));
+
+  const roomAdults = Math.max(0, Number(room.adults || 0));
+  const roomChildren = Math.max(0, Number(room.children || 0));
+  const roomInfants = Math.max(0, Number(room.infants || 0));
+
+  const adults = Math.max(1, searchAdults, roomAdults);
+  const children = Math.max(searchChildren, roomChildren);
+  const infants = Math.max(searchInfants, roomInfants);
+
+  const normalizedChildrenAges = (hotel.search_childrenAges || [])
+    .filter((age) => Number.isFinite(age) && age > 0)
+    .map((age) => Math.round(age))
+    .slice(0, children);
+
+  while (normalizedChildrenAges.length < children) {
+    normalizedChildrenAges.push(8);
+  }
+
+  const passengers = buildPassengerList(adults, children, infants, normalizedChildrenAges);
+  const signature = passengers.map((pax) => `${pax.type}${pax.age ?? ''}`).join(',');
+
+  return {
+    adults,
+    children,
+    infants,
+    childrenAges: normalizedChildrenAges,
+    passengers,
+    signature
+  };
 }

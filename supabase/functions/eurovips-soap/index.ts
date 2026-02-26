@@ -204,7 +204,7 @@ ${occupantsXml}        </Ocuppancy>
     checkoutDate: string;     // Fecha check-out YYYY-MM-DD
     occupancies: Array<{
       occupancyId: string;
-      passengers: Array<{ type: 'ADT' | 'CHD' | 'INF'; age?: number }>
+      passengers: Array<{ type: 'ADT' | 'CHD' | 'CNN' | 'INF'; age?: number }>
     }>;
     reference?: string;       // Referencia opcional para tracking
   }) {
