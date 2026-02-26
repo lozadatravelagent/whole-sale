@@ -8,6 +8,7 @@ export interface ParsedTravelRequest {
         departureDate: string;
         returnDate?: string;
         adults: number;
+        adultsExplicit?: boolean;
         children: number;
         infants?: number; // Bebés de 0-2 años (viajan en brazos)
         // Nuevos campos requeridos
@@ -27,6 +28,7 @@ export interface ParsedTravelRequest {
         checkinDate: string;
         checkoutDate: string;
         adults: number;
+        adultsExplicit?: boolean;
         children: number;
         infants?: number; // Bebés de 0-2 años
         // Campos opcionales de preferencias

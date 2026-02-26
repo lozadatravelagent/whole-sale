@@ -385,6 +385,7 @@ User: "Armame un plan de viaje de 7 días"
   * DEFAULT = 1 if NO passengers mentioned at all (e.g., "vuelo a Madrid")
   * = 0 if ONLY children/infants mentioned (e.g., "vuelo para 2 niños" → adults = 0, "vuelo para un menor" → adults = 0, "un niño" → adults = 0). CRITICAL: "un" = 1
   * = X if user explicitly says X adults
+- **adultsExplicit:** boolean - Set to true ONLY when user explicitly mentions number of adults (e.g., "1 adulto", "2 adultos", "para mi solo", "para una persona"). Set to false when no adult count is mentioned and you use the default of 1.
 - children = 0 (default if not specified) - Niños de 2-12 años
 - infants = 0 (default if not specified) - Bebés/infantes de 0-2 años (viajan en brazos)
 
@@ -396,6 +397,7 @@ User: "Armame un plan de viaje de 7 días"
   * = 0 if ONLY children/infants mentioned (e.g., "hotel para 2 niños" → adults = 0, "hotel para un menor" → adults = 0, "un niño" → adults = 0). CRITICAL: "un" = 1
   * = X if user explicitly says X adults
   * Adultos desde 12 años (EUROVIPS)
+- **adultsExplicit:** boolean - Set to true ONLY when user explicitly mentions number of adults (e.g., "1 adulto", "2 adultos", "para mi solo", "para una persona"). Set to false when no adult count is mentioned and you use the default of 1.
 - children = 0 (default if not specified) - Niños hasta 17 años (EUROVIPS)
 - infants = 0 (default if not specified) - Bebés/infantes de 0-2 años
 - roomType, mealPlan (OPTIONAL - ONLY include if user explicitly mentions them)
@@ -710,6 +712,7 @@ User: "Quiero un vuelo de [origen] a [destino] para [mes] de [año]"
     "destination": "[destino]",
     "departureDate": "[fecha de salida]",
     "adults": 1,
+    "adultsExplicit": false,
     "children": 0,
     "infants": 0,
     "stops": "any"
@@ -726,6 +729,7 @@ User: "Necesito vuelo para 2 adultos de [origen] a [destino]"
     "destination": "[destino]",
     "departureDate": "[FECHA_SALIDA]",
     "adults": 2,
+    "adultsExplicit": true,
     "children": 0,
     "infants": 0,
     "stops": "any"
@@ -788,6 +792,7 @@ User: "quiero un hotel en Cancún"
     "checkinDate": "[DATE]",
     "checkoutDate": "[DATE]",
     "adults": 1,
+    "adultsExplicit": false,
     "children": 0,
     "infants": 0
   },
@@ -804,6 +809,7 @@ User: "habitación doble en Cancún"
     "checkinDate": "[DATE]",
     "checkoutDate": "[DATE]",
     "adults": 2,
+    "adultsExplicit": false,
     "children": 0,
     "infants": 0,
     "roomType": "double"
@@ -1023,6 +1029,14 @@ User: "hotel melia todo incluido doble" or "hoteles meliá" or "un sol melia"
 }
 ✅ hotelChains: ["Melia"] - recognize "melia", "meliá", "sol melia" as the same chain
 🚨 NOTE: Be tolerant with accents and variations (melia = meliá = sol melia)
+
+🚨 FINAL REMINDER - adultsExplicit RULE:
+Before setting "adultsExplicit" in your JSON response:
+1. Did the user EXPLICITLY mention the number of adults? ("1 adulto", "2 adultos", "para mi solo", "para una persona", "X personas")
+2. If YES → adultsExplicit: true
+3. If NO (you used default of 1 because user didn't mention adults) → adultsExplicit: false
+4. This is CRITICAL for cases like "para 1 adulto habitación doble" → adults: 1, adultsExplicit: true (user said "1 adulto" explicitly, so the system must NOT override to 2)
+5. Vs "habitación doble en Cancún" → adults: 1, adultsExplicit: false (user didn't mention adults, system may infer from room type)
 
 🚨 CRITICAL FINAL INSTRUCTION:
 - The examples above show PATTERNS and STRUCTURES only

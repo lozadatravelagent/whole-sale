@@ -526,7 +526,10 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     const totalChildren = (parsed.hotels?.children || parsed.flights?.children || 0)
       + (parsed.hotels?.infants || parsed.flights?.infants || 0);
 
-    if (inferredAdults === 1 && totalChildren === 0 && roomType) {
+    // Only infer adults from roomType if adults was NOT explicitly stated by user
+    const adultsExplicit = parsed.hotels?.adultsExplicit || parsed.flights?.adultsExplicit || false;
+
+    if (inferredAdults === 1 && totalChildren === 0 && roomType && !adultsExplicit) {
       // If adults is default (1), no children/infants specified, but roomType is specified, infer adults from roomType
       const normalizedRoomType = roomType.toLowerCase().trim();
       if (normalizedRoomType === 'double' || normalizedRoomType === 'twin' || normalizedRoomType === 'doble') {
