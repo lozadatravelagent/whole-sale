@@ -345,13 +345,73 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
         }
       }
 
-      // Extract Pricing section with Target="AGENCY" for the actual agency net price
-      // The Pricing block contains: CommissionablePrice + NonCommissionable + FiscalTaxes = Total
-      // <Pricing><Total>389.01</Total><Target>AGENCY</Target></Pricing>
+      // SubTotalAmount from makeBudget is the CommissionablePrice (gross/bruto)
+      // The actual agency net price comes from getBudget (called separately after makeBudget)
+
+      // Extract internal FareId (EV code) if present
+      const fareIdInternalMatch = xmlResponse.match(/<FareId[^>]*>(EV\d+)<\/FareId>/i);
+      const fareIdInternal = fareIdInternalMatch ? fareIdInternalMatch[1] : null;
+
+      // Extract currency
+      const currencyMatch = xmlResponse.match(/currency="([A-Z]{3})"/i);
+      const currency = currencyMatch ? currencyMatch[1] : 'USD';
+
+      console.log('📋 [MAKE_BUDGET] Parsed successfully:');
+      console.log('   budgetId:', budgetId);
+      console.log('   subTotalAmount (CommissionablePrice/gross):', subTotalAmount);
+      console.log('   fareIdInternal:', fareIdInternal);
+      console.log('   currency:', currency);
+
+      if (!budgetId || subTotalAmount <= 0) {
+        console.warn('⚠️ [MAKE_BUDGET] Missing data - budgetId:', budgetId, 'subTotalAmount:', subTotalAmount);
+        return {
+          success: false,
+          error: 'No se pudo obtener el precio exacto del proveedor',
+          rawResponse: xmlResponse.substring(0, 1000)
+        };
+      }
+
+      return {
+        success: true,
+        budgetId,
+        subTotalAmount,
+        fareIdInternal,
+        currency,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('❌ [MAKE_BUDGET] Error parsing response:', error);
+      return {
+        success: false,
+        error: error.message || 'Error parsing makeBudget response'
+      };
+    }
+  }
+
+  /**
+   * Calls getBudget to retrieve the detailed Pricing breakdown with Target=AGENCY
+   * This returns the actual agency net price (not the gross/commissionable price from makeBudget)
+   */
+  async getBudget(budgetId: string) {
+    console.log('📋 [GET_BUDGET] Requesting budget details for:', budgetId);
+
+    const soapBody = `<getBudgetRQ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <pos>
+        <id>${this.username}</id>
+        <clave>${this.password}</clave>
+      </pos>
+      <rq>${budgetId}</rq>
+    </getBudgetRQ>`;
+
+    try {
+      const xmlResponse = await this.makeSOAPRequest(soapBody, 'getBudget');
+      console.log('📋 [GET_BUDGET] Response length:', xmlResponse.length);
+      console.log('📋 [GET_BUDGET] Response preview:', xmlResponse.substring(0, 1500));
+
+      // Extract Pricing block with Target=AGENCY
       let agencyTotal = 0;
       let commissionablePrice = 0;
 
-      // Find all Pricing blocks and look for the one with Target=AGENCY
       const pricingBlocks = xmlResponse.match(/<Pricing>[\s\S]*?<\/Pricing>/gi);
       if (pricingBlocks) {
         for (const block of pricingBlocks) {
@@ -370,63 +430,26 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
         }
       }
 
-      // Extract TotalAmount from Summary if available
-      const totalAmountMatch = xmlResponse.match(/<Summary[^>]*TotalAmount="([\d.]+)"/i);
-      const totalAmount = totalAmountMatch ? parseFloat(totalAmountMatch[1]) : 0;
-
-      // Determine the best price to use (priority order):
-      // 1. Pricing Total with Target=AGENCY (most accurate - includes costs/taxes, excludes commission)
-      // 2. TotalAmount from Summary attribute
-      // 3. SubTotalAmount (CommissionablePrice - fallback, but this is the GROSS price)
-      const agencyNetPrice = agencyTotal > 0 ? agencyTotal : (totalAmount > 0 ? totalAmount : subTotalAmount);
-
-      // Extract internal FareId (EV code) if present
-      const fareIdInternalMatch = xmlResponse.match(/<FareId[^>]*>(EV\d+)<\/FareId>/i);
-      const fareIdInternal = fareIdInternalMatch ? fareIdInternalMatch[1] : null;
-
       // Extract currency
       const currencyMatch = xmlResponse.match(/currency="([A-Z]{3})"/i);
       const currency = currencyMatch ? currencyMatch[1] : 'USD';
 
-      console.log('📋 [MAKE_BUDGET] Parsed successfully:');
-      console.log('   budgetId:', budgetId);
-      console.log('   subTotalAmount (CommissionablePrice):', subTotalAmount);
-      console.log('   commissionablePrice (from Pricing):', commissionablePrice);
-      console.log('   agencyTotal (Pricing Target=AGENCY):', agencyTotal);
-      console.log('   totalAmount (Summary attr):', totalAmount);
-      console.log('   → agencyNetPrice (selected):', agencyNetPrice);
-      console.log('   fareIdInternal:', fareIdInternal);
-      console.log('   currency:', currency);
+      console.log('📋 [GET_BUDGET] commissionablePrice:', commissionablePrice);
+      console.log('📋 [GET_BUDGET] agencyTotal:', agencyTotal);
+      console.log('📋 [GET_BUDGET] currency:', currency);
 
-      // Log full response for debugging price discrepancies
-      console.log('📋 [MAKE_BUDGET] Full XML response:', xmlResponse.substring(0, 3000));
-
-      if (!budgetId || agencyNetPrice <= 0) {
-        console.warn('⚠️ [MAKE_BUDGET] Missing data - budgetId:', budgetId, 'agencyNetPrice:', agencyNetPrice);
-        return {
-          success: false,
-          error: 'No se pudo obtener el precio exacto del proveedor',
-          rawResponse: xmlResponse.substring(0, 1000)
-        };
+      if (agencyTotal > 0) {
+        return { success: true, agencyTotal, commissionablePrice, currency };
       }
 
-      return {
-        success: true,
-        budgetId,
-        subTotalAmount: agencyNetPrice,  // Agency net price (Pricing Total AGENCY > TotalAmount > SubTotalAmount)
-        totalAmount: totalAmount || agencyNetPrice,
-        fareIdInternal,
-        currency,
-        timestamp: new Date().toISOString()
-      };
+      console.warn('⚠️ [GET_BUDGET] No Pricing with Target=AGENCY found, response preview:', xmlResponse.substring(0, 1500));
+      return { success: false, error: 'No AGENCY pricing found in getBudget response' };
     } catch (error) {
-      console.error('❌ [MAKE_BUDGET] Error parsing response:', error);
-      return {
-        success: false,
-        error: error.message || 'Error parsing makeBudget response'
-      };
+      console.error('❌ [GET_BUDGET] Error:', error.message);
+      return { success: false, error: error.message };
     }
   }
+
   parseCountryListResponse(xmlResponse) {
     try {
       console.log('🔍 PARSING XML - Starting parseCountryListResponse');
@@ -1285,6 +1308,21 @@ serve(async (req) => {
               if (!data.fareId) throw new Error('fareId is required for makeBudget');
               if (!data.fareIdBroker) throw new Error('fareIdBroker is required for makeBudget');
               results = await client.makeBudget(data);
+
+              // After makeBudget succeeds, call getBudget to get the actual agency net price
+              if (results.success && results.budgetId) {
+                console.log('📋 [MAKE_BUDGET] Calling getBudget for agency price, budgetId:', results.budgetId);
+                const budgetDetails = await client.getBudget(results.budgetId);
+                if (budgetDetails.success && budgetDetails.agencyTotal > 0) {
+                  console.log(`📋 [MAKE_BUDGET] Using getBudget agency price: ${budgetDetails.agencyTotal} (was SubTotalAmount: ${results.subTotalAmount})`);
+                  results.subTotalAmount = budgetDetails.agencyTotal;
+                  if (budgetDetails.currency) {
+                    results.currency = budgetDetails.currency;
+                  }
+                } else {
+                  console.warn('⚠️ [MAKE_BUDGET] getBudget failed, keeping SubTotalAmount as fallback:', results.subTotalAmount);
+                }
+              }
               break;
             default:
               throw new Error(`Unknown action: ${action}`);
