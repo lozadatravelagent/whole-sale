@@ -288,7 +288,7 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
 
       const xmlResponse = await response.text();
       console.log('📋 [MAKE_BUDGET] Response length:', xmlResponse.length);
-      console.log('📋 [MAKE_BUDGET] Response preview:', xmlResponse.substring(0, 1000));
+      console.log('📋 [MAKE_BUDGET] Response preview:', xmlResponse.substring(0, 2000));
       return this.parseMakeBudgetResponse(xmlResponse);
     } catch (error) {
       clearTimeout(timeoutId);
@@ -346,7 +346,29 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
       }
 
       // SubTotalAmount from makeBudget is the CommissionablePrice (gross/bruto)
-      // The actual agency net price comes from getBudget (called separately after makeBudget)
+      // Try to extract the actual agency net price from Pricing blocks in this same response
+      let agencyTotal = 0;
+      let commissionablePrice = 0;
+
+      const pricingBlocks = xmlResponse.match(/<Pricing>[\s\S]*?<\/Pricing>/gi);
+      if (pricingBlocks) {
+        for (const block of pricingBlocks) {
+          const targetMatch = block.match(/<Target>([^<]+)<\/Target>/i);
+          if (targetMatch && targetMatch[1] === 'AGENCY') {
+            const totalMatch = block.match(/<Total>([\d.]+)<\/Total>/i);
+            if (totalMatch) {
+              agencyTotal = parseFloat(totalMatch[1]);
+            }
+            const commMatch = block.match(/<CommissionablePrice>([\d.]+)<\/CommissionablePrice>/i);
+            if (commMatch) {
+              commissionablePrice = parseFloat(commMatch[1]);
+            }
+            break;
+          }
+        }
+      }
+
+      console.log('📋 [MAKE_BUDGET] Pricing from makeBudget response - agencyTotal:', agencyTotal, 'commissionablePrice:', commissionablePrice);
 
       // Extract internal FareId (EV code) if present
       const fareIdInternalMatch = xmlResponse.match(/<FareId[^>]*>(EV\d+)<\/FareId>/i);
@@ -375,6 +397,8 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
         success: true,
         budgetId,
         subTotalAmount,
+        agencyTotal,
+        commissionablePrice,
         fareIdInternal,
         currency,
         timestamp: new Date().toISOString()
@@ -1309,18 +1333,25 @@ serve(async (req) => {
               if (!data.fareIdBroker) throw new Error('fareIdBroker is required for makeBudget');
               results = await client.makeBudget(data);
 
-              // After makeBudget succeeds, call getBudget to get the actual agency net price
+              // Use agency net price: prefer from makeBudget Pricing, fallback to getBudget
               if (results.success && results.budgetId) {
-                console.log('📋 [MAKE_BUDGET] Calling getBudget for agency price, budgetId:', results.budgetId);
-                const budgetDetails = await client.getBudget(results.budgetId);
-                if (budgetDetails.success && budgetDetails.agencyTotal > 0) {
-                  console.log(`📋 [MAKE_BUDGET] Using getBudget agency price: ${budgetDetails.agencyTotal} (was SubTotalAmount: ${results.subTotalAmount})`);
-                  results.subTotalAmount = budgetDetails.agencyTotal;
-                  if (budgetDetails.currency) {
-                    results.currency = budgetDetails.currency;
-                  }
+                if (results.agencyTotal > 0) {
+                  // Pricing was in the makeBudget response itself — use it directly, skip getBudget
+                  console.log(`📋 [MAKE_BUDGET] agencyTotal from response: ${results.agencyTotal} (SubTotalAmount was: ${results.subTotalAmount})`);
+                  results.subTotalAmount = results.agencyTotal;
                 } else {
-                  console.warn('⚠️ [MAKE_BUDGET] getBudget failed, keeping SubTotalAmount as fallback:', results.subTotalAmount);
+                  // No Pricing in makeBudget response — try getBudget as fallback
+                  console.log('📋 [MAKE_BUDGET] No Pricing in makeBudget response, trying getBudget...');
+                  const budgetDetails = await client.getBudget(results.budgetId);
+                  if (budgetDetails.success && budgetDetails.agencyTotal > 0) {
+                    console.log(`📋 [MAKE_BUDGET] Using getBudget agency price: ${budgetDetails.agencyTotal} (was SubTotalAmount: ${results.subTotalAmount})`);
+                    results.subTotalAmount = budgetDetails.agencyTotal;
+                    if (budgetDetails.currency) {
+                      results.currency = budgetDetails.currency;
+                    }
+                  } else {
+                    console.warn('⚠️ [MAKE_BUDGET] getBudget also failed, keeping SubTotalAmount as fallback:', results.subTotalAmount);
+                  }
                 }
               }
               break;
