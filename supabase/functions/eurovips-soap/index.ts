@@ -332,29 +332,53 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
       const budgetIdMatch = xmlResponse.match(/<rs[^>]*UniqueId="([^"]+)"/i);
       const budgetId = budgetIdMatch ? budgetIdMatch[1] : null;
 
-      // Extract SubTotalAmount (NETO AGENCIA EXACTO)
-      // This appears in multiple places, we want the one from Summary or HotelBudget
+      // Extract SubTotalAmount from HotelBudget element (CommissionablePrice / Importe Bruto)
       const subTotalMatches = xmlResponse.match(/<SubTotalAmount[^>]*>([\d.]+)<\/SubTotalAmount>/gi);
       let subTotalAmount = 0;
 
       if (subTotalMatches && subTotalMatches.length > 0) {
-        // Get the last (most specific) SubTotalAmount which is usually the final price
-        const lastMatch = subTotalMatches[subTotalMatches.length - 1];
-        const valueMatch = lastMatch.match(/([\d.]+)/);
+        // Get the FIRST SubTotalAmount (from HotelBudget item, the CommissionablePrice)
+        const firstMatch = subTotalMatches[0];
+        const valueMatch = firstMatch.match(/([\d.]+)/);
         if (valueMatch) {
           subTotalAmount = parseFloat(valueMatch[1]);
         }
       }
 
-      // Alternative: Extract from Summary tag specifically
-      const summaryMatch = xmlResponse.match(/<Summary[^>]*SubTotalAmount="([\d.]+)"/i);
-      if (summaryMatch) {
-        subTotalAmount = parseFloat(summaryMatch[1]);
+      // Extract Pricing section with Target="AGENCY" for the actual agency net price
+      // The Pricing block contains: CommissionablePrice + NonCommissionable + FiscalTaxes = Total
+      // <Pricing><Total>389.01</Total><Target>AGENCY</Target></Pricing>
+      let agencyTotal = 0;
+      let commissionablePrice = 0;
+
+      // Find all Pricing blocks and look for the one with Target=AGENCY
+      const pricingBlocks = xmlResponse.match(/<Pricing>[\s\S]*?<\/Pricing>/gi);
+      if (pricingBlocks) {
+        for (const block of pricingBlocks) {
+          const targetMatch = block.match(/<Target>([^<]+)<\/Target>/i);
+          if (targetMatch && targetMatch[1] === 'AGENCY') {
+            const totalMatch = block.match(/<Total>([\d.]+)<\/Total>/i);
+            if (totalMatch) {
+              agencyTotal = parseFloat(totalMatch[1]);
+            }
+            const commMatch = block.match(/<CommissionablePrice>([\d.]+)<\/CommissionablePrice>/i);
+            if (commMatch) {
+              commissionablePrice = parseFloat(commMatch[1]);
+            }
+            break;
+          }
+        }
       }
 
       // Extract TotalAmount from Summary if available
       const totalAmountMatch = xmlResponse.match(/<Summary[^>]*TotalAmount="([\d.]+)"/i);
-      const totalAmount = totalAmountMatch ? parseFloat(totalAmountMatch[1]) : subTotalAmount;
+      const totalAmount = totalAmountMatch ? parseFloat(totalAmountMatch[1]) : 0;
+
+      // Determine the best price to use (priority order):
+      // 1. Pricing Total with Target=AGENCY (most accurate - includes costs/taxes, excludes commission)
+      // 2. TotalAmount from Summary attribute
+      // 3. SubTotalAmount (CommissionablePrice - fallback, but this is the GROSS price)
+      const agencyNetPrice = agencyTotal > 0 ? agencyTotal : (totalAmount > 0 ? totalAmount : subTotalAmount);
 
       // Extract internal FareId (EV code) if present
       const fareIdInternalMatch = xmlResponse.match(/<FareId[^>]*>(EV\d+)<\/FareId>/i);
@@ -366,13 +390,19 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
 
       console.log('📋 [MAKE_BUDGET] Parsed successfully:');
       console.log('   budgetId:', budgetId);
-      console.log('   subTotalAmount (NETO AGENCIA):', subTotalAmount);
-      console.log('   totalAmount:', totalAmount);
+      console.log('   subTotalAmount (CommissionablePrice):', subTotalAmount);
+      console.log('   commissionablePrice (from Pricing):', commissionablePrice);
+      console.log('   agencyTotal (Pricing Target=AGENCY):', agencyTotal);
+      console.log('   totalAmount (Summary attr):', totalAmount);
+      console.log('   → agencyNetPrice (selected):', agencyNetPrice);
       console.log('   fareIdInternal:', fareIdInternal);
       console.log('   currency:', currency);
 
-      if (!budgetId || subTotalAmount <= 0) {
-        console.warn('⚠️ [MAKE_BUDGET] Missing data - budgetId:', budgetId, 'subTotalAmount:', subTotalAmount);
+      // Log full response for debugging price discrepancies
+      console.log('📋 [MAKE_BUDGET] Full XML response:', xmlResponse.substring(0, 3000));
+
+      if (!budgetId || agencyNetPrice <= 0) {
+        console.warn('⚠️ [MAKE_BUDGET] Missing data - budgetId:', budgetId, 'agencyNetPrice:', agencyNetPrice);
         return {
           success: false,
           error: 'No se pudo obtener el precio exacto del proveedor',
@@ -383,8 +413,8 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
       return {
         success: true,
         budgetId,
-        subTotalAmount,  // NETO AGENCIA EXACTO - This is the price to show to the client
-        totalAmount,
+        subTotalAmount: agencyNetPrice,  // Agency net price (Pricing Total AGENCY > TotalAmount > SubTotalAmount)
+        totalAmount: totalAmount || agencyNetPrice,
         fareIdInternal,
         currency,
         timestamp: new Date().toISOString()

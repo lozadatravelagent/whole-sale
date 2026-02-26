@@ -1165,6 +1165,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                             </div>
                             <span>({hotel.nights} noche{hotel.nights > 1 ? 's' : ''})</span>
                           </div>
+                          <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
+                            <div className="flex items-center space-x-1">
+                              <Users className="h-3 w-3" />
+                              <span>{hotel.search_adults || 1} adult{(hotel.search_adults || 1) > 1 ? 'os' : 'o'}</span>
+                              {(hotel.search_children || 0) > 0 && <span>, {hotel.search_children} niño{hotel.search_children! > 1 ? 's' : ''}</span>}
+                              {(hotel.search_infants || 0) > 0 && <span>, {hotel.search_infants} bebé{hotel.search_infants! > 1 ? 's' : ''}</span>}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

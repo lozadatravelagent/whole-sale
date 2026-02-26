@@ -483,6 +483,7 @@ export interface HotelData {
   // Search params - occupancy requested by user (for PDF generation)
   search_adults?: number;
   search_children?: number;
+  search_infants?: number;
 }
 
 // Extended hotel data with selected room for PDF generation
