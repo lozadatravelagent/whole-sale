@@ -226,6 +226,7 @@ export interface LocalHotelData {
   search_adults?: number;
   search_children?: number;   // Niños 2-12 años
   search_infants?: number;    // Infantes 0-2 años
+  search_childrenAges?: number[];
 }
 
 export interface LocalCombinedTravelResults {

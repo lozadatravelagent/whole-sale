@@ -850,6 +850,20 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       console.log(`   ${index + 1}. "${hotel.name}"`);
     });
 
+    // Attach search occupancy to each hotel so downstream components (CombinedTravelSelector, makeBudget) know the passenger mix
+    const searchAdults = enrichedParsed.hotels?.adults || 1;
+    const searchChildren = enrichedParsed.hotels?.children || 0;
+    const searchInfants = enrichedParsed.hotels?.infants || 0;
+    const searchChildrenAges = enrichedParsed.hotels?.childrenAges || [];
+
+    allHotels = allHotels.map(hotel => ({
+      ...hotel,
+      search_adults: searchAdults,
+      search_children: searchChildren,
+      search_childrenAges: searchChildrenAges,
+      search_infants: searchInfants,
+    }));
+
     // Fix hotel dates - EUROVIPS sometimes returns incorrect dates, so we force the correct ones.
     // Also enforce city alignment to avoid mixed-destination UI in a single search.
     const requestedCity = enrichedParsed.hotels?.city || '';

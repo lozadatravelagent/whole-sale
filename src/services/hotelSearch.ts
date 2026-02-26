@@ -1259,8 +1259,9 @@ export async function makeBudget(params: MakeBudgetParams): Promise<MakeBudgetRe
     dates: `${params.checkinDate} -> ${params.checkoutDate}`
   });
 
-  // Generate cache key
-  const cacheKey = `${params.fareId}|${params.fareIdBroker}|${params.checkinDate}|${params.checkoutDate}`;
+  // Generate cache key (include passengers so different occupancies don't share cached prices)
+  const paxKey = params.occupancies?.[0]?.passengers?.map(p => `${p.type}${p.age || ''}`).join(',') || '';
+  const cacheKey = `${params.fareId}|${params.fareIdBroker}|${params.checkinDate}|${params.checkoutDate}|${paxKey}`;
 
   // Check cache first
   const cached = makeBudgetCache.get(cacheKey);

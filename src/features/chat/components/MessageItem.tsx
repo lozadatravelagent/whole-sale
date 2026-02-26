@@ -270,7 +270,9 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
           total_price: room.total_price, // Use the total_price from EUROVIPS directly
           currency: room.currency,
           availability: room.availability >= 0 ? Math.max(room.availability, 3) : 5, // Ensure at least "Consultar" status
-          occupancy_id: room.occupancy_id || Math.random().toString(36)
+          occupancy_id: room.occupancy_id || Math.random().toString(36),
+          xml_occupancy_id: room.xml_occupancy_id,
+          fare_id_broker: room.fare_id_broker
         })),
         check_in: hotel.check_in || (localData.flights.length > 0 && localData.flights[0].departure_date
           ? localData.flights[0].departure_date
@@ -281,7 +283,9 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
         nights: hotel.nights,
         // Preserve search params for PDF occupancy (hotel-only mode)
         search_adults: hotel.search_adults,
-        search_children: hotel.search_children
+        search_children: hotel.search_children,
+        search_childrenAges: hotel.search_childrenAges,
+        search_infants: hotel.search_infants
       })),
       requestType: localData.requestType,
       // Pass filter preferences through to UI

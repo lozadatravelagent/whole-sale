@@ -484,6 +484,7 @@ export interface HotelData {
   search_adults?: number;
   search_children?: number;
   search_infants?: number;
+  search_childrenAges?: number[];
 }
 
 // Extended hotel data with selected room for PDF generation
