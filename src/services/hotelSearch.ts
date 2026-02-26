@@ -468,7 +468,7 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
         const checkinDate = validateAndFormatDate(params.dateFrom);
         const checkoutDate = validateAndFormatDate(params.dateTo);
 
-        console.log(`🏨 REQUEST - City: ${params.city} -> ${cityCode}, Dates: ${checkinDate} to ${checkoutDate}, Adults: ${params.adults || 1}, Children: ${params.children || 0}`);
+        console.log(`🏨 REQUEST - City: ${params.city} -> ${cityCode}, Dates: ${checkinDate} to ${checkoutDate}, Adults: ${params.adults || 1}, Children: ${params.children || 0}, Infants: ${params.infants || 0}`);
 
         const requestData = {
           action: 'searchHotels',
@@ -478,6 +478,7 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
             checkoutDate,
             adults: params.adults || 1,
             children: params.children || 0,
+            infants: params.infants || 0,
             rooms: 1
           }
         };
@@ -596,7 +597,7 @@ async function buildHotelSearchRequest(params: HotelSearchParams): Promise<strin
     occupantsXml += '        <Occupants type="ADT" />\n';
   }
   for (let i = 0; i < children; i++) {
-    occupantsXml += '        <Occupants type="CHD" />\n';
+    occupantsXml += '        <Occupants type="CHD" Age="8" />\n';
   }
   for (let i = 0; i < infants; i++) {
     occupantsXml += '        <Occupants type="INF" Age="1" />\n';

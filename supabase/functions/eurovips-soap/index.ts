@@ -99,7 +99,7 @@ class EurovipsSOAPClient {
       occupantsXml += '      <Occupants type="CHD" />\n';
     }
     for (let i = 0; i < infants; i++) {
-      occupantsXml += '      <Occupants type="INF" Age="1" />\n';
+      occupantsXml += '      <Occupants type="INFOA" />\n';
     }
     const soapBody = `
     <searchHotelFaresRQ1 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">

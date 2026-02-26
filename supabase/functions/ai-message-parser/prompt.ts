@@ -390,11 +390,13 @@ User: "Armame un plan de viaje de 7 días"
 
 **HOTELS:**
 - Required: city, checkinDate, checkoutDate
+- ⚠️ **EUROVIPS age categories (different from flights):** Adults from 12 years old, Children up to 17 years old
 - **adults:**
   * DEFAULT = 1 if NO passengers mentioned at all (e.g., "hotel en Cancún")
   * = 0 if ONLY children/infants mentioned (e.g., "hotel para 2 niños" → adults = 0, "hotel para un menor" → adults = 0, "un niño" → adults = 0). CRITICAL: "un" = 1
   * = X if user explicitly says X adults
-- children = 0 (default if not specified) - Niños de 2-12 años
+  * Adultos desde 12 años (EUROVIPS)
+- children = 0 (default if not specified) - Niños hasta 17 años (EUROVIPS)
 - infants = 0 (default if not specified) - Bebés/infantes de 0-2 años
 - roomType, mealPlan (OPTIONAL - ONLY include if user explicitly mentions them)
 
