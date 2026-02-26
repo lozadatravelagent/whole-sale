@@ -72,6 +72,40 @@ function normalizeChildrenAges(childrenAges: number[] | undefined, childrenCount
   return normalized;
 }
 
+function getMinRoomPrice(hotel: LocalHotelData): number {
+  if (!hotel.rooms || hotel.rooms.length === 0) return Number.POSITIVE_INFINITY;
+  return Math.min(...hotel.rooms.map((room) => room.total_price || Number.POSITIVE_INFINITY));
+}
+
+function extractBrokerCode(hotel: LocalHotelData): string {
+  const hotelAny = hotel as any;
+
+  const fromUniqueId = typeof hotelAny.unique_id === 'string' ? hotelAny.unique_id : '';
+  if (fromUniqueId.includes('|')) {
+    return fromUniqueId.split('|')[0].toUpperCase();
+  }
+
+  const firstRoom = hotel.rooms?.[0] as any;
+  const fareIdBroker = typeof firstRoom?.fare_id_broker === 'string' ? firstRoom.fare_id_broker : '';
+  if (fareIdBroker.includes('|')) {
+    return fareIdBroker.split('|')[0].toUpperCase();
+  }
+
+  return '';
+}
+
+function shouldReplaceDuplicateHotel(existing: LocalHotelData, candidate: LocalHotelData): boolean {
+  const existingBroker = extractBrokerCode(existing);
+  const candidateBroker = extractBrokerCode(candidate);
+
+  // EUROVIPS portal parity: prefer AP broker when duplicates share same hotel name.
+  if (existingBroker !== 'AP' && candidateBroker === 'AP') return true;
+  if (existingBroker === 'AP' && candidateBroker !== 'AP') return false;
+
+  // Otherwise keep the cheaper option.
+  return getMinRoomPrice(candidate) < getMinRoomPrice(existing);
+}
+
 /**
  * Verifica si el destino corresponde a Punta Cana.
  */
@@ -724,23 +758,28 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     if (hotelNames.length > 0 || uncoveredChains.length > 0) {
       console.log(`🔗 [COMBINED] Total hotels before deduplication: ${allHotels.length}`);
 
-      const seenHotels = new Set<string>();
-      const deduplicatedHotels: LocalHotelData[] = [];
+      const dedupMap = new Map<string, LocalHotelData>();
 
       for (const hotel of allHotels) {
         const uniqueKey = hotel.hotel_id
           ? `id:${hotel.hotel_id}`
           : `name:${hotel.name.toLowerCase().trim()}`;
 
-        if (!seenHotels.has(uniqueKey)) {
-          seenHotels.add(uniqueKey);
-          deduplicatedHotels.push(hotel);
+        const existing = dedupMap.get(uniqueKey);
+        if (!existing) {
+          dedupMap.set(uniqueKey, hotel);
+          continue;
+        }
+
+        if (shouldReplaceDuplicateHotel(existing, hotel)) {
+          dedupMap.set(uniqueKey, hotel);
+          console.log(`🔁 [DEDUP] Replaced duplicate "${hotel.name}" with preferred broker ${extractBrokerCode(hotel) || 'N/A'}`);
         } else {
           console.log(`🗑️ [DEDUP] Removed duplicate: "${hotel.name}"`);
         }
       }
 
-      allHotels = deduplicatedHotels;
+      allHotels = Array.from(dedupMap.values());
       console.log(`✅ [COMBINED] Total hotels after deduplication: ${allHotels.length}`);
 
     } else if (hotelChains.length > 0) {
@@ -781,8 +820,7 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
       console.log(`🔗 [MULTI-CHAIN] Total hotels before deduplication: ${allHotels.length}`);
 
       // DEDUPLICATION: Remove duplicate hotels by hotel_id or name+city
-      const seenHotels = new Set<string>();
-      const deduplicatedHotels: LocalHotelData[] = [];
+      const dedupMap = new Map<string, LocalHotelData>();
 
       for (const hotel of allHotels) {
         // Use hotel_id if available, otherwise use name+city as unique key
@@ -790,15 +828,21 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
           ? `id:${hotel.hotel_id}`
           : `name:${hotel.name.toLowerCase().trim()}`;
 
-        if (!seenHotels.has(uniqueKey)) {
-          seenHotels.add(uniqueKey);
-          deduplicatedHotels.push(hotel);
+        const existing = dedupMap.get(uniqueKey);
+        if (!existing) {
+          dedupMap.set(uniqueKey, hotel);
+          continue;
+        }
+
+        if (shouldReplaceDuplicateHotel(existing, hotel)) {
+          dedupMap.set(uniqueKey, hotel);
+          console.log(`🔁 [DEDUP] Replaced duplicate: "${hotel.name}" (key: ${uniqueKey})`);
         } else {
           console.log(`🗑️ [DEDUP] Removed duplicate: "${hotel.name}" (key: ${uniqueKey})`);
         }
       }
 
-      allHotels = deduplicatedHotels;
+      allHotels = Array.from(dedupMap.values());
       console.log(`✅ [MULTI-CHAIN] Total hotels after deduplication: ${allHotels.length}`);
 
     } else if (hotelName) {

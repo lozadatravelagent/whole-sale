@@ -102,14 +102,14 @@ class EurovipsSOAPClient {
     const children = params.children || 0;
     const infants = params.infants || 0;
     const childrenAges: number[] = params.childrenAges || [];
-    // Create occupants XML - Age is required for CHD/INFOA to get correct pricing
+    // Create occupants XML - Age is required for child/infant pricing parity.
     let occupantsXml = '';
     for (let i = 0; i < adults; i++) {
       occupantsXml += '      <Occupants type="ADT" />\n';
     }
     for (let i = 0; i < children; i++) {
       const age = childrenAges[i] || 8;
-      occupantsXml += `      <Occupants type="CHD" Age="${age}" />\n`;
+      occupantsXml += `      <Occupants type="CNN" Age="${age}" />\n`;
     }
     for (let i = 0; i < infants; i++) {
       occupantsXml += '      <Occupants type="INFOA" Age="1" />\n';
@@ -223,11 +223,16 @@ ${occupantsXml}        </Ocuppancy>
       params.occupancies.forEach((occ) => {
         xml += `            <bud1:Ocuppancy OccupancyId="${occ.occupancyId}">\n`;
         occ.passengers.forEach((pax) => {
-          if (pax.type === 'ADT') {
+          // IMPORTANT parity fix:
+          // EUROVIPS hotel makeBudget expects child type CNN for correct pricing parity with portal.
+          // Some clients may still send CHD (legacy), so normalize CHD -> CNN server-side.
+          const normalizedType = pax.type === 'CHD' ? 'CNN' : pax.type;
+
+          if (normalizedType === 'ADT') {
             xml += `               <bud1:Occupants type="ADT"/>\n`;
           } else {
-            const age = pax.age || (pax.type === 'INF' ? 1 : 8);
-            xml += `               <bud1:Occupants type="${pax.type}" Age="${age}"/>\n`;
+            const age = pax.age || (normalizedType === 'INF' ? 1 : 8);
+            xml += `               <bud1:Occupants type="${normalizedType}" Age="${age}"/>\n`;
           }
         });
         xml += `            </bud1:Ocuppancy>\n`;
@@ -820,7 +825,7 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
             occupants.forEach(occupant => {
               const type = occupant.getAttribute('type');
               if (type === 'ADT') adults++;
-              else if (type === 'CHD') children++;
+              else if (type === 'CHD' || type === 'CNN') children++;
               else if (type === 'INFOA') infants++;
             });
             console.log(`🛏️ [OCCUPANCY] Fare ${fareType}: ${adults} adults, ${children} children, ${infants} infants`);

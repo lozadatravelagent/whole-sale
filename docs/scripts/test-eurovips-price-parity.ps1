@@ -7,6 +7,7 @@ param(
   [string]$HotelNameFilter = "CATALONIA",
   [string]$TargetHotelContains = "CATALONIA BAVARO BEACH GOLF",
   [string]$TargetRoomContains = "Privileged Deluxe Junior Suite",
+  [string]$PreferredBroker = "AP",
   [int]$Adults = 1,
   [int]$Children = 1,
   [int[]]$ChildrenAges = @(8),
@@ -90,7 +91,24 @@ if ($hotels.Count -eq 0) {
   throw "searchHotels returned 0 hotels"
 }
 
-$targetHotel = $hotels | Where-Object { $_.name -like "*$TargetHotelContains*" } | Select-Object -First 1
+$matchingHotels = @($hotels | Where-Object { $_.name -like "*$TargetHotelContains*" })
+if ($matchingHotels.Count -eq 0) {
+  throw "Target hotel not found. Contains filter: $TargetHotelContains"
+}
+
+$targetHotel = $matchingHotels |
+  Sort-Object `
+    @{ Expression = {
+      if ([string]::IsNullOrWhiteSpace($PreferredBroker)) { 1 }
+      elseif (($_.unique_id -as [string]) -like "$PreferredBroker|*") { 0 }
+      else { 1 }
+    }}, `
+    @{ Expression = {
+      $minPrice = (@($_.rooms) | Measure-Object -Property total_price -Minimum).Minimum
+      if ($null -eq $minPrice) { [double]::PositiveInfinity } else { [double]$minPrice }
+    }} |
+  Select-Object -First 1
+
 if (-not $targetHotel) {
   throw "Target hotel not found. Contains filter: $TargetHotelContains"
 }
@@ -104,6 +122,7 @@ if (-not $targetRoom) {
 }
 
 Write-Host "Hotel: $($targetHotel.name)"
+Write-Host "Preferred broker: $PreferredBroker"
 Write-Host "Room : $($targetRoom.description)"
 Write-Host "Child type  : $ChildType"
 Write-Host "fareId      : $($targetHotel.unique_id)"

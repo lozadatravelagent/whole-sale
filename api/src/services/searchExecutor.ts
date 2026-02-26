@@ -184,6 +184,37 @@ function normalizeChildrenAges(childrenAges: unknown, childrenCount: number): nu
   return normalized;
 }
 
+function getMinRoomPrice(hotel: any): number {
+  if (!Array.isArray(hotel?.rooms) || hotel.rooms.length === 0) return Number.POSITIVE_INFINITY;
+  return Math.min(...hotel.rooms.map((room: any) => room?.total_price || Number.POSITIVE_INFINITY));
+}
+
+function extractBrokerCode(hotel: any): string {
+  const uniqueId = typeof hotel?.unique_id === 'string' ? hotel.unique_id : '';
+  if (uniqueId.includes('|')) {
+    return uniqueId.split('|')[0].toUpperCase();
+  }
+
+  const firstRoom = Array.isArray(hotel?.rooms) ? hotel.rooms[0] : undefined;
+  const fareIdBroker = typeof firstRoom?.fare_id_broker === 'string' ? firstRoom.fare_id_broker : '';
+  if (fareIdBroker.includes('|')) {
+    return fareIdBroker.split('|')[0].toUpperCase();
+  }
+
+  return '';
+}
+
+function shouldReplaceDuplicateHotel(existing: any, candidate: any): boolean {
+  const existingBroker = extractBrokerCode(existing);
+  const candidateBroker = extractBrokerCode(candidate);
+
+  // EUROVIPS portal parity: prefer AP broker when duplicate hotel names appear.
+  if (existingBroker !== 'AP' && candidateBroker === 'AP') return true;
+  if (existingBroker === 'AP' && candidateBroker !== 'AP') return false;
+
+  return getMinRoomPrice(candidate) < getMinRoomPrice(existing);
+}
+
 // =============================================================================
 // EXECUTE SEARCH - Main entry point
 // =============================================================================
@@ -661,17 +692,26 @@ async function executeHotelSearch(
 
       console.log(`🔗 [MULTI-CHAIN] Total hotels before deduplication: ${allHotels.length}`);
 
-      // Deduplicate by hotel_id or name
-      const seen = new Set<string>();
-      allHotels = allHotels.filter(hotel => {
+      // Deduplicate by hotel_id or name, preferring AP broker for portal parity.
+      const dedupMap = new Map<string, any>();
+      for (const hotel of allHotels) {
         const key = hotel.hotel_id || hotel.name?.toLowerCase().trim();
-        if (!key || seen.has(key)) {
-          if (key) console.log(`🗑️ [DEDUP] Removed duplicate: "${hotel.name}"`);
-          return false;
+        if (!key) continue;
+
+        const existing = dedupMap.get(key);
+        if (!existing) {
+          dedupMap.set(key, hotel);
+          continue;
         }
-        seen.add(key);
-        return true;
-      });
+
+        if (shouldReplaceDuplicateHotel(existing, hotel)) {
+          dedupMap.set(key, hotel);
+          console.log(`🔁 [DEDUP] Replaced duplicate "${hotel.name}" with broker ${extractBrokerCode(hotel) || 'N/A'}`);
+        } else {
+          console.log(`🗑️ [DEDUP] Removed duplicate: "${hotel.name}"`);
+        }
+      }
+      allHotels = Array.from(dedupMap.values());
 
       console.log(`✅ [MULTI-CHAIN] After deduplication: ${allHotels.length} hotels`);
 

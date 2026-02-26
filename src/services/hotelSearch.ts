@@ -616,6 +616,7 @@ async function buildHotelSearchRequest(params: HotelSearchParams): Promise<strin
   const adults = params.adults || 1; // Default to 1 adult
   const children = params.children || 0;
   const infants = params.infants || 0;
+  const childrenAges = params.childrenAges || [];
 
   // Create occupants XML
   let occupantsXml = '';
@@ -623,7 +624,8 @@ async function buildHotelSearchRequest(params: HotelSearchParams): Promise<strin
     occupantsXml += '        <Occupants type="ADT" />\n';
   }
   for (let i = 0; i < children; i++) {
-    occupantsXml += '        <Occupants type="CHD" Age="8" />\n';
+    const age = childrenAges[i] || 8;
+    occupantsXml += `        <Occupants type="CNN" Age="${age}" />\n`;
   }
   for (let i = 0; i < infants; i++) {
     occupantsXml += '        <Occupants type="INFOA" Age="1" />\n';
@@ -1366,8 +1368,8 @@ export function buildPassengerList(
   }
 
   // Add children with ages.
-  // IMPORTANT: For HOTEL makeBudget parity with EUROVIPS portal, child type must be CNN.
-  // CHD is used in searchHotelFares occupancy, but CNN is required in makeBudget pricing.
+  // IMPORTANT: For HOTEL parity with EUROVIPS portal, child type must be CNN.
+  // We keep this consistent across both searchHotelFares occupancy and makeBudget passengers.
   for (let i = 0; i < children; i++) {
     const age = childrenAges?.[i] || 8; // Default age 8 if not specified
     passengers.push({ type: 'CNN', age });
