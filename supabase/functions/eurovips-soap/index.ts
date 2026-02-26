@@ -435,39 +435,43 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
       console.log('📋 [GET_BUDGET] Response length:', xmlResponse.length);
       console.log('📋 [GET_BUDGET] Response preview:', xmlResponse.substring(0, 1500));
 
-      // Extract Pricing block with Target=AGENCY
+      // Extract ALL Pricing blocks and log full breakdown
       let agencyTotal = 0;
       let commissionablePrice = 0;
+      let commissionAmount = 0;
 
       // Match Pricing blocks with or without namespace prefixes (e.g. <Pricing>, <bud1:Pricing>, <ns1:Pricing>)
       const pricingBlocks = xmlResponse.match(/<(?:\w+:)?Pricing>[\s\S]*?<\/(?:\w+:)?Pricing>/gi);
       if (pricingBlocks) {
+        console.log(`📋 [GET_BUDGET] Found ${pricingBlocks.length} Pricing blocks`);
         for (const block of pricingBlocks) {
           const targetMatch = block.match(/<(?:\w+:)?Target>([^<]+)<\/(?:\w+:)?Target>/i);
-          if (targetMatch && targetMatch[1] === 'AGENCY') {
-            const totalMatch = block.match(/<(?:\w+:)?Total>([\d.]+)<\/(?:\w+:)?Total>/i);
-            if (totalMatch) {
-              agencyTotal = parseFloat(totalMatch[1]);
-            }
-            const commMatch = block.match(/<(?:\w+:)?CommissionablePrice>([\d.]+)<\/(?:\w+:)?CommissionablePrice>/i);
-            if (commMatch) {
-              commissionablePrice = parseFloat(commMatch[1]);
-            }
-            break;
+          const totalMatch = block.match(/<(?:\w+:)?Total>([\d.]+)<\/(?:\w+:)?Total>/i);
+          const commPriceMatch = block.match(/<(?:\w+:)?CommissionablePrice>([\d.]+)<\/(?:\w+:)?CommissionablePrice>/i);
+          const commAmountMatch = block.match(/<(?:\w+:)?CommissionAmount>([\d.]+)<\/(?:\w+:)?CommissionAmount>/i);
+          const overrideCommMatch = block.match(/<(?:\w+:)?OverrideCommissionAmount>([\d.]+)<\/(?:\w+:)?OverrideCommissionAmount>/i);
+
+          const target = targetMatch ? targetMatch[1] : 'UNKNOWN';
+          console.log(`📋 [GET_BUDGET] Pricing [${target}]: Total=${totalMatch?.[1]}, CommissionablePrice=${commPriceMatch?.[1]}, CommissionAmount=${commAmountMatch?.[1]}, OverrideCommission=${overrideCommMatch?.[1]}`);
+
+          if (target === 'AGENCY') {
+            if (totalMatch) agencyTotal = parseFloat(totalMatch[1]);
+            if (commPriceMatch) commissionablePrice = parseFloat(commPriceMatch[1]);
+            if (commAmountMatch) commissionAmount = parseFloat(commAmountMatch[1]);
           }
         }
+      } else {
+        console.log('📋 [GET_BUDGET] No Pricing blocks found');
       }
 
       // Extract currency
       const currencyMatch = xmlResponse.match(/currency="([A-Z]{3})"/i);
       const currency = currencyMatch ? currencyMatch[1] : 'USD';
 
-      console.log('📋 [GET_BUDGET] commissionablePrice:', commissionablePrice);
-      console.log('📋 [GET_BUDGET] agencyTotal:', agencyTotal);
-      console.log('📋 [GET_BUDGET] currency:', currency);
+      console.log('📋 [GET_BUDGET] FINAL → commissionablePrice:', commissionablePrice, 'agencyTotal:', agencyTotal, 'commissionAmount:', commissionAmount, 'currency:', currency);
 
-      if (agencyTotal > 0) {
-        return { success: true, agencyTotal, commissionablePrice, currency };
+      if (commissionablePrice > 0) {
+        return { success: true, agencyTotal, commissionablePrice, commissionAmount, currency };
       }
 
       console.warn('⚠️ [GET_BUDGET] No Pricing with Target=AGENCY found, response preview:', xmlResponse.substring(0, 1500));
@@ -1337,25 +1341,25 @@ serve(async (req) => {
               if (!data.fareIdBroker) throw new Error('fareIdBroker is required for makeBudget');
               results = await client.makeBudget(data);
 
-              // Use agency net price: prefer from makeBudget Pricing, fallback to getBudget
+              // Get agency net price (Neto Agencia) from getBudget Pricing breakdown
+              // AGENCY Total = CommissionablePrice - Commission + Gastos + IVA = Neto Agencia
               if (results.success && results.budgetId) {
-                if (results.agencyTotal > 0) {
-                  // Pricing was in the makeBudget response itself — use it directly, skip getBudget
-                  console.log(`📋 [MAKE_BUDGET] agencyTotal from response: ${results.agencyTotal} (SubTotalAmount was: ${results.subTotalAmount})`);
-                  results.subTotalAmount = results.agencyTotal;
-                } else {
-                  // No Pricing in makeBudget response — try getBudget as fallback
-                  console.log('📋 [MAKE_BUDGET] No Pricing in makeBudget response, trying getBudget...');
-                  const budgetDetails = await client.getBudget(results.budgetId);
-                  if (budgetDetails.success && budgetDetails.agencyTotal > 0) {
-                    console.log(`📋 [MAKE_BUDGET] Using getBudget agency price: ${budgetDetails.agencyTotal} (was SubTotalAmount: ${results.subTotalAmount})`);
-                    results.subTotalAmount = budgetDetails.agencyTotal;
-                    if (budgetDetails.currency) {
-                      results.currency = budgetDetails.currency;
-                    }
-                  } else {
-                    console.warn('⚠️ [MAKE_BUDGET] getBudget also failed, keeping SubTotalAmount as fallback:', results.subTotalAmount);
+                console.log('📋 [MAKE_BUDGET] Calling getBudget for Pricing breakdown, budgetId:', results.budgetId);
+                const budgetDetails = await client.getBudget(results.budgetId);
+                if (budgetDetails.success && budgetDetails.commissionablePrice > 0) {
+                  console.log(`📋 [MAKE_BUDGET] PRICING → Neto Agencia (Total): ${budgetDetails.agencyTotal}, Importe Bruto (CommissionablePrice): ${budgetDetails.commissionablePrice}, Comisión: ${budgetDetails.commissionAmount}, makeBudget SubTotalAmount was: ${results.subTotalAmount}`);
+                  // Use AGENCY Total as the Neto Agencia (what the agency actually pays)
+                  results.subTotalAmount = budgetDetails.agencyTotal;
+                  results.agencyPricing = {
+                    netoAgencia: budgetDetails.agencyTotal,
+                    importeBruto: budgetDetails.commissionablePrice,
+                    comision: budgetDetails.commissionAmount || 0
+                  };
+                  if (budgetDetails.currency) {
+                    results.currency = budgetDetails.currency;
                   }
+                } else {
+                  console.warn('⚠️ [MAKE_BUDGET] getBudget failed, keeping SubTotalAmount as fallback:', results.subTotalAmount);
                 }
               }
               break;
