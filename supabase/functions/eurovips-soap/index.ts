@@ -422,12 +422,12 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
   async getBudget(budgetId: string) {
     console.log('📋 [GET_BUDGET] Requesting budget details for:', budgetId);
 
-    const soapBody = `<getBudgetRQ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-      <pos>
+    const soapBody = `<getBudgetRQ xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <pos xmlns="">
         <id>${this.username}</id>
         <clave>${this.password}</clave>
       </pos>
-      <rq>${budgetId}</rq>
+      <rq xmlns="">${budgetId}</rq>
     </getBudgetRQ>`;
 
     try {
