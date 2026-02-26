@@ -9,6 +9,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
+function normalizeCategory(category: string): number {
+  const match = category.match(/(\d)/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+function normalizeHotelName(name: string): string {
+  return name
+    .replace(/\s*-\s*(ALL INCLUSIVE|TODO INCLUIDO)\s*/i, '')
+    .trim()
+    .toLowerCase();
+}
+
 class EurovipsSOAPClient {
   baseUrl = 'https://eurovips.itraffic.com.ar/WSBridge_Euro/BridgeService.asmx';
   username = 'WSLOZADA';
@@ -646,19 +658,71 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
 
       console.log(`✅ [STREAMING] Processed ${processedCount} hotels from ${(xmlResponse.length / 1024 / 1024).toFixed(2)}MB XML`);
 
+      // Category-based deduplication: remove mislabeled broker entries
+      const beforeFilterCount = hotels.length;
+      const nameGroups = new Map();
+      for (const hotel of hotels) {
+        const normalizedName = normalizeHotelName(hotel.name);
+        if (!nameGroups.has(normalizedName)) {
+          nameGroups.set(normalizedName, []);
+        }
+        nameGroups.get(normalizedName).push(hotel);
+      }
+
+      const hotelsToRemove = new Set();
+      for (const [groupName, group] of nameGroups) {
+        if (group.length < 2) continue;
+
+        // Count category occurrences
+        const categoryCounts = new Map();
+        for (const h of group) {
+          const stars = normalizeCategory(h.category);
+          categoryCounts.set(stars, (categoryCounts.get(stars) || 0) + 1);
+        }
+
+        // Find majority category (most common star rating)
+        let majorityStars = 0;
+        let majorityCount = 0;
+        for (const [stars, count] of categoryCounts) {
+          if (count > majorityCount || (count === majorityCount && stars > 0)) {
+            majorityStars = stars;
+            majorityCount = count;
+          }
+        }
+
+        // Only filter if there's a clear majority (more than one category exists)
+        if (categoryCounts.size > 1 && majorityStars > 0) {
+          for (const h of group) {
+            const stars = normalizeCategory(h.category);
+            if (stars !== majorityStars && stars > 0) {
+              hotelsToRemove.add(h);
+              console.log(`⚠️ Removed broker ${h.unique_id} for "${h.name}": category ${h.category} (${stars}★) != majority ${majorityStars}★`);
+            }
+          }
+        }
+      }
+
+      const filteredHotels = hotelsToRemove.size > 0
+        ? hotels.filter(h => !hotelsToRemove.has(h))
+        : hotels;
+
+      if (hotelsToRemove.size > 0) {
+        console.log(`🔍 [CATEGORY FILTER] Removed ${hotelsToRemove.size} mislabeled entries (${beforeFilterCount} → ${filteredHotels.length})`);
+      }
+
       // Sort hotels by price (lowest first)
-      hotels.sort((a, b) => {
+      filteredHotels.sort((a, b) => {
         const priceA = Math.min(...a.rooms.map((room) => room.total_price));
         const priceB = Math.min(...b.rooms.map((room) => room.total_price));
         return priceA - priceB;
       });
 
-      console.log(`✅ Returning ${hotels.length} EUROVIPS hotels (sorted by price)`);
-      if (hotels.length > 0) {
-        console.log('💰 Cheapest hotel:', hotels[0].name, '-', Math.min(...hotels[0].rooms.map(r => r.total_price)));
+      console.log(`✅ Returning ${filteredHotels.length} EUROVIPS hotels (sorted by price)`);
+      if (filteredHotels.length > 0) {
+        console.log('💰 Cheapest hotel:', filteredHotels[0].name, '-', Math.min(...filteredHotels[0].rooms.map(r => r.total_price)));
       }
 
-      return hotels;
+      return filteredHotels;
     } catch (error) {
       console.error('❌ Error parsing hotel search response:', error);
       return [];
