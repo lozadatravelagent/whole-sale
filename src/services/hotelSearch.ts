@@ -601,7 +601,7 @@ async function buildHotelSearchRequest(params: HotelSearchParams): Promise<strin
     occupantsXml += '        <Occupants type="CHD" Age="8" />\n';
   }
   for (let i = 0; i < infants; i++) {
-    occupantsXml += '        <Occupants type="INF" Age="1" />\n';
+    occupantsXml += '        <Occupants type="INFOA" Age="1" />\n';
   }
 
   // Build request with working format discovered from testing

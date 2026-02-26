@@ -216,7 +216,7 @@ ${occupantsXml}        </Ocuppancy>
             xml += `               <bud1:Occupants type="ADT"/>\n`;
           } else {
             const age = pax.age || (pax.type === 'INF' ? 1 : 8);
-            xml += `               <bud1:Occupants type="${pax.type === 'CHD' ? 'CNN' : 'INF'}" Age="${age}"/>\n`;
+            xml += `               <bud1:Occupants type="${pax.type}" Age="${age}"/>\n`;
           }
         });
         xml += `            </bud1:Ocuppancy>\n`;
