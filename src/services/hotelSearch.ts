@@ -512,7 +512,17 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
         }
 
         if (result.success) {
-          return result.results;
+          const searchAdults = params.adults || 1;
+          const searchChildren = params.children || 0;
+          const searchChildrenAges = params.childrenAges || [];
+          const searchInfants = params.infants || 0;
+          return (result.results || []).map((hotel: any) => ({
+            ...hotel,
+            search_adults: searchAdults,
+            search_children: searchChildren,
+            search_childrenAges: searchChildrenAges,
+            search_infants: searchInfants,
+          }));
         } else {
           console.error('Hotels Edge Function error:', result.error);
           return [];
@@ -556,7 +566,17 @@ export async function searchHotelFares(params: HotelSearchParams): Promise<Hotel
       // Parse XML response
       const hotels = parseHotelSearchResponse(xmlResponse, params);
 
-      return hotels;
+      const searchAdults = params.adults || 1;
+      const searchChildren = params.children || 0;
+      const searchChildrenAges = params.childrenAges || [];
+      const searchInfants = params.infants || 0;
+      return hotels.map((hotel: any) => ({
+        ...hotel,
+        search_adults: searchAdults,
+        search_children: searchChildren,
+        search_childrenAges: searchChildrenAges,
+        search_infants: searchInfants,
+      }));
     }
   } catch (error) {
     console.error('❌ Error searching hotels:', error);

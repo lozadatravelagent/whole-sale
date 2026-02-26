@@ -90,10 +90,10 @@ export function HotelSelector({
 
     try {
       // 7. Build passenger list
-      const adults = room.adults || hotel.search_adults || 1;
-      const children = room.children || hotel.search_children || 0;
-      const infants = room.infants || 0;
-      const passengers = buildPassengerList(adults, children, infants);
+      const adults = hotel.search_adults ?? (room.adults > 0 ? room.adults : 1);
+      const children = hotel.search_children ?? (room.children > 0 ? room.children : 0);
+      const infants = hotel.search_infants ?? (room.infants > 0 ? room.infants : 0);
+      const passengers = buildPassengerList(adults, children, infants, hotel.search_childrenAges);
 
       // 8. Call makeBudget
       // Use xml_occupancy_id (from EUROVIPS XML) for makeBudget, fallback to occupancy_id
