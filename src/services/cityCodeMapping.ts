@@ -7,6 +7,15 @@ interface CityRecord {
   countryName: string;
 }
 
+// Common aliases in Spanish/English to avoid ambiguous partial matches
+// (e.g. "Nueva York" incorrectly matching YORK/QQY).
+const CITY_ALIASES: Record<string, string> = {
+  'nueva york': 'NYC',
+  'new york': 'NYC',
+  'new york city': 'NYC',
+  'nyc': 'NYC',
+};
+
 /**
  * Normalize string for comparison (lowercase, no accents, no special chars)
  */
@@ -70,6 +79,18 @@ export async function getCityCode(
   const normalizedCity = normalizeString(cityName);
 
   console.log(`🔍 [CITY LOOKUP] Searching for: "${cityName}" (normalized: "${normalizedCity}")`);
+
+  // 0. ALIAS MATCH: resolve known aliases before generic matching
+  const aliasCode = CITY_ALIASES[normalizedCity];
+  if (aliasCode) {
+    const aliasRecord = CITY_INDEX.get(aliasCode.toLowerCase());
+    if (aliasRecord) {
+      console.log(`✅ [ALIAS MATCH] "${cityName}" → ${aliasRecord.cityCode} (${aliasRecord.cityName})`);
+      return aliasRecord.cityCode;
+    }
+    console.log(`✅ [ALIAS MATCH] "${cityName}" → ${aliasCode}`);
+    return aliasCode;
+  }
 
   // 1. EXACT MATCH: O(1) lookup
   const exactMatch = CITY_INDEX.get(normalizedCity);

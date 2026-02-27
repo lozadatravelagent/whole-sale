@@ -290,6 +290,8 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     let flights = await transformStarlingResults(flightData, parsed);
     let broadenedSearchRetry = false;
     let forcedResultFallback = false;
+    let checkedLuggageRelaxedFallback = false;
+    let checkedLuggageRelaxedMode: 'partial_included' | 'all_relaxed' | null = null;
 
     // Hard gate: if initial search returns no flights, retry once with broader stops criteria.
     const shouldRetryBroadenedSearch =
@@ -484,12 +486,51 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       console.log(`🕐 [TIME FILTER] After time filtering: ${flights.length} flights remain`);
     }
 
+    // If strict checked-baggage requirement removes everything, relax ONLY that filter
+    // while preserving the rest of the constraints (route/dates/airline/stops/layover/time).
+    if (flights.length === 0 && parsed?.flights?.luggage === 'checked') {
+      console.log('🧳 [FLIGHT SEARCH] No flights left with checked baggage on all legs; retrying with relaxed baggage filter');
+
+      const relaxedBaggageParsed: ParsedTravelRequest = {
+        ...parsed,
+        flights: parsed.flights
+          ? {
+            ...parsed.flights,
+            luggage: undefined,
+          }
+          : parsed.flights,
+      };
+
+      const relaxedBaggageFlights = await transformStarlingResults(flightData, relaxedBaggageParsed);
+      const flightsWithPartialChecked = relaxedBaggageFlights.filter((flight: any) =>
+        Array.isArray(flight?.baggageAnalysis) &&
+        flight.baggageAnalysis.some((leg: any) => (leg?.baggageQuantity || 0) > 0)
+      );
+
+      const fallbackFlights = flightsWithPartialChecked.length > 0
+        ? flightsWithPartialChecked
+        : relaxedBaggageFlights;
+
+      if (fallbackFlights.length > 0) {
+        flights = fallbackFlights;
+        checkedLuggageRelaxedFallback = true;
+        checkedLuggageRelaxedMode = flightsWithPartialChecked.length > 0
+          ? 'partial_included'
+          : 'all_relaxed';
+
+        console.log(`🧳 [FLIGHT SEARCH] Relaxed baggage fallback applied: ${flights.length} flights (${checkedLuggageRelaxedMode})`);
+      }
+    }
+
     // If user didn't specify stops, show mixed results (no filtering). Optionally we could prefer direct-first ordering later.
     console.log('✅ [FLIGHT SEARCH] Step 5: Flight data transformed successfully');
     console.log('✈️ Flights found:', flights.length);
 
     console.log('📝 [FLIGHT SEARCH] Step 6: Formatting response text');
     const formattedResponse = formatFlightResponse(flights);
+    const responseWithWarnings = checkedLuggageRelaxedFallback
+      ? `⚠️ **Equipaje de bodega**\n\nNo encontré opciones con equipaje de bodega incluido en todos los tramos. Te muestro alternativas que cumplen el resto de tus filtros para que puedas agregar bodega en la tarifa.\n\n${formattedResponse}`
+      : formattedResponse;
 
     // 📊 BUILD EXTENDED METADATA for API responses
     const lightFareAirlines = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
@@ -512,6 +553,10 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       }),
       ...(forcedResultFallback && {
         forced_result_fallback: true
+      }),
+      ...(checkedLuggageRelaxedFallback && {
+        checked_luggage_relaxed_fallback: true,
+        checked_luggage_relaxed_mode: checkedLuggageRelaxedMode
       })
     };
 
@@ -536,7 +581,7 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     const flightsForDb = flights.slice(0, MAX_FLIGHTS_FOR_DB);
 
     const result = {
-      response: formattedResponse,
+      response: responseWithWarnings,
       data: {
         combinedData: {
           flights: flightsForDb,

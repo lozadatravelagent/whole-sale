@@ -291,24 +291,50 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
 
 
     // Analyze baggage info across ALL segments to handle mixed baggage allowances
+    const parseBaggageQuantity = (baggageInfo: string): number => {
+      const baggageMatch = baggageInfo.match(/(\d+)PC|(\d+)KG/);
+      return baggageMatch ? parseInt(baggageMatch[1] || baggageMatch[2]) : 0;
+    };
+
     const baggageAnalysis = legs.map((leg, legIndex) => {
       const legSegments = leg.Options?.[0]?.Segments || [];
-      const legBaggageInfo = legSegments[0]?.Baggage || '';
-      const legCarryOnInfo = legSegments[0]?.CarryOnBagInfo;
       const legAirlineCode = legSegments[0]?.Airline || 'N/A';
 
-      // Parse baggage allowance for this leg
-      const baggageMatch = legBaggageInfo.match(/(\d+)PC|(\d+)KG/);
-      const baggageQuantity = baggageMatch ? parseInt(baggageMatch[1] || baggageMatch[2]) : 0;
+      const segmentBaggageInfo = legSegments
+        .map((segment: any) => segment?.Baggage || '')
+        .filter(Boolean);
+      const baggageQuantity = legSegments.reduce((max: number, segment: any) => {
+        const quantity = parseBaggageQuantity(segment?.Baggage || '');
+        return Math.max(max, quantity);
+      }, 0);
+
+      const carryOnQuantityNumber = legSegments.reduce((max: number, segment: any) => {
+        const quantity = parseInt(segment?.CarryOnBagInfo?.Quantity || segment?.carryOnBagInfo?.quantity || '0');
+        return Math.max(max, Number.isNaN(quantity) ? 0 : quantity);
+      }, 0);
+
+      const carryOnWeight =
+        legSegments.find((segment: any) => segment?.CarryOnBagInfo?.Weight || segment?.carryOnBagInfo?.weight)
+          ?.CarryOnBagInfo?.Weight ||
+        legSegments.find((segment: any) => segment?.carryOnBagInfo?.weight)
+          ?.carryOnBagInfo?.weight ||
+        null;
+
+      const carryOnDimensions =
+        legSegments.find((segment: any) => segment?.CarryOnBagInfo?.Dimensions || segment?.carryOnBagInfo?.dimensions)
+          ?.CarryOnBagInfo?.Dimensions ||
+        legSegments.find((segment: any) => segment?.carryOnBagInfo?.dimensions)
+          ?.carryOnBagInfo?.dimensions ||
+        null;
 
       return {
         legNumber: legIndex + 1,
         airlineCode: legAirlineCode,
-        baggageInfo: legBaggageInfo,
+        baggageInfo: segmentBaggageInfo[0] || '',
         baggageQuantity,
-        carryOnQuantity: legCarryOnInfo?.Quantity || legSegments[0]?.carryOnBagInfo?.quantity || '0',
-        carryOnWeight: legCarryOnInfo?.Weight || legSegments[0]?.carryOnBagInfo?.weight || null,
-        carryOnDimensions: legCarryOnInfo?.Dimensions || legSegments[0]?.carryOnBagInfo?.dimensions || null
+        carryOnQuantity: String(carryOnQuantityNumber),
+        carryOnWeight,
+        carryOnDimensions
       };
     });
 
