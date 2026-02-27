@@ -4,6 +4,7 @@
  * Determina qué acción tomar con el contexto después de cada búsqueda
  * y genera sugerencias de follow-up para el tercero.
  */
+import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSegments.ts';
 
 export interface ParsedRequest {
   type: 'flights' | 'hotels' | 'combined' | 'packages' | 'services' | 'itinerary' | 'general' | 'missing_info_request';
@@ -171,18 +172,21 @@ function buildPartialContext(parsedRequest: ParsedRequest): any {
  * Extract relevant flight context for follow-up requests
  */
 function extractFlightContext(flightData: any): any {
+  const normalizedFlight = normalizeFlightRequest(flightData);
   return {
-    origin: flightData.origin,
-    destination: flightData.destination,
-    departure_date: flightData.departureDate || flightData.departure_date,
-    return_date: flightData.returnDate || flightData.return_date,
-    adults: flightData.adults,
-    children: flightData.children || 0,
+    origin: normalizedFlight?.origin,
+    destination: normalizedFlight?.destination,
+    departure_date: normalizedFlight?.departureDate || normalizedFlight?.departure_date,
+    return_date: normalizedFlight?.returnDate || normalizedFlight?.return_date,
+    trip_type: normalizedFlight?.tripType,
+    segments: normalizedFlight?.segments,
+    adults: normalizedFlight?.adults,
+    children: normalizedFlight?.children || 0,
     // Optional fields (preserve if exist)
-    ...(flightData.luggage && { luggage: flightData.luggage }),
-    ...(flightData.stops && { stops: flightData.stops }),
-    ...(flightData.preferredAirline && { preferredAirline: flightData.preferredAirline }),
-    ...(flightData.maxLayoverHours && { maxLayoverHours: flightData.maxLayoverHours })
+    ...(normalizedFlight?.luggage && { luggage: normalizedFlight.luggage }),
+    ...(normalizedFlight?.stops && { stops: normalizedFlight.stops }),
+    ...(normalizedFlight?.preferredAirline && { preferredAirline: normalizedFlight.preferredAirline }),
+    ...(normalizedFlight?.maxLayoverHours && { maxLayoverHours: normalizedFlight.maxLayoverHours })
   };
 }
 
@@ -226,10 +230,19 @@ export function shouldClearContext(
   if (
     parsedRequest.type === 'flights' &&
     previousContext.flights &&
-    (
-      parsedRequest.flights?.origin !== previousContext.flights.origin ||
-      parsedRequest.flights?.destination !== previousContext.flights.destination
-    )
+    (() => {
+      const currentSegments = getNormalizedFlightSegments(parsedRequest.flights);
+      const previousSegments = getNormalizedFlightSegments(previousContext.flights);
+
+      if (currentSegments.length > 0 || previousSegments.length > 0) {
+        return JSON.stringify(currentSegments) !== JSON.stringify(previousSegments);
+      }
+
+      return (
+        parsedRequest.flights?.origin !== previousContext.flights.origin ||
+        parsedRequest.flights?.destination !== previousContext.flights.destination
+      );
+    })()
   ) {
     return true;
   }

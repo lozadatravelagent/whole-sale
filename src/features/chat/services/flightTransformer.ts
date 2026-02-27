@@ -1,4 +1,5 @@
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import { inferTripTypeFromSegments } from '@/services/flightSegments';
 import type { FlightData } from '../types/chat';
 import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime, getAirlineNameFromCode, getAirlineCodeFromName } from '../utils/flightHelpers';
 import { translateFlightInfo, translateBaggage } from '../utils/translations';
@@ -255,9 +256,23 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
 
 
 
-    // For return date, check if there's a second leg
+    const requestedTripType = parsedRequest?.flights?.tripType || inferTripTypeFromSegments(
+      legs.map((leg: any) => {
+        const option = leg.Options?.[0] || {};
+        const segments = option.Segments || [];
+        const first = segments[0] || {};
+        const last = segments[segments.length - 1] || first;
+        return {
+          origin: first.Departure?.AirportCode || '',
+          destination: last.Arrival?.AirportCode || '',
+          departureDate: first.Departure?.Date || ''
+        };
+      })
+    );
+
+    // For return date, check if there's a second leg on true round trips only
     let returnDate = null;
-    if (legs.length > 1) {
+    if (requestedTripType === 'round_trip' && legs.length > 1) {
       const secondLeg = legs[1];
       const secondOption = secondLeg.Options?.[0] || {};
       const secondSegment = secondOption.Segments?.[0] || {};
@@ -391,6 +406,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
       arrival_date: lastSegment.Arrival?.Date || '',
       arrival_time: lastSegment.Arrival?.Time || '',
       return_date: returnDate,
+      trip_type: requestedTripType,
       duration: {
         total: firstOption.OptionDuration || 0,
         formatted: formatDuration(firstOption.OptionDuration || 0)

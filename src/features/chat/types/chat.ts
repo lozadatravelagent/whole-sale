@@ -32,6 +32,7 @@ export interface FlightData {
   arrival_date?: string;
   arrival_time?: string;
   return_date?: string;
+  trip_type?: 'one_way' | 'round_trip' | 'multi_city';
   duration?: {
     total: number;
     formatted: string;

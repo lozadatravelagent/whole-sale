@@ -34,6 +34,7 @@ import {
   type SearchResults,
   type ContextManagement
 } from '../_shared/contextManagement.ts';
+import { normalizeParsedFlightRequest } from '../_shared/flightSegments.ts';
 
 import {
   buildExtendedMetadata,
@@ -369,6 +370,8 @@ serve(async (req) => {
         confidence: parsed.confidence || 0.8
       };
 
+      parsedRequest = normalizeParsedFlightRequest(parsedRequest);
+
       console.log('[API_SEARCH] AI parsing result:', parsedRequest.type);
 
       // =========================================================================
@@ -425,6 +428,7 @@ serve(async (req) => {
         parsedRequest.hotels = undefined;
       }
 
+      parsedRequest = normalizeParsedFlightRequest(parsedRequest);
       console.log('[API_SEARCH] Final parsed type after post-processing:', parsedRequest.type);
     } else {
       // Structured mode - use provided data directly
@@ -439,6 +443,7 @@ serve(async (req) => {
         services: requestBody.services,
         confidence: 1.0
       };
+      parsedRequest = normalizeParsedFlightRequest(parsedRequest);
     }
 
     // =========================================================================

@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import type React from 'react';
 import { parseMessageWithAI, combineWithPreviousRequest, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import { normalizeFlightRequest } from '@/services/flightSegments';
 import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery, handleItineraryRequest } from '../services/searchHandlers';
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
@@ -873,19 +874,24 @@ const useMessageHandler = (
           const contextStateForFailedSearch: ContextState = {
             lastSearch: {
               requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
-              flightsParams: parsedRequest.flights ? {
-                origin: parsedRequest.flights.origin,
-                destination: parsedRequest.flights.destination,
-                departureDate: parsedRequest.flights.departureDate,
-                returnDate: parsedRequest.flights.returnDate,
-                adults: parsedRequest.flights.adults || 0,
-                children: parsedRequest.flights.children || 0,
-                infants: (parsedRequest.flights as any).infants || 0,
-                stops: parsedRequest.flights.stops,
-                luggage: parsedRequest.flights.luggage,
-                preferredAirline: parsedRequest.flights.preferredAirline,
-                maxLayoverHours: parsedRequest.flights.maxLayoverHours
-              } : undefined
+              flightsParams: parsedRequest.flights ? (() => {
+                const normalizedFlight = normalizeFlightRequest(parsedRequest.flights);
+                return {
+                  origin: normalizedFlight?.origin || '',
+                  destination: normalizedFlight?.destination || '',
+                  departureDate: normalizedFlight?.departureDate || '',
+                  returnDate: normalizedFlight?.returnDate,
+                  tripType: normalizedFlight?.tripType,
+                  segments: normalizedFlight?.segments,
+                  adults: normalizedFlight?.adults || 0,
+                  children: normalizedFlight?.children || 0,
+                  infants: normalizedFlight?.infants || 0,
+                  stops: normalizedFlight?.stops,
+                  luggage: normalizedFlight?.luggage,
+                  preferredAirline: normalizedFlight?.preferredAirline,
+                  maxLayoverHours: normalizedFlight?.maxLayoverHours
+                };
+              })() : undefined
             },
             turnNumber: (persistentState?.turnNumber || 0) + 1
           };
@@ -1251,19 +1257,24 @@ const useMessageHandler = (
               timestamp: new Date().toISOString(),
               // Flight params (if present)
               ...(parsedRequest.flights && {
-                flightsParams: {
-                  origin: parsedRequest.flights.origin,
-                  destination: parsedRequest.flights.destination,
-                  departureDate: actualDepartureDate || parsedRequest.flights.departureDate,
-                  returnDate: actualReturnDate || parsedRequest.flights.returnDate,
-                  adults: parsedRequest.flights.adults || 1,
-                  children: parsedRequest.flights.children || 0,
-                  infants: parsedRequest.flights.infants || 0,
-                  stops: parsedRequest.flights.stops,
-                  preferredAirline: parsedRequest.flights.preferredAirline,
-                  luggage: parsedRequest.flights.luggage,
-                  maxLayoverHours: parsedRequest.flights.maxLayoverHours
-                }
+                flightsParams: (() => {
+                  const normalizedFlight = normalizeFlightRequest(parsedRequest.flights);
+                  return {
+                    origin: normalizedFlight?.origin || '',
+                    destination: normalizedFlight?.destination || '',
+                    departureDate: actualDepartureDate || normalizedFlight?.departureDate || '',
+                    returnDate: actualReturnDate || normalizedFlight?.returnDate,
+                    tripType: normalizedFlight?.tripType,
+                    segments: normalizedFlight?.segments,
+                    adults: normalizedFlight?.adults || 1,
+                    children: normalizedFlight?.children || 0,
+                    infants: normalizedFlight?.infants || 0,
+                    stops: normalizedFlight?.stops,
+                    preferredAirline: normalizedFlight?.preferredAirline,
+                    luggage: normalizedFlight?.luggage,
+                    maxLayoverHours: normalizedFlight?.maxLayoverHours
+                  };
+                })()
               }),
               // Hotel params (if present)
               ...(parsedRequest.hotels && {

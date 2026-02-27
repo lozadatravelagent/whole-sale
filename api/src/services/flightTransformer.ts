@@ -12,6 +12,7 @@
 
 import { formatDuration, getTaxDescription, getAirlineNameFromCode } from './flightHelpers.js';
 import { analyzeBaggagePerLeg, getBaggageType } from './baggageUtils.js';
+import { inferTripTypeFromSegments, type FlightTripType } from './flightSegments.js';
 
 // =============================================================================
 // FLIGHT ANALYSIS TYPES
@@ -172,6 +173,7 @@ export interface TransformOptions {
     children?: number;
     infants?: number;
     baseCurrency?: string;
+    tripType?: FlightTripType;
 }
 
 /**
@@ -184,9 +186,23 @@ export function transformFare(fare: any, index: number, tvcData: any, options: T
     const firstSegment = firstOption.Segments?.[0] || {};
     const lastSegment = firstOption.Segments?.[firstOption.Segments?.length - 1] || firstSegment;
 
-    // Return date from second leg if exists
+    const requestedTripType = options.tripType || inferTripTypeFromSegments(
+        legs.map((leg: any) => {
+            const option = leg.Options?.[0] || {};
+            const segments = option.Segments || [];
+            const first = segments[0] || {};
+            const last = segments[segments.length - 1] || first;
+            return {
+                origin: first.Departure?.AirportCode || '',
+                destination: last.Arrival?.AirportCode || '',
+                departureDate: first.Departure?.Date || ''
+            };
+        })
+    );
+
+    // Return date from second leg only for true round-trip itineraries
     let returnDate = null;
-    if (legs.length > 1) {
+    if (requestedTripType === 'round_trip' && legs.length > 1) {
         const secondLeg = legs[1];
         const secondOption = secondLeg.Options?.[0] || {};
         const secondSegment = secondOption.Segments?.[0] || {};
@@ -270,6 +286,7 @@ export function transformFare(fare: any, index: number, tvcData: any, options: T
         arrival_date: lastSegment.Arrival?.Date || '',
         arrival_time: lastSegment.Arrival?.Time || '',
         return_date: returnDate,
+        trip_type: requestedTripType,
         duration: {
             total: firstOption.OptionDuration || 0,
             formatted: formatDuration(firstOption.OptionDuration || 0)

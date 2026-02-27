@@ -32,8 +32,10 @@ export const formatFlightResponse = (flights: FlightData[]) => {
     // Información de fechas y horarios
     response += `🛫 **Salida:** ${flight.departure_date} ${flight.departure_time || ''}\n`;
     response += `🛬 **Llegada:** ${flight.arrival_date} ${flight.arrival_time || ''}\n`;
-    if (flight.return_date) {
+    if (flight.return_date && flight.trip_type !== 'multi_city') {
       response += `🔄 **Regreso:** ${flight.return_date}\n`;
+    } else if (flight.trip_type === 'multi_city') {
+      response += `🗺️ **Tipo:** Multi-city (${flight.legs?.length || 0} tramos)\n`;
     }
 
     // Duración y escalas

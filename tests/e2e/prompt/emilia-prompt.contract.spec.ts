@@ -4,6 +4,7 @@ import {
   PROMPT_CONTRACT_SNIPPETS,
   PROMPT_VERSION,
 } from '../../../supabase/functions/ai-message-parser/prompt';
+import { normalizeFlightRequest } from '../../../src/services/flightSegments';
 
 test.describe('Emilia Prompt Contract', () => {
   test('@prompt-smoke should expose a versioned prompt builder', async () => {
@@ -35,5 +36,41 @@ test.describe('Emilia Prompt Contract', () => {
     expect(prompt).toContain('CONVERSATION HISTORY:');
     expect(prompt).toContain('PREVIOUS CONTEXT:');
   });
-});
 
+  test('@prompt-smoke should document multi-city segments explicitly', async () => {
+    const prompt = buildSystemPrompt({
+      currentDate: '2026-02-27',
+    });
+
+    expect(prompt).toContain('MULTI-CITY FLIGHT SEGMENTS');
+    expect(prompt).toContain('"tripType": "multi_city"');
+    expect(prompt).toContain('"segments"');
+  });
+
+  test('@prompt-smoke should normalize multi-city flight requests without forcing returnDate', async () => {
+    const normalized = normalizeFlightRequest({
+      origin: 'Buenos Aires',
+      destination: 'Madrid',
+      departureDate: '2026-03-02',
+      returnDate: '2026-03-15',
+      segments: [
+        {
+          origin: 'Buenos Aires',
+          destination: 'Madrid',
+          departureDate: '2026-03-02',
+        },
+        {
+          origin: 'Roma',
+          destination: 'Buenos Aires',
+          departureDate: '2026-03-15',
+        },
+      ],
+      adults: 1,
+      children: 0,
+    });
+
+    expect(normalized.tripType).toBe('multi_city');
+    expect(normalized.returnDate).toBeUndefined();
+    expect(normalized.segments).toHaveLength(2);
+  });
+});

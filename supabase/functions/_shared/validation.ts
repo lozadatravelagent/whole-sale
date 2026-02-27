@@ -6,6 +6,7 @@
  */
 
 import type { ParsedRequest } from './contextManagement.ts';
+import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSegments.ts';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -60,7 +61,9 @@ export function validateParsedRequest(parsed: ParsedRequest): ValidationResult {
  * OPTIONAL: returnDate, luggage, stops, preferredAirline, maxLayoverHours
  */
 function validateFlightRequiredFields(parsed: ParsedRequest): ValidationResult {
-  if (!parsed.flights) {
+  const normalizedFlights = normalizeFlightRequest(parsed.flights);
+
+  if (!normalizedFlights) {
     return {
       isValid: false,
       message: 'Para buscar vuelos necesito más información',
@@ -87,8 +90,8 @@ function validateFlightRequiredFields(parsed: ParsedRequest): ValidationResult {
   const missing: Array<{ field: string; description: string; examples: string[] }> = [];
 
   // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants traveling without adults
-  const hasOnlyMinors = (!parsed.flights.adults || parsed.flights.adults === 0) &&
-                        (((parsed.flights.children ?? 0) > 0) || ((parsed.flights.infants ?? 0) > 0));
+  const hasOnlyMinors = (!normalizedFlights.adults || normalizedFlights.adults === 0) &&
+                        (((normalizedFlights.children ?? 0) > 0) || ((normalizedFlights.infants ?? 0) > 0));
 
   if (hasOnlyMinors) {
     return {
@@ -104,32 +107,77 @@ function validateFlightRequiredFields(parsed: ParsedRequest): ValidationResult {
     };
   }
 
-  if (!parsed.flights.origin) {
-    missing.push({
-      field: 'origin',
-      description: '¿Desde dónde quieres viajar?',
-      examples: ['Buenos Aires', 'Ezeiza', 'EZE']
-    });
+  const segments = getNormalizedFlightSegments(normalizedFlights);
+  if (segments.length > 3) {
+    return {
+      isValid: false,
+      message: 'Para vuelos multi-city puedo procesar hasta 3 tramos por búsqueda',
+      missingFields: [
+        {
+          field: 'segments',
+          description: 'Reduce la búsqueda a un máximo de 3 tramos',
+          examples: ['Buenos Aires a Madrid, Madrid a Roma, Roma a Buenos Aires']
+        }
+      ]
+    };
   }
 
-  if (!parsed.flights.destination) {
-    missing.push({
-      field: 'destination',
-      description: '¿A dónde quieres viajar?',
-      examples: ['Miami', 'Madrid', 'Cancún']
-    });
-  }
+  if (segments.length > 0) {
+    segments.forEach((segment, index) => {
+      const segmentNumber = index + 1;
 
-  if (!parsed.flights.departureDate) {
-    missing.push({
-      field: 'departureDate',
-      description: '¿Cuándo quieres viajar?',
-      examples: ['15 de diciembre', '2025-12-15', 'próximo mes']
+      if (!segment.origin) {
+        missing.push({
+          field: `segment_${segmentNumber}_origin`,
+          description: `¿Desde dónde sale el tramo ${segmentNumber}?`,
+          examples: ['Buenos Aires', 'Roma', 'Madrid']
+        });
+      }
+
+      if (!segment.destination) {
+        missing.push({
+          field: `segment_${segmentNumber}_destination`,
+          description: `¿A dónde llega el tramo ${segmentNumber}?`,
+          examples: ['Madrid', 'Buenos Aires', 'Roma']
+        });
+      }
+
+      if (!segment.departureDate) {
+        missing.push({
+          field: `segment_${segmentNumber}_departureDate`,
+          description: `¿Cuándo sale el tramo ${segmentNumber}?`,
+          examples: ['15 de diciembre', '2025-12-15', 'próximo mes']
+        });
+      }
     });
+  } else {
+    if (!normalizedFlights.origin) {
+      missing.push({
+        field: 'origin',
+        description: '¿Desde dónde quieres viajar?',
+        examples: ['Buenos Aires', 'Ezeiza', 'EZE']
+      });
+    }
+
+    if (!normalizedFlights.destination) {
+      missing.push({
+        field: 'destination',
+        description: '¿A dónde quieres viajar?',
+        examples: ['Miami', 'Madrid', 'Cancún']
+      });
+    }
+
+    if (!normalizedFlights.departureDate) {
+      missing.push({
+        field: 'departureDate',
+        description: '¿Cuándo quieres viajar?',
+        examples: ['15 de diciembre', '2025-12-15', 'próximo mes']
+      });
+    }
   }
 
   // Adults defaults to 1 if not specified, so only validate if explicitly 0 or missing
-  if (!parsed.flights.adults || parsed.flights.adults < 1) {
+  if (!normalizedFlights.adults || normalizedFlights.adults < 1) {
     missing.push({
       field: 'adults',
       description: '¿Cuántos pasajeros viajan?',

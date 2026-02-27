@@ -16,6 +16,7 @@ import {
   getLightFareAirlines
 } from './advancedFilters.ts';
 import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.ts';
+import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSegments.ts';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -201,65 +202,59 @@ async function executeFlightSearch(
   }
 
   const { flights } = parsedRequest;
+  const normalizedFlights = normalizeFlightRequest(flights);
+  const flightSegments = getNormalizedFlightSegments(normalizedFlights);
 
   // ✅ REGLA DE NEGOCIO: Convertir nombres de ciudades a códigos IATA
   // Usa la misma lógica que el chat interno (src/services/cityCodeService.ts)
   // Buenos Aires: EZE para vuelos internacionales, AEP para domésticos
   console.log('[FLIGHT_SEARCH] Converting city names to IATA codes...');
-  console.log(`   Origin: "${flights.origin}"`);
-  console.log(`   Destination: "${flights.destination}"`);
-
-  const { originCode, destinationCode } = resolveFlightCodes(
-    flights.origin,
-    flights.destination
-  );
-
-  console.log('[FLIGHT_SEARCH] IATA codes resolved:');
-  console.log(`   "${flights.origin}" → ${originCode}`);
-  console.log(`   "${flights.destination}" → ${destinationCode}`);
+  console.log(`   Trip type: "${normalizedFlights?.tripType || 'one_way'}"`);
 
   // Build Starling API request - passengers
   const passengers: Array<{ Count: number; Type: string }> = [];
 
   // Add adults
-  if ((flights.adults || 1) > 0) {
+  if ((normalizedFlights?.adults || 1) > 0) {
     passengers.push({
-      Count: flights.adults || 1,
+      Count: normalizedFlights.adults || 1,
       Type: 'ADT'
     });
   }
 
   // Add children if present
-  if (flights.children && flights.children > 0) {
+  if (normalizedFlights?.children && normalizedFlights.children > 0) {
     passengers.push({
-      Count: flights.children,
+      Count: normalizedFlights.children,
       Type: 'CHD'
     });
   }
 
   const starlingRequest: any = {
     Passengers: passengers,
-    Legs: [
-      {
-        DepartureAirportCity: originCode,      // ✅ Código IATA, no texto
-        ArrivalAirportCity: destinationCode,   // ✅ Código IATA, no texto
-        FlightDate: flights.departureDate
-      }
-    ]
+    Legs: []
   };
 
-  // Add return leg if present
-  if (flights.returnDate) {
+  for (const segment of flightSegments) {
+    const { originCode, destinationCode } = resolveFlightCodes(
+      segment.origin,
+      segment.destination
+    );
+
+    console.log('[FLIGHT_SEARCH] IATA codes resolved:');
+    console.log(`   "${segment.origin}" → ${originCode}`);
+    console.log(`   "${segment.destination}" → ${destinationCode}`);
+
     starlingRequest.Legs.push({
-      DepartureAirportCity: destinationCode,  // ✅ Código IATA
-      ArrivalAirportCity: originCode,         // ✅ Código IATA
-      FlightDate: flights.returnDate
+      DepartureAirportCity: originCode,
+      ArrivalAirportCity: destinationCode,
+      FlightDate: segment.departureDate
     });
   }
 
   // Add airline filter if specified
-  if (flights.preferredAirline) {
-    starlingRequest.Airlines = [flights.preferredAirline];
+  if (normalizedFlights?.preferredAirline) {
+    starlingRequest.Airlines = [normalizedFlights.preferredAirline];
   }
 
   console.log('[FLIGHT_SEARCH] Starling request:', JSON.stringify(starlingRequest, null, 2));
@@ -335,8 +330,9 @@ async function executeFlightSearch(
     const lastSegment = firstOption.Segments?.[firstOption.Segments?.length - 1] || firstSegment;
 
     // Get return date if round trip
+    const isRoundTrip = normalizedFlights?.tripType === 'round_trip';
     let returnDate = null;
-    if (legs.length > 1) {
+    if (isRoundTrip && legs.length > 1) {
       const secondLeg = legs[1];
       const secondOption = secondLeg.Options?.[0] || {};
       const secondSegment = secondOption.Segments?.[0] || {};
@@ -370,13 +366,14 @@ async function executeFlightSearch(
         taxAmount: fare.TaxAmount || 0,
         fareAmount: fare.FareAmount || 0
       },
-      adults: flights.adults || 1,
-      children: flights.children || 0,
-      departure_date: firstSegment.Departure?.Date || flights.departureDate,
+      adults: normalizedFlights?.adults || 1,
+      children: normalizedFlights?.children || 0,
+      departure_date: firstSegment.Departure?.Date || normalizedFlights?.departureDate,
       departure_time: firstSegment.Departure?.Time || '',
       arrival_date: lastSegment.Arrival?.Date || '',
       arrival_time: lastSegment.Arrival?.Time || '',
       return_date: returnDate,
+      trip_type: normalizedFlights?.tripType,
       duration: {
         total: firstOption.OptionDuration || 0,
         formatted: formatDuration(firstOption.OptionDuration || 0)
@@ -435,8 +432,8 @@ async function executeFlightSearch(
   // This ensures API searches respect layover duration constraints just like internal chat
   let excludedByLayover = 0;
 
-  if (flights.maxLayoverHours) {
-    const maxLayover = flights.maxLayoverHours;
+  if (normalizedFlights?.maxLayoverHours) {
+    const maxLayover = normalizedFlights.maxLayoverHours;
     console.log(`⏰ [LAYOVER FILTER] Filtering for layovers <= ${maxLayover} hours`);
 
     const beforeLayoverFilter = flights_results.length;
@@ -474,7 +471,7 @@ async function executeFlightSearch(
 
   // ✅ STEP 1: Apply light fare filtering (if user requested carry_on)
   let lightFaresExcluded = 0;
-  const userRequestedCarryOn = flights.luggage === 'carry_on';
+  const userRequestedCarryOn = normalizedFlights?.luggage === 'carry_on';
 
   if (userRequestedCarryOn) {
     console.log('🧳 [LIGHT FARE FILTER] User requested carry_on, filtering light fares');
@@ -485,7 +482,7 @@ async function executeFlightSearch(
       // Extract airline code from flight data
       const airlineCode = flight.airline?.code || flight.airlineCode;
 
-      if (shouldExcludeLightFare(airlineCode, flights.luggage)) {
+      if (shouldExcludeLightFare(airlineCode, normalizedFlights?.luggage)) {
         console.log(`🚫 [LIGHT FARE] Excluded flight from ${airlineCode} (light fare airline)`);
         lightFaresExcluded++;
         return false;
@@ -506,9 +503,9 @@ async function executeFlightSearch(
   const metadata: any = {};
 
   // Add layover filter metadata if applied
-  if (flights.maxLayoverHours) {
+  if (normalizedFlights?.maxLayoverHours) {
     metadata.layover_filter_applied = {
-      max_hours: flights.maxLayoverHours,
+      max_hours: normalizedFlights.maxLayoverHours,
       excluded_count: excludedByLayover
     };
   }

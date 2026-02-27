@@ -1,4 +1,10 @@
 import { supabase } from '@/integrations/supabase/client';
+import {
+    getNormalizedFlightSegments,
+    normalizeFlightRequest,
+    normalizeParsedFlightRequest,
+    type FlightTripType
+} from '@/services/flightSegments';
 
 export interface ParsedTravelRequest {
     requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
@@ -7,6 +13,12 @@ export interface ParsedTravelRequest {
         destination: string;
         departureDate: string;
         returnDate?: string;
+        tripType?: FlightTripType;
+        segments?: Array<{
+            origin?: string;
+            destination?: string;
+            departureDate?: string;
+        }>;
         adults: number;
         adultsExplicit?: boolean;
         children: number;
@@ -110,7 +122,9 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
     missingFieldsSpanish: string[];
     errorMessage?: string;
 } {
-    if (!flights) {
+    const normalizedFlights = normalizeFlightRequest(flights);
+
+    if (!normalizedFlights) {
         return {
             isValid: false,
             missingFields: ['origin', 'destination', 'departureDate', 'adults'],
@@ -122,8 +136,8 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
     const missingFieldsSpanish: string[] = [];
 
     // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants traveling without adults
-    const hasOnlyMinors = (flights.adults === 0 || !flights.adults) &&
-        (((flights.children ?? 0) > 0) || ((flights.infants ?? 0) > 0));
+    const hasOnlyMinors = (normalizedFlights.adults === 0 || !normalizedFlights.adults) &&
+        (((normalizedFlights.children ?? 0) > 0) || ((normalizedFlights.infants ?? 0) > 0));
 
     if (hasOnlyMinors) {
         console.log('⚠️ [VALIDATION] Only minors detected without adults - rejecting search');
@@ -135,20 +149,50 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
         };
     }
 
-    // Validar campos requeridos
-    if (!flights.origin) {
-        missingFields.push('origin');
-        missingFieldsSpanish.push('origen');
+    const segments = getNormalizedFlightSegments(normalizedFlights);
+
+    if (segments.length > 3) {
+        return {
+            isValid: false,
+            missingFields: ['segments'],
+            missingFieldsSpanish: ['máximo 3 tramos'],
+            errorMessage: 'Para vuelos multi-city puedo procesar hasta 3 tramos por búsqueda.'
+        };
     }
-    if (!flights.destination) {
-        missingFields.push('destination');
-        missingFieldsSpanish.push('destino');
+
+    if (segments.length > 0) {
+        segments.forEach((segment, index) => {
+            const segmentNumber = index + 1;
+
+            if (!segment.origin) {
+                missingFields.push(`segment_${segmentNumber}_origin`);
+                missingFieldsSpanish.push(`origen del tramo ${segmentNumber}`);
+            }
+            if (!segment.destination) {
+                missingFields.push(`segment_${segmentNumber}_destination`);
+                missingFieldsSpanish.push(`destino del tramo ${segmentNumber}`);
+            }
+            if (!segment.departureDate) {
+                missingFields.push(`segment_${segmentNumber}_departureDate`);
+                missingFieldsSpanish.push(`fecha del tramo ${segmentNumber}`);
+            }
+        });
+    } else {
+        if (!normalizedFlights.origin) {
+            missingFields.push('origin');
+            missingFieldsSpanish.push('origen');
+        }
+        if (!normalizedFlights.destination) {
+            missingFields.push('destination');
+            missingFieldsSpanish.push('destino');
+        }
+        if (!normalizedFlights.departureDate) {
+            missingFields.push('departureDate');
+            missingFieldsSpanish.push('fecha de salida');
+        }
     }
-    if (!flights.departureDate) {
-        missingFields.push('departureDate');
-        missingFieldsSpanish.push('fecha de salida');
-    }
-    if (!flights.adults || flights.adults < 1) {
+
+    if (!normalizedFlights.adults || normalizedFlights.adults < 1) {
         missingFields.push('adults');
         missingFieldsSpanish.push('cantidad de pasajeros');
     }
@@ -345,103 +389,112 @@ export function combineWithPreviousRequest(
     newMessage: string,
     parsedNewRequest: ParsedTravelRequest
 ): ParsedTravelRequest {
+    const normalizedPreviousRequest = previousRequest ? normalizeParsedFlightRequest(previousRequest) : null;
+    const normalizedParsedNewRequest = normalizeParsedFlightRequest(parsedNewRequest);
+
     if (!previousRequest) {
-        return parsedNewRequest;
+        return normalizedParsedNewRequest;
     }
 
     // If request types don't match, return the new request
-    if (previousRequest.requestType !== parsedNewRequest.requestType) {
-        return parsedNewRequest;
+    if (normalizedPreviousRequest.requestType !== normalizedParsedNewRequest.requestType) {
+        return normalizedParsedNewRequest;
     }
 
     console.log('🔄 Combining with previous request:', {
-        previousType: previousRequest.requestType,
-        newType: parsedNewRequest.requestType,
-        previousFields: previousRequest.flights ? Object.keys(previousRequest.flights) :
-            previousRequest.hotels ? Object.keys(previousRequest.hotels) : [],
-        newFields: parsedNewRequest.flights ? Object.keys(parsedNewRequest.flights) :
-            parsedNewRequest.hotels ? Object.keys(parsedNewRequest.hotels) : []
+        previousType: normalizedPreviousRequest.requestType,
+        newType: normalizedParsedNewRequest.requestType,
+        previousFields: normalizedPreviousRequest.flights ? Object.keys(normalizedPreviousRequest.flights) :
+            normalizedPreviousRequest.hotels ? Object.keys(normalizedPreviousRequest.hotels) : [],
+        newFields: normalizedParsedNewRequest.flights ? Object.keys(normalizedParsedNewRequest.flights) :
+            normalizedParsedNewRequest.hotels ? Object.keys(normalizedParsedNewRequest.hotels) : []
     });
 
     // Combine flights data
-    if (parsedNewRequest.requestType === 'flights' || parsedNewRequest.requestType === 'combined') {
+    if (normalizedParsedNewRequest.requestType === 'flights' || normalizedParsedNewRequest.requestType === 'combined') {
         const combinedFlights = {
-            ...previousRequest.flights,
-            ...parsedNewRequest.flights,
+            ...normalizedPreviousRequest.flights,
+            ...normalizedParsedNewRequest.flights,
             // Only update fields that have new values
-            ...(parsedNewRequest.flights?.origin && { origin: parsedNewRequest.flights.origin }),
-            ...(parsedNewRequest.flights?.destination && { destination: parsedNewRequest.flights.destination }),
-            ...(parsedNewRequest.flights?.departureDate && { departureDate: parsedNewRequest.flights.departureDate }),
-            ...(parsedNewRequest.flights?.returnDate && { returnDate: parsedNewRequest.flights.returnDate }),
-            ...(parsedNewRequest.flights?.adults && { adults: parsedNewRequest.flights.adults }),
-            ...(parsedNewRequest.flights?.children && { children: parsedNewRequest.flights.children }),
-            ...(parsedNewRequest.flights?.luggage && { luggage: parsedNewRequest.flights.luggage }),
-            ...(parsedNewRequest.flights?.stops && { stops: parsedNewRequest.flights.stops }),
-            ...(parsedNewRequest.flights?.departureTimePreference && { departureTimePreference: parsedNewRequest.flights.departureTimePreference }),
-            ...(parsedNewRequest.flights?.arrivalTimePreference && { arrivalTimePreference: parsedNewRequest.flights.arrivalTimePreference }),
-            ...(parsedNewRequest.flights?.layoverDuration && { layoverDuration: parsedNewRequest.flights.layoverDuration }),
-            ...(parsedNewRequest.flights?.maxLayoverHours && { maxLayoverHours: parsedNewRequest.flights.maxLayoverHours }),
-            ...(parsedNewRequest.flights?.preferredAirline && { preferredAirline: parsedNewRequest.flights.preferredAirline }),
-            ...(parsedNewRequest.flights?.cabinClass && { cabinClass: parsedNewRequest.flights.cabinClass })
+            ...(normalizedParsedNewRequest.flights?.origin && { origin: normalizedParsedNewRequest.flights.origin }),
+            ...(normalizedParsedNewRequest.flights?.destination && { destination: normalizedParsedNewRequest.flights.destination }),
+            ...(normalizedParsedNewRequest.flights?.departureDate && { departureDate: normalizedParsedNewRequest.flights.departureDate }),
+            ...(normalizedParsedNewRequest.flights?.returnDate && { returnDate: normalizedParsedNewRequest.flights.returnDate }),
+            ...(normalizedParsedNewRequest.flights?.tripType && { tripType: normalizedParsedNewRequest.flights.tripType }),
+            ...(normalizedParsedNewRequest.flights?.segments && normalizedParsedNewRequest.flights.segments.length > 0 && {
+                segments: normalizedParsedNewRequest.flights.segments
+            }),
+            ...(normalizedParsedNewRequest.flights?.adults !== undefined && { adults: normalizedParsedNewRequest.flights.adults }),
+            ...(normalizedParsedNewRequest.flights?.children !== undefined && { children: normalizedParsedNewRequest.flights.children }),
+            ...(normalizedParsedNewRequest.flights?.infants !== undefined && { infants: normalizedParsedNewRequest.flights.infants }),
+            ...(normalizedParsedNewRequest.flights?.adultsExplicit !== undefined && { adultsExplicit: normalizedParsedNewRequest.flights.adultsExplicit }),
+            ...(normalizedParsedNewRequest.flights?.luggage && { luggage: normalizedParsedNewRequest.flights.luggage }),
+            ...(normalizedParsedNewRequest.flights?.stops && { stops: normalizedParsedNewRequest.flights.stops }),
+            ...(normalizedParsedNewRequest.flights?.departureTimePreference && { departureTimePreference: normalizedParsedNewRequest.flights.departureTimePreference }),
+            ...(normalizedParsedNewRequest.flights?.arrivalTimePreference && { arrivalTimePreference: normalizedParsedNewRequest.flights.arrivalTimePreference }),
+            ...(normalizedParsedNewRequest.flights?.layoverDuration && { layoverDuration: normalizedParsedNewRequest.flights.layoverDuration }),
+            ...(normalizedParsedNewRequest.flights?.maxLayoverHours && { maxLayoverHours: normalizedParsedNewRequest.flights.maxLayoverHours }),
+            ...(normalizedParsedNewRequest.flights?.preferredAirline && { preferredAirline: normalizedParsedNewRequest.flights.preferredAirline }),
+            ...(normalizedParsedNewRequest.flights?.cabinClass && { cabinClass: normalizedParsedNewRequest.flights.cabinClass })
         };
 
-        parsedNewRequest.flights = combinedFlights;
+        normalizedParsedNewRequest.flights = normalizeFlightRequest(combinedFlights);
     }
 
     // Combine hotels data
-    if (parsedNewRequest.requestType === 'hotels' || parsedNewRequest.requestType === 'combined') {
+    if (normalizedParsedNewRequest.requestType === 'hotels' || normalizedParsedNewRequest.requestType === 'combined') {
         const combinedHotels = {
-            ...previousRequest.hotels,
-            ...parsedNewRequest.hotels,
+            ...normalizedPreviousRequest.hotels,
+            ...normalizedParsedNewRequest.hotels,
             // Only update fields that have new values
-            ...(parsedNewRequest.hotels?.city && { city: parsedNewRequest.hotels.city }),
-            ...(parsedNewRequest.hotels?.checkinDate && { checkinDate: parsedNewRequest.hotels.checkinDate }),
-            ...(parsedNewRequest.hotels?.checkoutDate && { checkoutDate: parsedNewRequest.hotels.checkoutDate }),
-            ...(parsedNewRequest.hotels?.adults && { adults: parsedNewRequest.hotels.adults }),
-            ...(parsedNewRequest.hotels?.children && { children: parsedNewRequest.hotels.children }),
-            ...(parsedNewRequest.hotels?.childrenAges && parsedNewRequest.hotels.childrenAges.length > 0 && {
-                childrenAges: parsedNewRequest.hotels.childrenAges
+            ...(normalizedParsedNewRequest.hotels?.city && { city: normalizedParsedNewRequest.hotels.city }),
+            ...(normalizedParsedNewRequest.hotels?.checkinDate && { checkinDate: normalizedParsedNewRequest.hotels.checkinDate }),
+            ...(normalizedParsedNewRequest.hotels?.checkoutDate && { checkoutDate: normalizedParsedNewRequest.hotels.checkoutDate }),
+            ...(normalizedParsedNewRequest.hotels?.adults && { adults: normalizedParsedNewRequest.hotels.adults }),
+            ...(normalizedParsedNewRequest.hotels?.children && { children: normalizedParsedNewRequest.hotels.children }),
+            ...(normalizedParsedNewRequest.hotels?.childrenAges && normalizedParsedNewRequest.hotels.childrenAges.length > 0 && {
+                childrenAges: normalizedParsedNewRequest.hotels.childrenAges
             }),
-            ...(parsedNewRequest.hotels?.infants !== undefined && { infants: parsedNewRequest.hotels.infants }),
-            ...(parsedNewRequest.hotels?.roomType && { roomType: parsedNewRequest.hotels.roomType }),
-            ...(parsedNewRequest.hotels?.mealPlan && { mealPlan: parsedNewRequest.hotels.mealPlan }),
-            ...(parsedNewRequest.hotels?.hotelChains && { hotelChains: parsedNewRequest.hotels.hotelChains }),
-            ...(parsedNewRequest.hotels?.hotelName && { hotelName: parsedNewRequest.hotels.hotelName }),
-            ...(parsedNewRequest.hotels?.freeCancellation !== undefined && { freeCancellation: parsedNewRequest.hotels.freeCancellation }),
-            ...(parsedNewRequest.hotels?.roomView && { roomView: parsedNewRequest.hotels.roomView }),
-            ...(parsedNewRequest.hotels?.roomCount && { roomCount: parsedNewRequest.hotels.roomCount })
+            ...(normalizedParsedNewRequest.hotels?.infants !== undefined && { infants: normalizedParsedNewRequest.hotels.infants }),
+            ...(normalizedParsedNewRequest.hotels?.roomType && { roomType: normalizedParsedNewRequest.hotels.roomType }),
+            ...(normalizedParsedNewRequest.hotels?.mealPlan && { mealPlan: normalizedParsedNewRequest.hotels.mealPlan }),
+            ...(normalizedParsedNewRequest.hotels?.hotelChains && { hotelChains: normalizedParsedNewRequest.hotels.hotelChains }),
+            ...(normalizedParsedNewRequest.hotels?.hotelName && { hotelName: normalizedParsedNewRequest.hotels.hotelName }),
+            ...(normalizedParsedNewRequest.hotels?.freeCancellation !== undefined && { freeCancellation: normalizedParsedNewRequest.hotels.freeCancellation }),
+            ...(normalizedParsedNewRequest.hotels?.roomView && { roomView: normalizedParsedNewRequest.hotels.roomView }),
+            ...(normalizedParsedNewRequest.hotels?.roomCount && { roomCount: normalizedParsedNewRequest.hotels.roomCount })
         };
 
-        parsedNewRequest.hotels = combinedHotels;
+        normalizedParsedNewRequest.hotels = combinedHotels;
     }
 
     // Combine transfers data
-    if (parsedNewRequest.transfers || previousRequest.transfers) {
+    if (normalizedParsedNewRequest.transfers || normalizedPreviousRequest.transfers) {
         const combinedTransfers = {
-            ...previousRequest.transfers,
-            ...parsedNewRequest.transfers
+            ...normalizedPreviousRequest.transfers,
+            ...normalizedParsedNewRequest.transfers
         };
-        parsedNewRequest.transfers = combinedTransfers;
+        normalizedParsedNewRequest.transfers = combinedTransfers;
     }
 
     // Combine travel assistance data
-    if (parsedNewRequest.travelAssistance || previousRequest.travelAssistance) {
+    if (normalizedParsedNewRequest.travelAssistance || normalizedPreviousRequest.travelAssistance) {
         const combinedTravelAssistance = {
-            ...previousRequest.travelAssistance,
-            ...parsedNewRequest.travelAssistance
+            ...normalizedPreviousRequest.travelAssistance,
+            ...normalizedParsedNewRequest.travelAssistance
         };
-        parsedNewRequest.travelAssistance = combinedTravelAssistance;
+        normalizedParsedNewRequest.travelAssistance = combinedTravelAssistance;
     }
 
     console.log('✅ Combined request result:', {
-        type: parsedNewRequest.requestType,
-        flights: parsedNewRequest.flights ? Object.keys(parsedNewRequest.flights) : null,
-        hotels: parsedNewRequest.hotels ? Object.keys(parsedNewRequest.hotels) : null,
-        transfers: parsedNewRequest.transfers,
-        travelAssistance: parsedNewRequest.travelAssistance
+        type: normalizedParsedNewRequest.requestType,
+        flights: normalizedParsedNewRequest.flights ? Object.keys(normalizedParsedNewRequest.flights) : null,
+        hotels: normalizedParsedNewRequest.hotels ? Object.keys(normalizedParsedNewRequest.hotels) : null,
+        transfers: normalizedParsedNewRequest.transfers,
+        travelAssistance: normalizedParsedNewRequest.travelAssistance
     });
 
-    return parsedNewRequest;
+    return normalizeParsedFlightRequest(normalizedParsedNewRequest);
 }
 
 /**
@@ -823,13 +876,13 @@ export async function parseMessageWithAI(
             console.log(`🏨 [MERGE] Final merged hotels:`, mergedHotels);
         }
 
-        const mergedResult = {
+        const mergedResult = normalizeParsedFlightRequest({
             ...parsedResult,
             flights: Object.keys(mergedFlights).length ? mergedFlights : parsedResult.flights,
             // Only include hotels if there's actual data (not empty object)
             hotels: Object.keys(mergedHotels).length ? mergedHotels : parsedResult.hotels,
             originalMessage: message
-        };
+        });
 
         console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
         return mergedResult;
@@ -845,27 +898,29 @@ export async function parseMessageWithAI(
  * Validates that required fields are present for each request type
  */
 export function validateParsedRequest(parsed: ParsedTravelRequest): boolean {
-    switch (parsed.requestType) {
+    const normalizedParsed = normalizeParsedFlightRequest(parsed);
+
+    switch (normalizedParsed.requestType) {
         case 'flights':
-            return !!(parsed.flights?.origin && parsed.flights?.destination && parsed.flights?.departureDate);
+            return validateFlightRequiredFields(normalizedParsed.flights).isValid;
 
         case 'hotels':
-            return !!(parsed.hotels?.city && parsed.hotels?.checkinDate && parsed.hotels?.checkoutDate &&
-                parsed.hotels?.adults);
+            return !!(normalizedParsed.hotels?.city && normalizedParsed.hotels?.checkinDate && normalizedParsed.hotels?.checkoutDate &&
+                normalizedParsed.hotels?.adults);
 
         case 'packages':
-            return !!(parsed.packages?.destination && parsed.packages?.dateFrom && parsed.packages?.dateTo);
+            return !!(normalizedParsed.packages?.destination && normalizedParsed.packages?.dateFrom && normalizedParsed.packages?.dateTo);
 
         case 'services':
-            return !!(parsed.services?.city && parsed.services?.dateFrom);
+            return !!(normalizedParsed.services?.city && normalizedParsed.services?.dateFrom);
 
         case 'combined':
-            return validateParsedRequest({ ...parsed, requestType: 'flights' }) &&
-                validateParsedRequest({ ...parsed, requestType: 'hotels' });
+            return validateParsedRequest({ ...normalizedParsed, requestType: 'flights' }) &&
+                validateParsedRequest({ ...normalizedParsed, requestType: 'hotels' });
 
         case 'itinerary':
-            return !!(parsed.itinerary?.destinations && parsed.itinerary.destinations.length > 0 &&
-                parsed.itinerary?.days && parsed.itinerary.days > 0);
+            return !!(normalizedParsed.itinerary?.destinations && normalizedParsed.itinerary.destinations.length > 0 &&
+                normalizedParsed.itinerary?.days && normalizedParsed.itinerary.days > 0);
 
         default:
             return true;
@@ -877,47 +932,48 @@ export function validateParsedRequest(parsed: ParsedTravelRequest): boolean {
  */
 export function formatForEurovips(parsed: ParsedTravelRequest) {
     const result: any = {};
+    const normalizedParsed = normalizeParsedFlightRequest(parsed);
 
-    if (parsed.flights) {
+    if (normalizedParsed.flights) {
         result.flightParams = {
-            originCode: parsed.flights.origin,
-            destinationCode: parsed.flights.destination,
-            departureDate: parsed.flights.departureDate,
-            returnDate: parsed.flights.returnDate,
-            adults: parsed.flights.adults,
-            children: parsed.flights.children,
-            infants: parsed.flights.infants
+            originCode: normalizedParsed.flights.origin,
+            destinationCode: normalizedParsed.flights.destination,
+            departureDate: normalizedParsed.flights.departureDate,
+            returnDate: normalizedParsed.flights.returnDate,
+            adults: normalizedParsed.flights.adults,
+            children: normalizedParsed.flights.children,
+            infants: normalizedParsed.flights.infants
         };
     }
 
-    if (parsed.hotels) {
+    if (normalizedParsed.hotels) {
         result.hotelParams = {
-            cityCode: parsed.hotels.city,
-            hotelName: parsed.hotels.hotelName,
-            checkinDate: parsed.hotels.checkinDate,
-            checkoutDate: parsed.hotels.checkoutDate,
-            adults: parsed.hotels.adults,
-            children: parsed.hotels.children,
-            childrenAges: parsed.hotels.childrenAges || [],
-            infants: parsed.hotels.infants
+            cityCode: normalizedParsed.hotels.city,
+            hotelName: normalizedParsed.hotels.hotelName,
+            checkinDate: normalizedParsed.hotels.checkinDate,
+            checkoutDate: normalizedParsed.hotels.checkoutDate,
+            adults: normalizedParsed.hotels.adults,
+            children: normalizedParsed.hotels.children,
+            childrenAges: normalizedParsed.hotels.childrenAges || [],
+            infants: normalizedParsed.hotels.infants
         };
     }
 
-    if (parsed.packages) {
+    if (normalizedParsed.packages) {
         result.packageParams = {
-            cityCode: parsed.packages.destination,
-            dateFrom: parsed.packages.dateFrom,
-            dateTo: parsed.packages.dateTo,
-            packageClass: parsed.packages.packageClass
+            cityCode: normalizedParsed.packages.destination,
+            dateFrom: normalizedParsed.packages.dateFrom,
+            dateTo: normalizedParsed.packages.dateTo,
+            packageClass: normalizedParsed.packages.packageClass
         };
     }
 
-    if (parsed.services) {
+    if (normalizedParsed.services) {
         result.serviceParams = {
-            cityCode: parsed.services.city,
-            dateFrom: parsed.services.dateFrom,
-            dateTo: parsed.services.dateTo,
-            serviceType: parsed.services.serviceType
+            cityCode: normalizedParsed.services.city,
+            dateFrom: normalizedParsed.services.dateFrom,
+            dateTo: normalizedParsed.services.dateTo,
+            serviceType: normalizedParsed.services.serviceType
         };
     }
 
@@ -940,7 +996,9 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
  * @throws Error if city codes cannot be resolved
  */
 export async function formatForStarling(parsed: ParsedTravelRequest) {
-    if (!parsed.flights) {
+    const normalizedParsed = normalizeParsedFlightRequest(parsed);
+
+    if (!normalizedParsed.flights) {
         console.warn('⚠️ [STARLING FORMAT] No flight data in parsed request');
         return null;
     }
@@ -958,48 +1016,28 @@ export async function formatForStarling(parsed: ParsedTravelRequest) {
     // STEP 2: Convert city names to IATA codes
     // ============================================
     console.log('\n📍 [CITY CONVERSION] Converting city names to IATA codes...');
-    console.log(`   Origin:      "${parsed.flights.origin}"`);
-    console.log(`   Destination: "${parsed.flights.destination}"`);
-
-    let originCode: string;
-    let destinationCode: string;
-
-    try {
-        // Use unified resolver with context awareness
-        originCode = await getUnifiedAirportCode(parsed.flights.origin, {
-            destination: parsed.flights.destination,
-            searchType: 'flight'
-        });
-
-        destinationCode = await getUnifiedAirportCode(parsed.flights.destination, {
-            destination: parsed.flights.origin, // Reverse for return context
-            searchType: 'flight'
-        });
-    } catch (error) {
-        console.error('\n❌ [CITY CONVERSION FAILED]', error);
-        throw new Error(
-            `No se pudieron convertir las ciudades a códigos IATA: ${(error as Error).message}`
-        );
-    }
-
-    console.log('\n✅ [CITY CONVERSION SUCCESS]');
-    console.log(`   "${parsed.flights.origin}" → ${originCode}`);
-    console.log(`   "${parsed.flights.destination}" → ${destinationCode}`);
+    console.log(`   Trip type:   "${normalizedParsed.flights.tripType || 'one_way'}"`);
 
     // ============================================
     // STEP 3: Build passenger array
     // ============================================
     const passengers = [];
-    if ((parsed.flights.adults || 1) > 0) {
+    if ((normalizedParsed.flights.adults || 1) > 0) {
         passengers.push({
-            Count: parsed.flights.adults || 1,
+            Count: normalizedParsed.flights.adults || 1,
             Type: 'ADT'
         });
     }
-    if ((parsed.flights.children || 0) > 0) {
+    if ((normalizedParsed.flights.children || 0) > 0) {
         passengers.push({
-            Count: parsed.flights.children,
+            Count: normalizedParsed.flights.children,
             Type: 'CHD'
+        });
+    }
+    if ((normalizedParsed.flights.infants || 0) > 0) {
+        passengers.push({
+            Count: Math.min(normalizedParsed.flights.infants || 0, normalizedParsed.flights.adults || 1),
+            Type: 'INF'
         });
     }
 
@@ -1008,21 +1046,32 @@ export async function formatForStarling(parsed: ParsedTravelRequest) {
     // ============================================
     // STEP 4: Build legs array with IATA codes
     // ============================================
-    const legs = [
-        {
-            DepartureAirportCity: originCode,
-            ArrivalAirportCity: destinationCode,
-            FlightDate: parsed.flights.departureDate
-        }
-    ];
+    const legs = [];
+    for (const segment of getNormalizedFlightSegments(normalizedParsed.flights)) {
+        try {
+            const originCode = await getUnifiedAirportCode(segment.origin, {
+                destination: segment.destination,
+                searchType: 'flight'
+            });
+            const destinationCode = await getUnifiedAirportCode(segment.destination, {
+                destination: segment.origin,
+                searchType: 'flight'
+            });
 
-    // Add return leg if round trip
-    if (parsed.flights.returnDate) {
-        legs.push({
-            DepartureAirportCity: destinationCode,
-            ArrivalAirportCity: originCode,
-            FlightDate: parsed.flights.returnDate
-        });
+            console.log(`   "${segment.origin}" → ${originCode}`);
+            console.log(`   "${segment.destination}" → ${destinationCode}`);
+
+            legs.push({
+                DepartureAirportCity: originCode,
+                ArrivalAirportCity: destinationCode,
+                FlightDate: segment.departureDate
+            });
+        } catch (error) {
+            console.error('\n❌ [CITY CONVERSION FAILED]', error);
+            throw new Error(
+                `No se pudieron convertir las ciudades a códigos IATA: ${(error as Error).message}`
+            );
+        }
     }
 
     console.log(`\n✈️  [LEGS] ${legs.length} leg(s) created:`);

@@ -1,9 +1,10 @@
-export const PROMPT_VERSION = 'emilia-parser-v1';
+export const PROMPT_VERSION = 'emilia-parser-v2';
 export const PROMPT_CONTRACT_SNIPPETS = [
   'IMPORTANTE: Siempre responde solo con JSON válido.',
   "NO roomType or mealPlan because user didn't mention them",
   'ONLY include "luggage" field when user EXPLICITLY mentions baggage preferences',
   'hotelChains',
+  'MULTI-CITY FLIGHT SEGMENTS',
   'ITINERARY REQUEST DETECTION',
   'ONLY minors (children/infants) without any adults',
   'COMBINED ROUND-TRIP DATE ALIGNMENT (CRITICAL)',
@@ -150,6 +151,37 @@ CRITICAL INSTRUCTION:
   * Example: Today is ${currentDate}. If user says "noviembre" (November), since November ${currentDate.split('-')[0]} hasn't happened yet, use November ${currentDate.split('-')[0]}
 - No date mentioned → current date + 7 days
 - Round trip indicators: "vuelta", "regreso", "ida y vuelta" → require returnDate
+
+## MULTI-CITY FLIGHT SEGMENTS
+
+- Flights can be one-way, round-trip, or multi-city inside the same prompt.
+- When the user describes more than one air segment, always return \`flights.segments\`.
+- Each segment must use this shape:
+  - \`{ "origin": "...", "destination": "...", "departureDate": "YYYY-MM-DD" }\`
+- Valid tripType values:
+  - \`one_way\`
+  - \`round_trip\`
+  - \`multi_city\`
+- If there is exactly 1 segment:
+  - \`tripType = "one_way"\`
+- If there are exactly 2 segments and segment 2 is the reverse of segment 1:
+  - \`tripType = "round_trip"\`
+  - also include legacy fields \`origin\`, \`destination\`, \`departureDate\`, \`returnDate\`
+- If there are 2 or 3 segments and any later segment does NOT reverse the first one:
+  - \`tripType = "multi_city"\`
+  - include \`segments\`
+  - set legacy \`origin\`, \`destination\`, \`departureDate\` from segment 1
+  - DO NOT force \`returnDate\` for multi-city unless it is a true round-trip
+- Maximum supported in this version: 3 segments
+
+**CRITICAL MULTI-CITY RULE:**
+- "con vuelta el [fecha] desde [ciudad distinta]" is NOT necessarily round-trip.
+- If the return/departure city of the later segment differs from the first destination, classify as \`multi_city\`.
+- Example:
+  - "vuelo de Buenos Aires a Madrid el 2 de marzo con vuelta el 15 desde Roma hacia Buenos Aires"
+  - segment 1: Buenos Aires -> Madrid, 2026-03-02
+  - segment 2: Roma -> Buenos Aires, 2026-03-15
+  - \`tripType = "multi_city"\`
 
 **PASSENGER INTERPRETATION:**
 - "[número] personas" = that many adults, 0 children
@@ -756,6 +788,71 @@ Example 3 - Flight with preferences (include optional fields only when mentioned
     "arrivalTimePreference": "afternoon"
   },
   "confidence": 0.9
+}
+
+Example 3c - Multi-city with "vuelta desde otra ciudad":
+User: "Quiero un vuelo desde Buenos Aires a Madrid desde el 2 de marzo con vuelta el 15 desde Roma hacia Buenos Aires"
+{
+  "requestType": "flights",
+  "flights": {
+    "origin": "Buenos Aires",
+    "destination": "Madrid",
+    "departureDate": "2026-03-02",
+    "tripType": "multi_city",
+    "segments": [
+      {
+        "origin": "Buenos Aires",
+        "destination": "Madrid",
+        "departureDate": "2026-03-02"
+      },
+      {
+        "origin": "Roma",
+        "destination": "Buenos Aires",
+        "departureDate": "2026-03-15"
+      }
+    ],
+    "adults": 1,
+    "adultsExplicit": false,
+    "children": 0,
+    "infants": 0,
+    "stops": "any"
+  },
+  "confidence": 0.95
+}
+
+Example 3d - Multi-city with 3 segments:
+User: "Vuelo de Buenos Aires a Madrid el 2 de marzo, luego de Madrid a Roma el 10 y de Roma a Buenos Aires el 15"
+{
+  "requestType": "flights",
+  "flights": {
+    "origin": "Buenos Aires",
+    "destination": "Madrid",
+    "departureDate": "2026-03-02",
+    "tripType": "multi_city",
+    "segments": [
+      {
+        "origin": "Buenos Aires",
+        "destination": "Madrid",
+        "departureDate": "2026-03-02"
+      },
+      {
+        "origin": "Madrid",
+        "destination": "Roma",
+        "departureDate": "2026-03-10"
+      },
+      {
+        "origin": "Roma",
+        "destination": "Buenos Aires",
+        "departureDate": "2026-03-15"
+      }
+    ],
+    "adults": 1,
+    "adultsExplicit": false,
+    "children": 0,
+    "infants": 0,
+    "stops": "any"
+  },
+  "confidence": 0.95
 }
 
 Example 3b - Flight with children and infant:

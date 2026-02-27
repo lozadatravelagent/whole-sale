@@ -2,11 +2,91 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withRateLimit } from "../_shared/rateLimit.ts";
 import { buildSystemPrompt, PROMPT_VERSION } from "./prompt.ts";
+import { normalizeFlightRequest } from "../_shared/flightSegments.ts";
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
+
+function cleanLocation(value: string | undefined): string {
+  return (value || '')
+    .replace(/^(desde|de|hacia|a)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function augmentMultiCitySegmentsFromMessage(message: string, parsed: any): any {
+  if (!parsed?.flights) return parsed;
+
+  const normalizedFlights = normalizeFlightRequest(parsed.flights);
+  if (!normalizedFlights?.origin || !normalizedFlights?.destination || !normalizedFlights?.departureDate) {
+    return parsed;
+  }
+
+  if (Array.isArray(normalizedFlights.segments) && normalizedFlights.segments.length > 1) {
+    return {
+      ...parsed,
+      flights: normalizedFlights
+    };
+  }
+
+  const returnDate = normalizedFlights.returnDate;
+  if (!returnDate) {
+    return {
+      ...parsed,
+      flights: normalizedFlights
+    };
+  }
+
+  const explicitDifferentCityMatch = message.match(
+    /\b(?:con\s+)?(?:vuelta|regreso|volver|volviendo)\b[\s\S]{0,120}?\bdesde\s+(.+?)\s+(?:hacia|a)\s+(.+?)(?=[,.;]|$)/i
+  );
+  const implicitReturnFromMatch = message.match(
+    /\b(?:con\s+)?(?:vuelta|regreso|volver|volviendo)\b[\s\S]{0,120}?\bdesde\s+(.+?)(?=[,.;]|$)/i
+  );
+
+  let secondOrigin = '';
+  let secondDestination = '';
+
+  if (explicitDifferentCityMatch) {
+    secondOrigin = cleanLocation(explicitDifferentCityMatch[1]);
+    secondDestination = cleanLocation(explicitDifferentCityMatch[2]);
+  } else if (implicitReturnFromMatch) {
+    secondOrigin = cleanLocation(implicitReturnFromMatch[1]);
+    secondDestination = cleanLocation(normalizedFlights.origin);
+  }
+
+  if (!secondOrigin || !secondDestination) {
+    return {
+      ...parsed,
+      flights: normalizedFlights
+    };
+  }
+
+  const nextFlights = normalizeFlightRequest({
+    ...normalizedFlights,
+    tripType: undefined,
+    segments: [
+      {
+        origin: normalizedFlights.origin,
+        destination: normalizedFlights.destination,
+        departureDate: normalizedFlights.departureDate
+      },
+      {
+        origin: secondOrigin,
+        destination: secondDestination,
+        departureDate: returnDate
+      }
+    ]
+  });
+
+  return {
+    ...parsed,
+    flights: nextFlights
+  };
+}
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -177,6 +257,11 @@ serve(async (req) => {
         // Fix maxLayoverHours if it's a string
         if (parsed.flights?.maxLayoverHours && typeof parsed.flights.maxLayoverHours === 'string') {
           parsed.flights.maxLayoverHours = parseInt(parsed.flights.maxLayoverHours, 10);
+        }
+
+        if (parsed.flights) {
+          parsed = augmentMultiCitySegmentsFromMessage(message, parsed);
+          parsed.flights = normalizeFlightRequest(parsed.flights);
         }
 
         // Validate the response structure

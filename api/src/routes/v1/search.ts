@@ -11,6 +11,7 @@ import { updateUsageStats } from '../../services/apiKeyAuth.js';
 import { executeSearch } from '../../services/searchExecutor.js';
 import { validateParsedRequest } from '../../services/validation.js';
 import { buildCompleteMetadata } from '../../services/buildMetadata.js';
+import { normalizeParsedFlightRequest } from '../../services/flightSegments.js';
 import {
   detectIterationIntent,
   mergeIterationContext,
@@ -103,6 +104,8 @@ export async function searchRoutes(fastify: FastifyInstance) {
         ...responseData.parsed
       };
 
+      parsedRequest = normalizeParsedFlightRequest(parsedRequest);
+
       request.logger.info('AI_PARSE_SUCCESS', `Parsed as type: ${parsedRequest.type}`, {
         type: parsedRequest.type,
         latency_ms: aiParsingTimeMs
@@ -125,6 +128,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
           iterationResult,
           prompt
         );
+        parsedRequest = normalizeParsedFlightRequest(parsedRequest);
 
         request.logger.info('ITERATION_MERGED', `Final request type after merge: ${parsedRequest.type}`);
       }

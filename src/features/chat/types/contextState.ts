@@ -13,6 +13,12 @@ export interface FlightContextParams {
   destination: string;
   departureDate: string;
   returnDate?: string;
+  tripType?: 'one_way' | 'round_trip' | 'multi_city';
+  segments?: Array<{
+    origin?: string;
+    destination?: string;
+    departureDate?: string;
+  }>;
   adults: number;
   children: number;   // Niños 2-12 años (CHD)
   infants: number;    // Infantes 0-2 años (INF) - viajan en brazos de adulto

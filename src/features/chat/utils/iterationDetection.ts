@@ -15,6 +15,7 @@
 
 import type { ContextState, FlightContextParams, HotelContextParams } from '../types/contextState';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import { normalizeFlightRequest } from '@/services/flightSegments';
 import { detectAirlineInText } from '../data/airlineAliases';
 
 /**
@@ -621,6 +622,8 @@ function getAllFlightFields(): string[] {
     'flights.destination',
     'flights.departureDate',
     'flights.returnDate',
+    'flights.tripType',
+    'flights.segments',
     'flights.adults',
     'flights.children',
     'flights.infants',
@@ -689,6 +692,8 @@ export function mergeIterationContext(
         destination: lastSearch.flightsParams?.destination || '',
         departureDate: lastSearch.flightsParams?.departureDate || '',
         returnDate: lastSearch.flightsParams?.returnDate,
+        tripType: lastSearch.flightsParams?.tripType,
+        segments: lastSearch.flightsParams?.segments,
         adults: lastSearch.flightsParams?.adults || 1,
         children: lastSearch.flightsParams?.children || 0,
         infants: lastSearch.flightsParams?.infants || 0,
@@ -729,6 +734,8 @@ export function mergeIterationContext(
       originalMessage: newParsedRequest.originalMessage,
     };
 
+    mergedRequest.flights = normalizeFlightRequest(mergedRequest.flights);
+
     console.log('✅ [MERGE] Hotel modification merge complete:', {
       requestType: mergedRequest.requestType,
       flightsOrigin: mergedRequest.flights?.origin,
@@ -762,6 +769,8 @@ export function mergeIterationContext(
         destination: lastSearch.flightsParams?.destination || '',
         departureDate: lastSearch.flightsParams?.departureDate || '',
         returnDate: lastSearch.flightsParams?.returnDate,
+        tripType: lastSearch.flightsParams?.tripType,
+        segments: lastSearch.flightsParams?.segments,
         adults: adultsCount,  // ✨ Usar adultos calculados (puede venir de "agrega X adultos")
         children: lastSearch.flightsParams?.children || 0,
         infants: lastSearch.flightsParams?.infants || 0,
@@ -814,6 +823,8 @@ export function mergeIterationContext(
       originalMessage: newParsedRequest.originalMessage,
     };
 
+    mergedRequest.flights = normalizeFlightRequest(mergedRequest.flights);
+
     console.log('✅ [MERGE] Flight modification merge complete:', {
       requestType: mergedRequest.requestType,
       flightsOrigin: mergedRequest.flights?.origin,
@@ -847,6 +858,8 @@ export function mergeIterationContext(
       originalMessage: newParsedRequest.originalMessage,
     };
 
+    mergedRequest.flights = normalizeFlightRequest(mergedRequest.flights);
+
     console.log('✅ [MERGE] Full reuse merge complete');
     return mergedRequest;
   }
@@ -871,12 +884,13 @@ export function generateIterationExplanation(
   if (iterationContext.iterationType === 'hotel_modification') {
     const origin = lastSearch.flightsParams?.origin || '?';
     const dest = lastSearch.flightsParams?.destination || '?';
+    const tripType = lastSearch.flightsParams?.tripType;
     const dates = lastSearch.flightsParams?.departureDate
-      ? `${lastSearch.flightsParams.departureDate}${lastSearch.flightsParams.returnDate ? ` al ${lastSearch.flightsParams.returnDate}` : ''}`
+      ? `${lastSearch.flightsParams.departureDate}${tripType === 'round_trip' && lastSearch.flightsParams.returnDate ? ` al ${lastSearch.flightsParams.returnDate}` : ''}`
       : '';
     const pax = lastSearch.flightsParams?.adults || 1;
 
-    return `🔄 **Búsqueda actualizada** (mantuve tu vuelo anterior)\n\n✈️ **Vuelo:** ${origin} → ${dest}${dates ? ` | ${dates}` : ''} | ${pax} adulto(s)\n\n`;
+    return `🔄 **Búsqueda actualizada** (mantuve tu vuelo anterior)\n\n✈️ **Vuelo:** ${origin} → ${dest}${dates ? ` | ${dates}` : ''}${tripType === 'multi_city' ? ' | multi-city' : ''} | ${pax} adulto(s)\n\n`;
   }
 
   if (iterationContext.iterationType === 'flight_modification') {

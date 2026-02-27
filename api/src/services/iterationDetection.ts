@@ -9,6 +9,7 @@
  * - "el mismo pero sin escalas" → Preserve origin/dest/dates, change stops
  * - "con Iberia" → Preserve all, add airline filter
  */
+import { normalizeFlightRequest } from './flightSegments.js';
 
 // =============================================================================
 // TYPES
@@ -19,8 +20,15 @@ export interface FlightParams {
   destination?: string;
   departureDate?: string;
   returnDate?: string;
+  tripType?: 'one_way' | 'round_trip' | 'multi_city';
+  segments?: Array<{
+    origin?: string;
+    destination?: string;
+    departureDate?: string;
+  }>;
   adults?: number;
   children?: number;
+  infants?: number;
   stops?: string;
   preferredAirline?: string;
   luggage?: string;
@@ -297,6 +305,7 @@ export function mergeIterationContext(
       ...lastSearch.flightsParams,
       ...(newParsedRequest.flights || {})
     };
+    merged.flights = normalizeFlightRequest(merged.flights);
 
     // Detect specific modifications from message
     // Direct flight request
@@ -377,6 +386,7 @@ export function mergeIterationContext(
         ...lastSearch.flightsParams,
         ...(newParsedRequest.flights || {})
       };
+      merged.flights = normalizeFlightRequest(merged.flights);
     }
     if (lastSearch.hotelsParams) {
       merged.hotels = {
@@ -419,18 +429,22 @@ export function buildContextFromSearch(
   };
 
   if (parsedRequest.flights) {
+    const normalizedFlight = normalizeFlightRequest(parsedRequest.flights);
     context.lastSearch!.flightsParams = {
-      origin: parsedRequest.flights.origin,
-      destination: parsedRequest.flights.destination,
-      departureDate: parsedRequest.flights.departureDate,
-      returnDate: parsedRequest.flights.returnDate,
-      adults: parsedRequest.flights.adults,
-      children: parsedRequest.flights.children,
-      stops: parsedRequest.flights.stops,
-      preferredAirline: parsedRequest.flights.preferredAirline,
-      luggage: parsedRequest.flights.luggage,
-      maxLayoverHours: parsedRequest.flights.maxLayoverHours,
-      cabinClass: parsedRequest.flights.cabinClass
+      origin: normalizedFlight?.origin,
+      destination: normalizedFlight?.destination,
+      departureDate: normalizedFlight?.departureDate,
+      returnDate: normalizedFlight?.returnDate,
+      tripType: normalizedFlight?.tripType,
+      segments: normalizedFlight?.segments,
+      adults: normalizedFlight?.adults,
+      children: normalizedFlight?.children,
+      infants: normalizedFlight?.infants,
+      stops: normalizedFlight?.stops,
+      preferredAirline: normalizedFlight?.preferredAirline,
+      luggage: normalizedFlight?.luggage,
+      maxLayoverHours: normalizedFlight?.maxLayoverHours,
+      cabinClass: normalizedFlight?.cabinClass
     };
   }
 
