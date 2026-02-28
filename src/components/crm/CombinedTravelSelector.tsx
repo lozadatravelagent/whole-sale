@@ -50,6 +50,10 @@ interface CombinedTravelSelectorProps {
   onPdfGenerated?: (pdfUrl: string, selectedFlights: FlightData[], selectedHotels: HotelData[]) => Promise<void>;
 }
 
+type GroupedHotelSegment = NonNullable<CombinedTravelResults['hotelSegments']>[number] & {
+  uiSegmentId: string;
+};
+
 // Función para obtener información de equipaje del primer segmento de un leg
 // optionIndex allows selecting which option's baggage info to retrieve
 const getBaggageInfoFromLeg = (leg: any, optionIndex: number = 0) => {
@@ -431,6 +435,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 }) => {
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [selectedHotels, setSelectedHotels] = useState<string[]>([]);
+  const [selectedHotelSnapshots, setSelectedHotelSnapshots] = useState<Record<string, HotelData>>({});
   const [selectedRooms, setSelectedRooms] = useState<Record<string, string>>({});
   // Track selected option per leg for each flight: flightId -> { legIndex -> optionIndex }
   const [selectedFlightOptions, setSelectedFlightOptions] = useState<Record<string, Record<number, number>>>({});
@@ -454,6 +459,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     combinedData.requestType === 'combined' ? 'flights' :
       combinedData.requestType === 'flights-only' ? 'flights' : 'hotels'
   );
+  const [activeHotelSegmentId, setActiveHotelSegmentId] = useState<string | null>(null);
   // Exact price states for makeBudget integration
   const [exactPrices, setExactPrices] = useState<Record<string, { price: number; currency: string; budgetId: string }>>({});
   const [loadingPrices, setLoadingPrices] = useState<Record<string, boolean>>({});
@@ -486,7 +492,154 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     filteredCount: hotelFilteredCount,
     hasCache: hasHotelCache,
     setMealPlan,
-  } = useHotelResultsCache(combinedData.hotelSearchId);
+    cacheResults: cacheHotelResults,
+    clearCache: clearHotelCache,
+  } = useHotelResultsCache(
+    combinedData.hotelSegments?.length
+      ? combinedData.hotelSegments.find((segment, index) => `${segment.segmentId || 'hotel-segment'}-${index}` === activeHotelSegmentId)?.hotelSearchId
+      : combinedData.hotelSearchId
+  );
+
+  const groupedHotelSegments = useMemo<GroupedHotelSegment[]>(
+    () => (combinedData.hotelSegments?.filter(segment => segment.city || segment.hotels.length > 0 || segment.error) ?? [])
+      .map((segment, index) => ({
+        ...segment,
+        uiSegmentId: `${segment.segmentId || 'hotel-segment'}-${index}`
+      })),
+    [combinedData.hotelSegments]
+  );
+
+  const hasGroupedHotelSegments = groupedHotelSegments.length > 0;
+
+  useEffect(() => {
+    if (!hasGroupedHotelSegments) {
+      if (activeHotelSegmentId !== null) {
+        setActiveHotelSegmentId(null);
+      }
+      return;
+    }
+
+    const activeExists = groupedHotelSegments.some(segment => segment.uiSegmentId === activeHotelSegmentId);
+    if (!activeExists) {
+      setActiveHotelSegmentId(groupedHotelSegments[0].uiSegmentId);
+    }
+  }, [activeHotelSegmentId, groupedHotelSegments, hasGroupedHotelSegments]);
+
+  const activeHotelSegment = useMemo(() => {
+    if (!hasGroupedHotelSegments) return null;
+    return groupedHotelSegments.find(segment => segment.uiSegmentId === activeHotelSegmentId) ?? groupedHotelSegments[0] ?? null;
+  }, [activeHotelSegmentId, groupedHotelSegments, hasGroupedHotelSegments]);
+
+  const activeHotelSegmentIndex = useMemo(() => {
+    if (!activeHotelSegment) return -1;
+    return groupedHotelSegments.findIndex(segment => segment.uiSegmentId === activeHotelSegment.uiSegmentId);
+  }, [activeHotelSegment, groupedHotelSegments]);
+
+  const withSegmentContext = useCallback((
+    hotel: HotelData,
+    segment?: GroupedHotelSegment,
+    segmentOrder?: number
+  ): HotelData => ({
+    ...hotel,
+    segmentId: hotel.segmentId ?? segment?.segmentId,
+    segmentCity: hotel.segmentCity ?? segment?.city ?? hotel.city,
+    segmentCheckIn: hotel.segmentCheckIn ?? segment?.checkinDate ?? hotel.check_in,
+    segmentCheckOut: hotel.segmentCheckOut ?? segment?.checkoutDate ?? hotel.check_out,
+    segmentOrder: hotel.segmentOrder ?? segmentOrder
+  }), []);
+
+  const groupedHotelsFlat = useMemo(
+    () => groupedHotelSegments.flatMap((segment, index) => segment.hotels.map(hotel => withSegmentContext(hotel, segment, index))),
+    [groupedHotelSegments, withSegmentContext]
+  );
+
+  const activeBaseHotels = useMemo(() => {
+    if (hasGroupedHotelSegments) {
+      return activeHotelSegment?.hotels ?? [];
+    }
+    return combinedData.hotels;
+  }, [activeHotelSegment, combinedData.hotels, hasGroupedHotelSegments]);
+
+  useEffect(() => {
+    if (hasGroupedHotelSegments ? activeHotelSegment?.hotelSearchId : combinedData.hotelSearchId) {
+      return;
+    }
+
+    if (activeBaseHotels.length > 0) {
+      cacheHotelResults(activeBaseHotels);
+      return;
+    }
+
+    clearHotelCache();
+  }, [
+    activeBaseHotels,
+    activeHotelSegment?.hotelSearchId,
+    cacheHotelResults,
+    clearHotelCache,
+    combinedData.hotelSearchId,
+    hasGroupedHotelSegments
+  ]);
+
+  const activeHotels = useMemo(() => {
+    const hotels = hasHotelCache ? filteredHotels : activeBaseHotels;
+
+    if (!hasGroupedHotelSegments || !activeHotelSegment) {
+      return hotels;
+    }
+
+    return hotels.map(hotel => withSegmentContext(hotel, activeHotelSegment, activeHotelSegmentIndex));
+  }, [
+    activeBaseHotels,
+    activeHotelSegment,
+    activeHotelSegmentIndex,
+    filteredHotels,
+    hasGroupedHotelSegments,
+    hasHotelCache,
+    withSegmentContext
+  ]);
+
+  const hotelUniverse = useMemo(() => {
+    const hotelsById = new Map<string, HotelData>();
+
+    const registerHotel = (hotel?: HotelData | null) => {
+      if (!hotel?.id) return;
+      hotelsById.set(hotel.id, hotel);
+    };
+
+    combinedData.hotels.forEach(registerHotel);
+    groupedHotelsFlat.forEach(registerHotel);
+    activeHotels.forEach(registerHotel);
+    Object.values(selectedHotelSnapshots).forEach(registerHotel);
+
+    return hotelsById;
+  }, [activeHotels, combinedData.hotels, groupedHotelsFlat, selectedHotelSnapshots]);
+
+  const hotelTabCount = groupedHotelsFlat.length > 0 ? groupedHotelsFlat.length : combinedData.hotels.length;
+
+  const getHotelSegmentKey = useCallback((hotel?: Partial<HotelData> | null) => {
+    if (!hotel) return 'default';
+
+    return hotel.segmentId
+      || `${hotel.segmentCity || hotel.city || 'default'}|${hotel.segmentCheckIn || hotel.check_in || ''}|${hotel.segmentCheckOut || hotel.check_out || ''}`;
+  }, []);
+
+  const getSegmentSelectionCount = useCallback((segmentKey: string, selectedIds: string[]) => {
+    return selectedIds.reduce((count, hotelId) => {
+      const selectedHotel = selectedHotelSnapshots[hotelId] || hotelUniverse.get(hotelId);
+      if (!selectedHotel) return count;
+      return getHotelSegmentKey(selectedHotel) === segmentKey ? count + 1 : count;
+    }, 0);
+  }, [getHotelSegmentKey, hotelUniverse, selectedHotelSnapshots]);
+
+  const activeSegmentSelectionCount = useMemo(() => {
+    if (!hasGroupedHotelSegments || !activeHotelSegment) return 0;
+    return getSegmentSelectionCount(getHotelSegmentKey(activeHotelSegment.hotels[0] || {
+      segmentId: activeHotelSegment.segmentId,
+      segmentCity: activeHotelSegment.city,
+      segmentCheckIn: activeHotelSegment.checkinDate,
+      segmentCheckOut: activeHotelSegment.checkoutDate
+    }), selectedHotels);
+  }, [activeHotelSegment, getHotelSegmentKey, getSegmentSelectionCount, hasGroupedHotelSegments, selectedHotels]);
 
   // Convertir vuelos del cache a formato de display
   const filteredFlights = useMemo(() => {
@@ -546,19 +699,37 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     });
   };
 
-  const handleHotelToggle = (hotelId: string) => {
+  const handleHotelToggle = (hotel: HotelData) => {
+    const hotelId = hotel.id;
+
     setSelectedHotels(prev => {
       if (prev.includes(hotelId)) {
-        // Remove hotel and its selected room
-        const newSelected = prev.filter(id => id !== hotelId);
-        const newRooms = { ...selectedRooms };
-        delete newRooms[hotelId];
-        setSelectedRooms(newRooms);
-        return newSelected;
+        setSelectedRooms(currentRooms => {
+          const nextRooms = { ...currentRooms };
+          delete nextRooms[hotelId];
+          return nextRooms;
+        });
+        setSelectedHotelSnapshots(currentSnapshots => {
+          const nextSnapshots = { ...currentSnapshots };
+          delete nextSnapshots[hotelId];
+          return nextSnapshots;
+        });
+        return prev.filter(id => id !== hotelId);
       }
 
-      // Limit to maximum 3 hotels
-      if (prev.length >= 3) {
+      if (hasGroupedHotelSegments) {
+        const segmentKey = getHotelSegmentKey(hotel);
+        const selectedInSegment = getSegmentSelectionCount(segmentKey, prev);
+
+        if (selectedInSegment >= 2) {
+          toast({
+            title: "Límite alcanzado",
+            description: `Solo puedes seleccionar hasta 2 hoteles para ${formatCityLabel(hotel.segmentCity || hotel.city)}.`,
+            variant: "destructive",
+          });
+          return prev;
+        }
+      } else if (prev.length >= 3) {
         toast({
           title: "Límite alcanzado",
           description: "Solo puedes seleccionar máximo 3 hoteles para el PDF.",
@@ -567,20 +738,30 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         return prev;
       }
 
+      setSelectedHotelSnapshots(currentSnapshots => ({
+        ...currentSnapshots,
+        [hotelId]: hotel
+      }));
+
       return [...prev, hotelId];
     });
   };
 
-  const handleRoomSelect = useCallback(async (hotelId: string, roomId: string) => {
+  const handleRoomSelect = useCallback(async (hotel: HotelData, roomId: string) => {
+    const hotelId = hotel.id;
+
     // 1. Update selection immediately for responsive UI
     setSelectedRooms(prev => ({
       ...prev,
       [hotelId]: roomId
     }));
 
+    setSelectedHotelSnapshots(prev => ({
+      ...prev,
+      [hotelId]: hotel
+    }));
+
     // 2. Find hotel and room data
-    const hotelsSource = hasHotelCache ? filteredHotels : combinedData.hotels;
-    const hotel = hotelsSource.find(h => h.id === hotelId);
     const room = hotel?.rooms.find(r => r.occupancy_id === roomId);
 
     // 3. Check if we have required data for makeBudget
@@ -661,7 +842,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     } finally {
       setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
     }
-  }, [combinedData.hotels, filteredHotels, hasHotelCache, exactPrices]);
+  }, [exactPrices]);
 
   const handleGeneratePdf = async () => {
     // Validate selections
@@ -777,14 +958,15 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         console.log(`   Flight ${idx + 1}: transfers=${JSON.stringify(flight.transfers)}, travel_assistance=${JSON.stringify(flight.travel_assistance)}`);
       });
 
-      // Use hotels from cache when available, same as display (line 889)
-      const hotelsSource = hasHotelCache ? filteredHotels : combinedData.hotels;
-      console.log('🔍 [CombinedTravelSelector] Hotels source:', hasHotelCache ? 'filteredHotels (cache)' : 'combinedData.hotels (original)');
-      console.log(`🔍 [CombinedTravelSelector] Total hotels in source: ${hotelsSource.length}`);
+      const selectedHotelData = selectedHotels
+        .map(hotelId => selectedHotelSnapshots[hotelId] || hotelUniverse.get(hotelId))
+        .filter((hotel): hotel is HotelData => !!hotel);
 
-      const selectedHotelData = hotelsSource.filter(hotel =>
-        selectedHotels.includes(hotel.id)
-      );
+      console.log('🔍 [CombinedTravelSelector] Selected hotel snapshots:', {
+        selectedCount: selectedHotelData.length,
+        availableSnapshots: Object.keys(selectedHotelSnapshots).length,
+        groupedSegments: groupedHotelSegments.length
+      });
 
       // Debug: Log hotel categories in selectedHotelData
       console.log('🏨 [DEBUG] Selected hotels BEFORE mapping:', selectedHotelData.map((h, i) => ({
@@ -851,6 +1033,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           category: hotel.category || '', // Explicitly preserve category
           address: hotel.address || '', // Explicitly preserve address
           city: hotel.city || '', // Explicitly preserve city
+          segmentId: hotel.segmentId,
+          segmentCity: hotel.segmentCity,
+          segmentCheckIn: hotel.segmentCheckIn,
+          segmentCheckOut: hotel.segmentCheckOut,
+          segmentOrder: hotel.segmentOrder,
           selectedRoom: roomWithExactPrice // Use room with exact price if available
         };
 
@@ -951,6 +1138,85 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     return `para ${passengerText} (${totalPassengers} ${totalPassengers > 1 ? 'personas' : 'persona'})`;
   };
 
+  const formatSegmentTabLabel = (checkIn?: string, checkOut?: string) => {
+    if (!checkIn || !checkOut) return 'Fechas sin definir';
+
+    try {
+      const formatOptions: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+      const start = new Date(`${checkIn}T00:00:00`).toLocaleDateString('es-AR', formatOptions).replace('.', '');
+      const end = new Date(`${checkOut}T00:00:00`).toLocaleDateString('es-AR', formatOptions).replace('.', '');
+      return `${start} - ${end}`;
+    } catch {
+      return `${checkIn} - ${checkOut}`;
+    }
+  };
+
+  const formatCityLabel = (city?: string) => {
+    if (!city) return 'Destino';
+
+    const lowerJoiners = new Set(['de', 'del', 'la', 'las', 'los', 'y']);
+
+    return city
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .map((word, index) => {
+        if (!word) return word;
+        if (index > 0 && lowerJoiners.has(word)) return word;
+        return word.charAt(0).toUpperCase() + word.slice(1);
+      })
+      .join(' ');
+  };
+
+  const formatMealPlanLabel = (mealPlan?: string) => {
+    switch (mealPlan) {
+      case 'all_inclusive':
+        return 'All Inclusive';
+      case 'breakfast':
+        return 'Desayuno';
+      case 'half_board':
+        return 'Media pensión';
+      case 'room_only':
+        return 'Solo habitación';
+      default:
+        return mealPlan ? mealPlan.replace(/_/g, ' ') : '';
+    }
+  };
+
+  const formatRoomTypeLabel = (roomType?: string) => {
+    switch (roomType) {
+      case 'single':
+        return 'Single';
+      case 'double':
+        return 'Doble';
+      case 'triple':
+        return 'Triple';
+      default:
+        return roomType ? roomType.replace(/_/g, ' ') : '';
+    }
+  };
+
+  const selectedHotelsBySegment = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number; order: number }>();
+
+    selectedHotels.forEach(hotelId => {
+      const hotel = selectedHotelSnapshots[hotelId] || hotelUniverse.get(hotelId);
+      if (!hotel) return;
+
+      const segmentKey = getHotelSegmentKey(hotel);
+      const segmentLabel = hotel.segmentCity || hotel.city || 'Hoteles';
+      const current = counts.get(segmentKey);
+
+      counts.set(segmentKey, {
+        label: formatCityLabel(segmentLabel),
+        count: (current?.count || 0) + 1,
+        order: hotel.segmentOrder ?? current?.order ?? 0
+      });
+    });
+
+    return Array.from(counts.values()).sort((a, b) => a.order - b.order);
+  }, [getHotelSegmentKey, hotelUniverse, selectedHotelSnapshots, selectedHotels]);
+
   return (
     <div className="space-y-4 w-full">
       {/* Tabs for flights and hotels */}
@@ -965,7 +1231,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
             <TabsTrigger value="hotels" className="flex items-center space-x-2" data-testid="results-tab-hotels">
               <Hotel className="h-4 w-4" />
-              <span>Hoteles ({combinedData.hotels.length})</span>
+              <span>Hoteles ({hotelTabCount})</span>
             </TabsTrigger>
           )}
         </TabsList>
@@ -1096,8 +1362,64 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         {/* Hotels Tab */}
         {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
           <TabsContent value="hotels" className="space-y-2">
+            {hasGroupedHotelSegments && activeHotelSegment && (
+              <Tabs value={activeHotelSegment.uiSegmentId} onValueChange={setActiveHotelSegmentId} className="space-y-3">
+                <TabsList className="flex h-auto w-full flex-wrap justify-start gap-2 bg-muted/60 p-1">
+                  {groupedHotelSegments.map(segment => (
+                    <TabsTrigger
+                      key={segment.uiSegmentId}
+                      value={segment.uiSegmentId}
+                      className="flex h-auto min-h-10 flex-col items-start gap-0.5 whitespace-normal px-3 py-2 text-left"
+                    >
+                      <span className="font-medium">{formatCityLabel(segment.city)}</span>
+                      <span className="text-[11px] opacity-80">
+                        {formatSegmentTabLabel(segment.checkinDate, segment.checkoutDate)}
+                      </span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            )}
+
+            {hasGroupedHotelSegments && activeHotelSegment && (
+              <Card className="border-dashed bg-muted/30">
+                <CardContent className="flex flex-col gap-3 p-3 text-sm md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="font-medium text-foreground">{formatCityLabel(activeHotelSegment.city)}</p>
+                    <p className="text-muted-foreground">
+                      {formatSegmentTabLabel(activeHotelSegment.checkinDate, activeHotelSegment.checkoutDate)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {activeSegmentSelectionCount} de 2 hoteles seleccionados
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {activeHotelSegment.requestedMealPlan && (
+                      <Badge variant="secondary" className="px-2 py-1">
+                        Plan: {formatMealPlanLabel(activeHotelSegment.requestedMealPlan)}
+                      </Badge>
+                    )}
+                    {activeHotelSegment.requestedRoomType && (
+                      <Badge variant="outline" className="px-2 py-1">
+                        Habitación: {formatRoomTypeLabel(activeHotelSegment.requestedRoomType)}
+                      </Badge>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeHotelSegment?.error && (
+              <Card data-testid="hotels-segment-error">
+                <CardContent className="p-6 text-center">
+                  <AlertCircle className="mx-auto mb-3 h-12 w-12 text-muted-foreground/50" />
+                  <p className="text-muted-foreground">{activeHotelSegment.error}</p>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Dynamic Filter Chips for Hotels - Solo Plan de Comidas */}
-            {hasHotelCache && hotelDistribution && (
+            {!activeHotelSegment?.error && hasHotelCache && hotelDistribution && (
               <HotelFilterChips
                 distribution={hotelDistribution}
                 activeMealPlan={activeMealPlan}
@@ -1108,7 +1430,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
             )}
 
             {/* Usar hoteles filtrados cuando hay cache, sino los originales */}
-            {(hasHotelCache ? filteredHotels : combinedData.hotels).map((hotel) => {
+            {!activeHotelSegment?.error && activeHotels.map((hotel) => {
               const isSelected = selectedHotels.includes(hotel.id);
 
               return (
@@ -1123,7 +1445,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       <Checkbox
                         data-testid={`select-hotel-${hotel.id || 'unknown'}`}
                         checked={isSelected}
-                        onCheckedChange={() => handleHotelToggle(hotel.id)}
+                        onCheckedChange={() => handleHotelToggle(hotel)}
                         className="mt-1"
                       />
 
@@ -1167,7 +1489,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                           {hotel.city && (
                             <div className="flex items-center space-x-1">
                               <MapPin className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{hotel.city.slice(0, 50)}</span>
+                              <span className="truncate">{formatCityLabel(hotel.city).slice(0, 50)}</span>
                             </div>
                           )}
                           {hotel.address && (
@@ -1198,11 +1520,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                     <RoomGroupSelector
                       rooms={hotel.rooms}
                       selectedRoomId={selectedRooms[hotel.id]}
-                      onRoomSelect={(roomId) => handleRoomSelect(hotel.id, roomId)}
+                      onRoomSelect={(roomId) => handleRoomSelect(hotel, roomId)}
                       isDisabled={!isSelected}
                       maxInitialRooms={3}
-                      requestedRoomType={combinedData.requestedRoomType}
-                      requestedMealPlan={combinedData.requestedMealPlan}
+                      requestedRoomType={activeHotelSegment?.requestedRoomType ?? combinedData.requestedRoomType}
+                      requestedMealPlan={activeHotelSegment?.requestedMealPlan ?? combinedData.requestedMealPlan}
                       exactPrices={exactPrices}
                       loadingPrices={loadingPrices}
                       failedPrices={failedPrices}
@@ -1215,7 +1537,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
             })}
 
             {/* Mensaje cuando no hay hoteles después de filtrar */}
-            {hasHotelCache && filteredHotels.length === 0 && combinedData.hotels.length > 0 && (
+            {!activeHotelSegment?.error && hasHotelCache && activeHotels.length === 0 && activeBaseHotels.length > 0 && (
               <Card data-testid="hotels-empty-state">
                 <CardContent className="p-6 text-center">
                   <Hotel className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
@@ -1231,11 +1553,13 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
             )}
 
             {/* Mensaje cuando no hay hoteles en la búsqueda original */}
-            {combinedData.hotels.length === 0 && (
+            {!activeHotelSegment?.error && activeBaseHotels.length === 0 && (
               <Card data-testid="hotels-empty-state">
                 <CardContent className="p-6 text-center">
                   <Hotel className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground">No se encontraron hoteles disponibles</p>
+                  <p className="text-muted-foreground">
+                    {activeHotelSegment ? `No se encontraron hoteles disponibles en ${activeHotelSegment.city}` : 'No se encontraron hoteles disponibles'}
+                  </p>
                   <p className="text-sm text-muted-foreground mt-1">Verificando códigos de destino en EUROVIPS</p>
                 </CardContent>
               </Card>
@@ -1256,6 +1580,15 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                   {selectedFlights.length > 0 && selectedHotels.length > 0 && ' y '}
                   {selectedHotels.length > 0 && `${selectedHotels.length} hotel(es)`} seleccionado(s)
                 </p>
+                {selectedHotelsBySegment.length > 0 && (
+                  <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    {selectedHotelsBySegment.map(segment => (
+                      <p key={segment.label}>
+                        {segment.label}: {segment.count} hotel(es) seleccionado(s)
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
               <Button
                 data-testid="generate-pdf-button"

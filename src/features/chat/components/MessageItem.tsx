@@ -5,7 +5,7 @@ import { User, Bot, FileText, Download, Clock, Check, CheckCheck, Loader2 } from
 // Lazy load heavy components
 const ReactMarkdown = lazy(() => import('react-markdown'));
 const CombinedTravelSelector = lazy(() => import('@/components/crm/CombinedTravelSelector'));
-import type { MessageRow, LocalCombinedTravelResults } from '../types/chat';
+import type { MessageRow, LocalCombinedTravelResults, LocalHotelData, LocalHotelSegmentResult } from '../types/chat';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import { getMessageContent, getMessageStatusIconType, formatTime } from '../utils/messageHelpers';
 import { getCityNameFromCode } from '../utils/flightHelpers';
@@ -118,6 +118,60 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
         return 'N/A';
       }
     };
+
+    const slugifySegmentPart = (value?: string) => (value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    const buildSegmentId = (segment: LocalHotelSegmentResult, segmentOrder: number) => {
+      const cityPart = slugifySegmentPart(segment.city) || 'destino';
+      const checkinPart = segment.checkinDate || 'sin-checkin';
+      const checkoutPart = segment.checkoutDate || 'sin-checkout';
+      return `hotel-segment-${segmentOrder + 1}-${cityPart}-${checkinPart}-${checkoutPart}`;
+    };
+
+    const convertLocalHotel = (
+      hotel: LocalHotelData,
+      segment?: LocalHotelSegmentResult,
+      segmentOrder?: number
+    ): GlobalHotelData => ({
+      id: hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
+      unique_id: hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
+      name: hotel.name,
+      category: hotel.category || '',
+      city: hotel.city,
+      address: hotel.address || '',
+      rooms: hotel.rooms.map(room => ({
+        type: room.type || 'Standard',
+        description: translateRoomDescription(room.description || 'Habitación estándar'),
+        price_per_night: room.price_per_night,
+        total_price: room.total_price,
+        currency: room.currency,
+        availability: room.availability >= 0 ? Math.max(room.availability, 3) : 5,
+        occupancy_id: room.occupancy_id || Math.random().toString(36),
+        xml_occupancy_id: room.xml_occupancy_id,
+        fare_id_broker: room.fare_id_broker
+      })),
+      check_in: hotel.check_in || segment?.checkinDate || (localData.flights.length > 0 && localData.flights[0].departure_date
+        ? localData.flights[0].departure_date
+        : new Date().toISOString().split('T')[0]),
+      check_out: hotel.check_out || segment?.checkoutDate || (localData.flights.length > 0 && localData.flights[0].return_date
+        ? localData.flights[0].return_date
+        : new Date(Date.now() + 86400000 * hotel.nights).toISOString().split('T')[0]),
+      nights: hotel.nights,
+      search_adults: hotel.search_adults,
+      search_children: hotel.search_children,
+      search_childrenAges: hotel.search_childrenAges,
+      search_infants: hotel.search_infants,
+      segmentId: segment && typeof segmentOrder === 'number' ? buildSegmentId(segment, segmentOrder) : undefined,
+      segmentCity: segment?.city,
+      segmentCheckIn: segment?.checkinDate,
+      segmentCheckOut: segment?.checkoutDate,
+      segmentOrder
+    });
+
     return {
       flights: localData.flights.map(flight => ({
         id: flight.id,
@@ -256,36 +310,18 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
         // 🏥 ASISTENCIA MÉDICA / SEGURO - Preserve from flight data
         travel_assistance: flight.travel_assistance
       })),
-      hotels: localData.hotels.map(hotel => ({
-        id: hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
-        unique_id: hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
-        name: hotel.name,
-        category: hotel.category || '',
-        city: hotel.city,
-        address: hotel.address || '',
-        rooms: hotel.rooms.map(room => ({
-          type: room.type || 'Standard',
-          description: translateRoomDescription(room.description || 'Habitación estándar'),
-          price_per_night: room.price_per_night, // Use the price_per_night from EUROVIPS directly
-          total_price: room.total_price, // Use the total_price from EUROVIPS directly
-          currency: room.currency,
-          availability: room.availability >= 0 ? Math.max(room.availability, 3) : 5, // Ensure at least "Consultar" status
-          occupancy_id: room.occupancy_id || Math.random().toString(36),
-          xml_occupancy_id: room.xml_occupancy_id,
-          fare_id_broker: room.fare_id_broker
-        })),
-        check_in: hotel.check_in || (localData.flights.length > 0 && localData.flights[0].departure_date
-          ? localData.flights[0].departure_date
-          : new Date().toISOString().split('T')[0]),
-        check_out: hotel.check_out || (localData.flights.length > 0 && localData.flights[0].return_date
-          ? localData.flights[0].return_date
-          : new Date(Date.now() + 86400000 * hotel.nights).toISOString().split('T')[0]),
-        nights: hotel.nights,
-        // Preserve search params for PDF occupancy (hotel-only mode)
-        search_adults: hotel.search_adults,
-        search_children: hotel.search_children,
-        search_childrenAges: hotel.search_childrenAges,
-        search_infants: hotel.search_infants
+      hotels: localData.hotels.map(hotel => convertLocalHotel(hotel)),
+      hotelSegments: localData.hotelSegments?.map((segment, segmentOrder) => ({
+        segmentId: buildSegmentId(segment, segmentOrder),
+        city: segment.city,
+        checkinDate: segment.checkinDate,
+        checkoutDate: segment.checkoutDate,
+        requestedRoomType: segment.requestedRoomType,
+        requestedMealPlan: segment.requestedMealPlan,
+        requestedChains: segment.requestedChains,
+        hotels: segment.hotels.map(hotel => convertLocalHotel(hotel, segment, segmentOrder)),
+        hotelSearchId: segment.hotelSearchId,
+        error: segment.error
       })),
       requestType: localData.requestType,
       // Pass filter preferences through to UI
@@ -294,7 +330,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
       // Pass flight search ID for localStorage lookup (dynamic filtering)
       flightSearchId: localData.flightSearchId,
       // Pass hotel search ID for IndexedDB lookup (dynamic filtering)
-      hotelSearchId: localData.hotelSearchId
+      hotelSearchId: localData.hotelSearchId,
+      hotelSearchIds: localData.hotelSearchIds
     };
   };
 

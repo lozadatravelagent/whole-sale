@@ -699,13 +699,66 @@ function extractStars(category: string | undefined, hotelName?: string): string 
   return "";
 }
 
+type HotelPdfInput = (HotelData | HotelDataWithSelectedRoom) & {
+  segmentId?: string;
+  segmentCity?: string;
+  segmentCheckIn?: string;
+  segmentCheckOut?: string;
+  segmentOrder?: number;
+};
+
+function formatPdfCityLabel(city?: string): string {
+  if (!city) return 'Destino';
+
+  const lowerJoiners = new Set(['de', 'del', 'la', 'las', 'los', 'y']);
+
+  return city
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word, index) => {
+      if (!word) return word;
+      if (index > 0 && lowerJoiners.has(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
+function formatPdfMealPlanLabel(mealPlan?: string | null): string | null {
+  switch (mealPlan) {
+    case 'all_inclusive':
+      return 'All Inclusive';
+    case 'breakfast':
+      return 'Desayuno';
+    case 'half_board':
+      return 'Media pensión';
+    case 'full_board':
+      return 'Pensión completa';
+    case 'room_only':
+      return 'Solo habitación';
+    default:
+      return mealPlan ? mealPlan.replace(/_/g, ' ') : null;
+  }
+}
+
+function formatPdfShortDateLabel(date?: string): string {
+  if (!date) return '';
+
+  const [year, month, day] = date.split('-').map(Number);
+  if (!year || !month || !day) return date;
+
+  const shortMonths = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${day} ${shortMonths[month - 1] || ''}`.trim();
+}
+
 // Function to prepare combined travel data (flights + hotels) for the specific template
 function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | HotelDataWithSelectedRoom[], isPriceModified: boolean = false) {
   console.log('🔧 PREPARING COMBINED PDF DATA FOR TEMPLATE');
   console.log('📊 Input:', { flights: flights.length, hotels: hotels.length });
+  const normalizedHotels = hotels as HotelPdfInput[];
 
   // Debug: Log hotel categories before processing
-  console.log('🏨 [DEBUG] Hotel categories before processing:', hotels.map((h, i) => ({
+  console.log('🏨 [DEBUG] Hotel categories before processing:', normalizedHotels.map((h, i) => ({
     index: i + 1,
     name: h.name,
     category: h.category,
@@ -767,7 +820,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   });
 
   // Transform hotel data to match template expectations (simplified structure)
-  const best_hotels = hotels.map((hotel, index) => {
+  const best_hotels = normalizedHotels.map((hotel, index) => {
     // Extract stars from category or hotel name
     const extractedStars = extractStars(hotel.category, hotel.name);
 
@@ -841,8 +894,8 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
     // Preserve mealPlan if available (from AI extraction or PDF analysis)
     if ((hotel as any).mealPlan) {
-      hotelForTemplate.mealPlan = (hotel as any).mealPlan;
-      console.log(`🍽️ [TEMPLATE] Preserved mealPlan for ${hotel.name}:`, (hotel as any).mealPlan);
+      hotelForTemplate.mealPlan = formatPdfMealPlanLabel((hotel as any).mealPlan);
+      console.log(`🍽️ [TEMPLATE] Preserved mealPlan for ${hotel.name}:`, hotelForTemplate.mealPlan);
     }
 
     // Preserve optionNumber if available (from AI extraction)
@@ -860,12 +913,110 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     return hotelForTemplate;
   });
 
+  const hotelSegmentsMap = new Map<string, {
+    segment_id: string;
+    city: string;
+    checkin: string;
+    checkout: string;
+    nights: number;
+    adults: number;
+    children: number;
+    infants: number;
+    hotels: Array<{
+      name: string;
+      stars: string;
+      location: string;
+      roomDescription?: string;
+      mealPlan?: string | null;
+      price: string;
+      rawPrice?: number;
+      currency?: string;
+    }>;
+    order: number;
+  }>();
+
+  normalizedHotels.forEach((hotel, index) => {
+    if (!hotel.segmentId && !hotel.segmentCity && !hotel.segmentCheckIn && !hotel.segmentCheckOut) {
+      return;
+    }
+
+    const hotelWithRoom = hotel as HotelDataWithSelectedRoom;
+    const roomToUse = hotelWithRoom.selectedRoom || hotel.rooms.reduce((cheapest, room) =>
+      room.total_price < cheapest.total_price ? room : cheapest
+    );
+    const templateHotel = best_hotels[index];
+    const segmentCity = hotel.segmentCity || hotel.city || 'Destino';
+    const segmentCheckIn = hotel.segmentCheckIn || hotel.check_in;
+    const segmentCheckOut = hotel.segmentCheckOut || hotel.check_out;
+    const segmentGroupingKey = `${segmentCity.toLowerCase()}|${segmentCheckIn}|${segmentCheckOut}`;
+    const segmentId = hotel.segmentId || segmentGroupingKey;
+    const segmentOrder = hotel.segmentOrder ?? hotelSegmentsMap.size;
+
+    if (!hotelSegmentsMap.has(segmentGroupingKey)) {
+      hotelSegmentsMap.set(segmentGroupingKey, {
+        segment_id: segmentId,
+        city: formatPdfCityLabel(segmentCity),
+        checkin: segmentCheckIn,
+        checkout: segmentCheckOut,
+        nights: hotel.nights,
+        adults: hotel.search_adults ?? flights[0]?.adults ?? 1,
+        children: hotel.search_children ?? flights[0]?.childrens ?? 0,
+        infants: hotel.search_infants ?? flights[0]?.infants ?? 0,
+        hotels: [],
+        order: segmentOrder
+      });
+    }
+
+    hotelSegmentsMap.get(segmentGroupingKey)!.hotels.push({
+      name: templateHotel.name,
+      stars: templateHotel.stars,
+      location: templateHotel.location || hotel.city || 'Ubicación no especificada',
+      roomDescription: templateHotel.roomDescription || '',
+      mealPlan: (templateHotel as any).mealPlan || formatPdfMealPlanLabel(extractMealPlan(roomToUse?.description, hotel)),
+      price: templateHotel.price,
+      rawPrice: roomToUse?.total_price,
+      currency: roomToUse?.currency
+    });
+  });
+
+  const hotel_segments = Array.from(hotelSegmentsMap.values())
+    .sort((a, b) => a.order - b.order)
+    .map(({ order, ...segment }) => segment);
+  const hasHotelSegments = hotel_segments.length > 0;
+  const hotel_summary_cards = Array.from(hotelSegmentsMap.values())
+    .sort((a, b) => a.order - b.order)
+    .flatMap((segment, segmentIndex) => segment.hotels.map((hotel, hotelIndex) => ({
+      card_id: `${segment.segment_id}-${hotelIndex + 1}`,
+      city: segment.city,
+      checkin: segment.checkin,
+      checkout: segment.checkout,
+      short_dates: `${formatPdfShortDateLabel(segment.checkin)} - ${formatPdfShortDateLabel(segment.checkout)}`,
+      nights: segment.nights,
+      adults: segment.adults,
+      children: segment.children,
+      infants: segment.infants,
+      hotel_name: hotel.name,
+      stars: hotel.stars,
+      location: hotel.location,
+      room_description: hotel.roomDescription || '',
+      meal_plan: hotel.mealPlan || null,
+      price: hotel.price,
+      currency: hotel.currency || 'USD',
+      segment_order: segmentIndex,
+      hotel_order: hotelIndex
+    })))
+    .slice(0, 4);
+
   // Extract key dates from first hotel or flight
-  const firstHotel = hotels[0];
+  const firstHotel = normalizedHotels[0];
   const firstFlight = flights[0];
 
-  const checkin = firstHotel?.check_in || firstFlight?.departure_date || new Date().toISOString().split('T')[0];
-  const checkout = firstHotel?.check_out || firstFlight?.return_date || new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0];
+  const checkin = hasHotelSegments
+    ? hotel_segments[0]?.checkin || firstHotel?.check_in || firstFlight?.departure_date || new Date().toISOString().split('T')[0]
+    : firstHotel?.check_in || firstFlight?.departure_date || new Date().toISOString().split('T')[0];
+  const checkout = hasHotelSegments
+    ? hotel_segments[hotel_segments.length - 1]?.checkout || firstHotel?.check_out || firstFlight?.return_date || new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0]
+    : firstHotel?.check_out || firstFlight?.return_date || new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0];
 
   // Calculate duration in nights (usar Math.floor para evitar redondeos incorrectos)
   const checkinDate = new Date(checkin);
@@ -888,9 +1039,9 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   } else if (firstHotel) {
     // For hotel-only PDFs, use search_adults/search_children from hotel
     // These come from the original search params, not from room capacity
-    adults = firstHotel.search_adults ?? 1;
-    childrens = firstHotel.search_children ?? 0;
-    infants = firstHotel.search_infants ?? 0;
+    adults = hasHotelSegments ? hotel_segments[0]?.adults ?? firstHotel.search_adults ?? 1 : firstHotel.search_adults ?? 1;
+    childrens = hasHotelSegments ? hotel_segments[0]?.children ?? firstHotel.search_children ?? 0 : firstHotel.search_children ?? 0;
+    infants = hasHotelSegments ? hotel_segments[0]?.infants ?? firstHotel.search_infants ?? 0 : firstHotel.search_infants ?? 0;
 
     console.log('👥 [HOTEL-ONLY] Using search params from hotel:', {
       hotel_name: firstHotel.name,
@@ -922,7 +1073,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   });
 
   // Sum all hotel prices (using selected rooms and multiplying by nights)
-  hotels.forEach(hotel => {
+  normalizedHotels.forEach(hotel => {
     const hotelWithRoom = hotel as HotelDataWithSelectedRoom;
     const roomToUse = hotelWithRoom.selectedRoom || hotel.rooms.reduce((cheapest, room) =>
       room.total_price < cheapest.total_price ? room : cheapest
@@ -952,7 +1103,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     totalPrice,
     currency,
     flights_count: flights.length,
-    hotels_count: hotels.length
+    hotels_count: normalizedHotels.length
   });
 
   // 🏥 Check if any flight includes travel assistance (for legend in PDF)
@@ -975,7 +1126,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   const grandTotalWithServices = totalPrice;
 
   // Detect multiple hotels and prepare comparative options
-  const hasMultipleHotels = hotels.length >= 2;
+  const hasMultipleHotels = !hasHotelSegments && normalizedHotels.length >= 2;
   let option1Hotel = null;
   let option2Hotel = null;
   let option3Hotel = null;
@@ -1056,7 +1207,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         }
 
         console.log('💰 [PACKAGE OPTIONS] Using metadata pricing:', {
-          hotels_count: hotels.length,
+          hotels_count: normalizedHotels.length,
           option_1_hotel: option1Hotel.name,
           option_1_hotel_price: option1Hotel.price,
           option_1_total: option1Total,
@@ -1136,7 +1287,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
       }
 
       console.log('💰 MULTIPLE HOTELS PRICING:', {
-        hotels_count: hotels.length,
+        hotels_count: normalizedHotels.length,
         cheapest_hotel: cheapestHotel.name,
         cheapest_price: cheapestPrice,
         expensive_hotel: mostExpensiveHotel.name,
@@ -1149,7 +1300,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
         option_3_total: option3Total || null
       });
     }
-  } else if (hotels.length === 1) {
+  } else if (!hasHotelSegments && normalizedHotels.length === 1) {
     // Single hotel: populate option_1 so the template renders the same box design
     const singleHotel = best_hotels[0];
     const singleHotelPrice = typeof singleHotel.price === 'string'
@@ -1173,14 +1324,16 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
   }
 
   // Extract hotel destination for hotel-only PDFs
-  const hotelDestination = firstHotel?.city || firstHotel?.address?.split(',')[0] || 'Destino';
+  const hotelDestination = hasHotelSegments
+    ? Array.from(new Set(hotel_segments.map(segment => segment.city))).join(' / ')
+    : formatPdfCityLabel(firstHotel?.city || firstHotel?.address?.split(',')[0] || 'Destino');
 
   // Extract meal plan from first hotel's room description
   let mealPlan: string | null = null;
   if (firstHotel) {
     const hotelWithRoom = firstHotel as HotelDataWithSelectedRoom;
     const roomToCheck = hotelWithRoom.selectedRoom || firstHotel.rooms?.[0];
-    mealPlan = extractMealPlan(roomToCheck?.description, firstHotel);
+    mealPlan = formatPdfMealPlanLabel(extractMealPlan(roomToCheck?.description, firstHotel));
     console.log('🍽️ [MEAL PLAN] Extracted:', {
       roomDescription: roomToCheck?.description,
       hotelName: firstHotel.name,
@@ -1201,6 +1354,11 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
     // 🏨 Hotel destination for hotel-only PDFs
     hotel_destination: hotelDestination,
+    hotel_destinations_summary: hotelDestination,
+    has_hotel_segments: hasHotelSegments,
+    hotel_segments,
+    hotel_segments_count: hotel_segments.length,
+    hotel_summary_cards,
 
     // Template-specific variables
     checkin,
@@ -1223,7 +1381,7 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
 
     // 🏨 MULTI-HOTEL SUPPORT - Comparative options
     has_multiple_hotels: hasMultipleHotels,
-    hotel_options_count: hotels.length,
+    hotel_options_count: normalizedHotels.length,
     option_1_hotel: option1Hotel,
     option_1_total: option1Hotel ? formatPriceForTemplate(option1Total) : null,
     option_2_hotel: option2Hotel,

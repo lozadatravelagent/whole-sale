@@ -6,6 +6,47 @@ import {
     type FlightTripType
 } from '@/services/flightSegments';
 
+export interface HotelStaySegment {
+    id?: string;
+    city?: string;
+    hotelName?: string;
+    hotelNames?: string[];
+    checkinDate?: string;
+    checkoutDate?: string;
+    adults?: number;
+    adultsExplicit?: boolean;
+    children?: number;
+    childrenAges?: number[];
+    infants?: number;
+    roomType?: 'single' | 'double' | 'triple';
+    hotelChains?: string[];
+    mealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
+    freeCancellation?: boolean;
+    roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view';
+    roomCount?: number;
+}
+
+export interface HotelRequest {
+    city: string;
+    hotelName?: string;
+    hotelNames?: string[]; // Nombres específicos de hoteles (ej: ["Riu Republica", "Iberostar Dominicana"])
+    checkinDate: string;
+    checkoutDate: string;
+    adults: number;
+    adultsExplicit?: boolean;
+    children: number;
+    childrenAges?: number[]; // Edades de niños para paridad exacta con EUROVIPS
+    infants?: number; // Bebés de 0-2 años
+    // Campos opcionales de preferencias
+    roomType?: 'single' | 'double' | 'triple'; // Tipo de habitación (OPCIONAL - solo filtrar si usuario lo especifica)
+    hotelChains?: string[]; // Cadenas hoteleras - soporta múltiples cadenas (opcional)
+    mealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'; // Modalidad de alimentación (OPCIONAL - solo filtrar si usuario lo especifica)
+    freeCancellation?: boolean; // Cancelación gratuita (opcional)
+    roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view'; // Tipo de habitación (opcional)
+    roomCount?: number; // Cantidad de habitaciones (opcional, default 1)
+    segments?: HotelStaySegment[];
+}
+
 export interface ParsedTravelRequest {
     requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
     flights?: {
@@ -33,25 +74,7 @@ export interface ParsedTravelRequest {
         preferredAirline?: string; // aerolínea preferida
         cabinClass?: 'economy' | 'premium_economy' | 'business' | 'first'; // clase de cabina
     };
-    hotels?: {
-        city: string;
-        hotelName?: string;
-        hotelNames?: string[]; // Nombres específicos de hoteles (ej: ["Riu Republica", "Iberostar Dominicana"])
-        checkinDate: string;
-        checkoutDate: string;
-        adults: number;
-        adultsExplicit?: boolean;
-        children: number;
-        childrenAges?: number[]; // Edades de niños para paridad exacta con EUROVIPS
-        infants?: number; // Bebés de 0-2 años
-        // Campos opcionales de preferencias
-        roomType?: 'single' | 'double' | 'triple'; // Tipo de habitación (OPCIONAL - solo filtrar si usuario lo especifica)
-        hotelChains?: string[]; // Cadenas hoteleras - soporta múltiples cadenas (opcional)
-        mealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'; // Modalidad de alimentación (OPCIONAL - solo filtrar si usuario lo especifica)
-        freeCancellation?: boolean; // Cancelación gratuita (opcional)
-        roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view'; // Tipo de habitación (opcional)
-        roomCount?: number; // Cantidad de habitaciones (opcional, default 1)
-    };
+    hotels?: HotelRequest;
     // 🚗 TRASLADOS (transfers) - Servicios de traslado aeropuerto-hotel
     transfers?: {
         included: boolean; // Si el usuario solicitó traslados
@@ -107,6 +130,387 @@ export interface RequiredHotelFields {
     adults: boolean;
     roomType: boolean;
     mealPlan: boolean;
+}
+
+const HOTEL_MONTHS: Record<string, string> = {
+    'enero': '01',
+    'febrero': '02',
+    'marzo': '03',
+    'abril': '04',
+    'mayo': '05',
+    'junio': '06',
+    'julio': '07',
+    'agosto': '08',
+    'septiembre': '09',
+    'setiembre': '09',
+    'octubre': '10',
+    'noviembre': '11',
+    'diciembre': '12'
+};
+
+function normalizeHotelText(value: string): string {
+    return value
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ');
+}
+
+function buildHotelSegmentId(segment: Partial<HotelStaySegment>, index: number): string {
+    const city = normalizeHotelText(segment.city || 'tramo')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    const checkin = segment.checkinDate || 'sin-fecha';
+    const checkout = segment.checkoutDate || 'sin-fecha';
+    return `hotel-segment-${index + 1}-${city || 'tramo'}-${checkin}-${checkout}`;
+}
+
+function stripTrailingPunctuation(value: string): string {
+    return value.replace(/[,:;.!]+$/g, '').trim();
+}
+
+function detectRoomTypeFromText(message: string): HotelStaySegment['roomType'] | undefined {
+    const normalized = normalizeHotelText(message);
+
+    if (/\b(triple)\b/.test(normalized)) return 'triple';
+    if (/\b(double|doble|twin)\b/.test(normalized)) return 'double';
+    if (/\b(single|simple|individual)\b/.test(normalized)) return 'single';
+
+    return undefined;
+}
+
+function detectMealPlanFromText(message: string): HotelStaySegment['mealPlan'] | undefined {
+    const normalized = normalizeHotelText(message);
+
+    if (normalized.includes('all inclusive') || normalized.includes('todo incluido')) {
+        return 'all_inclusive';
+    }
+    if (normalized.includes('media pension') || normalized.includes('half board')) {
+        return 'half_board';
+    }
+    if (normalized.includes('room only') || normalized.includes('solo habitacion') || normalized.includes('solo alojamiento')) {
+        return 'room_only';
+    }
+    if (normalized.includes('desayuno') || normalized.includes('breakfast')) {
+        return 'breakfast';
+    }
+
+    return undefined;
+}
+
+function detectAdultsFromText(message: string): { adults?: number; adultsExplicit?: boolean } {
+    const normalized = normalizeHotelText(message);
+    const explicitCount = normalized.match(/(\d+)\s*(adultos?|personas?)/i);
+    const numberWords: Record<string, number> = {
+        'un': 1,
+        'una': 1,
+        'uno': 1,
+        'dos': 2,
+        'tres': 3,
+        'cuatro': 4,
+        'cinco': 5,
+        'seis': 6
+    };
+
+    if (explicitCount) {
+        return {
+            adults: Math.max(1, parseInt(explicitCount[1], 10)),
+            adultsExplicit: true
+        };
+    }
+
+    const explicitWords = normalized.match(/\b(un|una|uno|dos|tres|cuatro|cinco|seis)\s+(adultos?|personas?)\b/i);
+    if (explicitWords) {
+        return {
+            adults: numberWords[explicitWords[1].toLowerCase()],
+            adultsExplicit: true
+        };
+    }
+
+    if (/\b(una persona|un adulto|1 adulto)\b/i.test(normalized)) {
+        return {
+            adults: 1,
+            adultsExplicit: true
+        };
+    }
+
+    return {};
+}
+
+function detectHotelCityFromText(message: string): string | undefined {
+    const cityPatterns = [
+        /\ben\s+([a-zA-Záéíóúñü.' -]+?)(?=\s+(?:desde|para|habitacion|habitación|cadena|all inclusive|todo incluido|con desayuno|desayuno|media pension|media pensión|room only|solo habitacion|solo habitación|del?\s+\d{1,2}\b|$))/i,
+        /^([a-zA-Záéíóúñü.' -]+?)(?=\s+(?:desde|para|habitacion|habitación|cadena|all inclusive|todo incluido|con desayuno|desayuno|media pension|media pensión|room only|solo habitacion|solo habitación|del?\s+\d{1,2}\b|$))/i
+    ];
+
+    for (const pattern of cityPatterns) {
+        const match = message.match(pattern);
+        if (match?.[1]) {
+            const cleaned = stripTrailingPunctuation(
+                match[1]
+                    .replace(/^(?:quiero|necesito|busco|un|una|hotel|hoteles|alojamiento|hospedaje|en)\s+/i, '')
+                    .trim()
+            );
+
+            if (cleaned) {
+                return cleaned;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+function resolveHotelDate(
+    day: string,
+    monthName?: string,
+    referenceDate?: string,
+    previousDate?: string
+): string | undefined {
+    const monthFromReference = referenceDate ? referenceDate.slice(5, 7) : undefined;
+    const monthNum = monthName ? HOTEL_MONTHS[normalizeHotelText(monthName)] : monthFromReference;
+    if (!monthNum) return undefined;
+
+    const baseDate = previousDate ? new Date(previousDate) : referenceDate ? new Date(referenceDate) : new Date();
+    let year = baseDate.getFullYear();
+    const requestedMonth = parseInt(monthNum, 10);
+    const baseMonth = baseDate.getMonth() + 1;
+
+    if (requestedMonth < baseMonth) {
+        year += 1;
+    }
+
+    return `${year}-${monthNum}-${day.padStart(2, '0')}`;
+}
+
+function parseHotelDateRangeFromText(
+    message: string,
+    previousSegment?: HotelStaySegment
+): Pick<HotelStaySegment, 'checkinDate' | 'checkoutDate'> {
+    const rangePattern = /(?:desde\s+el?|desde|del?)\s*(\d{1,2})(?:\s+de\s+([a-záéíóú]+))?\s+al\s*(\d{1,2})(?:\s+de\s+([a-záéíóú]+))?/i;
+    const shortPattern = /(\d{1,2})\s+al\s+(\d{1,2})(?:\s+de\s+([a-záéíóú]+))?/i;
+    const match = message.match(rangePattern) || message.match(shortPattern);
+
+    if (!match) {
+        return {};
+    }
+
+    const isShortPattern = message.match(rangePattern) === null;
+    const startDay = match[1];
+    const startMonth = isShortPattern ? match[3] : match[2];
+    const endDay = isShortPattern ? match[2] : match[3];
+    const endMonth = isShortPattern ? match[3] : match[4];
+    const referenceDate = previousSegment?.checkoutDate || previousSegment?.checkinDate;
+
+    const resolvedStart = resolveHotelDate(
+        startDay,
+        startMonth || endMonth,
+        referenceDate,
+        previousSegment?.checkinDate
+    );
+    const resolvedEnd = resolveHotelDate(
+        endDay,
+        endMonth || startMonth,
+        resolvedStart || referenceDate,
+        previousSegment?.checkoutDate || resolvedStart
+    );
+
+    return {
+        checkinDate: resolvedStart,
+        checkoutDate: resolvedEnd
+    };
+}
+
+function splitHotelMessageIntoChunks(message: string): string[] {
+    const normalized = message.replace(/\s+/g, ' ').trim();
+    const withBreaks = normalized.replace(/\s+(?:y|luego|despues|después|ademas|además)\s+en\s+/gi, ' ||| en ');
+    return withBreaks
+        .split('|||')
+        .map((chunk) => chunk.trim())
+        .filter(Boolean);
+}
+
+function buildHotelSegmentFromRequest(hotels?: Partial<HotelRequest>, index: number = 0): HotelStaySegment | null {
+    if (!hotels) return null;
+
+    const segment: HotelStaySegment = {
+        city: hotels.city,
+        hotelName: hotels.hotelName,
+        hotelNames: hotels.hotelNames,
+        checkinDate: hotels.checkinDate,
+        checkoutDate: hotels.checkoutDate,
+        adults: hotels.adults,
+        adultsExplicit: hotels.adultsExplicit,
+        children: hotels.children,
+        childrenAges: hotels.childrenAges,
+        infants: hotels.infants,
+        roomType: hotels.roomType,
+        hotelChains: hotels.hotelChains,
+        mealPlan: hotels.mealPlan,
+        freeCancellation: hotels.freeCancellation,
+        roomView: hotels.roomView,
+        roomCount: hotels.roomCount
+    };
+
+    const hasContent = Object.values(segment).some((value) =>
+        value !== undefined && value !== null && value !== ''
+    );
+
+    if (!hasContent) return null;
+
+    return {
+        ...segment,
+        id: buildHotelSegmentId(segment, index)
+    };
+}
+
+function inheritHotelSegment(
+    partialSegment: HotelStaySegment,
+    fallbackSegment: HotelStaySegment | null,
+    index: number
+): HotelStaySegment {
+    const merged: HotelStaySegment = {
+        ...fallbackSegment,
+        ...partialSegment,
+        hotelChains: partialSegment.hotelChains ?? fallbackSegment?.hotelChains,
+        hotelNames: partialSegment.hotelNames ?? fallbackSegment?.hotelNames,
+        childrenAges: partialSegment.childrenAges ?? fallbackSegment?.childrenAges
+    };
+
+    return {
+        ...merged,
+        id: partialSegment.id || merged.id || buildHotelSegmentId(merged, index)
+    };
+}
+
+export function getHotelSegments(hotels?: HotelRequest): HotelStaySegment[] {
+    if (!hotels) return [];
+
+    const fallback = buildHotelSegmentFromRequest(hotels, 0);
+
+    if (!Array.isArray(hotels.segments) || hotels.segments.length === 0) {
+        return fallback ? [fallback] : [];
+    }
+
+    return hotels.segments.reduce<HotelStaySegment[]>((acc, current, index) => {
+        const inheritedFrom = acc[index - 1] || fallback;
+        acc.push(inheritHotelSegment(current, inheritedFrom, index));
+        return acc;
+    }, []);
+}
+
+export function getPrimaryHotelRequest(hotels?: HotelRequest): HotelRequest | undefined {
+    if (!hotels) return undefined;
+
+    const [firstSegment] = getHotelSegments(hotels);
+    if (!firstSegment) return hotels;
+
+    return {
+        ...hotels,
+        city: firstSegment.city || hotels.city,
+        hotelName: firstSegment.hotelName || hotels.hotelName,
+        hotelNames: firstSegment.hotelNames || hotels.hotelNames,
+        checkinDate: firstSegment.checkinDate || hotels.checkinDate,
+        checkoutDate: firstSegment.checkoutDate || hotels.checkoutDate,
+        adults: firstSegment.adults ?? hotels.adults,
+        adultsExplicit: firstSegment.adultsExplicit ?? hotels.adultsExplicit,
+        children: firstSegment.children ?? hotels.children,
+        childrenAges: firstSegment.childrenAges ?? hotels.childrenAges,
+        infants: firstSegment.infants ?? hotels.infants,
+        roomType: firstSegment.roomType || hotels.roomType,
+        hotelChains: firstSegment.hotelChains || hotels.hotelChains,
+        mealPlan: firstSegment.mealPlan || hotels.mealPlan,
+        freeCancellation: firstSegment.freeCancellation ?? hotels.freeCancellation,
+        roomView: firstSegment.roomView || hotels.roomView,
+        roomCount: firstSegment.roomCount ?? hotels.roomCount,
+        segments: getHotelSegments(hotels)
+    };
+}
+
+function extractHotelSegmentsFromMessage(
+    message: string,
+    baseHotels?: HotelRequest,
+    detectors?: {
+        detectMultipleHotelChains?: (text: string) => string[];
+        detectMultipleHotelNames?: (text: string) => string[];
+    }
+): HotelStaySegment[] | undefined {
+    const chunks = splitHotelMessageIntoChunks(message);
+    if (chunks.length < 2) {
+        return baseHotels?.segments && baseHotels.segments.length > 1 ? getHotelSegments(baseHotels) : undefined;
+    }
+
+    const baseSegment = buildHotelSegmentFromRequest(baseHotels, 0);
+    const segments: HotelStaySegment[] = [];
+
+    chunks.forEach((chunk, index) => {
+        const previousSegment = segments[index - 1] || baseSegment || null;
+        const detectedNames = detectors?.detectMultipleHotelNames?.(chunk) || [];
+        const detectedChains = detectedNames.length === 0
+            ? (detectors?.detectMultipleHotelChains?.(chunk) || [])
+            : [];
+        const { adults, adultsExplicit } = detectAdultsFromText(chunk);
+        const dates = parseHotelDateRangeFromText(chunk, previousSegment || undefined);
+
+        const partialSegment: HotelStaySegment = {
+            city: detectHotelCityFromText(chunk),
+            checkinDate: dates.checkinDate,
+            checkoutDate: dates.checkoutDate,
+            adults: adults ?? (detectRoomTypeFromText(chunk) === 'double' ? 2 : detectRoomTypeFromText(chunk) === 'triple' ? 3 : detectRoomTypeFromText(chunk) === 'single' ? 1 : undefined),
+            adultsExplicit,
+            roomType: detectRoomTypeFromText(chunk),
+            mealPlan: detectMealPlanFromText(chunk),
+            hotelNames: detectedNames.length > 0 ? detectedNames : undefined,
+            hotelChains: detectedChains.length > 0 ? detectedChains : undefined
+        };
+
+        const segment = inheritHotelSegment(partialSegment, previousSegment, index);
+        const hasCoreFields = segment.city || segment.checkinDate || segment.checkoutDate;
+
+        if (hasCoreFields) {
+            segments.push(segment);
+        }
+    });
+
+    return segments.length > 1 ? segments : undefined;
+}
+
+function normalizeIncomingHotelsPayload(rawHotels: unknown): Partial<HotelRequest> | undefined {
+    if (!rawHotels) return undefined;
+
+    if (Array.isArray(rawHotels)) {
+        const rawSegments = rawHotels
+            .filter((segment): segment is Record<string, unknown> => Boolean(segment) && typeof segment === 'object')
+            .map((segment, index) => ({
+                id: buildHotelSegmentId(segment as Partial<HotelStaySegment>, index),
+                city: typeof segment.city === 'string' ? segment.city : undefined,
+                hotelName: typeof segment.hotelName === 'string' ? segment.hotelName : undefined,
+                hotelNames: Array.isArray(segment.hotelNames) ? segment.hotelNames as string[] : undefined,
+                checkinDate: typeof segment.checkinDate === 'string' ? segment.checkinDate : undefined,
+                checkoutDate: typeof segment.checkoutDate === 'string' ? segment.checkoutDate : undefined,
+                adults: typeof segment.adults === 'number' ? segment.adults : undefined,
+                adultsExplicit: typeof segment.adultsExplicit === 'boolean' ? segment.adultsExplicit : undefined,
+                children: typeof segment.children === 'number' ? segment.children : undefined,
+                childrenAges: Array.isArray(segment.childrenAges) ? segment.childrenAges as number[] : undefined,
+                infants: typeof segment.infants === 'number' ? segment.infants : undefined,
+                roomType: typeof segment.roomType === 'string' ? segment.roomType as HotelStaySegment['roomType'] : undefined,
+                hotelChains: Array.isArray(segment.hotelChains) ? segment.hotelChains as string[] : undefined,
+                mealPlan: typeof segment.mealPlan === 'string' ? segment.mealPlan as HotelStaySegment['mealPlan'] : undefined,
+                freeCancellation: typeof segment.freeCancellation === 'boolean' ? segment.freeCancellation : undefined,
+                roomView: typeof segment.roomView === 'string' ? segment.roomView as HotelStaySegment['roomView'] : undefined,
+                roomCount: typeof segment.roomCount === 'number' ? segment.roomCount : undefined
+            }));
+
+        if (rawSegments.length === 0) return undefined;
+        return buildHotelRequestFromSegments(rawSegments, rawSegments[0]);
+    }
+
+    if (typeof rawHotels === 'object') {
+        return rawHotels as Partial<HotelRequest>;
+    }
+
+    return undefined;
 }
 
 // Interfaz para campos requeridos de itinerarios
@@ -221,39 +625,47 @@ export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels
 
     const missingFields: string[] = [];
     const missingFieldsSpanish: string[] = [];
+    const segments = getHotelSegments(hotels);
+    const hotelSegments = segments.length > 0 ? segments : [hotels];
 
-    // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants without adults
-    const hasOnlyMinors = (hotels.adults === 0 || !hotels.adults) &&
-        (((hotels.children ?? 0) > 0) || ((hotels.infants ?? 0) > 0));
+    for (let index = 0; index < hotelSegments.length; index += 1) {
+        const segment = hotelSegments[index];
+        const label = hotelSegments.length > 1
+            ? (segment.city ? `${segment.city}` : `tramo ${index + 1}`)
+            : '';
 
-    if (hasOnlyMinors) {
-        console.log('⚠️ [VALIDATION] Only minors detected in hotel search without adults - rejecting');
-        return {
-            isValid: false,
-            missingFields: ['adults'],
-            missingFieldsSpanish: ['adulto acompañante'],
-            errorMessage: '⚠️ **Los menores no pueden hospedarse solos**\n\nLos niños y bebés deben estar acompañados por al menos un adulto responsable.\n\n**¿Cuántos adultos los acompañarán?**\n\nPor ejemplo: "agrega 1 adulto", "con 2 adultos"'
-        };
-    }
+        // 🚨 CRITICAL: Check for "only minors" FIRST - children/infants without adults
+        const hasOnlyMinors = (segment.adults === 0 || !segment.adults) &&
+            (((segment.children ?? 0) > 0) || ((segment.infants ?? 0) > 0));
 
-    // Validar campos requeridos (roomType y mealPlan son OPCIONALES)
-    if (!hotels.city) {
-        missingFields.push('city');
-        missingFieldsSpanish.push('destino');
+        if (hasOnlyMinors) {
+            console.log('⚠️ [VALIDATION] Only minors detected in hotel search without adults - rejecting');
+            return {
+                isValid: false,
+                missingFields: ['adults'],
+                missingFieldsSpanish: ['adulto acompañante'],
+                errorMessage: `⚠️ **Los menores no pueden hospedarse solos**\n\nLos niños y bebés deben estar acompañados por al menos un adulto responsable${label ? ` en ${label}` : ''}.\n\n**¿Cuántos adultos los acompañarán?**\n\nPor ejemplo: "agrega 1 adulto", "con 2 adultos"`
+            };
+        }
+
+        // Validar campos requeridos (roomType y mealPlan son OPCIONALES)
+        if (!segment.city) {
+            missingFields.push(hotelSegments.length > 1 ? `segment_${index + 1}_city` : 'city');
+            missingFieldsSpanish.push(hotelSegments.length > 1 ? `destino de ${label}` : 'destino');
+        }
+        if (!segment.checkinDate) {
+            missingFields.push(hotelSegments.length > 1 ? `segment_${index + 1}_checkinDate` : 'checkinDate');
+            missingFieldsSpanish.push(hotelSegments.length > 1 ? `fecha de entrada de ${label}` : 'fecha de entrada');
+        }
+        if (!segment.checkoutDate) {
+            missingFields.push(hotelSegments.length > 1 ? `segment_${index + 1}_checkoutDate` : 'checkoutDate');
+            missingFieldsSpanish.push(hotelSegments.length > 1 ? `fecha de salida de ${label}` : 'fecha de salida');
+        }
+        if (!segment.adults || segment.adults < 1) {
+            missingFields.push(hotelSegments.length > 1 ? `segment_${index + 1}_adults` : 'adults');
+            missingFieldsSpanish.push(hotelSegments.length > 1 ? `cantidad de pasajeros de ${label}` : 'cantidad de pasajeros');
+        }
     }
-    if (!hotels.checkinDate) {
-        missingFields.push('checkinDate');
-        missingFieldsSpanish.push('fecha de entrada');
-    }
-    if (!hotels.checkoutDate) {
-        missingFields.push('checkoutDate');
-        missingFieldsSpanish.push('fecha de salida');
-    }
-    if (!hotels.adults || hotels.adults < 1) {
-        missingFields.push('adults');
-        missingFieldsSpanish.push('cantidad de pasajeros');
-    }
-    // roomType y mealPlan son OPCIONALES - no validamos
 
     return {
         isValid: missingFields.length === 0,
@@ -381,6 +793,91 @@ function generateFieldExamples(missingFieldsSpanish: string[]): string {
     return '';
 }
 
+function buildHotelRequestFromSegments(
+    segments: HotelStaySegment[],
+    baseHotels?: Partial<HotelRequest>
+): HotelRequest {
+    const [firstSegment] = segments;
+
+    return {
+        city: firstSegment?.city || baseHotels?.city || '',
+        hotelName: firstSegment?.hotelName || baseHotels?.hotelName,
+        hotelNames: firstSegment?.hotelNames || baseHotels?.hotelNames,
+        checkinDate: firstSegment?.checkinDate || baseHotels?.checkinDate || '',
+        checkoutDate: firstSegment?.checkoutDate || baseHotels?.checkoutDate || '',
+        adults: firstSegment?.adults ?? baseHotels?.adults ?? 0,
+        adultsExplicit: firstSegment?.adultsExplicit ?? baseHotels?.adultsExplicit,
+        children: firstSegment?.children ?? baseHotels?.children ?? 0,
+        childrenAges: firstSegment?.childrenAges ?? baseHotels?.childrenAges,
+        infants: firstSegment?.infants ?? baseHotels?.infants,
+        roomType: firstSegment?.roomType || baseHotels?.roomType,
+        hotelChains: firstSegment?.hotelChains || baseHotels?.hotelChains,
+        mealPlan: firstSegment?.mealPlan || baseHotels?.mealPlan,
+        freeCancellation: firstSegment?.freeCancellation ?? baseHotels?.freeCancellation,
+        roomView: firstSegment?.roomView || baseHotels?.roomView,
+        roomCount: firstSegment?.roomCount ?? baseHotels?.roomCount,
+        segments
+    };
+}
+
+function combineHotelRequests(
+    previousHotels?: HotelRequest,
+    newHotels?: HotelRequest,
+    newMessage?: string
+): HotelRequest | undefined {
+    if (!previousHotels) return newHotels;
+    if (!newHotels) return previousHotels;
+
+    const previousSegments = getHotelSegments(previousHotels);
+    const newSegments = getHotelSegments(newHotels);
+    const normalizedMessage = normalizeHotelText(newMessage || '');
+    const addSegmentIntent = /\b(y en|luego en|despues en|despues|después en|ademas en|además en)\b/i.test(normalizedMessage);
+    const hasSegmentModel = previousSegments.length > 1 || newSegments.length > 1 || addSegmentIntent;
+
+    if (!hasSegmentModel) {
+        return undefined;
+    }
+
+    const fallbackSegment = previousSegments[previousSegments.length - 1] || buildHotelSegmentFromRequest(previousHotels, 0);
+    const workingSegments = previousSegments.map((segment, index) => ({
+        ...segment,
+        id: segment.id || buildHotelSegmentId(segment, index)
+    }));
+
+    if (newSegments.length > 1) {
+        return buildHotelRequestFromSegments(
+            newSegments.map((segment, index) => inheritHotelSegment(segment, index === 0 ? fallbackSegment : newSegments[index - 1], index)),
+            { ...previousHotels, ...newHotels }
+        );
+    }
+
+    if (newSegments.length === 0) {
+        return buildHotelRequestFromSegments(
+            workingSegments.map((segment, index) =>
+                inheritHotelSegment(newHotels as HotelStaySegment, segment, index)
+            ),
+            { ...previousHotels, ...newHotels }
+        );
+    }
+
+    const incomingSegment = inheritHotelSegment(newSegments[0], fallbackSegment, workingSegments.length);
+    const matchingIndex = incomingSegment.city
+        ? workingSegments.findIndex((segment) => normalizeHotelText(segment.city || '') === normalizeHotelText(incomingSegment.city || ''))
+        : -1;
+
+    if (matchingIndex >= 0) {
+        workingSegments[matchingIndex] = inheritHotelSegment(incomingSegment, workingSegments[matchingIndex], matchingIndex);
+        return buildHotelRequestFromSegments(workingSegments, { ...previousHotels, ...newHotels });
+    }
+
+    if (addSegmentIntent || previousSegments.length > 1) {
+        workingSegments.push(incomingSegment);
+        return buildHotelRequestFromSegments(workingSegments, { ...previousHotels, ...newHotels });
+    }
+
+    return undefined;
+}
+
 /**
  * Combines previous parsed request with new information from user message
  */
@@ -443,6 +940,15 @@ export function combineWithPreviousRequest(
 
     // Combine hotels data
     if (normalizedParsedNewRequest.requestType === 'hotels' || normalizedParsedNewRequest.requestType === 'combined') {
+        const combinedSegmentedHotels = combineHotelRequests(
+            normalizedPreviousRequest.hotels,
+            normalizedParsedNewRequest.hotels,
+            newMessage
+        );
+
+        if (combinedSegmentedHotels) {
+            normalizedParsedNewRequest.hotels = combinedSegmentedHotels;
+        } else {
         const combinedHotels = {
             ...normalizedPreviousRequest.hotels,
             ...normalizedParsedNewRequest.hotels,
@@ -462,10 +968,14 @@ export function combineWithPreviousRequest(
             ...(normalizedParsedNewRequest.hotels?.hotelName && { hotelName: normalizedParsedNewRequest.hotels.hotelName }),
             ...(normalizedParsedNewRequest.hotels?.freeCancellation !== undefined && { freeCancellation: normalizedParsedNewRequest.hotels.freeCancellation }),
             ...(normalizedParsedNewRequest.hotels?.roomView && { roomView: normalizedParsedNewRequest.hotels.roomView }),
-            ...(normalizedParsedNewRequest.hotels?.roomCount && { roomCount: normalizedParsedNewRequest.hotels.roomCount })
+            ...(normalizedParsedNewRequest.hotels?.roomCount && { roomCount: normalizedParsedNewRequest.hotels.roomCount }),
+            ...(normalizedParsedNewRequest.hotels?.segments && normalizedParsedNewRequest.hotels.segments.length > 0 && {
+                segments: normalizedParsedNewRequest.hotels.segments
+            })
         };
 
         normalizedParsedNewRequest.hotels = combinedHotels;
+        }
     }
 
     // Combine transfers data
@@ -858,15 +1368,16 @@ export async function parseMessageWithAI(
 
         // 🏨 Merge hotel pre-parse hints if AI missed them (hotelChains, hotelName, hotelNames)
         // PRE-PARSER acts as fallback: if AI didn't detect chains/name but pre-parser did, use pre-parser values
+        const normalizedParsedHotels = normalizeIncomingHotelsPayload(parsedResult.hotels);
         const quickHotels = (quick as any).hotels;
         const mergedHotels = {
-            ...(parsedResult.hotels || {}),
+            ...(normalizedParsedHotels || {}),
             // If AI didn't detect hotelChains but pre-parser did → use pre-parser value (array)
-            ...(quickHotels?.hotelChains && !parsedResult.hotels?.hotelChains ? { hotelChains: quickHotels.hotelChains } : {}),
+            ...(quickHotels?.hotelChains && !(normalizedParsedHotels as any)?.hotelChains ? { hotelChains: quickHotels.hotelChains } : {}),
             // If AI didn't detect hotelName but pre-parser did → use pre-parser value
-            ...(quickHotels?.hotelName && !parsedResult.hotels?.hotelName ? { hotelName: quickHotels.hotelName } : {}),
+            ...(quickHotels?.hotelName && !(normalizedParsedHotels as any)?.hotelName ? { hotelName: quickHotels.hotelName } : {}),
             // If AI didn't detect hotelNames (plural) but pre-parser did → use pre-parser value (array of specific hotel names)
-            ...(quickHotels?.hotelNames && !parsedResult.hotels?.hotelNames ? { hotelNames: quickHotels.hotelNames } : {})
+            ...(quickHotels?.hotelNames && !(normalizedParsedHotels as any)?.hotelNames ? { hotelNames: quickHotels.hotelNames } : {})
         } as any;
 
         // Log merge details for debugging
@@ -876,11 +1387,28 @@ export async function parseMessageWithAI(
             console.log(`🏨 [MERGE] Final merged hotels:`, mergedHotels);
         }
 
+        const { detectMultipleHotelChains, detectMultipleHotelNames } = await import('@/features/chat/data/hotelChainAliases');
+        const extractedHotelSegments = extractHotelSegmentsFromMessage(message, mergedHotels as HotelRequest, {
+            detectMultipleHotelChains,
+            detectMultipleHotelNames
+        });
+        const normalizedHotels = extractedHotelSegments && extractedHotelSegments.length > 1
+            ? buildHotelRequestFromSegments(extractedHotelSegments, mergedHotels as HotelRequest)
+            : mergedHotels;
+        const hasMeaningfulFlights = parsedResult.flights && Object.keys(parsedResult.flights).length > 0;
+        const normalizedRequestType =
+            extractedHotelSegments && extractedHotelSegments.length > 1 && !hasMeaningfulFlights && parsedResult.requestType === 'combined'
+                ? 'hotels'
+                : extractedHotelSegments && extractedHotelSegments.length > 1 && parsedResult.requestType === 'general'
+                    ? 'hotels'
+                    : parsedResult.requestType;
+
         const mergedResult = normalizeParsedFlightRequest({
             ...parsedResult,
             flights: Object.keys(mergedFlights).length ? mergedFlights : parsedResult.flights,
             // Only include hotels if there's actual data (not empty object)
-            hotels: Object.keys(mergedHotels).length ? mergedHotels : parsedResult.hotels,
+            hotels: Object.keys(normalizedHotels).length ? normalizedHotels : parsedResult.hotels,
+            requestType: normalizedRequestType,
             originalMessage: message
         });
 
@@ -905,8 +1433,7 @@ export function validateParsedRequest(parsed: ParsedTravelRequest): boolean {
             return validateFlightRequiredFields(normalizedParsed.flights).isValid;
 
         case 'hotels':
-            return !!(normalizedParsed.hotels?.city && normalizedParsed.hotels?.checkinDate && normalizedParsed.hotels?.checkoutDate &&
-                normalizedParsed.hotels?.adults);
+            return validateHotelRequiredFields(normalizedParsed.hotels).isValid;
 
         case 'packages':
             return !!(normalizedParsed.packages?.destination && normalizedParsed.packages?.dateFrom && normalizedParsed.packages?.dateTo);
@@ -946,16 +1473,18 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
         };
     }
 
-    if (normalizedParsed.hotels) {
+    const primaryHotelRequest = getPrimaryHotelRequest(normalizedParsed.hotels);
+
+    if (primaryHotelRequest) {
         result.hotelParams = {
-            cityCode: normalizedParsed.hotels.city,
-            hotelName: normalizedParsed.hotels.hotelName,
-            checkinDate: normalizedParsed.hotels.checkinDate,
-            checkoutDate: normalizedParsed.hotels.checkoutDate,
-            adults: normalizedParsed.hotels.adults,
-            children: normalizedParsed.hotels.children,
-            childrenAges: normalizedParsed.hotels.childrenAges || [],
-            infants: normalizedParsed.hotels.infants
+            cityCode: primaryHotelRequest.city,
+            hotelName: primaryHotelRequest.hotelName,
+            checkinDate: primaryHotelRequest.checkinDate,
+            checkoutDate: primaryHotelRequest.checkoutDate,
+            adults: primaryHotelRequest.adults,
+            children: primaryHotelRequest.children,
+            childrenAges: primaryHotelRequest.childrenAges || [],
+            infants: primaryHotelRequest.infants
         };
     }
 

@@ -485,6 +485,12 @@ export interface HotelData {
   search_children?: number;
   search_infants?: number;
   search_childrenAges?: number[];
+  // Optional multi-segment metadata for grouped hotel itineraries
+  segmentId?: string;
+  segmentCity?: string;
+  segmentCheckIn?: string;
+  segmentCheckOut?: string;
+  segmentOrder?: number;
 }
 
 // Extended hotel data with selected room for PDF generation
@@ -512,6 +518,18 @@ export interface CombinedTravelRequest {
 export interface CombinedTravelResults {
   flights: FlightData[];
   hotels: HotelData[];
+  hotelSegments?: Array<{
+    segmentId: string;
+    city: string;
+    checkinDate: string;
+    checkoutDate: string;
+    requestedRoomType?: 'single' | 'double' | 'triple';
+    requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
+    requestedChains?: string[];
+    hotels: HotelData[];
+    hotelSearchId?: string;
+    error?: string;
+  }>;
   requestType: 'combined' | 'flights-only' | 'hotels-only';
   // Hotel filter preferences from user request
   requestedRoomType?: 'single' | 'double' | 'triple';
@@ -520,6 +538,7 @@ export interface CombinedTravelResults {
   flightSearchId?: string;
   // Hotel search ID for IndexedDB lookup (dynamic filtering)
   hotelSearchId?: string;
+  hotelSearchIds?: string[];
 }
 
 // EUROVIPS WebService types

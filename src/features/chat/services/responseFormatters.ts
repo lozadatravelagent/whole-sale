@@ -1,4 +1,11 @@
-import type { FlightData, LocalHotelData, LocalPackageData, LocalServiceData, LocalCombinedTravelResults } from '../types/chat';
+import type {
+  FlightData,
+  LocalHotelData,
+  LocalHotelSegmentResult,
+  LocalPackageData,
+  LocalServiceData,
+  LocalCombinedTravelResults
+} from '../types/chat';
 import { generateFlightItinerary } from './flightTransformer';
 import { formatDuration } from '../utils/flightHelpers';
 import { translateRoomDescription, translateRoomTypeTitle, translateFlightInfo, translateBaggage } from '../utils/translations';
@@ -342,6 +349,38 @@ export const formatHotelResponse = (
   });
 
   response += '\n📋 Selecciona los hoteles que prefieras para tu cotización.';
+  return response;
+};
+
+export const formatMultiSegmentHotelResponse = (
+  segments: LocalHotelSegmentResult[]
+) => {
+  if (segments.length === 0) {
+    return '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.';
+  }
+
+  let response = '🏨 **Búsqueda de Hoteles Multi-Destino**\n\n';
+
+  segments.forEach((segment, index) => {
+    response += `### ${index + 1}. ${segment.city} (${segment.checkinDate} → ${segment.checkoutDate})\n\n`;
+
+    if (segment.error) {
+      response += `❌ ${segment.error}\n\n`;
+      return;
+    }
+
+    if (segment.hotels.length === 0) {
+      response += 'No encontré hoteles disponibles para este tramo.\n\n';
+      return;
+    }
+
+    const hotelCount = Math.min(segment.hotels.length, 5);
+    response += `Encontré ${hotelCount} hotel${hotelCount !== 1 ? 'es' : ''} para este tramo.\n\n`;
+    response += formatHotelResponse(segment.hotels.slice(0, 5));
+    response += '\n\n';
+  });
+
+  response += '📋 Revisa cada tramo por separado para armar la cotización completa.';
   return response;
 };
 

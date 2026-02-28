@@ -64,6 +64,93 @@
       font-style: italic;
     }
 
+    .hotel-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .hotel-summary-card {
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 10px 11px;
+      background: #fafafa;
+      min-height: 148px;
+      height: 148px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    .hotel-summary-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      border-bottom: 1px solid #ececec;
+      padding-bottom: 6px;
+      margin-bottom: 6px;
+    }
+
+    .hotel-summary-city {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      color: #8b6914;
+    }
+
+    .hotel-summary-dates {
+      font-size: 9px;
+      font-weight: 600;
+      color: #666;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .hotel-summary-name {
+      font-weight: 700;
+      font-size: 11px;
+      color: #333;
+      line-height: 1.25;
+      margin-bottom: 4px;
+      max-height: 28px;
+      overflow: hidden;
+    }
+
+    .hotel-summary-meta {
+      font-size: 9px;
+      color: #666;
+      line-height: 1.3;
+      margin-bottom: 2px;
+      max-height: 24px;
+      overflow: hidden;
+    }
+
+    .hotel-summary-pill {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #f3ead0;
+      color: #7a5c12;
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.25px;
+    }
+
+    .hotel-summary-price {
+      margin-top: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #2563eb;
+      line-height: 1;
+    }
+
     .shared-flights {
       margin-bottom: 10px !important;
     }
@@ -145,7 +232,7 @@
         <div class="trip-details">
           <div class="trip-detail">
             <div class="trip-detail-label">Destino</div>
-            <div class="trip-detail-value">{% if has_flights %}{{ selected_flights[0].legs[0].departure.city_code }} -- {{
+            <div class="trip-detail-value">{% if has_hotel_segments %}{{ hotel_destinations_summary }}{% elsif has_flights %}{{ selected_flights[0].legs[0].departure.city_code }} -- {{
               selected_flights[0].legs[0].arrival.city_code }}{% else %}{{ hotel_destination }}{% endif %}</div>
           </div>
           <div class="trip-detail">
@@ -170,7 +257,7 @@
         </div>
       </div>
 
-      {% if option_1_hotel or has_flights == false %}
+      {% if option_1_hotel or has_hotel_segments or has_flights == false %}
       <!-- INCLUDES BOX - 4 Columnas (para multi-hotel o hotel-only) -->
       <div class="includes-box">
         <div class="includes-box-title">Incluye</div>
@@ -226,11 +313,32 @@
       {% endif %}
 
       <div class="package-combinations">
-        {% unless option_1_hotel or has_flights == false %}
+        {% unless option_1_hotel or has_hotel_segments or has_flights == false %}
         <h2 class="combinations-title">INCLUYE</h2>
         {% endunless %}
 
-        {% if option_1_hotel %}
+        {% if has_hotel_segments and hotel_summary_cards.size > 0 %}
+        <div class="hotel-summary-grid">
+          {% for card in hotel_summary_cards %}
+          <div class="hotel-summary-card">
+            <div>
+              <div class="hotel-summary-card-header">
+                <div class="hotel-summary-city">{{ card.city }}</div>
+                <div class="hotel-summary-dates">{{ card.short_dates }}</div>
+              </div>
+
+              <div class="hotel-summary-name">{{ card.hotel_name }}</div>
+              <div class="hotel-summary-meta">{{ card.stars }} estrellas · {{ card.location }}</div>
+              {% if card.room_description %}<div class="hotel-summary-meta">🛏️ {{ card.room_description }}</div>{% endif %}
+              {% if card.meal_plan %}<div class="hotel-summary-pill">{{ card.meal_plan }}</div>{% endif %}
+            </div>
+
+            <div class="hotel-summary-price">${{ card.price }} {{ total_currency }}</div>
+          </div>
+          {% endfor %}
+        </div>
+
+        {% elsif option_1_hotel %}
         <!-- HOTEL OPTIONS MODE: 1, 2, or 3 options in box cards -->
 
         {% if has_flights %}

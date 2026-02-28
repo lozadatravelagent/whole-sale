@@ -1,9 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
-import type { ParsedTravelRequest } from '@/services/aiMessageParser';
-import { formatForStarling, formatForEurovips } from '@/services/aiMessageParser';
-import type { SearchResult, LocalHotelData, LocalPackageData, LocalServiceData, FlightData } from '../types/chat';
+import type { HotelRequest, HotelStaySegment, ParsedTravelRequest } from '@/services/aiMessageParser';
+import { formatForStarling, formatForEurovips, getHotelSegments, getPrimaryHotelRequest } from '@/services/aiMessageParser';
+import type { SearchResult, LocalHotelData, LocalHotelSegmentResult, LocalPackageData, LocalServiceData, FlightData } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
-import { formatFlightResponse, formatHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatItineraryResponse } from './responseFormatters';
+import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatItineraryResponse } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
@@ -229,6 +229,27 @@ interface StarlingRequestParams {
   Legs: Array<{ DepartureAirportCity: string; ArrivalAirportCity: string; FlightDate: string }>;
   Airlines: string[] | null;
   stops?: 'direct' | 'one_stop' | 'two_stops' | 'with_stops' | 'any' | string;
+}
+
+function buildHotelRequestFromSegment(segment: HotelStaySegment): HotelRequest {
+  return {
+    city: segment.city || '',
+    hotelName: segment.hotelName,
+    hotelNames: segment.hotelNames,
+    checkinDate: segment.checkinDate || '',
+    checkoutDate: segment.checkoutDate || '',
+    adults: segment.adults ?? 0,
+    adultsExplicit: segment.adultsExplicit,
+    children: segment.children ?? 0,
+    childrenAges: segment.childrenAges,
+    infants: segment.infants,
+    roomType: segment.roomType,
+    hotelChains: segment.hotelChains,
+    mealPlan: segment.mealPlan,
+    freeCancellation: segment.freeCancellation,
+    roomView: segment.roomView,
+    roomCount: segment.roomCount
+  };
 }
 
 // Handler functions WITHOUT N8N
@@ -613,15 +634,89 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
   console.log('🔍 [DEBUG] parsed.hotels?.mealPlan:', parsed.hotels?.mealPlan);
 
   try {
+    const hotelSegments = getHotelSegments(parsed.hotels);
+
+    if (hotelSegments.length > 1) {
+      console.log(`🧭 [HOTEL SEARCH] Multi-segment hotel search detected: ${hotelSegments.length} tramos`);
+
+      const segmentResults = await Promise.all(
+        hotelSegments.map(async (segment, index): Promise<LocalHotelSegmentResult> => {
+          const segmentRequest = buildHotelRequestFromSegment(segment);
+          const segmentParsed: ParsedTravelRequest = {
+            ...parsed,
+            hotels: segmentRequest
+          };
+
+          try {
+            const segmentResult = await handleHotelSearch(segmentParsed);
+            const combinedData = segmentResult.data?.combinedData;
+            const hasHotels = (combinedData?.hotels?.length || 0) > 0;
+
+            return {
+              segmentId: segment.id || `hotel-segment-${index + 1}`,
+              city: segment.city || segmentRequest.city,
+              checkinDate: segment.checkinDate || segmentRequest.checkinDate,
+              checkoutDate: segment.checkoutDate || segmentRequest.checkoutDate,
+              requestedRoomType: combinedData?.requestedRoomType,
+              requestedMealPlan: combinedData?.requestedMealPlan,
+              requestedChains: segment.hotelChains,
+              hotels: combinedData?.hotels || [],
+              hotelSearchId: combinedData?.hotelSearchId,
+              error: hasHotels ? undefined : segmentResult.response
+            };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'No pude procesar este tramo.';
+            return {
+              segmentId: segment.id || `hotel-segment-${index + 1}`,
+              city: segment.city || 'Destino',
+              checkinDate: segment.checkinDate || '',
+              checkoutDate: segment.checkoutDate || '',
+              requestedRoomType: segment.roomType,
+              requestedMealPlan: segment.mealPlan,
+              requestedChains: segment.hotelChains,
+              hotels: [],
+              error: errorMessage
+            };
+          }
+        })
+      );
+
+      const flattenedHotels = segmentResults.flatMap((segment) => segment.hotels);
+      const hotelSearchIds = segmentResults
+        .map((segment) => segment.hotelSearchId)
+        .filter((searchId): searchId is string => Boolean(searchId));
+      const formattedResponse = formatMultiSegmentHotelResponse(segmentResults);
+      const primarySegment = hotelSegments[0];
+
+      return {
+        response: formattedResponse,
+        data: {
+          eurovipsData: { hotels: flattenedHotels },
+          combinedData: {
+            flights: [],
+            hotels: flattenedHotels,
+            hotelSegments: segmentResults,
+            requestType: 'hotels-only' as const,
+            requestedRoomType: primarySegment?.roomType,
+            requestedMealPlan: primarySegment?.mealPlan,
+            hotelSearchId: hotelSearchIds[0],
+            hotelSearchIds
+          }
+        }
+      };
+    }
+
+    const primaryHotelRequest = getPrimaryHotelRequest(parsed.hotels) || parsed.hotels;
+
     // 🔄 STEP 0: Infer adults from roomType if not explicitly specified
     // This is a CRITICAL fallback in case the AI parser didn't correctly infer adults
-    let inferredAdults = parsed.hotels?.adults || parsed.flights?.adults || 1;
-    const roomType = parsed.hotels?.roomType;
-    const totalChildren = (parsed.hotels?.children || parsed.flights?.children || 0)
-      + (parsed.hotels?.infants || parsed.flights?.infants || 0);
+    let inferredAdults = primaryHotelRequest?.adults || parsed.flights?.adults || 1;
+    const roomType = primaryHotelRequest?.roomType;
+    const totalChildren = (primaryHotelRequest?.children || parsed.flights?.children || 0)
+      + (primaryHotelRequest?.infants || parsed.flights?.infants || 0);
 
     // Only infer adults from roomType if adults was NOT explicitly stated by user
-    const adultsExplicit = parsed.hotels?.adultsExplicit || parsed.flights?.adultsExplicit || false;
+    const adultsExplicit = primaryHotelRequest?.adultsExplicit || parsed.flights?.adultsExplicit || false;
 
     if (inferredAdults === 1 && totalChildren === 0 && roomType && !adultsExplicit) {
       // If adults is default (1), no children/infants specified, but roomType is specified, infer adults from roomType
@@ -639,20 +734,20 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     }
     console.log(`📊 [ADULTS] Final adults count: ${inferredAdults} (roomType: ${roomType || 'not specified'})`);
 
-    const inferredChildren = parsed.hotels?.children || parsed.flights?.children || 0;
-    const inferredInfants = parsed.hotels?.infants || parsed.flights?.infants || 0;
-    const normalizedChildrenAges = normalizeChildrenAges(parsed.hotels?.childrenAges, inferredChildren);
+    const inferredChildren = primaryHotelRequest?.children || parsed.flights?.children || 0;
+    const inferredInfants = primaryHotelRequest?.infants || parsed.flights?.infants || 0;
+    const normalizedChildrenAges = normalizeChildrenAges(primaryHotelRequest?.childrenAges, inferredChildren);
 
     // Enrich hotel params from flight context if missing (city/dates/pax)
     const enrichedParsed: ParsedTravelRequest = {
       ...parsed,
       hotels: {
-        ...parsed.hotels,
+        ...primaryHotelRequest,
         // Prefer existing hotel fields
-        city: parsed.hotels?.city || parsed.flights?.destination || '',
-        checkinDate: parsed.hotels?.checkinDate || parsed.flights?.departureDate || '',
+        city: primaryHotelRequest?.city || parsed.flights?.destination || '',
+        checkinDate: primaryHotelRequest?.checkinDate || parsed.flights?.departureDate || '',
         checkoutDate:
-          parsed.hotels?.checkoutDate ||
+          primaryHotelRequest?.checkoutDate ||
           parsed.flights?.returnDate ||
           (parsed.flights?.departureDate
             ? new Date(new Date(parsed.flights.departureDate).getTime() + 3 * 86400000)
@@ -663,10 +758,11 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
         children: inferredChildren,    // Niños 2-12 años
         childrenAges: normalizedChildrenAges, // Siempre enviar edades para paridad con portal
         infants: inferredInfants,       // Infantes 0-2 años
-        roomType: parsed.hotels?.roomType,
-        mealPlan: parsed.hotels?.mealPlan,
-        hotelName: parsed.hotels?.hotelName,
-        hotelChains: parsed.hotels?.hotelChains  // ✅ UPDATED: Changed from singular to plural array
+        roomType: primaryHotelRequest?.roomType,
+        mealPlan: primaryHotelRequest?.mealPlan,
+        hotelName: primaryHotelRequest?.hotelName,
+        hotelNames: primaryHotelRequest?.hotelNames,
+        hotelChains: primaryHotelRequest?.hotelChains  // ✅ UPDATED: Changed from singular to plural array
       }
     };
 
@@ -1209,15 +1305,15 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     // 📦 Save ALL hotels to IndexedDB for dynamic filtering in UI
     const hotelSearchId = generateHotelSearchId({
       destination: enrichedParsed.hotels?.city || enrichedParsed.flights?.destination,
-      checkIn: enrichedParsed.hotels?.checkIn,
-      checkOut: enrichedParsed.hotels?.checkOut,
+      checkIn: enrichedParsed.hotels?.checkinDate,
+      checkOut: enrichedParsed.hotels?.checkoutDate,
     });
 
     // Save all sorted hotels (before the slice) for dynamic filtering
     await saveHotelsToStorage(hotelSearchId, sortedHotels, {
       destination: enrichedParsed.hotels?.city || enrichedParsed.flights?.destination,
-      checkIn: enrichedParsed.hotels?.checkIn,
-      checkOut: enrichedParsed.hotels?.checkOut,
+      checkIn: enrichedParsed.hotels?.checkinDate,
+      checkOut: enrichedParsed.hotels?.checkoutDate,
     });
     console.log(`📦 [HOTEL SEARCH] Saved ${sortedHotels.length} hotels to IndexedDB with searchId: ${hotelSearchId}`);
 
@@ -1482,11 +1578,13 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     const combinedData = {
       flights: flightResult.data?.combinedData?.flights || [],
       hotels: hotelResult.data?.combinedData?.hotels || [], // ✅ Already filtered
+      hotelSegments: hotelResult.data?.combinedData?.hotelSegments,
       requestType: 'combined' as const,
       requestedRoomType: hotelResult.data?.combinedData?.requestedRoomType,
       requestedMealPlan: hotelResult.data?.combinedData?.requestedMealPlan,
       flightSearchId: flightResult.data?.combinedData?.flightSearchId, // Pass through for localStorage lookup
       hotelSearchId: hotelResult.data?.combinedData?.hotelSearchId, // Pass through for IndexedDB lookup (hotel filter chips)
+      hotelSearchIds: hotelResult.data?.combinedData?.hotelSearchIds,
     };
 
     console.log('📊 [COMBINED SEARCH] Combined data summary:');

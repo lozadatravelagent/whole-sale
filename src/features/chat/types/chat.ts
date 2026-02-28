@@ -222,6 +222,8 @@ export interface LocalHotelData {
     currency: string;
     availability?: number;
     occupancy_id?: string;
+    xml_occupancy_id?: string;
+    fare_id_broker?: string;
   }>;
   // Search params - occupancy requested by user (for PDF generation)
   search_adults?: number;
@@ -230,9 +232,23 @@ export interface LocalHotelData {
   search_childrenAges?: number[];
 }
 
+export interface LocalHotelSegmentResult {
+  segmentId: string;
+  city: string;
+  checkinDate: string;
+  checkoutDate: string;
+  requestedRoomType?: 'single' | 'double' | 'triple';
+  requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
+  requestedChains?: string[];
+  hotels: LocalHotelData[];
+  hotelSearchId?: string;
+  error?: string;
+}
+
 export interface LocalCombinedTravelResults {
   flights: FlightData[];
   hotels: LocalHotelData[];
+  hotelSegments?: LocalHotelSegmentResult[];
   requestType: 'combined' | 'flights-only' | 'hotels-only';
   // Hotel filter preferences from user request
   requestedRoomType?: 'single' | 'double' | 'triple';
@@ -241,6 +257,7 @@ export interface LocalCombinedTravelResults {
   flightSearchId?: string;
   // Hotel search ID for IndexedDB lookup (dynamic filtering)
   hotelSearchId?: string;
+  hotelSearchIds?: string[];
 }
 
 export interface LocalPackageData {

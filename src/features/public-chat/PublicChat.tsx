@@ -152,7 +152,11 @@ export function PublicChat() {
           <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 md:px-5 py-4 space-y-3">
             {messages.map(message => {
               const hasCards = message.role === 'assistant' && message.data?.combinedData &&
-                (message.data.combinedData.flights.length > 0 || message.data.combinedData.hotels.length > 0);
+                (
+                  message.data.combinedData.flights.length > 0 ||
+                  message.data.combinedData.hotels.length > 0 ||
+                  (message.data.combinedData.hotelSegments?.length || 0) > 0
+                );
 
               return (
                 <div

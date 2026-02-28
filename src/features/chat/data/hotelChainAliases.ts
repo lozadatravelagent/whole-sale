@@ -811,7 +811,7 @@ export const KNOWN_SPECIFIC_HOTELS: { name: string; aliases: string[] }[] = [
     },
     {
         name: 'Excellence El Carmen',
-        aliases: ['excellence el carmen', 'el carmen']
+        aliases: ['excellence el carmen']
     },
     {
         name: 'Zoetry Agua',
