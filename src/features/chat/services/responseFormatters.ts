@@ -1,6 +1,7 @@
 import type {
   FlightData,
   LocalHotelData,
+  LocalHotelChainBalance,
   LocalHotelSegmentResult,
   LocalPackageData,
   LocalServiceData,
@@ -352,6 +353,27 @@ export const formatHotelResponse = (
   return response;
 };
 
+export const formatChainBalanceNote = (chainBalance?: LocalHotelChainBalance) => {
+  if (!chainBalance || chainBalance.requestedChains.length <= 1) {
+    return '';
+  }
+
+  const impactedChains = chainBalance.quotas.filter((quota) => quota.status !== 'fulfilled');
+  if (impactedChains.length === 0) {
+    return '';
+  }
+
+  const notes = impactedChains.map((quota) => {
+    if (quota.status === 'missing') {
+      return `No encontré opciones válidas de ${quota.chain} para este tramo.`;
+    }
+
+    return `${quota.chain} solo cubrió ${quota.selectedHotels} de ${quota.requestedQuota} lugar${quota.requestedQuota !== 1 ? 'es' : ''} previsto${quota.requestedQuota !== 1 ? 's' : ''}.`;
+  });
+
+  return `ℹ️ **Balance por cadena:** ${notes.join(' ')}`;
+};
+
 export const formatMultiSegmentHotelResponse = (
   segments: LocalHotelSegmentResult[]
 ) => {
@@ -376,6 +398,10 @@ export const formatMultiSegmentHotelResponse = (
 
     const hotelCount = Math.min(segment.hotels.length, 5);
     response += `Encontré ${hotelCount} hotel${hotelCount !== 1 ? 'es' : ''} para este tramo.\n\n`;
+    const chainBalanceNote = formatChainBalanceNote(segment.chainBalance);
+    if (chainBalanceNote) {
+      response += `${chainBalanceNote}\n\n`;
+    }
     response += formatHotelResponse(segment.hotels.slice(0, 5));
     response += '\n\n';
   });

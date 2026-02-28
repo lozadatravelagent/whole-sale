@@ -259,6 +259,14 @@ serve(async (req) => {
           parsed.flights.maxLayoverHours = parseInt(parsed.flights.maxLayoverHours, 10);
         }
 
+        if (parsed.itinerary?.days && typeof parsed.itinerary.days === 'string') {
+          parsed.itinerary.days = parseInt(parsed.itinerary.days, 10);
+        }
+
+        if (parsed.itinerary?.budgetAmount && typeof parsed.itinerary.budgetAmount === 'string') {
+          parsed.itinerary.budgetAmount = parseFloat(parsed.itinerary.budgetAmount);
+        }
+
         if (parsed.flights) {
           parsed = augmentMultiCitySegmentsFromMessage(message, parsed);
           parsed.flights = normalizeFlightRequest(parsed.flights);

@@ -1,5 +1,6 @@
 import React, { useMemo, Suspense, lazy, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { User, Bot, FileText, Download, Clock, Check, CheckCheck, Loader2 } from 'lucide-react';
 
 // Lazy load heavy components
@@ -10,10 +11,14 @@ import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData a
 import { getMessageContent, getMessageStatusIconType, formatTime } from '../utils/messageHelpers';
 import { getCityNameFromCode } from '../utils/flightHelpers';
 import { translateRoomDescription } from '../utils/translations';
+import type { TripPlannerState } from '@/features/trip-planner/types';
+import { formatBudgetLevel, formatDateRange, formatDestinationLabel, formatFlexibleMonth, formatPaceLabel } from '@/features/trip-planner/utils';
+import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 
 interface MessageItemProps {
   msg: MessageRow;
   onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
+  onOpenPlannerDateSelector?: (request: ParsedTravelRequest) => void;
 }
 
 // Markdown wrapper component that lazy loads remarkGfm
@@ -37,7 +42,7 @@ const MarkdownContent = ({ content }: { content: string }) => {
 };
 
 // Memoized message component to prevent unnecessary re-renders
-const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
+const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector }: MessageItemProps) => {
   const messageText = getMessageContent(msg);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -93,6 +98,14 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
   if (hasCombinedTravel && typeof msg.meta === 'object' && msg.meta && 'combinedData' in msg.meta) {
     combinedTravelData = (msg.meta as unknown as { combinedData: LocalCombinedTravelResults }).combinedData;
   }
+
+  const plannerData = typeof msg.meta === 'object' && msg.meta && 'plannerData' in msg.meta
+    ? ((msg.meta as any).plannerData as TripPlannerState)
+    : null;
+  const plannerSegments = Array.isArray(plannerData?.segments) ? plannerData.segments : [];
+  const plannerDateSelectorRequest = typeof msg.meta === 'object' && msg.meta && (msg.meta as any).plannerPromptAction === 'open_date_selector'
+    ? ((msg.meta as any).originalRequest as ParsedTravelRequest | undefined)
+    : undefined;
 
   // Convert local combined data to global type for component compatibility
   const convertToGlobalCombinedData = (localData: LocalCombinedTravelResults): CombinedTravelResults => {
@@ -366,9 +379,68 @@ const MessageItem = React.memo(({ msg, onPdfGenerated }: MessageItemProps) => {
               </div>
             ) : (
               <>
-                <Suspense fallback={<div className="whitespace-pre-wrap text-muted-foreground">{messageText}</div>}>
-                  <MarkdownContent content={messageText} />
+                <Suspense fallback={<div className={`whitespace-pre-wrap ${msg.role === 'assistant' ? 'emilia-message text-muted-foreground' : 'text-muted-foreground'}`}>{messageText}</div>}>
+                  {msg.role === 'assistant' ? (
+                    <div className="emilia-message">
+                      <MarkdownContent content={messageText} />
+                    </div>
+                  ) : (
+                    <MarkdownContent content={messageText} />
+                  )}
                 </Suspense>
+
+                {plannerData && (
+                  <div className="mt-3 rounded-lg border border-primary/20 bg-background/60 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">{plannerData.title}</p>
+                        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                          <li>
+                            {plannerData.days} días
+                            {plannerData.isFlexibleDates
+                              ? ` • ${formatFlexibleMonth(plannerData.flexibleMonth, plannerData.flexibleYear)}`
+                              : ` • ${formatDateRange(plannerData.startDate, plannerData.endDate)}`}
+                          </li>
+                          <li>Destinos: {plannerData.destinations.map(formatDestinationLabel).join(', ')}</li>
+                          <li>
+                            Presupuesto: {formatBudgetLevel(plannerData.budgetLevel || 'mid')} • Ritmo: {formatPaceLabel(plannerData.pace || 'balanced')}
+                          </li>
+                        </ul>
+                      </div>
+                      <Badge variant="secondary">Planificador</Badge>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {plannerSegments.slice(0, 4).map((segment) => (
+                        <div key={segment.id} className="rounded-md border bg-muted/40 p-2">
+                          <p className="text-xs font-medium">{formatDestinationLabel(segment.city)}</p>
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            {formatDateRange(segment.startDate, segment.endDate)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {plannerDateSelectorRequest && onOpenPlannerDateSelector && (
+                  <div className="mt-3 rounded-lg border border-primary/20 bg-background/70 p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium">Elegí tus fechas desde el chat</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Podés seleccionar un rango exacto o un mes flexible sin escribirlo a mano.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="sm:self-start"
+                        onClick={() => onOpenPlannerDateSelector(plannerDateSelectorRequest)}
+                      >
+                        Elegir fechas
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {/* PDF Download Button */}
                 {hasPdf && pdfUrl && (

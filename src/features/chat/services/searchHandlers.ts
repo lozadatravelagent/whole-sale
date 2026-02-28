@@ -22,7 +22,7 @@ import { generateSearchId, saveFlightsToStorage } from './flightStorageService';
 import { generateHotelSearchId, saveHotelsToStorage } from './hotelStorageService';
 import { timeStringToNumber } from '@/features/chat/utils/timeSlotMapper';
 import type { TripPlannerState } from '@/features/trip-planner/types';
-import { getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '../../trip-planner/utils';
+import { getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '@/features/trip-planner';
 
 // =====================================================================
 // PUNTA CANA HOTEL WHITELIST - SPECIAL FILTER

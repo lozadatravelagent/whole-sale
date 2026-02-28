@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { analyzePdfContent, generatePriceChangeSuggestions, searchCheaperFlights, processPriceChangeRequest } from '@/services/pdfProcessor';
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
-import { useToast } from '@/hooks/use-toast';
 import type { MessageRow } from '../types/chat';
 
 const usePdfAnalysis = (
@@ -11,11 +10,11 @@ const usePdfAnalysis = (
   updateConversationTitle: (conversationId: string, title: string) => Promise<void>,
   setIsTyping: (isTyping: boolean, conversationId?: string | null) => void,
   setTypingMessage: (message: string, conversationId?: string | null) => void,
-  addOptimisticMessage: (message: any) => void
+  addOptimisticMessage: (message: any) => void,
+  toast: (args: { title: string; description?: string; variant?: 'default' | 'destructive' }) => void
 ) => {
   const [lastPdfAnalysis, setLastPdfAnalysis] = useState<any>(null);
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
-  const { toast } = useToast();
 
   // Rehydrate last PDF analysis from the latest assistant message with pdf_analysis metadata
   useEffect(() => {

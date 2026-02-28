@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v2';
+export const PROMPT_VERSION = 'emilia-parser-v3';
 export const PROMPT_CONTRACT_SNIPPETS = [
   'IMPORTANTE: Siempre responde solo con JSON válido.',
   "NO roomType or mealPlan because user didn't mention them",
@@ -61,6 +61,11 @@ CONTEXT MERGING RULES:
    - Set adults = X (the number user specified)
    - Preserve ALL other fields from the previous failed search
    - Return complete search request with updated adults count
+6. **TRIP PLANNER FOLLOW-UPS:** If previousContext.requestType = "itinerary" and the user asks for changes like "make it more relaxed", "replace Paris with Lisbon", "upgrade the hotels", "regenerate Rome", or "change the budget":
+   - Keep requestType = "itinerary"
+   - Preserve existing itinerary fields unless the user changes them
+   - Populate itinerary.editIntent when the user is clearly modifying the current plan
+   - Reuse destinations, days, dates, pace, budget, interests, and travelers from previousContext when not restated
 
 EXAMPLES:
 - Previous has complete flight + current "con escalas" → Return complete flight with stops: "any"
@@ -345,7 +350,32 @@ If the user wants to plan activities/things to do in a destination WITHOUT booki
 
 **ITINERARY Required Fields:**
 - destinations: array of destination names (cities, countries, or regions)
-- days: number of days for the trip
+- days OR a date range (startDate + endDate)
+
+**ITINERARY Optional Fields for Trip Planner:**
+- startDate: YYYY-MM-DD
+- endDate: YYYY-MM-DD
+- budgetLevel: "low" | "mid" | "high" | "luxury"
+- budgetAmount: number if the user gives a concrete budget
+- interests: string[]
+- travelStyle: string[]
+- pace: "relaxed" | "balanced" | "fast"
+- hotelCategory: string
+- travelers: { adults, children, infants }
+- constraints: string[]
+- currentPlanSummary: carry from previousContext only when present
+- editIntent: object used for planner modifications
+
+**editIntent Patterns:**
+- "replace Paris with Lisbon" → action: "replace_destination", targetCity: "Paris"
+- "add Rome" → action: "add_destination", targetCity: "Rome"
+- "remove Madrid" → action: "remove_destination", targetCity: "Madrid"
+- "make it more relaxed" → action: "change_pace", pace: "relaxed"
+- "increase the budget" / "make it luxury" → action: "change_budget"
+- "regenerate day 3" → action: "regenerate_day"
+- "regenerate Paris" / "redo Rome" → action: "regenerate_segment", targetCity: "Paris"
+- "upgrade the hotels" → action: "upgrade_hotels"
+- "downgrade the hotels" → action: "downgrade_hotels"
 
 **ITINERARY Examples:**
 
@@ -406,6 +436,35 @@ User: "Armame un plan de viaje de 7 días"
   "missingFields": ["destinations"],
   "message": "Para armar tu itinerario de 7 días, necesito saber:\\n\\n**¿A qué destino(s) quieres viajar?**\\n\\nPor ejemplo: 'Roma', 'Italia y Francia', 'Barcelona, Madrid y París'",
   "confidence": 0.7
+}
+
+Example F - Rich trip planner request:
+User: "Plan 10 days through Madrid, Paris, and Rome in May with a mid-range budget, museums, food, and a relaxed pace"
+{
+  "requestType": "itinerary",
+  "itinerary": {
+    "destinations": ["Madrid", "Paris", "Rome"],
+    "days": 10,
+    "budgetLevel": "mid",
+    "interests": ["museums", "food"],
+    "pace": "relaxed"
+  },
+  "confidence": 0.95
+}
+
+Example G - Planner follow-up:
+User: "replace Paris with Lisbon and make it faster"
+{
+  "requestType": "itinerary",
+  "itinerary": {
+    "destinations": ["Madrid", "Lisbon", "Rome"],
+    "pace": "fast",
+    "editIntent": {
+      "action": "replace_destination",
+      "targetCity": "Paris"
+    }
+  },
+  "confidence": 0.9
 }
 
 ## REQUIRED FIELDS AND DEFAULTS

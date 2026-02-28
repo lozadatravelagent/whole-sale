@@ -13,6 +13,9 @@ import useContextualMemory from './hooks/useContextualMemory';
 import usePdfAnalysis from './hooks/usePdfAnalysis';
 import useMessageHandler from './hooks/useMessageHandler';
 import { addMessageViaSupabase } from './services/messageService';
+import TripPlannerWorkspace from '@/features/trip-planner/components/TripPlannerWorkspace';
+import useTripPlanner from '@/features/trip-planner/useTripPlanner';
+import { buildPlannerPromptContext } from '@/features/trip-planner/utils';
 
 const ChatFeature = () => {
   const {
@@ -23,6 +26,7 @@ const ChatFeature = () => {
     isTyping,
     typingMessage,
     activeTab,
+    workspaceMode,
     sidebarLimit,
     previousParsedRequest,
     isAddingToCRM,
@@ -37,6 +41,7 @@ const ChatFeature = () => {
     setIsTyping,
     setTypingMessage,
     setActiveTab,
+    setWorkspaceMode,
     setPreviousParsedRequest,
     setIsAddingToCRM,
 
@@ -66,6 +71,8 @@ const ChatFeature = () => {
   // Contextual memory hooks
   const { loadContextualMemory, saveContextualMemory, clearContextualMemory, loadContextState, saveContextState } = useContextualMemory();
 
+  const planner = useTripPlanner(selectedConversation, messages, toast);
+
   // PDF analysis hooks
   const {
     isUploadingPdf,
@@ -78,11 +85,12 @@ const ChatFeature = () => {
     updateConversationTitle,
     setIsTyping,
     setTypingMessage,
-    addOptimisticMessage
+    addOptimisticMessage,
+    toast
   );
 
   // Message handler hook
-  const { handleSendMessage: handleSendMessageRaw } = useMessageHandler(
+  const { handleSendMessage: handleSendMessageRaw, handlePlannerDateSelection } = useMessageHandler(
     selectedConversation,
     selectedConversationRef,
     messages, // ✅ Pass messages from useMessages hook above (prevents duplicate hook calls)
@@ -105,6 +113,10 @@ const ChatFeature = () => {
     addOptimisticMessage,
     updateOptimisticMessage,
     removeOptimisticMessage
+    ,
+    workspaceMode === 'planner' && planner.plannerState ? buildPlannerPromptContext(planner.plannerState) : null,
+    planner.plannerState,
+    planner.persistPlannerState
   );
 
   // CTA: Retry with stops when no direct flights
@@ -438,10 +450,18 @@ const ChatFeature = () => {
             conversations={conversations}
             selectedConversation={selectedConversation}
             activeTab={activeTab}
+            workspaceMode={workspaceMode}
             sidebarLimit={sidebarLimit}
             onSelectConversation={setSelectedConversation}
-            onCreateNewChat={() => createNewChat()}
+            onCreateNewChat={() => {
+              if (workspaceMode === 'planner') {
+                createNewChat('Planificador de Viajes');
+                return;
+              }
+              createNewChat();
+            }}
             onTabChange={setActiveTab}
+            onWorkspaceModeChange={setWorkspaceMode}
             onArchiveConversation={handleArchiveConversation}
           />
         </div>
@@ -449,25 +469,65 @@ const ChatFeature = () => {
         {/* Main Chat Area - Full width on mobile when conversation is selected */}
         <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0`}>
           {selectedConversation ? (
-            <ChatInterface
-              selectedConversation={selectedConversation}
-              message={message}
-              isLoading={isLoading}
-              isTyping={isTyping}
-              typingMessage={typingMessage}
-              isUploadingPdf={isUploadingPdf}
-              isAddingToCRM={isAddingToCRM}
-              messages={messages}
-              refreshMessages={refreshMessages}
-              onMessageChange={setMessage}
-              onSendMessage={handleSendMessage}
-              onPdfUpload={handlePdfUpload}
-              onAddToCRM={handleAddToCRM}
-              onPdfGenerated={handlePdfGenerated}
-              onBackToList={() => setSelectedConversation(null)}
-            />
+            workspaceMode === 'planner' ? (
+              <TripPlannerWorkspace
+                selectedConversation={selectedConversation}
+                message={message}
+                isLoading={isLoading}
+                isTyping={isTyping}
+                typingMessage={typingMessage}
+                isUploadingPdf={isUploadingPdf}
+                messages={messages}
+                onMessageChange={setMessage}
+                onSendMessage={handleSendMessage}
+                onPdfUpload={handlePdfUpload}
+                  onPdfGenerated={handlePdfGenerated}
+                  plannerState={planner.plannerState}
+                  isLoadingPlanner={planner.isLoadingPlanner}
+                  activePlannerMutation={planner.activePlannerMutation}
+                  isResolvingLocations={planner.isResolvingLocations}
+                  plannerError={planner.plannerError}
+                plannerLocationWarning={planner.plannerLocationWarning}
+                onUpdateTripField={planner.updateTripField}
+                onApplyPlannerDateSelection={planner.applyPlannerDateSelection}
+                onAddDestination={planner.addDestination}
+                onRemoveDestination={planner.removeDestination}
+                onReorderDestinations={planner.reorderDestinations}
+                onRegeneratePlanner={planner.regeneratePlanner}
+                onRegenerateSegment={planner.regenerateSegment}
+                onRegenerateDay={planner.regenerateDay}
+                onToggleDayLock={planner.toggleDayLock}
+                onToggleActivityLock={planner.toggleActivityLock}
+                onSelectHotel={planner.selectHotel}
+                onSelectTransportOption={planner.selectTransportOption}
+                onCompletePlannerDateSelection={handlePlannerDateSelection}
+              />
+            ) : (
+              <ChatInterface
+                selectedConversation={selectedConversation}
+                message={message}
+                isLoading={isLoading}
+                isTyping={isTyping}
+                typingMessage={typingMessage}
+                isUploadingPdf={isUploadingPdf}
+                isAddingToCRM={isAddingToCRM}
+                messages={messages}
+                refreshMessages={refreshMessages}
+                onMessageChange={setMessage}
+                onSendMessage={handleSendMessage}
+                onPdfUpload={handlePdfUpload}
+                onAddToCRM={handleAddToCRM}
+                onPdfGenerated={handlePdfGenerated}
+                onBackToList={() => setSelectedConversation(null)}
+              />
+            )
           ) : (
-            <EmptyState onSendNewMessage={handleSendNewMessage} />
+            <EmptyState onSendNewMessage={(messageToSend) => {
+              if (workspaceMode === 'planner') {
+                setWorkspaceMode('planner');
+              }
+              return handleSendNewMessage(messageToSend);
+            }} />
           )}
         </div>
       </div>

@@ -130,7 +130,10 @@ export function usePublicMessageHandler() {
         if (parsed.requestType === 'itinerary') {
           const validation = validateItineraryRequiredFields(parsed.itinerary);
           if (!validation.isValid) {
-            addMessage('assistant', generateMissingInfoMessage(validation.missingFieldsSpanish, 'itinerary'));
+            addMessage('assistant', generateMissingInfoMessage(validation.missingFieldsSpanish, 'itinerary', {
+              itinerary: parsed.itinerary,
+              originalMessage: parsed.originalMessage,
+            }));
             previousContext.current = parsed;
             setIsProcessing(false);
             return;

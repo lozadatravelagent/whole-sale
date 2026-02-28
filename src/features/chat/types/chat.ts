@@ -232,6 +232,21 @@ export interface LocalHotelData {
   search_childrenAges?: number[];
 }
 
+export interface LocalHotelChainQuota {
+  chain: string;
+  requestedQuota: number;
+  availableHotels: number;
+  selectedHotels: number;
+  status: 'fulfilled' | 'partial' | 'missing';
+}
+
+export interface LocalHotelChainBalance {
+  requestedChains: string[];
+  totalSlots: number;
+  quotas: LocalHotelChainQuota[];
+  strictBalanceApplied: boolean;
+}
+
 export interface LocalHotelSegmentResult {
   segmentId: string;
   city: string;
@@ -240,6 +255,7 @@ export interface LocalHotelSegmentResult {
   requestedRoomType?: 'single' | 'double' | 'triple';
   requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
   requestedChains?: string[];
+  chainBalance?: LocalHotelChainBalance;
   hotels: LocalHotelData[];
   hotelSearchId?: string;
   error?: string;
@@ -249,6 +265,7 @@ export interface LocalCombinedTravelResults {
   flights: FlightData[];
   hotels: LocalHotelData[];
   hotelSegments?: LocalHotelSegmentResult[];
+  chainBalance?: LocalHotelChainBalance;
   requestType: 'combined' | 'flights-only' | 'hotels-only';
   // Hotel filter preferences from user request
   requestedRoomType?: 'single' | 'double' | 'triple';
@@ -284,6 +301,7 @@ export interface ChatState {
   lastPdfAnalysis: any;
   showInspirationText: boolean;
   activeTab: string;
+  workspaceMode: 'standard' | 'planner';
   // ✅ Typing state per conversation (not global)
   typingByConversation: Record<string, { isTyping: boolean; message: string }>;
   sidebarLimit: number;

@@ -15,6 +15,7 @@ const useChatState = () => {
     lastPdfAnalysis: null,
     showInspirationText: false,
     activeTab: 'active',
+    workspaceMode: 'standard',
     // ✅ Typing state per conversation (not global)
     typingByConversation: {},
     sidebarLimit: 50,
@@ -106,6 +107,10 @@ const useChatState = () => {
 
   const setActiveTab = useCallback((activeTab: string) => {
     updateChatState({ activeTab });
+  }, [updateChatState]);
+
+  const setWorkspaceMode = useCallback((workspaceMode: 'standard' | 'planner') => {
+    updateChatState({ workspaceMode });
   }, [updateChatState]);
 
   const setPreviousParsedRequest = useCallback((request: ParsedTravelRequest | null) => {
@@ -247,6 +252,7 @@ const useChatState = () => {
     setIsLoading,
     setIsTyping,
     setActiveTab,
+    setWorkspaceMode,
     setPreviousParsedRequest,
     setIsAddingToCRM,
     updateChatState,

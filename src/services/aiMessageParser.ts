@@ -101,7 +101,32 @@ export interface ParsedTravelRequest {
     };
     itinerary?: {
         destinations: string[]; // Lista de destinos (ciudades, países o combinación)
-        days: number; // Cantidad de días del itinerario
+        days?: number; // Cantidad de días del itinerario
+        startDate?: string;
+        endDate?: string;
+        isFlexibleDates?: boolean;
+        flexibleMonth?: string;
+        flexibleYear?: number;
+        dateSelectionSource?: 'chat_modal_exact' | 'chat_modal_flexible' | 'message';
+        budgetLevel?: 'low' | 'mid' | 'high' | 'luxury';
+        budgetAmount?: number;
+        interests?: string[];
+        travelStyle?: string[];
+        pace?: 'relaxed' | 'balanced' | 'fast';
+        hotelCategory?: string;
+        travelers?: {
+            adults?: number;
+            children?: number;
+            infants?: number;
+        };
+        constraints?: string[];
+        currentPlanSummary?: string;
+        editIntent?: {
+            action?: 'create' | 'replace_destination' | 'add_destination' | 'remove_destination' | 'reorder_destinations' | 'change_dates' | 'change_budget' | 'change_pace' | 'regenerate_day' | 'regenerate_segment' | 'upgrade_hotels' | 'downgrade_hotels';
+            targetSegmentId?: string;
+            targetDayId?: string;
+            targetCity?: string;
+        };
     };
     confidence: number; // 0-1 score of parsing confidence
     originalMessage: string;
@@ -148,6 +173,22 @@ const HOTEL_MONTHS: Record<string, string> = {
     'diciembre': '12'
 };
 
+const ITINERARY_MONTHS: Record<string, string> = {
+    ...HOTEL_MONTHS,
+    'january': '01',
+    'february': '02',
+    'march': '03',
+    'april': '04',
+    'may': '05',
+    'june': '06',
+    'july': '07',
+    'august': '08',
+    'september': '09',
+    'october': '10',
+    'november': '11',
+    'december': '12'
+};
+
 function normalizeHotelText(value: string): string {
     return value
         .toLowerCase()
@@ -155,6 +196,178 @@ function normalizeHotelText(value: string): string {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/\s+/g, ' ');
+}
+
+function toIsoDate(date: Date): string {
+    return date.toISOString().split('T')[0];
+}
+
+function addDaysToIsoDate(dateString: string, daysToAdd: number): string {
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return dateString;
+    date.setDate(date.getDate() + daysToAdd);
+    return toIsoDate(date);
+}
+
+function shiftIsoDateToYear(dateString: string, targetYear: number): string {
+    const [_, month = '01', day = '01'] = dateString.match(/^(\d{4})-(\d{2})-(\d{2})$/) || [];
+    return `${targetYear}-${month}-${day}`;
+}
+
+function extractItineraryMonthHint(message: string): { monthNum: string; explicitYear?: number } | null {
+    const normalized = normalizeHotelText(message);
+    const monthPattern = Object.keys(ITINERARY_MONTHS)
+        .sort((a, b) => b.length - a.length)
+        .join('|');
+
+    const monthMatch = normalized.match(new RegExp(`\\b(${monthPattern})\\b(?:\\s*(?:de)?\\s*(20\\d{2}))?`, 'i'));
+    if (!monthMatch) return null;
+
+    const monthKey = monthMatch[1].toLowerCase();
+    const monthNum = ITINERARY_MONTHS[monthKey];
+    if (!monthNum) return null;
+
+    return {
+        monthNum,
+        explicitYear: monthMatch[2] ? parseInt(monthMatch[2], 10) : undefined
+    };
+}
+
+function getTargetYearForMonthHint(
+    monthHint: { monthNum: string; explicitYear?: number },
+    referenceDate: Date
+): number {
+    const requestedMonth = parseInt(monthHint.monthNum, 10);
+    return monthHint.explicitYear
+        ?? (requestedMonth < (referenceDate.getMonth() + 1)
+            ? referenceDate.getFullYear() + 1
+            : referenceDate.getFullYear());
+}
+
+function getMonthNameFromNumber(monthNum: string): string {
+    const monthNames: Record<string, string> = {
+        '01': 'enero',
+        '02': 'febrero',
+        '03': 'marzo',
+        '04': 'abril',
+        '05': 'mayo',
+        '06': 'junio',
+        '07': 'julio',
+        '08': 'agosto',
+        '09': 'septiembre',
+        '10': 'octubre',
+        '11': 'noviembre',
+        '12': 'diciembre'
+    };
+
+    return monthNames[monthNum] || monthNum;
+}
+
+function formatSpanishDate(dateString: string): string {
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return dateString;
+
+    return `${date.getDate()} de ${getMonthNameFromNumber(String(date.getMonth() + 1).padStart(2, '0'))} de ${date.getFullYear()}`;
+}
+
+function getLastDayOfMonth(year: number, monthNum: string): number {
+    return new Date(year, parseInt(monthNum, 10), 0).getDate();
+}
+
+function buildSuggestedItineraryDateRanges(
+    itinerary: ParsedTravelRequest['itinerary'] | undefined,
+    message: string,
+    referenceDate: Date = new Date()
+): Array<{ startDate: string; endDate: string; label: string }> {
+    const monthHint = extractItineraryMonthHint(message);
+    if (!monthHint) return [];
+
+    const normalizedReference = new Date(referenceDate);
+    normalizedReference.setHours(0, 0, 0, 0);
+
+    const targetYear = getTargetYearForMonthHint(monthHint, normalizedReference);
+    const totalDays = itinerary?.days && itinerary.days > 0 ? itinerary.days : 7;
+    const lastDayOfMonth = getLastDayOfMonth(targetYear, monthHint.monthNum);
+    const maxStartDay = lastDayOfMonth - totalDays + 1;
+
+    if (maxStartDay < 1) return [];
+
+    const candidateStartDays = Array.from(new Set([
+        1,
+        Math.max(1, Math.min(8, maxStartDay)),
+        Math.max(1, Math.min(15, maxStartDay))
+    ])).sort((a, b) => a - b);
+
+    return candidateStartDays
+        .map((startDay) => {
+            const startDate = `${targetYear}-${monthHint.monthNum}-${String(startDay).padStart(2, '0')}`;
+            const endDate = addDaysToIsoDate(startDate, Math.max(0, totalDays - 1));
+            const endMonth = endDate.slice(5, 7);
+            const endYear = parseInt(endDate.slice(0, 4), 10);
+
+            if (endMonth !== monthHint.monthNum || endYear !== targetYear) {
+                return null;
+            }
+
+            return {
+                startDate,
+                endDate,
+                label: `Del ${formatSpanishDate(startDate)} al ${formatSpanishDate(endDate)}`
+            };
+        })
+        .filter((option): option is { startDate: string; endDate: string; label: string } => Boolean(option));
+}
+
+export function hasExactItineraryDateRange(itinerary?: ParsedTravelRequest['itinerary']): boolean {
+    return Boolean(itinerary?.startDate && itinerary?.endDate);
+}
+
+export function hasFlexibleItineraryDateSelection(itinerary?: ParsedTravelRequest['itinerary']): boolean {
+    return Boolean(
+        itinerary?.isFlexibleDates &&
+        itinerary?.flexibleMonth &&
+        itinerary?.flexibleYear
+    );
+}
+
+export function hasUsableItineraryDates(itinerary?: ParsedTravelRequest['itinerary']): boolean {
+    return hasExactItineraryDateRange(itinerary) || hasFlexibleItineraryDateSelection(itinerary);
+}
+
+export function resolveItineraryDateRange(
+    itinerary: ParsedTravelRequest['itinerary'] | undefined,
+    message: string,
+    referenceDate: Date = new Date()
+): Pick<NonNullable<ParsedTravelRequest['itinerary']>, 'startDate' | 'endDate'> {
+    if (!itinerary) return {};
+
+    const normalizedReference = new Date(referenceDate);
+    normalizedReference.setHours(0, 0, 0, 0);
+
+    const explicitYearInMessage = /\b20\d{2}\b/.test(message);
+
+    if (!explicitYearInMessage && itinerary.startDate && itinerary.endDate) {
+        const startDate = new Date(`${itinerary.startDate}T00:00:00`);
+        const endDate = new Date(`${itinerary.endDate}T00:00:00`);
+
+        if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime()) && endDate < normalizedReference) {
+            let shiftedStart = itinerary.startDate;
+            let shiftedEnd = itinerary.endDate;
+
+            while (new Date(`${shiftedEnd}T00:00:00`) < normalizedReference) {
+                const nextYear = parseInt(shiftedStart.slice(0, 4), 10) + 1;
+                shiftedStart = shiftIsoDateToYear(shiftedStart, nextYear);
+                shiftedEnd = shiftIsoDateToYear(shiftedEnd, nextYear);
+            }
+
+            return {
+                startDate: shiftedStart,
+                endDate: shiftedEnd
+            };
+        }
+    }
+
+    return {};
 }
 
 function buildHotelSegmentId(segment: Partial<HotelStaySegment>, index: number): string {
@@ -683,8 +896,8 @@ export function validateItineraryRequiredFields(itinerary?: ParsedTravelRequest[
     if (!itinerary) {
         return {
             isValid: false,
-            missingFields: ['destinations', 'days'],
-            missingFieldsSpanish: ['destino(s)', 'cantidad de días']
+            missingFields: ['destinations', 'exact_dates'],
+            missingFieldsSpanish: ['destino(s)', 'fechas exactas del viaje']
         };
     }
 
@@ -696,9 +909,9 @@ export function validateItineraryRequiredFields(itinerary?: ParsedTravelRequest[
         missingFields.push('destinations');
         missingFieldsSpanish.push('destino(s)');
     }
-    if (!itinerary.days || itinerary.days < 1) {
-        missingFields.push('days');
-        missingFieldsSpanish.push('cantidad de días');
+    if (!hasUsableItineraryDates(itinerary)) {
+        missingFields.push('exact_dates');
+        missingFieldsSpanish.push('fechas exactas del viaje');
     }
 
     return {
@@ -709,7 +922,57 @@ export function validateItineraryRequiredFields(itinerary?: ParsedTravelRequest[
 }
 
 // Función para generar mensaje solicitando información faltante
-export function generateMissingInfoMessage(missingFieldsSpanish: string[], requestType: string): string {
+function generateItineraryDateClarificationMessage(
+    itinerary?: ParsedTravelRequest['itinerary'],
+    originalMessage: string = '',
+    referenceDate: Date = new Date()
+): string {
+    const suggestedRanges = buildSuggestedItineraryDateRanges(itinerary, originalMessage, referenceDate);
+    const normalizedReference = new Date(referenceDate);
+    normalizedReference.setHours(0, 0, 0, 0);
+    const monthHint = extractItineraryMonthHint(originalMessage);
+    const destinations = itinerary?.destinations?.length
+        ? itinerary.destinations.join(', ')
+        : undefined;
+    const monthSummary = monthHint
+        ? `${getMonthNameFromNumber(monthHint.monthNum)} de ${getTargetYearForMonthHint(monthHint, normalizedReference)}`
+        : undefined;
+
+    const contextLines = [
+        destinations ? `• **Destinos:** ${destinations}` : '',
+        itinerary?.days ? `• **Duración estimada:** ${itinerary.days} días` : '',
+        monthSummary ? `• **Mes solicitado:** ${monthSummary}` : ''
+    ].filter(Boolean);
+
+    const suggestionsBlock = suggestedRanges.length > 0
+        ? suggestedRanges.map((option, index) => `${index + 1}. ${option.label}`).join('\n')
+        : 'Por ejemplo:\n1. Del 2 al 11 de mayo de 2026\n2. Del 9 al 18 de mayo de 2026\n3. Del 16 al 25 de mayo de 2026';
+
+    return `Antes de armar el plan necesito que me confirmes **cuándo querés viajar**.${contextLines.length > 0 ? `\n\n${contextLines.join('\n')}` : ''}\n\nPodés elegir **fechas exactas** o usar un **mes flexible** desde el selector del chat.\n\nSi preferís responder por texto, también podés escribir algo como: **"del 6 al 15 de mayo de 2026"**.\n\n${suggestedRanges.length > 0 ? `Si querés una referencia, estas fechas podrían funcionar:\n${suggestionsBlock}` : ''}`;
+}
+
+export function generateMissingInfoMessage(
+    missingFieldsSpanish: string[],
+    requestType: string,
+    context?: {
+        itinerary?: ParsedTravelRequest['itinerary'];
+        originalMessage?: string;
+        referenceDate?: Date;
+    }
+): string {
+    if (
+        requestType === 'itinerary' &&
+        missingFieldsSpanish.includes('fechas exactas del viaje') &&
+        context?.itinerary?.destinations &&
+        context.itinerary.destinations.length > 0
+    ) {
+        return generateItineraryDateClarificationMessage(
+            context?.itinerary,
+            context?.originalMessage || '',
+            context?.referenceDate
+        );
+    }
+
     const baseMessage = requestType === 'flights'
         ? 'Para buscar los mejores vuelos, necesito que me proporciones la siguiente información:'
         : requestType === 'hotels'
@@ -757,18 +1020,8 @@ function generateFieldExamples(missingFieldsSpanish: string[]): string {
             case 'tipo de vuelo (directo o con escalas)':
                 examples.push('✈️ **Tipo de vuelo:** Por ejemplo: "vuelo directo", "con una escala", "cualquier vuelo"');
                 break;
-            // Ejemplos para hoteles
-            case 'destino':
-                examples.push('🏨 **Destino:** Por ejemplo: "Punta Cana", "Barcelona", "Miami"');
-                break;
             case 'fecha de entrada':
                 examples.push('📅 **Fecha de entrada:** Por ejemplo: "15 de diciembre", "2025-12-15"');
-                break;
-            case 'fecha de salida':
-                examples.push('📅 **Fecha de salida:** Por ejemplo: "20 de diciembre", "2025-12-20"');
-                break;
-            case 'cantidad de pasajeros':
-                examples.push('👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 persona", "3 adultos"');
                 break;
             case 'tipo de habitación (single, double, triple)':
                 examples.push('🛏️ **Tipo de habitación:** Por ejemplo: "single", "double", "triple"');
@@ -782,6 +1035,12 @@ function generateFieldExamples(missingFieldsSpanish: string[]): string {
                 break;
             case 'cantidad de días':
                 examples.push('📅 **Días:** Por ejemplo: "5 días", "una semana", "10 días"');
+                break;
+            case 'cantidad de días o fechas del viaje':
+                examples.push('📅 **Duración o fechas:** Por ejemplo: "5 días", "del 2 al 10 de marzo", "del 2027-03-02 al 2027-03-10"');
+                break;
+            case 'fechas exactas del viaje':
+                examples.push('📅 **Fechas exactas:** Por ejemplo: "del 2 al 10 de marzo de 2027", "salgo el 5 de mayo y vuelvo el 14 de mayo"');
                 break;
         }
     });
@@ -994,6 +1253,31 @@ export function combineWithPreviousRequest(
             ...normalizedParsedNewRequest.travelAssistance
         };
         normalizedParsedNewRequest.travelAssistance = combinedTravelAssistance;
+    }
+
+    if (normalizedParsedNewRequest.requestType === 'itinerary') {
+        normalizedParsedNewRequest.itinerary = {
+            ...normalizedPreviousRequest.itinerary,
+            ...normalizedParsedNewRequest.itinerary,
+            ...(normalizedParsedNewRequest.itinerary?.destinations?.length ? { destinations: normalizedParsedNewRequest.itinerary.destinations } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.days ? { days: normalizedParsedNewRequest.itinerary.days } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.startDate ? { startDate: normalizedParsedNewRequest.itinerary.startDate } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.endDate ? { endDate: normalizedParsedNewRequest.itinerary.endDate } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.isFlexibleDates !== undefined ? { isFlexibleDates: normalizedParsedNewRequest.itinerary.isFlexibleDates } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.flexibleMonth ? { flexibleMonth: normalizedParsedNewRequest.itinerary.flexibleMonth } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.flexibleYear ? { flexibleYear: normalizedParsedNewRequest.itinerary.flexibleYear } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.dateSelectionSource ? { dateSelectionSource: normalizedParsedNewRequest.itinerary.dateSelectionSource } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.budgetLevel ? { budgetLevel: normalizedParsedNewRequest.itinerary.budgetLevel } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.budgetAmount ? { budgetAmount: normalizedParsedNewRequest.itinerary.budgetAmount } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.interests?.length ? { interests: normalizedParsedNewRequest.itinerary.interests } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.travelStyle?.length ? { travelStyle: normalizedParsedNewRequest.itinerary.travelStyle } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.pace ? { pace: normalizedParsedNewRequest.itinerary.pace } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.hotelCategory ? { hotelCategory: normalizedParsedNewRequest.itinerary.hotelCategory } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.travelers ? { travelers: normalizedParsedNewRequest.itinerary.travelers } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.constraints?.length ? { constraints: normalizedParsedNewRequest.itinerary.constraints } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.currentPlanSummary ? { currentPlanSummary: normalizedParsedNewRequest.itinerary.currentPlanSummary } : {}),
+            ...(normalizedParsedNewRequest.itinerary?.editIntent ? { editIntent: normalizedParsedNewRequest.itinerary.editIntent } : {}),
+        };
     }
 
     console.log('✅ Combined request result:', {
@@ -1446,8 +1730,7 @@ export function validateParsedRequest(parsed: ParsedTravelRequest): boolean {
                 validateParsedRequest({ ...normalizedParsed, requestType: 'hotels' });
 
         case 'itinerary':
-            return !!(normalizedParsed.itinerary?.destinations && normalizedParsed.itinerary.destinations.length > 0 &&
-                normalizedParsed.itinerary?.days && normalizedParsed.itinerary.days > 0);
+            return validateItineraryRequiredFields(normalizedParsed.itinerary).isValid;
 
         default:
             return true;

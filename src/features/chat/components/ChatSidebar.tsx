@@ -3,8 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Archive, Phone, Globe, ArchiveRestore } from 'lucide-react';
+import { Plus, Archive, Phone, Globe, ArchiveRestore, Sparkles, MessagesSquare } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 
@@ -20,10 +21,12 @@ interface ChatSidebarProps {
   conversations: ConversationWithAgency[];
   selectedConversation: string | null;
   activeTab: string;
+  workspaceMode: 'standard' | 'planner';
   sidebarLimit: number;
   onSelectConversation: (id: string) => void;
   onCreateNewChat: () => void;
   onTabChange: (tab: string) => void;
+  onWorkspaceModeChange: (mode: 'standard' | 'planner') => void;
   onArchiveConversation?: (conversationId: string, currentState: 'active' | 'closed') => void;
 }
 
@@ -32,12 +35,15 @@ const ChatSidebar = React.memo(({
   conversations,
   selectedConversation,
   activeTab,
+  workspaceMode,
   sidebarLimit,
   onSelectConversation,
   onCreateNewChat,
   onTabChange,
+  onWorkspaceModeChange,
   onArchiveConversation
 }: ChatSidebarProps) => {
+  const { isOwner } = useAuth();
 
   const handleArchiveClick = (e: React.MouseEvent, conversationId: string, currentState: 'active' | 'closed' | 'pending') => {
     e.stopPropagation(); // Prevent selecting the conversation
@@ -50,21 +56,45 @@ const ChatSidebar = React.memo(({
     <div className="w-full md:w-80 border-r bg-background flex flex-col">
       <div className="p-3 md:p-4 border-b">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-base md:text-lg font-semibold">Conversaciones</h3>
+          <h3 className="text-base md:text-lg font-semibold">
+            {workspaceMode === 'planner' ? 'Planificador de Viajes' : 'Conversaciones'}
+          </h3>
           <Button
             onClick={onCreateNewChat}
             size="sm"
             className="bg-primary hover:bg-primary/90"
           >
             <Plus className="h-4 w-4 md:mr-2" />
-            <span className="hidden md:inline">Nuevo Chat</span>
+            <span className="hidden md:inline">{workspaceMode === 'planner' ? 'Nuevo plan' : 'Nuevo Chat'}</span>
           </Button>
         </div>
-        <p className="text-xs md:text-sm text-muted-foreground">Chats de viajes</p>
+        <p className="text-xs md:text-sm text-muted-foreground">
+          {workspaceMode === 'planner' ? 'Planes editables y conversaciones' : 'Chats de viajes'}
+        </p>
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="p-3 md:p-4 pb-2">
+          <div className={`grid ${isOwner ? 'grid-cols-2' : 'grid-cols-1'} gap-2 mb-3`}>
+            <Button
+              variant={workspaceMode === 'standard' ? 'secondary' : 'outline'}
+              className="justify-start gap-2"
+              onClick={() => onWorkspaceModeChange('standard')}
+            >
+              <MessagesSquare className="h-4 w-4" />
+              Chat
+            </Button>
+            {isOwner && (
+              <Button
+                variant={workspaceMode === 'planner' ? 'secondary' : 'outline'}
+                className="justify-start gap-2"
+                onClick={() => onWorkspaceModeChange('planner')}
+              >
+                <Sparkles className="h-4 w-4" />
+                Planificador
+              </Button>
+            )}
+          </div>
           <Tabs value={activeTab} onValueChange={onTabChange}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="active" className="text-xs md:text-sm">Chats Activos</TabsTrigger>

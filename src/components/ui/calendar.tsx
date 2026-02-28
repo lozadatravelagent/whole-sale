@@ -34,20 +34,22 @@ function Calendar({
         head_cell:
           "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
         row: "flex w-full mt-2",
-        cell: "h-9 w-9 text-center text-sm p-0 relative [&:has([aria-selected])]:bg-transparent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+        cell: "h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20 [&:has(>.day-range-start)]:rounded-l-md [&:has(>.day-range-end)]:rounded-r-md [&:has(>.day-range-middle)]:bg-primary/10",
         day: cn(
           buttonVariants({ variant: "ghost" }),
-          "h-9 w-9 p-0 font-normal aria-selected:opacity-100"
+          "h-9 w-9 rounded-md p-0 font-normal shadow-none aria-selected:opacity-100"
         ),
+        day_range_start:
+          "day-range-start bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
         day_range_end: "day-range-end",
         day_selected:
-          "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground !important",
+          "bg-primary text-primary-foreground shadow-none hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground !important",
         day_today: "border border-primary text-primary font-semibold aria-selected:border-0 aria-selected:bg-primary aria-selected:text-primary-foreground",
         day_outside:
           "day-outside text-muted-foreground opacity-50 aria-selected:bg-primary/90 aria-selected:text-primary-foreground aria-selected:opacity-100",
         day_disabled: "text-muted-foreground opacity-50",
         day_range_middle:
-          "aria-selected:bg-primary/10 aria-selected:text-primary",
+          "day-range-middle rounded-none border-0 bg-primary/10 text-primary shadow-none aria-selected:bg-primary/10 aria-selected:text-primary",
         day_hidden: "invisible",
         ...classNames,
       }}

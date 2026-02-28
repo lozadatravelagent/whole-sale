@@ -12,6 +12,33 @@ import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import { translateBaggage } from '../utils/translations';
 
+function formatPlannerDateSelectionMessage(selection: {
+  startDate?: string;
+  endDate?: string;
+  isFlexibleDates: boolean;
+  flexibleMonth?: string;
+  flexibleYear?: number;
+  days?: number;
+}) {
+  if (selection.isFlexibleDates) {
+    const flexibleLabel = selection.flexibleMonth
+      ? new Date(`${selection.flexibleYear || new Date().getFullYear()}-${selection.flexibleMonth}-01T00:00:00`)
+        .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+      : 'mes flexible';
+
+    return `Mes flexible seleccionado: ${flexibleLabel}${selection.days ? ` (${selection.days} días)` : ''}`;
+  }
+
+  return `Fechas seleccionadas: ${selection.startDate || 'sin salida'}${selection.endDate ? ` al ${selection.endDate}` : ''}`;
+}
+
+function calculateTripDays(startDate?: string, endDate?: string): number | undefined {
+  if (!startDate || !endDate) return undefined;
+  const diff = new Date(`${endDate}T00:00:00`).getTime() - new Date(`${startDate}T00:00:00`).getTime();
+  if (Number.isNaN(diff)) return undefined;
+  return Math.max(1, Math.round(diff / 86400000) + 1);
+}
+
 const useMessageHandler = (
   selectedConversation: string | null,
   selectedConversationRef: React.MutableRefObject<string | null>,
@@ -34,7 +61,10 @@ const useMessageHandler = (
   setTypingMessage: (message: string, conversationId?: string | null) => void,
   addOptimisticMessage: (message: any) => void,
   updateOptimisticMessage: (messageId: string, updates: Partial<any>) => void,
-  removeOptimisticMessage: (messageId: string) => void
+  removeOptimisticMessage: (messageId: string) => void,
+  plannerContextRequest: ParsedTravelRequest | null,
+  plannerState: any,
+  persistPlannerState?: (state: any, source: string) => Promise<void>
 ) => {
   // ✅ Messages are now passed as parameter - no need for second useMessages call
 
@@ -527,10 +557,10 @@ const useMessageHandler = (
         // Also clear the React state to prevent cross-conversation contamination
         setPreviousParsedRequest(null);
       } else if (hasNoStoredContext) {
-        console.log('🧹 [NEW CONVERSATION] No stored context - starting fresh');
-        contextToUse = null;
+        console.log('🧹 [NEW CONVERSATION] No stored context - falling back to planner context if available');
+        contextToUse = plannerContextRequest || null;
       } else {
-        contextToUse = contextFromDB || previousParsedRequest || persistentState;
+        contextToUse = contextFromDB || plannerContextRequest || previousParsedRequest || persistentState;
       }
       console.log('📝 [CONTEXT] Final context to use:', contextToUse);
 
@@ -554,6 +584,15 @@ const useMessageHandler = (
       const seenClientIds = new Set<string>();
       const conversationHistory = (messages || [])
         .filter(msg => {
+          const meta = msg.meta as any;
+          if (msg.role === 'system' && meta && (
+            meta.messageType === 'contextual_memory' ||
+            meta.messageType === 'context_state' ||
+            meta.messageType === 'trip_planner_state'
+          )) {
+            return false;
+          }
+
           // Skip optimistic messages (they will be replaced by real ones)
           if (msg.id.toString().startsWith('temp-')) {
             const clientId = getClientId(msg);
@@ -1106,7 +1145,11 @@ const useMessageHandler = (
           // Generate message asking for missing information
           const missingInfoMessage = generateMissingInfoMessage(
             validation.missingFieldsSpanish,
-            'itinerary'
+            'itinerary',
+            {
+              itinerary: parsedRequest.itinerary,
+              originalMessage: parsedRequest.originalMessage
+            }
           );
 
           console.log('💬 [VALIDATION] Generated missing info message for itinerary');
@@ -1120,7 +1163,14 @@ const useMessageHandler = (
               status: 'sent',
               messageType: 'missing_info_request',
               missingFields: validation.missingFields,
-              originalRequest: parsedRequest
+              originalRequest: parsedRequest,
+              plannerPromptAction: validation.missingFields.includes('exact_dates') ? 'open_date_selector' : undefined,
+              plannerDateSelector: validation.missingFields.includes('exact_dates') ? {
+                enabled: true,
+                mode: 'required',
+                suggestedDurationDays: parsedRequest.itinerary?.days,
+                suggestedMonthText: parsedRequest.originalMessage,
+              } : undefined,
             }
           });
 
@@ -1217,7 +1267,7 @@ const useMessageHandler = (
         case 'itinerary': {
           console.log('🗺️ [MESSAGE FLOW] Step 12g: Processing itinerary request');
           setTypingMessage('Generando tu itinerario de viaje...', conversationIdForThisSearch);
-          const itineraryResult = await handleItineraryRequest(parsedRequest);
+          const itineraryResult = await handleItineraryRequest(parsedRequest, plannerState || null);
           assistantResponse = itineraryResult.response;
           structuredData = itineraryResult.data;
           console.log('✅ [MESSAGE FLOW] Itinerary generation completed');
@@ -1238,97 +1288,103 @@ const useMessageHandler = (
       try {
         const flightsCount = (structuredData as any)?.combinedData?.flights?.length ?? 0;
         const hotelsCount = (structuredData as any)?.combinedData?.hotels?.length ?? 0;
-        const hasResults = flightsCount > 0 || hotelsCount > 0;
+        const hasPlannerData = Boolean((structuredData as any)?.plannerData);
+        const hasResults = flightsCount > 0 || hotelsCount > 0 || hasPlannerData;
         
         if (hasResults) {
           // We have usable results, clear old contextual memory
           setPreviousParsedRequest(null);
           await clearContextualMemory(finalConversationId);
 
+          if (hasPlannerData && persistPlannerState) {
+            await persistPlannerState((structuredData as any).plannerData, 'chat');
+          }
+
           // Extract actual dates from the first flight found (if any)
           const firstFlight = (structuredData as any)?.combinedData?.flights?.[0];
           const actualDepartureDate = firstFlight?.departure_date || parsedRequest.flights?.departureDate;
           const actualReturnDate = firstFlight?.return_date || parsedRequest.flights?.returnDate;
 
-          // Build complete ContextState with ALL search parameters
-          const newContextState: ContextState = {
-            lastSearch: {
-              requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
-              timestamp: new Date().toISOString(),
-              // Flight params (if present)
-              ...(parsedRequest.flights && {
-                flightsParams: (() => {
-                  const normalizedFlight = normalizeFlightRequest(parsedRequest.flights);
-                  return {
-                    origin: normalizedFlight?.origin || '',
-                    destination: normalizedFlight?.destination || '',
-                    departureDate: actualDepartureDate || normalizedFlight?.departureDate || '',
-                    returnDate: actualReturnDate || normalizedFlight?.returnDate,
-                    tripType: normalizedFlight?.tripType,
-                    segments: normalizedFlight?.segments,
-                    adults: normalizedFlight?.adults || 1,
-                    children: normalizedFlight?.children || 0,
-                    infants: normalizedFlight?.infants || 0,
-                    stops: normalizedFlight?.stops,
-                    preferredAirline: normalizedFlight?.preferredAirline,
-                    luggage: normalizedFlight?.luggage,
-                    maxLayoverHours: normalizedFlight?.maxLayoverHours
-                  };
-                })()
-              }),
-              // Hotel params (if present)
-              ...(parsedRequest.hotels && {
-                hotelsParams: {
-                  city: parsedRequest.hotels.city,
-                  checkinDate: parsedRequest.hotels.checkinDate,
-                  checkoutDate: parsedRequest.hotels.checkoutDate,
-                  adults: parsedRequest.hotels.adults || 1,
-                  children: parsedRequest.hotels.children || 0,
-                  infants: parsedRequest.hotels.infants || 0,
-                  roomType: parsedRequest.hotels.roomType,
-                  mealPlan: parsedRequest.hotels.mealPlan,
-                  hotelChains: parsedRequest.hotels.hotelChains,
-                  hotelName: parsedRequest.hotels.hotelName
+          if (parsedRequest.requestType !== 'itinerary') {
+            // Build complete ContextState with ALL search parameters
+            const newContextState: ContextState = {
+              lastSearch: {
+                requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
+                timestamp: new Date().toISOString(),
+                // Flight params (if present)
+                ...(parsedRequest.flights && {
+                  flightsParams: (() => {
+                    const normalizedFlight = normalizeFlightRequest(parsedRequest.flights);
+                    return {
+                      origin: normalizedFlight?.origin || '',
+                      destination: normalizedFlight?.destination || '',
+                      departureDate: actualDepartureDate || normalizedFlight?.departureDate || '',
+                      returnDate: actualReturnDate || normalizedFlight?.returnDate,
+                      tripType: normalizedFlight?.tripType,
+                      segments: normalizedFlight?.segments,
+                      adults: normalizedFlight?.adults || 1,
+                      children: normalizedFlight?.children || 0,
+                      infants: normalizedFlight?.infants || 0,
+                      stops: normalizedFlight?.stops,
+                      preferredAirline: normalizedFlight?.preferredAirline,
+                      luggage: normalizedFlight?.luggage,
+                      maxLayoverHours: normalizedFlight?.maxLayoverHours
+                    };
+                  })()
+                }),
+                // Hotel params (if present)
+                ...(parsedRequest.hotels && {
+                  hotelsParams: {
+                    city: parsedRequest.hotels.city,
+                    checkinDate: parsedRequest.hotels.checkinDate,
+                    checkoutDate: parsedRequest.hotels.checkoutDate,
+                    adults: parsedRequest.hotels.adults || 1,
+                    children: parsedRequest.hotels.children || 0,
+                    infants: parsedRequest.hotels.infants || 0,
+                    roomType: parsedRequest.hotels.roomType,
+                    mealPlan: parsedRequest.hotels.mealPlan,
+                    hotelChains: parsedRequest.hotels.hotelChains,
+                    hotelName: parsedRequest.hotels.hotelName
+                  }
+                }),
+                // Results summary
+                resultsSummary: {
+                  flightsCount,
+                  hotelsCount
                 }
-              }),
-              // Results summary
-              resultsSummary: {
-                flightsCount,
-                hotelsCount
-              }
-            },
-            // Track constraints history for iterations
-            constraintsHistory: [
-              ...(persistentState?.constraintsHistory || []),
-              // If this was an iteration, record what changed
-              ...(iterationContext.isIteration && parsedRequest.hotels?.hotelChains ? [{
-                turn: (persistentState?.turnNumber || 0) + 1,
-                component: 'hotels' as const,
-                constraint: 'hotelChains',
-                value: parsedRequest.hotels.hotelChains,
-                timestamp: new Date().toISOString()
-              }] : []),
-              ...(iterationContext.isIteration && parsedRequest.hotels?.hotelName ? [{
-                turn: (persistentState?.turnNumber || 0) + 1,
-                component: 'hotels' as const,
-                constraint: 'hotelName',
-                value: parsedRequest.hotels.hotelName,
-                timestamp: new Date().toISOString()
-              }] : [])
-            ],
-            turnNumber: (persistentState?.turnNumber || 0) + 1,
-            schemaVersion: 1
-          };
+              },
+              // Track constraints history for iterations
+              constraintsHistory: [
+                ...(persistentState?.constraintsHistory || []),
+                ...(iterationContext.isIteration && parsedRequest.hotels?.hotelChains ? [{
+                  turn: (persistentState?.turnNumber || 0) + 1,
+                  component: 'hotels' as const,
+                  constraint: 'hotelChains',
+                  value: parsedRequest.hotels.hotelChains,
+                  timestamp: new Date().toISOString()
+                }] : []),
+                ...(iterationContext.isIteration && parsedRequest.hotels?.hotelName ? [{
+                  turn: (persistentState?.turnNumber || 0) + 1,
+                  component: 'hotels' as const,
+                  constraint: 'hotelName',
+                  value: parsedRequest.hotels.hotelName,
+                  timestamp: new Date().toISOString()
+                }] : [])
+              ],
+              turnNumber: (persistentState?.turnNumber || 0) + 1,
+              schemaVersion: 1
+            };
 
-          console.log('💾 [STATE] Saving complete context state:', {
-            requestType: newContextState.lastSearch.requestType,
-            hasFlights: !!newContextState.lastSearch.flightsParams,
-            hasHotels: !!newContextState.lastSearch.hotelsParams,
-            turnNumber: newContextState.turnNumber,
-            constraintsCount: newContextState.constraintsHistory.length
-          });
-          
-          await saveContextState(finalConversationId, newContextState);
+            console.log('💾 [STATE] Saving complete context state:', {
+              requestType: newContextState.lastSearch.requestType,
+              hasFlights: !!newContextState.lastSearch.flightsParams,
+              hasHotels: !!newContextState.lastSearch.hotelsParams,
+              turnNumber: newContextState.turnNumber,
+              constraintsCount: newContextState.constraintsHistory.length
+            });
+            
+            await saveContextState(finalConversationId, newContextState);
+          }
         } else {
           // No results - preserve context for retry (e.g., "con escalas")
           console.log('⚠️ [STATE] No results, preserving context for potential retry');
@@ -1402,8 +1458,161 @@ const useMessageHandler = (
     removeOptimisticMessage
   ]);
 
+  const handlePlannerDateSelection = useCallback(async (
+    baseRequest: ParsedTravelRequest,
+    selection: {
+      startDate?: string;
+      endDate?: string;
+      isFlexibleDates: boolean;
+      flexibleMonth?: string;
+      flexibleYear?: number;
+      days?: number;
+    }
+  ) => {
+    const currentConversationId = selectedConversationRef.current;
+    if (!currentConversationId) {
+      toast({
+        title: "Error",
+        description: "No hay una conversación activa para continuar el plan.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    setIsTyping(true, currentConversationId);
+    setTypingMessage('Generando tu itinerario de viaje...', currentConversationId);
+
+    try {
+      const computedDays = selection.isFlexibleDates
+        ? (selection.days || baseRequest.itinerary?.days)
+        : (selection.days || calculateTripDays(selection.startDate, selection.endDate) || baseRequest.itinerary?.days);
+
+      const mergedRequest: ParsedTravelRequest = {
+        ...baseRequest,
+        requestType: 'itinerary',
+        itinerary: {
+          ...baseRequest.itinerary,
+          days: computedDays,
+          startDate: selection.isFlexibleDates ? undefined : selection.startDate,
+          endDate: selection.isFlexibleDates ? undefined : selection.endDate,
+          isFlexibleDates: selection.isFlexibleDates,
+          flexibleMonth: selection.isFlexibleDates ? selection.flexibleMonth : undefined,
+          flexibleYear: selection.isFlexibleDates ? selection.flexibleYear : undefined,
+          dateSelectionSource: selection.isFlexibleDates ? 'chat_modal_flexible' : 'chat_modal_exact',
+        },
+        originalMessage: baseRequest.originalMessage,
+      };
+
+      const validation = validateItineraryRequiredFields(mergedRequest.itinerary);
+      if (!validation.isValid) {
+        const missingInfoMessage = generateMissingInfoMessage(
+          validation.missingFieldsSpanish,
+          'itinerary',
+          {
+            itinerary: mergedRequest.itinerary,
+            originalMessage: mergedRequest.originalMessage,
+          }
+        );
+
+        await addMessageViaSupabase({
+          conversation_id: currentConversationId,
+          role: 'assistant',
+          content: { text: missingInfoMessage },
+          meta: {
+            status: 'sent',
+            messageType: 'missing_info_request',
+            missingFields: validation.missingFields,
+            originalRequest: mergedRequest,
+            plannerPromptAction: 'open_date_selector',
+            plannerDateSelector: {
+              enabled: true,
+              mode: 'required',
+              suggestedDurationDays: mergedRequest.itinerary?.days,
+              suggestedMonthText: mergedRequest.originalMessage,
+            }
+          }
+        });
+
+        setPreviousParsedRequest(mergedRequest);
+        await saveContextualMemory(currentConversationId, mergedRequest);
+        setIsTyping(false, currentConversationId);
+        setIsLoading(false);
+        return;
+      }
+
+      await addMessageViaSupabase({
+        conversation_id: currentConversationId,
+        role: 'user',
+        content: { text: formatPlannerDateSelectionMessage(selection) },
+        meta: {
+          status: 'sent',
+          messageType: 'planner_date_selection',
+          originalRequest: mergedRequest,
+        }
+      });
+
+      const itineraryResult = await handleItineraryRequest(mergedRequest, plannerState || null);
+      const assistantResponse = itineraryResult.response;
+      const structuredData = itineraryResult.data;
+      const hasPlannerData = Boolean((structuredData as any)?.plannerData);
+
+      if (hasPlannerData) {
+        setPreviousParsedRequest(null);
+        await clearContextualMemory(currentConversationId);
+        if (persistPlannerState) {
+          await persistPlannerState((structuredData as any).plannerData, 'chat');
+        }
+      } else {
+        setPreviousParsedRequest(mergedRequest);
+        await saveContextualMemory(currentConversationId, mergedRequest);
+      }
+
+      await addMessageViaSupabase({
+        conversation_id: currentConversationId,
+        role: 'assistant',
+        content: { text: assistantResponse },
+        meta: structuredData
+          ? {
+              source: 'PLANNER_DATE_MODAL',
+              ...structuredData,
+              originalRequest: mergedRequest,
+            }
+          : {
+              source: 'PLANNER_DATE_MODAL',
+              originalRequest: mergedRequest,
+            }
+      });
+
+      setIsTyping(false, currentConversationId);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('❌ [PLANNER DATE MODAL] Error continuing planner flow:', error);
+      setIsLoading(false);
+      setIsTyping(false, currentConversationId);
+      toast({
+        title: "Error",
+        description: "No se pudo continuar el plan con las fechas elegidas.",
+        variant: "destructive",
+      });
+    }
+  }, [
+    clearContextualMemory,
+    persistPlannerState,
+    plannerState,
+    saveContextualMemory,
+    selectedConversationRef,
+    setIsLoading,
+    setIsTyping,
+    setPreviousParsedRequest,
+    setTypingMessage,
+    toast,
+    validateItineraryRequiredFields
+  ]);
+
   return {
-    handleSendMessage
+    handleSendMessage,
+    handlePlannerDateSelection,
   };
 };
 
