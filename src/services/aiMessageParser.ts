@@ -537,7 +537,17 @@ function parseHotelDateRangeFromText(
 
 function splitHotelMessageIntoChunks(message: string): string[] {
     const normalized = message.replace(/\s+/g, ' ').trim();
-    const withBreaks = normalized.replace(/\s+(?:y|luego|despues|después|ademas|además)\s+en\s+/gi, ' ||| en ');
+
+    // Strip flight portion from the message before splitting hotel chunks.
+    // This prevents the date regex from matching flight dates instead of hotel dates.
+    // Pattern: everything before "tambien/también quiero un/el hotel" or "tambien/también hotel"
+    const hotelOnly = normalized.replace(
+        /^.*?(?=(?:tambien|también|tambi[eé]n)\s+(?:quiero\s+)?(?:un\s+|el\s+)?hotel)/i,
+        ''
+    );
+    const textToSplit = hotelOnly.length > 0 && hotelOnly !== normalized ? hotelOnly : normalized;
+
+    const withBreaks = textToSplit.replace(/\s+(?:y|luego|despues|después|ademas|además)\s+en\s+/gi, ' ||| en ');
     return withBreaks
         .split('|||')
         .map((chunk) => chunk.trim())
@@ -1125,12 +1135,14 @@ function combineHotelRequests(
         : -1;
 
     if (matchingIndex >= 0) {
-        workingSegments[matchingIndex] = inheritHotelSegment(incomingSegment, workingSegments[matchingIndex], matchingIndex);
+        const merged = inheritHotelSegment(incomingSegment, workingSegments[matchingIndex], matchingIndex);
+        workingSegments[matchingIndex] = { ...merged, id: merged.id || buildHotelSegmentId(merged, matchingIndex) };
         return buildHotelRequestFromSegments(workingSegments, { ...previousHotels, ...newHotels });
     }
 
     if (addSegmentIntent || previousSegments.length > 1) {
-        workingSegments.push(incomingSegment);
+        const idx = workingSegments.length;
+        workingSegments.push({ ...incomingSegment, id: incomingSegment.id || buildHotelSegmentId(incomingSegment, idx) });
         return buildHotelRequestFromSegments(workingSegments, { ...previousHotels, ...newHotels });
     }
 

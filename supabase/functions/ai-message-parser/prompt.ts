@@ -729,10 +729,11 @@ User: "Paquete a Cancún todo incluido con traslados y seguro de viaje"
 **COMBINED:** All flight + hotel required fields with same defaults
 
 **COMBINED ROUND-TRIP DATE ALIGNMENT (CRITICAL):**
-- If requestType is "combined" and flights has departureDate/returnDate, hotel dates MUST be coherent:
+- If requestType is "combined" and the user specifies EXPLICIT hotel dates (e.g., "hotel desde el 2 al 10"), ALWAYS use those exact dates for the hotel. Do NOT override them with flight dates.
+- ONLY fall back to flight dates when the user does NOT specify separate hotel dates (e.g., "tambien quiero hotel" with no dates, or "hotel para las mismas fechas"):
   * hotels.checkinDate = flights.departureDate
   * hotels.checkoutDate = flights.returnDate (when returnDate exists)
-- Do NOT invent longer/shorter hotel stays unless the user explicitly asks for different hotel dates.
+- When user requests MULTIPLE hotel segments with different dates (e.g., "hotel en cancun del 2 al 10 y en playa del carmen del 10 al 15"), extract each segment's dates independently from what the user said. Do NOT align any segment to flight dates.
 
 **ITINERARY:**
 - Required: destinations (array of strings, at least 1), days (number > 0)
@@ -1125,6 +1126,38 @@ User: "quiero cadena riu y iberostar all inclusive habitacion doble"
 ✅ hotelChains: ["Riu", "Iberostar"] - user said "cadena riu y iberostar"
 ✅ mealPlan: "all_inclusive" - user said "all inclusive"
 ✅ roomType: "double" - user said "habitacion doble"
+
+Example 12c - Combined flight + hotel with DIFFERENT DATES (CRITICAL - hotel dates differ from flight):
+User: "quiero un vuelo buenos aires a cancun del 2 al 15 de marzo tambien quiero un hotel en cancun desde el 2 al 10 de marzo para dos personas habitacion doble all inclusive cadena iberostar y riu y en playa del carmen del 10 al 15 habitacion doble all inclusive cadena iberostar y viva"
+{
+  "requestType": "combined",
+  "flights": {
+    "origin": "Buenos Aires",
+    "destination": "Cancún",
+    "departureDate": "2026-03-02",
+    "returnDate": "2026-03-15",
+    "adults": 2,
+    "adultsExplicit": true,
+    "children": 0,
+    "infants": 0,
+    "stops": "any"
+  },
+  "hotels": {
+    "city": "Cancún",
+    "checkinDate": "2026-03-02",
+    "checkoutDate": "2026-03-10",
+    "adults": 2,
+    "children": 0,
+    "infants": 0,
+    "roomType": "double",
+    "mealPlan": "all_inclusive",
+    "hotelChains": ["Iberostar", "Riu"]
+  },
+  "confidence": 0.95
+}
+✅ hotels.checkinDate: "2026-03-02" and hotels.checkoutDate: "2026-03-10" - user said "hotel en cancun desde el 2 al 10"
+❌ DO NOT use flight returnDate "2026-03-15" for hotel checkout - user explicitly said "al 10 de marzo"
+✅ The second hotel segment (Playa del Carmen, del 10 al 15) will be detected by the client-side segment parser
 
 Example 13 - Hotel with SPECIFIC NAME and CHAIN (NEW - hotelName + hotelChains):
 User: "quiero reservar el hotel Riu Bambu en Punta Cana"

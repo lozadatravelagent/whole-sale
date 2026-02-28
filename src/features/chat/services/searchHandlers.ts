@@ -119,8 +119,15 @@ function selectHotelsWithStrictChainBalance(
   const selectedKeys = new Set<string>();
   const selectedCounts = new Map<string, number>();
 
+  // Calculate per-chain quotas upfront
+  const chainQuotas = new Map<string, number>();
   requestedChains.forEach((chain, index) => {
-    const requestedQuota = baseQuota + (index < remainder ? 1 : 0);
+    chainQuotas.set(chain, baseQuota + (index < remainder ? 1 : 0));
+  });
+
+  // Phase 1: Fill each chain's base quota
+  requestedChains.forEach((chain) => {
+    const requestedQuota = chainQuotas.get(chain)!;
     const chainHotels = hotelsByChain.get(chain) || [];
     const take = Math.min(requestedQuota, chainHotels.length);
 
@@ -135,27 +142,65 @@ function selectHotelsWithStrictChainBalance(
     });
   });
 
+  // Phase 2: Fill remaining slots with round-robin across chains to keep balance
   if (selected.length < totalSlots) {
-    const leftovers = requestedChains
-      .flatMap((chain, index) => {
-        const requestedQuota = baseQuota + (index < remainder ? 1 : 0);
-        const chainHotels = hotelsByChain.get(chain) || [];
-        return chainHotels.slice(Math.min(requestedQuota, chainHotels.length));
-      })
-      .filter((hotel) => !selectedKeys.has(getHotelUniqueKey(hotel)))
-      .sort((a, b) => getMinRoomPrice(a) - getMinRoomPrice(b));
+    // Max cap per chain: no chain should exceed ceil(totalSlots / numChains) + 1
+    // This prevents one chain from dominating the leftover slots
+    const maxPerChain = Math.ceil(totalSlots / requestedChains.length) + 1;
 
-    for (const hotel of leftovers) {
-      if (selected.length >= totalSlots) break;
-      const hotelKey = getHotelUniqueKey(hotel);
-      if (selectedKeys.has(hotelKey)) continue;
+    // Build leftover pool per chain (hotels beyond their initial quota)
+    const leftoversByChain = new Map<string, LocalHotelData[]>();
+    requestedChains.forEach((chain) => {
+      const requestedQuota = chainQuotas.get(chain)!;
+      const chainHotels = hotelsByChain.get(chain) || [];
+      const leftovers = chainHotels
+        .slice(Math.min(requestedQuota, chainHotels.length))
+        .filter((hotel) => !selectedKeys.has(getHotelUniqueKey(hotel)));
+      leftoversByChain.set(chain, leftovers);
+    });
 
-      selected.push(hotel);
-      selectedKeys.add(hotelKey);
+    // Round-robin: give one extra hotel to each chain in turn until slots are full
+    let filledThisRound = true;
+    while (selected.length < totalSlots && filledThisRound) {
+      filledThisRound = false;
+      for (const chain of requestedChains) {
+        if (selected.length >= totalSlots) break;
+        const currentCount = selectedCounts.get(chain) || 0;
+        if (currentCount >= maxPerChain) continue;
 
-      const matchedChain = requestedChains.find((chain) => hotelBelongsToChain(hotel.name, chain));
-      if (matchedChain) {
-        selectedCounts.set(matchedChain, (selectedCounts.get(matchedChain) || 0) + 1);
+        const chainLeftovers = leftoversByChain.get(chain) || [];
+        const nextHotel = chainLeftovers.shift();
+        if (!nextHotel) continue;
+
+        const hotelKey = getHotelUniqueKey(nextHotel);
+        if (selectedKeys.has(hotelKey)) continue;
+
+        selected.push(nextHotel);
+        selectedKeys.add(hotelKey);
+        selectedCounts.set(chain, currentCount + 1);
+        filledThisRound = true;
+      }
+    }
+
+    // Phase 3: If still unfilled (some chains exhausted), fill from any remaining
+    if (selected.length < totalSlots) {
+      const allLeftovers = requestedChains
+        .flatMap((chain) => leftoversByChain.get(chain) || [])
+        .filter((hotel) => !selectedKeys.has(getHotelUniqueKey(hotel)))
+        .sort((a, b) => getMinRoomPrice(a) - getMinRoomPrice(b));
+
+      for (const hotel of allLeftovers) {
+        if (selected.length >= totalSlots) break;
+        const hotelKey = getHotelUniqueKey(hotel);
+        if (selectedKeys.has(hotelKey)) continue;
+
+        selected.push(hotel);
+        selectedKeys.add(hotelKey);
+
+        const matchedChain = requestedChains.find((c) => hotelBelongsToChain(hotel.name, c));
+        if (matchedChain) {
+          selectedCounts.set(matchedChain, (selectedCounts.get(matchedChain) || 0) + 1);
+        }
       }
     }
   }
