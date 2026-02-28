@@ -1,9 +1,19 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { HotelRequest, HotelStaySegment, ParsedTravelRequest } from '@/services/aiMessageParser';
-import { formatForStarling, formatForEurovips, getHotelSegments, getPrimaryHotelRequest } from '@/services/aiMessageParser';
+import {
+  formatForStarling,
+  formatForEurovips,
+  generateMissingInfoMessage,
+  getHotelSegments,
+  getPrimaryHotelRequest,
+  hasFlexibleItineraryDateSelection,
+  hasExactItineraryDateRange,
+  hasUsableItineraryDates,
+  resolveItineraryDateRange
+} from '@/services/aiMessageParser';
 import type { SearchResult, LocalHotelData, LocalHotelSegmentResult, LocalPackageData, LocalServiceData, FlightData } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
-import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatItineraryResponse } from './responseFormatters';
+import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
@@ -11,6 +21,8 @@ import { hotelBelongsToChain, hotelBelongsToAnyChain, hotelNameMatches, hotelMat
 import { generateSearchId, saveFlightsToStorage } from './flightStorageService';
 import { generateHotelSearchId, saveHotelsToStorage } from './hotelStorageService';
 import { timeStringToNumber } from '@/features/chat/utils/timeSlotMapper';
+import type { TripPlannerState } from '@/features/trip-planner/types';
+import { getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '@/features/trip-planner/utils';
 
 // =====================================================================
 // PUNTA CANA HOTEL WHITELIST - SPECIAL FILTER
@@ -627,13 +639,17 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
   }
 };
 
-export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
+export const handleHotelSearch = async (
+  parsed: ParsedTravelRequest,
+  options: { allowFlightFallback?: boolean } = {}
+): Promise<SearchResult> => {
   console.log('🏨 [HOTEL SEARCH] Starting hotel search process');
   console.log('📋 Parsed request:', parsed);
   console.log('🔍 [DEBUG] parsed.hotels?.roomType:', parsed.hotels?.roomType);
   console.log('🔍 [DEBUG] parsed.hotels?.mealPlan:', parsed.hotels?.mealPlan);
 
   try {
+    const allowFlightFallback = options.allowFlightFallback ?? true;
     const hotelSegments = getHotelSegments(parsed.hotels);
 
     if (hotelSegments.length > 1) {
@@ -648,7 +664,9 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
           };
 
           try {
-            const segmentResult = await handleHotelSearch(segmentParsed);
+            const segmentResult = await handleHotelSearch(segmentParsed, {
+              allowFlightFallback: false
+            });
             const combinedData = segmentResult.data?.combinedData;
             const hasHotels = (combinedData?.hotels?.length || 0) > 0;
 
@@ -738,18 +756,20 @@ export const handleHotelSearch = async (parsed: ParsedTravelRequest): Promise<Se
     const inferredInfants = primaryHotelRequest?.infants || parsed.flights?.infants || 0;
     const normalizedChildrenAges = normalizeChildrenAges(primaryHotelRequest?.childrenAges, inferredChildren);
 
-    // Enrich hotel params from flight context if missing (city/dates/pax)
+    // Enrich hotel params from flight context if missing (city/dates/pax).
+    // For multi-segment hotel searches we disable date/city fallback from flights,
+    // otherwise the outbound/return flight can contaminate individual hotel tramos.
     const enrichedParsed: ParsedTravelRequest = {
       ...parsed,
       hotels: {
         ...primaryHotelRequest,
         // Prefer existing hotel fields
-        city: primaryHotelRequest?.city || parsed.flights?.destination || '',
-        checkinDate: primaryHotelRequest?.checkinDate || parsed.flights?.departureDate || '',
+        city: primaryHotelRequest?.city || (allowFlightFallback ? parsed.flights?.destination : '') || '',
+        checkinDate: primaryHotelRequest?.checkinDate || (allowFlightFallback ? parsed.flights?.departureDate : '') || '',
         checkoutDate:
           primaryHotelRequest?.checkoutDate ||
-          parsed.flights?.returnDate ||
-          (parsed.flights?.departureDate
+          (allowFlightFallback ? parsed.flights?.returnDate : '') ||
+          (allowFlightFallback && parsed.flights?.departureDate
             ? new Date(new Date(parsed.flights.departureDate).getTime() + 3 * 86400000)
               .toISOString()
               .split('T')[0]
@@ -1638,31 +1658,96 @@ export const handleGeneralQuery = async (parsed: ParsedTravelRequest): Promise<s
 // ITINERARY HANDLER - Generates AI-powered travel itineraries
 // =====================================================================
 
-export const handleItineraryRequest = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
+export const handleItineraryRequest = async (
+  parsed: ParsedTravelRequest,
+  existingPlannerState?: TripPlannerState | null
+): Promise<SearchResult> => {
   console.log('🗺️ [ITINERARY] Starting itinerary generation process');
   console.log('📋 Parsed request:', parsed);
 
   try {
-    const { destinations, days } = parsed.itinerary || {};
+    const itinerary = parsed.itinerary || {};
+    const {
+      destinations,
+      days,
+      startDate,
+      endDate,
+      isFlexibleDates,
+      flexibleMonth,
+      flexibleYear,
+      budgetLevel,
+      budgetAmount,
+      interests,
+      pace,
+      travelers,
+      constraints,
+      hotelCategory,
+      editIntent
+    } = itinerary;
+    const hasExactDates = hasExactItineraryDateRange(itinerary);
+    const hasFlexibleDates = hasFlexibleItineraryDateSelection(itinerary);
 
-    if (!destinations || destinations.length === 0 || !days || days < 1) {
-      console.warn('⚠️ [ITINERARY] Missing required fields');
+    if (!hasUsableItineraryDates(itinerary)) {
       return {
-        response: '🗺️ Para crear tu itinerario necesito saber:\n\n' +
-          '• **Destino(s):** ¿A qué ciudad(es) o país(es) viajas?\n' +
-          '• **Duración:** ¿Cuántos días durará tu viaje?\n\n' +
-          'Por ejemplo: "Itinerario de 5 días para Roma" o "Plan de 10 días por Italia y Francia"',
+        response: generateMissingInfoMessage(['fechas exactas del viaje'], 'itinerary', {
+          itinerary,
+          originalMessage: parsed.originalMessage || ''
+        }),
         data: null
       };
     }
 
-    console.log(`🔄 [ITINERARY] Generating itinerary for ${destinations.join(', ')} - ${days} days`);
+    const resolvedDates = resolveItineraryDateRange(itinerary, parsed.originalMessage || '');
+    const effectiveStartDate = resolvedDates.startDate || startDate;
+    const effectiveEndDate = resolvedDates.endDate || endDate;
+    const exactRangeDays = hasExactDates
+      ? getInclusiveDateRangeDays(effectiveStartDate, effectiveEndDate)
+      : undefined;
+
+    const derivedDays = exactRangeDays || days || (
+      effectiveStartDate && effectiveEndDate
+        ? Math.max(1, Math.round((new Date(effectiveEndDate).getTime() - new Date(effectiveStartDate).getTime()) / 86400000) + 1)
+        : undefined
+    );
+
+    if (
+      !destinations ||
+      destinations.length === 0 ||
+      !derivedDays ||
+      derivedDays < 1 ||
+      (!hasExactDates && !hasFlexibleDates)
+    ) {
+      console.warn('⚠️ [ITINERARY] Missing required fields');
+      return {
+        response: generateMissingInfoMessage(['destino(s)', 'fechas exactas del viaje'], 'itinerary', {
+          itinerary,
+          originalMessage: parsed.originalMessage || ''
+        }),
+        data: null
+      };
+    }
+
+    console.log(`🔄 [ITINERARY] Generating itinerary for ${destinations.join(', ')} - ${derivedDays} days`);
 
     // Call the travel-itinerary Edge Function
     const response = await supabase.functions.invoke('travel-itinerary', {
       body: {
         destinations,
-        days
+        days: derivedDays,
+        startDate: hasExactDates ? effectiveStartDate : undefined,
+        endDate: hasExactDates ? effectiveEndDate : undefined,
+        isFlexibleDates,
+        flexibleMonth,
+        flexibleYear,
+        budgetLevel,
+        budgetAmount,
+        interests,
+        pace,
+        travelers,
+        constraints,
+        hotelCategory,
+        editIntent,
+        existingPlannerState
       }
     });
 
@@ -1673,22 +1758,49 @@ export const handleItineraryRequest = async (parsed: ParsedTravelRequest): Promi
 
     const itineraryData = response.data?.data;
 
-    if (!itineraryData || !itineraryData.itinerary) {
+    if (!itineraryData || (!itineraryData.itinerary && !itineraryData.segments)) {
       console.error('❌ [ITINERARY] Invalid response from Edge Function');
       throw new Error('Invalid itinerary response');
     }
 
     console.log('✅ [ITINERARY] Itinerary generated successfully');
-    console.log(`📊 [ITINERARY] Generated ${itineraryData.itinerary.length} days`);
+    console.log(`📊 [ITINERARY] Generated ${itineraryData.itinerary?.length || itineraryData.days || 0} days`);
+
+    const plannerData = normalizePlannerState({
+      ...itineraryData,
+      startDate: hasExactDates ? (itineraryData.startDate || effectiveStartDate) : undefined,
+      endDate: hasExactDates ? (itineraryData.endDate || effectiveEndDate) : undefined,
+      isFlexibleDates: itineraryData.isFlexibleDates ?? isFlexibleDates,
+      flexibleMonth: itineraryData.flexibleMonth || flexibleMonth,
+      flexibleYear: itineraryData.flexibleYear || flexibleYear,
+      budgetLevel: itineraryData.budgetLevel || budgetLevel,
+      budgetAmount: itineraryData.budgetAmount || budgetAmount,
+      interests: itineraryData.interests || interests,
+      pace: itineraryData.pace || pace,
+      travelers: itineraryData.travelers || travelers,
+      constraints: itineraryData.constraints || constraints,
+      generationMeta: {
+        source: editIntent?.action === 'regenerate_day'
+          ? 'regen_day'
+          : editIntent?.action === 'regenerate_segment'
+            ? 'regen_segment'
+            : existingPlannerState
+              ? 'regen_plan'
+              : 'chat',
+        updatedAt: new Date().toISOString(),
+        version: (existingPlannerState?.generationMeta?.version || 0) + 1,
+      },
+    });
 
     // Format the response
-    const formattedResponse = formatItineraryResponse(itineraryData);
+    const formattedResponse = summarizePlannerForChat(plannerData);
 
     const result = {
       response: formattedResponse,
       data: {
         itineraryData,
-        messageType: 'itinerary'
+        plannerData,
+        messageType: 'trip_planner'
       }
     };
 
