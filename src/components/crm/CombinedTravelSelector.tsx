@@ -511,7 +511,9 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   ]);
 
   const activeHotels = useMemo(() => {
-    const hotels = hasHotelCache ? filteredHotels : activeBaseHotels;
+    // When no meal plan filter is active, prefer segment hotels (preserves chain interleaving).
+    // Only use cache results when user has actively selected a meal plan filter.
+    const hotels = (hasHotelCache && activeMealPlan) ? filteredHotels : activeBaseHotels;
 
     if (!hasGroupedHotelSegments || !activeHotelSegment) {
       return hotels;
@@ -522,6 +524,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     activeBaseHotels,
     activeHotelSegment,
     activeHotelSegmentIndex,
+    activeMealPlan,
     filteredHotels,
     hasGroupedHotelSegments,
     hasHotelCache,
