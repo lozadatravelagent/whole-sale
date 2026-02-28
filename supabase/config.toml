@@ -3,7 +3,7 @@ project_id = "ujigyazketblwlzcomve"
 [functions.starling-flights]
 verify_jwt = false
 
-[functions.eurovips-hotels]
+[functions.eurovips-soap]
 verify_jwt = false
 
 [functions.travel-chat]
