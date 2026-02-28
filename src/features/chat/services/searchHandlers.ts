@@ -11,9 +11,9 @@ import {
   hasUsableItineraryDates,
   resolveItineraryDateRange
 } from '@/services/aiMessageParser';
-import type { SearchResult, LocalHotelData, LocalHotelSegmentResult, LocalPackageData, LocalServiceData, FlightData } from '../types/chat';
+import type { SearchResult, LocalHotelData, LocalHotelSegmentResult, LocalPackageData, LocalServiceData, FlightData, LocalHotelChainBalance, LocalHotelChainQuota } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
-import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse } from './responseFormatters';
+import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatChainBalanceNote } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
@@ -87,6 +87,102 @@ function normalizeChildrenAges(childrenAges: number[] | undefined, childrenCount
 function getMinRoomPrice(hotel: LocalHotelData): number {
   if (!hotel.rooms || hotel.rooms.length === 0) return Number.POSITIVE_INFINITY;
   return Math.min(...hotel.rooms.map((room) => room.total_price || Number.POSITIVE_INFINITY));
+}
+
+function getHotelUniqueKey(hotel: LocalHotelData): string {
+  return hotel.hotel_id ? `id:${hotel.hotel_id}` : `name:${hotel.name.toLowerCase().trim()}`;
+}
+
+function selectHotelsWithStrictChainBalance(
+  sortedHotels: LocalHotelData[],
+  requestedChains: string[],
+  totalSlots: number = 5
+): { hotels: LocalHotelData[]; chainBalance: LocalHotelChainBalance } {
+  const hotelsByChain = new Map<string, LocalHotelData[]>();
+
+  for (const chain of requestedChains) {
+    hotelsByChain.set(chain, []);
+  }
+
+  for (const hotel of sortedHotels) {
+    for (const chain of requestedChains) {
+      if (hotelBelongsToChain(hotel.name, chain)) {
+        hotelsByChain.get(chain)!.push(hotel);
+        break;
+      }
+    }
+  }
+
+  const baseQuota = Math.floor(totalSlots / requestedChains.length);
+  const remainder = totalSlots % requestedChains.length;
+  const selected: LocalHotelData[] = [];
+  const selectedKeys = new Set<string>();
+  const selectedCounts = new Map<string, number>();
+
+  requestedChains.forEach((chain, index) => {
+    const requestedQuota = baseQuota + (index < remainder ? 1 : 0);
+    const chainHotels = hotelsByChain.get(chain) || [];
+    const take = Math.min(requestedQuota, chainHotels.length);
+
+    selectedCounts.set(chain, take);
+
+    chainHotels.slice(0, take).forEach((hotel) => {
+      const hotelKey = getHotelUniqueKey(hotel);
+      if (!selectedKeys.has(hotelKey)) {
+        selected.push(hotel);
+        selectedKeys.add(hotelKey);
+      }
+    });
+  });
+
+  if (selected.length < totalSlots) {
+    const leftovers = requestedChains
+      .flatMap((chain, index) => {
+        const requestedQuota = baseQuota + (index < remainder ? 1 : 0);
+        const chainHotels = hotelsByChain.get(chain) || [];
+        return chainHotels.slice(Math.min(requestedQuota, chainHotels.length));
+      })
+      .filter((hotel) => !selectedKeys.has(getHotelUniqueKey(hotel)))
+      .sort((a, b) => getMinRoomPrice(a) - getMinRoomPrice(b));
+
+    for (const hotel of leftovers) {
+      if (selected.length >= totalSlots) break;
+      const hotelKey = getHotelUniqueKey(hotel);
+      if (selectedKeys.has(hotelKey)) continue;
+
+      selected.push(hotel);
+      selectedKeys.add(hotelKey);
+
+      const matchedChain = requestedChains.find((chain) => hotelBelongsToChain(hotel.name, chain));
+      if (matchedChain) {
+        selectedCounts.set(matchedChain, (selectedCounts.get(matchedChain) || 0) + 1);
+      }
+    }
+  }
+
+  const quotas: LocalHotelChainQuota[] = requestedChains.map((chain, index) => {
+    const requestedQuota = baseQuota + (index < remainder ? 1 : 0);
+    const availableHotels = (hotelsByChain.get(chain) || []).length;
+    const selectedHotels = selectedCounts.get(chain) || 0;
+
+    return {
+      chain,
+      requestedQuota,
+      availableHotels,
+      selectedHotels,
+      status: availableHotels === 0 ? 'missing' : availableHotels < requestedQuota ? 'partial' : 'fulfilled'
+    };
+  });
+
+  return {
+    hotels: selected.slice(0, totalSlots),
+    chainBalance: {
+      requestedChains,
+      totalSlots,
+      quotas,
+      strictBalanceApplied: true
+    }
+  };
 }
 
 function extractBrokerCode(hotel: LocalHotelData): string {
@@ -678,6 +774,7 @@ export const handleHotelSearch = async (
               requestedRoomType: combinedData?.requestedRoomType,
               requestedMealPlan: combinedData?.requestedMealPlan,
               requestedChains: segment.hotelChains,
+              chainBalance: combinedData?.chainBalance,
               hotels: combinedData?.hotels || [],
               hotelSearchId: combinedData?.hotelSearchId,
               error: hasHotels ? undefined : segmentResult.response
@@ -692,6 +789,7 @@ export const handleHotelSearch = async (
               requestedRoomType: segment.roomType,
               requestedMealPlan: segment.mealPlan,
               requestedChains: segment.hotelChains,
+              chainBalance: undefined,
               hotels: [],
               error: errorMessage
             };
@@ -1264,59 +1362,17 @@ export const handleHotelSearch = async (
 
     // 🎯 MULTI-CHAIN INTERLEAVING: If multiple chains requested, mix results evenly
     let hotels: LocalHotelData[];
+    let chainBalance: LocalHotelChainBalance | undefined;
     const requestedChains = enrichedParsed.hotels?.hotelChains;
 
     if (requestedChains && requestedChains.length > 1) {
-      console.log(`🔀 [INTERLEAVING] Multiple chains requested (${requestedChains.length}): ${requestedChains.join(', ')}`);
-
-      // Group hotels by chain
-      const hotelsByChain = new Map<string, LocalHotelData[]>();
-      for (const chain of requestedChains) {
-        hotelsByChain.set(chain, []);
-      }
-
-      // Categorize each hotel into its chain group
-      for (const hotel of sortedHotels) {
-        for (const chain of requestedChains) {
-          if (hotelBelongsToChain(hotel.name, chain)) {
-            hotelsByChain.get(chain)!.push(hotel);
-            break; // Hotel belongs to first matching chain
-          }
-        }
-      }
-
-      // Log distribution
-      for (const [chain, chainHotels] of hotelsByChain.entries()) {
-        console.log(`  📍 ${chain}: ${chainHotels.length} hotels`);
-      }
-
-      // Interleave hotels from different chains (round-robin)
-      const interleaved: LocalHotelData[] = [];
-      const maxPerChain = Math.ceil(5 / requestedChains.length); // Distribute 5 slots evenly
-      const slotsRemaining = 5;
-
-      // Round-robin: take one from each chain until we have 5 hotels
-      let roundIndex = 0;
-      while (interleaved.length < 5 && slotsRemaining > 0) {
-        let addedThisRound = false;
-
-        for (const chain of requestedChains) {
-          if (interleaved.length >= 5) break;
-
-          const chainHotels = hotelsByChain.get(chain)!;
-          if (roundIndex < chainHotels.length) {
-            interleaved.push(chainHotels[roundIndex]);
-            addedThisRound = true;
-            console.log(`  ✅ Round ${roundIndex + 1}: Added "${chainHotels[roundIndex].name}" from ${chain}`);
-          }
-        }
-
-        if (!addedThisRound) break; // No more hotels to add
-        roundIndex++;
-      }
-
-      hotels = interleaved;
-      console.log(`🔀 [INTERLEAVING] Final mix: ${hotels.length} hotels from ${requestedChains.length} chains`);
+      console.log(`⚖️ [CHAIN BALANCE] Multiple chains requested (${requestedChains.length}): ${requestedChains.join(', ')}`);
+      const balancedSelection = selectHotelsWithStrictChainBalance(sortedHotels, requestedChains, 5);
+      hotels = balancedSelection.hotels;
+      chainBalance = balancedSelection.chainBalance;
+      chainBalance.quotas.forEach((quota) => {
+        console.log(`  ⚖️ ${quota.chain}: quota ${quota.requestedQuota}, available ${quota.availableHotels}, selected ${quota.selectedHotels}, status ${quota.status}`);
+      });
     } else {
       // Single chain or no chain filter: just take top 5 by price
       hotels = sortedHotels.slice(0, 5);
@@ -1352,7 +1408,7 @@ export const handleHotelSearch = async (
     console.log('🍽️ [HOTEL SEARCH] Requested meal plan:', requestedMealPlan || 'none (showing all)');
 
     // Pass already-filtered hotels to formatter (no need to filter again)
-    const formattedResponse = formatHotelResponse(hotels);
+    const formattedResponse = `${formatHotelResponse(hotels)}${chainBalance ? `\n\n${formatChainBalanceNote(chainBalance)}` : ''}`;
 
     // 📊 BUILD EXTENDED METADATA for API responses
     const isPuntaCana = isPuntaCanaDestination(enrichedParsed.hotels?.city || '');
@@ -1386,6 +1442,9 @@ export const handleHotelSearch = async (
       }),
       ...(forcedHotelResultFallback && {
         forced_hotel_result_fallback: true
+      }),
+      ...(chainBalance && {
+        chain_balance: chainBalance
       })
     };
 
@@ -1396,6 +1455,7 @@ export const handleHotelSearch = async (
         combinedData: {
           flights: [],
           hotels, // ✅ Now contains ONLY hotels with matching rooms (Top 5)
+          chainBalance,
           requestType: 'hotels-only' as const,
           requestedRoomType: normalizedRoomType,
           requestedMealPlan: normalizedMealPlan,
