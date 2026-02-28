@@ -68,18 +68,8 @@ const features = [
 export function Features() {
   return (
     <section id="features" className="scroll-mt-28 md:scroll-mt-32 py-20 md:py-24 bg-transparent relative overflow-hidden">
-      {/* Travel background image */}
-      <div className="absolute inset-0 z-0">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80')" }}
-        />
-        <div className="absolute inset-0 bg-[#0a0a0f]/85" />
-      </div>
-
-      {/* Background elements */}
-      <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl z-[1]" />
-      <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl z-[1]" />
+      <div className="absolute inset-0 z-0 landing-section-scrim" />
+      <div className="absolute inset-0 z-[1] landing-section-grid opacity-25" />
 
       <div className="relative z-10 container mx-auto px-6">
         <motion.div
@@ -98,10 +88,10 @@ export function Features() {
             Funcionalidades
           </motion.span>
           <h2 className="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6">
-            Lo esencial para vender mejor
+            Todo el flujo comercial y operativo en un solo lugar
           </h2>
           <p className="text-2xl md:text-3xl text-gray-400 max-w-2xl mx-auto">
-            Un sistema completo diseñado para agencias de viajes
+            Cotización, seguimiento, operación y reportes sin saltar entre herramientas
           </p>
         </motion.div>
 

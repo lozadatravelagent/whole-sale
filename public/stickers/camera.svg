@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="camera-body" x1="54" x2="190" y1="188" y2="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0f172a"/>
+      <stop offset=".52" stop-color="#334155"/>
+      <stop offset="1" stop-color="#64748b"/>
+    </linearGradient>
+    <radialGradient id="camera-lens" cx="0" cy="0" r="1" gradientTransform="translate(121 126) rotate(90) scale(42)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7dd3fc"/>
+      <stop offset=".45" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </radialGradient>
+  </defs>
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="M58 78h32l16-20h32l11 20h29c17 0 30 13 30 30v54c0 17-13 30-30 30H58c-17 0-30-13-30-30v-54c0-17 13-30 30-30Z" fill="url(#camera-body)" stroke="#fff" stroke-width="12"/>
+    <circle cx="121" cy="126" r="46" fill="url(#camera-lens)" stroke="#fff" stroke-width="12"/>
+    <circle cx="121" cy="126" r="22" fill="#0f172a" stroke="#7dd3fc" stroke-width="8"/>
+    <circle cx="182" cy="101" r="10" fill="#fb7185" stroke="#fff" stroke-width="6"/>
+    <path d="M56 92h128" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="8"/>
+  </g>
+</svg>

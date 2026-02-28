@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <defs>
+    <linearGradient id="suitcase-shell" x1="44" x2="198" y1="192" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f59e0b"/>
+      <stop offset=".55" stop-color="#fb7185"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <rect x="38" y="60" width="164" height="138" rx="28" fill="url(#suitcase-shell)" stroke="#fff" stroke-width="12"/>
+    <path d="M92 60V48c0-13 10-23 23-23h10c13 0 23 10 23 23v12" fill="none" stroke="#fff" stroke-width="12"/>
+    <path d="M78 104h84" fill="none" stroke="#fff" stroke-opacity=".32" stroke-width="8"/>
+    <path d="M78 132h84" fill="none" stroke="#fff" stroke-opacity=".2" stroke-width="8"/>
+    <rect x="58" y="90" width="24" height="76" rx="10" fill="#0f172a" fill-opacity=".18" stroke="#fff" stroke-width="6"/>
+    <rect x="172" y="90" width="10" height="76" rx="5" fill="#fff" fill-opacity=".55"/>
+    <rect x="126" y="96" width="36" height="28" rx="10" fill="#0ea5e9" stroke="#fff" stroke-width="6"/>
+    <circle cx="144" cy="110" r="7" fill="#fde68a"/>
+    <path d="M107 150c0-7 6-13 13-13s13 6 13 13-6 13-13 13-13-6-13-13Zm13-13v26M107 150h26" fill="none" stroke="#fff" stroke-width="6"/>
+  </g>
+</svg>

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <defs>
+    <radialGradient id="compass-face" cx="0" cy="0" r="1" gradientTransform="translate(120 120) rotate(90) scale(82)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#cbd5e1"/>
+    </radialGradient>
+  </defs>
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="120" cy="120" r="88" fill="url(#compass-face)" stroke="#fff" stroke-width="12"/>
+    <circle cx="120" cy="120" r="68" fill="none" stroke="#0f172a" stroke-opacity=".14" stroke-width="8"/>
+    <path d="M120 44v18M120 178v18M44 120h18M178 120h18" fill="none" stroke="#0f172a" stroke-width="10"/>
+    <path d="m120 76 32 32-58 54 26-86Z" fill="#2563eb" stroke="#fff" stroke-width="8"/>
+    <path d="m120 164-32-32 58-54-26 86Z" fill="#fb7185" stroke="#fff" stroke-width="8"/>
+    <circle cx="120" cy="120" r="12" fill="#0f172a" stroke="#fff" stroke-width="6"/>
+    <path d="M120 30 126 44 120 58 114 44Z" fill="#f59e0b"/>
+    <path d="M210 120 196 126 182 120 196 114Z" fill="#0ea5e9"/>
+  </g>
+</svg>

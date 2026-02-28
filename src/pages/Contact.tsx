@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { PublicPageShell } from "@/components/public/PublicPageShell";
 
 const Contact = () => {
@@ -28,12 +27,12 @@ const Contact = () => {
           <p className="text-gray-300 leading-relaxed mb-4">
             Si ya tenés acceso, podés iniciar sesión y revisar el producto desde adentro.
           </p>
-          <Link
-            to="/login"
+          <a
+            href="https://app.vibook.ai/login"
             className="inline-flex items-center justify-center px-6 py-3 rounded-xl bg-white text-gray-900 font-semibold hover:bg-gray-100 transition-colors"
           >
             Iniciar sesión
-          </Link>
+          </a>
         </article>
       </div>
     </PublicPageShell>

@@ -34,18 +34,10 @@ export function Footer() {
             <ul className="space-y-4">
               <li>
                 <button
-                  onClick={() => scrollToSection('about')}
+                  onClick={() => scrollToSection('demo')}
                   className="text-gray-500 hover:text-white transition-colors text-base"
                 >
-                  Quiénes somos
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => scrollToSection('integrations')}
-                  className="text-gray-500 hover:text-white transition-colors text-base"
-                >
-                  Integraciones
+                  Demo en vivo
                 </button>
               </li>
               <li>
@@ -58,35 +50,27 @@ export function Footer() {
               </li>
               <li>
                 <button
-                  onClick={() => scrollToSection('modules')}
+                  onClick={() => scrollToSection('showcase')}
                   className="text-gray-500 hover:text-white transition-colors text-base"
                 >
-                  Módulos
+                  Interfaz
                 </button>
               </li>
               <li>
-              <button
-                onClick={() => scrollToSection('emilia')}
-                className="text-gray-500 hover:text-white transition-colors text-base"
-              >
-                Emilia
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => scrollToSection('pricing')}
-                className="text-gray-500 hover:text-white transition-colors text-base"
-              >
-                Precios
-              </button>
-            </li>
-            <li>
                 <button
-                  onClick={() => navigate('/login')}
+                  onClick={() => scrollToSection('pricing')}
+                  className="text-gray-500 hover:text-white transition-colors text-base"
+                >
+                  Precios
+                </button>
+              </li>
+              <li>
+                <a
+                  href="https://app.vibook.ai/login"
                   className="text-gray-500 hover:text-white transition-colors text-base"
                 >
                   Iniciar sesión
-                </button>
+                </a>
               </li>
             </ul>
           </div>
@@ -112,7 +96,7 @@ export function Footer() {
               </li>
               <li>
                 <button
-                  onClick={() => scrollToSection('cta')}
+                  onClick={() => navigate('/contacto')}
                   className="text-gray-500 hover:text-white transition-colors text-base"
                 >
                   Contacto

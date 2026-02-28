@@ -11,7 +11,8 @@ export function Showcase() {
   const y = useTransform(scrollYProgress, [0, 1], [100, -100])
 
   return (
-    <section id="showcase" ref={containerRef} className="scroll-mt-28 md:scroll-mt-32 py-16 md:py-20 bg-gradient-to-b from-[#0a0a0f]/90 via-[#0d0d15]/90 to-[#0a0a0f]/90 relative overflow-hidden">
+    <section id="showcase" ref={containerRef} className="scroll-mt-28 md:scroll-mt-32 py-16 md:py-20 bg-transparent relative overflow-hidden">
+      <div className="absolute inset-0 landing-section-scrim landing-section-scrim-strong" />
       {/* Animated background */}
       <motion.div
         className="absolute inset-0"
@@ -38,10 +39,10 @@ export function Showcase() {
             Interfaz
           </motion.span>
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-            Diseñado para la operación diaria
+            Desde la consulta inicial hasta el cierre
           </h2>
           <p className="text-xl md:text-2xl text-gray-400 max-w-2xl mx-auto">
-            Una interfaz clara para que tu equipo responda rápido y no pierda oportunidades.
+            Una vista de trabajo para cotizar, seguir oportunidades y mantener cada viaje bajo control.
           </p>
         </motion.div>
 
@@ -91,10 +92,10 @@ export function Showcase() {
                   {/* Stats row - unified blue/cyan */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
                     {[
-                      { value: "$125,430", label: "Ventas" },
-                      { value: "89", label: "Operaciones" },
-                      { value: "156", label: "Clientes" },
-                      { value: "23", label: "Pendientes" }
+                      { value: "148", label: "Cotizaciones" },
+                      { value: "32", label: "Salidas activas" },
+                      { value: "84", label: "Leads abiertos" },
+                      { value: "11", label: "Cobros hoy" }
                     ].map((stat, i) => (
                       <motion.div
                         key={i}
@@ -176,7 +177,7 @@ export function Showcase() {
               viewport={{ once: true }}
               className="absolute left-4 top-6 bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-3 rounded-lg shadow-lg shadow-blue-500/25 text-base font-medium hidden xl:block z-20"
             >
-              +23% ventas este mes
+              +18% velocidad de respuesta
             </motion.div>
 
             <motion.div
@@ -186,7 +187,7 @@ export function Showcase() {
               viewport={{ once: true }}
               className="absolute right-4 bottom-8 bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-5 py-3 rounded-lg shadow-lg shadow-blue-500/25 text-base font-medium hidden xl:block z-20"
             >
-              156 operaciones activas
+              CRM + operación conectados
             </motion.div>
           </motion.div>
         </div>

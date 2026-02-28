@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useScroll, useSpring, useTransform } from 'framer-motion';
 import { Bot, Send, MessageSquare, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { usePublicMessageHandler } from './usePublicMessageHandler';
@@ -20,6 +20,24 @@ export function PublicChat() {
   const [showPaywall, setShowPaywall] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ['start 85%', 'end start'],
+  });
+  const progress = useSpring(scrollYProgress, {
+    stiffness: 120,
+    damping: 28,
+    mass: 0.28,
+  });
+  const headerY = useTransform(progress, [0, 1], [72, -20]);
+  const headerOpacity = useTransform(progress, [0, 0.2, 1], [0.25, 1, 1]);
+  const panelY = useTransform(progress, [0, 0.55, 1], [130, 0, -24]);
+  const panelScale = useTransform(progress, [0, 0.55, 1], [0.9, 1, 1.02]);
+  const panelRotateX = useTransform(progress, [0, 0.55], [11, 0]);
+  const orbitLeftY = useTransform(progress, [0, 1], [90, -60]);
+  const orbitRightY = useTransform(progress, [0, 1], [120, -80]);
 
   const hasUserMessages = messages.some(m => m.role === 'user');
 
@@ -52,60 +70,85 @@ export function PublicChat() {
   };
 
   return (
-    <section className="relative min-h-[calc(100vh-5rem)] md:min-h-[calc(100vh-6rem)] flex flex-col items-center justify-center overflow-hidden bg-transparent pt-8 md:pt-12 pb-16">
-      {/* Background effects */}
+    <section
+      ref={sectionRef}
+      id="demo"
+      className="relative -mt-[12vh] scroll-mt-28 overflow-hidden bg-transparent pb-24 pt-28 md:-mt-[10vh] md:scroll-mt-32 md:pb-28 md:pt-32"
+    >
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-500/15 rounded-full blur-[120px] animate-pulse-glow" />
-        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-cyan-500/10 rounded-full blur-[120px] animate-pulse-glow" style={{ animationDelay: '1s' }} />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-400/25 to-transparent" />
+        <div className="absolute left-[8%] top-10 h-[360px] w-[360px] rounded-full bg-sky-500/[0.12] blur-[130px]" />
+        <div
+          className="absolute bottom-8 right-[10%] h-[300px] w-[300px] rounded-full bg-amber-400/[0.08] blur-[130px]"
+          style={{ animationDelay: '1s' }}
+        />
+        <motion.div
+          className="absolute left-[6%] top-[30%] hidden rounded-full border border-sky-300/[0.12] bg-slate-950/55 px-4 py-2 text-xs uppercase tracking-[0.28em] text-sky-100 lg:block"
+          style={{ y: orbitLeftY }}
+        >
+          Search to quote
+        </motion.div>
+        <motion.div
+          className="absolute right-[7%] top-[24%] hidden rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-slate-200 lg:block"
+          style={{ y: orbitRightY }}
+        >
+          CRM sync
+        </motion.div>
       </div>
 
-      <div className="relative z-10 container mx-auto px-4 md:px-6 flex flex-col items-center w-full max-w-4xl">
-        {/* Header */}
+      <div className="container relative z-10 mx-auto flex w-full max-w-6xl flex-col px-4 md:px-6">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-6 md:mb-8"
+          style={{ y: headerY, opacity: headerOpacity }}
+          className="mx-auto mb-8 max-w-3xl text-center md:mb-10"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 mb-4">
-            <Sparkles className="w-4 h-4 text-blue-300" />
-            <span className="text-sm text-blue-200">Asistente de viajes con IA</span>
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-400/20 bg-sky-400/10 px-4 py-2">
+            <Sparkles className="h-4 w-4 text-sky-200" />
+            <span className="text-sm text-sky-100">Demo en vivo</span>
           </div>
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-3">
-            Preguntale a{' '}
-            <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+          <h2 className="mb-3 text-3xl font-bold text-white md:text-4xl lg:text-5xl">
+            Probá cómo responde{' '}
+            <span className="bg-gradient-to-r from-sky-300 via-cyan-300 to-amber-200 bg-clip-text text-transparent">
               Emilia
             </span>
-          </h1>
-          <p className="text-base md:text-lg text-gray-400 max-w-xl mx-auto">
-            Busca vuelos, hoteles y paquetes en segundos. Proba gratis.
+          </h2>
+          <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-lg">
+            Hacé una consulta real de vuelos, hoteles o paquetes y mirá cómo Vibook la convierte en
+            una respuesta operativa para tu equipo.
           </p>
         </motion.div>
 
-        {/* Chat panel */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="w-full rounded-3xl border border-white/15 bg-[#0a0a0f]/80 backdrop-blur-md shadow-2xl flex flex-col"
-          style={{ maxHeight: 'calc(100vh - 280px)', minHeight: '480px' }}
+          style={{
+            y: panelY,
+            scale: panelScale,
+            rotateX: panelRotateX,
+            transformPerspective: 1400,
+            maxHeight: 'calc(100vh - 280px)',
+            minHeight: '480px',
+          }}
+          className="landing-panel mx-auto flex w-full max-w-4xl flex-col rounded-[30px] border border-white/[0.12]"
         >
-          {/* Chat header */}
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 shrink-0">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-              <Bot className="w-5 h-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold text-sm">Emilia</p>
-              <p className="text-xs text-green-400">En linea</p>
-            </div>
-            {searchesUsed > 0 && (
-              <div className="text-xs text-gray-400 bg-white/5 border border-white/10 rounded-full px-3 py-1">
-                {searchesUsed}/{maxSearches} busquedas
+          <div className="shrink-0 border-b border-white/10 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 via-cyan-400 to-amber-300 text-slate-950">
+                <Bot className="h-5 w-5" />
               </div>
-            )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">Emilia</p>
+                <p className="text-xs text-emerald-400">En linea</p>
+              </div>
+              {searchesUsed > 0 && (
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                  {searchesUsed}/{maxSearches} busquedas
+                </div>
+              )}
+            </div>
+            <p className="mt-3 text-sm text-slate-400">
+              Consultá un itinerario y revisá cómo combina búsqueda, contexto comercial y respuesta
+              asistida.
+            </p>
           </div>
 
-          {/* Messages */}
           <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 md:px-5 py-4 space-y-3">
             {messages.map(message => {
               const hasCards = message.role === 'assistant' && message.data?.combinedData &&
@@ -155,9 +198,7 @@ export function PublicChat() {
             )}
           </div>
 
-          {/* Quick prompts + input */}
           <div className="px-4 md:px-5 pb-4 pt-2 border-t border-white/10 shrink-0 space-y-3">
-            {/* Quick prompts - only show when no user messages yet */}
             {!hasUserMessages && (
               <div className="flex flex-wrap gap-2">
                 {quickPrompts.map(prompt => (
@@ -174,7 +215,6 @@ export function PublicChat() {
               </div>
             )}
 
-            {/* Input */}
             <form onSubmit={handleSubmit} className="flex items-center gap-2">
               <div className="relative flex-1">
                 <MessageSquare className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -196,7 +236,6 @@ export function PublicChat() {
               </button>
             </form>
 
-            {/* Search counter */}
             {searchesUsed > 0 && (
               <p className="text-center text-xs text-gray-500">
                 {isLimitReached
@@ -208,7 +247,6 @@ export function PublicChat() {
         </motion.div>
       </div>
 
-      {/* Paywall modal */}
       <PaywallModal open={showPaywall} onOpenChange={setShowPaywall} />
     </section>
   );

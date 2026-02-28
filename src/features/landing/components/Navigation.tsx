@@ -3,14 +3,16 @@ import { motion } from "framer-motion"
 import { Menu, X } from "lucide-react"
 
 const desktopItems = [
-  { label: "Quiénes somos", id: "about" },
-  { label: "Funcionalidades", id: "features" },
+  { label: "Demo", id: "demo" },
+  { label: "Solución", id: "features" },
+  { label: "Interfaz", id: "showcase" },
   { label: "Precios", id: "pricing" },
 ]
 
 const mobileItems = [
-  { label: "Quiénes somos", id: "about" },
-  { label: "Funcionalidades", id: "features" },
+  { label: "Demo", id: "demo" },
+  { label: "Solución", id: "features" },
+  { label: "Interfaz", id: "showcase" },
   { label: "Precios", id: "pricing" },
 ]
 
@@ -71,13 +73,13 @@ export function Navigation() {
           {/* CTA buttons */}
           <div className="hidden lg:flex items-center justify-end gap-3 flex-1">
             <a
-              href="https://app.vibook.ai"
+              href="https://app.vibook.ai/login"
               className="px-5 py-2.5 text-base text-gray-300 hover:text-white transition-colors rounded-lg hover:bg-white/[0.05]"
             >
               Iniciar sesión
             </a>
             <a
-              href="https://app.vibook.ai"
+              href="https://app.vibook.ai/signup"
               className="bg-white text-gray-900 px-5 py-2.5 text-base rounded-lg font-medium hover:bg-gray-100 transition-all"
             >
               Probar Vibook
@@ -112,13 +114,13 @@ export function Navigation() {
               ))}
               <div className="flex flex-col gap-2 pt-4 mt-2 border-t border-white/10">
                 <a
-                  href="https://app.vibook.ai"
+                  href="https://app.vibook.ai/login"
                   className="w-full py-3 text-center text-gray-300 hover:text-white rounded-lg border border-white/10 hover:bg-white/[0.05] transition-colors"
                 >
                   Iniciar sesión
                 </a>
                 <a
-                  href="https://app.vibook.ai"
+                  href="https://app.vibook.ai/signup"
                   className="w-full py-3 text-center bg-white text-gray-900 rounded-lg font-medium hover:bg-gray-100 transition-colors"
                 >
                   Probar Vibook

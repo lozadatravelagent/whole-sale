@@ -397,3 +397,44 @@
 .landing-shell select {
   font-family: inherit;
 }
+
+.landing-page-backdrop {
+  background:
+    radial-gradient(circle at 16% 20%, rgba(56, 189, 248, 0.12), transparent 28%),
+    radial-gradient(circle at 78% 22%, rgba(14, 165, 233, 0.14), transparent 26%),
+    radial-gradient(circle at 52% 78%, rgba(251, 191, 36, 0.06), transparent 22%),
+    linear-gradient(180deg, #02040b 0%, #020611 38%, #030917 100%);
+}
+
+.landing-orbital-fallback {
+  background:
+    radial-gradient(circle at 26% 30%, rgba(125, 211, 252, 0.2), transparent 18%),
+    radial-gradient(circle at 68% 24%, rgba(56, 189, 248, 0.16), transparent 24%),
+    radial-gradient(circle at 74% 62%, rgba(14, 165, 233, 0.1), transparent 20%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0) 0%, rgba(2, 6, 23, 0.22) 42%, rgba(2, 6, 23, 0.58) 100%);
+}
+
+.landing-panel {
+  background: linear-gradient(160deg, rgba(15, 23, 42, 0.7), rgba(2, 6, 23, 0.88));
+  box-shadow: 0 32px 100px -52px rgba(14, 165, 233, 0.55);
+  backdrop-filter: blur(20px);
+}
+
+.landing-section-scrim {
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 30%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.36) 0%, rgba(2, 6, 23, 0.66) 100%);
+}
+
+.landing-section-scrim-strong {
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.1), transparent 26%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.48) 0%, rgba(2, 6, 23, 0.78) 100%);
+}
+
+.landing-section-grid {
+  background-image:
+    linear-gradient(rgba(125, 211, 252, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.06) 1px, transparent 1px);
+  background-size: 72px 72px;
+}
