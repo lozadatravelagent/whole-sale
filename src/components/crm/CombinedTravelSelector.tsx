@@ -239,48 +239,13 @@ const convertCachedFlightToDisplayFormat = (flight: any): FlightData => {
   } as FlightData;
 };
 
-// Helper function to format option summary for tab display
-const formatOptionSummary = (option: any): string => {
-  const segments = option?.segments || [];
-  if (segments.length <= 1) return 'Directo';
-
-  // Calculate max layover duration for this option
-  let maxLayoverMinutes = 0;
-  for (let i = 0; i < segments.length - 1; i++) {
-    const currentSeg = segments[i];
-    const nextSeg = segments[i + 1];
-
-    if (currentSeg?.arrival?.time && currentSeg?.arrival?.date &&
-        nextSeg?.departure?.time && nextSeg?.departure?.date) {
-      try {
-        const arrival = new Date(`${currentSeg.arrival.date}T${currentSeg.arrival.time}:00`);
-        const departure = new Date(`${nextSeg.departure.date}T${nextSeg.departure.time}:00`);
-        const layoverMinutes = (departure.getTime() - arrival.getTime()) / (1000 * 60);
-        if (layoverMinutes > maxLayoverMinutes) {
-          maxLayoverMinutes = layoverMinutes;
-        }
-      } catch (e) { /* ignore parse errors */ }
-    }
-  }
-
-  const hours = Math.floor(maxLayoverMinutes / 60);
-  const minutes = Math.round(maxLayoverMinutes % 60);
-  const durationStr = hours > 0
-    ? (minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`)
-    : `${minutes}m`;
-
-  const stops = segments.length - 1;
-  return `${stops} escala${stops > 1 ? 's' : ''} (${durationStr})`;
-};
-
 // Component to display flight itinerary with visual connections
 interface FlightItineraryProps {
   flight: FlightData;
   selectedOptionPerLeg?: Record<number, number>;
-  onSelectOption?: (legIndex: number, optionIndex: number) => void;
 }
 
-const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptionPerLeg = {}, onSelectOption }) => {
+const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptionPerLeg = {} }) => {
   const formatDate = (iso?: string) => (iso ? iso : '');
   const addDays = (iso: string, days: number) => {
     try {
@@ -300,7 +265,6 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
 
         // Get options from the leg (local structure: leg.options[])
         const legOptions = (leg as any).options || [];
-        const hasMultipleOptions = legOptions.length > 1;
         const selectedOptionIndex = selectedOptionPerLeg[legIndex] ?? 0;
         const selectedOption = legOptions[selectedOptionIndex] || legOptions[0];
 
@@ -335,26 +299,6 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
                 {getBaggageTextFromLeg(leg, flight.airline.code, selectedOptionIndex)}
               </span>
             </div>
-
-            {/* Option selection tabs when multiple options exist */}
-            {hasMultipleOptions && onSelectOption && (
-              <div className="flex flex-wrap gap-1 mb-3">
-                {legOptions.map((option: any, optIdx: number) => (
-                  <Button
-                    key={optIdx}
-                    variant={selectedOptionIndex === optIdx ? "default" : "outline"}
-                    size="sm"
-                    className="text-xs h-7 px-2"
-                    onClick={() => onSelectOption(legIndex, optIdx)}
-                  >
-                    Opción {optIdx + 1}
-                    <span className="ml-1 opacity-70">
-                      ({formatOptionSummary(option)})
-                    </span>
-                  </Button>
-                ))}
-              </div>
-            )}
 
             {/* Simplified display for current FlightLeg structure */}
             <div className="space-y-2">
@@ -439,20 +383,6 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const [selectedRooms, setSelectedRooms] = useState<Record<string, string>>({});
   // Track selected option per leg for each flight: flightId -> { legIndex -> optionIndex }
   const [selectedFlightOptions, setSelectedFlightOptions] = useState<Record<string, Record<number, number>>>({});
-
-  const getSelectedOptionIndex = useCallback((flightId: string, legIndex: number): number => {
-    return selectedFlightOptions[flightId]?.[legIndex] ?? 0;
-  }, [selectedFlightOptions]);
-
-  const setSelectedOption = useCallback((flightId: string, legIndex: number, optionIndex: number) => {
-    setSelectedFlightOptions(prev => ({
-      ...prev,
-      [flightId]: {
-        ...(prev[flightId] || {}),
-        [legIndex]: optionIndex
-      }
-    }));
-  }, []);
   const [isGenerating, setIsGenerating] = useState(false);
   const [agencyId, setAgencyId] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState(
@@ -1312,7 +1242,6 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                     <FlightItinerary
                       flight={flight}
                       selectedOptionPerLeg={selectedFlightOptions[flight.id!] || {}}
-                      onSelectOption={(legIndex, optionIndex) => setSelectedOption(flight.id!, legIndex, optionIndex)}
                     />
                   </CardContent>
                 </Card>
