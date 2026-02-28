@@ -144,10 +144,6 @@ function selectHotelsWithStrictChainBalance(
 
   // Phase 2: Fill remaining slots with round-robin across chains to keep balance
   if (selected.length < totalSlots) {
-    // Max cap per chain: no chain should exceed ceil(totalSlots / numChains) + 1
-    // This prevents one chain from dominating the leftover slots
-    const maxPerChain = Math.ceil(totalSlots / requestedChains.length) + 1;
-
     // Build leftover pool per chain (hotels beyond their initial quota)
     const leftoversByChain = new Map<string, LocalHotelData[]>();
     requestedChains.forEach((chain) => {
@@ -160,13 +156,12 @@ function selectHotelsWithStrictChainBalance(
     });
 
     // Round-robin: give one extra hotel to each chain in turn until slots are full
+    // No hard cap here - round-robin naturally keeps balance when both chains have stock
     let filledThisRound = true;
     while (selected.length < totalSlots && filledThisRound) {
       filledThisRound = false;
       for (const chain of requestedChains) {
         if (selected.length >= totalSlots) break;
-        const currentCount = selectedCounts.get(chain) || 0;
-        if (currentCount >= maxPerChain) continue;
 
         const chainLeftovers = leftoversByChain.get(chain) || [];
         const nextHotel = chainLeftovers.shift();
@@ -177,12 +172,12 @@ function selectHotelsWithStrictChainBalance(
 
         selected.push(nextHotel);
         selectedKeys.add(hotelKey);
-        selectedCounts.set(chain, currentCount + 1);
+        selectedCounts.set(chain, (selectedCounts.get(chain) || 0) + 1);
         filledThisRound = true;
       }
     }
 
-    // Phase 3: If still unfilled (some chains exhausted), fill from any remaining
+    // Phase 3: If still unfilled (some chains exhausted), fill remaining by price
     if (selected.length < totalSlots) {
       const allLeftovers = requestedChains
         .flatMap((chain) => leftoversByChain.get(chain) || [])
@@ -1418,6 +1413,37 @@ export const handleHotelSearch = async (
       chainBalance.quotas.forEach((quota) => {
         console.log(`  ⚖️ ${quota.chain}: quota ${quota.requestedQuota}, available ${quota.availableHotels}, selected ${quota.selectedHotels}, status ${quota.status}`);
       });
+
+      // 🔀 Interleave hotels by chain for equitable display order
+      const hotelsByMatchedChain = new Map<string, LocalHotelData[]>();
+      const chainOrder: string[] = [];
+      for (const hotel of hotels) {
+        const matchedChain = requestedChains.find((c) => hotelBelongsToChain(hotel.name, c)) || '__other__';
+        if (!hotelsByMatchedChain.has(matchedChain)) {
+          hotelsByMatchedChain.set(matchedChain, []);
+          chainOrder.push(matchedChain);
+        }
+        hotelsByMatchedChain.get(matchedChain)!.push(hotel);
+      }
+
+      if (chainOrder.length > 1) {
+        const interleaved: LocalHotelData[] = [];
+        const iterators = chainOrder.map((chain) => ({ chain, index: 0 }));
+        while (interleaved.length < hotels.length) {
+          let addedThisRound = false;
+          for (const it of iterators) {
+            const chainHotels = hotelsByMatchedChain.get(it.chain)!;
+            if (it.index < chainHotels.length) {
+              interleaved.push(chainHotels[it.index]);
+              it.index++;
+              addedThisRound = true;
+            }
+          }
+          if (!addedThisRound) break;
+        }
+        hotels = interleaved;
+        console.log(`🔀 [CHAIN INTERLEAVE] Reordered ${hotels.length} hotels: ${hotels.map(h => h.name).join(' → ')}`);
+      }
     } else {
       // Single chain or no chain filter: just take top 5 by price
       hotels = sortedHotels.slice(0, 5);
