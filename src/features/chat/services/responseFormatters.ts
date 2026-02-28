@@ -239,7 +239,7 @@ const sortHotelRooms = (rooms: LocalHotelData['rooms']) => {
     return desc.includes('breakfast') || desc.includes('desayuno') || desc.includes('bed and breakfast');
   };
 
-  return rooms.sort((a, b) => {
+  return [...rooms].sort((a, b) => {
     const aType = getRoomTypePriority(a.description || '');
     const bType = getRoomTypePriority(b.description || '');
 
@@ -269,35 +269,51 @@ const sortHotelRooms = (rooms: LocalHotelData['rooms']) => {
   });
 };
 
-// Función para agrupar habitaciones por tipo
-const groupRoomsByType = (rooms: LocalHotelData['rooms']) => {
-  const groups: { [key: string]: LocalHotelData['rooms'] } = {};
+const getPrimaryVisibleRoom = (rooms: LocalHotelData['rooms']) => {
+  const sortedRooms = sortHotelRooms(rooms);
+  return sortedRooms[0];
+};
 
-  rooms.forEach(room => {
-    const desc = (room.description || '').toLowerCase();
-    const type = (room.type || '').toLowerCase();
-    let groupKey = 'OTHER';
+const formatRoomAvailability = (room?: LocalHotelData['rooms'][number]) => {
+  if (!room?.availability || room.availability <= 0) {
+    return '❌';
+  }
 
-    // Check both description and type field, support English and Spanish
-    if (desc.includes('single') || desc.includes('sgl') || desc.includes('individual') || type.includes('sgl')) {
-      groupKey = 'SGL';
-    } else if ((desc.includes('double') || desc.includes('doble')) && (desc.includes('single use') || desc.includes('uso individual'))) {
-      groupKey = 'DUS';
-    } else if (desc.includes('double') || desc.includes('doble') || desc.includes('dbl') || type.includes('dbl') || type.includes('dwl')) {
-      groupKey = 'DBL';
-    } else if (desc.includes('triple') || type.includes('tpl')) {
-      groupKey = 'TPL';
-    } else if (desc.includes('quad') || desc.includes('cuádruple') || desc.includes('cuadruple') || desc.includes('family') || desc.includes('familiar') || type.includes('qua')) {
-      groupKey = 'QUA';
-    }
+  if (room.availability >= 3) {
+    return '✅';
+  }
 
-    if (!groups[groupKey]) {
-      groups[groupKey] = [];
-    }
-    groups[groupKey].push(room);
-  });
+  return `⚠️ ${room.availability}`;
+};
 
-  return groups;
+const formatPrimaryRoomLine = (room?: LocalHotelData['rooms'][number]) => {
+  if (!room) {
+    return '';
+  }
+
+  const rawDescription = room.description || room.type || 'Habitación estándar';
+  const translatedDescription = translateRoomDescription(rawDescription);
+  const breakfast = rawDescription.toLowerCase().includes('breakfast') ||
+    rawDescription.toLowerCase().includes('desayuno') ? ' 🍳' : '';
+  const availability = formatRoomAvailability(room);
+
+  return `🛏️ ${translatedDescription}${breakfast} - ${room.total_price} ${room.currency} ${availability}`;
+};
+
+export const formatChainBalanceSummary = (chainBalance?: LocalHotelChainBalance) => {
+  if (!chainBalance || chainBalance.requestedChains.length <= 1) {
+    return '';
+  }
+
+  const visibleQuotas = chainBalance.quotas
+    .filter((quota) => quota.selectedHotels > 0)
+    .map((quota) => `${quota.chain} (${quota.selectedHotels})`);
+
+  if (visibleQuotas.length === 0) {
+    return '';
+  }
+
+  return `⚖️ **Distribución por cadena:** ${visibleQuotas.join(', ')}`;
 };
 
 export const formatHotelResponse = (
@@ -312,41 +328,25 @@ export const formatHotelResponse = (
 
   hotels.slice(0, 5).forEach((hotel, index) => {
     const minPrice = Math.min(...hotel.rooms.map((r) => r.total_price));
-
-    // ✅ Hotels are already filtered by handleHotelSearch, no need to filter again
-    // Just sort and group the already-filtered rooms
-    const sortedRooms = sortHotelRooms(hotel.rooms);
-    const roomGroups = groupRoomsByType(sortedRooms);
+    const primaryRoom = getPrimaryVisibleRoom(hotel.rooms);
+    const extraRooms = Math.max((hotel.rooms?.length || 0) - 1, 0);
 
     response += `---\n\n`;
     response += `🏨 **${hotel.name}**\n`;
     response += `📍 ${hotel.city}\n`;
     response += `💰 Desde ${minPrice} ${hotel.rooms[0].currency}\n`;
     response += `🌙 ${hotel.nights} noches\n`;
-    response += `📅 ${hotel.check_in} → ${hotel.check_out}\n\n`;
+    response += `📅 ${hotel.check_in} → ${hotel.check_out}\n`;
 
-    // Mostrar habitaciones agrupadas por tipo (máximo 3 por tipo)
-    Object.entries(roomGroups).forEach(([type, rooms]) => {
-      const typeName = `🛏️ ${translateRoomTypeTitle(type)}`;
+    if (primaryRoom) {
+      response += `${formatPrimaryRoomLine(primaryRoom)}\n`;
+    }
 
-      response += `**${typeName}:**\n`;
+    if (extraRooms > 0) {
+      response += `➕ ${extraRooms} habitaci${extraRooms === 1 ? 'ón adicional' : 'ones adicionales'} disponibles\n`;
+    }
 
-      // Mostrar máximo 3 habitaciones por tipo, ordenadas por precio
-      rooms.slice(0, 3).forEach((room, roomIndex) => {
-        const translatedDescription = translateRoomDescription(room.description || 'Habitación estándar');
-        const breakfast = (room.description || '').toLowerCase().includes('breakfast') ||
-          (room.description || '').toLowerCase().includes('desayuno') ? ' 🍳' : '';
-        const availability = room.availability && room.availability > 0 ?
-          (room.availability >= 3 ? '✅' : `⚠️ ${room.availability}`) : '❌';
-
-        response += `   • ${translatedDescription}${breakfast} - ${room.total_price} ${room.currency} ${availability}\n`;
-      });
-
-      if (rooms.length > 3) {
-        response += `   • ... y ${rooms.length - 3} opciones más\n`;
-      }
-      response += `\n`;
-    });
+    response += '\n';
   });
 
   response += '\n📋 Selecciona los hoteles que prefieras para tu cotización.';
@@ -398,6 +398,10 @@ export const formatMultiSegmentHotelResponse = (
 
     const hotelCount = Math.min(segment.hotels.length, 5);
     response += `Encontré ${hotelCount} hotel${hotelCount !== 1 ? 'es' : ''} para este tramo.\n\n`;
+    const chainBalanceSummary = formatChainBalanceSummary(segment.chainBalance);
+    if (chainBalanceSummary) {
+      response += `${chainBalanceSummary}\n\n`;
+    }
     const chainBalanceNote = formatChainBalanceNote(segment.chainBalance);
     if (chainBalanceNote) {
       response += `${chainBalanceNote}\n\n`;
