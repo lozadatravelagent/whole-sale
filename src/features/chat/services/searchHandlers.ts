@@ -1597,36 +1597,10 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
       } : undefined
     };
 
-    // Hard gate: round-trip flight and hotel checkout must be aligned.
-    if (enrichedParsed.flights && enrichedParsed.hotels) {
-      const desiredCheckin = enrichedParsed.flights.departureDate;
-      const desiredCheckout = enrichedParsed.flights.returnDate;
-      const dateFixes: string[] = [];
-
-      if (desiredCheckin && enrichedParsed.hotels.checkinDate !== desiredCheckin) {
-        const currentCheckin = enrichedParsed.hotels.checkinDate;
-        enrichedParsed.hotels = {
-          ...enrichedParsed.hotels,
-          checkinDate: desiredCheckin
-        };
-        dateFixes.push(`checkin ${currentCheckin} -> ${desiredCheckin}`);
-      }
-
-      if (desiredCheckout && enrichedParsed.hotels.checkoutDate !== desiredCheckout) {
-        const currentCheckout = enrichedParsed.hotels.checkoutDate;
-        enrichedParsed.hotels = {
-          ...enrichedParsed.hotels,
-          checkoutDate: desiredCheckout
-        };
-        dateFixes.push(`checkout ${currentCheckout} -> ${desiredCheckout}`);
-      }
-
-      if (dateFixes.length > 0) {
-        console.log('🛡️ [COMBINED SEARCH] Enforced round-trip/hotel date alignment:', dateFixes.join(', '));
-      }
-
-
-    }
+    // Do not force hotel dates to match flight dates here.
+    // `handleHotelSearch` already applies flight fallback for simple combined requests
+    // when hotel dates are missing, and multi-segment hotel searches must preserve
+    // their own explicit tramo dates.
 
     // 🔍 DEBUG: Verify services are preserved in enrichedParsed
     console.log('🔍 [COMBINED SEARCH] Services in enrichedParsed:', {
