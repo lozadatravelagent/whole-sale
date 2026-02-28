@@ -245,7 +245,7 @@ export function LandingHero3D() {
                   onClick={() => scrollToSection("demo")}
                   className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 via-cyan-400 to-amber-300 px-6 py-4 text-base font-semibold text-slate-950 shadow-[0_26px_70px_-36px_rgba(56,189,248,0.8)] transition-transform duration-300 hover:-translate-y-0.5"
                 >
-                  Proba emilia
+                  Proba Emilia
                   <ArrowDownRight className="h-5 w-5" />
                 </button>
                 <button
