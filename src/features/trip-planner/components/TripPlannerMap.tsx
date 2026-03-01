@@ -112,7 +112,22 @@ function PlannerRouteOverlay({
 
     routeLine.setMap(map);
 
+    let offset = 100;
+    const interval = setInterval(() => {
+      offset -= 2;
+      if (offset <= 0) {
+        offset = 0;
+        clearInterval(interval);
+      }
+      routeLine.set('icons', [{
+        icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 4 },
+        offset: `${offset}%`,
+        repeat: '18px',
+      }]);
+    }, 30);
+
     return () => {
+      clearInterval(interval);
       routeLine.setMap(null);
     };
   }, [map, segments]);
@@ -446,6 +461,7 @@ function PlannerGoogleMapScene({
   const [showCityPanel, setShowCityPanel] = useState(false);
   const geocodeGenRef = useRef(0);
   const animatedMarkerIdsRef = useRef<Set<string>>(new Set());
+  const animatedCityIdsRef = useRef<Set<string>>(new Set());
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
 
   useEffect(() => {
@@ -525,12 +541,14 @@ function PlannerGoogleMapScene({
     if (segments.length === 0) {
       setActivityMarkers([]);
       animatedMarkerIdsRef.current.clear();
+      animatedCityIdsRef.current.clear();
       return;
     }
 
     const gen = ++geocodeGenRef.current;
     setActivityMarkers([]);
     animatedMarkerIdsRef.current.clear();
+    animatedCityIdsRef.current.clear();
     setSelectedActivity(null);
 
     // Collect activities from ALL segments
@@ -618,6 +636,8 @@ function PlannerGoogleMapScene({
         <PlannerRouteOverlay segments={segments} />
 
         {segments.map((segment, index) => {
+          const isNew = !animatedCityIdsRef.current.has(segment.id);
+          if (isNew) animatedCityIdsRef.current.add(segment.id);
           const isSelected = segment.id === selectedSegment?.id;
 
           return (
@@ -630,6 +650,7 @@ function PlannerGoogleMapScene({
                 anchor: new google.maps.Point(18, 18),
               }}
               zIndex={isSelected ? 1000 : index + 1}
+              animation={isNew ? google.maps.Animation.DROP : undefined}
               onClick={() => handleCityMarkerClick(segment.id)}
             />
           );
@@ -718,7 +739,7 @@ export default function TripPlannerMap({
 
   return (
     <div className="relative overflow-hidden rounded-[28px] border border-primary/15 bg-slate-100 shadow-sm">
-      <div className="absolute inset-x-4 top-4 z-10 flex flex-wrap items-start justify-between gap-3 pointer-events-none">
+      <div className="absolute inset-x-4 top-4 z-10 flex flex-wrap items-start justify-between gap-3 pointer-events-none animate-in fade-in duration-700">
         <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-lg backdrop-blur">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             <MapPinned className="h-3.5 w-3.5 text-primary" />
