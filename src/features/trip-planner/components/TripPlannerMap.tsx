@@ -445,6 +445,7 @@ function PlannerGoogleMapScene({
   const [cityPlaceLoading, setCityPlaceLoading] = useState(false);
   const [showCityPanel, setShowCityPanel] = useState(false);
   const geocodeGenRef = useRef(0);
+  const animatedMarkerIdsRef = useRef<Set<string>>(new Set());
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
 
   useEffect(() => {
@@ -523,11 +524,13 @@ function PlannerGoogleMapScene({
   useEffect(() => {
     if (segments.length === 0) {
       setActivityMarkers([]);
+      animatedMarkerIdsRef.current.clear();
       return;
     }
 
     const gen = ++geocodeGenRef.current;
     setActivityMarkers([]);
+    animatedMarkerIdsRef.current.clear();
     setSelectedActivity(null);
 
     // Collect activities from ALL segments
@@ -632,19 +635,25 @@ function PlannerGoogleMapScene({
           );
         })}
 
-        {activityMarkers.map((marker) => (
-          <Marker
-            key={marker.activityId}
-            position={{ lat: marker.lat, lng: marker.lng }}
-            icon={{
-              url: buildEmojiMarkerIcon(ACTIVITY_EMOJI[marker.activityType] || ACTIVITY_EMOJI.unknown),
-              scaledSize: new google.maps.Size(36, 36),
-              anchor: new google.maps.Point(18, 18),
-            }}
-            zIndex={500}
-            onClick={() => handleActivityClick(marker)}
-          />
-        ))}
+        {activityMarkers.map((marker) => {
+          const isNew = !animatedMarkerIdsRef.current.has(marker.activityId);
+          if (isNew) animatedMarkerIdsRef.current.add(marker.activityId);
+
+          return (
+            <Marker
+              key={marker.activityId}
+              position={{ lat: marker.lat, lng: marker.lng }}
+              icon={{
+                url: buildEmojiMarkerIcon(ACTIVITY_EMOJI[marker.activityType] || ACTIVITY_EMOJI.unknown),
+                scaledSize: new google.maps.Size(36, 36),
+                anchor: new google.maps.Point(18, 18),
+              }}
+              zIndex={500}
+              animation={isNew ? google.maps.Animation.DROP : undefined}
+              onClick={() => handleActivityClick(marker)}
+            />
+          );
+        })}
 
       </Map>
 
