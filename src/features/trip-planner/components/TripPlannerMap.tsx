@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   APIProvider,
+  InfoWindow,
   Map,
   Marker,
   RenderingType,
   useMap,
   useMapsLibrary,
 } from '@vis.gl/react-google-maps';
-import { AlertCircle, Calendar, Clock, ExternalLink, Globe, Lightbulb, Loader2, MapPin, MapPinned, Phone, Route, Star, X } from 'lucide-react';
+import { AlertCircle, Calendar, Clock, Lightbulb, Loader2, MapPin, MapPinned, Route, Star } from 'lucide-react';
 import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY, PLANNER_GOOGLE_MAPS_MAP_ID } from '../map';
 import type { PlannerActivity, PlannerActivityType, PlannerSegment } from '../types';
 import { formatDateRange, formatDestinationLabel } from '../utils';
@@ -177,267 +178,7 @@ function collectSegmentActivities(segment: PlannerSegment): Array<PlannerActivit
   return result;
 }
 
-function ActivityDetailPanel({
-  activity,
-  placeDetails,
-  placeLoading,
-  onClose,
-}: {
-  activity: ActivityMarkerEntry;
-  placeDetails: PlaceDetails | null;
-  placeLoading: boolean;
-  onClose: () => void;
-}) {
-  const emoji = ACTIVITY_EMOJI[activity.activityType] || ACTIVITY_EMOJI.unknown;
-  const heroPhoto = placeDetails?.photoUrls?.[0];
-
-  return (
-    <div className="pointer-events-auto flex h-full w-full flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl">
-      <button
-        onClick={onClose}
-        className="absolute right-3 top-3 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur hover:bg-black/60"
-      >
-        <X className="h-4 w-4" />
-      </button>
-
-      <div className="relative h-[160px] flex-shrink-0 overflow-hidden bg-slate-100">
-        {heroPhoto ? (
-          <img src={heroPhoto} alt={activity.title} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-5xl">{emoji}</div>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-4 pt-4 pb-3">
-          <h3 className="text-base font-semibold leading-tight text-slate-900">{activity.title}</h3>
-          <div className="mt-1.5 flex items-center gap-2">
-            {placeDetails?.rating && (
-              <span className="flex items-center gap-1 text-sm font-medium text-amber-600">
-                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                {placeDetails.rating}
-                {placeDetails.userRatingsTotal && (
-                  <span className="text-xs font-normal text-slate-400">({placeDetails.userRatingsTotal.toLocaleString()})</span>
-                )}
-              </span>
-            )}
-            {activity.category && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                {activity.category}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {activity.description && (
-          <div className="px-4 pb-3">
-            <p className="text-sm leading-relaxed text-slate-600">{activity.description}</p>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-          {activity.time && (
-            <span className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-              <Clock className="h-3 w-3" />
-              {activity.time}
-            </span>
-          )}
-          {activity.durationMinutes && (
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-              ~{activity.durationMinutes} min
-            </span>
-          )}
-          {activity.neighborhood && (
-            <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-              <MapPin className="h-3 w-3" />
-              {activity.neighborhood}
-            </span>
-          )}
-        </div>
-
-        {activity.tip && (
-          <div className="mx-4 mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <div className="flex gap-2">
-              <Lightbulb className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
-              <p className="text-xs leading-relaxed text-amber-800">{activity.tip}</p>
-            </div>
-          </div>
-        )}
-
-        <div className="border-t border-slate-100 px-4 pt-3 pb-4">
-          {placeLoading ? (
-            <div className="flex items-center gap-2 py-3 text-xs text-slate-400">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Buscando info en Google...
-            </div>
-          ) : placeDetails ? (
-            <div className="space-y-2.5">
-              {placeDetails.formattedAddress && (
-                <div className="flex items-start gap-2 text-xs text-slate-600">
-                  <MapPin className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                  <span>{placeDetails.formattedAddress}</span>
-                </div>
-              )}
-              {placeDetails.isOpenNow !== undefined && (
-                <div className="flex items-center gap-2 text-xs">
-                  <Clock className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                  <span className={placeDetails.isOpenNow ? 'font-medium text-emerald-600' : 'font-medium text-red-500'}>
-                    {placeDetails.isOpenNow ? 'Abierto ahora' : 'Cerrado'}
-                  </span>
-                </div>
-              )}
-              {placeDetails.phoneNumber && (
-                <a href={`tel:${placeDetails.phoneNumber}`} className="flex items-center gap-2 text-xs text-blue-600 hover:underline">
-                  <Phone className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                  {placeDetails.phoneNumber}
-                </a>
-              )}
-              {placeDetails.website && (
-                <a href={placeDetails.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-blue-600 hover:underline">
-                  <Globe className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                  Sitio web
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-              {placeDetails.reviewSnippet && (
-                <blockquote className="mt-2 border-l-2 border-slate-200 pl-3 text-xs italic leading-relaxed text-slate-500">
-                  "{placeDetails.reviewSnippet.length > 150 ? `${placeDetails.reviewSnippet.slice(0, 150)}…` : placeDetails.reviewSnippet}"
-                </blockquote>
-              )}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 type SegmentWithLocation = PlannerSegment & { location: NonNullable<PlannerSegment['location']> };
-
-function CityDetailPanel({
-  segment,
-  segmentIndex,
-  placeDetails,
-  placeLoading,
-  onClose,
-}: {
-  segment: SegmentWithLocation;
-  segmentIndex: number;
-  placeDetails: PlaceDetails | null;
-  placeLoading: boolean;
-  onClose: () => void;
-}) {
-  const heroPhoto = placeDetails?.photoUrls?.[0];
-
-  return (
-    <div className="pointer-events-auto flex h-full w-full flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl">
-      <button
-        onClick={onClose}
-        className="absolute right-3 top-3 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur hover:bg-black/60"
-      >
-        <X className="h-4 w-4" />
-      </button>
-
-      <div className="relative h-[160px] flex-shrink-0 overflow-hidden bg-slate-100">
-        {heroPhoto ? (
-          <img src={heroPhoto} alt={segment.city} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-b from-blue-50 to-blue-100">
-            <MapPinned className="h-12 w-12 text-blue-300" />
-          </div>
-        )}
-        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/50 to-transparent px-4 pb-3 pt-8">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/80">
-            <Route className="h-3.5 w-3.5" />
-            Parada {segmentIndex + 1}
-          </div>
-          <h3 className="text-lg font-bold leading-tight text-white">{formatDestinationLabel(segment.city)}</h3>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-4 pt-4 pb-3">
-          <div className="flex items-center gap-2">
-            {placeDetails?.rating && (
-              <span className="flex items-center gap-1 text-sm font-medium text-amber-600">
-                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                {placeDetails.rating}
-                {placeDetails.userRatingsTotal && (
-                  <span className="text-xs font-normal text-slate-400">({placeDetails.userRatingsTotal.toLocaleString()})</span>
-                )}
-              </span>
-            )}
-            {segment.country && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                {segment.country}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {segment.summary && (
-          <div className="px-4 pb-3">
-            <p className="text-sm leading-relaxed text-slate-600">{segment.summary}</p>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-          <span className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-            <Calendar className="h-3 w-3" />
-            {formatDateRange(segment.startDate, segment.endDate)}
-          </span>
-          {segment.nights != null && (
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-              {segment.nights} noche{segment.nights !== 1 ? 's' : ''}
-            </span>
-          )}
-          {segment.days.length > 0 && (
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-              {segment.days.reduce((acc, d) => acc + d.morning.length + d.afternoon.length + d.evening.length, 0)} actividades
-            </span>
-          )}
-        </div>
-
-        <div className="border-t border-slate-100 px-4 pt-3 pb-4">
-          {placeLoading ? (
-            <div className="flex items-center gap-2 py-3 text-xs text-slate-400">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Buscando info en Google...
-            </div>
-          ) : placeDetails ? (
-            <div className="space-y-2.5">
-              {placeDetails.formattedAddress && (
-                <div className="flex items-start gap-2 text-xs text-slate-600">
-                  <MapPin className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                  <span>{placeDetails.formattedAddress}</span>
-                </div>
-              )}
-              {placeDetails.website && (
-                <a href={placeDetails.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-blue-600 hover:underline">
-                  <Globe className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
-                  Sitio web
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-              {placeDetails.reviewSnippet && (
-                <blockquote className="mt-2 border-l-2 border-slate-200 pl-3 text-xs italic leading-relaxed text-slate-500">
-                  "{placeDetails.reviewSnippet.length > 150 ? `${placeDetails.reviewSnippet.slice(0, 150)}…` : placeDetails.reviewSnippet}"
-                </blockquote>
-              )}
-              {placeDetails.photoUrls.length > 1 && (
-                <div className="mt-2 flex gap-2">
-                  {placeDetails.photoUrls.slice(1).map((url, i) => (
-                    <img key={i} src={url} alt="" className="h-16 w-24 rounded-lg object-cover" />
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function PlannerGoogleMapScene({
   segments,
@@ -617,7 +358,7 @@ function PlannerGoogleMapScene({
   if (!coreLib) return null;
 
   return (
-    <div className="relative isolate h-full w-full overflow-hidden">
+    <div className="relative h-full w-full overflow-hidden">
       <Map
         defaultCenter={{ lat: 42, lng: 9 }}
         defaultZoom={3}
@@ -676,34 +417,148 @@ function PlannerGoogleMapScene({
           );
         })}
 
-      </Map>
-
-      <div
-        className={`pointer-events-none absolute right-0 top-0 z-20 h-full w-[320px] max-w-full transition-transform duration-300 ${selectedActivity ? 'translate-x-0' : 'translate-x-full'}`}
-      >
         {selectedActivity && (
-          <ActivityDetailPanel
-            activity={selectedActivity}
-            placeDetails={placeDetails}
-            placeLoading={placeLoading}
-            onClose={() => setSelectedActivity(null)}
-          />
-        )}
-      </div>
+          <InfoWindow
+            position={{ lat: selectedActivity.lat, lng: selectedActivity.lng }}
+            onCloseClick={() => setSelectedActivity(null)}
+            pixelOffset={[0, -20]}
+          >
+            <div className="w-[280px]">
+              <div className="flex items-start gap-2.5">
+                <span className="text-2xl leading-none">{ACTIVITY_EMOJI[selectedActivity.activityType] || ACTIVITY_EMOJI.unknown}</span>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold leading-tight text-slate-900">{selectedActivity.title}</h3>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    {placeDetails?.rating && (
+                      <span className="flex items-center gap-0.5 text-xs font-medium text-amber-600">
+                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                        {placeDetails.rating}
+                      </span>
+                    )}
+                    {selectedActivity.category && (
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                        {selectedActivity.category}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-      <div
-        className={`pointer-events-none absolute right-0 top-0 z-20 h-full w-[320px] max-w-full transition-transform duration-300 ${!selectedActivity && showCityPanel && selectedSegment ? 'translate-x-0' : 'translate-x-full'}`}
-      >
-        {!selectedActivity && showCityPanel && selectedSegment && (
-          <CityDetailPanel
-            segment={selectedSegment}
-            segmentIndex={segments.findIndex((s) => s.id === selectedSegment.id)}
-            placeDetails={cityPlaceDetails}
-            placeLoading={cityPlaceLoading}
-            onClose={() => setShowCityPanel(false)}
-          />
+              {placeDetails?.photoUrls?.[0] && (
+                <img src={placeDetails.photoUrls[0]} alt="" className="mt-2 h-[100px] w-full rounded-lg object-cover" />
+              )}
+
+              {selectedActivity.description && (
+                <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-600">{selectedActivity.description}</p>
+              )}
+
+              <div className="mt-2 flex flex-wrap gap-1">
+                {selectedActivity.time && (
+                  <span className="flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                    <Clock className="h-2.5 w-2.5" /> {selectedActivity.time}
+                  </span>
+                )}
+                {selectedActivity.durationMinutes && (
+                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                    ~{selectedActivity.durationMinutes} min
+                  </span>
+                )}
+                {selectedActivity.neighborhood && (
+                  <span className="flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                    <MapPin className="h-2.5 w-2.5" /> {selectedActivity.neighborhood}
+                  </span>
+                )}
+              </div>
+
+              {selectedActivity.tip && (
+                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2">
+                  <div className="flex gap-1.5">
+                    <Lightbulb className="mt-0.5 h-3 w-3 flex-shrink-0 text-amber-500" />
+                    <p className="line-clamp-2 text-[11px] leading-relaxed text-amber-800">{selectedActivity.tip}</p>
+                  </div>
+                </div>
+              )}
+
+              {placeLoading && (
+                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Buscando info...
+                </div>
+              )}
+
+              {placeDetails?.formattedAddress && (
+                <p className="mt-2 flex items-start gap-1 text-[11px] text-slate-500">
+                  <MapPin className="mt-0.5 h-3 w-3 flex-shrink-0 text-slate-400" />
+                  {placeDetails.formattedAddress}
+                </p>
+              )}
+            </div>
+          </InfoWindow>
         )}
-      </div>
+
+        {!selectedActivity && showCityPanel && selectedSegment && (
+          <InfoWindow
+            position={{ lat: selectedSegment.location.lat, lng: selectedSegment.location.lng }}
+            onCloseClick={() => setShowCityPanel(false)}
+            pixelOffset={[0, -20]}
+          >
+            <div className="w-[280px]">
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
+                  {segments.findIndex((s) => s.id === selectedSegment.id) + 1}
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">{formatDestinationLabel(selectedSegment.city)}</h3>
+                  {selectedSegment.country && (
+                    <span className="text-[11px] text-slate-500">{selectedSegment.country}</span>
+                  )}
+                </div>
+              </div>
+
+              {cityPlaceDetails?.photoUrls?.[0] && (
+                <img src={cityPlaceDetails.photoUrls[0]} alt="" className="mt-2 h-[100px] w-full rounded-lg object-cover" />
+              )}
+
+              {cityPlaceDetails?.rating && (
+                <div className="mt-2 flex items-center gap-0.5 text-xs font-medium text-amber-600">
+                  <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                  {cityPlaceDetails.rating}
+                  {cityPlaceDetails.userRatingsTotal && (
+                    <span className="ml-1 text-[10px] font-normal text-slate-400">({cityPlaceDetails.userRatingsTotal.toLocaleString()})</span>
+                  )}
+                </div>
+              )}
+
+              <div className="mt-2 flex flex-wrap gap-1">
+                <span className="flex items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">
+                  <Calendar className="h-2.5 w-2.5" />
+                  {formatDateRange(selectedSegment.startDate, selectedSegment.endDate)}
+                </span>
+                {selectedSegment.nights != null && (
+                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                    {selectedSegment.nights} noche{selectedSegment.nights !== 1 ? 's' : ''}
+                  </span>
+                )}
+                {selectedSegment.days.length > 0 && (
+                  <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                    {selectedSegment.days.reduce((acc, d) => acc + d.morning.length + d.afternoon.length + d.evening.length, 0)} actividades
+                  </span>
+                )}
+              </div>
+
+              {selectedSegment.summary && (
+                <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-600">{selectedSegment.summary}</p>
+              )}
+
+              {cityPlaceLoading && (
+                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Buscando info...
+                </div>
+              )}
+            </div>
+          </InfoWindow>
+        )}
+
+      </Map>
     </div>
   );
 }
