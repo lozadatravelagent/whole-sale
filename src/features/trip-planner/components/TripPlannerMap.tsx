@@ -192,7 +192,7 @@ function ActivityDetailPanel({
   const heroPhoto = placeDetails?.photoUrls?.[0];
 
   return (
-    <div className="absolute right-0 top-0 z-20 flex h-full w-[320px] max-w-full translate-x-0 flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl transition-transform duration-300">
+    <div className="pointer-events-auto flex h-full w-full flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl">
       <button
         onClick={onClose}
         className="absolute right-3 top-3 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur hover:bg-black/60"
@@ -330,7 +330,7 @@ function CityDetailPanel({
   const heroPhoto = placeDetails?.photoUrls?.[0];
 
   return (
-    <div className="absolute right-0 top-0 z-20 flex h-full w-[320px] max-w-full translate-x-0 flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl transition-transform duration-300">
+    <div className="pointer-events-auto flex h-full w-full flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl">
       <button
         onClick={onClose}
         className="absolute right-3 top-3 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur hover:bg-black/60"
@@ -617,7 +617,7 @@ function PlannerGoogleMapScene({
   if (!coreLib) return null;
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="relative isolate h-full w-full overflow-hidden">
       <Map
         defaultCenter={{ lat: 42, lng: 9 }}
         defaultZoom={3}
@@ -679,7 +679,7 @@ function PlannerGoogleMapScene({
       </Map>
 
       <div
-        className={`absolute right-0 top-0 z-20 h-full transition-transform duration-300 ${selectedActivity ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`pointer-events-none absolute right-0 top-0 z-20 h-full w-[320px] max-w-full transition-transform duration-300 ${selectedActivity ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {selectedActivity && (
           <ActivityDetailPanel
@@ -692,7 +692,7 @@ function PlannerGoogleMapScene({
       </div>
 
       <div
-        className={`absolute right-0 top-0 z-20 h-full transition-transform duration-300 ${!selectedActivity && showCityPanel && selectedSegment ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`pointer-events-none absolute right-0 top-0 z-20 h-full w-[320px] max-w-full transition-transform duration-300 ${!selectedActivity && showCityPanel && selectedSegment ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {!selectedActivity && showCityPanel && selectedSegment && (
           <CityDetailPanel
