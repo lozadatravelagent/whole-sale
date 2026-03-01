@@ -188,7 +188,15 @@ export default function useTripPlanner(
         ? normalizePlannerState(((fromMessages.meta as any)?.plannerData), conversationId)
         : null;
 
-      setPlannerState(fromSystem || fromAssistant || null);
+      const nextState = fromSystem || fromAssistant || null;
+      setPlannerState((current) => {
+        if (!current && !nextState) return current;
+        if (!current || !nextState) return nextState;
+        if ((current.generationMeta?.updatedAt || '') >= (nextState.generationMeta?.updatedAt || '')) {
+          return current;
+        }
+        return nextState;
+      });
     } catch (error) {
       console.error('❌ [TRIP PLANNER] Failed to load planner state:', error);
       setPlannerError('No se pudo cargar el estado del planificador.');
@@ -273,6 +281,7 @@ export default function useTripPlanner(
 
     return () => {
       cancelled = true;
+      resolvingSignatureRef.current = null;
     };
   }, [persistPlannerState, plannerState]);
 
