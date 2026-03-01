@@ -125,7 +125,7 @@ export default function TripPlannerWorkspace({
   onSelectTransportOption,
   onCompletePlannerDateSelection,
 }: TripPlannerWorkspaceProps) {
-  const ASSISTANT_WIDTH_DEFAULT = 420;
+  const ASSISTANT_WIDTH_DEFAULT = 360;
   const ASSISTANT_WIDTH_MIN = 320;
   const ASSISTANT_WIDTH_MAX = 680;
   const ASSISTANT_WIDTH_STORAGE_KEY = 'tripPlannerAssistantWidth';
@@ -285,7 +285,7 @@ export default function TripPlannerWorkspace({
   }), [messages]);
 
   const plannerShell = (
-    <div className="trip-planner-surface flex flex-col gap-4 overflow-y-auto p-4 lg:p-6">
+    <div className="trip-planner-surface @container flex flex-col gap-4 overflow-y-auto p-4 lg:p-6">
       {!plannerState ? (
         <Card className="border-dashed">
           <CardHeader>
@@ -340,7 +340,7 @@ export default function TripPlannerWorkspace({
               />
 
               <div className="rounded-3xl border bg-muted/20 p-4 md:p-5">
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.9fr)]">
+                <div className="grid gap-5 @3xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)]">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
                       <p className="trip-planner-label text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -446,7 +446,7 @@ export default function TripPlannerWorkspace({
                     </div>
                   </div>
 
-                  <div className="space-y-2 border-t border-border/70 pt-5 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
+                  <div className="space-y-2 border-t border-border/70 pt-5 @3xl:border-l @3xl:border-t-0 @3xl:pl-6 @3xl:pt-0">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="trip-planner-label text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -470,7 +470,7 @@ export default function TripPlannerWorkspace({
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <div className="flex min-h-11 min-w-[260px] flex-1 items-center gap-3 rounded-full border bg-background/80 px-4 py-2">
+                      <div className="flex min-h-11 min-w-[200px] flex-1 items-center gap-3 rounded-full border bg-background/80 px-4 py-2">
                         <span className="trip-planner-label text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Fechas</span>
                         <Button
                           type="button"
@@ -546,7 +546,7 @@ export default function TripPlannerWorkspace({
             {plannerState.segments.map((segment, segmentIndex) => (
               <Card key={segment.id} id={`planner-segment-${segment.id}`} className="overflow-hidden">
                 <CardHeader className="border-b bg-muted/30">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
                     <div>
                       <CardTitle className="trip-planner-title text-lg">
                         {segmentIndex + 1}. {formatDestinationLabel(segment.city)}
@@ -573,7 +573,7 @@ export default function TripPlannerWorkspace({
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="grid gap-4 p-4 xl:grid-cols-[1.2fr,0.8fr]">
+                <CardContent className="grid gap-4 p-4 @4xl:grid-cols-[1.2fr,0.8fr]">
                   <div className="space-y-4">
                     {segment.days.length === 0 ? (
                       <div className="trip-planner-body rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -612,7 +612,7 @@ export default function TripPlannerWorkspace({
                               </div>
                             </div>
                           </CardHeader>
-                          <CardContent className="grid gap-4 md:grid-cols-3">
+                          <CardContent className="grid gap-4 @xl:grid-cols-3">
                             {(['morning', 'afternoon', 'evening'] as const).map((block) => (
                               <div key={block} className="space-y-2">
                                 <p className="trip-planner-label text-xs font-semibold uppercase tracking-wide text-muted-foreground">

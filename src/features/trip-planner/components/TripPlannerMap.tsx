@@ -192,7 +192,7 @@ function ActivityDetailPanel({
   const heroPhoto = placeDetails?.photoUrls?.[0];
 
   return (
-    <div className="absolute right-0 top-0 z-20 flex h-full w-[320px] translate-x-0 flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl transition-transform duration-300">
+    <div className="absolute right-0 top-0 z-20 flex h-full w-[320px] max-w-full translate-x-0 flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl transition-transform duration-300">
       <button
         onClick={onClose}
         className="absolute right-3 top-3 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur hover:bg-black/60"
@@ -330,7 +330,7 @@ function CityDetailPanel({
   const heroPhoto = placeDetails?.photoUrls?.[0];
 
   return (
-    <div className="absolute right-0 top-0 z-20 flex h-full w-[320px] translate-x-0 flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl transition-transform duration-300">
+    <div className="absolute right-0 top-0 z-20 flex h-full w-[320px] max-w-full translate-x-0 flex-col overflow-hidden rounded-l-2xl border-l border-slate-200 bg-white shadow-xl transition-transform duration-300">
       <button
         onClick={onClose}
         className="absolute right-3 top-3 z-30 flex h-7 w-7 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur hover:bg-black/60"
