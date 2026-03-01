@@ -235,6 +235,54 @@ export async function resolvePlannerSegmentLocation(input: {
   return providerLocation;
 }
 
+const ACTIVITY_SESSION_STORAGE_PREFIX = 'planner-activity-geocode:';
+const activityMemoryCache = new Map<string, { lat: number; lng: number } | null>();
+
+function buildActivityCacheKey(title: string, neighborhood?: string, city?: string): string {
+  return [title, neighborhood, city].filter(Boolean).map((v) => normalizeLocationKey(v!)).join('::');
+}
+
+function readCachedActivityLocation(cacheKey: string): { lat: number; lng: number } | null | undefined {
+  if (activityMemoryCache.has(cacheKey)) return activityMemoryCache.get(cacheKey)!;
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const raw = window.sessionStorage.getItem(`${ACTIVITY_SESSION_STORAGE_PREFIX}${cacheKey}`);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as { lat: number; lng: number } | null;
+    activityMemoryCache.set(cacheKey, parsed);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCachedActivityLocation(cacheKey: string, location: { lat: number; lng: number } | null) {
+  activityMemoryCache.set(cacheKey, location);
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(`${ACTIVITY_SESSION_STORAGE_PREFIX}${cacheKey}`, JSON.stringify(location));
+  } catch {
+    // Ignore browser storage failures.
+  }
+}
+
+export async function resolveActivityLocation(input: {
+  title: string;
+  neighborhood?: string;
+  city: string;
+  country?: string;
+}): Promise<{ lat: number; lng: number } | null> {
+  const cacheKey = buildActivityCacheKey(input.title, input.neighborhood, input.city);
+  const cached = readCachedActivityLocation(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const query = [input.title, input.neighborhood, input.city, input.country].filter(Boolean).join(', ');
+  const providerLocation = await fetchProviderLocation(query);
+  const result = providerLocation ? { lat: providerLocation.lat, lng: providerLocation.lng } : null;
+  writeCachedActivityLocation(cacheKey, result);
+  return result;
+}
+
 export async function enrichPlannerWithLocations(plannerState: TripPlannerState): Promise<EnrichedPlannerLocations> {
   const unresolvedCities: string[] = [];
   let changed = false;

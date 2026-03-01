@@ -399,6 +399,11 @@
   font-family: inherit;
 }
 
+/* Remove default top padding from Google Maps InfoWindow */
+.gm-style-iw-d {
+  padding-top: 0 !important;
+}
+
 .trip-planner-surface {
   font-family: var(--planner-font-family);
 }
