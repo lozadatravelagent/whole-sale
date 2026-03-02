@@ -9,8 +9,21 @@ import MessageInput from '@/features/chat/components/MessageInput';
 import MessageItem from '@/features/chat/components/MessageItem';
 import type { MessageRow } from '@/features/chat/types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
-import { Bot, CalendarDays, ChevronRight, GripVertical, Loader2, Lock, LockOpen, PanelRightClose, Plane, Plus, RefreshCcw, Sparkles, Trash2 } from 'lucide-react';
-import type { TripPlannerState } from '../types';
+import {
+  Bot,
+  CalendarDays,
+  ChevronRight,
+  GripVertical,
+  Loader2,
+  Lock,
+  LockOpen,
+  PanelRightClose,
+  Plane,
+  Plus,
+  RefreshCcw,
+  Trash2,
+} from 'lucide-react';
+import type { PlannerPlaceCandidate, PlannerPlaceCategory, PlannerPlaceHotelCandidate, TripPlannerState } from '../types';
 import {
   formatBudgetLevel,
   formatDateRange,
@@ -34,10 +47,25 @@ import {
   getPrimaryPlannerHotelRoom,
   getPlannerHotelDisplayId,
 } from '../utils';
+import { getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
 import TripPlannerMap from './TripPlannerMap';
 import PlannerDateSelectionModal from './PlannerDateSelectionModal';
+import PlannerMapPlaceAssignModal from './PlannerMapPlaceAssignModal';
 import PlannerCircularLoadingState from './PlannerCircularLoadingState';
+import PlannerHotelMatchPanel from './PlannerHotelMatchPanel';
+import TripPlannerStarterTemplate from './TripPlannerStarterTemplate';
+import TripPlannerWorkspaceSkeleton from './TripPlannerWorkspaceSkeleton';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+
+const PLANNER_MAP_FILTERS: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity'];
+
+const PLANNER_MAP_FILTER_LABELS: Record<PlannerPlaceCategory, string> = {
+  hotel: 'Hoteles',
+  restaurant: 'Restaurantes',
+  cafe: 'Cafes',
+  museum: 'Museos',
+  activity: 'Que hacer',
+};
 
 interface TripPlannerWorkspaceProps {
   selectedConversation: string | null;
@@ -79,6 +107,15 @@ interface TripPlannerWorkspaceProps {
   onToggleDayLock: (segmentId: string, dayId: string) => Promise<void>;
   onToggleActivityLock: (segmentId: string, dayId: string, block: 'morning' | 'afternoon' | 'evening', activityId: string) => Promise<void>;
   onSelectHotel: (segmentId: string, hotelId: string) => Promise<void>;
+  onSelectHotelPlaceFromMap: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => Promise<void>;
+  onAddPlaceToPlanner: (segmentId: string, input: {
+    place: PlannerPlaceCandidate;
+    dayId: string;
+    block: 'morning' | 'afternoon' | 'evening';
+  }) => Promise<void>;
+  onResolveInventoryMatch: (segmentId: string) => Promise<void>;
+  onConfirmInventoryHotelMatch: (segmentId: string, hotelId: string) => Promise<void>;
+  onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
   onSelectTransportOption: (segmentId: string, optionId: string) => Promise<void>;
   onCompletePlannerDateSelection: (
     baseRequest: ParsedTravelRequest,
@@ -122,6 +159,11 @@ export default function TripPlannerWorkspace({
   onToggleDayLock,
   onToggleActivityLock,
   onSelectHotel,
+  onSelectHotelPlaceFromMap,
+  onAddPlaceToPlanner,
+  onResolveInventoryMatch,
+  onConfirmInventoryHotelMatch,
+  onRefreshQuotedHotel,
   onSelectTransportOption,
   onCompletePlannerDateSelection,
 }: TripPlannerWorkspaceProps) {
@@ -133,6 +175,17 @@ export default function TripPlannerWorkspace({
   const [newDestination, setNewDestination] = useState('');
   const [mobileTab, setMobileTab] = useState('plan');
   const [pendingPlannerDateRequest, setPendingPlannerDateRequest] = useState<ParsedTravelRequest | null>(null);
+  const [pendingMapPlaceAssignment, setPendingMapPlaceAssignment] = useState<{
+    segmentId: string;
+    place: PlannerPlaceCandidate;
+  } | null>(null);
+  const [mapActiveCategories, setMapActiveCategories] = useState<Record<PlannerPlaceCategory, boolean>>({
+    hotel: true,
+    restaurant: true,
+    cafe: true,
+    museum: true,
+    activity: true,
+  });
   const [isDateSelectionModalOpen, setIsDateSelectionModalOpen] = useState(false);
   const [draggedSegmentId, setDraggedSegmentId] = useState<string | null>(null);
   const [dropTargetSegmentId, setDropTargetSegmentId] = useState<string | null>(null);
@@ -232,8 +285,13 @@ export default function TripPlannerWorkspace({
     : formatDateRange(plannerState?.startDate, plannerState?.endDate);
   const hasExactPlannerDates = Boolean(plannerState?.startDate && plannerState?.endDate && !plannerState?.isFlexibleDates);
   const isRegeneratingPlan = activePlannerMutation?.type === 'regen_plan';
+  const isDraftPlanner = Boolean(plannerState?.generationMeta?.isDraft);
 
   const getHotelStatusText = (segment: TripPlannerState['segments'][number]) => {
+    if (isDraftPlanner) {
+      return 'Los hoteles reales se habilitan cuando terminemos de generar el itinerario.';
+    }
+
     const hasDates = Boolean((segment.startDate || plannerState?.startDate) && (segment.endDate || plannerState?.endDate));
 
     if (plannerState?.isFlexibleDates || !hasDates) {
@@ -258,6 +316,10 @@ export default function TripPlannerWorkspace({
     segment: TripPlannerState['segments'][number],
     previousSegment?: TripPlannerState['segments'][number]
   ) => {
+    if (isDraftPlanner) {
+      return 'El transporte real se habilita cuando el recorrido final queda confirmado.';
+    }
+
     if (segment.transportIn?.searchStatus === 'error') {
       return 'No pudimos cargar transporte para este tramo en este momento.';
     }
@@ -284,24 +346,65 @@ export default function TripPlannerWorkspace({
     return true;
   }), [messages]);
 
+  const latestUserPrompt = useMemo(() => {
+    const latestUserMessage = [...visibleMessages]
+      .reverse()
+      .find((item) => item.role === 'user');
+
+    if (!latestUserMessage) return undefined;
+
+    const content = latestUserMessage.content as { text?: string } | string | null;
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    return content?.text;
+  }, [visibleMessages]);
+
+  const draftProgress = useMemo(() => {
+    if (!plannerState || !isDraftPlanner) {
+      return null;
+    }
+
+    if (plannerState.generationMeta?.uiPhase === 'draft_generating') {
+      return {
+        label: 'Completando itinerario',
+        description: typingMessage || 'Estamos organizando los tramos, días y recomendaciones del viaje.',
+      };
+    }
+
+    if (!plannerState.startDate && !plannerState.endDate && !plannerState.isFlexibleDates) {
+      return {
+        label: 'Borrador inicial',
+        description: 'Tomamos destinos y preferencias. Sumá fechas para habilitar cotización real cuando el plan termine.',
+      };
+    }
+
+    return {
+      label: 'Interpretando pedido',
+      description: 'Convertimos tu prompt en un planner estructurado antes de mostrar la versión final.',
+    };
+  }, [isDraftPlanner, plannerState, typingMessage]);
+
+  const shouldShowInitialPlannerSkeleton =
+    !plannerState &&
+    isLoadingPlanner &&
+    visibleMessages.length === 0 &&
+    !isLoading &&
+    !isTyping;
+
   const plannerShell = (
+    shouldShowInitialPlannerSkeleton ? (
+      <TripPlannerWorkspaceSkeleton />
+    ) : (
     <div className="trip-planner-surface @container flex flex-col gap-4 overflow-y-auto p-4 lg:p-6">
       {!plannerState ? (
-        <Card className="border-dashed">
-          <CardHeader>
-            <CardTitle className="trip-planner-title flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              Planificador de Viajes
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="trip-planner-body space-y-3 text-sm text-muted-foreground">
-            <p>Empezá con un prompt en el panel del asistente, por ejemplo:</p>
-            <div className="rounded-lg bg-muted p-3 text-foreground">
-              Planeá un viaje por varias ciudades, con un presupuesto medio, buena gastronomía y museos.
-            </div>
-            {plannerError && <p className="text-destructive">{plannerError}</p>}
-          </CardContent>
-        </Card>
+        <TripPlannerStarterTemplate
+          mode={isLoading || isTyping ? 'processing' : 'idle'}
+          promptPreview={latestUserPrompt}
+          typingMessage={typingMessage}
+          plannerError={plannerError}
+        />
       ) : (
         <>
           <Card className="overflow-hidden border-primary/15 shadow-sm">
@@ -324,19 +427,63 @@ export default function TripPlannerWorkspace({
                 <div className="space-y-2">
                   <Input
                     value={plannerState.title}
-                    onChange={(event) => void onUpdateTripField('title', event.target.value)}
+                    onChange={(event) => {
+                      if (isDraftPlanner) return;
+                      void onUpdateTripField('title', event.target.value);
+                    }}
+                    readOnly={isDraftPlanner}
                     className="trip-planner-title h-auto border-0 px-0 text-3xl font-semibold shadow-none focus-visible:ring-0 md:text-4xl"
                   />
                   <p className="trip-planner-body max-w-3xl text-sm leading-6 text-muted-foreground">{plannerState.summary}</p>
+                  <div className="flex flex-wrap justify-center gap-2 pt-1">
+                    {PLANNER_MAP_FILTERS.map((category) => (
+                      <button
+                        key={category}
+                        type="button"
+                        className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${
+                          mapActiveCategories[category]
+                            ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                            : 'border-slate-200 bg-slate-100 text-slate-600'
+                        }`}
+                        onClick={() => setMapActiveCategories((current) => ({ ...current, [category]: !current[category] }))}
+                      >
+                        <span className="mr-1">{getPlannerPlaceEmoji(category)}</span>
+                        {PLANNER_MAP_FILTER_LABELS[category]}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
+
+              {draftProgress && (
+                <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 text-[11px]">
+                      {draftProgress.label}
+                    </Badge>
+                    {plannerState.generationMeta?.draftOriginMessage && (
+                      <span className="trip-planner-body text-xs text-muted-foreground">
+                        {plannerState.generationMeta.draftOriginMessage}
+                      </span>
+                    )}
+                  </div>
+                  <p className="trip-planner-body mt-2 text-xs text-muted-foreground">{draftProgress.description}</p>
+                </div>
+              )}
 
               <TripPlannerMap
                 segments={plannerState.segments}
                 days={plannerState.days}
+                activeCategories={mapActiveCategories}
                 isResolvingLocations={isResolvingLocations}
                 locationWarning={plannerLocationWarning}
                 onSelectSegment={handleSelectSegmentFromMap}
+                onAddHotelToSegment={isDraftPlanner
+                  ? undefined
+                  : ((segmentId, placeCandidate) => void onSelectHotelPlaceFromMap(segmentId, placeCandidate))}
+                onRequestAddPlaceToPlanner={isDraftPlanner
+                  ? undefined
+                  : ((payload) => setPendingMapPlaceAssignment(payload))}
               />
 
               <div className="rounded-3xl border bg-muted/20 p-4 md:p-5">
@@ -355,7 +502,7 @@ export default function TripPlannerWorkspace({
                       {plannerState.segments.map((segment, index) => (
                         <div
                           key={segment.id}
-                          draggable={!isReorderingRoute && !isLoadingPlanner}
+                          draggable={!isDraftPlanner && !isReorderingRoute && !isLoadingPlanner}
                           onDragStart={() => setDraggedSegmentId(segment.id)}
                           onDragEnd={() => {
                             setDraggedSegmentId(null);
@@ -405,6 +552,7 @@ export default function TripPlannerWorkspace({
                           <button
                             type="button"
                             className="text-muted-foreground transition hover:text-foreground"
+                            disabled={isDraftPlanner}
                             onClick={() => void onRemoveDestination(segment.id)}
                             aria-label={`Eliminar ${formatDestinationLabel(segment.city)}`}
                           >
@@ -420,13 +568,14 @@ export default function TripPlannerWorkspace({
                         placeholder="Agregar destino"
                         onChange={(event) => setNewDestination(event.target.value)}
                         className="h-10 bg-background/80"
+                        disabled={isDraftPlanner}
                       />
                       <Button
                         onClick={() => {
                           void onAddDestination(newDestination);
                           setNewDestination('');
                         }}
-                        disabled={!newDestination.trim() || isReorderingRoute || isLoadingPlanner}
+                        disabled={isDraftPlanner || !newDestination.trim() || isReorderingRoute || isLoadingPlanner}
                         className="h-10 sm:min-w-[120px]"
                       >
                         <Plus className="mr-2 h-4 w-4" />
@@ -440,6 +589,8 @@ export default function TripPlannerWorkspace({
                           <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                           <span>Reordenando y recalculando la ruta...</span>
                         </>
+                      ) : isDraftPlanner ? (
+                        <span>Cuando termine el borrador vas a poder editar la ruta y sumar destinos manualmente.</span>
                       ) : (
                         <span>Arrastrá los destinos para cambiar el orden.</span>
                       )}
@@ -457,7 +608,7 @@ export default function TripPlannerWorkspace({
                         variant="outline"
                         size="sm"
                         onClick={() => void onRegeneratePlanner()}
-                        disabled={isLoadingPlanner || isReorderingRoute}
+                        disabled={isDraftPlanner || isLoadingPlanner || isReorderingRoute}
                         className="sm:self-start"
                       >
                         {isRegeneratingPlan && !isReorderingRoute ? (
@@ -476,6 +627,7 @@ export default function TripPlannerWorkspace({
                           type="button"
                           variant="ghost"
                           className="h-8 w-full justify-start gap-2 rounded-full px-0 text-left text-sm font-medium hover:bg-transparent"
+                          disabled={isDraftPlanner}
                           onClick={() => {
                             setPendingPlannerDateRequest(null);
                             setIsDateSelectionModalOpen(true);
@@ -496,6 +648,7 @@ export default function TripPlannerWorkspace({
                             min={1}
                             value={plannerState.days}
                             onChange={(event) => void onUpdateTripField('days', Math.max(1, Number(event.target.value) || 1) as TripPlannerState['days'])}
+                            disabled={isDraftPlanner}
                             className="h-7 w-14 border-0 bg-transparent px-0 py-0 text-sm font-medium shadow-none focus-visible:ring-0"
                           />
                         )}
@@ -505,6 +658,7 @@ export default function TripPlannerWorkspace({
                         <span className="trip-planner-label text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Presupuesto</span>
                         <Select
                           value={plannerState.budgetLevel || 'mid'}
+                          disabled={isDraftPlanner}
                           onValueChange={(value) => void onUpdateTripField('budgetLevel', value as TripPlannerState['budgetLevel'])}
                         >
                           <SelectTrigger className="h-7 w-auto min-w-[88px] border-0 bg-transparent px-0 text-sm font-medium shadow-none focus:ring-0">
@@ -523,6 +677,7 @@ export default function TripPlannerWorkspace({
                         <span className="trip-planner-label text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Ritmo</span>
                         <Select
                           value={plannerState.pace || 'balanced'}
+                          disabled={isDraftPlanner}
                           onValueChange={(value) => void onUpdateTripField('pace', value as TripPlannerState['pace'])}
                         >
                           <SelectTrigger className="h-7 w-auto min-w-[92px] border-0 bg-transparent px-0 text-sm font-medium shadow-none focus:ring-0">
@@ -561,7 +716,7 @@ export default function TripPlannerWorkspace({
                           variant="outline"
                           size="sm"
                           onClick={() => void onRegenerateSegment(segment.id)}
-                          disabled={isLoadingPlanner}
+                          disabled={isDraftPlanner || isLoadingPlanner}
                         >
                           {activePlannerMutation?.type === 'regen_segment' && activePlannerMutation.segmentId === segment.id ? (
                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -577,7 +732,9 @@ export default function TripPlannerWorkspace({
                   <div className="space-y-4">
                     {segment.days.length === 0 ? (
                       <div className="trip-planner-body rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                        Este destino todavía no tiene días generados. Regenerá el planificador para completarlo.
+                        {isDraftPlanner
+                          ? 'Estamos completando este destino a partir de tu prompt. En cuanto termine la generación vas a ver días, actividades y recomendaciones.'
+                          : 'Este destino todavía no tiene días generados. Regenerá el planificador para completarlo.'}
                       </div>
                     ) : (
                       segment.days.map((day) => (
@@ -597,7 +754,7 @@ export default function TripPlannerWorkspace({
                                     variant="outline"
                                     size="sm"
                                     onClick={() => void onRegenerateDay(segment.id, day.id)}
-                                    disabled={isLoadingPlanner}
+                                    disabled={isDraftPlanner || isLoadingPlanner}
                                   >
                                     {activePlannerMutation?.type === 'regen_day' && activePlannerMutation.segmentId === segment.id && activePlannerMutation.dayId === day.id ? (
                                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -606,7 +763,12 @@ export default function TripPlannerWorkspace({
                                     )}
                                     Regenerar día
                                   </Button>
-                                <Button variant="ghost" size="sm" onClick={() => void onToggleDayLock(segment.id, day.id)}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={isDraftPlanner}
+                                  onClick={() => void onToggleDayLock(segment.id, day.id)}
+                                >
                                   {day.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
                                 </Button>
                               </div>
@@ -648,6 +810,7 @@ export default function TripPlannerWorkspace({
                                         variant="ghost"
                                         size="sm"
                                         className="h-8 w-8 p-0"
+                                        disabled={isDraftPlanner}
                                         onClick={() => void onToggleActivityLock(segment.id, day.id, block, activity.id)}
                                       >
                                         {activity.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
@@ -657,6 +820,22 @@ export default function TripPlannerWorkspace({
                                 ))}
                               </div>
                             ))}
+                            {day.restaurants.length > 0 && (
+                              <div className="@xl:col-span-3 space-y-2 rounded-xl border border-dashed p-3">
+                                <p className="trip-planner-label text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  Restaurantes guardados
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {day.restaurants.map((restaurant) => (
+                                    <div key={restaurant.id} className="rounded-full border bg-muted/35 px-3 py-1.5 text-xs text-foreground">
+                                      <span className="font-medium">{restaurant.name}</span>
+                                      {restaurant.type ? ` • ${restaurant.type}` : ''}
+                                      {restaurant.source === 'google_maps' ? ' • Google Maps' : ''}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </CardContent>
                         </Card>
                       ))
@@ -668,10 +847,18 @@ export default function TripPlannerWorkspace({
                       <CardHeader>
                         <CardTitle className="trip-planner-title flex items-center gap-2 text-base">
                           <CalendarDays className="h-4 w-4 text-primary" />
-                          Hoteles recomendados
+                          Hoteles reales
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
+                        <PlannerHotelMatchPanel
+                          segment={segment}
+                          disabled={isDraftPlanner}
+                          hasExactDates={!plannerState.isFlexibleDates && Boolean((segment.startDate || plannerState.startDate) && (segment.endDate || plannerState.endDate))}
+                          onResolveInventoryMatch={onResolveInventoryMatch}
+                          onConfirmInventoryHotelMatch={onConfirmInventoryHotelMatch}
+                          onRefreshQuotedHotel={onRefreshQuotedHotel}
+                        />
                         {segment.hotelPlan.searchStatus === 'loading' ? (
                           <div className="planner-panel-fade-in">
                             <PlannerCircularLoadingState
@@ -703,7 +890,8 @@ export default function TripPlannerWorkspace({
                                 <button
                                   key={hotelId}
                                   type="button"
-                                  className={`w-full rounded-xl border p-3 text-left transition ${selected ? 'border-primary bg-primary/5 shadow-sm' : 'hover:bg-muted/40'}`}
+                                  className={`w-full rounded-xl border p-3 text-left transition ${selected ? 'border-primary bg-primary/5 shadow-sm' : 'hover:bg-muted/40'} ${isDraftPlanner ? 'cursor-not-allowed opacity-70' : ''}`}
+                                  disabled={isDraftPlanner}
                                   onClick={() => void onSelectHotel(segment.id, hotelId)}
                                 >
                                   <div className="flex items-start justify-between gap-3">
@@ -804,7 +992,8 @@ export default function TripPlannerWorkspace({
                                   <button
                                     key={option.id}
                                     type="button"
-                                    className={`w-full rounded-xl border p-3 text-left transition ${selected ? 'border-primary bg-primary/5 shadow-sm' : 'hover:bg-muted/40'}`}
+                                    className={`w-full rounded-xl border p-3 text-left transition ${selected ? 'border-primary bg-primary/5 shadow-sm' : 'hover:bg-muted/40'} ${isDraftPlanner ? 'cursor-not-allowed opacity-70' : ''}`}
+                                    disabled={isDraftPlanner}
                                     onClick={() => void onSelectTransportOption(segment.id, option.id)}
                                   >
                                     <div className="flex items-start justify-between gap-3">
@@ -899,6 +1088,7 @@ export default function TripPlannerWorkspace({
         </>
       )}
     </div>
+    )
   );
 
   const assistantRail = (
@@ -1041,6 +1231,27 @@ export default function TripPlannerWorkspace({
           }
           setIsDateSelectionModalOpen(false);
           setPendingPlannerDateRequest(null);
+        }}
+      />
+
+      <PlannerMapPlaceAssignModal
+        open={Boolean(pendingMapPlaceAssignment)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingMapPlaceAssignment(null);
+          }
+        }}
+        plannerState={plannerState}
+        place={pendingMapPlaceAssignment?.place || null}
+        initialSegmentId={pendingMapPlaceAssignment?.segmentId}
+        onConfirm={async (selection) => {
+          if (!pendingMapPlaceAssignment) return;
+          await onAddPlaceToPlanner(selection.segmentId, {
+            place: pendingMapPlaceAssignment.place,
+            dayId: selection.dayId,
+            block: selection.block,
+          });
+          setPendingMapPlaceAssignment(null);
         }}
       />
     </div>

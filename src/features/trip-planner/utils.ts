@@ -4,9 +4,11 @@ import type {
   PlannerActivity,
   PlannerBudgetLevel,
   PlannerDay,
+  PlannerGenerationSource,
   PlannerActivityType,
   PlannerLocation,
   PlannerPace,
+  PlannerPlaceCategory,
   PlannerRestaurant,
   PlannerSegment,
   TripPlannerState,
@@ -23,6 +25,43 @@ function slugify(value: string): string {
 
 function safeArray<T>(value: T[] | undefined | null): T[] {
   return Array.isArray(value) ? value : [];
+}
+
+function uniqueStringList(values: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  values.forEach((value) => {
+    const normalized = value?.trim();
+    if (!normalized) return;
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push(normalized);
+  });
+
+  return result;
+}
+
+function joinHumanList(values: string[]): string {
+  if (values.length === 0) return '';
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} y ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')} y ${values[values.length - 1]}`;
+}
+
+function buildPlannerMeta(
+  source: PlannerGenerationSource,
+  overrides?: Partial<TripPlannerState['generationMeta']>
+): TripPlannerState['generationMeta'] {
+  return {
+    source,
+    updatedAt: overrides?.updatedAt || new Date().toISOString(),
+    version: overrides?.version || 1,
+    uiPhase: overrides?.uiPhase || (source === 'template' ? 'template' : source === 'draft' ? 'draft_parsing' : 'ready'),
+    isDraft: overrides?.isDraft ?? (source === 'draft'),
+    draftOriginMessage: overrides?.draftOriginMessage,
+  };
 }
 
 function activityToPlannerActivity(activity: any, index: number, segmentId: string, dayNumber: number, block: string): PlannerActivity {
@@ -42,6 +81,11 @@ function activityToPlannerActivity(activity: any, index: number, segmentId: stri
     neighborhood: activity?.neighborhood,
     locked: Boolean(activity?.locked),
     source: activity?.source || 'generated',
+    placeId: activity?.placeId,
+    formattedAddress: activity?.formattedAddress,
+    rating: typeof activity?.rating === 'number' ? activity.rating : undefined,
+    userRatingsTotal: typeof activity?.userRatingsTotal === 'number' ? activity.userRatingsTotal : undefined,
+    photoUrls: safeArray<string>(activity?.photoUrls),
   };
 }
 
@@ -51,6 +95,11 @@ function restaurantToPlannerRestaurant(restaurant: any, index: number, segmentId
     name: restaurant?.name || 'Restaurante',
     type: restaurant?.type,
     priceRange: restaurant?.priceRange,
+    placeId: restaurant?.placeId,
+    formattedAddress: restaurant?.formattedAddress,
+    rating: typeof restaurant?.rating === 'number' ? restaurant.rating : undefined,
+    userRatingsTotal: typeof restaurant?.userRatingsTotal === 'number' ? restaurant.userRatingsTotal : undefined,
+    source: restaurant?.source || 'generated',
   };
 }
 
@@ -100,6 +149,50 @@ function normalizePlannerLocation(rawLocation: any, fallbackCity: string, fallba
   };
 }
 
+function normalizePlannerPlaceHotelCandidate(rawCandidate: any) {
+  if (!rawCandidate?.placeId || !rawCandidate?.name) {
+    return null;
+  }
+
+  return {
+    placeId: String(rawCandidate.placeId),
+    name: String(rawCandidate.name),
+    formattedAddress: rawCandidate.formattedAddress,
+    rating: typeof rawCandidate.rating === 'number' ? rawCandidate.rating : undefined,
+    userRatingsTotal: typeof rawCandidate.userRatingsTotal === 'number' ? rawCandidate.userRatingsTotal : undefined,
+    photoUrls: safeArray<string>(rawCandidate.photoUrls),
+    types: safeArray<string>(rawCandidate.types),
+    lat: typeof rawCandidate.lat === 'number' ? rawCandidate.lat : undefined,
+    lng: typeof rawCandidate.lng === 'number' ? rawCandidate.lng : undefined,
+    website: rawCandidate.website,
+    phoneNumber: rawCandidate.phoneNumber,
+    openingHours: safeArray<string>(rawCandidate.openingHours),
+    isOpenNow: typeof rawCandidate.isOpenNow === 'boolean' ? rawCandidate.isOpenNow : undefined,
+    category: (rawCandidate.category || 'hotel') as PlannerPlaceCategory,
+    activityType: rawCandidate.activityType,
+    source: rawCandidate.source || 'google_maps',
+  };
+}
+
+function normalizePlannerInventoryMatchCandidates(rawCandidates: any) {
+  return safeArray<any>(rawCandidates)
+    .map((candidate) => {
+      const hotel = candidate?.hotel;
+      if (!hotel) return null;
+
+      return {
+        hotelId: candidate?.hotelId || getPlannerHotelDisplayId(hotel),
+        name: candidate?.name || hotel.name,
+        city: candidate?.city || hotel.city,
+        score: typeof candidate?.score === 'number' ? candidate.score : 0,
+        reasons: safeArray<string>(candidate?.reasons),
+        linkedSearchId: candidate?.linkedSearchId,
+        hotel,
+      };
+    })
+    .filter(Boolean);
+}
+
 function buildSegmentFromLegacyItinerary(raw: any): PlannerSegment {
   const destinations = safeArray<string>(raw?.destinations);
   const city = destinations[0] || 'Destino';
@@ -119,6 +212,7 @@ function buildSegmentFromLegacyItinerary(raw: any): PlannerSegment {
       checkinDate: days[0]?.date,
       checkoutDate: days[days.length - 1]?.date,
       searchStatus: 'idle',
+      matchStatus: 'idle',
       hotelRecommendations: [],
       lastSearchSignature: undefined,
     },
@@ -154,9 +248,16 @@ function normalizeSegment(rawSegment: any, index: number): PlannerSegment {
       requestedMealPlan: rawSegment?.hotelPlan?.requestedMealPlan || rawSegment?.hotelSummary?.mealPlan,
       requestedStars: rawSegment?.hotelPlan?.requestedStars,
       searchStatus: rawSegment?.hotelPlan?.searchStatus || 'idle',
+      matchStatus: rawSegment?.hotelPlan?.matchStatus || 'idle',
       selectedHotelId: rawSegment?.hotelPlan?.selectedHotelId,
+      selectedPlaceCandidate: normalizePlannerPlaceHotelCandidate(rawSegment?.hotelPlan?.selectedPlaceCandidate),
+      inventoryMatchCandidates: normalizePlannerInventoryMatchCandidates(rawSegment?.hotelPlan?.inventoryMatchCandidates),
+      confirmedInventoryHotel: rawSegment?.hotelPlan?.confirmedInventoryHotel || null,
       hotelRecommendations: safeArray(rawSegment?.hotelPlan?.hotelRecommendations),
       linkedSearchId: rawSegment?.hotelPlan?.linkedSearchId,
+      quoteSearchId: rawSegment?.hotelPlan?.quoteSearchId,
+      quoteLastValidatedAt: rawSegment?.hotelPlan?.quoteLastValidatedAt,
+      quoteError: rawSegment?.hotelPlan?.quoteError,
       lastSearchSignature: rawSegment?.hotelPlan?.lastSearchSignature,
       error: rawSegment?.hotelPlan?.error,
     },
@@ -191,6 +292,152 @@ function normalizeSegment(rawSegment: any, index: number): PlannerSegment {
         }
       : null,
     days,
+  };
+}
+
+function buildDraftSegment(
+  city: string,
+  index: number,
+  destinations: string[],
+): PlannerSegment {
+  const previousCity = index > 0 ? destinations[index - 1] : undefined;
+
+  return {
+    id: `segment-${slugify(city) || 'destination'}-${index + 1}`,
+    city,
+    order: index,
+    summary: index === 0
+      ? 'Preparando la propuesta base para este destino.'
+      : `Organizando el tramo desde ${formatDestinationLabel(previousCity || '')} hacia ${formatDestinationLabel(city)}.`,
+    startDate: undefined,
+    endDate: undefined,
+    nights: undefined,
+    hotelPlan: {
+      city,
+      searchStatus: 'idle',
+      matchStatus: 'idle',
+      hotelRecommendations: [],
+    },
+    transportIn: previousCity
+      ? {
+          type: 'flight',
+          summary: `${formatDestinationLabel(previousCity)} a ${formatDestinationLabel(city)}`,
+          origin: previousCity,
+          destination: city,
+          searchStatus: 'idle',
+          options: [],
+        }
+      : null,
+    transportOut: null,
+    days: [],
+  };
+}
+
+function buildDraftPlannerTitle(destinations: string[]): string {
+  const formatted = destinations.map(formatDestinationLabel);
+
+  if (formatted.length === 0) {
+    return 'Nuevo viaje';
+  }
+
+  if (formatted.length === 1) {
+    return `Viaje a ${formatted[0]}`;
+  }
+
+  return `Viaje por ${joinHumanList(formatted)}`;
+}
+
+function buildDraftPlannerSummary(
+  itinerary: NonNullable<ParsedTravelRequest['itinerary']>,
+  destinations: string[],
+  days: number
+): string {
+  const formattedDestinations = destinations.map(formatDestinationLabel);
+  const interests = uniqueStringList([
+    ...safeArray(itinerary.interests),
+    ...safeArray(itinerary.travelStyle),
+  ]);
+  const budgetLabel = formatBudgetLevel(itinerary.budgetLevel as PlannerBudgetLevel | undefined).toLowerCase();
+  const paceLabel = formatPaceLabel(itinerary.pace as PlannerPace | undefined).toLowerCase();
+  const dateLabel = itinerary.isFlexibleDates
+    ? formatFlexibleMonth(itinerary.flexibleMonth, itinerary.flexibleYear)
+    : formatDateRange(itinerary.startDate, itinerary.endDate);
+
+  const parts = [
+    formattedDestinations.length > 0
+      ? `Armando una propuesta inicial para ${joinHumanList(formattedDestinations)}`
+      : 'Armando una propuesta inicial para tu viaje',
+    days > 0 ? `de ${days} días` : undefined,
+    budgetLabel ? `con presupuesto ${budgetLabel}` : undefined,
+    paceLabel ? `y ritmo ${paceLabel}` : undefined,
+  ].filter(Boolean);
+
+  const interestText = interests.length > 0
+    ? ` Priorizamos ${joinHumanList(interests.map((interest) => interest.toLowerCase()))}.`
+    : '';
+  const dateText = dateLabel ? ` ${dateLabel}.` : '.';
+
+  return `${parts.join(' ')}.${dateText}${interestText}`.replace(/\.\./g, '.');
+}
+
+export function createDraftPlannerFromRequest(
+  request: ParsedTravelRequest,
+  conversationId?: string
+): TripPlannerState | null {
+  if (request.requestType !== 'itinerary' || !request.itinerary) {
+    return null;
+  }
+
+  const itinerary = request.itinerary;
+  const destinations = uniqueStringList(safeArray(itinerary.destinations));
+  if (destinations.length === 0) {
+    return null;
+  }
+
+  const exactDays = !itinerary.isFlexibleDates
+    ? getInclusiveDateRangeDays(itinerary.startDate, itinerary.endDate)
+    : undefined;
+  const days = exactDays || itinerary.days || destinations.length || 1;
+  const interests = uniqueStringList([
+    ...safeArray(itinerary.interests),
+    ...safeArray(itinerary.travelStyle),
+  ]);
+
+  return {
+    id: `planner-draft-${slugify(destinations.join('-') || 'trip')}`,
+    conversationId,
+    title: buildDraftPlannerTitle(destinations),
+    summary: buildDraftPlannerSummary(itinerary, destinations, days),
+    startDate: itinerary.isFlexibleDates ? undefined : itinerary.startDate,
+    endDate: itinerary.isFlexibleDates ? undefined : itinerary.endDate,
+    isFlexibleDates: Boolean(itinerary.isFlexibleDates),
+    flexibleMonth: itinerary.isFlexibleDates ? itinerary.flexibleMonth : undefined,
+    flexibleYear: itinerary.isFlexibleDates ? itinerary.flexibleYear : undefined,
+    days,
+    budgetLevel: itinerary.budgetLevel as PlannerBudgetLevel | undefined,
+    budgetAmount: itinerary.budgetAmount,
+    pace: itinerary.pace as PlannerPace | undefined,
+    travelers: {
+      adults: itinerary.travelers?.adults ?? 2,
+      children: itinerary.travelers?.children ?? 0,
+      infants: itinerary.travelers?.infants ?? 0,
+    },
+    interests,
+    constraints: safeArray(itinerary.constraints),
+    destinations,
+    segments: destinations.map((city, index) => buildDraftSegment(city, index, destinations)),
+    notes: itinerary.startDate || itinerary.endDate || itinerary.isFlexibleDates
+      ? []
+      : ['Definí fechas para habilitar cotización real de hoteles y transporte.'],
+    generalTips: [
+      'Tomamos tu prompt para preparar una primera versión del recorrido.',
+      'Los hoteles y transportes reales se habilitan cuando el plan final queda generado.',
+    ],
+    generationMeta: buildPlannerMeta('draft', {
+      uiPhase: 'draft_parsing',
+      isDraft: true,
+      draftOriginMessage: request.originalMessage,
+    }),
   };
 }
 
@@ -236,11 +483,13 @@ export function normalizePlannerState(raw: any, conversationId?: string): TripPl
     segments,
     notes: safeArray(source?.notes),
     generalTips: safeArray(source?.generalTips),
-    generationMeta: {
-      source: source?.generationMeta?.source || 'system',
-      updatedAt: source?.generationMeta?.updatedAt || new Date().toISOString(),
+    generationMeta: buildPlannerMeta(source?.generationMeta?.source || 'system', {
+      updatedAt: source?.generationMeta?.updatedAt,
       version: source?.generationMeta?.version || 1,
-    },
+      uiPhase: source?.generationMeta?.uiPhase,
+      isDraft: Boolean(source?.generationMeta?.isDraft),
+      draftOriginMessage: source?.generationMeta?.draftOriginMessage,
+    }),
   };
 }
 

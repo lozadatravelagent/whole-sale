@@ -10,6 +10,7 @@ import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from 
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
+import type { TripPlannerState } from '@/features/trip-planner/types';
 import { translateBaggage } from '../utils/translations';
 
 function formatPlannerDateSelectionMessage(selection: {
@@ -64,7 +65,9 @@ const useMessageHandler = (
   removeOptimisticMessage: (messageId: string) => void,
   plannerContextRequest: ParsedTravelRequest | null,
   plannerState: any,
-  persistPlannerState?: (state: any, source: string) => Promise<void>
+  persistPlannerState?: (state: any, source: TripPlannerState['generationMeta']['source']) => Promise<void>,
+  setDraftPlannerFromRequest?: (request: ParsedTravelRequest) => void,
+  setPlannerDraftPhase?: (phase: 'draft_parsing' | 'draft_generating') => void,
 ) => {
   // ✅ Messages are now passed as parameter - no need for second useMessages call
 
@@ -1127,6 +1130,7 @@ const useMessageHandler = (
         await clearContextualMemory(finalConversationId);
       } else if (parsedRequest.requestType === 'itinerary') {
         console.log('🗺️ [VALIDATION] Validating itinerary required fields');
+        setDraftPlannerFromRequest?.(parsedRequest);
         const validation = validateItineraryRequiredFields(parsedRequest.itinerary);
 
         console.log('📋 [VALIDATION] Itinerary validation result:', {
@@ -1266,6 +1270,7 @@ const useMessageHandler = (
         }
         case 'itinerary': {
           console.log('🗺️ [MESSAGE FLOW] Step 12g: Processing itinerary request');
+          setPlannerDraftPhase?.('draft_generating');
           setTypingMessage('Generando tu itinerario de viaje...', conversationIdForThisSearch);
           const itineraryResult = await handleItineraryRequest(parsedRequest, plannerState || null);
           assistantResponse = itineraryResult.response;
@@ -1452,6 +1457,10 @@ const useMessageHandler = (
     toast,
     messages,
     getContextFromLastFlights,
+    persistPlannerState,
+    plannerState,
+    setDraftPlannerFromRequest,
+    setPlannerDraftPhase,
     setTypingMessage,
     addOptimisticMessage,
     updateOptimisticMessage,
@@ -1504,6 +1513,7 @@ const useMessageHandler = (
         originalMessage: baseRequest.originalMessage,
       };
 
+      setDraftPlannerFromRequest?.(mergedRequest);
       const validation = validateItineraryRequiredFields(mergedRequest.itinerary);
       if (!validation.isValid) {
         const missingInfoMessage = generateMissingInfoMessage(
@@ -1541,6 +1551,7 @@ const useMessageHandler = (
         return;
       }
 
+      setPlannerDraftPhase?.('draft_generating');
       await addMessageViaSupabase({
         conversation_id: currentConversationId,
         role: 'user',
@@ -1601,6 +1612,8 @@ const useMessageHandler = (
     persistPlannerState,
     plannerState,
     saveContextualMemory,
+    setDraftPlannerFromRequest,
+    setPlannerDraftPhase,
     selectedConversationRef,
     setIsLoading,
     setIsTyping,

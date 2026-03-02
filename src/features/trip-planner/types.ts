@@ -2,6 +2,17 @@ import type { FlightData, LocalHotelData } from '@/features/chat/types/chat';
 
 export type PlannerBudgetLevel = 'low' | 'mid' | 'high' | 'luxury';
 export type PlannerPace = 'relaxed' | 'balanced' | 'fast';
+export type PlannerGenerationSource =
+  | 'chat'
+  | 'ui_edit'
+  | 'regen_day'
+  | 'regen_segment'
+  | 'regen_plan'
+  | 'system'
+  | 'template'
+  | 'draft';
+export type PlannerUiPhase = 'template' | 'draft_parsing' | 'draft_generating' | 'ready';
+export type PlannerPlaceCategory = 'hotel' | 'restaurant' | 'cafe' | 'museum' | 'activity';
 export type PlannerActivityType =
   | 'museum'
   | 'landmark'
@@ -34,7 +45,12 @@ export interface PlannerActivity {
   schedulingConfidence?: PlannerSchedulingConfidence;
   neighborhood?: string;
   locked?: boolean;
-  source?: 'generated' | 'user';
+  placeId?: string;
+  formattedAddress?: string;
+  rating?: number;
+  userRatingsTotal?: number;
+  photoUrls?: string[];
+  source?: 'generated' | 'user' | 'google_maps';
 }
 
 export interface PlannerRestaurant {
@@ -42,6 +58,11 @@ export interface PlannerRestaurant {
   name: string;
   type?: string;
   priceRange?: string;
+  placeId?: string;
+  formattedAddress?: string;
+  rating?: number;
+  userRatingsTotal?: number;
+  source?: 'generated' | 'user' | 'google_maps';
 }
 
 export interface PlannerLocation {
@@ -51,6 +72,50 @@ export interface PlannerLocation {
   lng: number;
   placeLabel?: string;
   source?: 'provider' | 'fallback';
+}
+
+export type PlannerHotelMatchStatus =
+  | 'idle'
+  | 'selected_from_map'
+  | 'matching_inventory'
+  | 'needs_confirmation'
+  | 'matched'
+  | 'not_found'
+  | 'quoting'
+  | 'quoted'
+  | 'error';
+
+export interface PlannerPlaceCandidate {
+  placeId: string;
+  name: string;
+  formattedAddress?: string;
+  rating?: number;
+  userRatingsTotal?: number;
+  photoUrls: string[];
+  types?: string[];
+  lat?: number;
+  lng?: number;
+  website?: string;
+  phoneNumber?: string;
+  openingHours?: string[];
+  isOpenNow?: boolean;
+  category: PlannerPlaceCategory;
+  activityType?: PlannerActivityType;
+  source?: 'google_maps';
+}
+
+export interface PlannerPlaceHotelCandidate extends PlannerPlaceCandidate {
+  category: 'hotel';
+}
+
+export interface PlannerInventoryHotelCandidate {
+  hotelId: string;
+  name: string;
+  city: string;
+  score: number;
+  reasons: string[];
+  linkedSearchId?: string;
+  hotel: LocalHotelData;
 }
 
 export interface PlannerDay {
@@ -75,9 +140,16 @@ export interface SegmentHotelPlan {
   requestedStars?: number;
   requestedMealPlan?: string;
   searchStatus: 'idle' | 'loading' | 'ready' | 'error';
+  matchStatus?: PlannerHotelMatchStatus;
   selectedHotelId?: string;
+  selectedPlaceCandidate?: PlannerPlaceHotelCandidate | null;
+  inventoryMatchCandidates?: PlannerInventoryHotelCandidate[];
+  confirmedInventoryHotel?: LocalHotelData | null;
   hotelRecommendations: LocalHotelData[];
   linkedSearchId?: string;
+  quoteSearchId?: string;
+  quoteLastValidatedAt?: string;
+  quoteError?: string;
   lastSearchSignature?: string;
   error?: string;
 }
@@ -138,8 +210,11 @@ export interface TripPlannerState {
   notes?: string[];
   generalTips: string[];
   generationMeta: {
-    source: 'chat' | 'ui_edit' | 'regen_day' | 'regen_segment' | 'regen_plan' | 'system';
+    source: PlannerGenerationSource;
     updatedAt: string;
     version: number;
+    uiPhase?: PlannerUiPhase;
+    isDraft?: boolean;
+    draftOriginMessage?: string;
   };
 }

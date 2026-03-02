@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import {
   APIProvider,
   InfoWindow,
-  Map,
+  Map as GoogleMap,
   Marker,
   RenderingType,
   useMap,
@@ -10,10 +11,28 @@ import {
 } from '@vis.gl/react-google-maps';
 import { AlertCircle, Calendar, Clock, Lightbulb, Loader2, MapPin, MapPinned, Route, Star } from 'lucide-react';
 import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY, PLANNER_GOOGLE_MAPS_MAP_ID } from '../map';
-import type { PlannerActivity, PlannerActivityType, PlannerSegment } from '../types';
+import type {
+  PlannerActivity,
+  PlannerActivityType,
+  PlannerPlaceCandidate,
+  PlannerPlaceCategory,
+  PlannerPlaceHotelCandidate,
+  PlannerSegment,
+} from '../types';
 import { formatDateRange, formatDestinationLabel } from '../utils';
 import { resolveActivityLocation } from '../services/plannerGeocoding';
-import { fetchPlaceDetails, type PlaceDetails } from '../services/placesService';
+import { fetchNearbyPlacesBundle, fetchPlaceDetails, type PlaceDetails } from '../services/placesService';
+import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji, pickCanonicalPlannerPlaceCategory } from '../services/plannerPlaceMapper';
+
+const DISCOVERY_CATEGORIES: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity'];
+
+const CATEGORY_STYLES: Record<PlannerPlaceCategory, { bg: string; border: string; label: string }> = {
+  hotel: { bg: '#0f172a', border: '#0f172a', label: 'Hoteles' },
+  restaurant: { bg: '#b45309', border: '#92400e', label: 'Restaurantes' },
+  cafe: { bg: '#6b4f3a', border: '#513826', label: 'Cafes' },
+  museum: { bg: '#1d4ed8', border: '#1e40af', label: 'Museos' },
+  activity: { bg: '#0f766e', border: '#115e59', label: 'Que hacer' },
+};
 
 const ACTIVITY_EMOJI: Record<PlannerActivityType | 'unknown', string> = {
   museum: '🏛️',
@@ -34,10 +53,94 @@ const ACTIVITY_EMOJI: Record<PlannerActivityType | 'unknown', string> = {
   unknown: '📍',
 };
 
-function buildEmojiMarkerIcon(emoji: string): string {
+type PlacesByCategory = Record<PlannerPlaceCategory, PlannerPlaceCandidate[]>;
+type SegmentWithLocation = PlannerSegment & { location: NonNullable<PlannerSegment['location']> };
+type ActivityMarkerEntry = {
+  activityId: string;
+  title: string;
+  time?: string;
+  category?: string;
+  placeCategory: PlannerPlaceCategory;
+  activityType: PlannerActivityType | 'unknown';
+  lat: number;
+  lng: number;
+  description?: string;
+  tip?: string;
+  neighborhood?: string;
+  durationMinutes?: number;
+  city?: string;
+  country?: string;
+};
+
+interface TripPlannerMapProps {
+  segments: PlannerSegment[];
+  days: number;
+  activeCategories: Record<PlannerPlaceCategory, boolean>;
+  isResolvingLocations?: boolean;
+  locationWarning?: string | null;
+  onSelectSegment?: (segmentId: string) => void;
+  onAddHotelToSegment?: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => void;
+  onRequestAddPlaceToPlanner?: (payload: {
+    segmentId: string;
+    place: PlannerPlaceCandidate;
+  }) => void;
+}
+
+function buildEmojiMarkerIcon(emoji: string, bg = 'white', border = '#0f172a'): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36">
-    <circle cx="18" cy="18" r="16" fill="white" stroke="#0f172a" stroke-width="2"/>
+    <circle cx="18" cy="18" r="16" fill="${bg}" stroke="${border}" stroke-width="2"/>
     <text x="18" y="19" text-anchor="middle" dominant-baseline="central" font-size="16">${emoji}</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function escapeSvgText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function truncateDiscoveryMarkerLabel(labelText: string, maxLength = 20): string {
+  const normalized = labelText.trim().replace(/\s+/g, ' ');
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function getDiscoveryMarkerLabel(place: PlannerPlaceCandidate): string {
+  return truncateDiscoveryMarkerLabel(place.name || CATEGORY_STYLES[place.category].label);
+}
+
+function getDiscoveryChipMarkerMetrics(labelText: string) {
+  const width = Math.max(96, Math.min(182, 44 + labelText.length * 6.4));
+  return {
+    width,
+    height: 32,
+  };
+}
+
+function buildDiscoveryChipMarkerIcon(input: {
+  category: PlannerPlaceCategory;
+  labelText: string;
+  isSelected?: boolean;
+}): string {
+  const { category, labelText, isSelected = false } = input;
+  const { width, height } = getDiscoveryChipMarkerMetrics(labelText);
+  const border = isSelected ? '#0f172a' : '#d4d4d8';
+  const emoji = getPlannerPlaceEmoji(category);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <defs>
+      <filter id="chip-shadow" x="-20%" y="-50%" width="140%" height="200%">
+        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(15,23,42,0.18)"/>
+      </filter>
+    </defs>
+    <rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="16" fill="white" stroke="${border}" stroke-width="${isSelected ? 1.8 : 1.2}" filter="url(#chip-shadow)"/>
+    <text x="17" y="16.5" text-anchor="middle" dominant-baseline="middle" font-size="12.5">${emoji}</text>
+    <text x="31" y="16.5" text-anchor="start" dominant-baseline="middle" font-size="10.5" font-weight="700" fill="#111827" font-family="system-ui, sans-serif">
+      ${escapeSvgText(labelText)}
+    </text>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
@@ -53,84 +156,89 @@ function buildCityMarkerIcon(index: number, isSelected: boolean): string {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-type ActivityMarkerEntry = {
-  activityId: string;
-  title: string;
-  time?: string;
-  category?: string;
-  activityType: PlannerActivityType | 'unknown';
-  lat: number;
-  lng: number;
-  description?: string;
-  tip?: string;
-  neighborhood?: string;
-  durationMinutes?: number;
-  city?: string;
-  country?: string;
-};
-
-interface TripPlannerMapProps {
-  segments: PlannerSegment[];
-  days: number;
-  isResolvingLocations?: boolean;
-  locationWarning?: string | null;
-  onSelectSegment?: (segmentId: string) => void;
+function collectSegmentActivities(segment: PlannerSegment): Array<PlannerActivity & { slot: string }> {
+  const result: Array<PlannerActivity & { slot: string }> = [];
+  for (const day of segment.days) {
+    for (const activity of day.morning) result.push({ ...activity, slot: 'morning' });
+    for (const activity of day.afternoon) result.push({ ...activity, slot: 'afternoon' });
+    for (const activity of day.evening) result.push({ ...activity, slot: 'evening' });
+  }
+  return result;
 }
 
-function PlannerRouteOverlay({
-  segments,
-}: {
-  segments: Array<PlannerSegment & { location: NonNullable<PlannerSegment['location']> }>;
-}) {
-  const map = useMap();
+function getEmptyPlacesBundle(): PlacesByCategory {
+  return { hotel: [], restaurant: [], cafe: [], museum: [], activity: [] };
+}
 
-  useEffect(() => {
-    if (!map || typeof google === 'undefined' || segments.length < 2) {
+function getPlannerPlaceCategoryForActivity(activity: Pick<PlannerActivity, 'activityType' | 'category' | 'title'>): PlannerPlaceCategory {
+  const normalizedText = `${activity.title} ${activity.category || ''}`.toLowerCase();
+
+  if (activity.activityType === 'hotel') return 'hotel';
+  if (activity.activityType === 'museum' || activity.activityType === 'culture') return 'museum';
+
+  if (activity.activityType === 'food') {
+    return /(cafe|cafeteria|coffee|brunch|desayuno)/.test(normalizedText) ? 'cafe' : 'restaurant';
+  }
+
+  if (/(museo|museum|gallery|galeria)/.test(normalizedText)) return 'museum';
+  if (/(cafe|cafeteria|coffee|brunch|desayuno)/.test(normalizedText)) return 'cafe';
+  if (/(restaurant|restaurante|dinner|lunch|almuerzo|cena|bar|bistro|tapas)/.test(normalizedText)) return 'restaurant';
+  if (/(hotel|resort|suite)/.test(normalizedText)) return 'hotel';
+
+  return 'activity';
+}
+
+function dedupeVisiblePlaces(places: PlannerPlaceCandidate[]): PlannerPlaceCandidate[] {
+  const merged = new Map<string, PlannerPlaceCandidate>();
+
+  places.forEach((place) => {
+    const existing = merged.get(place.placeId);
+    if (!existing) {
+      merged.set(place.placeId, place);
       return;
     }
 
+    const category = pickCanonicalPlannerPlaceCategory([existing.category, place.category]);
+    const preferred = category === existing.category ? existing : place;
+    const fallback = preferred === existing ? place : existing;
+
+    merged.set(place.placeId, {
+      ...fallback,
+      ...preferred,
+      category,
+      activityType: preferred.activityType || fallback.activityType,
+      photoUrls: preferred.photoUrls?.length ? preferred.photoUrls : fallback.photoUrls,
+    });
+  });
+
+  return Array.from(merged.values()).sort((left, right) => {
+    const leftScore = (left.rating || 0) * Math.max(1, left.userRatingsTotal || 1);
+    const rightScore = (right.rating || 0) * Math.max(1, right.userRatingsTotal || 1);
+    return rightScore - leftScore;
+  });
+}
+
+function PlannerRouteOverlay({ segments }: { segments: SegmentWithLocation[] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map || typeof google === 'undefined' || segments.length < 2) return;
+
     const routeLine = new google.maps.Polyline({
-      path: segments.map((segment) => ({
-        lat: segment.location.lat,
-        lng: segment.location.lng,
-      })),
+      path: segments.map((segment) => ({ lat: segment.location.lat, lng: segment.location.lng })),
       geodesic: true,
       strokeColor: '#2563eb',
       strokeOpacity: 0.92,
       strokeWeight: 4,
-      icons: [
-        {
-          icon: {
-            path: 'M 0,-1 0,1',
-            strokeOpacity: 1,
-            scale: 4,
-          },
-          offset: '0',
-          repeat: '18px',
-        },
-      ],
+      icons: [{
+        icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 4 },
+        offset: '0',
+        repeat: '18px',
+      }],
     });
 
     routeLine.setMap(map);
-
-    let offset = 100;
-    const interval = setInterval(() => {
-      offset -= 2;
-      if (offset <= 0) {
-        offset = 0;
-        clearInterval(interval);
-      }
-      routeLine.set('icons', [{
-        icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 4 },
-        offset: `${offset}%`,
-        repeat: '18px',
-      }]);
-    }, 30);
-
-    return () => {
-      clearInterval(interval);
-      routeLine.setMap(null);
-    };
+    return () => routeLine.setMap(null);
   }, [map, segments]);
 
   return null;
@@ -138,67 +246,82 @@ function PlannerRouteOverlay({
 
 function PlannerViewportManager({
   segments,
+  selectedSegment,
 }: {
-  segments: Array<PlannerSegment & { location: NonNullable<PlannerSegment['location']> }>;
+  segments: SegmentWithLocation[];
+  selectedSegment?: SegmentWithLocation | null;
 }) {
   const map = useMap();
-
   const fitSignature = useMemo(
-    () => segments.map((segment) => `${segment.id}:${segment.location.lng}:${segment.location.lat}`).join('|'),
-    [segments]
+    () => [
+      segments.map((segment) => `${segment.id}:${segment.location.lng}:${segment.location.lat}`).join('|'),
+      selectedSegment?.id || '',
+      selectedSegment?.location?.lat || '',
+      selectedSegment?.location?.lng || '',
+    ].join('|'),
+    [segments, selectedSegment]
   );
 
   useEffect(() => {
-    if (!map || typeof google === 'undefined' || segments.length === 0) {
+    if (!map || typeof google === 'undefined' || segments.length === 0) return;
+
+    if (selectedSegment) {
+      map.setCenter({ lat: selectedSegment.location.lat, lng: selectedSegment.location.lng });
+      map.setZoom(12);
       return;
     }
 
     if (segments.length === 1) {
-      const segment = segments[0];
-      map.setCenter({ lat: segment.location.lat, lng: segment.location.lng });
-      map.setZoom(5.5);
+      map.setCenter({ lat: segments[0].location.lat, lng: segments[0].location.lng });
+      map.setZoom(12);
       return;
     }
 
     const bounds = new google.maps.LatLngBounds();
     segments.forEach((segment) => bounds.extend({ lat: segment.location.lat, lng: segment.location.lng }));
     map.fitBounds(bounds, 56);
-  }, [fitSignature, map, segments]);
+  }, [fitSignature, map, segments, selectedSegment]);
 
   return null;
 }
 
-function collectSegmentActivities(segment: PlannerSegment): Array<PlannerActivity & { slot: string }> {
-  const result: Array<PlannerActivity & { slot: string }> = [];
-  for (const day of segment.days) {
-    for (const a of day.morning) result.push({ ...a, slot: 'morning' });
-    for (const a of day.afternoon) result.push({ ...a, slot: 'afternoon' });
-    for (const a of day.evening) result.push({ ...a, slot: 'evening' });
-  }
-  return result;
-}
-
-type SegmentWithLocation = PlannerSegment & { location: NonNullable<PlannerSegment['location']> };
-
 function PlannerGoogleMapScene({
   segments,
   selectedSegmentId,
+  activeCategories,
   onSelectSegment,
+  onAddHotelToSegment,
+  onRequestAddPlaceToPlanner,
 }: {
   segments: SegmentWithLocation[];
   selectedSegmentId: string | null;
+  activeCategories: Record<PlannerPlaceCategory, boolean>;
   onSelectSegment: (segmentId: string) => void;
+  onAddHotelToSegment?: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => void;
+  onRequestAddPlaceToPlanner?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
 }) {
   const coreLib = useMapsLibrary('core');
   const placesLib = useMapsLibrary('places');
   const map = useMap();
   const selectedSegment = segments.find((segment) => segment.id === selectedSegmentId) || segments[0];
+  const initialCenter = useMemo(
+    () => (
+      selectedSegment
+        ? { lat: selectedSegment.location.lat, lng: selectedSegment.location.lng }
+        : { lat: 42, lng: 9 }
+    ),
+    [selectedSegment]
+  );
+  const initialZoom = selectedSegment ? 12 : 3;
   const [activityMarkers, setActivityMarkers] = useState<ActivityMarkerEntry[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityMarkerEntry | null>(null);
+  const [selectedPlace, setSelectedPlace] = useState<PlannerPlaceCandidate | null>(null);
   const [placeDetails, setPlaceDetails] = useState<PlaceDetails | null>(null);
   const [placeLoading, setPlaceLoading] = useState(false);
   const [cityPlaceDetails, setCityPlaceDetails] = useState<PlaceDetails | null>(null);
   const [cityPlaceLoading, setCityPlaceLoading] = useState(false);
+  const [placesByCategory, setPlacesByCategory] = useState<PlacesByCategory>(getEmptyPlacesBundle);
+  const [placesLoading, setPlacesLoading] = useState(false);
   const [showCityPanel, setShowCityPanel] = useState(false);
   const geocodeGenRef = useRef(0);
   const animatedMarkerIdsRef = useRef<Set<string>>(new Set());
@@ -212,14 +335,14 @@ function PlannerGoogleMapScene({
   }, [placesLib, map]);
 
   useEffect(() => {
-    if (!selectedActivity) {
+    if (!selectedPlace || !selectedSegment) {
       setPlaceDetails(null);
       setPlaceLoading(false);
       return;
     }
 
     const service = placesServiceRef.current;
-    if (!service || !selectedActivity.city) {
+    if (!service) {
       setPlaceDetails(null);
       setPlaceLoading(false);
       return;
@@ -229,9 +352,9 @@ function PlannerGoogleMapScene({
     setPlaceDetails(null);
     setPlaceLoading(true);
 
-    fetchPlaceDetails(service, selectedActivity.title, selectedActivity.city, {
-      lat: selectedActivity.lat,
-      lng: selectedActivity.lng,
+    fetchPlaceDetails(service, selectedPlace.name, selectedSegment.city, {
+      lat: selectedPlace.lat || selectedSegment.location.lat,
+      lng: selectedPlace.lng || selectedSegment.location.lng,
     }).then((details) => {
       if (cancelled) return;
       setPlaceDetails(details);
@@ -241,7 +364,7 @@ function PlannerGoogleMapScene({
     return () => {
       cancelled = true;
     };
-  }, [selectedActivity]);
+  }, [selectedPlace, selectedSegment]);
 
   useEffect(() => {
     if (!showCityPanel || !selectedSegment) {
@@ -261,10 +384,7 @@ function PlannerGoogleMapScene({
     setCityPlaceDetails(null);
     setCityPlaceLoading(true);
 
-    const cityQuery = selectedSegment.city;
-    const countryQuery = selectedSegment.country || '';
-
-    fetchPlaceDetails(service, cityQuery, countryQuery, {
+    fetchPlaceDetails(service, selectedSegment.city, selectedSegment.country || selectedSegment.city, {
       lat: selectedSegment.location.lat,
       lng: selectedSegment.location.lng,
     }).then((details) => {
@@ -276,7 +396,44 @@ function PlannerGoogleMapScene({
     return () => {
       cancelled = true;
     };
-  }, [showCityPanel, selectedSegment]);
+  }, [selectedSegment, showCityPanel]);
+
+  useEffect(() => {
+    if (!selectedSegment) {
+      setPlacesByCategory(getEmptyPlacesBundle());
+      setSelectedPlace(null);
+      setPlacesLoading(false);
+      return;
+    }
+
+    const service = placesServiceRef.current;
+    if (!service) {
+      setPlacesByCategory(getEmptyPlacesBundle());
+      setSelectedPlace(null);
+      setPlacesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setPlacesLoading(true);
+
+    fetchNearbyPlacesBundle(service, selectedSegment.city, {
+      lat: selectedSegment.location.lat,
+      lng: selectedSegment.location.lng,
+    }, DISCOVERY_CATEGORIES).then((bundle) => {
+      if (cancelled) return;
+      setPlacesByCategory(bundle);
+      setPlacesLoading(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setPlacesByCategory(getEmptyPlacesBundle());
+      setPlacesLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSegment]);
 
   useEffect(() => {
     if (segments.length === 0) {
@@ -292,7 +449,6 @@ function PlannerGoogleMapScene({
     animatedCityIdsRef.current.clear();
     setSelectedActivity(null);
 
-    // Collect activities from ALL segments
     const allActivities: Array<PlannerActivity & { slot: string; city: string; country?: string }> = [];
     for (const segment of segments) {
       for (const activity of collectSegmentActivities(segment)) {
@@ -302,7 +458,7 @@ function PlannerGoogleMapScene({
 
     if (allActivities.length === 0) return;
 
-    (async () => {
+    void (async () => {
       for (const activity of allActivities) {
         if (geocodeGenRef.current !== gen) return;
 
@@ -315,53 +471,88 @@ function PlannerGoogleMapScene({
 
         if (geocodeGenRef.current !== gen || !coords) continue;
 
-        const entry: ActivityMarkerEntry = {
-          activityId: activity.id,
-          title: activity.title,
-          time: activity.time,
-          category: activity.category,
-          activityType: activity.activityType || 'unknown',
-          lat: coords.lat,
-          lng: coords.lng,
-          description: activity.description,
-          tip: activity.tip,
-          neighborhood: activity.neighborhood,
-          durationMinutes: activity.durationMinutes,
-          city: activity.city,
-          country: activity.country,
-        };
-
         setActivityMarkers((prev) => {
-          if (prev.some((m) => m.activityId === entry.activityId)) return prev;
-          return [...prev, entry];
+          if (prev.some((marker) => marker.activityId === activity.id)) return prev;
+          return [
+            ...prev,
+            {
+              activityId: activity.id,
+              title: activity.title,
+              time: activity.time,
+              category: activity.category,
+              placeCategory: getPlannerPlaceCategoryForActivity(activity),
+              activityType: activity.activityType || 'unknown',
+              lat: coords.lat,
+              lng: coords.lng,
+              description: activity.description,
+              tip: activity.tip,
+              neighborhood: activity.neighborhood,
+              durationMinutes: activity.durationMinutes,
+              city: activity.city,
+              country: activity.country,
+            },
+          ];
         });
       }
     })();
 
     return () => {
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally bumping the generation to cancel in-flight geocoding
       geocodeGenRef.current++;
     };
   }, [segments]);
 
+  const visiblePlaces = useMemo(
+    () => dedupeVisiblePlaces(
+      DISCOVERY_CATEGORIES.filter((category) => activeCategories[category]).flatMap((category) => placesByCategory[category] || [])
+    ),
+    [activeCategories, placesByCategory]
+  );
+
+  const visibleActivityMarkers = useMemo(
+    () => activityMarkers.filter((marker) => activeCategories[marker.placeCategory]),
+    [activeCategories, activityMarkers]
+  );
+
+  useEffect(() => {
+    if (selectedPlace && !activeCategories[selectedPlace.category]) {
+      setSelectedPlace(null);
+    }
+  }, [activeCategories, selectedPlace]);
+
+  useEffect(() => {
+    if (selectedActivity && !activeCategories[selectedActivity.placeCategory]) {
+      setSelectedActivity(null);
+    }
+  }, [activeCategories, selectedActivity]);
+
+  const canInsertNonHotel = Boolean(selectedSegment && selectedSegment.days.length > 0 && onRequestAddPlaceToPlanner);
+
   const handleActivityClick = useCallback((marker: ActivityMarkerEntry) => {
+    setSelectedPlace(null);
     setShowCityPanel(false);
     setSelectedActivity((prev) => (prev?.activityId === marker.activityId ? null : marker));
   }, []);
 
   const handleCityMarkerClick = useCallback((segmentId: string) => {
     setSelectedActivity(null);
+    setSelectedPlace(null);
     onSelectSegment(segmentId);
     setShowCityPanel(true);
   }, [onSelectSegment]);
+
+  const handleDiscoveryPlaceClick = useCallback((place: PlannerPlaceCandidate) => {
+    setSelectedActivity(null);
+    setShowCityPanel(false);
+    setSelectedPlace((prev) => (prev?.placeId === place.placeId ? null : place));
+  }, []);
 
   if (!coreLib) return null;
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <Map
-        defaultCenter={{ lat: 42, lng: 9 }}
-        defaultZoom={3}
+      <GoogleMap
+        defaultCenter={initialCenter}
+        defaultZoom={initialZoom}
         mapId={PLANNER_GOOGLE_MAPS_MAP_ID || undefined}
         reuseMaps
         disableDefaultUI={false}
@@ -373,9 +564,8 @@ function PlannerGoogleMapScene({
         renderingType={RenderingType.VECTOR}
         style={{ width: '100%', height: '100%' }}
       >
-        <PlannerViewportManager segments={segments} />
+        <PlannerViewportManager segments={segments} selectedSegment={selectedSegment} />
         <PlannerRouteOverlay segments={segments} />
-
         {segments.map((segment, index) => {
           const isNew = !animatedCityIdsRef.current.has(segment.id);
           if (isNew) animatedCityIdsRef.current.add(segment.id);
@@ -397,7 +587,32 @@ function PlannerGoogleMapScene({
           );
         })}
 
-        {activityMarkers.map((marker) => {
+        {visiblePlaces
+          .filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng))
+          .map((place) => {
+            const labelText = getDiscoveryMarkerLabel(place);
+            const metrics = getDiscoveryChipMarkerMetrics(labelText);
+            const isSelectedPlace = selectedPlace?.placeId === place.placeId;
+            return (
+              <Marker
+                key={`${place.category}-${place.placeId}`}
+                position={{ lat: place.lat!, lng: place.lng! }}
+                icon={{
+                  url: buildDiscoveryChipMarkerIcon({
+                    category: place.category,
+                    labelText,
+                    isSelected: isSelectedPlace,
+                  }),
+                  scaledSize: new google.maps.Size(metrics.width, metrics.height),
+                  anchor: new google.maps.Point(Math.round(metrics.width / 2), Math.round(metrics.height / 2)),
+                }}
+                zIndex={isSelectedPlace ? 920 : place.category === 'hotel' ? 760 : 640}
+                onClick={() => handleDiscoveryPlaceClick(place)}
+              />
+            );
+          })}
+
+        {visibleActivityMarkers.map((marker) => {
           const isNew = !animatedMarkerIdsRef.current.has(marker.activityId);
           if (isNew) animatedMarkerIdsRef.current.add(marker.activityId);
 
@@ -406,9 +621,9 @@ function PlannerGoogleMapScene({
               key={marker.activityId}
               position={{ lat: marker.lat, lng: marker.lng }}
               icon={{
-                url: buildEmojiMarkerIcon(ACTIVITY_EMOJI[marker.activityType] || ACTIVITY_EMOJI.unknown),
-                scaledSize: new google.maps.Size(36, 36),
-                anchor: new google.maps.Point(18, 18),
+                url: buildEmojiMarkerIcon(ACTIVITY_EMOJI[marker.activityType] || ACTIVITY_EMOJI.unknown, 'white', '#94a3b8'),
+                scaledSize: new google.maps.Size(32, 32),
+                anchor: new google.maps.Point(16, 16),
               }}
               zIndex={500}
               animation={isNew ? google.maps.Animation.DROP : undefined}
@@ -418,35 +633,19 @@ function PlannerGoogleMapScene({
         })}
 
         {selectedActivity && (
-          <InfoWindow
-            position={{ lat: selectedActivity.lat, lng: selectedActivity.lng }}
-            onCloseClick={() => setSelectedActivity(null)}
-            pixelOffset={[0, -20]}
-          >
+          <InfoWindow position={{ lat: selectedActivity.lat, lng: selectedActivity.lng }} onCloseClick={() => setSelectedActivity(null)} pixelOffset={[0, -20]}>
             <div className="w-[280px]">
               <div className="flex items-start gap-2.5">
                 <span className="text-2xl leading-none">{ACTIVITY_EMOJI[selectedActivity.activityType] || ACTIVITY_EMOJI.unknown}</span>
                 <div className="min-w-0 flex-1">
                   <h3 className="text-sm font-semibold leading-tight text-slate-900">{selectedActivity.title}</h3>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    {placeDetails?.rating && (
-                      <span className="flex items-center gap-0.5 text-xs font-medium text-amber-600">
-                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                        {placeDetails.rating}
-                      </span>
-                    )}
-                    {selectedActivity.category && (
-                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
-                        {selectedActivity.category}
-                      </span>
-                    )}
-                  </div>
+                  {selectedActivity.category && (
+                    <div className="mt-1">
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">{selectedActivity.category}</span>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {placeDetails?.photoUrls?.[0] && (
-                <img src={placeDetails.photoUrls[0]} alt="" className="mt-2 h-[100px] w-full rounded-lg object-cover" />
-              )}
 
               {selectedActivity.description && (
                 <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-600">{selectedActivity.description}</p>
@@ -478,6 +677,48 @@ function PlannerGoogleMapScene({
                   </div>
                 </div>
               )}
+            </div>
+          </InfoWindow>
+        )}
+
+        {!selectedActivity && selectedPlace && selectedSegment && (
+          <InfoWindow
+            position={{ lat: selectedPlace.lat || selectedSegment.location.lat, lng: selectedPlace.lng || selectedSegment.location.lng }}
+            onCloseClick={() => setSelectedPlace(null)}
+            pixelOffset={[0, -20]}
+          >
+            <div className="w-[300px]">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-lg leading-none">{getPlannerPlaceEmoji(selectedPlace.category, selectedPlace.activityType)}</span>
+                    <h3 className="text-sm font-semibold leading-tight text-slate-900">{selectedPlace.name}</h3>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">{placeDetails?.formattedAddress || selectedPlace.formattedAddress}</p>
+                </div>
+                {typeof (placeDetails?.rating ?? selectedPlace.rating) === 'number' && (
+                  <span className="flex items-center gap-0.5 text-xs font-medium text-amber-600">
+                    <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                    {(placeDetails?.rating ?? selectedPlace.rating)?.toFixed(1)}
+                  </span>
+                )}
+              </div>
+
+              {(placeDetails?.photoUrls?.[0] || selectedPlace.photoUrls?.[0]) && (
+                <img src={placeDetails?.photoUrls?.[0] || selectedPlace.photoUrls?.[0]} alt="" className="mt-2 h-[104px] w-full rounded-lg object-cover" />
+              )}
+
+              <div className="mt-2 flex flex-wrap gap-1">
+                <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                  {getPlannerPlaceCategoryLabel(selectedPlace.category)}
+                </span>
+                {placeDetails?.isOpenNow === true && (
+                  <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">Abierto ahora</span>
+                )}
+                {placeDetails?.isOpenNow === false && (
+                  <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700">Cerrado ahora</span>
+                )}
+              </div>
 
               {placeLoading && (
                 <div className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
@@ -485,47 +726,51 @@ function PlannerGoogleMapScene({
                 </div>
               )}
 
-              {placeDetails?.formattedAddress && (
-                <p className="mt-2 flex items-start gap-1 text-[11px] text-slate-500">
-                  <MapPin className="mt-0.5 h-3 w-3 flex-shrink-0 text-slate-400" />
-                  {placeDetails.formattedAddress}
-                </p>
+              {placeDetails?.reviewSnippet && (
+                <p className="mt-2 line-clamp-3 text-[11px] leading-relaxed text-slate-600">{placeDetails.reviewSnippet}</p>
+              )}
+
+              {selectedPlace.category === 'hotel' ? (
+                <Button type="button" size="sm" className="mt-3 w-full" onClick={() => onAddHotelToSegment?.(selectedSegment.id, selectedPlace as PlannerPlaceHotelCandidate)}>
+                  Agregar hotel al destino
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mt-3 w-full"
+                    disabled={!canInsertNonHotel}
+                    onClick={() => onRequestAddPlaceToPlanner?.({ segmentId: selectedSegment.id, place: selectedPlace })}
+                  >
+                    Agregar al itinerario
+                  </Button>
+                  {!canInsertNonHotel && (
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      Este destino todavía no tiene días generados para ubicar actividades.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </InfoWindow>
         )}
 
         {!selectedActivity && showCityPanel && selectedSegment && (
-          <InfoWindow
-            position={{ lat: selectedSegment.location.lat, lng: selectedSegment.location.lng }}
-            onCloseClick={() => setShowCityPanel(false)}
-            pixelOffset={[0, -20]}
-          >
-            <div className="w-[280px]">
+          <InfoWindow position={{ lat: selectedSegment.location.lat, lng: selectedSegment.location.lng }} onCloseClick={() => setShowCityPanel(false)} pixelOffset={[0, -20]}>
+            <div className="w-[320px]">
               <div className="flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
-                  {segments.findIndex((s) => s.id === selectedSegment.id) + 1}
+                  {segments.findIndex((segment) => segment.id === selectedSegment.id) + 1}
                 </span>
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900">{formatDestinationLabel(selectedSegment.city)}</h3>
-                  {selectedSegment.country && (
-                    <span className="text-[11px] text-slate-500">{selectedSegment.country}</span>
-                  )}
+                  {selectedSegment.country && <span className="text-[11px] text-slate-500">{selectedSegment.country}</span>}
                 </div>
               </div>
 
               {cityPlaceDetails?.photoUrls?.[0] && (
                 <img src={cityPlaceDetails.photoUrls[0]} alt="" className="mt-2 h-[100px] w-full rounded-lg object-cover" />
-              )}
-
-              {cityPlaceDetails?.rating && (
-                <div className="mt-2 flex items-center gap-0.5 text-xs font-medium text-amber-600">
-                  <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                  {cityPlaceDetails.rating}
-                  {cityPlaceDetails.userRatingsTotal && (
-                    <span className="ml-1 text-[10px] font-normal text-slate-400">({cityPlaceDetails.userRatingsTotal.toLocaleString()})</span>
-                  )}
-                </div>
               )}
 
               <div className="mt-2 flex flex-wrap gap-1">
@@ -538,15 +783,48 @@ function PlannerGoogleMapScene({
                     {selectedSegment.nights} noche{selectedSegment.nights !== 1 ? 's' : ''}
                   </span>
                 )}
-                {selectedSegment.days.length > 0 && (
-                  <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-                    {selectedSegment.days.reduce((acc, d) => acc + d.morning.length + d.afternoon.length + d.evening.length, 0)} actividades
-                  </span>
-                )}
               </div>
 
               {selectedSegment.summary && (
                 <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-600">{selectedSegment.summary}</p>
+              )}
+
+              <div className="mt-3 rounded-md border border-blue-100 bg-blue-50 p-2 text-[11px] text-blue-800">
+                Hoteles cotizan inventario real. Restaurantes, cafes, museos y actividades se agregan al planner eligiendo dia y bloque.
+              </div>
+
+              {placesLoading ? (
+                <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Cargando lugares de la ciudad...
+                </div>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {DISCOVERY_CATEGORIES.filter((category) => activeCategories[category]).map((category) => {
+                    const topPlaces = placesByCategory[category].slice(0, 2);
+                    if (topPlaces.length === 0) return null;
+
+                    return (
+                      <div key={category}>
+                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          {CATEGORY_STYLES[category].label}
+                        </p>
+                        <div className="space-y-1">
+                          {topPlaces.map((place) => (
+                            <button
+                              key={place.placeId}
+                              type="button"
+                              className="block w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-left text-[11px] text-slate-700 transition hover:border-primary/50 hover:bg-primary/5"
+                              onClick={() => handleDiscoveryPlaceClick(place)}
+                            >
+                              <span className="font-medium text-slate-900">{place.name}</span>
+                              {place.rating ? ` • ${place.rating}` : ''}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
 
               {cityPlaceLoading && (
@@ -557,8 +835,8 @@ function PlannerGoogleMapScene({
             </div>
           </InfoWindow>
         )}
+      </GoogleMap>
 
-      </Map>
     </div>
   );
 }
@@ -566,25 +844,32 @@ function PlannerGoogleMapScene({
 export default function TripPlannerMap({
   segments,
   days,
+  activeCategories,
   isResolvingLocations = false,
   locationWarning,
   onSelectSegment,
+  onAddHotelToSegment,
+  onRequestAddPlaceToPlanner,
 }: TripPlannerMapProps) {
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
   const mappedSegments = useMemo(
-    () =>
-      segments.filter(
-        (segment): segment is PlannerSegment & { location: NonNullable<PlannerSegment['location']> } =>
-          Boolean(segment.location && Number.isFinite(segment.location.lat) && Number.isFinite(segment.location.lng))
-      ),
+    () => segments.filter(
+      (segment): segment is SegmentWithLocation =>
+        Boolean(segment.location && Number.isFinite(segment.location.lat) && Number.isFinite(segment.location.lng))
+    ),
     [segments]
   );
 
   useEffect(() => {
     if (!selectedSegmentId && mappedSegments.length > 0) {
       setSelectedSegmentId(mappedSegments[0].id);
+      return;
+    }
+
+    if (selectedSegmentId && !mappedSegments.some((segment) => segment.id === selectedSegmentId)) {
+      setSelectedSegmentId(mappedSegments[0]?.id || null);
     }
   }, [mappedSegments, selectedSegmentId]);
 
@@ -593,8 +878,8 @@ export default function TripPlannerMap({
   const canRenderMap = HAS_PLANNER_GOOGLE_MAPS && mappedSegments.length > 0 && !mapError;
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-primary/15 bg-slate-100 shadow-sm">
-      <div className="absolute inset-x-4 top-4 z-10 flex flex-wrap items-start justify-between gap-3 pointer-events-none animate-in fade-in duration-700">
+    <div className="relative overflow-hidden rounded-[28px] border border-primary/15 bg-transparent shadow-sm">
+      <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-wrap items-start justify-between gap-3 animate-in fade-in duration-700">
         <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-lg backdrop-blur">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             <MapPinned className="h-3.5 w-3.5 text-primary" />
@@ -650,10 +935,13 @@ export default function TripPlannerMap({
             <PlannerGoogleMapScene
               segments={mappedSegments}
               selectedSegmentId={selectedSegmentId}
+              activeCategories={activeCategories}
               onSelectSegment={(segmentId) => {
                 setSelectedSegmentId(segmentId);
                 onSelectSegment?.(segmentId);
               }}
+              onAddHotelToSegment={onAddHotelToSegment}
+              onRequestAddPlaceToPlanner={onRequestAddPlaceToPlanner}
             />
           </APIProvider>
         )}
@@ -663,7 +951,7 @@ export default function TripPlannerMap({
         <div className="flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <Route className="h-3.5 w-3.5 text-primary" />
-            {canRenderMap ? 'Google Maps interactivo con zoom y paneo' : 'Vista del recorrido preparada para Google Maps'}
+            {canRenderMap ? 'Google Maps interactivo con filtros de hoteles, gastronomía, museos y actividades' : 'Vista del recorrido preparada para Google Maps'}
           </div>
           {(unresolvedCount > 0 || locationWarning || mapError) && (
             <div className="flex items-center gap-2 text-amber-600">

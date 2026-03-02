@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { handleFlightSearch, handleHotelSearch } from '@/features/chat/services/searchHandlers';
+import type { LocalHotelData } from '@/features/chat/types/chat';
 import type { MessageRow } from '@/features/chat/types/chat';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
-import type { TripPlannerState } from './types';
+import { normalizePlannerDayScheduling } from './scheduling';
+import type { PlannerPlaceCandidate, PlannerPlaceHotelCandidate, TripPlannerState } from './types';
 import {
   buildPlannerGenerationPayload,
+  createDraftPlannerFromRequest,
   formatDestinationLabel,
   getPlannerHotelDisplayId,
   getInclusiveDateRangeDays,
   normalizePlannerState,
 } from './utils';
 import { enrichPlannerWithLocations } from './services/plannerGeocoding';
+import { rankInventoryHotelsForPlace } from './services/plannerHotelMatcher';
+import { getPlannerPlaceCategoryLabel, isFoodLikePlannerPlace } from './services/plannerPlaceMapper';
 
 function isPersistableConversationId(value: string | null): value is string {
   if (!value || value.startsWith('temp-')) {
@@ -86,6 +91,60 @@ function buildPlannerTransportSearchSignature(input: {
   ].join('|');
 }
 
+function mergePlannerHotels(...hotelSets: LocalHotelData[][]): LocalHotelData[] {
+  const merged = new Map<string, LocalHotelData>();
+
+  hotelSets.flat().forEach((hotel) => {
+    const hotelId = getPlannerHotelDisplayId(hotel);
+    if (!merged.has(hotelId)) {
+      merged.set(hotelId, hotel);
+    }
+  });
+
+  return Array.from(merged.values());
+}
+
+function isDraftPlannerState(state: TripPlannerState | null | undefined): boolean {
+  return Boolean(state?.generationMeta?.isDraft);
+}
+
+function shouldReplacePlannerState(
+  current: TripPlannerState | null,
+  next: TripPlannerState | null,
+): boolean {
+  if (!next) return false;
+  if (!current) return true;
+
+  const currentIsDraft = isDraftPlannerState(current);
+  const nextIsDraft = isDraftPlannerState(next);
+
+  if (currentIsDraft !== nextIsDraft) {
+    return currentIsDraft && !nextIsDraft;
+  }
+
+  const currentVersion = current.generationMeta?.version || 0;
+  const nextVersion = next.generationMeta?.version || 0;
+  if (nextVersion !== currentVersion) {
+    return nextVersion > currentVersion;
+  }
+
+  return (current.generationMeta?.updatedAt || '') < (next.generationMeta?.updatedAt || '');
+}
+
+function buildGoogleMapsActivityDescription(place: PlannerPlaceCandidate): string {
+  const parts = [place.formattedAddress];
+  if (typeof place.rating === 'number') {
+    parts.push(`Google ${place.rating.toFixed(1)}`);
+  }
+  if (place.isOpenNow === true) {
+    parts.push('Abierto ahora');
+  } else if (place.isOpenNow === false) {
+    parts.push('Cerrado ahora');
+  }
+
+  return parts.filter(Boolean).join(' • ');
+}
+
 export default function useTripPlanner(
   conversationId: string | null,
   messages: MessageRow[],
@@ -105,7 +164,25 @@ export default function useTripPlanner(
   const isAutoLoadingHotelsRef = useRef(false);
   const isAutoLoadingTransportRef = useRef(false);
 
-  const persistPlannerState = useCallback(async (state: TripPlannerState, source: string) => {
+  useEffect(() => {
+    setPlannerState(null);
+    setPlannerError(null);
+    setPlannerLocationWarning(null);
+    setIsResolvingLocations(false);
+    resolvingSignatureRef.current = null;
+
+    if (conversationId && isPersistableConversationId(conversationId)) {
+      setIsLoadingPlanner(true);
+      return;
+    }
+
+    setIsLoadingPlanner(false);
+  }, [conversationId]);
+
+  const persistPlannerState = useCallback(async (
+    state: TripPlannerState,
+    source: TripPlannerState['generationMeta']['source']
+  ) => {
     if (!isPersistableConversationId(conversationId)) return;
 
     const normalizedState: TripPlannerState = {
@@ -116,6 +193,11 @@ export default function useTripPlanner(
         source: source as TripPlannerState['generationMeta']['source'],
         updatedAt: new Date().toISOString(),
         version: (state.generationMeta?.version || 0) + (source === 'chat' ? 0 : 1),
+        uiPhase: source === 'draft'
+          ? (state.generationMeta?.uiPhase || 'draft_generating')
+          : 'ready',
+        isDraft: source === 'draft',
+        draftOriginMessage: source === 'draft' ? state.generationMeta?.draftOriginMessage : undefined,
       },
     };
 
@@ -189,14 +271,7 @@ export default function useTripPlanner(
         : null;
 
       const nextState = fromSystem || fromAssistant || null;
-      setPlannerState((current) => {
-        if (!current && !nextState) return current;
-        if (!current || !nextState) return nextState;
-        if ((current.generationMeta?.updatedAt || '') >= (nextState.generationMeta?.updatedAt || '')) {
-          return current;
-        }
-        return nextState;
-      });
+      setPlannerState((current) => shouldReplacePlannerState(current, nextState) ? nextState : current);
     } catch (error) {
       console.error('❌ [TRIP PLANNER] Failed to load planner state:', error);
       setPlannerError('No se pudo cargar el estado del planificador.');
@@ -216,17 +291,11 @@ export default function useTripPlanner(
     if (!meta?.plannerData) return;
 
     const nextState = normalizePlannerState(meta.plannerData, conversationId);
-    setPlannerState((current) => {
-      if (!current) return nextState;
-      if ((current.generationMeta?.updatedAt || '') >= (nextState.generationMeta?.updatedAt || '')) {
-        return current;
-      }
-      return nextState;
-    });
+    setPlannerState((current) => shouldReplacePlannerState(current, nextState) ? nextState : current);
   }, [conversationId, messages]);
 
   useEffect(() => {
-    if (!plannerState || plannerState.segments.length === 0) {
+    if (!plannerState || plannerState.segments.length === 0 || isDraftPlannerState(plannerState)) {
       setIsResolvingLocations(false);
       setPlannerLocationWarning(null);
       resolvingSignatureRef.current = null;
@@ -296,6 +365,50 @@ export default function useTripPlanner(
       return next;
     });
   }, [persistPlannerState]);
+
+  const setDraftPlannerFromRequest = useCallback((request: ParsedTravelRequest) => {
+    const draftState = createDraftPlannerFromRequest(request, conversationId || undefined);
+    if (!draftState) {
+      return;
+    }
+
+    setPlannerState((current) => {
+      if (current && !isDraftPlannerState(current)) {
+        return current;
+      }
+
+      if (!current) {
+        return draftState;
+      }
+
+      return {
+        ...draftState,
+        generationMeta: {
+          ...draftState.generationMeta,
+          version: current.generationMeta?.version || draftState.generationMeta.version,
+        },
+      };
+    });
+    setPlannerError(null);
+    setPlannerLocationWarning(null);
+  }, [conversationId]);
+
+  const setPlannerDraftPhase = useCallback((phase: 'draft_parsing' | 'draft_generating') => {
+    setPlannerState((current) => {
+      if (!current || !isDraftPlannerState(current)) {
+        return current;
+      }
+
+      return {
+        ...current,
+        generationMeta: {
+          ...current.generationMeta,
+          uiPhase: phase,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  }, []);
 
   const invokePlannerGeneration = useCallback(async (
     payload: Record<string, unknown>,
@@ -422,6 +535,127 @@ export default function useTripPlanner(
     }));
   }, [updatePlannerState]);
 
+  const addPlaceToPlanner = useCallback(async (
+    segmentId: string,
+    input: {
+      place: PlannerPlaceCandidate;
+      dayId: string;
+      block: 'morning' | 'afternoon' | 'evening';
+    }
+  ) => {
+    if (!plannerState) return;
+
+    const segment = plannerState.segments.find((item) => item.id === segmentId);
+    const day = segment?.days.find((item) => item.id === input.dayId);
+
+    if (!segment || !day) {
+      toast({
+        title: 'No pudimos agregar el lugar',
+        description: 'Elegí un día válido del planner para ubicar esta actividad.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const duplicateInBlock = day[input.block].some((activity) => activity.placeId === input.place.placeId);
+    const duplicateRestaurant = day.restaurants.some((restaurant) => restaurant.placeId === input.place.placeId);
+    if (duplicateInBlock || duplicateRestaurant) {
+      toast({
+        title: 'Ese lugar ya está en el planner',
+        description: `${input.place.name} ya fue agregado en ${formatDestinationLabel(segment.city)}.`,
+      });
+      return;
+    }
+
+    if (day.locked) {
+      toast({
+        title: 'Día bloqueado',
+        description: 'El lugar se agregará igual como edición manual dentro de este día.',
+      });
+    }
+
+    await updatePlannerState((current) => {
+      const segmentIndex = current.segments.findIndex((item) => item.id === segmentId);
+      if (segmentIndex === -1) {
+        return current;
+      }
+
+      const nextSegments = current.segments.map((currentSegment, currentSegmentIndex) => {
+        if (currentSegment.id !== segmentId) {
+          return currentSegment;
+        }
+
+        const nextDays = currentSegment.days.map((currentDay, dayIndex) => {
+          if (currentDay.id !== input.dayId) {
+            return currentDay;
+          }
+
+          const activityId = `gmaps-${input.place.placeId}-${input.block}`;
+          const nextActivity = {
+            id: activityId,
+            time: undefined,
+            title: input.place.name,
+            description: buildGoogleMapsActivityDescription(input.place) || undefined,
+            category: getPlannerPlaceCategoryLabel(input.place.category),
+            activityType: input.place.activityType,
+            recommendedSlot: input.block,
+            neighborhood: input.place.formattedAddress,
+            locked: false,
+            placeId: input.place.placeId,
+            formattedAddress: input.place.formattedAddress,
+            rating: input.place.rating,
+            userRatingsTotal: input.place.userRatingsTotal,
+            photoUrls: input.place.photoUrls,
+            source: 'google_maps' as const,
+          };
+
+          const nextRestaurants = isFoodLikePlannerPlace(input.place) && !currentDay.restaurants.some((restaurant) => restaurant.placeId === input.place.placeId)
+            ? [
+                ...currentDay.restaurants,
+                {
+                  id: `gmaps-restaurant-${input.place.placeId}`,
+                  name: input.place.name,
+                  type: input.place.category === 'cafe' ? 'Cafe' : 'Restaurante',
+                  placeId: input.place.placeId,
+                  formattedAddress: input.place.formattedAddress,
+                  rating: input.place.rating,
+                  userRatingsTotal: input.place.userRatingsTotal,
+                  source: 'google_maps' as const,
+                },
+              ]
+            : currentDay.restaurants;
+
+          const nextDay = {
+            ...currentDay,
+            [input.block]: [...currentDay[input.block], nextActivity],
+            restaurants: nextRestaurants,
+          };
+
+          return normalizePlannerDayScheduling(nextDay, {
+            pace: current.pace,
+            travelers: current.travelers,
+            isTransferDay: currentSegmentIndex > 0 && dayIndex === 0 && Boolean(currentSegment.transportIn),
+          });
+        });
+
+        return {
+          ...currentSegment,
+          days: nextDays,
+        };
+      });
+
+      return {
+        ...current,
+        segments: nextSegments,
+      };
+    });
+
+    toast({
+      title: 'Lugar agregado al planner',
+      description: `${input.place.name} quedó sumado en ${formatDestinationLabel(segment.city)}.`,
+    });
+  }, [plannerState, toast, updatePlannerState]);
+
   const updateTripField = useCallback(async <K extends keyof TripPlannerState>(field: K, value: TripPlannerState[K]) => {
     await updatePlannerState((current) => ({
       ...current,
@@ -495,6 +729,7 @@ export default function useTripPlanner(
           hotelPlan: {
             city: normalized,
             searchStatus: 'idle',
+            matchStatus: 'idle',
             hotelRecommendations: [],
           },
           transportIn: null,
@@ -570,6 +805,45 @@ export default function useTripPlanner(
     };
   }, []);
 
+  const fetchInventoryHotels = useCallback(async (input: {
+    city: string;
+    checkinDate: string;
+    checkoutDate: string;
+    adults: number;
+    children: number;
+    infants: number;
+    hotelName?: string;
+  }) => {
+    const hotelRequest: ParsedTravelRequest = {
+      requestType: 'hotels',
+      hotels: {
+        city: input.city,
+        checkinDate: input.checkinDate,
+        checkoutDate: input.checkoutDate,
+        adults: input.adults,
+        children: input.children,
+        infants: input.infants,
+        ...(input.hotelName ? { hotelName: input.hotelName } : {}),
+      },
+      confidence: 1,
+      originalMessage: input.hotelName
+        ? `Trip planner hotel quote for ${input.hotelName} in ${input.city}`
+        : `Trip planner hotel search for ${input.city}`,
+    };
+
+    const result = await handleHotelSearch(hotelRequest);
+    const hotels = result.data?.combinedData?.hotels || [];
+    const hotelSearchId = result.data?.combinedData?.hotelSearchId;
+    const serviceError = hotels.length === 0 ? normalizeHotelPlannerError(result.response) : undefined;
+
+    return {
+      hotels,
+      hotelSearchId,
+      response: result.response,
+      serviceError,
+    };
+  }, []);
+
   const loadHotelsForSegment = useCallback(async (segmentId: string) => {
     if (!plannerState) return;
     const segment = plannerState.segments.find((item) => item.id === segmentId);
@@ -600,6 +874,7 @@ export default function useTripPlanner(
     }
 
     const signature = buildPlannerHotelSearchSignature(searchInput);
+    const searchChanged = segment.hotelPlan.lastSearchSignature !== signature;
 
     await updatePlannerState((current) => ({
       ...current,
@@ -613,15 +888,35 @@ export default function useTripPlanner(
                 checkinDate: searchInput.checkinDate,
                 checkoutDate: searchInput.checkoutDate,
                 searchStatus: 'loading',
+                matchStatus: searchChanged && item.hotelPlan.selectedPlaceCandidate
+                  ? 'selected_from_map'
+                  : item.hotelPlan.matchStatus || 'idle',
                 hotelRecommendations: item.hotelPlan.lastSearchSignature === signature
                   ? item.hotelPlan.hotelRecommendations
                   : [],
                 selectedHotelId: item.hotelPlan.lastSearchSignature === signature
                   ? item.hotelPlan.selectedHotelId
                   : undefined,
+                confirmedInventoryHotel: item.hotelPlan.lastSearchSignature === signature
+                  ? item.hotelPlan.confirmedInventoryHotel
+                  : null,
+                inventoryMatchCandidates: item.hotelPlan.lastSearchSignature === signature
+                  ? item.hotelPlan.inventoryMatchCandidates
+                  : [],
                 linkedSearchId: item.hotelPlan.lastSearchSignature === signature
                   ? item.hotelPlan.linkedSearchId
                   : undefined,
+                quoteSearchId: item.hotelPlan.lastSearchSignature === signature
+                  ? item.hotelPlan.quoteSearchId
+                  : undefined,
+                quoteLastValidatedAt: item.hotelPlan.lastSearchSignature === signature
+                  ? item.hotelPlan.quoteLastValidatedAt
+                  : undefined,
+                quoteError: item.hotelPlan.lastSearchSignature === signature
+                  ? item.hotelPlan.quoteError
+                  : item.hotelPlan.selectedPlaceCandidate
+                    ? 'Las fechas cambiaron. Volve a validar el hotel real para este destino.'
+                    : undefined,
                 lastSearchSignature: signature,
                 error: undefined,
               },
@@ -629,26 +924,10 @@ export default function useTripPlanner(
       ),
     }));
 
-    const hotelRequest: ParsedTravelRequest = {
-      requestType: 'hotels',
-      hotels: {
-        city: searchInput.city,
-        checkinDate: searchInput.checkinDate,
-        checkoutDate: searchInput.checkoutDate,
-        adults: searchInput.adults,
-        children: searchInput.children,
-        infants: searchInput.infants,
-      },
-      confidence: 1,
-      originalMessage: `Trip planner hotel search for ${searchInput.city}`,
-    };
-
     try {
-      const result = await handleHotelSearch(hotelRequest);
-      const hotels = result.data?.combinedData?.hotels || [];
-      const hotelSearchId = result.data?.combinedData?.hotelSearchId;
+      const { hotels, hotelSearchId, serviceError } = await fetchInventoryHotels(searchInput);
       const noHotels = hotels.length === 0;
-      const hotelError = noHotels ? normalizeHotelPlannerError(result.response) : undefined;
+      const hotelError = noHotels ? serviceError : undefined;
       const hasServiceError = Boolean(hotelError);
 
       await updatePlannerState((current) => ({
@@ -671,11 +950,7 @@ export default function useTripPlanner(
                     checkoutDate: searchInput.checkoutDate,
                     hotelRecommendations: hotels,
                     linkedSearchId: hotelSearchId,
-                    selectedHotelId: noHotels
-                      ? undefined
-                      : selectedStillExists
-                        ? existingSelected
-                        : getPlannerHotelDisplayId(hotels[0]),
+                    selectedHotelId: selectedStillExists ? existingSelected : undefined,
                     lastSearchSignature: signature,
                     error: hotelError,
                   },
@@ -701,10 +976,10 @@ export default function useTripPlanner(
         ),
       }));
     }
-  }, [getSegmentHotelSearchInput, plannerState, updatePlannerState]);
+  }, [fetchInventoryHotels, getSegmentHotelSearchInput, plannerState, updatePlannerState]);
 
   useEffect(() => {
-    if (!plannerState || plannerState.isFlexibleDates || isAutoLoadingHotelsRef.current) {
+    if (!plannerState || plannerState.isFlexibleDates || isDraftPlannerState(plannerState) || isAutoLoadingHotelsRef.current) {
       return;
     }
 
@@ -745,7 +1020,227 @@ export default function useTripPlanner(
     };
   }, [getSegmentHotelSearchInput, loadHotelsForSegment, plannerState]);
 
-  const selectHotel = useCallback(async (segmentId: string, hotelId: string) => {
+  const resolveInventoryMatchForSegment = useCallback(async (
+    segmentId: string,
+    nextPlaceCandidate?: PlannerPlaceHotelCandidate
+  ) => {
+    if (!plannerState) return;
+
+    const segment = plannerState.segments.find((item) => item.id === segmentId);
+    const placeCandidate = nextPlaceCandidate || segment?.hotelPlan.selectedPlaceCandidate || null;
+    if (!segment || !placeCandidate) return;
+
+    const searchInput = getSegmentHotelSearchInput(plannerState, segmentId);
+    if (!searchInput) {
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((item) =>
+          item.id !== segmentId
+            ? item
+            : {
+                ...item,
+                hotelPlan: {
+                  ...item.hotelPlan,
+                  matchStatus: 'selected_from_map',
+                  selectedPlaceCandidate: placeCandidate,
+                  inventoryMatchCandidates: [],
+                  confirmedInventoryHotel: null,
+                  selectedHotelId: undefined,
+                  quoteSearchId: undefined,
+                  quoteLastValidatedAt: undefined,
+                  quoteError: 'Elegi fechas exactas para poder cotizar este hotel real.',
+                  error: undefined,
+                },
+              }
+        ),
+      }));
+      return;
+    }
+
+    await updatePlannerState((current) => ({
+      ...current,
+      segments: current.segments.map((item) =>
+        item.id !== segmentId
+          ? item
+          : {
+              ...item,
+              hotelPlan: {
+                ...item.hotelPlan,
+                selectedPlaceCandidate: placeCandidate,
+                matchStatus: 'matching_inventory',
+                inventoryMatchCandidates: [],
+                confirmedInventoryHotel: null,
+                selectedHotelId: undefined,
+                quoteSearchId: undefined,
+                quoteLastValidatedAt: undefined,
+                quoteError: undefined,
+                error: undefined,
+              },
+            }
+      ),
+    }));
+
+    try {
+      const narrowedResult = await fetchInventoryHotels({
+        ...searchInput,
+        hotelName: placeCandidate.name,
+      });
+
+      if (narrowedResult.serviceError) {
+        await updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((item) =>
+            item.id !== segmentId
+              ? item
+              : {
+                  ...item,
+                  hotelPlan: {
+                    ...item.hotelPlan,
+                    matchStatus: 'error',
+                    selectedPlaceCandidate: placeCandidate,
+                    inventoryMatchCandidates: [],
+                    quoteError: narrowedResult.serviceError,
+                    error: narrowedResult.serviceError,
+                  },
+                }
+          ),
+        }));
+        return;
+      }
+
+      const narrowedMatch = rankInventoryHotelsForPlace({
+        placeCandidate,
+        hotels: narrowedResult.hotels,
+        linkedSearchId: narrowedResult.hotelSearchId,
+      });
+
+      if (narrowedMatch.status === 'matched' && narrowedMatch.autoSelectedHotelId) {
+        const matchedCandidate = narrowedMatch.candidates.find(
+          (candidate) => candidate.hotelId === narrowedMatch.autoSelectedHotelId
+        );
+
+        if (matchedCandidate) {
+          await updatePlannerState((current) => ({
+            ...current,
+            segments: current.segments.map((item) =>
+              item.id !== segmentId
+                ? item
+                : {
+                    ...item,
+                    hotelPlan: {
+                      ...item.hotelPlan,
+                      searchStatus: 'ready',
+                      matchStatus: 'quoted',
+                      selectedPlaceCandidate: placeCandidate,
+                      selectedHotelId: matchedCandidate.hotelId,
+                      confirmedInventoryHotel: matchedCandidate.hotel,
+                      inventoryMatchCandidates: narrowedMatch.candidates,
+                      hotelRecommendations: mergePlannerHotels(
+                        [matchedCandidate.hotel],
+                        narrowedResult.hotels,
+                        item.hotelPlan.hotelRecommendations
+                      ),
+                      linkedSearchId: narrowedResult.hotelSearchId || item.hotelPlan.linkedSearchId,
+                      quoteSearchId: narrowedResult.hotelSearchId,
+                      quoteLastValidatedAt: new Date().toISOString(),
+                      quoteError: undefined,
+                      error: undefined,
+                    },
+                  }
+            ),
+          }));
+          return;
+        }
+      }
+
+      if (narrowedMatch.status === 'needs_confirmation' && narrowedMatch.candidates.length > 0) {
+        await updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((item) =>
+            item.id !== segmentId
+              ? item
+              : {
+                  ...item,
+                  hotelPlan: {
+                    ...item.hotelPlan,
+                    matchStatus: 'needs_confirmation',
+                    selectedPlaceCandidate: placeCandidate,
+                    inventoryMatchCandidates: narrowedMatch.candidates,
+                    hotelRecommendations: mergePlannerHotels(
+                      narrowedResult.hotels,
+                      item.hotelPlan.hotelRecommendations
+                    ),
+                    linkedSearchId: narrowedResult.hotelSearchId || item.hotelPlan.linkedSearchId,
+                    quoteError: 'Encontramos varias coincidencias posibles. Confirmá cuál querés cotizar.',
+                    error: undefined,
+                  },
+                }
+          ),
+        }));
+        return;
+      }
+
+      let alternativeHotels = segment.hotelPlan.hotelRecommendations;
+      let alternativeSearchId = segment.hotelPlan.linkedSearchId;
+
+      const currentSignature = buildPlannerHotelSearchSignature(searchInput);
+      const shouldRefreshAlternatives =
+        segment.hotelPlan.lastSearchSignature !== currentSignature || alternativeHotels.length === 0;
+
+      if (shouldRefreshAlternatives) {
+        const broadResult = await fetchInventoryHotels(searchInput);
+        alternativeHotels = broadResult.hotels;
+        alternativeSearchId = broadResult.hotelSearchId;
+      }
+
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((item) =>
+          item.id !== segmentId
+            ? item
+            : {
+                ...item,
+                hotelPlan: {
+                  ...item.hotelPlan,
+                  searchStatus: 'ready',
+                  matchStatus: 'not_found',
+                  selectedPlaceCandidate: placeCandidate,
+                  inventoryMatchCandidates: narrowedMatch.candidates,
+                  confirmedInventoryHotel: null,
+                  selectedHotelId: undefined,
+                  hotelRecommendations: mergePlannerHotels(alternativeHotels, narrowedResult.hotels),
+                  linkedSearchId: alternativeSearchId || item.hotelPlan.linkedSearchId,
+                  quoteSearchId: undefined,
+                  quoteLastValidatedAt: undefined,
+                  quoteError: 'No encontramos este hotel exacto en inventario. Elegi una alternativa real para cotizar.',
+                  error: undefined,
+                },
+              }
+        ),
+      }));
+    } catch (error: any) {
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((item) =>
+          item.id !== segmentId
+            ? item
+            : {
+                ...item,
+                hotelPlan: {
+                  ...item.hotelPlan,
+                  matchStatus: 'error',
+                  selectedPlaceCandidate: placeCandidate,
+                  inventoryMatchCandidates: [],
+                  quoteError: error?.message || 'No se pudo validar el hotel elegido.',
+                  error: error?.message || 'No se pudo validar el hotel elegido.',
+                },
+              }
+        ),
+      }));
+    }
+  }, [fetchInventoryHotels, getSegmentHotelSearchInput, plannerState, updatePlannerState]);
+
+  const selectHotelPlaceFromMap = useCallback(async (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => {
     await updatePlannerState((current) => ({
       ...current,
       segments: current.segments.map((segment) =>
@@ -755,10 +1250,262 @@ export default function useTripPlanner(
               ...segment,
               hotelPlan: {
                 ...segment.hotelPlan,
-                selectedHotelId: hotelId,
+                selectedPlaceCandidate: placeCandidate,
+                matchStatus: 'selected_from_map',
+                inventoryMatchCandidates: [],
+                confirmedInventoryHotel: null,
+                selectedHotelId: undefined,
+                quoteSearchId: undefined,
+                quoteLastValidatedAt: undefined,
+                quoteError: undefined,
+                error: undefined,
               },
             }
       ),
+    }));
+
+    await resolveInventoryMatchForSegment(segmentId, placeCandidate);
+  }, [resolveInventoryMatchForSegment, updatePlannerState]);
+
+  const confirmInventoryHotelMatch = useCallback(async (segmentId: string, hotelId: string) => {
+    await updatePlannerState((current) => ({
+      ...current,
+      segments: current.segments.map((segment) => {
+        if (segment.id !== segmentId) {
+          return segment;
+        }
+
+        const matchedCandidate = segment.hotelPlan.inventoryMatchCandidates?.find(
+          (candidate) => candidate.hotelId === hotelId
+        );
+
+        if (!matchedCandidate) {
+          return segment;
+        }
+
+        return {
+          ...segment,
+          hotelPlan: {
+            ...segment.hotelPlan,
+            searchStatus: 'ready',
+            matchStatus: 'quoted',
+            selectedHotelId: matchedCandidate.hotelId,
+            confirmedInventoryHotel: matchedCandidate.hotel,
+            hotelRecommendations: mergePlannerHotels(
+              [matchedCandidate.hotel],
+              segment.hotelPlan.hotelRecommendations
+            ),
+            inventoryMatchCandidates: [],
+            quoteSearchId: matchedCandidate.linkedSearchId,
+            quoteLastValidatedAt: new Date().toISOString(),
+            quoteError: undefined,
+            error: undefined,
+          },
+        };
+      }),
+    }));
+  }, [updatePlannerState]);
+
+  const refreshQuotedHotel = useCallback(async (segmentId: string) => {
+    if (!plannerState) return;
+
+    const segment = plannerState.segments.find((item) => item.id === segmentId);
+    if (!segment) return;
+
+    const searchInput = getSegmentHotelSearchInput(plannerState, segmentId);
+    if (!searchInput) {
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((item) =>
+          item.id !== segmentId
+            ? item
+            : {
+                ...item,
+                hotelPlan: {
+                  ...item.hotelPlan,
+                  quoteError: 'Elegi fechas exactas para poder validar el hotel real.',
+                },
+              }
+        ),
+      }));
+      return;
+    }
+
+    const lookupName =
+      segment.hotelPlan.confirmedInventoryHotel?.name ||
+      segment.hotelPlan.selectedPlaceCandidate?.name;
+
+    if (!lookupName) {
+      return;
+    }
+
+    await updatePlannerState((current) => ({
+      ...current,
+      segments: current.segments.map((item) =>
+        item.id !== segmentId
+          ? item
+          : {
+              ...item,
+              hotelPlan: {
+                ...item.hotelPlan,
+                matchStatus: 'quoting',
+                quoteError: undefined,
+                error: undefined,
+              },
+            }
+      ),
+    }));
+
+    try {
+      const refreshedResult = await fetchInventoryHotels({
+        ...searchInput,
+        hotelName: lookupName,
+      });
+
+      if (refreshedResult.serviceError) {
+        throw new Error(refreshedResult.serviceError);
+      }
+
+      const selectedHotelId = segment.hotelPlan.selectedHotelId;
+      let selectedHotel = refreshedResult.hotels.find(
+        (hotel) => getPlannerHotelDisplayId(hotel) === selectedHotelId
+      );
+
+      if (!selectedHotel && segment.hotelPlan.confirmedInventoryHotel) {
+        const expectedName = normalizeLocationLabel(segment.hotelPlan.confirmedInventoryHotel.name);
+        selectedHotel = refreshedResult.hotels.find(
+          (hotel) => normalizeLocationLabel(hotel.name) === expectedName
+        );
+      }
+
+      if (!selectedHotel && segment.hotelPlan.selectedPlaceCandidate) {
+        const refreshedMatch = rankInventoryHotelsForPlace({
+          placeCandidate: segment.hotelPlan.selectedPlaceCandidate,
+          hotels: refreshedResult.hotels,
+          linkedSearchId: refreshedResult.hotelSearchId,
+        });
+
+        if (refreshedMatch.status === 'needs_confirmation') {
+          await updatePlannerState((current) => ({
+            ...current,
+            segments: current.segments.map((item) =>
+              item.id !== segmentId
+                ? item
+                : {
+                    ...item,
+                    hotelPlan: {
+                      ...item.hotelPlan,
+                      matchStatus: 'needs_confirmation',
+                      inventoryMatchCandidates: refreshedMatch.candidates,
+                      hotelRecommendations: mergePlannerHotels(
+                        refreshedResult.hotels,
+                        item.hotelPlan.hotelRecommendations
+                      ),
+                      quoteError: 'La validación devolvió varias opciones. Confirmá el hotel real nuevamente.',
+                    },
+                  }
+            ),
+          }));
+          return;
+        }
+
+        if (refreshedMatch.status === 'matched' && refreshedMatch.autoSelectedHotelId) {
+          selectedHotel = refreshedMatch.candidates.find(
+            (candidate) => candidate.hotelId === refreshedMatch.autoSelectedHotelId
+          )?.hotel;
+        }
+      }
+
+      if (!selectedHotel && refreshedResult.hotels.length === 1) {
+        selectedHotel = refreshedResult.hotels[0];
+      }
+
+      if (!selectedHotel) {
+        await resolveInventoryMatchForSegment(segmentId);
+        return;
+      }
+
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((item) =>
+          item.id !== segmentId
+            ? item
+            : {
+                ...item,
+                hotelPlan: {
+                  ...item.hotelPlan,
+                  searchStatus: 'ready',
+                  matchStatus: 'quoted',
+                  selectedHotelId: getPlannerHotelDisplayId(selectedHotel),
+                  confirmedInventoryHotel: selectedHotel,
+                  hotelRecommendations: mergePlannerHotels(
+                    [selectedHotel],
+                    refreshedResult.hotels,
+                    item.hotelPlan.hotelRecommendations
+                  ),
+                  linkedSearchId: refreshedResult.hotelSearchId || item.hotelPlan.linkedSearchId,
+                  quoteSearchId: refreshedResult.hotelSearchId,
+                  quoteLastValidatedAt: new Date().toISOString(),
+                  quoteError: undefined,
+                  error: undefined,
+                },
+              }
+        ),
+      }));
+    } catch (error: any) {
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((item) =>
+          item.id !== segmentId
+            ? item
+            : {
+                ...item,
+                hotelPlan: {
+                  ...item.hotelPlan,
+                  matchStatus: 'error',
+                  quoteError: error?.message || 'No se pudo refrescar la cotización real.',
+                  error: error?.message || 'No se pudo refrescar la cotización real.',
+                },
+              }
+        ),
+      }));
+    }
+  }, [
+    fetchInventoryHotels,
+    getSegmentHotelSearchInput,
+    plannerState,
+    resolveInventoryMatchForSegment,
+    updatePlannerState,
+  ]);
+
+  const selectHotel = useCallback(async (segmentId: string, hotelId: string) => {
+    await updatePlannerState((current) => ({
+      ...current,
+      segments: current.segments.map((segment) => {
+        if (segment.id !== segmentId) {
+          return segment;
+        }
+
+        const selectedHotel = segment.hotelPlan.hotelRecommendations.find(
+          (hotel) => getPlannerHotelDisplayId(hotel) === hotelId
+        );
+
+        return {
+          ...segment,
+          hotelPlan: {
+            ...segment.hotelPlan,
+            selectedHotelId: hotelId,
+            confirmedInventoryHotel: selectedHotel || segment.hotelPlan.confirmedInventoryHotel || null,
+            matchStatus: selectedHotel ? 'quoted' : (segment.hotelPlan.matchStatus || 'idle'),
+            inventoryMatchCandidates: selectedHotel ? [] : segment.hotelPlan.inventoryMatchCandidates,
+            quoteSearchId: selectedHotel ? segment.hotelPlan.linkedSearchId : segment.hotelPlan.quoteSearchId,
+            quoteLastValidatedAt: selectedHotel
+              ? new Date().toISOString()
+              : segment.hotelPlan.quoteLastValidatedAt,
+            quoteError: selectedHotel ? undefined : segment.hotelPlan.quoteError,
+          },
+        };
+      })
     }));
   }, [updatePlannerState]);
 
@@ -884,7 +1631,7 @@ export default function useTripPlanner(
   }, [plannerState, updatePlannerState]);
 
   useEffect(() => {
-    if (!plannerState || plannerState.isFlexibleDates || isAutoLoadingTransportRef.current) {
+    if (!plannerState || plannerState.isFlexibleDates || isDraftPlannerState(plannerState) || isAutoLoadingTransportRef.current) {
       return;
     }
 
@@ -973,6 +1720,8 @@ export default function useTripPlanner(
     plannerError,
     plannerLocationWarning,
     persistPlannerState,
+    setDraftPlannerFromRequest,
+    setPlannerDraftPhase,
     reloadPlannerState: loadPersistedPlannerState,
     updateTripField,
     setExactDateRange,
@@ -985,8 +1734,13 @@ export default function useTripPlanner(
     regenerateDay,
     toggleDayLock,
     toggleActivityLock,
+    addPlaceToPlanner,
     loadHotelsForSegment,
     selectHotel,
+    selectHotelPlaceFromMap,
+    resolveInventoryMatchForSegment,
+    confirmInventoryHotelMatch,
+    refreshQuotedHotel,
     loadTransportForSegment,
     selectTransportOption,
   };

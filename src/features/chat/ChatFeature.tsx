@@ -116,7 +116,9 @@ const ChatFeature = () => {
     ,
     workspaceMode === 'planner' && planner.plannerState ? buildPlannerPromptContext(planner.plannerState) : null,
     planner.plannerState,
-    planner.persistPlannerState
+    planner.persistPlannerState,
+    planner.setDraftPlannerFromRequest,
+    planner.setPlannerDraftPhase
   );
 
   // CTA: Retry with stops when no direct flights
@@ -499,6 +501,11 @@ const ChatFeature = () => {
                 onToggleDayLock={planner.toggleDayLock}
                 onToggleActivityLock={planner.toggleActivityLock}
                 onSelectHotel={planner.selectHotel}
+                onSelectHotelPlaceFromMap={planner.selectHotelPlaceFromMap}
+                onAddPlaceToPlanner={planner.addPlaceToPlanner}
+                onResolveInventoryMatch={planner.resolveInventoryMatchForSegment}
+                onConfirmInventoryHotelMatch={planner.confirmInventoryHotelMatch}
+                onRefreshQuotedHotel={planner.refreshQuotedHotel}
                 onSelectTransportOption={planner.selectTransportOption}
                 onCompletePlannerDateSelection={handlePlannerDateSelection}
               />
