@@ -55,7 +55,7 @@ const ChatInterface = React.memo(({
   const visibleMessages = messages.filter((m: MessageRow) => {
     const meta = (m as any).meta;
     // Hide system memory/context messages
-    if (m.role === 'system' && meta && (meta.messageType === 'contextual_memory' || meta.messageType === 'context_state')) return false;
+    if (m.role === 'system' && meta && (meta.messageType === 'contextual_memory' || meta.messageType === 'context_state' || meta.messageType === 'trip_planner_state')) return false;
     return true;
   });
 
