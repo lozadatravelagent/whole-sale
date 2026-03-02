@@ -947,25 +947,44 @@ export default function TripPlannerMap({
             </div>
           </div>
         ) : mappedSegments.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 bg-[linear-gradient(180deg,#f8fafc,#e2e8f0)] px-6 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <MapPinned className="h-6 w-6" />
-            </div>
-            <div className="space-y-1">
-              <p className="font-medium text-slate-900">
-                {isResolvingLocations ? 'Ubicando destinos en el mapa...' : 'Esperando destinos del viaje'}
-              </p>
-              {draftPhrase ? (
-                <div className="h-[18px] overflow-hidden">
-                  <p key={draftPhrase} className="planner-phrase-rotate text-sm font-medium text-primary">
-                    {draftPhrase}
-                  </p>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500">
-                  {locationWarning || 'El mapa mostrará la ruta completa cuando se definan los destinos.'}
+          <div className="relative h-full">
+            <APIProvider
+              apiKey={PLANNER_GOOGLE_MAPS_API_KEY}
+              language="es"
+              region="ES"
+            >
+              <GoogleMap
+                defaultCenter={{ lat: 30, lng: 10 }}
+                defaultZoom={2.2}
+                mapId={PLANNER_GOOGLE_MAPS_MAP_ID || undefined}
+                reuseMaps
+                disableDefaultUI
+                gestureHandling="cooperative"
+                colorScheme="LIGHT"
+                renderingType={RenderingType.VECTOR}
+                style={{ width: '100%', height: '100%' }}
+              />
+            </APIProvider>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/60 px-6 text-center backdrop-blur-[2px]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <MapPinned className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-medium text-slate-900">
+                  {isResolvingLocations ? 'Ubicando destinos en el mapa...' : 'Esperando destinos del viaje'}
                 </p>
-              )}
+                {draftPhrase ? (
+                  <div className="h-[18px] overflow-hidden">
+                    <p key={draftPhrase} className="planner-phrase-rotate text-sm font-medium text-primary">
+                      {draftPhrase}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    {locationWarning || 'El mapa mostrará la ruta completa cuando se definan los destinos.'}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         ) : (
