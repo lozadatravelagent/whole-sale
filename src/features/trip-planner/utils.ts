@@ -535,6 +535,7 @@ export function formatDayBlockLabel(value: 'morning' | 'afternoon' | 'evening'):
 }
 
 export function formatDestinationLabel(value: string): string {
+  if (!value) return '';
   return value
     .split(' ')
     .filter(Boolean)
