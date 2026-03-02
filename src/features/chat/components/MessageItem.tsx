@@ -1,7 +1,7 @@
 import React, { useMemo, Suspense, lazy, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { User, Bot, FileText, Download, Clock, Check, CheckCheck, Loader2 } from 'lucide-react';
+import { User, Bot, FileText, Download, Clock, Check, CheckCheck, Loader2, Sparkles } from 'lucide-react';
 
 // Lazy load heavy components
 const ReactMarkdown = lazy(() => import('react-markdown'));
@@ -19,6 +19,7 @@ interface MessageItemProps {
   msg: MessageRow;
   onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
   onOpenPlannerDateSelector?: (request: ParsedTravelRequest) => void;
+  onGoToPlanner?: () => void;
 }
 
 // Markdown wrapper component that lazy loads remarkGfm
@@ -42,7 +43,7 @@ const MarkdownContent = ({ content }: { content: string }) => {
 };
 
 // Memoized message component to prevent unnecessary re-renders
-const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector }: MessageItemProps) => {
+const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector, onGoToPlanner }: MessageItemProps) => {
   const messageText = getMessageContent(msg);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -407,7 +408,14 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                           </li>
                         </ul>
                       </div>
-                      <Badge variant="secondary">Planificador</Badge>
+                      {onGoToPlanner ? (
+                        <Button size="sm" className="gap-1.5" onClick={onGoToPlanner}>
+                          <Sparkles className="h-3.5 w-3.5" />
+                          Ir al Planificador
+                        </Button>
+                      ) : (
+                        <Badge variant="secondary">Planificador</Badge>
+                      )}
                     </div>
                     <div className="mt-3 grid gap-2 md:grid-cols-2">
                       {plannerSegments.slice(0, 4).map((segment) => (

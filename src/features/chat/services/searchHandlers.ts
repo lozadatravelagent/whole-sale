@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { runWithConcurrency } from '@/utils/concurrencyPool';
 import type { HotelRequest, HotelStaySegment, ParsedTravelRequest } from '@/services/aiMessageParser';
 import {
   formatForStarling,
@@ -987,70 +988,47 @@ export const handleHotelSearch = async (
 
     console.log(`🔍 [SEARCH STRATEGY] hotelNames: ${hotelNames.length}, hotelChains: ${hotelChains.length}, uncoveredChains: ${uncoveredChains.length}`);
 
-    // STEP 1: Search by specific hotel names (if any)
-    if (hotelNames.length > 0) {
-      console.log(`🏨 [MULTI-NAME] Making ${hotelNames.length} API requests (1 per hotel name):`, hotelNames);
+    // STEP 1+2: Search by hotel names and uncovered chains in parallel (max 3 concurrent)
+    const searchTasks: { label: string; searchTerm: string }[] = [
+      ...hotelNames.map((name) => ({ label: `name:"${name}"`, searchTerm: name })),
+      ...uncoveredChains.map((chain) => ({ label: `chain:"${chain}"`, searchTerm: getSearchTermForChain(chain) })),
+    ];
 
-      for (const name of hotelNames) {
-        console.log(`📤 [MULTI-NAME] Request ${hotelNames.indexOf(name) + 1}/${hotelNames.length}: Searching for "${name}"`);
+    if (searchTasks.length > 0) {
+      console.log(`🏨 [PARALLEL-SEARCH] Making ${searchTasks.length} API requests (max 3 concurrent):`, searchTasks.map(t => t.label));
 
-        const requestBody = {
-          action: 'searchHotels',
-          data: {
-            ...eurovipsParams.hotelParams,
-            cityCode: cityCode,
-            hotelName: name
+      const results = await runWithConcurrency(
+        searchTasks.map((task) => async () => {
+          console.log(`📤 [PARALLEL-SEARCH] Searching for ${task.label}`);
+
+          const response = await supabase.functions.invoke('eurovips-soap', {
+            body: {
+              action: 'searchHotels',
+              data: {
+                ...eurovipsParams.hotelParams,
+                cityCode: cityCode,
+                hotelName: task.searchTerm,
+              },
+            },
+          });
+
+          if (response.error) {
+            console.error(`❌ [PARALLEL-SEARCH] EUROVIPS API error for ${task.label}:`, response.error);
+            return [];
           }
-        };
 
-        const response = await supabase.functions.invoke('eurovips-soap', {
-          body: requestBody
-        });
+          const hotels = response.data.results || [];
+          console.log(`✅ [PARALLEL-SEARCH] ${task.label}: Received ${hotels.length} hotels`);
+          return hotels;
+        }),
+        3,
+      );
 
-        if (response.error) {
-          console.error(`❌ [MULTI-NAME] EUROVIPS API error for "${name}":`, response.error);
-          continue;
-        }
-
-        const nameHotels = response.data.results || [];
-        console.log(`✅ [MULTI-NAME] "${name}": Received ${nameHotels.length} hotels`);
-        allHotels.push(...nameHotels);
+      for (const hotels of results) {
+        allHotels.push(...hotels);
       }
 
-      console.log(`🔗 [MULTI-NAME] Hotels from specific names: ${allHotels.length}`);
-    }
-
-    // STEP 2: Search by uncovered chains (chains not already covered by specific names)
-    if (uncoveredChains.length > 0) {
-      console.log(`🏨 [MULTI-CHAIN] Making ${uncoveredChains.length} API requests (1 per uncovered chain):`, uncoveredChains);
-
-      for (const chain of uncoveredChains) {
-        console.log(`📤 [MULTI-CHAIN] Searching hotels for chain "${chain}"`);
-
-        const requestBody = {
-          action: 'searchHotels',
-          data: {
-            ...eurovipsParams.hotelParams,
-            cityCode: cityCode,
-            hotelName: getSearchTermForChain(chain)
-          }
-        };
-
-        const response = await supabase.functions.invoke('eurovips-soap', {
-          body: requestBody
-        });
-
-        if (response.error) {
-          console.error(`❌ [MULTI-CHAIN] EUROVIPS API error for chain "${chain}":`, response.error);
-          continue;
-        }
-
-        const chainHotels = response.data.results || [];
-        console.log(`✅ [MULTI-CHAIN] Chain "${chain}": Received ${chainHotels.length} hotels`);
-        allHotels.push(...chainHotels);
-      }
-
-      console.log(`🔗 [MULTI-CHAIN] Total hotels after adding chains: ${allHotels.length}`);
+      console.log(`🔗 [PARALLEL-SEARCH] Total hotels from all searches: ${allHotels.length}`);
     }
 
     // STEP 3: Deduplication (if we had any searches)

@@ -12,6 +12,7 @@ import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } fro
 import {
   Bot,
   CalendarDays,
+  Check,
   ChevronRight,
   GripVertical,
   Loader2,
@@ -179,13 +180,20 @@ export default function TripPlannerWorkspace({
     segmentId: string;
     place: PlannerPlaceCandidate;
   } | null>(null);
-  const [mapActiveCategories, setMapActiveCategories] = useState<Record<PlannerPlaceCategory, boolean>>({
-    hotel: true,
-    restaurant: true,
-    cafe: true,
-    museum: true,
-    activity: true,
+  const MAP_FILTERS_STORAGE_KEY = 'tripPlannerMapFilters';
+  const [mapActiveCategories, setMapActiveCategories] = useState<Record<PlannerPlaceCategory, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem(MAP_FILTERS_STORAGE_KEY);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return { hotel: true, restaurant: true, cafe: true, museum: true, activity: true };
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MAP_FILTERS_STORAGE_KEY, JSON.stringify(mapActiveCategories));
+    } catch {}
+  }, [mapActiveCategories]);
   const [isDateSelectionModalOpen, setIsDateSelectionModalOpen] = useState(false);
   const [draggedSegmentId, setDraggedSegmentId] = useState<string | null>(null);
   const [dropTargetSegmentId, setDropTargetSegmentId] = useState<string | null>(null);
@@ -287,6 +295,73 @@ export default function TripPlannerWorkspace({
   const isRegeneratingPlan = activePlannerMutation?.type === 'regen_plan';
   const isDraftPlanner = Boolean(plannerState?.generationMeta?.isDraft);
 
+  const plannerLoadingPhase = useMemo(() => {
+    if (!plannerState && !isLoadingPlanner) return null;
+    if (activePlannerMutation) return { busy: true, steps: [] as { label: string; status: 'done' | 'active' | 'pending' }[] };
+
+    type Step = { label: string; status: 'done' | 'active' | 'pending' };
+    const steps: Step[] = [];
+
+    // Step 1: Itinerary generation
+    const isDraftGenerating = isDraftPlanner && plannerState?.generationMeta?.uiPhase === 'draft_generating';
+    if (isDraftPlanner) {
+      steps.push({
+        label: 'Generando itinerario',
+        status: isDraftGenerating ? 'active' : 'done',
+      });
+    }
+
+    if (!plannerState || isDraftGenerating) {
+      return steps.length > 0 ? { busy: true, steps } : isLoadingPlanner ? { busy: true, steps: [{ label: 'Cargando planner', status: 'active' as const }] } : null;
+    }
+
+    // Step 2: Geocoding
+    const allHaveLocation = plannerState.segments.every((s) => s.location);
+    if (isResolvingLocations || !allHaveLocation) {
+      steps.push({
+        label: `Ubicando ${plannerState.segments.length} destinos`,
+        status: isResolvingLocations ? 'active' : allHaveLocation ? 'done' : 'pending',
+      });
+    } else if (plannerState.segments.length > 0) {
+      steps.push({ label: `${plannerState.segments.length} destinos ubicados`, status: 'done' });
+    }
+
+    // Step 3: Hotels
+    const hotelsLoading = plannerState.segments.filter((s) => s.hotelPlan.searchStatus === 'loading');
+    const hotelsReady = plannerState.segments.filter((s) => s.hotelPlan.searchStatus === 'ready' || s.hotelPlan.searchStatus === 'error');
+    const hotelsTotal = plannerState.segments.length;
+    if (hasExactPlannerDates && !isDraftPlanner) {
+      if (hotelsLoading.length > 0) {
+        steps.push({ label: `Buscando hoteles (${hotelsReady.length}/${hotelsTotal})`, status: 'active' });
+      } else if (hotelsReady.length === hotelsTotal) {
+        steps.push({ label: `${hotelsTotal} destinos con hoteles`, status: 'done' });
+      } else {
+        steps.push({ label: 'Hoteles pendientes', status: 'pending' });
+      }
+    }
+
+    // Step 4: Transport
+    const transportSegments = plannerState.segments.slice(1);
+    const transportLoading = transportSegments.filter((s) => s.transportIn?.searchStatus === 'loading');
+    const transportReady = transportSegments.filter((s) => s.transportIn?.searchStatus === 'ready' || s.transportIn?.searchStatus === 'error');
+    if (hasExactPlannerDates && !isDraftPlanner && transportSegments.length > 0) {
+      if (transportLoading.length > 0) {
+        steps.push({ label: `Buscando transporte (${transportReady.length}/${transportSegments.length})`, status: 'active' });
+      } else if (transportReady.length === transportSegments.length) {
+        steps.push({ label: `${transportSegments.length} tramos con transporte`, status: 'done' });
+      } else {
+        steps.push({ label: 'Transporte pendiente', status: 'pending' });
+      }
+    }
+
+    const busy = steps.some((s) => s.status === 'active' || s.status === 'pending');
+    if (!busy) return null;
+    // Only keep done steps that precede an active/pending one (context), drop trailing dones
+    const lastActiveIndex = steps.reduce((acc, s, i) => (s.status !== 'done' ? i : acc), -1);
+    const visibleSteps = steps.filter((_, i) => i <= lastActiveIndex);
+    return { busy, steps: visibleSteps };
+  }, [activePlannerMutation, hasExactPlannerDates, isDraftPlanner, isLoadingPlanner, isResolvingLocations, plannerState]);
+
   const getHotelStatusText = (segment: TripPlannerState['segments'][number]) => {
     if (isDraftPlanner) {
       return 'Los hoteles reales se habilitan cuando terminemos de generar el itinerario.';
@@ -361,6 +436,33 @@ export default function TripPlannerWorkspace({
     return content?.text;
   }, [visibleMessages]);
 
+  const DRAFT_GENERATING_PHRASES = useMemo(() => [
+    'Organizando destinos y noches por ciudad...',
+    'Armando el día a día de cada tramo...',
+    'Sumando recomendaciones gastronómicas...',
+    'Eligiendo actividades para cada jornada...',
+    'Calculando tiempos y ritmo del viaje...',
+    'Preparando tips y sugerencias locales...',
+    'Ajustando el orden del recorrido...',
+    'Terminando de pulir el itinerario...',
+  ], []);
+
+  const isDraftGenerating = isDraftPlanner && plannerState?.generationMeta?.uiPhase === 'draft_generating';
+  const [draftPhraseIndex, setDraftPhraseIndex] = useState(0);
+
+  useEffect(() => {
+    if (!isDraftGenerating) {
+      setDraftPhraseIndex(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setDraftPhraseIndex((i) => (i + 1) % DRAFT_GENERATING_PHRASES.length);
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [isDraftGenerating, DRAFT_GENERATING_PHRASES]);
+
   const draftProgress = useMemo(() => {
     if (!plannerState || !isDraftPlanner) {
       return null;
@@ -370,6 +472,7 @@ export default function TripPlannerWorkspace({
       return {
         label: 'Completando itinerario',
         description: typingMessage || 'Estamos organizando los tramos, días y recomendaciones del viaje.',
+        generating: true,
       };
     }
 
@@ -468,6 +571,42 @@ export default function TripPlannerWorkspace({
                     )}
                   </div>
                   <p className="trip-planner-body mt-2 text-xs text-muted-foreground">{draftProgress.description}</p>
+                  {draftProgress.generating && (
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                      <div className="h-[18px] overflow-hidden">
+                        <p
+                          key={draftPhraseIndex}
+                          className="planner-phrase-rotate text-xs font-medium text-primary"
+                        >
+                          {DRAFT_GENERATING_PHRASES[draftPhraseIndex]}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!draftProgress && plannerLoadingPhase && plannerLoadingPhase.steps.length > 0 && (
+                <div className="planner-panel-fade-in rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                    {plannerLoadingPhase.steps.map((step) => (
+                      <span key={step.label} className="flex items-center gap-1.5 text-xs">
+                        {step.status === 'done' ? (
+                          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary/15">
+                            <Check className="h-2.5 w-2.5 text-primary" />
+                          </span>
+                        ) : step.status === 'active' ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                        ) : (
+                          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+                        )}
+                        <span className={`trip-planner-body ${step.status === 'active' ? 'font-medium text-foreground' : step.status === 'done' ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}>
+                          {step.label}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -1160,7 +1299,12 @@ export default function TripPlannerWorkspace({
   );
 
   return (
-    <div className="h-full min-h-0 bg-background">
+    <div className="h-full min-h-0 bg-background relative">
+      {plannerLoadingPhase?.busy && (
+        <div className="planner-global-progress absolute inset-x-0 top-0 z-50 h-[3px]" aria-hidden="true">
+          <div className="planner-global-progress__bar h-full w-full bg-primary/80" />
+        </div>
+      )}
       <div className="hidden h-full lg:flex">
         <div className="relative min-h-0 min-w-0 flex-1">
           {isAssistantCollapsed && (

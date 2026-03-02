@@ -23,6 +23,7 @@ interface ChatInterfaceProps {
   onAddToCRM: () => void;
   onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
   onBackToList?: () => void;
+  onGoToPlanner?: () => void;
 }
 
 const ChatInterface = React.memo(({
@@ -40,7 +41,8 @@ const ChatInterface = React.memo(({
   onPdfUpload,
   onAddToCRM,
   onPdfGenerated,
-  onBackToList
+  onBackToList,
+  onGoToPlanner
 }: ChatInterfaceProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -284,6 +286,7 @@ const ChatInterface = React.memo(({
                   key={msg.id}
                   msg={msg}
                   onPdfGenerated={onPdfGenerated}
+                  onGoToPlanner={onGoToPlanner}
                 />
               ))}</>
           )}

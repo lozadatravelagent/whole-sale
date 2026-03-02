@@ -1,6 +1,12 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  APIProvider,
+  Map as GoogleMap,
+  RenderingType,
+} from '@vis.gl/react-google-maps';
 import { CalendarDays, MapPinned, Route, Sparkles } from 'lucide-react';
+import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY, PLANNER_GOOGLE_MAPS_MAP_ID } from '../map';
 
 interface TripPlannerStarterTemplateProps {
   mode: 'idle' | 'processing';
@@ -11,6 +17,28 @@ interface TripPlannerStarterTemplateProps {
 
 function TemplateBlock({ className = '' }: { className?: string }) {
   return <div className={`rounded-xl border border-dashed border-border/70 bg-background/80 ${className}`.trim()} />;
+}
+
+function StarterMapPlaceholder({ isProcessing }: { isProcessing: boolean }) {
+  return (
+    <div className="flex h-full flex-col justify-between gap-4 rounded-[24px] border border-white/80 bg-white/70 p-5 backdrop-blur">
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+        <MapPinned className="h-3.5 w-3.5 text-primary" />
+        Mapa del recorrido
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <TemplateBlock className="h-24" />
+        <TemplateBlock className="h-24" />
+        <TemplateBlock className="h-24" />
+      </div>
+      <div className="flex items-center gap-2 text-xs text-slate-500">
+        <Route className="h-3.5 w-3.5 text-primary" />
+        {isProcessing
+          ? 'La ruta y los destinos aparecerán acá apenas el parser termine de interpretar tu pedido.'
+          : 'Acá vas a ver ciudades, hoteles del mapa y la ruta completa entre tramos.'}
+      </div>
+    </div>
+  );
 }
 
 export default function TripPlannerStarterTemplate({
@@ -62,22 +90,46 @@ export default function TripPlannerStarterTemplate({
             </div>
           )}
 
-          <div className="rounded-[28px] border border-primary/15 bg-[linear-gradient(180deg,rgba(248,250,252,1),rgba(226,232,240,0.92))] p-4 sm:h-[380px]">
-            <div className="flex h-full flex-col justify-between gap-4 rounded-[24px] border border-white/80 bg-white/70 p-5 backdrop-blur">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                <MapPinned className="h-3.5 w-3.5 text-primary" />
-                Mapa del recorrido
+          <div className="overflow-hidden rounded-[28px] border border-primary/15 shadow-sm">
+            <div className="relative h-[320px] sm:h-[380px]">
+              {HAS_PLANNER_GOOGLE_MAPS ? (
+                <APIProvider
+                  apiKey={PLANNER_GOOGLE_MAPS_API_KEY}
+                  language="es"
+                  region="ES"
+                >
+                  <GoogleMap
+                    defaultCenter={{ lat: 30, lng: 10 }}
+                    defaultZoom={2.2}
+                    mapId={PLANNER_GOOGLE_MAPS_MAP_ID || undefined}
+                    reuseMaps
+                    disableDefaultUI
+                    gestureHandling="cooperative"
+                    colorScheme="LIGHT"
+                    renderingType={RenderingType.VECTOR}
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                </APIProvider>
+              ) : (
+                <div className="flex h-full bg-[linear-gradient(180deg,rgba(248,250,252,1),rgba(226,232,240,0.92))] p-4">
+                  <StarterMapPlaceholder isProcessing={isProcessing} />
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-x-4 top-4 z-10">
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-lg backdrop-blur">
+                  <MapPinned className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Mapa del recorrido
+                  </span>
+                </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <TemplateBlock className="h-24" />
-                <TemplateBlock className="h-24" />
-                <TemplateBlock className="h-24" />
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <Route className="h-3.5 w-3.5 text-primary" />
-                {isProcessing
-                  ? 'La ruta y los destinos aparecerán acá apenas el parser termine de interpretar tu pedido.'
-                  : 'Acá vas a ver ciudades, hoteles del mapa y la ruta completa entre tramos.'}
+              <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10">
+                <div className="rounded-full border border-white/70 bg-white/85 px-4 py-2 text-xs text-slate-600 shadow backdrop-blur">
+                  <Route className="mr-1.5 inline h-3.5 w-3.5 text-primary" />
+                  {isProcessing
+                    ? 'Los destinos aparecerán acá cuando el parser termine de interpretar tu pedido.'
+                    : 'Acá vas a ver ciudades, hoteles y la ruta completa entre tramos.'}
+                </div>
               </div>
             </div>
           </div>

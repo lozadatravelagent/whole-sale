@@ -1,6 +1,7 @@
 import type { PlannerLocation, TripPlannerState } from '../types';
 import { PLANNER_GOOGLE_MAPS_API_KEY } from '../map';
 import { formatDestinationLabel } from '../utils';
+import { geocodeCacheGet, geocodeCacheSet, geocodeCacheGetAll } from './geocodingCache';
 
 type SegmentLike = TripPlannerState['segments'][number];
 
@@ -11,7 +12,8 @@ type EnrichedPlannerLocations = {
 };
 
 const GEOCODER_URL = 'https://nominatim.openstreetmap.org/search';
-const SESSION_STORAGE_PREFIX = 'planner-geocode:';
+const IDB_CITY_PREFIX = 'city:';
+const IDB_ACTIVITY_PREFIX = 'activity:';
 
 const FALLBACK_CITY_COORDINATES: Record<string, Omit<PlannerLocation, 'city'>> = {
   madrid: { lat: 40.4168, lng: -3.7038, country: 'España', placeLabel: 'Madrid, España', source: 'fallback' },
@@ -70,35 +72,12 @@ function readCachedLocation(cacheKey: string): PlannerLocation | null | undefine
   if (memoryCache.has(cacheKey)) {
     return memoryCache.get(cacheKey);
   }
-
-  if (typeof window === 'undefined') {
-    return undefined;
-  }
-
-  try {
-    const rawValue = window.sessionStorage.getItem(`${SESSION_STORAGE_PREFIX}${cacheKey}`);
-    if (!rawValue) return undefined;
-
-    const parsed = JSON.parse(rawValue) as PlannerLocation | null;
-    memoryCache.set(cacheKey, parsed);
-    return parsed;
-  } catch {
-    return undefined;
-  }
+  return undefined;
 }
 
 function writeCachedLocation(cacheKey: string, location: PlannerLocation | null) {
   memoryCache.set(cacheKey, location);
-
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  try {
-    window.sessionStorage.setItem(`${SESSION_STORAGE_PREFIX}${cacheKey}`, JSON.stringify(location));
-  } catch {
-    // Ignore browser storage failures.
-  }
+  geocodeCacheSet(`${IDB_CITY_PREFIX}${cacheKey}`, JSON.stringify(location)).catch(() => {});
 }
 
 function getFallbackLocation(city: string): PlannerLocation | null {
@@ -235,7 +214,6 @@ export async function resolvePlannerSegmentLocation(input: {
   return providerLocation;
 }
 
-const ACTIVITY_SESSION_STORAGE_PREFIX = 'planner-activity-geocode:';
 const activityMemoryCache = new Map<string, { lat: number; lng: number } | null>();
 
 function buildActivityCacheKey(title: string, neighborhood?: string, city?: string): string {
@@ -244,26 +222,12 @@ function buildActivityCacheKey(title: string, neighborhood?: string, city?: stri
 
 function readCachedActivityLocation(cacheKey: string): { lat: number; lng: number } | null | undefined {
   if (activityMemoryCache.has(cacheKey)) return activityMemoryCache.get(cacheKey)!;
-  if (typeof window === 'undefined') return undefined;
-  try {
-    const raw = window.sessionStorage.getItem(`${ACTIVITY_SESSION_STORAGE_PREFIX}${cacheKey}`);
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as { lat: number; lng: number } | null;
-    activityMemoryCache.set(cacheKey, parsed);
-    return parsed;
-  } catch {
-    return undefined;
-  }
+  return undefined;
 }
 
 function writeCachedActivityLocation(cacheKey: string, location: { lat: number; lng: number } | null) {
   activityMemoryCache.set(cacheKey, location);
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.setItem(`${ACTIVITY_SESSION_STORAGE_PREFIX}${cacheKey}`, JSON.stringify(location));
-  } catch {
-    // Ignore browser storage failures.
-  }
+  geocodeCacheSet(`${IDB_ACTIVITY_PREFIX}${cacheKey}`, JSON.stringify(location)).catch(() => {});
 }
 
 export async function resolveActivityLocation(input: {
@@ -283,35 +247,58 @@ export async function resolveActivityLocation(input: {
   return result;
 }
 
+// Prefetch all geocoding entries from IndexedDB into memory caches on module load
+function initGeocodingCache() {
+  geocodeCacheGetAll().then((entries) => {
+    for (const { key, value } of entries) {
+      try {
+        if (key.startsWith(IDB_CITY_PREFIX)) {
+          const cacheKey = key.slice(IDB_CITY_PREFIX.length);
+          if (!memoryCache.has(cacheKey)) {
+            memoryCache.set(cacheKey, JSON.parse(value));
+          }
+        } else if (key.startsWith(IDB_ACTIVITY_PREFIX)) {
+          const cacheKey = key.slice(IDB_ACTIVITY_PREFIX.length);
+          if (!activityMemoryCache.has(cacheKey)) {
+            activityMemoryCache.set(cacheKey, JSON.parse(value));
+          }
+        }
+      } catch {
+        // Skip malformed entries
+      }
+    }
+  }).catch(() => {});
+}
+
+initGeocodingCache();
+
 export async function enrichPlannerWithLocations(plannerState: TripPlannerState): Promise<EnrichedPlannerLocations> {
   const unresolvedCities: string[] = [];
   let changed = false;
 
-  const nextSegments: SegmentLike[] = [];
+  const nextSegments: SegmentLike[] = await Promise.all(
+    plannerState.segments.map(async (segment) => {
+      if (!needsLocationResolution(segment)) {
+        return segment;
+      }
 
-  for (const segment of plannerState.segments) {
-    if (!needsLocationResolution(segment)) {
-      nextSegments.push(segment);
-      continue;
-    }
+      const resolvedLocation = await resolvePlannerSegmentLocation({
+        city: segment.city,
+        country: segment.country,
+      });
 
-    const resolvedLocation = await resolvePlannerSegmentLocation({
-      city: segment.city,
-      country: segment.country,
-    });
+      if (!resolvedLocation) {
+        unresolvedCities.push(formatDestinationLabel(segment.city));
+        return segment;
+      }
 
-    if (!resolvedLocation) {
-      unresolvedCities.push(formatDestinationLabel(segment.city));
-      nextSegments.push(segment);
-      continue;
-    }
-
-    nextSegments.push({
-      ...segment,
-      location: resolvedLocation,
-    });
-    changed = true;
-  }
+      changed = true;
+      return {
+        ...segment,
+        location: resolvedLocation,
+      };
+    }),
+  );
 
   return {
     plannerState: changed

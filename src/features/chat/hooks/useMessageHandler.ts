@@ -68,6 +68,11 @@ const useMessageHandler = (
   persistPlannerState?: (state: any, source: TripPlannerState['generationMeta']['source']) => Promise<void>,
   setDraftPlannerFromRequest?: (request: ParsedTravelRequest) => void,
   setPlannerDraftPhase?: (phase: 'draft_parsing' | 'draft_generating') => void,
+  preloadedContext?: {
+    conversationId: string;
+    contextualMemory: ParsedTravelRequest | null;
+    contextState: ContextState | null;
+  } | null,
 ) => {
   // ✅ Messages are now passed as parameter - no need for second useMessages call
 
@@ -490,51 +495,41 @@ const useMessageHandler = (
       // Add to local messages immediately (Realtime will replace with real message from DB)
       addOptimisticMessage(optimisticUserMessage as any);
 
-      console.log('📤 [MESSAGE FLOW] Step 2: Saving user message to database (in background)');
+      console.log('📤 [MESSAGE FLOW] Step 2: Saving user message + loading context in parallel');
 
-      // Save to database with final 'sent' status (single write, no update needed)
-      const userMessage = await addMessageViaSupabase({
-        conversation_id: finalConversationId,
-        role: 'user' as const,
-        content: { text: currentMessage },
-        meta: { status: 'sent', client_id: clientId } // Include client_id for DB idempotency
-      });
-
-      console.log('✅ [MESSAGE FLOW] Step 3: User message saved successfully with ID:', userMessage.id);
-
-      // Realtime subscription will automatically update UI with the real message from DB
-      // No need for manual refreshes - Realtime handles it
-
-      // 2. Update conversation title if first message
-      // IMPORTANT: Skip title generation for PDF uploads - title will be generated after PDF analysis
+      // 2. Update conversation title if first message (fire-and-forget)
       const isPdfUpload = currentMessage.toLowerCase().includes('he subido el pdf') ||
         currentMessage.toLowerCase().includes('pdf para análisis');
 
       if (messages.length === 0 && !isPdfUpload) {
-        console.log('🏷️ [MESSAGE FLOW] Step 6: First message - updating conversation title');
         const title = generateChatTitle(currentMessage);
-        console.log('📝 Generated title:', title);
-
-        try {
-          console.log('📤 [MESSAGE FLOW] About to update conversation title (Supabase UPDATE)');
-          await updateConversationTitle(finalConversationId, title);
-          console.log(`✅ [MESSAGE FLOW] Step 7: Conversation title updated to: "${title}"`);
-        } catch (titleError) {
+        updateConversationTitle(finalConversationId, title).catch((titleError) => {
           console.error('❌ [MESSAGE FLOW] Error updating conversation title:', titleError);
-          // Don't fail the whole process if title update fails
-        }
-      } else if (messages.length === 0 && isPdfUpload) {
-        console.log('📄 [MESSAGE FLOW] PDF upload detected - skipping title generation (will be set after PDF analysis)');
+        });
       }
 
-      // 3. Load contextual memory before parsing
-      console.log('🧠 [MESSAGE FLOW] Step 7.5: Loading contextual memory before parsing');
-      console.log('🔍 [DEBUG] Selected conversation:', finalConversationId);
-      console.log('🔍 [DEBUG] Previous parsed request from state:', previousParsedRequest);
+      // Check if we can use preloaded context (same conversation, not first message)
+      const canUsePreloaded = preloadedContext &&
+        preloadedContext.conversationId === finalConversationId &&
+        messages.length > 0;
 
-      // Load context from DB and state first
-      const contextFromDB = await loadContextualMemory(finalConversationId);
-      const persistentState = await loadContextState(finalConversationId) as ContextState | null;
+      // Run DB save + context loading in parallel
+      const [userMessage, contextFromDB, persistentState] = await Promise.all([
+        addMessageViaSupabase({
+          conversation_id: finalConversationId,
+          role: 'user' as const,
+          content: { text: currentMessage },
+          meta: { status: 'sent', client_id: clientId }
+        }),
+        canUsePreloaded
+          ? Promise.resolve(preloadedContext!.contextualMemory)
+          : loadContextualMemory(finalConversationId),
+        canUsePreloaded
+          ? Promise.resolve(preloadedContext!.contextState)
+          : loadContextState(finalConversationId) as Promise<ContextState | null>,
+      ]);
+
+      console.log('✅ [MESSAGE FLOW] Step 3: User message saved + context loaded in parallel');
       console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
       console.log('🔍 [DEBUG] Persistent context state:', persistentState);
 
@@ -859,7 +854,7 @@ const useMessageHandler = (
           await saveContextualMemory(finalConversationId, parsedRequest);
 
           // Build aggregated message
-          let parts: string[] = [];
+          const parts: string[] = [];
           if (!flightVal.isValid) {
             parts.push(
               generateMissingInfoMessage(flightVal.missingFieldsSpanish, 'flights')
@@ -937,8 +932,8 @@ const useMessageHandler = (
             },
             turnNumber: (persistentState?.turnNumber || 0) + 1
           };
-          await saveContextState(finalConversationId, contextStateForFailedSearch);
-          console.log('💾 [CONTEXT] Saved context state for failed validation (enables "agrega X adultos")');
+          saveContextState(finalConversationId, contextStateForFailedSearch).catch((e) => console.warn('⚠️ [CONTEXT] Failed to save context state:', e));
+          console.log('💾 [CONTEXT] Saving context state for failed validation (fire-and-forget)');
 
           // ✨ Use custom errorMessage if available (e.g., "only minors" case), otherwise generate standard message
           const missingInfoMessage = validation.errorMessage || generateMissingInfoMessage(
@@ -1006,8 +1001,8 @@ const useMessageHandler = (
               },
               turnNumber: (persistentState?.turnNumber || 0) + 1
             };
-            await saveContextState(finalConversationId, contextStateForFailedSearch);
-            console.log('💾 [CONTEXT] Saved context state for failed hotel validation');
+            saveContextState(finalConversationId, contextStateForFailedSearch).catch((e) => console.warn('⚠️ [CONTEXT] Failed to save context state:', e));
+            console.log('💾 [CONTEXT] Saving context state for failed hotel validation (fire-and-forget)');
 
             await addMessageViaSupabase({
               conversation_id: finalConversationId,
@@ -1388,12 +1383,12 @@ const useMessageHandler = (
               constraintsCount: newContextState.constraintsHistory.length
             });
             
-            await saveContextState(finalConversationId, newContextState);
+            saveContextState(finalConversationId, newContextState).catch((e) => console.warn('⚠️ [CONTEXT] Failed to save context state:', e));
           }
         } else {
           // No results - preserve context for retry (e.g., "con escalas")
           console.log('⚠️ [STATE] No results, preserving context for potential retry');
-          await saveContextualMemory(finalConversationId, parsedRequest);
+          saveContextualMemory(finalConversationId, parsedRequest).catch((e) => console.warn('⚠️ [MEMORY] Failed to save contextual memory:', e));
           setPreviousParsedRequest(parsedRequest);
         }
       } catch (memErr) {

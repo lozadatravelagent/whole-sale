@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { runWithConcurrency, type CancelToken } from '@/utils/concurrencyPool';
 import { supabase } from '@/integrations/supabase/client';
 import { handleFlightSearch, handleHotelSearch } from '@/features/chat/services/searchHandlers';
 import type { LocalHotelData } from '@/features/chat/types/chat';
@@ -17,6 +18,7 @@ import {
 import { enrichPlannerWithLocations } from './services/plannerGeocoding';
 import { rankInventoryHotelsForPlace } from './services/plannerHotelMatcher';
 import { getPlannerPlaceCategoryLabel, isFoodLikePlannerPlace } from './services/plannerPlaceMapper';
+import { getPlannerStateFromCache, setPlannerStateInCache } from './services/plannerStateCache';
 
 function isPersistableConversationId(value: string | null): value is string {
   if (!value || value.startsWith('temp-')) {
@@ -179,6 +181,16 @@ export default function useTripPlanner(
     setIsLoadingPlanner(false);
   }, [conversationId]);
 
+  // Warn before closing browser when a planner mutation is active
+  useEffect(() => {
+    if (!activePlannerMutation) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [activePlannerMutation]);
+
   const persistPlannerState = useCallback(async (
     state: TripPlannerState,
     source: TripPlannerState['generationMeta']['source']
@@ -200,6 +212,9 @@ export default function useTripPlanner(
         draftOriginMessage: source === 'draft' ? state.generationMeta?.draftOriginMessage : undefined,
       },
     };
+
+    // Fire-and-forget: cache in IndexedDB for instant reload
+    setPlannerStateInCache(conversationId, normalizedState).catch(() => {});
 
     const { error: deleteError } = await supabase
       .from('messages')
@@ -249,6 +264,16 @@ export default function useTripPlanner(
     setPlannerError(null);
 
     try {
+      // 1. Try IndexedDB first for instant display
+      const cachedState = await getPlannerStateFromCache(conversationId);
+      if (cachedState) {
+        const normalizedCached = normalizePlannerState(cachedState, conversationId);
+        if (normalizedCached) {
+          setPlannerState((current) => shouldReplacePlannerState(current, normalizedCached) ? normalizedCached : current);
+        }
+      }
+
+      // 2. Then fetch from Supabase (source of truth)
       const { data, error } = await supabase
         .from('messages')
         .select('*')
@@ -272,6 +297,11 @@ export default function useTripPlanner(
 
       const nextState = fromSystem || fromAssistant || null;
       setPlannerState((current) => shouldReplacePlannerState(current, nextState) ? nextState : current);
+
+      // Update IndexedDB cache with latest from Supabase
+      if (nextState) {
+        setPlannerStateInCache(conversationId, nextState).catch(() => {});
+      }
     } catch (error) {
       console.error('❌ [TRIP PLANNER] Failed to load planner state:', error);
       setPlannerError('No se pudo cargar el estado del planificador.');
@@ -1001,24 +1031,34 @@ export default function useTripPlanner(
       return;
     }
 
-    let cancelled = false;
+    const cancelToken: CancelToken = { current: false };
     isAutoLoadingHotelsRef.current = true;
+
+    const pendingIds = new Set(pendingSegments.map((s) => s.id));
+    updatePlannerState((current) => ({
+      ...current,
+      segments: current.segments.map((seg) =>
+        !pendingIds.has(seg.id)
+          ? seg
+          : { ...seg, hotelPlan: { ...seg.hotelPlan, searchStatus: 'loading' as const } }
+      ),
+    }));
 
     void (async () => {
       try {
-        for (const segment of pendingSegments) {
-          if (cancelled) break;
-          await loadHotelsForSegment(segment.id);
-        }
+        const tasks = pendingSegments.map(
+          (segment) => () => loadHotelsForSegment(segment.id),
+        );
+        await runWithConcurrency(tasks, 2, cancelToken);
       } finally {
         isAutoLoadingHotelsRef.current = false;
       }
     })();
 
     return () => {
-      cancelled = true;
+      cancelToken.current = true;
     };
-  }, [getSegmentHotelSearchInput, loadHotelsForSegment, plannerState]);
+  }, [getSegmentHotelSearchInput, loadHotelsForSegment, plannerState, updatePlannerState]);
 
   const resolveInventoryMatchForSegment = useCallback(async (
     segmentId: string,
@@ -1664,24 +1704,34 @@ export default function useTripPlanner(
       return;
     }
 
-    let cancelled = false;
+    const cancelToken: CancelToken = { current: false };
     isAutoLoadingTransportRef.current = true;
+
+    const pendingIds = new Set(pendingSegments.map((s) => s.id));
+    updatePlannerState((current) => ({
+      ...current,
+      segments: current.segments.map((seg) =>
+        !pendingIds.has(seg.id) || !seg.transportIn
+          ? seg
+          : { ...seg, transportIn: { ...seg.transportIn, searchStatus: 'loading' as const } }
+      ),
+    }));
 
     void (async () => {
       try {
-        for (const segment of pendingSegments) {
-          if (cancelled) break;
-          await loadTransportForSegment(segment.id);
-        }
+        const tasks = pendingSegments.map(
+          (segment) => () => loadTransportForSegment(segment.id),
+        );
+        await runWithConcurrency(tasks, 2, cancelToken);
       } finally {
         isAutoLoadingTransportRef.current = false;
       }
     })();
 
     return () => {
-      cancelled = true;
+      cancelToken.current = true;
     };
-  }, [loadTransportForSegment, plannerState]);
+  }, [loadTransportForSegment, plannerState, updatePlannerState]);
 
   const selectTransportOption = useCallback(async (segmentId: string, optionId: string) => {
     await updatePlannerState((current) => ({

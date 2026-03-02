@@ -262,25 +262,33 @@ function PlannerViewportManager({
     [segments, selectedSegment]
   );
 
-  useEffect(() => {
-    if (!map || typeof google === 'undefined' || segments.length === 0) return;
+  const segmentsRef = useRef(segments);
+  const selectedSegmentRef = useRef(selectedSegment);
+  segmentsRef.current = segments;
+  selectedSegmentRef.current = selectedSegment;
 
-    if (selectedSegment) {
-      map.setCenter({ lat: selectedSegment.location.lat, lng: selectedSegment.location.lng });
+  useEffect(() => {
+    const currentSegments = segmentsRef.current;
+    const currentSelected = selectedSegmentRef.current;
+
+    if (!map || typeof google === 'undefined' || currentSegments.length === 0) return;
+
+    if (currentSelected) {
+      map.setCenter({ lat: currentSelected.location.lat, lng: currentSelected.location.lng });
       map.setZoom(12);
       return;
     }
 
-    if (segments.length === 1) {
-      map.setCenter({ lat: segments[0].location.lat, lng: segments[0].location.lng });
+    if (currentSegments.length === 1) {
+      map.setCenter({ lat: currentSegments[0].location.lat, lng: currentSegments[0].location.lng });
       map.setZoom(12);
       return;
     }
 
     const bounds = new google.maps.LatLngBounds();
-    segments.forEach((segment) => bounds.extend({ lat: segment.location.lat, lng: segment.location.lng }));
+    currentSegments.forEach((segment) => bounds.extend({ lat: segment.location.lat, lng: segment.location.lng }));
     map.fitBounds(bounds, 56);
-  }, [fitSignature, map, segments, selectedSegment]);
+  }, [fitSignature, map]);
 
   return null;
 }
@@ -322,6 +330,7 @@ function PlannerGoogleMapScene({
   const [cityPlaceLoading, setCityPlaceLoading] = useState(false);
   const [placesByCategory, setPlacesByCategory] = useState<PlacesByCategory>(getEmptyPlacesBundle);
   const [placesLoading, setPlacesLoading] = useState(false);
+  const [fetchCenter, setFetchCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [showCityPanel, setShowCityPanel] = useState(false);
   const geocodeGenRef = useRef(0);
   const animatedMarkerIdsRef = useRef<Set<string>>(new Set());
@@ -333,6 +342,40 @@ function PlannerGoogleMapScene({
       placesServiceRef.current = new placesLib.PlacesService(map);
     }
   }, [placesLib, map]);
+
+  useEffect(() => {
+    if (selectedSegment) {
+      setFetchCenter({ lat: selectedSegment.location.lat, lng: selectedSegment.location.lng });
+    } else {
+      setFetchCenter(null);
+    }
+  }, [selectedSegmentId]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    let timer: ReturnType<typeof setTimeout>;
+    const handleIdle = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const center = map.getCenter();
+        if (!center) return;
+        const lat = center.lat();
+        const lng = center.lng();
+        setFetchCenter((prev) => {
+          if (!prev) return { lat, lng };
+          if (Math.abs(lat - prev.lat) < 0.027 && Math.abs(lng - prev.lng) < 0.027) return prev;
+          return { lat, lng };
+        });
+      }, 800);
+    };
+
+    const listener = map.addListener('idle', handleIdle);
+    return () => {
+      clearTimeout(timer);
+      google.maps.event.removeListener(listener);
+    };
+  }, [map]);
 
   useEffect(() => {
     if (!selectedPlace || !selectedSegment) {
@@ -399,7 +442,7 @@ function PlannerGoogleMapScene({
   }, [selectedSegment, showCityPanel]);
 
   useEffect(() => {
-    if (!selectedSegment) {
+    if (!selectedSegment || !fetchCenter) {
       setPlacesByCategory(getEmptyPlacesBundle());
       setSelectedPlace(null);
       setPlacesLoading(false);
@@ -408,19 +451,13 @@ function PlannerGoogleMapScene({
 
     const service = placesServiceRef.current;
     if (!service) {
-      setPlacesByCategory(getEmptyPlacesBundle());
-      setSelectedPlace(null);
-      setPlacesLoading(false);
       return;
     }
 
     let cancelled = false;
     setPlacesLoading(true);
 
-    fetchNearbyPlacesBundle(service, selectedSegment.city, {
-      lat: selectedSegment.location.lat,
-      lng: selectedSegment.location.lng,
-    }, DISCOVERY_CATEGORIES).then((bundle) => {
+    fetchNearbyPlacesBundle(service, selectedSegment.city, fetchCenter, DISCOVERY_CATEGORIES).then((bundle) => {
       if (cancelled) return;
       setPlacesByCategory(bundle);
       setPlacesLoading(false);
@@ -433,7 +470,7 @@ function PlannerGoogleMapScene({
     return () => {
       cancelled = true;
     };
-  }, [selectedSegment]);
+  }, [selectedSegment, fetchCenter]);
 
   useEffect(() => {
     if (segments.length === 0) {

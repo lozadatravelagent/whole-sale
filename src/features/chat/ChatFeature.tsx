@@ -1,8 +1,10 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useMessages } from '@/hooks/useChat';
 import { updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
+import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { ContextState } from './types/contextState';
 
 // Import feature components and hooks
 import ChatSidebar from './components/ChatSidebar';
@@ -71,6 +73,34 @@ const ChatFeature = () => {
   // Contextual memory hooks
   const { loadContextualMemory, saveContextualMemory, clearContextualMemory, loadContextState, saveContextState } = useContextualMemory();
 
+  // Preload context when conversation changes to avoid DB calls during message send
+  const [preloadedContext, setPreloadedContext] = useState<{
+    conversationId: string;
+    contextualMemory: ParsedTravelRequest | null;
+    contextState: ContextState | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!selectedConversation || selectedConversation.startsWith('temp-')) {
+      setPreloadedContext(null);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([
+      loadContextualMemory(selectedConversation),
+      loadContextState(selectedConversation) as Promise<ContextState | null>,
+    ]).then(([mem, state]) => {
+      if (!cancelled) {
+        setPreloadedContext({
+          conversationId: selectedConversation,
+          contextualMemory: mem,
+          contextState: state,
+        });
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedConversation, loadContextualMemory, loadContextState]);
+
   const planner = useTripPlanner(selectedConversation, messages, toast);
 
   // PDF analysis hooks
@@ -118,7 +148,8 @@ const ChatFeature = () => {
     planner.plannerState,
     planner.persistPlannerState,
     planner.setDraftPlannerFromRequest,
-    planner.setPlannerDraftPhase
+    planner.setPlannerDraftPhase,
+    preloadedContext
   );
 
   // CTA: Retry with stops when no direct flights
@@ -473,6 +504,7 @@ const ChatFeature = () => {
           {selectedConversation ? (
             workspaceMode === 'planner' ? (
               <TripPlannerWorkspace
+                key={selectedConversation}
                 selectedConversation={selectedConversation}
                 message={message}
                 isLoading={isLoading}
@@ -526,6 +558,7 @@ const ChatFeature = () => {
                 onAddToCRM={handleAddToCRM}
                 onPdfGenerated={handlePdfGenerated}
                 onBackToList={() => setSelectedConversation(null)}
+                onGoToPlanner={planner.plannerState ? () => setWorkspaceMode('planner') : undefined}
               />
             )
           ) : (
