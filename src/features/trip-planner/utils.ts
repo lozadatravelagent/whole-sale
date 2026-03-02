@@ -817,3 +817,202 @@ export function summarizePlannerForChat(plannerState: TripPlannerState): string 
     `${tips ? `\n**Consejos**\n${tips}\n` : ''}` +
     `\nUsá el Planificador de Viajes para editar días, destinos, hoteles y transporte.`;
 }
+
+export function buildPlannerPdfHtml(plannerState: TripPlannerState): string {
+  const effectiveDays = !plannerState.isFlexibleDates
+    ? getInclusiveDateRangeDays(plannerState.startDate, plannerState.endDate) || plannerState.days
+    : plannerState.days;
+
+  const dateLabel = plannerState.isFlexibleDates
+    ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
+    : formatDateRange(plannerState.startDate, plannerState.endDate);
+
+  const paceLabel = formatPaceLabel(plannerState.pace);
+  const budgetLabel = formatBudgetLevel(plannerState.budgetLevel);
+  const destinationsList = plannerState.destinations.map(formatDestinationLabel).join(', ');
+
+  const travelersText = (() => {
+    const { adults, children, infants } = plannerState.travelers;
+    const parts: string[] = [];
+    if (adults > 0) parts.push(`${adults} adulto${adults === 1 ? '' : 's'}`);
+    if (children > 0) parts.push(`${children} menor${children === 1 ? '' : 'es'}`);
+    if (infants > 0) parts.push(`${infants} infante${infants === 1 ? '' : 's'}`);
+    return parts.join(', ') || '';
+  })();
+
+  function escapeHtml(text: string): string {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderActivities(activities: PlannerActivity[], blockLabel: string): string {
+    if (activities.length === 0) return '';
+    const items = activities.map((a) => {
+      let html = `<li><strong>${escapeHtml(a.title)}</strong>`;
+      if (a.time) html += ` <span style="color:#6b7280;font-size:0.85em;">(${escapeHtml(a.time)})</span>`;
+      if (a.description) html += `<br/><span style="color:#4b5563;">${escapeHtml(a.description)}</span>`;
+      if (a.tip) html += `<br/><em style="color:#6b7280;font-size:0.9em;">Tip: ${escapeHtml(a.tip)}</em>`;
+      html += '</li>';
+      return html;
+    }).join('');
+    return `<h4 style="margin:10px 0 4px;color:#2563eb;font-size:0.95em;">${escapeHtml(blockLabel)}</h4><ul style="margin:0 0 8px;padding-left:20px;">${items}</ul>`;
+  }
+
+  function renderRestaurants(restaurants: PlannerRestaurant[]): string {
+    if (restaurants.length === 0) return '';
+    const items = restaurants.map((r) => {
+      let label = escapeHtml(r.name);
+      if (r.type) label += ` <span style="color:#6b7280;">(${escapeHtml(r.type)})</span>`;
+      if (r.priceRange) label += ` · ${escapeHtml(r.priceRange)}`;
+      return `<li>${label}</li>`;
+    }).join('');
+    return `<h4 style="margin:10px 0 4px;color:#2563eb;font-size:0.95em;">Restaurantes</h4><ul style="margin:0 0 8px;padding-left:20px;">${items}</ul>`;
+  }
+
+  function renderHotelInfo(segment: PlannerSegment): string {
+    const hotel = segment.hotelPlan.confirmedInventoryHotel
+      || (segment.hotelPlan.selectedPlaceCandidate ? null : null)
+      || segment.hotelPlan.hotelRecommendations[0];
+
+    const placeCandidate = segment.hotelPlan.selectedPlaceCandidate;
+
+    if (!hotel && !placeCandidate) return '';
+
+    if (hotel) {
+      const room = getPrimaryPlannerHotelRoom(hotel);
+      const category = formatPlannerHotelCategory(hotel.category);
+      const price = formatPlannerPrice(room?.price, room?.currency);
+      const roomLabel = formatPlannerRoomLabel(hotel);
+      const travelers = formatPlannerTravelerSummary(hotel);
+
+      let html = `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin:8px 0;">`;
+      html += `<strong>🏨 ${escapeHtml(hotel.name)}</strong>`;
+      if (category) html += ` · ${escapeHtml(category)}`;
+      html += `<br/><span style="font-size:0.9em;color:#4b5563;">${escapeHtml(roomLabel)}</span>`;
+      if (price) html += ` · <strong>${escapeHtml(price)}</strong>`;
+      if (travelers) html += `<br/><span style="font-size:0.85em;color:#6b7280;">${escapeHtml(travelers)}</span>`;
+      html += '</div>';
+      return html;
+    }
+
+    if (placeCandidate) {
+      let html = `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin:8px 0;">`;
+      html += `<strong>🏨 ${escapeHtml(placeCandidate.name)}</strong>`;
+      if (placeCandidate.rating) html += ` · ⭐ ${placeCandidate.rating}`;
+      if (placeCandidate.formattedAddress) html += `<br/><span style="font-size:0.85em;color:#6b7280;">${escapeHtml(placeCandidate.formattedAddress)}</span>`;
+      html += '</div>';
+      return html;
+    }
+
+    return '';
+  }
+
+  function renderTransportInfo(transport: PlannerTransport | null | undefined, label: string): string {
+    if (!transport) return '';
+
+    if (transport.type === 'flight' && transport.options?.length) {
+      const selected = transport.selectedOptionId
+        ? transport.options.find((o) => o.id === transport.selectedOptionId)
+        : transport.options[0];
+
+      if (selected) {
+        const route = getPlannerFlightRoute(selected);
+        const duration = formatPlannerFlightDuration(selected);
+        const stops = formatPlannerFlightStops(selected);
+        const timeRange = formatPlannerFlightTimeRange(selected);
+        const price = formatPlannerPrice(selected.price?.amount, selected.price?.currency);
+
+        let html = `<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px;margin:8px 0;">`;
+        html += `<strong>✈️ ${escapeHtml(label)}</strong>`;
+        if (route) html += ` · ${escapeHtml(route)}`;
+        const details: string[] = [];
+        if (timeRange) details.push(timeRange);
+        if (duration) details.push(duration);
+        if (stops) details.push(stops);
+        if (price) details.push(price);
+        if (details.length) html += `<br/><span style="font-size:0.9em;color:#4b5563;">${details.map(escapeHtml).join(' · ')}</span>`;
+        html += '</div>';
+        return html;
+      }
+    }
+
+    return `<div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px;margin:8px 0;"><strong>🚗 ${escapeHtml(label)}</strong>: ${escapeHtml(transport.summary)}</div>`;
+  }
+
+  // Build segments HTML
+  const segmentsHtml = plannerState.segments.map((segment) => {
+    const segmentDateRange = formatDateRange(segment.startDate, segment.endDate);
+    const nightsLabel = segment.nights ? `${segment.nights} noche${segment.nights === 1 ? '' : 's'}` : '';
+
+    let sectionHtml = `<div style="page-break-inside:avoid;margin-bottom:24px;">`;
+    sectionHtml += `<h2 style="color:#1e40af;border-bottom:2px solid #93c5fd;padding-bottom:6px;margin:24px 0 8px;">📍 ${escapeHtml(formatDestinationLabel(segment.city))}${segment.country ? `, ${escapeHtml(segment.country)}` : ''}</h2>`;
+    sectionHtml += `<p style="color:#6b7280;font-size:0.9em;margin:0 0 8px;">${escapeHtml(segmentDateRange)}${nightsLabel ? ` · ${escapeHtml(nightsLabel)}` : ''}</p>`;
+    if (segment.summary) sectionHtml += `<p style="margin:0 0 12px;">${escapeHtml(segment.summary)}</p>`;
+
+    sectionHtml += renderHotelInfo(segment);
+    sectionHtml += renderTransportInfo(segment.transportIn, 'Llegada');
+    sectionHtml += renderTransportInfo(segment.transportOut, 'Salida');
+
+    // Days
+    segment.days.forEach((day) => {
+      sectionHtml += `<div style="margin:16px 0;padding:12px;background:#fafafa;border-radius:8px;border:1px solid #e5e7eb;page-break-inside:avoid;">`;
+      sectionHtml += `<h3 style="margin:0 0 8px;color:#1f2937;">${escapeHtml(day.title)}`;
+      if (day.date) sectionHtml += ` <span style="font-weight:normal;color:#6b7280;font-size:0.85em;">(${escapeHtml(formatShortDate(day.date))})</span>`;
+      sectionHtml += '</h3>';
+      if (day.summary) sectionHtml += `<p style="color:#4b5563;margin:0 0 8px;font-size:0.9em;">${escapeHtml(day.summary)}</p>`;
+
+      sectionHtml += renderActivities(day.morning, 'Mañana');
+      sectionHtml += renderActivities(day.afternoon, 'Tarde');
+      sectionHtml += renderActivities(day.evening, 'Noche');
+      sectionHtml += renderRestaurants(day.restaurants);
+
+      if (day.travelTip) {
+        sectionHtml += `<p style="margin:8px 0 0;padding:8px;background:#ecfdf5;border-radius:6px;font-size:0.85em;color:#065f46;">💡 ${escapeHtml(day.travelTip)}</p>`;
+      }
+
+      sectionHtml += '</div>';
+    });
+
+    sectionHtml += '</div>';
+    return sectionHtml;
+  }).join('');
+
+  // General tips
+  const tipsHtml = plannerState.generalTips.length > 0
+    ? `<div style="margin-top:24px;padding:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;page-break-inside:avoid;"><h3 style="margin:0 0 8px;color:#166534;">Consejos generales</h3><ul style="margin:0;padding-left:20px;">${plannerState.generalTips.map((tip) => `<li style="margin-bottom:4px;">${escapeHtml(tip)}</li>`).join('')}</ul></div>`
+    : '';
+
+  // Header meta
+  const metaItems: string[] = [];
+  metaItems.push(`${effectiveDays} días`);
+  if (dateLabel && dateLabel !== 'Fechas pendientes') metaItems.push(dateLabel);
+  if (budgetLabel) metaItems.push(`Presupuesto: ${budgetLabel}`);
+  if (paceLabel) metaItems.push(`Ritmo: ${paceLabel}`);
+  if (travelersText) metaItems.push(travelersText);
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<title>${escapeHtml(plannerState.title)}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;color:#1f2937;line-height:1.6;padding:32px;max-width:900px;margin:0 auto;font-size:14px;}
+  h1{font-size:1.8em;color:#1e3a5f;margin-bottom:4px;}
+  h2{font-size:1.3em;}
+  h3{font-size:1.1em;}
+  ul{list-style-type:disc;}
+  @media print{body{padding:16px;font-size:12px;} h1{font-size:1.5em;}}
+</style>
+</head>
+<body>
+<h1>${escapeHtml(plannerState.title)}</h1>
+<p style="color:#4b5563;margin-bottom:12px;">${escapeHtml(plannerState.summary)}</p>
+<p style="color:#6b7280;font-size:0.9em;margin-bottom:4px;"><strong>Destinos:</strong> ${escapeHtml(destinationsList)}</p>
+<p style="color:#6b7280;font-size:0.9em;margin-bottom:20px;">${metaItems.map(escapeHtml).join(' · ')}</p>
+<hr style="border:none;border-top:1px solid #e5e7eb;margin-bottom:20px;"/>
+${segmentsHtml}
+${tipsHtml}
+<footer style="margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:0.8em;text-align:center;">Generado con VBOOK · ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}</footer>
+</body>
+</html>`;
+}

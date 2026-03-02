@@ -14,6 +14,7 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
+  FileDown,
   GripVertical,
   Loader2,
   Lock,
@@ -47,6 +48,7 @@ import {
   formatShortDate,
   getPrimaryPlannerHotelRoom,
   getPlannerHotelDisplayId,
+  buildPlannerPdfHtml,
 } from '../utils';
 import { getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
 import TripPlannerMap from './TripPlannerMap';
@@ -295,6 +297,18 @@ export default function TripPlannerWorkspace({
   const isRegeneratingPlan = activePlannerMutation?.type === 'regen_plan';
   const isDraftPlanner = Boolean(plannerState?.generationMeta?.isDraft);
 
+  const handleExportPdf = useCallback(() => {
+    if (!plannerState) return;
+    const html = buildPlannerPdfHtml(plannerState);
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      printWindow.print();
+    };
+  }, [plannerState]);
+
   const plannerLoadingPhase = useMemo(() => {
     if (!plannerState && !isLoadingPlanner) return null;
     if (activePlannerMutation) return { busy: true, steps: [] as { label: string; status: 'done' | 'active' | 'pending' }[] };
@@ -525,6 +539,16 @@ export default function TripPlannerWorkspace({
                       {plannerDateSummary}
                     </Badge>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto"
+                    disabled={isDraftPlanner}
+                    onClick={handleExportPdf}
+                  >
+                    <FileDown className="mr-1.5 h-4 w-4" />
+                    Exportar PDF
+                  </Button>
                 </div>
 
                 <div className="space-y-2">
