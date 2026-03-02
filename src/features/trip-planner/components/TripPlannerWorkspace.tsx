@@ -598,14 +598,7 @@ export default function TripPlannerWorkspace({
                   {draftProgress.generating && (
                     <div className="mt-2.5 flex items-center gap-2">
                       <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                      <div className="h-[18px] overflow-hidden">
-                        <p
-                          key={draftPhraseIndex}
-                          className="planner-phrase-rotate text-xs font-medium text-primary"
-                        >
-                          {DRAFT_GENERATING_PHRASES[draftPhraseIndex]}
-                        </p>
-                      </div>
+                      <span className="text-xs font-medium text-primary">Generando itinerario...</span>
                     </div>
                   )}
                 </div>
@@ -640,6 +633,7 @@ export default function TripPlannerWorkspace({
                 activeCategories={mapActiveCategories}
                 isResolvingLocations={isResolvingLocations}
                 locationWarning={plannerLocationWarning}
+                draftPhrase={isDraftGenerating ? DRAFT_GENERATING_PHRASES[draftPhraseIndex] : null}
                 onSelectSegment={handleSelectSegmentFromMap}
                 onAddHotelToSegment={isDraftPlanner
                   ? undefined

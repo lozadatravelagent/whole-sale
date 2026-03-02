@@ -78,6 +78,7 @@ interface TripPlannerMapProps {
   activeCategories: Record<PlannerPlaceCategory, boolean>;
   isResolvingLocations?: boolean;
   locationWarning?: string | null;
+  draftPhrase?: string | null;
   onSelectSegment?: (segmentId: string) => void;
   onAddHotelToSegment?: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => void;
   onRequestAddPlaceToPlanner?: (payload: {
@@ -884,6 +885,7 @@ export default function TripPlannerMap({
   activeCategories,
   isResolvingLocations = false,
   locationWarning,
+  draftPhrase,
   onSelectSegment,
   onAddHotelToSegment,
   onRequestAddPlaceToPlanner,
@@ -951,11 +953,19 @@ export default function TripPlannerMap({
             </div>
             <div className="space-y-1">
               <p className="font-medium text-slate-900">
-                {isResolvingLocations ? 'Ubicando destinos en el mapa...' : 'Todavía no pudimos ubicar los destinos.'}
+                {isResolvingLocations ? 'Ubicando destinos en el mapa...' : 'Esperando destinos del viaje'}
               </p>
-              <p className="text-sm text-slate-500">
-                {locationWarning || 'Cuando tengamos coordenadas para el viaje, el mapa mostrará la ruta completa.'}
-              </p>
+              {draftPhrase ? (
+                <div className="h-[18px] overflow-hidden">
+                  <p key={draftPhrase} className="planner-phrase-rotate text-sm font-medium text-primary">
+                    {draftPhrase}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  {locationWarning || 'El mapa mostrará la ruta completa cuando se definan los destinos.'}
+                </p>
+              )}
             </div>
           </div>
         ) : (
