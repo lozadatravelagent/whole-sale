@@ -28,6 +28,7 @@ const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Contact = lazy(() => import("./pages/Contact"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const HotelbedsTest = lazy(() => import("./pages/HotelbedsTest"));
 
 // Loading component
 const PageLoader = () => (
@@ -133,6 +134,15 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <Tenants />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Hotelbeds certification test page (auth-guarded) */}
+              <Route
+                path="/hotelbeds-test"
+                element={
+                  <ProtectedRoute>
+                    <HotelbedsTest />
                   </ProtectedRoute>
                 }
               />

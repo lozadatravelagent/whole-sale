@@ -230,6 +230,7 @@ export interface LocalHotelData {
   search_children?: number;   // Niños 2-12 años
   search_infants?: number;    // Infantes 0-2 años
   search_childrenAges?: number[];
+  provider?: 'EUROVIPS' | 'HOTELBEDS';
 }
 
 export interface LocalHotelChainQuota {

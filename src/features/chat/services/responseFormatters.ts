@@ -452,6 +452,73 @@ export const formatServiceResponse = (services: LocalServiceData[]) => {
   return response;
 };
 
+export const formatActivityResponse = (activities: Array<{
+  name: string;
+  city: string;
+  price: { amount: number; currency: string; priceFrom?: boolean };
+  duration?: string;
+  description?: string;
+  categories?: string[];
+  cancellationPolicy?: string;
+}>) => {
+  if (activities.length === 0) {
+    return '🎭 **Actividades**\n\nNo encontré actividades disponibles para ese destino y fechas.';
+  }
+
+  let response = `🎭 **${activities.length} Actividades Disponibles**\n\n`;
+
+  activities.slice(0, 10).forEach((activity, index) => {
+    response += `---\n\n`;
+    response += `🎭 **${index + 1}. ${activity.name}**\n`;
+    response += `📍 ${activity.city}\n`;
+    response += `💰 ${activity.price.priceFrom ? 'Desde ' : ''}${activity.price.amount} ${activity.price.currency}\n`;
+    if (activity.duration) {
+      response += `⏱️ ${activity.duration}\n`;
+    }
+    if (activity.categories && activity.categories.length > 0) {
+      response += `🏷️ ${activity.categories.join(', ')}\n`;
+    }
+    if (activity.cancellationPolicy) {
+      response += `📋 ${activity.cancellationPolicy}\n`;
+    }
+    response += '\n';
+  });
+
+  return response;
+};
+
+export const formatTransferResponse = (transfers: Array<{
+  type: string;
+  direction: string;
+  vehicle: string;
+  maxPassengers: number;
+  price: { amount: number; currency: string };
+  pickup: { location: string; time?: string };
+  dropoff: { location: string };
+  cancellationPolicy?: string;
+}>) => {
+  if (transfers.length === 0) {
+    return '🚐 **Traslados**\n\nNo encontré traslados disponibles para esa ruta.';
+  }
+
+  let response = `🚐 **${transfers.length} Traslados Disponibles**\n\n`;
+
+  transfers.slice(0, 10).forEach((transfer, index) => {
+    response += `---\n\n`;
+    response += `🚐 **Opción ${index + 1}** - ${transfer.type}\n`;
+    response += `🚗 ${transfer.vehicle} (max ${transfer.maxPassengers} pax)\n`;
+    response += `📍 ${transfer.pickup.location} → ${transfer.dropoff.location}\n`;
+    response += `💰 ${transfer.price.amount} ${transfer.price.currency}\n`;
+    response += `🔄 ${transfer.direction.replace('_', ' ')}\n`;
+    if (transfer.cancellationPolicy) {
+      response += `📋 ${transfer.cancellationPolicy}\n`;
+    }
+    response += '\n';
+  });
+
+  return response;
+};
+
 export const formatCombinedResponse = (combinedData: LocalCombinedTravelResults) => {
   let response = '🌟 **Búsqueda Combinada Completada**\n\n';
 

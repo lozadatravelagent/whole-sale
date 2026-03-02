@@ -17,6 +17,7 @@ import {
 } from './advancedFilters.ts';
 import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.ts';
 import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSegments.ts';
+import { resolveHotelbedsDestination } from './hotelbedsDestinationResolver.ts';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -178,6 +179,12 @@ export async function executeSearch(
 
     case 'services':
       return await executeServiceSearch(parsedRequest, supabase);
+
+    case 'activities':
+      return await executeActivitySearch(parsedRequest, supabase);
+
+    case 'transfers':
+      return await executeTransferSearch(parsedRequest, supabase);
 
     case 'itinerary':
       return await executeItinerarySearch(parsedRequest, supabase);
@@ -584,26 +591,96 @@ async function executeHotelSearch(
   console.log('[HOTEL_SEARCH] Calling eurovips-soap Edge Function', nameFilter ? `with name filter: "${nameFilter}"` : 'without name filter');
   console.log(`   → cityCode: ${cityCode}, dates: ${hotels.checkinDate} to ${hotels.checkoutDate}, adults: ${inferredAdults}`);
 
-  // Call eurovips-soap Edge Function with timeout
-  let response;
-  try {
-    response = await invokeWithTimeout(supabase, 'eurovips-soap', eurovipsRequest);
-  } catch (error) {
-    console.error('[HOTEL_SEARCH] EUROVIPS API error:', error);
+  // ✅ Call BOTH providers in parallel (fail-open with Promise.allSettled)
+  const hotelbedsDestCode = resolveHotelbedsDestination(hotels.city || '');
+  const hotelbedsRequest = {
+    action: 'searchHotels',
+    data: {
+      cityCode: hotelbedsDestCode,
+      checkinDate: hotels.checkinDate,
+      checkoutDate: hotels.checkoutDate,
+      adults: inferredAdults,
+      children: childrenCount,
+      childrenAges,
+      infants: hotels.infants || 0,
+      hotelName: nameFilter,
+    }
+  };
+
+  console.log('[HOTEL_SEARCH] Calling EUROVIPS + Hotelbeds in parallel');
+
+  const [eurovipsResult, hotelbedsResult] = await Promise.allSettled([
+    invokeWithTimeout(supabase, 'eurovips-soap', eurovipsRequest),
+    invokeWithTimeout(supabase, 'hotelbeds-api', hotelbedsRequest),
+  ]);
+
+  // Extract results from settled promises (fail-open)
+  let eurovipsHotels: any[] = [];
+  let hotelbedsHotels: any[] = [];
+  const providersSearched: string[] = ['EUROVIPS', 'HOTELBEDS'];
+  const providersSucceeded: string[] = [];
+
+  if (eurovipsResult.status === 'fulfilled') {
+    eurovipsHotels = (eurovipsResult.value?.results || []).map((h: any) => ({
+      ...h,
+      provider: 'EUROVIPS',
+    }));
+    providersSucceeded.push('EUROVIPS');
+    console.log(`[HOTEL_SEARCH] EUROVIPS returned ${eurovipsHotels.length} hotels`);
+  } else {
+    console.error('[HOTEL_SEARCH] EUROVIPS failed:', eurovipsResult.reason?.message);
+  }
+
+  if (hotelbedsResult.status === 'fulfilled') {
+    const hbData = hotelbedsResult.value?.data || hotelbedsResult.value;
+    hotelbedsHotels = (hbData?.results || []).map((h: any) => ({
+      ...h,
+      provider: h.provider || 'HOTELBEDS',
+    }));
+    providersSucceeded.push('HOTELBEDS');
+    console.log(`[HOTEL_SEARCH] Hotelbeds returned ${hotelbedsHotels.length} hotels`);
+  } else {
+    console.error('[HOTEL_SEARCH] Hotelbeds failed:', hotelbedsResult.reason?.message);
+  }
+
+  // If both providers failed, return error
+  if (providersSucceeded.length === 0) {
     return {
       status: 'error',
       type: 'hotels',
       error: {
-        message: error.message || 'Hotel search failed',
-        details: error
+        message: 'All hotel providers failed',
+        details: {
+          eurovips: eurovipsResult.status === 'rejected' ? eurovipsResult.reason?.message : undefined,
+          hotelbeds: hotelbedsResult.status === 'rejected' ? hotelbedsResult.reason?.message : undefined,
+        }
       }
     };
   }
 
-  let allHotels = response?.results || [];
+  // Merge and deduplicate: when same hotel appears in both, keep cheaper option
+  const merged = [...eurovipsHotels, ...hotelbedsHotels];
+  const deduped = new Map<string, any>();
+
+  for (const hotel of merged) {
+    const key = hotel.name?.toLowerCase().trim() || hotel.unique_id;
+    const existing = deduped.get(key);
+    if (!existing) {
+      deduped.set(key, hotel);
+    } else {
+      // Keep the cheaper one
+      const existingMin = Math.min(...(existing.rooms || []).map((r: any) => r.total_price || Infinity));
+      const currentMin = Math.min(...(hotel.rooms || []).map((r: any) => r.total_price || Infinity));
+      if (currentMin < existingMin) {
+        deduped.set(key, hotel);
+      }
+    }
+  }
+
+  let allHotels = Array.from(deduped.values());
   const totalFromProvider = allHotels.length;
 
-  console.log('[HOTEL_SEARCH] Found', totalFromProvider, 'hotels from provider');
+  console.log(`[HOTEL_SEARCH] Merged: ${merged.length} → ${totalFromProvider} hotels (after dedup)`);
 
   // ✅ STEP 1: Apply destination-specific filters (e.g., Punta Cana whitelist)
   const beforeWhitelist = allHotels.length;
@@ -671,6 +748,15 @@ async function executeHotelSearch(
       applied_to: 'EUROVIPS <name> field'
     };
   }
+
+  // Provider metadata
+  metadata.providers_searched = providersSearched;
+  metadata.providers_succeeded = providersSucceeded;
+  metadata.provider_counts = {
+    eurovips: eurovipsHotels.length,
+    hotelbeds: hotelbedsHotels.length,
+    merged_total: totalFromProvider,
+  };
 
   return {
     status: 'completed',
@@ -834,6 +920,115 @@ async function executeServiceSearch(
     services: {
       count: serviceData.length,
       items: serviceData.slice(0, 5)
+    }
+  };
+}
+
+// =============================================================================
+// ACTIVITY SEARCH (Hotelbeds Activities API)
+// =============================================================================
+
+async function executeActivitySearch(
+  parsedRequest: ParsedRequest,
+  supabase: ReturnType<typeof createClient>
+): Promise<SearchResults> {
+  console.log('[ACTIVITY_SEARCH] Starting activity search');
+
+  const activityParams = (parsedRequest as any).activities || parsedRequest.services;
+  if (!activityParams) {
+    throw new Error('No activity data in parsed request');
+  }
+
+  const destCode = resolveHotelbedsDestination(activityParams.city || activityParams.destination || '');
+
+  let response;
+  try {
+    response = await invokeWithTimeout(supabase, 'hotelbeds-activities', {
+      action: 'searchActivities',
+      data: {
+        destination: destCode,
+        dateFrom: activityParams.dateFrom || activityParams.checkinDate,
+        dateTo: activityParams.dateTo || activityParams.checkoutDate,
+        adults: activityParams.adults || 2,
+        children: activityParams.children || 0,
+        childrenAges: activityParams.childrenAges || [],
+      }
+    });
+  } catch (error) {
+    console.error('[ACTIVITY_SEARCH] Hotelbeds Activities API error:', error);
+    return {
+      status: 'error',
+      type: 'activities',
+      error: {
+        message: error.message || 'Activity search failed',
+        details: error
+      }
+    };
+  }
+
+  const activityData = response?.data?.results || response?.results || [];
+
+  return {
+    status: 'completed',
+    type: 'activities',
+    activities: {
+      count: activityData.length,
+      items: activityData.slice(0, 10)
+    }
+  };
+}
+
+// =============================================================================
+// TRANSFER SEARCH (Hotelbeds Transfers API)
+// =============================================================================
+
+async function executeTransferSearch(
+  parsedRequest: ParsedRequest,
+  supabase: ReturnType<typeof createClient>
+): Promise<SearchResults> {
+  console.log('[TRANSFER_SEARCH] Starting transfer search');
+
+  const transferParams = (parsedRequest as any).transfers || parsedRequest.services;
+  if (!transferParams) {
+    throw new Error('No transfer data in parsed request');
+  }
+
+  let response;
+  try {
+    response = await invokeWithTimeout(supabase, 'hotelbeds-transfers', {
+      action: 'searchTransfers',
+      data: {
+        fromType: transferParams.fromType || 'ATLAS',
+        fromCode: transferParams.fromCode || transferParams.airportCode || '',
+        toType: transferParams.toType || 'ATLAS',
+        toCode: transferParams.toCode || transferParams.hotelCode || '',
+        outboundDate: transferParams.dateFrom || transferParams.date || '',
+        inboundDate: transferParams.dateTo,
+        adults: transferParams.adults || 2,
+        children: transferParams.children || 0,
+        infants: transferParams.infants || 0,
+      }
+    });
+  } catch (error) {
+    console.error('[TRANSFER_SEARCH] Hotelbeds Transfers API error:', error);
+    return {
+      status: 'error',
+      type: 'transfers',
+      error: {
+        message: error.message || 'Transfer search failed',
+        details: error
+      }
+    };
+  }
+
+  const transferData = response?.data?.results || response?.results || [];
+
+  return {
+    status: 'completed',
+    type: 'transfers',
+    transfers: {
+      count: transferData.length,
+      items: transferData.slice(0, 10)
     }
   };
 }

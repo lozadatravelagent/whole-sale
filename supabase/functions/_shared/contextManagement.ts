@@ -7,7 +7,7 @@
 import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSegments.ts';
 
 export interface ParsedRequest {
-  type: 'flights' | 'hotels' | 'combined' | 'packages' | 'services' | 'itinerary' | 'general' | 'missing_info_request';
+  type: 'flights' | 'hotels' | 'combined' | 'packages' | 'services' | 'activities' | 'transfers' | 'itinerary' | 'general' | 'missing_info_request';
   flights?: any;
   hotels?: any;
   packages?: any;
@@ -21,7 +21,7 @@ export interface ParsedRequest {
 
 export interface SearchResults {
   status: 'completed' | 'incomplete' | 'error';
-  type?: 'flights' | 'hotels' | 'combined';
+  type?: 'flights' | 'hotels' | 'combined' | 'packages' | 'services' | 'activities' | 'transfers' | 'itinerary';
   flights?: {
     count: number;
     items: any[];
@@ -30,6 +30,28 @@ export interface SearchResults {
     count: number;
     items: any[];
   };
+  packages?: {
+    count: number;
+    items: any[];
+  };
+  services?: {
+    count: number;
+    items: any[];
+  };
+  activities?: {
+    count: number;
+    items: any[];
+  };
+  transfers?: {
+    count: number;
+    items: any[];
+  };
+  itinerary?: any;
+  error?: {
+    message: string;
+    details?: any;
+  };
+  metadata?: any;
 }
 
 export interface ContextManagement {

@@ -603,19 +603,6 @@
   }
 }
 
-@media print {
-  body > *:not(.trip-planner-surface) {
-    display: none !important;
-  }
-  .trip-planner-surface {
-    overflow: visible !important;
-    padding: 0 !important;
-  }
-  button, nav, .sidebar, [role="navigation"] {
-    display: none !important;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .planner-panel-fade-in,
   .planner-hotel-loader__halo,

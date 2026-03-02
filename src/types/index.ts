@@ -6,7 +6,7 @@ export type ConversationState = 'active' | 'closed' | 'pending';
 export type MessageRole = 'user' | 'assistant' | 'system';
 export type LeadStatus = 'new' | 'quoted' | 'negotiating' | 'won' | 'lost';
 export type IntegrationStatus = 'active' | 'pending' | 'disabled';
-export type ProviderCode = 'EUROVIPS' | 'LOZADA' | 'DELFOS' | 'ICARO' | 'STARLING';
+export type ProviderCode = 'EUROVIPS' | 'LOZADA' | 'DELFOS' | 'ICARO' | 'STARLING' | 'HOTELBEDS';
 
 // Database entities
 export interface Tenant {
@@ -491,6 +491,7 @@ export interface HotelData {
   segmentCheckIn?: string;
   segmentCheckOut?: string;
   segmentOrder?: number;
+  provider?: 'EUROVIPS' | 'HOTELBEDS';
 }
 
 // Extended hotel data with selected room for PDF generation
@@ -579,4 +580,39 @@ export interface EurovipsResult {
   hotels?: HotelData[];
   services?: ServiceData[];
   error?: string;
+}
+
+// Activity types (Hotelbeds Activities API)
+export interface ActivityData {
+  id: string;
+  provider: 'HOTELBEDS';
+  name: string;
+  description?: string;
+  city: string;
+  images?: string[];
+  duration?: string;
+  price: { amount: number; currency: string; priceFrom?: boolean };
+  categories?: string[];
+  modalities?: Array<{
+    code: string;
+    name: string;
+    rate: number;
+    currency: string;
+  }>;
+  operationDates?: { from: string; to: string };
+  cancellationPolicy?: string;
+}
+
+// Transfer types (Hotelbeds Transfers API)
+export interface TransferData {
+  id: string;
+  provider: 'HOTELBEDS';
+  type: 'PRIVATE' | 'SHARED' | 'LUXURY';
+  direction: 'ARRIVAL' | 'DEPARTURE' | 'ROUND_TRIP';
+  vehicle: string;
+  maxPassengers: number;
+  price: { amount: number; currency: string };
+  pickup: { location: string; time?: string };
+  dropoff: { location: string };
+  cancellationPolicy?: string;
 }

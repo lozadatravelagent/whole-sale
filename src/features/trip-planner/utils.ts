@@ -870,8 +870,7 @@ export function buildPlannerPdfHtml(plannerState: TripPlannerState): string {
 
   function renderHotelInfo(segment: PlannerSegment): string {
     const hotel = segment.hotelPlan.confirmedInventoryHotel
-      || (segment.hotelPlan.selectedPlaceCandidate ? null : null)
-      || segment.hotelPlan.hotelRecommendations[0];
+      || (!segment.hotelPlan.selectedPlaceCandidate ? segment.hotelPlan.hotelRecommendations[0] : null);
 
     const placeCandidate = segment.hotelPlan.selectedPlaceCandidate;
 
@@ -960,9 +959,9 @@ export function buildPlannerPdfHtml(plannerState: TripPlannerState): string {
       sectionHtml += '</h3>';
       if (day.summary) sectionHtml += `<p style="color:#4b5563;margin:0 0 8px;font-size:0.9em;">${escapeHtml(day.summary)}</p>`;
 
-      sectionHtml += renderActivities(day.morning, 'Mañana');
-      sectionHtml += renderActivities(day.afternoon, 'Tarde');
-      sectionHtml += renderActivities(day.evening, 'Noche');
+      sectionHtml += renderActivities(day.morning, formatDayBlockLabel('morning'));
+      sectionHtml += renderActivities(day.afternoon, formatDayBlockLabel('afternoon'));
+      sectionHtml += renderActivities(day.evening, formatDayBlockLabel('evening'));
       sectionHtml += renderRestaurants(day.restaurants);
 
       if (day.travelTip) {
