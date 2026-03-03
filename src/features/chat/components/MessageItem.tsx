@@ -151,8 +151,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
       segment?: LocalHotelSegmentResult,
       segmentOrder?: number
     ): GlobalHotelData => ({
-      id: hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
-      unique_id: hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
+      id: (hotel as any).unique_id || hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
+      unique_id: (hotel as any).unique_id || hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
       name: hotel.name,
       category: hotel.category || '',
       city: hotel.city,
