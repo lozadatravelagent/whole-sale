@@ -156,7 +156,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
       name: hotel.name,
       category: hotel.category || '',
       city: hotel.city,
-      address: hotel.address || '',
+      address: (hotel as any).address || '',
+      images: (hotel as any).images,
       rooms: hotel.rooms.map(room => ({
         type: room.type || 'Standard',
         description: translateRoomDescription(room.description || 'Habitación estándar'),
