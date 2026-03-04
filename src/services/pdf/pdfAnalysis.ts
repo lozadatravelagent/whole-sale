@@ -212,9 +212,10 @@ export async function analyzePdfContent(file: File): Promise<PdfAnalysisResult> 
                     roomType: h.roomType || undefined,
                     mealPlan: h.mealPlan || undefined,
                     optionNumber: h.optionNumber || 0,
-                    // Add check-in/check-out from flight dates
-                    check_in: aiData.dates?.departure || '',
-                    check_out: aiData.dates?.return || ''
+                    // Use per-hotel dates from AI if available, otherwise fall back to global dates
+                    check_in: h.checkIn || aiData.dates?.departure || '',
+                    check_out: h.checkOut || aiData.dates?.return || '',
+                    segmentCity: location || undefined
                 };
             });
 

@@ -347,37 +347,45 @@ export async function generateModifiedPdfWithMultipleHotelPrices(
             const priceChange = hotelChanges.find(change => change.hotelIndex === index);
             const finalPrice = priceChange ? priceChange.newPrice : hotel.price;
 
-            let checkIn = '2025-11-01';
-            let checkOut = '2025-11-15';
+            // Use per-hotel dates if available (from AI per-segment extraction)
+            let checkIn = (hotel as any).check_in || '';
+            let checkOut = (hotel as any).check_out || '';
 
-            if (analysis.content?.flights && analysis.content.flights.length > 0) {
-                const firstFlight = analysis.content.flights[0];
-                const lastFlight = analysis.content.flights[analysis.content.flights.length - 1];
+            if (!checkIn || !checkOut) {
+                if (analysis.content?.flights && analysis.content.flights.length > 0) {
+                    const firstFlight = analysis.content.flights[0];
+                    const lastFlight = analysis.content.flights[analysis.content.flights.length - 1];
 
-                if (firstFlight.dates) {
-                    if (firstFlight.dates.includes(' / ')) {
-                        checkIn = firstFlight.dates.split(' / ')[0].trim();
-                    } else if (firstFlight.dates.includes(' | ')) {
-                        checkIn = firstFlight.dates.split(' | ')[0].replace('📅', '').trim();
-                    } else {
-                        checkIn = firstFlight.dates.replace('📅', '').trim();
+                    if (!checkIn && firstFlight.dates) {
+                        if (firstFlight.dates.includes(' / ')) {
+                            checkIn = firstFlight.dates.split(' / ')[0].trim();
+                        } else if (firstFlight.dates.includes(' | ')) {
+                            checkIn = firstFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                        } else {
+                            checkIn = firstFlight.dates.replace('📅', '').trim();
+                        }
                     }
-                }
 
-                if (lastFlight.dates && analysis.content.flights.length > 1) {
-                    if (lastFlight.dates.includes(' / ')) {
-                        checkOut = lastFlight.dates.split(' / ')[1]?.trim() || lastFlight.dates.split(' / ')[0].trim();
-                    } else if (lastFlight.dates.includes(' | ')) {
-                        checkOut = lastFlight.dates.split(' | ')[0].replace('📅', '').trim();
-                    } else {
-                        checkOut = lastFlight.dates.replace('📅', '').trim();
+                    if (!checkOut) {
+                        if (lastFlight.dates && analysis.content.flights.length > 1) {
+                            if (lastFlight.dates.includes(' / ')) {
+                                checkOut = lastFlight.dates.split(' / ')[1]?.trim() || lastFlight.dates.split(' / ')[0].trim();
+                            } else if (lastFlight.dates.includes(' | ')) {
+                                checkOut = lastFlight.dates.split(' | ')[0].replace('📅', '').trim();
+                            } else {
+                                checkOut = lastFlight.dates.replace('📅', '').trim();
+                            }
+                        } else if (hotel.nights > 0 && checkIn) {
+                            const checkInDate = new Date(checkIn);
+                            checkInDate.setDate(checkInDate.getDate() + hotel.nights);
+                            checkOut = checkInDate.toISOString().split('T')[0];
+                        }
                     }
-                } else if (hotel.nights > 0) {
-                    const checkInDate = new Date(checkIn);
-                    checkInDate.setDate(checkInDate.getDate() + hotel.nights);
-                    checkOut = checkInDate.toISOString().split('T')[0];
                 }
             }
+
+            if (!checkIn) checkIn = '2025-11-01';
+            if (!checkOut) checkOut = '2025-11-15';
 
             const hotelId = `multi-hotel-modified-${Date.now()}-${index}`;
             const pricePerNight = parseFloat((finalPrice / (hotel.nights || 7)).toFixed(2));
@@ -387,6 +395,8 @@ export async function generateModifiedPdfWithMultipleHotelPrices(
             const hotelLocation = hotel.location && hotel.location !== 'Ubicación no especificada'
                 ? hotel.location.substring(0, 20) : 'Ubicación no especificada';
             const hotelCategory = hotel.category || '5';
+            const segmentCity = (hotel as any).segmentCity || hotel.location || undefined;
+            const hasSegmentData = !!(segmentCity && checkIn && checkOut);
 
             return {
                 id: hotelId,
@@ -415,7 +425,14 @@ export async function generateModifiedPdfWithMultipleHotelPrices(
                     currency: analysis.content?.currency || 'USD',
                     availability: 5,
                     occupancy_id: `room-${index}`
-                }
+                },
+                ...(hasSegmentData && {
+                    segmentCity: segmentCity,
+                    segmentCheckIn: checkIn,
+                    segmentCheckOut: checkOut,
+                    segmentId: `${segmentCity.toLowerCase()}|${checkIn}|${checkOut}`,
+                    segmentOrder: index
+                })
             };
         }) || [];
 
@@ -681,19 +698,15 @@ export async function generateModifiedPdf(
             }
 
             adjustedHotels = analysis.content.hotels?.map((hotel, index) => {
-                let checkIn = '';
-                let checkOut = '';
+                // Prefer per-hotel dates (from AI per-segment extraction) over global dates
+                let checkIn = (hotel as any).check_in || '';
+                let checkOut = (hotel as any).check_out || '';
 
-                if ((analysis.content as any)?.dates) {
-                    checkIn = (analysis.content as any).dates.departure || '';
-                    checkOut = (analysis.content as any).dates.return || '';
-                }
-
-                if (!checkIn && (hotel as any).check_in) {
-                    checkIn = (hotel as any).check_in;
-                }
-                if (!checkOut && (hotel as any).check_out) {
-                    checkOut = (hotel as any).check_out;
+                if (!checkIn || !checkOut) {
+                    if ((analysis.content as any)?.dates) {
+                        if (!checkIn) checkIn = (analysis.content as any).dates.departure || '';
+                        if (!checkOut) checkOut = (analysis.content as any).dates.return || '';
+                    }
                 }
 
                 if (!checkIn && analysis.content?.flights && analysis.content.flights.length > 0) {
@@ -776,6 +789,10 @@ export async function generateModifiedPdf(
                     packagePrice: (hotel as any).packagePrice
                 });
 
+                // Derive segment properties for multi-segment layout preservation
+                const segmentCity = (hotel as any).segmentCity || hotelCity || undefined;
+                const hasSegmentData = !!(segmentCity && checkIn && checkOut);
+
                 const hotelData: any = {
                     id: hotelId,
                     unique_id: hotelId,
@@ -796,7 +813,14 @@ export async function generateModifiedPdf(
                         meal_plan: mealPlan
                     }],
                     mealPlan: mealPlan,
-                    optionNumber: optionNumber
+                    optionNumber: optionNumber,
+                    ...(hasSegmentData && {
+                        segmentCity: segmentCity,
+                        segmentCheckIn: checkIn,
+                        segmentCheckOut: checkOut,
+                        segmentId: `${segmentCity.toLowerCase()}|${checkIn}|${checkOut}`,
+                        segmentOrder: index
+                    })
                 };
 
                 if ((hotel as any)._packageMetadata) {
