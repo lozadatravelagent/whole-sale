@@ -343,6 +343,14 @@ export async function generateModifiedPdfWithMultipleHotelPrices(
             return null;
         }).filter(flight => flight !== null) || [];
 
+        // Detect if hotels have distinct per-segment dates (multi-segment PDF)
+        const hotelDatePairsMulti = new Set(
+            (analysis.content.hotels || [])
+                .filter((h: any) => h.check_in && h.check_out)
+                .map((h: any) => `${h.check_in}|${h.check_out}`)
+        );
+        const isMultiSegmentMulti = hotelDatePairsMulti.size > 1;
+
         const adjustedHotels = analysis.content.hotels?.map((hotel, index) => {
             const priceChange = hotelChanges.find(change => change.hotelIndex === index);
             const finalPrice = priceChange ? priceChange.newPrice : hotel.price;
@@ -396,7 +404,6 @@ export async function generateModifiedPdfWithMultipleHotelPrices(
                 ? hotel.location.substring(0, 20) : 'Ubicación no especificada';
             const hotelCategory = hotel.category || '5';
             const segmentCity = (hotel as any).segmentCity || hotel.location || undefined;
-            const hasSegmentData = !!(segmentCity && checkIn && checkOut);
 
             return {
                 id: hotelId,
@@ -426,7 +433,7 @@ export async function generateModifiedPdfWithMultipleHotelPrices(
                     availability: 5,
                     occupancy_id: `room-${index}`
                 },
-                ...(hasSegmentData && {
+                ...(isMultiSegmentMulti && segmentCity && checkIn && checkOut && {
                     segmentCity: segmentCity,
                     segmentCheckIn: checkIn,
                     segmentCheckOut: checkOut,
@@ -697,6 +704,15 @@ export async function generateModifiedPdf(
                 }
             }
 
+            // Detect if hotels have distinct per-segment dates (multi-segment PDF)
+            const hotelDatePairs = new Set(
+                (analysis.content.hotels || [])
+                    .filter((h: any) => h.check_in && h.check_out)
+                    .map((h: any) => `${h.check_in}|${h.check_out}`)
+            );
+            const isMultiSegment = hotelDatePairs.size > 1;
+            console.log(`🔍 [SEGMENT DETECTION] Distinct date pairs: ${hotelDatePairs.size}, isMultiSegment: ${isMultiSegment}`, [...hotelDatePairs]);
+
             adjustedHotels = analysis.content.hotels?.map((hotel, index) => {
                 // Prefer per-hotel dates (from AI per-segment extraction) over global dates
                 let checkIn = (hotel as any).check_in || '';
@@ -790,8 +806,8 @@ export async function generateModifiedPdf(
                 });
 
                 // Derive segment properties for multi-segment layout preservation
+                // Only set segment data when hotels have distinct per-segment dates
                 const segmentCity = (hotel as any).segmentCity || hotelCity || undefined;
-                const hasSegmentData = !!(segmentCity && checkIn && checkOut);
 
                 const hotelData: any = {
                     id: hotelId,
@@ -814,7 +830,7 @@ export async function generateModifiedPdf(
                     }],
                     mealPlan: mealPlan,
                     optionNumber: optionNumber,
-                    ...(hasSegmentData && {
+                    ...(isMultiSegment && segmentCity && checkIn && checkOut && {
                         segmentCity: segmentCity,
                         segmentCheckIn: checkIn,
                         segmentCheckOut: checkOut,
