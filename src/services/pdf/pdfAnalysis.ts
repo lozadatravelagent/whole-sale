@@ -628,17 +628,19 @@ export async function processPriceChangeRequest(
             }
 
             // Create modified analysis with ALL option prices updated
+            // Match by optionNumber (not name) so ALL hotels per option get metadata
             const modifiedAnalysis = { ...analysis };
             if (modifiedAnalysis.content) {
                 modifiedAnalysis.content = {
                     ...modifiedAnalysis.content,
                     hotels: analysis.content.hotels?.map((hotel) => {
-                        const isOption1 = hotel.name === option1Hotel!.name;
-                        const isOption2 = hotel.name === option2Hotel!.name;
-                        const isOption3 = option3Hotel && hotel.name === option3Hotel.name;
+                        const hotelOptNum = (hotel as any).optionNumber;
+                        const isOption1 = hotelOptNum === 1 || (!hotelOptNum && hotel.name === option1Hotel!.name);
+                        const isOption2 = hotelOptNum === 2 || (!hotelOptNum && hotel.name === option2Hotel!.name);
+                        const isOption3 = hasOption3 && (hotelOptNum === 3 || (!hotelOptNum && option3Hotel && hotel.name === option3Hotel.name));
 
                         if (isOption1) {
-                            const newHotelPrice = option1Hotel!.price > 0 ? option1Hotel!.price * option1Ratio : 0;
+                            const newHotelPrice = hotel.price > 0 ? hotel.price * option1Ratio : 0;
                             console.log(`🏨 [MULTI] Updating Option 1 hotel: ${hotel.name}`);
                             console.log(`   Package price: $${option1OriginalPrice} → $${multiOptions.option1Price}`);
                             return {
@@ -652,7 +654,7 @@ export async function processPriceChangeRequest(
                                 }
                             };
                         } else if (isOption2) {
-                            const newHotelPrice = option2Hotel!.price > 0 ? option2Hotel!.price * option2Ratio : 0;
+                            const newHotelPrice = hotel.price > 0 ? hotel.price * option2Ratio : 0;
                             console.log(`🏨 [MULTI] Updating Option 2 hotel: ${hotel.name}`);
                             console.log(`   Package price: $${option2OriginalPrice} → $${multiOptions.option2Price}`);
                             return {
@@ -666,7 +668,7 @@ export async function processPriceChangeRequest(
                                 }
                             };
                         } else if (isOption3 && option3Hotel) {
-                            const newHotelPrice = option3Hotel.price > 0 ? option3Hotel.price * option3Ratio : 0;
+                            const newHotelPrice = hotel.price > 0 ? hotel.price * option3Ratio : 0;
                             console.log(`🏨 [MULTI] Updating Option 3 hotel: ${hotel.name}`);
                             console.log(`   Package price: $${option3OriginalPrice} → $${multiOptions.option3Price}`);
                             return {

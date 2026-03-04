@@ -64,20 +64,47 @@
       font-style: italic;
     }
 
+    .hotel-summary-column-headers {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+      margin-bottom: 0;
+    }
+
+    .hotel-summary-column-header {
+      font-size: 10px;
+      font-weight: 700;
+      color: #2563eb;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 4px 6px;
+      border-bottom: 2px solid #2563eb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hotel-summary-column-total {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1d4ed8;
+    }
+
     .hotel-summary-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 10px;
+      gap: 8px;
+      margin-top: 6px;
     }
 
     .hotel-summary-card {
       border: 1px solid #e0e0e0;
-      border-radius: 10px;
-      padding: 10px 11px;
+      border-radius: 8px;
+      padding: 8px 10px;
       background: #fafafa;
-      min-height: 148px;
-      height: 148px;
+      min-height: 100px;
+      height: 120px;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
@@ -89,14 +116,14 @@
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      gap: 8px;
+      gap: 6px;
       border-bottom: 1px solid #ececec;
-      padding-bottom: 6px;
-      margin-bottom: 6px;
+      padding-bottom: 4px;
+      margin-bottom: 4px;
     }
 
     .hotel-summary-city {
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.3px;
@@ -104,7 +131,7 @@
     }
 
     .hotel-summary-dates {
-      font-size: 9px;
+      font-size: 8px;
       font-weight: 600;
       color: #666;
       text-align: right;
@@ -113,39 +140,39 @@
 
     .hotel-summary-name {
       font-weight: 700;
-      font-size: 11px;
+      font-size: 10px;
       color: #333;
-      line-height: 1.25;
-      margin-bottom: 4px;
-      max-height: 28px;
+      line-height: 1.2;
+      margin-bottom: 3px;
+      max-height: 24px;
       overflow: hidden;
     }
 
     .hotel-summary-meta {
-      font-size: 9px;
+      font-size: 8px;
       color: #666;
-      line-height: 1.3;
-      margin-bottom: 2px;
-      max-height: 24px;
+      line-height: 1.2;
+      margin-bottom: 1px;
+      max-height: 20px;
       overflow: hidden;
     }
 
     .hotel-summary-pill {
       display: inline-block;
-      margin-top: 4px;
-      padding: 2px 6px;
+      margin-top: 2px;
+      padding: 1px 5px;
       border-radius: 999px;
       background: #f3ead0;
       color: #7a5c12;
-      font-size: 8px;
+      font-size: 7px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.25px;
     }
 
     .hotel-summary-price {
-      margin-top: 6px;
-      font-size: 14px;
+      margin-top: 4px;
+      font-size: 12px;
       font-weight: 700;
       color: #2563eb;
       line-height: 1;
@@ -201,6 +228,32 @@
 
     .final-disclaimer p:last-child {
       margin-bottom: 0;
+    }
+
+    .options-disclaimer {
+      margin-top: 8px;
+      font-size: 6.5px;
+      color: #555;
+      line-height: 1.2;
+      border-top: 1px solid #ddd;
+      padding-top: 6px;
+    }
+
+    .options-disclaimer p {
+      margin: 0 0 2px 0;
+    }
+
+    .options-disclaimer p:last-child {
+      margin-bottom: 0;
+    }
+
+    .hotel-option-price-label {
+      font-size: 8px;
+      font-weight: 600;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-top: 2px;
     }
 
     /* Ajustar contenedores para dejar espacio al disclaimer (80px footer + 70px disclaimer) */
@@ -318,6 +371,30 @@
         {% endunless %}
 
         {% if has_hotel_segments and hotel_summary_cards.size > 0 %}
+        {% assign _opt1_htl = 0 %}
+        {% assign _opt2_htl = 0 %}
+        {% for card in hotel_summary_cards %}
+          {% assign _cp = card.price | replace: ".", "" | replace: ",", "." | times: 1 %}
+          {% assign _idx_mod = forloop.index | modulo: 2 %}
+          {% if _idx_mod == 1 %}
+            {% assign _opt1_htl = _opt1_htl | plus: _cp %}
+          {% else %}
+            {% assign _opt2_htl = _opt2_htl | plus: _cp %}
+          {% endif %}
+        {% endfor %}
+        {% assign _fp = flight_price | default: 0 | replace: ".", "" | replace: ",", "." | times: 1 %}
+        {% assign _opt1_pkg = _opt1_htl | plus: _fp | plus: _ta_norm | plus: _tr_norm %}
+        {% assign _opt2_pkg = _opt2_htl | plus: _fp | plus: _ta_norm | plus: _tr_norm %}
+        <div class="hotel-summary-column-headers">
+          <div class="hotel-summary-column-header">
+            <span>Opción 1</span>
+            <span class="hotel-summary-column-total">${{ _opt1_pkg }} {{ total_currency }}</span>
+          </div>
+          <div class="hotel-summary-column-header">
+            <span>Opción 2</span>
+            <span class="hotel-summary-column-total">${{ _opt2_pkg }} {{ total_currency }}</span>
+          </div>
+        </div>
         <div class="hotel-summary-grid">
           {% for card in hotel_summary_cards %}
           <div class="hotel-summary-card">
@@ -333,9 +410,15 @@
               {% if card.meal_plan %}<div class="hotel-summary-pill">{{ card.meal_plan }}</div>{% endif %}
             </div>
 
-            <div class="hotel-summary-price">${{ card.price }} {{ total_currency }}</div>
           </div>
           {% endfor %}
+        </div>
+
+        <div class="options-disclaimer">
+          <p>El presente presupuesto es orientativo y se encuentra sujeto a disponibilidad y modificación de tarifas al momento de realizar la reserva y/o emisión.</p>
+          <p>La agencia no se responsabiliza por la documentación personal de los pasajeros, siendo exclusiva responsabilidad de los mismos contar con pasaporte vigente, visas, vacunas, permisos de salida del país, requisitos migratorios y sanitarios exigidos por las autoridades de cada destino.</p>
+          <p>La confirmación de servicios queda sujeta al pago total o parcial, según condiciones del operador y proveedor interviniente.</p>
+          <p>Consultar por la asistencia al viajero.</p>
         </div>
 
         {% elsif option_1_hotel %}
@@ -398,6 +481,7 @@
                 {% assign _opt1 = _opt1_str | replace: ".", "" | replace: ",", "." | times: 1 %}
                 ${{ _opt1 }} {{ total_currency }}
               </div>
+              <div class="hotel-option-price-label">Total paquete{% if has_flights %} (vuelo + hotel){% endif %}</div>
             </div>
             <div class="hotel-option-content">
               <div class="hotel-option-name">🏨 {{ option_1_hotel.name }}</div>
@@ -419,6 +503,7 @@
                 {% assign _opt2 = _opt2_str | replace: ".", "" | replace: ",", "." | times: 1 %}
                 ${{ _opt2 }} {{ total_currency }}
               </div>
+              <div class="hotel-option-price-label">Total paquete{% if has_flights %} (vuelo + hotel){% endif %}</div>
             </div>
             <div class="hotel-option-content">
               <div class="hotel-option-name">🏨 {{ option_2_hotel.name }}</div>
@@ -441,6 +526,7 @@
                 {% assign _opt3 = _opt3_str | replace: ".", "" | replace: ",", "." | times: 1 %}
                 ${{ _opt3 }} {{ total_currency }}
               </div>
+              <div class="hotel-option-price-label">Total paquete{% if has_flights %} (vuelo + hotel){% endif %}</div>
             </div>
             <div class="hotel-option-content">
               <div class="hotel-option-name">🏨 {{ option_3_hotel.name }}</div>
@@ -450,6 +536,13 @@
             </div>
           </div>
           {% endif %}
+        </div>
+
+        <div class="options-disclaimer">
+          <p>El presente presupuesto es orientativo y se encuentra sujeto a disponibilidad y modificación de tarifas al momento de realizar la reserva y/o emisión.</p>
+          <p>La agencia no se responsabiliza por la documentación personal de los pasajeros, siendo exclusiva responsabilidad de los mismos contar con pasaporte vigente, visas, vacunas, permisos de salida del país, requisitos migratorios y sanitarios exigidos por las autoridades de cada destino.</p>
+          <p>La confirmación de servicios queda sujeta al pago total o parcial, según condiciones del operador y proveedor interviniente.</p>
+          <p>Consultar por la asistencia al viajero.</p>
         </div>
 
         {% else %}

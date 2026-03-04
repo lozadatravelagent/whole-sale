@@ -742,7 +742,18 @@ export async function generateModifiedPdf(
 
                 let roomTotalPrice: number;
                 if ((hotel as any)._packageMetadata) {
-                    roomTotalPrice = parseFloat((hotel.price * hotel.nights).toFixed(2));
+                    if (hotel.price > 0) {
+                        roomTotalPrice = parseFloat((hotel.price * hotel.nights).toFixed(2));
+                    } else {
+                        // AI-extracted bundled packages have price: 0 — derive from package total
+                        const metadata = (hotel as any)._packageMetadata;
+                        const flightTotal = adjustedFlights.reduce((sum: number, f: any) => sum + (f.price?.amount || 0), 0);
+                        const sameOptionCount = (analysis.content!.hotels || []).filter(
+                            (h: any) => (h as any).optionNumber === metadata.optionNumber
+                        ).length || 1;
+                        const hotelPortion = Math.max(0, metadata.totalPackagePrice - flightTotal);
+                        roomTotalPrice = parseFloat((hotelPortion / sameOptionCount).toFixed(2));
+                    }
                     console.log(`💰 [EXTERNAL PDF] Using specific price for ${hotel.name}: $${roomTotalPrice} (from _packageMetadata)`);
                 } else {
                     roomTotalPrice = parseFloat((hotel.price * hotel.nights * priceRatio).toFixed(2));
@@ -802,7 +813,9 @@ export async function generateModifiedPdf(
         const currentTotal = currentFlightsTotal + currentHotelsTotal;
         const deltaToTarget = parseFloat((newPrice - currentTotal).toFixed(2));
 
-        if (deltaToTarget !== 0) {
+        // Skip delta adjustment when hotels have _packageMetadata — totals are already correct
+        const hasMetadataHotels = adjustedHotels.some((h: any) => h._packageMetadata);
+        if (deltaToTarget !== 0 && !hasMetadataHotels) {
             if (adjustedHotels.length > 0 && adjustedHotels[adjustedHotels.length - 1]?.rooms?.[0]) {
                 const lastHotel = adjustedHotels[adjustedHotels.length - 1];
                 const room = lastHotel.rooms[0];

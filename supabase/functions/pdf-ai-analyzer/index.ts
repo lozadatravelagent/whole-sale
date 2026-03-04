@@ -150,6 +150,7 @@ REGLAS CRÍTICAS:
    - El address es la dirección física completa del hotel
    - El roomType viene entre paréntesis
    - El mealPlan se extrae del roomType (TODO INCLUIDO, ALL-INCLUSIVE, etc)
+   - MULTI-SEGMENTO: Si el PDF tiene varias ciudades/destinos con 2 columnas (Opción 1 / Opción 2), extrae CADA hotel por separado con su optionNumber correcto (1 o 2). Los precios de las opciones aparecen en los encabezados de columna. Ejemplo: si hay Madrid + Barcelona con 2 opciones, extrae 4 hoteles (2 para opción 1, 2 para opción 2), todos con el MISMO packagePrice de su opción
 3. FECHAS: Extrae del campo "FECHAS" en formato YYYY-MM-DD
 4. Si hay información que no puedes extraer, usa valores por defecto razonables
 5. NO inventes datos que no estén en el texto
