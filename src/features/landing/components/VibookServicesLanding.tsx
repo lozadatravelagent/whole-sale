@@ -274,14 +274,14 @@ function SectionTitle({ eyebrow, title, description }: { eyebrow: string; title:
 
 function BrowserFrame({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-[30px] border border-black/10 bg-white shadow-[0_40px_120px_-48px_rgba(0,113,227,0.42)]">
-      <div className="flex items-center justify-between gap-3 border-b border-black/6 bg-[#F7F7F8] px-4 py-3">
+    <div className="overflow-hidden rounded-[30px] border border-[#D9D9DE] bg-white shadow-[0_40px_120px_-48px_rgba(0,113,227,0.42)]">
+      <div className="flex items-center justify-between gap-3 border-b border-[#E5E5EA] bg-[#F7F7F8] px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#FEBC2E]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#28C840]" />
         </div>
-        <div className="rounded-full border border-black/8 bg-white px-3 py-1 text-[11px] font-medium text-[#6E6E73]">
+        <div className="rounded-full border border-[#E1E1E6] bg-white px-3 py-1 text-[11px] font-medium text-[#6E6E73]">
           {title}
         </div>
         <div className="hidden h-2 w-16 rounded-full bg-black/6 sm:block" />
@@ -297,7 +297,7 @@ export function VibookServicesLanding() {
       className="min-h-screen bg-[#FFFFFF] text-[#1D1D1F]"
       style={{ fontFamily: '"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' }}
     >
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-black/5 bg-white/80 backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-0 z-40 border-b border-[#ECECEE] bg-[rgba(255,255,255,0.82)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
           <a href="#top" className="flex items-center gap-3">
             <img src="/vibook-black.png" alt="Vibook Services" className="h-8 w-auto" />
@@ -320,7 +320,7 @@ export function VibookServicesLanding() {
         </div>
       </header>
 
-      <section id="top" className="relative overflow-hidden border-b border-black/5 bg-[linear-gradient(180deg,#FFFFFF_0%,#FAFAFA_72%,#FFFFFF_100%)] pt-28">
+      <section id="top" className="relative overflow-hidden border-b border-[#ECECEE] bg-[linear-gradient(180deg,#FFFFFF_0%,#FAFAFA_72%,#FFFFFF_100%)] pt-28">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute left-[-10%] top-8 h-72 w-72 rounded-full bg-[#0071E3]/10 blur-3xl" />
           <div className="absolute right-[-6%] top-10 h-80 w-80 rounded-full bg-[#5AC8FA]/16 blur-3xl" />
@@ -330,7 +330,7 @@ export function VibookServicesLanding() {
         <div className="relative mx-auto max-w-7xl px-6 pb-20 lg:pb-24">
           <Reveal className="mx-auto max-w-4xl text-center">
             <div>
-              <div className="inline-flex rounded-full border border-[#0071E3]/15 bg-white/85 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#0071E3] shadow-[0_16px_50px_-35px_rgba(0,113,227,0.45)]">
+              <div className="inline-flex rounded-full border border-[#0071E3]/15 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#0071E3] shadow-[0_16px_50px_-35px_rgba(0,113,227,0.45)]">
                 ERP/CRM todo-en-uno para agencias de viaje
               </div>
               <h1 className="mt-6 text-5xl font-semibold tracking-[-0.07em] text-[#1D1D1F] sm:text-6xl lg:text-7xl">
@@ -346,7 +346,7 @@ export function VibookServicesLanding() {
                     <ArrowRight className="h-4 w-4" />
                   </a>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="h-12 rounded-full border-black/10 bg-white/90 px-6 text-base text-[#1D1D1F] hover:bg-black/5">
+                <Button asChild size="lg" variant="outline" className="h-12 rounded-full border-[#D9D9DE] bg-white px-6 text-base text-[#1D1D1F] hover:bg-black/5">
                   <a href="#demo">
                     Ver demo
                     <PlayCircle className="h-4 w-4" />
@@ -357,7 +357,7 @@ export function VibookServicesLanding() {
                 {heroSignals.map((signal, index) => (
                   <motion.div
                     key={signal.value}
-                    className="rounded-[24px] border border-black/7 bg-white/85 p-4 shadow-[0_20px_60px_-40px_rgba(0,0,0,0.25)]"
+                    className="rounded-[24px] border border-[#D7D7DC] bg-white p-4 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.12)]"
                     initial={{ opacity: 0, y: 18 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true, amount: 0.4 }}
@@ -373,7 +373,7 @@ export function VibookServicesLanding() {
         </div>
       </section>
 
-      <section id="demo" className="border-b border-black/5 bg-[#FFFFFF] py-20">
+      <section id="demo" className="border-b border-[#ECECEE] bg-[#FFFFFF] py-20">
         <div className="mx-auto max-w-7xl px-6">
           <Reveal>
             <BrowserFrame title="Vibook Services · Demo del dashboard">
@@ -386,7 +386,7 @@ export function VibookServicesLanding() {
         </div>
       </section>
 
-      <section id="producto" className="border-b border-black/5 bg-[#FFFFFF] py-20">
+      <section id="producto" className="border-b border-[#ECECEE] bg-[#FFFFFF] py-20">
         <div className="mx-auto max-w-7xl px-6">
           <Reveal>
             <SectionTitle
@@ -398,7 +398,7 @@ export function VibookServicesLanding() {
 
           <div className="mt-12 grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
             <Reveal>
-              <div className="rounded-[32px] border border-black/8 bg-[#FAFAFA] p-6 shadow-[0_20px_70px_-48px_rgba(0,0,0,0.3)] sm:p-8">
+              <div className="rounded-[32px] border border-[#DEDEE3] bg-[#FAFAFA] p-6 shadow-[0_20px_70px_-48px_rgba(0,0,0,0.3)] sm:p-8">
                 <div className="inline-flex rounded-full bg-[#1D1D1F] px-3 py-1 text-xs font-medium text-white">El problema</div>
                 <h3 className="mt-5 text-2xl font-semibold tracking-[-0.04em] text-[#1D1D1F]">
                   Tu agencia usa 5 herramientas distintas que no se hablan entre si
@@ -448,7 +448,7 @@ export function VibookServicesLanding() {
         </div>
       </section>
 
-      <section id="modulos" className="border-b border-black/5 bg-[#FAFAFA] py-20">
+      <section id="modulos" className="border-b border-[#ECECEE] bg-[#FAFAFA] py-20">
         <div className="mx-auto max-w-7xl px-6">
           <Reveal>
             <SectionTitle
@@ -461,7 +461,7 @@ export function VibookServicesLanding() {
           <div className="mt-12 grid gap-6 xl:grid-cols-2">
             {overviewCards.map((card, index) => (
               <Reveal key={card.title} delay={index * 0.04}>
-                <div className="rounded-[28px] border border-black/8 bg-white p-6 shadow-[0_24px_80px_-44px_rgba(20,20,20,0.35)]">
+                <div className="rounded-[28px] border border-[#DEDEE3] bg-white p-6 shadow-[0_24px_80px_-44px_rgba(20,20,20,0.35)]">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h3 className="text-xl font-semibold tracking-[-0.03em] text-[#1D1D1F]">{card.title}</h3>
@@ -474,7 +474,7 @@ export function VibookServicesLanding() {
                   <div className="mt-6 rounded-[24px] bg-[#F7F7F8] p-4">
                     <div className="grid gap-3">
                       {card.rows.map((row) => (
-                        <div key={row} className="flex items-center justify-between rounded-2xl border border-black/6 bg-white px-4 py-3">
+                        <div key={row} className="flex items-center justify-between rounded-2xl border border-[#E5E5EA] bg-white px-4 py-3">
                           <span className="text-sm text-[#1D1D1F]">{row}</span>
                           <span className="rounded-full bg-[#0071E3]/6 px-2.5 py-1 text-xs font-medium text-[#0071E3]">Activo</span>
                         </div>
@@ -492,7 +492,7 @@ export function VibookServicesLanding() {
               return (
                 <motion.div
                   key={feature.title}
-                  className="rounded-[28px] border border-black/8 bg-white p-6 shadow-[0_24px_80px_-52px_rgba(0,0,0,0.32)]"
+                  className="rounded-[28px] border border-[#DEDEE3] bg-white p-6 shadow-[0_24px_80px_-52px_rgba(0,0,0,0.32)]"
                   initial={{ opacity: 0, y: 24 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, amount: 0.2 }}
@@ -508,7 +508,7 @@ export function VibookServicesLanding() {
                   <p className="mt-3 text-sm leading-6 text-[#6E6E73]">{feature.description}</p>
                   <div className="mt-5 flex flex-wrap gap-2">
                     {feature.chips.map((chip) => (
-                      <span key={chip} className="rounded-full border border-black/8 bg-[#FAFAFA] px-3 py-1 text-xs font-medium text-[#4D4D52]">
+                      <span key={chip} className="rounded-full border border-[#E1E1E6] bg-[#FAFAFA] px-3 py-1 text-xs font-medium text-[#4D4D52]">
                         {chip}
                       </span>
                     ))}
@@ -520,7 +520,7 @@ export function VibookServicesLanding() {
         </div>
       </section>
 
-      <section id="roles" className="border-b border-black/5 bg-[#FFFFFF] py-20">
+      <section id="roles" className="border-b border-[#ECECEE] bg-[#FFFFFF] py-20">
         <div className="mx-auto max-w-7xl px-6">
           <Reveal>
             <SectionTitle
@@ -536,7 +536,7 @@ export function VibookServicesLanding() {
               return (
                 <motion.div
                   key={role.name}
-                  className="rounded-[28px] border border-black/8 bg-[#FAFAFA] p-6"
+                  className="rounded-[28px] border border-[#DEDEE3] bg-[#FAFAFA] p-6"
                   initial={{ opacity: 0, y: 24 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, amount: 0.2 }}
@@ -562,7 +562,7 @@ export function VibookServicesLanding() {
         </div>
       </section>
 
-      <section className="border-b border-black/5 bg-[#FAFAFA] py-20">
+      <section className="border-b border-[#ECECEE] bg-[#FAFAFA] py-20">
         <div className="mx-auto max-w-7xl px-6">
           <Reveal>
             <SectionTitle
@@ -578,7 +578,7 @@ export function VibookServicesLanding() {
               return (
                 <motion.div
                   key={integration.title}
-                  className="rounded-[28px] border border-black/8 bg-white p-6"
+                  className="rounded-[28px] border border-[#DEDEE3] bg-white p-6"
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, amount: 0.2 }}
@@ -598,7 +598,7 @@ export function VibookServicesLanding() {
             {proofCards.map((card, index) => (
               <motion.div
                 key={card.title}
-                className="rounded-[28px] border border-black/8 bg-white p-6 shadow-[0_20px_70px_-50px_rgba(0,0,0,0.32)]"
+                className="rounded-[28px] border border-[#DEDEE3] bg-white p-6 shadow-[0_20px_70px_-50px_rgba(0,0,0,0.32)]"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.25 }}
@@ -613,7 +613,7 @@ export function VibookServicesLanding() {
         </div>
       </section>
 
-      <section id="precios" className="border-b border-black/5 bg-[#FFFFFF] py-20">
+      <section id="precios" className="border-b border-[#ECECEE] bg-[#FFFFFF] py-20">
         <div className="mx-auto max-w-7xl px-6">
           <Reveal>
             <SectionTitle
@@ -631,7 +631,7 @@ export function VibookServicesLanding() {
                   "rounded-[32px] border p-7",
                   card.highlighted
                     ? "border-[#0071E3]/15 bg-[linear-gradient(180deg,#F7FBFF_0%,#FFFFFF_100%)] shadow-[0_32px_100px_-56px_rgba(0,113,227,0.4)]"
-                    : "border-black/8 bg-[#FAFAFA]",
+                    : "border-[#DEDEE3] bg-[#FAFAFA]",
                 )}
                 initial={{ opacity: 0, y: 24 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -687,7 +687,7 @@ export function VibookServicesLanding() {
             <Link to="/contacto" className="transition-colors hover:text-[#0071E3]">Contacto</Link>
           </div>
         </div>
-        <div className="mx-auto mt-8 flex max-w-7xl flex-col gap-3 border-t border-black/6 px-6 pt-6 text-sm text-[#86868B] sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto mt-8 flex max-w-7xl flex-col gap-3 border-t border-[#E5E5EA] px-6 pt-6 text-sm text-[#86868B] sm:flex-row sm:items-center sm:justify-between">
           <div>Todo el flujo de la agencia, desde el lead hasta la factura.</div>
           <div className="flex items-center gap-5">
             <div className="inline-flex items-center gap-2">
