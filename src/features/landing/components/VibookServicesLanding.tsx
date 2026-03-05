@@ -234,6 +234,7 @@ const pricingCards = [
 ];
 
 const revealEase = [0.22, 1, 0.36, 1] as const;
+const appLoginUrl = "https://app.vibook.ai/login";
 
 function Reveal({
   children,
@@ -313,7 +314,7 @@ export function VibookServicesLanding() {
               <Link to="/documentacion">Documentacion</Link>
             </Button>
             <Button asChild className="rounded-full bg-[#0071E3] px-5 text-white hover:bg-[#0060C2]">
-              <Link to="/login">Comenzar gratis</Link>
+              <a href={appLoginUrl}>Comenzar gratis</a>
             </Button>
           </div>
         </div>
@@ -340,10 +341,10 @@ export function VibookServicesLanding() {
               </p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
                 <Button asChild size="lg" className="h-12 rounded-full bg-[#0071E3] px-6 text-base text-white hover:bg-[#0060C2]">
-                  <Link to="/login">
+                  <a href={appLoginUrl}>
                     Comenzar gratis
                     <ArrowRight className="h-4 w-4" />
-                  </Link>
+                  </a>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="h-12 rounded-full border-black/10 bg-white/90 px-6 text-base text-[#1D1D1F] hover:bg-black/5">
                   <a href="#demo">
