@@ -147,6 +147,14 @@ export function PublicChat() {
               Consultá un itinerario y revisá cómo combina búsqueda, contexto comercial y respuesta
               asistida.
             </p>
+            <a
+              href="https://emilia.vibook.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-block rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-amber-400 px-4 py-1.5 text-xs font-semibold text-slate-950 transition-opacity hover:opacity-90"
+            >
+              Saber Más
+            </a>
           </div>
 
           <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 md:px-5 py-4 space-y-3">

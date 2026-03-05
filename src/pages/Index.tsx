@@ -1,5 +1,4 @@
 import { Navigation } from '@/features/landing/components/Navigation';
-import { PublicChat } from '@/features/public-chat/PublicChat';
 import { Features } from '@/features/landing/components/Features';
 import { Showcase } from '@/features/landing/components/Showcase';
 import { Testimonial } from '@/features/landing/components/Testimonial';
@@ -18,7 +17,6 @@ const Index = () => (
       <CursorGlow />
       <Navigation />
       <LandingHero3D />
-      <PublicChat />
       <Features />
       <Showcase />
       <Testimonial />

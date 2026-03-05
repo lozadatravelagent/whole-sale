@@ -27,6 +27,7 @@ const Support = lazy(() => import("./pages/Support"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Contact = lazy(() => import("./pages/Contact"));
+const EmiliaLanding = lazy(() => import("./pages/EmiliaLanding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const HotelbedsTest = lazy(() => import("./pages/HotelbedsTest"));
 
@@ -65,6 +66,7 @@ const App = () => (
                 <Route path="/terminos" element={<Terms />} />
                 <Route path="/privacidad" element={<Privacy />} />
                 <Route path="/contacto" element={<Contact />} />
+                <Route path="/emilia" element={<EmiliaLanding />} />
               <Route
                 path="/dashboard"
                 element={

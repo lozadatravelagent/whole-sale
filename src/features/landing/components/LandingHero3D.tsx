@@ -241,13 +241,15 @@ export function LandingHero3D() {
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <button
-                  onClick={() => scrollToSection("demo")}
+                <a
+                  href="https://app.vibook.ai/login"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 via-cyan-400 to-amber-300 px-6 py-4 text-base font-semibold text-slate-950 shadow-[0_26px_70px_-36px_rgba(56,189,248,0.8)] transition-transform duration-300 hover:-translate-y-0.5"
                 >
-                  Proba Emilia
+                  Probá Vibook
                   <ArrowDownRight className="h-5 w-5" />
-                </button>
+                </a>
                 <button
                   onClick={() => scrollToSection("showcase")}
                   className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/[0.12] bg-white/5 px-6 py-4 text-base font-semibold text-white transition-colors duration-300 hover:bg-white/10"
