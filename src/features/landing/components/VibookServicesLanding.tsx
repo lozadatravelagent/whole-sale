@@ -209,11 +209,17 @@ const proofCards = [
   },
 ];
 
+const appLoginUrl = "https://app.vibook.ai/login";
+
 const pricingCards = [
   {
     name: "Starter",
     subtitle: "Para agencias que quieren ordenar leads y seguimiento.",
-    badge: "Placeholder",
+    badge: "Plan base",
+    price: "79.900",
+    note: "Probalo 14 dias gratis",
+    ctaLabel: "Probalo 14 dias gratis",
+    ctaType: "login",
     items: ["CRM y pipeline", "Operaciones basicas", "1 marca"],
     highlighted: false,
   },
@@ -221,20 +227,27 @@ const pricingCards = [
     name: "Pro",
     subtitle: "Para agencias que quieren operar, cobrar y facturar desde un solo sistema.",
     badge: "Mas elegido",
+    price: "99.900",
+    note: "Probalo 14 dias gratis",
+    ctaLabel: "Probalo 14 dias gratis",
+    ctaType: "login",
     items: ["CRM + operaciones", "Caja y contabilidad", "AFIP + IA"],
     highlighted: true,
   },
   {
     name: "Enterprise",
     subtitle: "Para grupos con varias sucursales y permisos finos.",
-    badge: "Placeholder",
+    badge: "A medida",
+    price: "Consultar",
+    note: "Precio y onboarding a medida",
+    ctaLabel: "Hablar con ventas",
+    ctaType: "contact",
     items: ["Multi-agencia", "Permisos avanzados", "Onboarding dedicado"],
     highlighted: false,
   },
 ];
 
 const revealEase = [0.22, 1, 0.36, 1] as const;
-const appLoginUrl = "https://app.vibook.ai/login";
 
 function Reveal({
   children,
@@ -647,8 +660,8 @@ export function VibookServicesLanding() {
                     {card.badge}
                   </span>
                 </div>
-                <div className="mt-8 text-4xl font-semibold tracking-[-0.06em] text-[#1D1D1F]">A definir</div>
-                <div className="mt-2 text-sm text-[#6E6E73]">Probalo 14 dias gratis</div>
+                <div className="mt-8 text-4xl font-semibold tracking-[-0.06em] text-[#1D1D1F]">{card.price}</div>
+                <div className="mt-2 text-sm text-[#6E6E73]">{card.note}</div>
                 <div className="mt-8 space-y-3">
                   {card.items.map((item) => (
                     <div key={item} className="flex items-center gap-3 text-sm text-[#4D4D52]">
@@ -662,7 +675,11 @@ export function VibookServicesLanding() {
                   size="lg"
                   className={cn("mt-8 h-12 w-full rounded-full", card.highlighted ? "bg-[#0071E3] text-white hover:bg-[#0060C2]" : "bg-[#1D1D1F] text-white hover:bg-black/85")}
                 >
-                  <Link to="/login">Probalo 14 dias gratis</Link>
+                  {card.ctaType === "contact" ? (
+                    <Link to="/contacto">{card.ctaLabel}</Link>
+                  ) : (
+                    <a href={appLoginUrl}>{card.ctaLabel}</a>
+                  )}
                 </Button>
               </motion.div>
             ))}
