@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { salesWhatsAppEnterpriseUrl, salesWhatsAppGeneralUrl } from "@/lib/contact-links";
 import { cn } from "@/lib/utils";
 
 type Feature = {
@@ -676,7 +677,9 @@ export function VibookServicesLanding() {
                   className={cn("mt-8 h-12 w-full rounded-full", card.highlighted ? "bg-[#0071E3] text-white hover:bg-[#0060C2]" : "bg-[#1D1D1F] text-white hover:bg-black/85")}
                 >
                   {card.ctaType === "contact" ? (
-                    <Link to="/contacto">{card.ctaLabel}</Link>
+                    <a href={salesWhatsAppEnterpriseUrl} target="_blank" rel="noreferrer">
+                      {card.ctaLabel}
+                    </a>
                   ) : (
                     <a href={appLoginUrl}>{card.ctaLabel}</a>
                   )}
@@ -701,7 +704,9 @@ export function VibookServicesLanding() {
             <a href="#producto" className="transition-colors hover:text-[#0071E3]">Producto</a>
             <a href="#precios" className="transition-colors hover:text-[#0071E3]">Precios</a>
             <Link to="/documentacion" className="transition-colors hover:text-[#0071E3]">Documentacion</Link>
-            <Link to="/contacto" className="transition-colors hover:text-[#0071E3]">Contacto</Link>
+            <a href={salesWhatsAppGeneralUrl} target="_blank" rel="noreferrer" className="transition-colors hover:text-[#0071E3]">
+              Contacto
+            </a>
           </div>
         </div>
         <div className="mx-auto mt-8 flex max-w-7xl flex-col gap-3 border-t border-[#E5E5EA] px-6 pt-6 text-sm text-[#86868B] sm:flex-row sm:items-center sm:justify-between">
