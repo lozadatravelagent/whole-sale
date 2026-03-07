@@ -170,7 +170,6 @@ function inferTravelerProfile(input: PlannerRequest): string {
   if (interests.some((i) => i.includes('negocio') || i.includes('corporativo') || i.includes('business'))) return 'negocios';
   if ((travelers.adults || 0) === 2 && interests.some((i) => i.includes('romantico') || i.includes('pareja') || i.includes('luna de miel'))) return 'pareja';
   if ((travelers.adults || 0) >= 3) return 'amigos';
-  if ((travelers.adults || 0) === 2) return 'pareja';
   return 'general';
 }
 
@@ -996,6 +995,7 @@ MUST FOLLOW:
 
 OUTPUT LIMITS:
 - title: short.
+- title should feel specific to the actual destination(s) or route, not just to a mood.
 - summary: max 22 words.
 - generalTips: 0 to 3 items total.
 - segment summary: max 18 words.
@@ -1059,6 +1059,7 @@ MUST FOLLOW:
 
 OUTPUT LIMITS:
 - title: short.
+- title should feel specific to the actual destination(s) or route, not just to a mood.
 - summary: max 18 words.
 - generalTips: 0 to 2 items total.
 - segment summary: max 14 words.
