@@ -333,11 +333,10 @@ function buildSchedulingConfidence(args: {
   finalSlot: PlannerScheduleSlot;
   moved: boolean;
   timeRepaired: boolean;
-  locked: boolean;
   familyNightlife: boolean;
 }): PlannerSchedulingConfidence {
   if (args.familyNightlife || args.moved || args.timeRepaired) return 'low';
-  if (args.locked || args.preferredSlot === args.finalSlot) return 'high';
+  if (args.preferredSlot === args.finalSlot) return 'high';
   return 'medium';
 }
 
@@ -394,7 +393,6 @@ function normalizeActivitiesForSlot<T extends SchedulableActivity>(
           finalSlot: slot,
           moved: false,
           timeRepaired: normalizedTime.repaired,
-          locked: Boolean(activity.locked),
           familyNightlife,
         }),
       };
@@ -416,7 +414,7 @@ export function normalizePlannerDayScheduling<TActivity extends SchedulableActiv
     (day[slot] || []).forEach((activity) => {
       const type = classifyPlannerActivityType(activity);
       const preferredSlot = getPlannerPreferredSlot(activity, context);
-      const finalSlot = activity.locked || !shouldForceMove(type, slot, preferredSlot, context)
+      const finalSlot = !shouldForceMove(type, slot, preferredSlot, context)
         ? slot
         : preferredSlot;
 
@@ -433,7 +431,6 @@ export function normalizePlannerDayScheduling<TActivity extends SchedulableActiv
           finalSlot,
           moved: finalSlot !== slot,
           timeRepaired: false,
-          locked: Boolean(activity.locked),
           familyNightlife: isFamilyTrip(context.travelers) && type === 'nightlife',
         }),
       });

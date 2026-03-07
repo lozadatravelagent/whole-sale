@@ -439,7 +439,7 @@ function pickSlotForRealPlaceInsertion(
       return { slot, replaceExisting: false };
     }
 
-    const replaceable = items.every((activity) => !activity.locked && activity.source !== 'user' && activity.source !== 'google_maps');
+    const replaceable = items.every((activity) => activity.source !== 'user' && activity.source !== 'google_maps');
     if (replaceable) {
       return { slot, replaceExisting: true };
     }
@@ -1002,49 +1002,6 @@ export default function useTripPlanner(
     );
   }, [plannerState, invokePlannerGeneration]);
 
-  const toggleDayLock = useCallback(async (segmentId: string, dayId: string) => {
-    await updatePlannerState((current) => ({
-      ...current,
-      segments: current.segments.map((segment) =>
-        segment.id !== segmentId
-          ? segment
-          : {
-              ...segment,
-              days: segment.days.map((day) =>
-                day.id !== dayId ? day : { ...day, locked: !day.locked }
-              ),
-            }
-      ),
-    }));
-  }, [updatePlannerState]);
-
-  const toggleActivityLock = useCallback(async (
-    segmentId: string,
-    dayId: string,
-    block: 'morning' | 'afternoon' | 'evening',
-    activityId: string
-  ) => {
-    await updatePlannerState((current) => ({
-      ...current,
-      segments: current.segments.map((segment) =>
-        segment.id !== segmentId
-          ? segment
-          : {
-              ...segment,
-              days: segment.days.map((day) => {
-                if (day.id !== dayId) return day;
-                return {
-                  ...day,
-                  [block]: day[block].map((activity) =>
-                    activity.id !== activityId ? activity : { ...activity, locked: !activity.locked }
-                  ),
-                };
-              }),
-            }
-      ),
-    }));
-  }, [updatePlannerState]);
-
   const addPlaceToPlanner = useCallback(async (
     segmentId: string,
     input: {
@@ -1077,13 +1034,6 @@ export default function useTripPlanner(
       return;
     }
 
-    if (day.locked) {
-      toast({
-        title: 'Día bloqueado',
-        description: 'El lugar se agregará igual como edición manual dentro de este día.',
-      });
-    }
-
     await updatePlannerState((current) => {
       const segmentIndex = current.segments.findIndex((item) => item.id === segmentId);
       if (segmentIndex === -1) {
@@ -1110,7 +1060,6 @@ export default function useTripPlanner(
             activityType: input.place.activityType,
             recommendedSlot: input.block,
             neighborhood: input.place.formattedAddress,
-            locked: false,
             placeId: input.place.placeId,
             formattedAddress: input.place.formattedAddress,
             rating: input.place.rating,
@@ -1257,7 +1206,6 @@ export default function useTripPlanner(
                 activityType: selectedPlace.activityType,
                 recommendedSlot: insertion.slot,
                 neighborhood: selectedPlace.formattedAddress,
-                locked: false,
                 placeId: selectedPlace.placeId,
                 formattedAddress: selectedPlace.formattedAddress,
                 rating: selectedPlace.rating,
@@ -2459,8 +2407,6 @@ export default function useTripPlanner(
     regeneratePlanner,
     regenerateSegment,
     regenerateDay,
-    toggleDayLock,
-    toggleActivityLock,
     addPlaceToPlanner,
     autoFillSegmentWithRealPlaces,
     loadHotelsForSegment,

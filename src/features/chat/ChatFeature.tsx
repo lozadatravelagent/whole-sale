@@ -805,8 +805,6 @@ const ChatFeature = () => {
                 onRemoveDestination={planner.removeDestination}
                 onReorderDestinations={planner.reorderDestinations}
                 onEnsureSegmentEnriched={planner.ensureSegmentEnriched}
-                onToggleDayLock={planner.toggleDayLock}
-	                onToggleActivityLock={planner.toggleActivityLock}
 	                onSelectHotel={planner.selectHotel}
 	                onSelectHotelPlaceFromMap={planner.selectHotelPlaceFromMap}
 	                onAddPlaceToPlanner={planner.addPlaceToPlanner}

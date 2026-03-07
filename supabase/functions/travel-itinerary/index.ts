@@ -248,7 +248,6 @@ function summarizePromptDay(day: any, includeDetails = false): unknown {
     city: day?.city,
     title: truncateText(day?.title, 48),
     summary: truncateText(day?.summary, 72),
-    locked: day?.locked ? true : undefined,
   });
 
   if (!includeDetails || !base || typeof base !== 'object') {

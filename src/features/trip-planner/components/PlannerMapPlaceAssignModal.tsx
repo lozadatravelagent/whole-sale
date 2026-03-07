@@ -36,10 +36,7 @@ function pickBestDayId(
   const segment = plannerState?.segments.find((item) => item.id === segmentId);
   if (!segment || segment.days.length === 0) return undefined;
 
-  const unlocked = segment.days.filter((day) => !day.locked);
-  const candidates = unlocked.length > 0 ? unlocked : segment.days;
-
-  return [...candidates]
+  return [...segment.days]
     .sort((left, right) => left[block].length - right[block].length)[0]
     ?.id;
 }
@@ -62,8 +59,6 @@ export default function PlannerMapPlaceAssignModal({
   );
 
   const selectedSegment = availableSegments.find((segment) => segment.id === segmentId) || availableSegments[0];
-  const selectedDay = selectedSegment?.days.find((day) => day.id === dayId);
-
   useEffect(() => {
     if (!open || !place) return;
 
@@ -160,7 +155,7 @@ export default function PlannerMapPlaceAssignModal({
                   <SelectContent>
                     {selectedSegment?.days.map((day) => (
                       <SelectItem key={day.id} value={day.id}>
-                        Día {day.dayNumber}{day.date ? ` • ${formatShortDate(day.date)}` : ''}{day.locked ? ' • bloqueado' : ''}
+                        Día {day.dayNumber}{day.date ? ` • ${formatShortDate(day.date)}` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -185,11 +180,6 @@ export default function PlannerMapPlaceAssignModal({
             </div>
           )}
 
-          {selectedDay?.locked && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-              Este día está bloqueado. Lo voy a sumar igual como cambio manual.
-            </div>
-          )}
         </div>
 
         <DialogFooter className="border-t px-6 py-4">

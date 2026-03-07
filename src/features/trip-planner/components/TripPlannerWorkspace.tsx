@@ -17,8 +17,6 @@ import {
   FileDown,
   GripVertical,
   Loader2,
-  Lock,
-  LockOpen,
   PanelRightClose,
   Plane,
   Plus,
@@ -106,8 +104,6 @@ interface TripPlannerWorkspaceProps {
   onRemoveDestination: (segmentId: string) => Promise<void>;
   onReorderDestinations: (fromSegmentId: string, toSegmentId: string) => Promise<void>;
   onEnsureSegmentEnriched: (segmentId: string) => Promise<void>;
-  onToggleDayLock: (segmentId: string, dayId: string) => Promise<void>;
-  onToggleActivityLock: (segmentId: string, dayId: string, block: 'morning' | 'afternoon' | 'evening', activityId: string) => Promise<void>;
   onSelectHotel: (segmentId: string, hotelId: string) => Promise<void>;
   onSelectHotelPlaceFromMap: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => Promise<void>;
   onAddPlaceToPlanner: (segmentId: string, input: {
@@ -157,8 +153,6 @@ export default function TripPlannerWorkspace({
   onRemoveDestination,
   onReorderDestinations,
   onEnsureSegmentEnriched,
-  onToggleDayLock,
-  onToggleActivityLock,
   onSelectHotel,
   onSelectHotelPlaceFromMap,
   onAddPlaceToPlanner,
@@ -1076,16 +1070,6 @@ export default function TripPlannerWorkspace({
                                   {day.date ? `${formatShortDate(day.date)} • ` : ''}{formatDestinationLabel(day.city)}
                                 </p>
                               </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={isDraftPlanner}
-                                  onClick={() => void onToggleDayLock(segment.id, day.id)}
-                                >
-                                  {day.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
-                                </Button>
-                              </div>
                             </div>
                           </CardHeader>
                           <CardContent className="grid gap-4 @xl:grid-cols-3">
@@ -1125,15 +1109,6 @@ export default function TripPlannerWorkspace({
                                           <p className="trip-planner-body mt-2 text-xs text-primary">{activity.tip}</p>
                                         )}
                                       </div>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 w-8 p-0"
-                                        disabled={isDraftPlanner}
-                                        onClick={() => void onToggleActivityLock(segment.id, day.id, block, activity.id)}
-                                      >
-                                        {activity.locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
-                                      </Button>
                                     </div>
                                   </div>
                                 ))}

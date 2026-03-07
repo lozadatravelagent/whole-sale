@@ -80,7 +80,6 @@ function activityToPlannerActivity(activity: any, index: number, segmentId: stri
     durationMinutes: activity?.durationMinutes,
     schedulingConfidence: activity?.schedulingConfidence,
     neighborhood: activity?.neighborhood,
-    locked: Boolean(activity?.locked),
     source: activity?.source || 'generated',
     placeId: activity?.placeId,
     formattedAddress: activity?.formattedAddress,
@@ -113,7 +112,6 @@ function legacyDayToPlannerDay(rawDay: any, index: number, city: string, segment
     city: rawDay?.city || city,
     title: rawDay?.title || `Día ${dayNumber}`,
     summary: rawDay?.summary,
-    locked: Boolean(rawDay?.locked),
     morning: safeArray(rawDay?.morning).map((item, itemIndex) =>
       activityToPlannerActivity(item, itemIndex, segmentId, dayNumber, 'morning')
     ),
