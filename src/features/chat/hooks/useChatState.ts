@@ -161,6 +161,7 @@ const useChatState = () => {
 
       // ⚡ OPTIMIZATION: Pass cached user data to avoid DB query (saves ~50-150ms)
       const conversationData = {
+        title: initialTitle || defaultTitle,
         channel: 'web' as const,
         status: 'active' as const,
         userData: authUser.user ? {

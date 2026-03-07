@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MainLayout from '@/components/layout/MainLayout';
 import { useMessages } from '@/hooks/useChat';
 import { updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
@@ -101,7 +101,103 @@ const ChatFeature = () => {
     return () => { cancelled = true; };
   }, [selectedConversation, loadContextualMemory, loadContextState]);
 
-  const planner = useTripPlanner(selectedConversation, messages, toast);
+  const conversationScopedMessages = useMemo(() => {
+    if (!selectedConversation) {
+      return [];
+    }
+
+    return messages.filter((message) => message.conversation_id === selectedConversation);
+  }, [messages, selectedConversation]);
+  const planner = useTripPlanner(selectedConversation, conversationScopedMessages, toast);
+  const previousPlannerConversationRef = useRef<string | null>(selectedConversation);
+  const [plannerWorkspaceKey, setPlannerWorkspaceKey] = useState<string | null>(selectedConversation);
+
+  const selectedConversationRow = useMemo(
+    () => conversations.find((conversation) => conversation.id === selectedConversation) || null,
+    [conversations, selectedConversation]
+  );
+
+  const conversationLooksLikePlanner = useMemo(() => {
+    if (!selectedConversationRow && !conversationScopedMessages.length) {
+      return false;
+    }
+
+    if (planner.plannerState || previousParsedRequest?.requestType === 'itinerary') {
+      return true;
+    }
+
+    if (selectedConversationRow?.external_key === 'Planificador de Viajes') {
+      return true;
+    }
+
+    return conversationScopedMessages.some((message) => {
+      const meta = message.meta as any;
+      const parsedRequest = meta?.parsedRequest || meta?.originalRequest;
+      return Boolean(
+        meta?.plannerData ||
+        meta?.plannerPromptAction === 'open_date_selector' ||
+        meta?.plannerDateSelector?.enabled ||
+        meta?.messageType === 'trip_planner' ||
+        meta?.messageType === 'trip_planner_state' ||
+        meta?.messageType === 'planner_date_selection' ||
+        (meta?.messageType === 'missing_info_request' && (
+          meta?.plannerPromptAction === 'open_date_selector' ||
+          meta?.missingFields?.includes?.('exact_dates')
+        )) ||
+        (meta?.messageType === 'contextual_memory' && parsedRequest?.requestType === 'itinerary') ||
+        parsedRequest?.requestType === 'itinerary'
+      );
+    });
+  }, [conversationScopedMessages, planner.plannerState, previousParsedRequest, selectedConversationRow]);
+
+  // Keep planner mode for planner-like conversations, including empty "Nuevo plan" chats.
+  useEffect(() => {
+    if (
+      workspaceMode === 'planner' &&
+      !isLoading &&
+      !isTyping &&
+      !planner.isLoadingPlanner &&
+      !planner.plannerState &&
+      selectedConversation &&
+      !selectedConversation.startsWith('temp-') &&
+      selectedConversationRow &&
+      !conversationLooksLikePlanner
+    ) {
+      setWorkspaceMode('standard');
+    }
+  }, [
+    conversationLooksLikePlanner,
+    isLoading,
+    isTyping,
+    planner.isLoadingPlanner,
+    planner.plannerState,
+    previousParsedRequest,
+    selectedConversation,
+    selectedConversationRow,
+    setWorkspaceMode,
+    workspaceMode,
+  ]);
+
+  useEffect(() => {
+    if (workspaceMode !== 'planner') {
+      previousPlannerConversationRef.current = selectedConversation;
+      return;
+    }
+
+    const previousConversation = previousPlannerConversationRef.current;
+    const nextConversation = selectedConversation;
+    const isTempToRealPromotion = Boolean(
+      previousConversation?.startsWith('temp-') &&
+      nextConversation &&
+      !nextConversation.startsWith('temp-')
+    );
+
+    if (!isTempToRealPromotion) {
+      setPlannerWorkspaceKey(nextConversation);
+    }
+
+    previousPlannerConversationRef.current = nextConversation;
+  }, [selectedConversation, workspaceMode]);
 
   // PDF analysis hooks
   const {
@@ -111,7 +207,7 @@ const ChatFeature = () => {
     handlePriceChangeRequest: handlePdfPriceChange
   } = usePdfAnalysis(
     selectedConversation,
-    messages,
+    conversationScopedMessages,
     updateConversationTitle,
     setIsTyping,
     setTypingMessage,
@@ -123,7 +219,7 @@ const ChatFeature = () => {
   const { handleSendMessage: handleSendMessageRaw, handlePlannerDateSelection } = useMessageHandler(
     selectedConversation,
     selectedConversationRef,
-    messages, // ✅ Pass messages from useMessages hook above (prevents duplicate hook calls)
+    conversationScopedMessages, // Only expose messages from the currently selected conversation
     previousParsedRequest,
     setPreviousParsedRequest,
     loadContextualMemory,
@@ -204,7 +300,7 @@ const ChatFeature = () => {
 
   // Handle Add to CRM button click
   const handleAddToCRM = useCallback(async () => {
-    if (!selectedConversation || !messages.length) {
+    if (!selectedConversation || !conversationScopedMessages.length) {
       toast({
         title: "Error",
         description: "No hay conversación seleccionada o mensajes disponibles",
@@ -232,7 +328,7 @@ const ChatFeature = () => {
         console.log('🔍 [ADD TO CRM] No parsed request in memory, searching in messages...');
 
         // First, try to find in assistant messages
-        const recentAssistantMessage = messages
+        const recentAssistantMessage = conversationScopedMessages
           .filter(msg => msg.role === 'assistant')
           .reverse()
           .find(msg => {
@@ -248,7 +344,7 @@ const ChatFeature = () => {
 
         // If still no parsed request, try to find in user messages
         if (!parsedRequest) {
-          const recentUserMessage = messages
+          const recentUserMessage = conversationScopedMessages
             .filter(msg => msg.role === 'user')
             .reverse()
             .find(msg => {
@@ -266,7 +362,7 @@ const ChatFeature = () => {
 
       // Extract budget and flight data from latest PDF if available
       let budgetFromPdf = 0;
-      const latestPdfMessage = messages
+      const latestPdfMessage = conversationScopedMessages
         .filter(msg => {
           const hasPdf = typeof msg.content === 'object' && msg.content && 'pdfUrl' in msg.content;
           const metadata = (msg.content as any)?.metadata;
@@ -334,7 +430,7 @@ const ChatFeature = () => {
       // Create comprehensive lead
       const leadId = await createComprehensiveLeadFromChat(
         conversation,
-        messages,
+        conversationScopedMessages,
         parsedRequest,
         budgetFromPdf > 0 ? budgetFromPdf : undefined
       );
@@ -360,7 +456,7 @@ const ChatFeature = () => {
     } finally {
       setIsAddingToCRM(false);
     }
-  }, [selectedConversation, messages, conversations, previousParsedRequest, toast, setIsAddingToCRM]);
+  }, [selectedConversation, conversationScopedMessages, conversations, previousParsedRequest, toast, setIsAddingToCRM]);
 
   // Handle PDF generated from selectors
   const handlePdfGenerated = useCallback(async (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => {
@@ -504,14 +600,14 @@ const ChatFeature = () => {
           {selectedConversation ? (
             workspaceMode === 'planner' ? (
               <TripPlannerWorkspace
-                key={selectedConversation}
+                key={plannerWorkspaceKey ?? selectedConversation ?? 'planner-workspace'}
                 selectedConversation={selectedConversation}
                 message={message}
                 isLoading={isLoading}
                 isTyping={isTyping}
                 typingMessage={typingMessage}
                 isUploadingPdf={isUploadingPdf}
-                messages={messages}
+                messages={conversationScopedMessages}
                 onMessageChange={setMessage}
                 onSendMessage={handleSendMessage}
                 onPdfUpload={handlePdfUpload}
@@ -530,6 +626,7 @@ const ChatFeature = () => {
                 onRegeneratePlanner={planner.regeneratePlanner}
                 onRegenerateSegment={planner.regenerateSegment}
                 onRegenerateDay={planner.regenerateDay}
+                onEnsureSegmentEnriched={planner.ensureSegmentEnriched}
                 onToggleDayLock={planner.toggleDayLock}
                 onToggleActivityLock={planner.toggleActivityLock}
                 onSelectHotel={planner.selectHotel}
@@ -550,7 +647,7 @@ const ChatFeature = () => {
                 typingMessage={typingMessage}
                 isUploadingPdf={isUploadingPdf}
                 isAddingToCRM={isAddingToCRM}
-                messages={messages}
+                messages={conversationScopedMessages}
                 refreshMessages={refreshMessages}
                 onMessageChange={setMessage}
                 onSendMessage={handleSendMessage}

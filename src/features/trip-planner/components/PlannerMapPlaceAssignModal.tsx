@@ -97,9 +97,9 @@ export default function PlannerMapPlaceAssignModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="trip-planner-surface max-w-2xl overflow-hidden p-0">
         <DialogHeader className="border-b px-6 pt-6 pb-4">
-          <DialogTitle className="trip-planner-title">Agregar lugar al planner</DialogTitle>
+          <DialogTitle className="trip-planner-title">¿Dónde lo sumamos?</DialogTitle>
           <DialogDescription className="trip-planner-body">
-            Elegí dónde querés ubicar este lugar dentro del itinerario.
+            Elegí en qué parte del viaje querés ver este lugar. Después lo podés mover si hace falta.
           </DialogDescription>
         </DialogHeader>
 
@@ -131,7 +131,7 @@ export default function PlannerMapPlaceAssignModal({
 
           {availableSegments.length === 0 ? (
             <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
-              Este planner todavía no tiene días generados para ubicar actividades. Generá primero el itinerario final.
+              Todavía no hay días armados para ubicar este lugar. Terminá primero el itinerario y después lo sumamos.
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-3">
@@ -187,7 +187,7 @@ export default function PlannerMapPlaceAssignModal({
 
           {selectedDay?.locked && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-              Este día está bloqueado. El lugar se agregará igual como edición manual.
+              Este día está bloqueado. Lo voy a sumar igual como cambio manual.
             </div>
           )}
         </div>
@@ -203,7 +203,7 @@ export default function PlannerMapPlaceAssignModal({
               void onConfirm({ segmentId, dayId, block });
             }}
           >
-            Agregar al planner
+            Sumar al itinerario
           </Button>
         </DialogFooter>
       </DialogContent>

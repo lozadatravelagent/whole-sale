@@ -6,6 +6,7 @@ import type {
   PlannerDay,
   PlannerGenerationSource,
   PlannerActivityType,
+  PlannerSegmentContentStatus,
   PlannerLocation,
   PlannerPace,
   PlannerPlaceCategory,
@@ -238,6 +239,8 @@ function normalizeSegment(rawSegment: any, index: number): PlannerSegment {
     location: normalizePlannerLocation(rawSegment?.location, city, rawSegment?.country),
     order: rawSegment?.order ?? index,
     summary: rawSegment?.summary,
+    contentStatus: (rawSegment?.contentStatus || 'ready') as PlannerSegmentContentStatus,
+    contentError: rawSegment?.contentError,
     startDate,
     endDate,
     nights: rawSegment?.nights ?? days.length,
@@ -309,6 +312,7 @@ function buildDraftSegment(
     summary: index === 0
       ? 'Preparando la propuesta base para este destino.'
       : `Organizando el tramo desde ${formatDestinationLabel(previousCity || '')} hacia ${formatDestinationLabel(city)}.`,
+    contentStatus: 'loading',
     startDate: undefined,
     endDate: undefined,
     nights: undefined,
@@ -604,6 +608,64 @@ export function getPrimaryPlannerHotelRoom(hotel: LocalHotelData) {
   return safeArray(hotel.rooms)[0];
 }
 
+export function formatRelativeValidationTime(isoTimestamp: string): string | undefined {
+  const then = new Date(isoTimestamp).getTime();
+  if (Number.isNaN(then)) return undefined;
+  const diffMs = Date.now() - then;
+  const diffMin = Math.floor(diffMs / 60000);
+
+  if (diffMin < 1) return 'hace instantes';
+  if (diffMin < 60) return `hace ${diffMin} min`;
+  const diffHrs = Math.floor(diffMin / 60);
+  if (diffHrs < 24) return `hace ${diffHrs}h`;
+  return `hace más de 24h`;
+}
+
+export function getValidationFreshnessColor(isoTimestamp: string): string {
+  const then = new Date(isoTimestamp).getTime();
+  if (Number.isNaN(then)) return 'text-muted-foreground';
+  const diffMin = Math.floor((Date.now() - then) / 60000);
+
+  if (diffMin < 5) return 'text-green-600';
+  if (diffMin < 60) return 'text-yellow-600';
+  return 'text-red-500';
+}
+
+export type PriceConfidenceLevel = 'confirmed' | 'estimated' | 'expired';
+
+export function getPriceConfidenceLevel(isoTimestamp?: string): PriceConfidenceLevel {
+  if (!isoTimestamp) return 'expired';
+  const then = new Date(isoTimestamp).getTime();
+  if (Number.isNaN(then)) return 'expired';
+  const diffMin = Math.floor((Date.now() - then) / 60000);
+
+  if (diffMin < 5) return 'confirmed';
+  if (diffMin < 60) return 'estimated';
+  return 'expired';
+}
+
+export function getPriceConfidenceLabel(level: PriceConfidenceLevel): string {
+  switch (level) {
+    case 'confirmed':
+      return 'Precio confirmado';
+    case 'estimated':
+      return 'Precio estimado — confirmar de nuevo';
+    case 'expired':
+      return 'Precio expirado — confirmar disponibilidad';
+  }
+}
+
+export function getPriceConfidenceBadgeClass(level: PriceConfidenceLevel): string {
+  switch (level) {
+    case 'confirmed':
+      return 'bg-green-100 text-green-800 border-green-200';
+    case 'estimated':
+      return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    case 'expired':
+      return 'bg-red-100 text-red-800 border-red-200';
+  }
+}
+
 export function getPlannerHotelDisplayId(hotel: LocalHotelData): string {
   return hotel.hotel_id || `${hotel.name}-${hotel.city}`;
 }
@@ -794,6 +856,7 @@ export function summarizePlannerForChat(plannerState: TripPlannerState): string 
   const effectiveDays = !plannerState.isFlexibleDates
     ? getInclusiveDateRangeDays(plannerState.startDate, plannerState.endDate) || plannerState.days
     : plannerState.days;
+  const hasSkeletonSegments = plannerState.segments.some((segment) => segment.contentStatus === 'skeleton' || segment.contentStatus === 'loading');
   const segmentLines = plannerState.segments
     .map((segment) => `- ${formatDestinationLabel(segment.city)}: ${formatDateRange(segment.startDate, segment.endDate)}`)
     .join('\n');
@@ -815,6 +878,7 @@ export function summarizePlannerForChat(plannerState: TripPlannerState): string 
     `${budgetLabel ? `**Presupuesto:** ${budgetLabel}\n` : ''}` +
     `\n**Tramos**\n${segmentLines}\n` +
     `${tips ? `\n**Consejos**\n${tips}\n` : ''}` +
+    `${hasSkeletonSegments ? '\nAbrí el Planificador y voy completando cada tramo a medida que lo revisás.\n' : ''}` +
     `\nUsá el Planificador de Viajes para editar días, destinos, hoteles y transporte.`;
 }
 
@@ -882,9 +946,13 @@ export function buildPlannerPdfHtml(plannerState: TripPlannerState): string {
       const price = formatPlannerPrice(room?.price, room?.currency);
       const roomLabel = formatPlannerRoomLabel(hotel);
       const travelers = formatPlannerTravelerSummary(hotel);
+      const isConfirmedInventory = Boolean(segment.hotelPlan.confirmedInventoryHotel);
+      const labelTag = isConfirmedInventory
+        ? '<span style="display:inline-block;background:#166534;color:#fff;font-size:0.75em;padding:1px 8px;border-radius:9999px;margin-left:8px;">Precio de inventario</span>'
+        : '<span style="display:inline-block;background:#6b7280;color:#fff;font-size:0.75em;padding:1px 8px;border-radius:9999px;margin-left:8px;">Sugerencia del planner</span>';
 
       let html = `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin:8px 0;">`;
-      html += `<strong>🏨 ${escapeHtml(hotel.name)}</strong>`;
+      html += `<strong>🏨 ${escapeHtml(hotel.name)}</strong>${labelTag}`;
       if (category) html += ` · ${escapeHtml(category)}`;
       html += `<br/><span style="font-size:0.9em;color:#4b5563;">${escapeHtml(roomLabel)}</span>`;
       if (price) html += ` · <strong>${escapeHtml(price)}</strong>`;
@@ -896,6 +964,7 @@ export function buildPlannerPdfHtml(plannerState: TripPlannerState): string {
     if (placeCandidate) {
       let html = `<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin:8px 0;">`;
       html += `<strong>🏨 ${escapeHtml(placeCandidate.name)}</strong>`;
+      html += '<span style="display:inline-block;background:#6b7280;color:#fff;font-size:0.75em;padding:1px 8px;border-radius:9999px;margin-left:8px;">Sugerencia del planner</span>';
       if (placeCandidate.rating) html += ` · ⭐ ${placeCandidate.rating}`;
       if (placeCandidate.formattedAddress) html += `<br/><span style="font-size:0.85em;color:#6b7280;">${escapeHtml(placeCandidate.formattedAddress)}</span>`;
       html += '</div>';
@@ -1011,7 +1080,8 @@ export function buildPlannerPdfHtml(plannerState: TripPlannerState): string {
 <hr style="border:none;border-top:1px solid #e5e7eb;margin-bottom:20px;"/>
 ${segmentsHtml}
 ${tipsHtml}
-<footer style="margin-top:32px;padding-top:12px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:0.8em;text-align:center;">Generado con VBOOK · ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}</footer>
+<div style="margin-top:24px;padding:12px 16px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:0.8em;color:#854d0e;">⚠️ Precios netos de agencia. Impuestos locales, tasas turísticas y cargos adicionales del destino no están incluidos. Sujeto a disponibilidad y condiciones del proveedor al momento de la reserva.</div>
+<footer style="margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:0.8em;text-align:center;">Generado con VBOOK · ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}</footer>
 </body>
 </html>`;
 }

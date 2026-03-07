@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 import { runWithConcurrency, type CancelToken } from '@/utils/concurrencyPool';
 import { supabase } from '@/integrations/supabase/client';
 import { handleFlightSearch, handleHotelSearch } from '@/features/chat/services/searchHandlers';
@@ -28,12 +28,17 @@ function isPersistableConversationId(value: string | null): value is string {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function getLatestPlannerMessage(messages: MessageRow[]): MessageRow | null {
+function getLatestPlannerMessage(messages: MessageRow[], conversationId: string | null): MessageRow | null {
   return [...messages]
     .reverse()
     .find((message) => {
       const meta = message.meta as any;
-      return message.role === 'assistant' && meta && (meta.plannerData || meta.messageType === 'trip_planner');
+      return (
+        message.conversation_id === conversationId &&
+        message.role === 'assistant' &&
+        meta &&
+        (meta.plannerData || meta.messageType === 'trip_planner')
+      );
     }) || null;
 }
 
@@ -165,21 +170,49 @@ export default function useTripPlanner(
   const resolvingSignatureRef = useRef<string | null>(null);
   const isAutoLoadingHotelsRef = useRef(false);
   const isAutoLoadingTransportRef = useRef(false);
+  const pendingSegmentEnrichmentRef = useRef<Set<string>>(new Set());
+  const plannerConversationIdRef = useRef<string | null>(conversationId);
+  const suppressNextPersistedLoadUiRef = useRef(false);
+  const isCurrentPlannerConversation = useCallback((targetConversationId: string | null) => {
+    return Boolean(targetConversationId && plannerConversationIdRef.current === targetConversationId);
+  }, []);
+  const setPlannerStateIfCurrent = useCallback((
+    targetConversationId: string | null,
+    updater: SetStateAction<TripPlannerState | null>
+  ) => {
+    if (!isCurrentPlannerConversation(targetConversationId)) {
+      return;
+    }
 
-  useEffect(() => {
+    setPlannerState(updater);
+  }, [isCurrentPlannerConversation]);
+
+  // Synchronous reset during render (React "adjusting state" pattern)
+  // This runs BEFORE the component tree renders, preventing stale data flash.
+  const [trackedConversationId, setTrackedConversationId] = useState(conversationId);
+
+  if (conversationId !== trackedConversationId) {
+    const isTempToRealPromotion = Boolean(
+      trackedConversationId?.startsWith('temp-') &&
+      isPersistableConversationId(conversationId)
+    );
+
+    suppressNextPersistedLoadUiRef.current = isTempToRealPromotion;
+    setTrackedConversationId(conversationId);
     setPlannerState(null);
     setPlannerError(null);
     setPlannerLocationWarning(null);
     setIsResolvingLocations(false);
     resolvingSignatureRef.current = null;
+    pendingSegmentEnrichmentRef.current.clear();
+    plannerConversationIdRef.current = conversationId;
 
     if (conversationId && isPersistableConversationId(conversationId)) {
-      setIsLoadingPlanner(true);
-      return;
+      setIsLoadingPlanner(!isTempToRealPromotion);
+    } else {
+      setIsLoadingPlanner(false);
     }
-
-    setIsLoadingPlanner(false);
-  }, [conversationId]);
+  }
 
   // Warn before closing browser when a planner mutation is active
   useEffect(() => {
@@ -195,7 +228,7 @@ export default function useTripPlanner(
     state: TripPlannerState,
     source: TripPlannerState['generationMeta']['source']
   ) => {
-    if (!isPersistableConversationId(conversationId)) return;
+    if (!isPersistableConversationId(conversationId) || !isCurrentPlannerConversation(conversationId)) return;
 
     const normalizedState: TripPlannerState = {
       ...state,
@@ -243,9 +276,11 @@ export default function useTripPlanner(
     if (error) {
       console.error('❌ [TRIP PLANNER] Failed to persist planner state:', error);
     }
-  }, [conversationId]);
+  }, [conversationId, isCurrentPlannerConversation]);
 
   const loadPersistedPlannerState = useCallback(async () => {
+    const requestConversationId = conversationId;
+
     if (!conversationId) {
       setPlannerState(null);
       setPlannerError(null);
@@ -260,12 +295,16 @@ export default function useTripPlanner(
       return;
     }
 
-    setIsLoadingPlanner(true);
+    const suppressLoadingUi = suppressNextPersistedLoadUiRef.current;
+    if (!suppressLoadingUi) {
+      setIsLoadingPlanner(true);
+    }
     setPlannerError(null);
 
     try {
       // 1. Try IndexedDB first for instant display
       const cachedState = await getPlannerStateFromCache(conversationId);
+      if (plannerConversationIdRef.current !== conversationId) return;
       if (cachedState) {
         const normalizedCached = normalizePlannerState(cachedState, conversationId);
         if (normalizedCached) {
@@ -283,32 +322,34 @@ export default function useTripPlanner(
         .order('created_at', { ascending: false })
         .limit(1);
 
+      if (plannerConversationIdRef.current !== conversationId) return;
+
       if (error) {
         throw error;
       }
 
       const snapshot = data?.[0];
       const meta = snapshot?.meta as any;
-      const fromSystem = meta?.plannerState ? normalizePlannerState(meta.plannerState, conversationId) : null;
-      const fromMessages = getLatestPlannerMessage(messages);
-      const fromAssistant = fromMessages
-        ? normalizePlannerState(((fromMessages.meta as any)?.plannerData), conversationId)
-        : null;
+      const nextState = meta?.plannerState ? normalizePlannerState(meta.plannerState, conversationId) : null;
 
-      const nextState = fromSystem || fromAssistant || null;
-      setPlannerState((current) => shouldReplacePlannerState(current, nextState) ? nextState : current);
-
-      // Update IndexedDB cache with latest from Supabase
       if (nextState) {
+        setPlannerState((current) => shouldReplacePlannerState(current, nextState) ? nextState : current);
+        // Update IndexedDB cache with latest from Supabase
         setPlannerStateInCache(conversationId, nextState).catch(() => {});
+      } else {
+        setPlannerState(null);
       }
     } catch (error) {
+      if (plannerConversationIdRef.current !== conversationId) return;
       console.error('❌ [TRIP PLANNER] Failed to load planner state:', error);
       setPlannerError('No se pudo cargar el estado del planificador.');
     } finally {
-      setIsLoadingPlanner(false);
+      if (plannerConversationIdRef.current === requestConversationId) {
+        suppressNextPersistedLoadUiRef.current = false;
+        setIsLoadingPlanner(false);
+      }
     }
-  }, [conversationId, messages]);
+  }, [conversationId]);
 
   useEffect(() => {
     void loadPersistedPlannerState();
@@ -316,7 +357,7 @@ export default function useTripPlanner(
 
   useEffect(() => {
     if (!conversationId) return;
-    const latestPlannerMessage = getLatestPlannerMessage(messages);
+    const latestPlannerMessage = getLatestPlannerMessage(messages, conversationId);
     const meta = latestPlannerMessage?.meta as any;
     if (!meta?.plannerData) return;
 
@@ -388,13 +429,128 @@ export default function useTripPlanner(
     updater: (current: TripPlannerState) => TripPlannerState,
     source: 'ui_edit' | 'regen_day' | 'regen_segment' | 'regen_plan' = 'ui_edit'
   ) => {
+    if (!isCurrentPlannerConversation(conversationId)) {
+      return;
+    }
+
     setPlannerState((current) => {
       if (!current) return current;
+      if (!isCurrentPlannerConversation(conversationId)) {
+        return current;
+      }
       const next = updater(current);
       void persistPlannerState(next, source);
       return next;
     });
-  }, [persistPlannerState]);
+  }, [conversationId, isCurrentPlannerConversation, persistPlannerState]);
+
+  const ensureSegmentEnriched = useCallback(async (segmentId: string) => {
+    const requestConversationId = conversationId;
+    if (!conversationId || !plannerState || isDraftPlannerState(plannerState)) {
+      return;
+    }
+
+    const targetSegment = plannerState.segments.find((segment) => segment.id === segmentId);
+    if (!targetSegment) {
+      return;
+    }
+
+    if (targetSegment.contentStatus === 'ready' || targetSegment.contentStatus === 'loading') {
+      return;
+    }
+
+    if (pendingSegmentEnrichmentRef.current.has(segmentId)) {
+      return;
+    }
+
+    pendingSegmentEnrichmentRef.current.add(segmentId);
+
+    setPlannerStateIfCurrent(requestConversationId, (current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        segments: current.segments.map((segment) =>
+          segment.id !== segmentId
+            ? segment
+            : {
+                ...segment,
+                contentStatus: 'loading',
+                contentError: undefined,
+              }
+        ),
+      };
+    });
+
+    try {
+      const response = await supabase.functions.invoke('travel-itinerary', {
+        body: buildPlannerGenerationPayload(plannerState, {
+          generationMode: 'segment',
+          editIntent: {
+            action: 'enrich_segment',
+            targetSegmentId: segmentId,
+            targetCity: targetSegment.city,
+          },
+        }),
+      });
+
+      if (response.error) {
+        throw response.error;
+      }
+
+      if (response.data?.timing) {
+        console.log('⏱️ [TRIP PLANNER SEGMENT TIMING]', response.data.timing);
+      }
+
+      const nextState = normalizePlannerState(response.data?.data, conversationId);
+      if (!isCurrentPlannerConversation(requestConversationId)) {
+        return;
+      }
+
+      setPlannerStateIfCurrent(
+        requestConversationId,
+        (current) => shouldReplacePlannerState(current, nextState) ? nextState : current
+      );
+      await persistPlannerState(nextState, 'system');
+    } catch (error: any) {
+      console.error('❌ [TRIP PLANNER] Segment enrichment failed:', error);
+      if (!isCurrentPlannerConversation(requestConversationId)) {
+        return;
+      }
+
+      let nextErrorState: TripPlannerState | null = null;
+
+      setPlannerStateIfCurrent(requestConversationId, (current) => {
+        if (!current) return current;
+
+        nextErrorState = {
+          ...current,
+          segments: current.segments.map((segment) =>
+            segment.id !== segmentId
+              ? segment
+              : {
+                  ...segment,
+                  contentStatus: 'error' as const,
+                  contentError: error?.message || 'No se pudo completar este tramo por ahora.',
+                }
+          ),
+        };
+
+        return nextErrorState;
+      });
+
+      if (nextErrorState) {
+        await persistPlannerState(nextErrorState, 'system');
+      }
+    } finally {
+      pendingSegmentEnrichmentRef.current.delete(segmentId);
+    }
+  }, [
+    conversationId,
+    isCurrentPlannerConversation,
+    persistPlannerState,
+    plannerState,
+    setPlannerStateIfCurrent,
+  ]);
 
   const setDraftPlannerFromRequest = useCallback((request: ParsedTravelRequest) => {
     const draftState = createDraftPlannerFromRequest(request, conversationId || undefined);
@@ -448,7 +604,8 @@ export default function useTripPlanner(
       dayId?: string;
     }
   ) => {
-    if (!conversationId) return;
+    const requestConversationId = conversationId;
+    if (!requestConversationId) return;
 
     setIsLoadingPlanner(true);
     setActivePlannerMutation({
@@ -467,8 +624,16 @@ export default function useTripPlanner(
         throw response.error;
       }
 
+      if (response.data?.timing) {
+        console.log('⏱️ [TRIP PLANNER BACKEND TIMING]', response.data.timing);
+      }
+
       const nextState = normalizePlannerState(response.data?.data, conversationId);
-      setPlannerState(nextState);
+      if (!isCurrentPlannerConversation(requestConversationId)) {
+        return;
+      }
+
+      setPlannerStateIfCurrent(requestConversationId, nextState);
       await persistPlannerState(nextState, source);
       toast({
         title: 'Planificador actualizado',
@@ -476,6 +641,10 @@ export default function useTripPlanner(
       });
     } catch (error: any) {
       console.error('❌ [TRIP PLANNER] Regeneration failed:', error);
+      if (!isCurrentPlannerConversation(requestConversationId)) {
+        return;
+      }
+
       setPlannerError(error?.message || 'No se pudo regenerar el planificador.');
       toast({
         title: 'No se pudo actualizar el planificador',
@@ -483,14 +652,18 @@ export default function useTripPlanner(
         variant: 'destructive',
       });
     } finally {
-      setIsLoadingPlanner(false);
-      setActivePlannerMutation(null);
+      if (isCurrentPlannerConversation(requestConversationId)) {
+        setIsLoadingPlanner(false);
+        setActivePlannerMutation(null);
+      }
     }
-  }, [conversationId, persistPlannerState, toast]);
+  }, [conversationId, isCurrentPlannerConversation, persistPlannerState, setPlannerStateIfCurrent, toast]);
 
   const regeneratePlanner = useCallback(async () => {
     if (!plannerState) return;
-    await invokePlannerGeneration(buildPlannerGenerationPayload(plannerState), 'regen_plan');
+    await invokePlannerGeneration(buildPlannerGenerationPayload(plannerState, {
+      generationMode: 'skeleton',
+    }), 'regen_plan');
   }, [plannerState, invokePlannerGeneration]);
 
   const regenerateSegment = useCallback(async (segmentId: string) => {
@@ -736,7 +909,9 @@ export default function useTripPlanner(
 
     setPlannerState(nextState);
     await persistPlannerState(nextState, 'ui_edit');
-    await invokePlannerGeneration(buildPlannerGenerationPayload(nextState), 'regen_plan');
+    await invokePlannerGeneration(buildPlannerGenerationPayload(nextState, {
+      generationMode: 'skeleton',
+    }), 'regen_plan');
   }, [invokePlannerGeneration, persistPlannerState, plannerState]);
 
   const addDestination = useCallback(async (destination: string) => {
@@ -753,6 +928,7 @@ export default function useTripPlanner(
           city: normalized,
           order: current.segments.length,
           summary: 'Nuevo destino agregado. Regenerá el planificador para armar los días detallados.',
+          contentStatus: 'skeleton',
           startDate: undefined,
           endDate: undefined,
           nights: 0,
@@ -810,7 +986,9 @@ export default function useTripPlanner(
 
     setPlannerState(reorderedState);
     await persistPlannerState(reorderedState, 'ui_edit');
-    await invokePlannerGeneration(buildPlannerGenerationPayload(reorderedState), 'regen_plan');
+    await invokePlannerGeneration(buildPlannerGenerationPayload(reorderedState, {
+      generationMode: 'skeleton',
+    }), 'regen_plan');
   }, [invokePlannerGeneration, persistPlannerState, plannerState]);
 
   const getSegmentHotelSearchInput = useCallback((state: TripPlannerState, segmentId: string) => {
@@ -945,7 +1123,7 @@ export default function useTripPlanner(
                 quoteError: item.hotelPlan.lastSearchSignature === signature
                   ? item.hotelPlan.quoteError
                   : item.hotelPlan.selectedPlaceCandidate
-                    ? 'Las fechas cambiaron. Volve a validar el hotel real para este destino.'
+                    ? 'Las fechas cambiaron. Confirmá disponibilidad y precio para este destino.'
                     : undefined,
                 lastSearchSignature: signature,
                 error: undefined,
@@ -1088,7 +1266,7 @@ export default function useTripPlanner(
                   selectedHotelId: undefined,
                   quoteSearchId: undefined,
                   quoteLastValidatedAt: undefined,
-                  quoteError: 'Elegi fechas exactas para poder cotizar este hotel real.',
+                  quoteError: 'Elegí fechas exactas para confirmar disponibilidad y precio.',
                   error: undefined,
                 },
               }
@@ -1271,8 +1449,8 @@ export default function useTripPlanner(
                   matchStatus: 'error',
                   selectedPlaceCandidate: placeCandidate,
                   inventoryMatchCandidates: [],
-                  quoteError: error?.message || 'No se pudo validar el hotel elegido.',
-                  error: error?.message || 'No se pudo validar el hotel elegido.',
+                  quoteError: error?.message || 'No se pudo confirmar disponibilidad del hotel elegido.',
+                  error: error?.message || 'No se pudo confirmar disponibilidad del hotel elegido.',
                 },
               }
         ),
@@ -1363,7 +1541,7 @@ export default function useTripPlanner(
                 ...item,
                 hotelPlan: {
                   ...item.hotelPlan,
-                  quoteError: 'Elegi fechas exactas para poder validar el hotel real.',
+                  quoteError: 'Elegí fechas exactas para confirmar disponibilidad y precio.',
                 },
               }
         ),
@@ -1773,6 +1951,7 @@ export default function useTripPlanner(
     setDraftPlannerFromRequest,
     setPlannerDraftPhase,
     reloadPlannerState: loadPersistedPlannerState,
+    ensureSegmentEnriched,
     updateTripField,
     setExactDateRange,
     applyPlannerDateSelection,

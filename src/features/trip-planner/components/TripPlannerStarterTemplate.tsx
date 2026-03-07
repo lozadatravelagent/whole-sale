@@ -34,8 +34,8 @@ function StarterMapPlaceholder({ isProcessing }: { isProcessing: boolean }) {
       <div className="flex items-center gap-2 text-xs text-slate-500">
         <Route className="h-3.5 w-3.5 text-primary" />
         {isProcessing
-          ? 'La ruta y los destinos aparecerán acá apenas el parser termine de interpretar tu pedido.'
-          : 'Acá vas a ver ciudades, hoteles del mapa y la ruta completa entre tramos.'}
+          ? 'La ruta y los destinos van a aparecer acá apenas termine de interpretar tu pedido.'
+          : 'Acá vas a seguir ciudades, hoteles del mapa y la ruta completa entre tramos.'}
       </div>
     </div>
   );
@@ -56,10 +56,10 @@ export default function TripPlannerStarterTemplate({
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary" className="rounded-full px-3 py-1">
-                Plantilla inicial
+                Primer borrador
               </Badge>
               <Badge variant="outline" className="rounded-full px-3 py-1">
-                {isProcessing ? 'Completando desde tu prompt' : 'Lista para empezar'}
+                {isProcessing ? 'Interpretando tu pedido' : 'Esperando tu viaje'}
               </Badge>
             </div>
 
@@ -67,13 +67,13 @@ export default function TripPlannerStarterTemplate({
               <div className="flex items-center gap-2 text-primary">
                 <Sparkles className="h-5 w-5" />
                 <p className="trip-planner-title text-3xl font-semibold md:text-4xl">
-                  {isProcessing ? 'Armando tu viaje' : 'Diseñá tu próximo viaje'}
+                  {isProcessing ? 'Estoy armando tu viaje' : 'Contame cómo querés viajar'}
                 </p>
               </div>
               <p className="trip-planner-body max-w-3xl text-sm leading-6 text-muted-foreground">
                 {isProcessing
-                  ? 'Estamos tomando tus destinos, fechas y preferencias para convertirlos en un planner editable.'
-                  : 'Mandá un prompt en el asistente y este espacio se convertirá en un planner completo con ruta, días, hoteles y transporte.'}
+                  ? 'Estoy tomando destinos, fechas y preferencias para convertirlos en un planner editable y más fácil de ajustar.'
+                  : 'Escribí tu idea en el asistente y este espacio se va a llenar con ruta, días, hoteles y transporte.'}
               </p>
             </div>
           </div>
@@ -81,7 +81,7 @@ export default function TripPlannerStarterTemplate({
           {promptPreview && (
             <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
               <p className="trip-planner-label text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Último pedido
+                Tu pedido
               </p>
               <p className="trip-planner-body mt-2 text-sm text-foreground">{promptPreview}</p>
               {typingMessage && (
@@ -127,8 +127,8 @@ export default function TripPlannerStarterTemplate({
                 <div className="rounded-full border border-white/70 bg-white/85 px-4 py-2 text-xs text-slate-600 shadow backdrop-blur">
                   <Route className="mr-1.5 inline h-3.5 w-3.5 text-primary" />
                   {isProcessing
-                    ? 'Los destinos aparecerán acá cuando el parser termine de interpretar tu pedido.'
-                    : 'Acá vas a ver ciudades, hoteles y la ruta completa entre tramos.'}
+                    ? 'Los destinos van a aparecer acá cuando termine de interpretar tu pedido.'
+                    : 'Acá vas a ver ciudades, hoteles y la ruta completa del viaje.'}
                 </div>
               </div>
             </div>
@@ -175,8 +175,8 @@ export default function TripPlannerStarterTemplate({
                 </div>
                 <p className="trip-planner-body mt-2 text-xs text-muted-foreground">
                   {isProcessing
-                    ? 'Vamos a habilitar cotización real y validación de hotel cuando el itinerario termine de generarse.'
-                    : 'Cuando empieces, esta tarjeta mostrará hoteles reales, fechas y estado de cotización.'}
+                    ? 'Cuando cierre el borrador, desde acá vas a poder pasar de sugerencia a precio real.'
+                    : 'Acá vas a ver sugerencias del planner, hoteles reales y estado de cotización.'}
                 </p>
               </TemplateBlock>
 
@@ -186,7 +186,7 @@ export default function TripPlannerStarterTemplate({
                   Transporte entre destinos
                 </div>
                 <p className="trip-planner-body mt-2 text-xs text-muted-foreground">
-                  Vuelos y conexiones aparecerán acá cuando el plan tenga tramos definidos.
+                  Cuando el viaje tenga tramos definidos, acá vas a poder comparar vuelos y conexiones reales.
                 </p>
               </TemplateBlock>
             </div>

@@ -31,6 +31,7 @@ export type PlannerActivityType =
   | 'experience'
   | 'unknown';
 export type PlannerSchedulingConfidence = 'high' | 'medium' | 'low';
+export type PlannerSegmentContentStatus = 'skeleton' | 'loading' | 'ready' | 'error';
 
 export interface PlannerActivity {
   id: string;
@@ -178,6 +179,8 @@ export interface PlannerSegment {
   nights?: number;
   order: number;
   summary?: string;
+  contentStatus?: PlannerSegmentContentStatus;
+  contentError?: string;
   hotelPlan: SegmentHotelPlan;
   transportIn?: PlannerTransport | null;
   transportOut?: PlannerTransport | null;

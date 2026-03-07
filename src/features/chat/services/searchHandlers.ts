@@ -24,6 +24,7 @@ import { generateHotelSearchId, saveHotelsToStorage } from './hotelStorageServic
 import { timeStringToNumber } from '@/features/chat/utils/timeSlotMapper';
 import type { TripPlannerState } from '@/features/trip-planner/types';
 import { getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '@/features/trip-planner';
+import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 
 // =====================================================================
 // PUNTA CANA HOTEL WHITELIST - SPECIAL FILTER
@@ -405,10 +406,20 @@ function buildHotelRequestFromSegment(segment: HotelStaySegment): HotelRequest {
 export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
   console.log('✈️ [FLIGHT SEARCH] Starting flight search process');
   console.log('📋 Parsed request:', parsed);
+  const timer = createDebugTimer('FLIGHT SEARCH', {
+    origin: parsed.flights?.origin,
+    destination: parsed.flights?.destination,
+    tripType: parsed.flights?.tripType,
+  });
 
   try {
     console.log('🔄 [FLIGHT SEARCH] Step 1: Formatting parameters for Starling API');
+    const formatStart = nowMs();
     const starlingParams = await formatForStarling(parsed);
+    logTimingStep('FLIGHT SEARCH', 'formatForStarling', formatStart, {
+      origin: parsed.flights?.origin,
+      destination: parsed.flights?.destination,
+    });
     console.log('📊 Starling parameters:', starlingParams);
 
     // ✈️ PRE-FILTER: Add airline filter to STARLING request if user specified preferredAirline
@@ -443,7 +454,11 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     };
 
     console.log('📤 [FLIGHT SEARCH] Step 2: About to call Starling API (Supabase Edge Function)');
+    const invokeStart = nowMs();
     const response = await invokeStarlingSearch(starlingParams);
+    logTimingStep('FLIGHT SEARCH', 'invoke Starling initial search', invokeStart, {
+      hasError: Boolean(response.error),
+    });
 
     console.log('✅ [FLIGHT SEARCH] Step 3: Starling API response received');
     console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
@@ -456,8 +471,12 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     console.log('📊 [FLIGHT SEARCH] Raw response data:', response.data);
 
     console.log('🔄 [FLIGHT SEARCH] Step 4: Transforming Starling results');
+    const transformStart = nowMs();
     const flightData = response.data?.data || response.data;
     let flights = await transformStarlingResults(flightData, parsed);
+    logTimingStep('FLIGHT SEARCH', 'transformStarlingResults initial', transformStart, {
+      flights: flights.length,
+    });
     let broadenedSearchRetry = false;
     let forcedResultFallback = false;
     let checkedLuggageRelaxedFallback = false;
@@ -478,7 +497,11 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       console.log('🔁 [FLIGHT SEARCH] No results on first attempt, retrying with broader stops criteria (stops=any)');
 
       try {
+        const broadenedSearchStart = nowMs();
         const broadenedResponse = await invokeStarlingSearch(broadenedParams);
+        logTimingStep('FLIGHT SEARCH', 'invoke Starling broadened retry', broadenedSearchStart, {
+          hasError: Boolean(broadenedResponse.error),
+        });
         if (!broadenedResponse.error && broadenedResponse.data) {
           const broadenedFlightData = broadenedResponse.data?.data || broadenedResponse.data;
           const broadenedParsed: ParsedTravelRequest = {
@@ -542,11 +565,15 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
 
       try {
         // Do a new search with expanded parameters using the same Starling API
+        const expandedSearchStart = nowMs();
         const expandedResponse = await supabase.functions.invoke('starling-flights', {
           body: {
             action: 'searchFlights',
             data: expandedStarlingParams
           }
+        });
+        logTimingStep('FLIGHT SEARCH', 'invoke Starling expanded layover search', expandedSearchStart, {
+          hasError: Boolean(expandedResponse.error),
         });
 
         if (!expandedResponse.error && expandedResponse.data) {
@@ -765,9 +792,19 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
 
     console.log('🎉 [FLIGHT SEARCH] Flight search completed successfully');
     console.log('📋 Final result:', result);
+    timer.end('total', {
+      flights: flights.length,
+      broadenedSearchRetry,
+      forcedResultFallback,
+      checkedLuggageRelaxedFallback,
+    });
 
     return result;
   } catch (error) {
+    timer.fail('failed', error, {
+      origin: parsed.flights?.origin,
+      destination: parsed.flights?.destination,
+    });
     console.error('❌ [FLIGHT SEARCH] Error in flight search process:', error);
     return {
       response: '❌ **Servicio de vuelos temporalmente no disponible**\n\nNuestros servicios de búsqueda de vuelos están siendo actualizados. Mientras tanto:\n\n✈️ **Puedo ayudarte con:**\n- Información general sobre destinos\n- Consultas sobre hoteles\n- Paquetes turísticos\n\n📞 **Para búsquedas de vuelos inmediatas:**\nContacta a nuestro equipo directamente para asistencia personalizada.',
@@ -784,6 +821,11 @@ export const handleHotelSearch = async (
   console.log('📋 Parsed request:', parsed);
   console.log('🔍 [DEBUG] parsed.hotels?.roomType:', parsed.hotels?.roomType);
   console.log('🔍 [DEBUG] parsed.hotels?.mealPlan:', parsed.hotels?.mealPlan);
+  const timer = createDebugTimer('HOTEL SEARCH', {
+    city: parsed.hotels?.city,
+    roomType: parsed.hotels?.roomType,
+    mealPlan: parsed.hotels?.mealPlan,
+  });
 
   try {
     const allowFlightFallback = options.allowFlightFallback ?? true;
@@ -844,6 +886,10 @@ export const handleHotelSearch = async (
         .filter((searchId): searchId is string => Boolean(searchId));
       const formattedResponse = formatMultiSegmentHotelResponse(segmentResults);
       const primarySegment = hotelSegments[0];
+      timer.end('multi-segment total', {
+        segments: segmentResults.length,
+        hotels: flattenedHotels.length,
+      });
 
       return {
         response: formattedResponse,
@@ -932,6 +978,9 @@ export const handleHotelSearch = async (
     // Validate we have at least a city to look up
     if (!enrichedParsed.hotels?.city) {
       console.warn('⚠️ [HOTEL SEARCH] Missing city for hotel search after enrichment');
+      timer.end('stopped - missing city', {
+        allowFlightFallback,
+      });
       return {
         response:
           '🏨 Necesito la ciudad o destino del hotel. ¿En qué ciudad quieres hospedarte?',
@@ -940,15 +989,37 @@ export const handleHotelSearch = async (
     }
 
     console.log('🔄 [HOTEL SEARCH] Step 1: Formatting parameters for EUROVIPS API');
+    const formatStart = nowMs();
     const eurovipsParams = formatForEurovips(enrichedParsed);
+    logTimingStep('HOTEL SEARCH', 'formatForEurovips', formatStart, {
+      city: enrichedParsed.hotels?.city,
+      adults: enrichedParsed.hotels?.adults,
+    });
     console.log('📊 EUROVIPS parameters:', eurovipsParams);
 
     // Get city code from new optimized mapping service
     console.log('📍 [HOTEL SEARCH] Step 2: Resolving city code');
     console.log('🔍 Looking up city:', enrichedParsed.hotels?.city);
 
+    const cityLookupStart = nowMs();
     const cityCode = await getCityCode(enrichedParsed.hotels?.city || '');
+    logTimingStep('HOTEL SEARCH', 'resolve city code', cityLookupStart, {
+      city: enrichedParsed.hotels?.city,
+      cityCode,
+    });
     console.log('✅ [HOTEL SEARCH] City code resolved:', `"${enrichedParsed.hotels?.city}" → ${cityCode}`);
+
+    const invokeEurovipsSearch = async (requestBody: unknown, label: string) => {
+      const invokeStart = nowMs();
+      const response = await supabase.functions.invoke('eurovips-soap', {
+        body: requestBody
+      });
+      logTimingStep('HOTEL SEARCH', label, invokeStart, {
+        hasError: Boolean(response.error),
+        hotels: response.data?.results?.length || 0,
+      });
+      return response;
+    };
 
     // ✅ REGLA DE NEGOCIO (confirmada con Ruth/SOFTUR):
     // El campo <name> de EUROVIPS es el ÚNICO campo correcto para filtrar por:
@@ -1001,16 +1072,14 @@ export const handleHotelSearch = async (
         searchTasks.map((task) => async () => {
           console.log(`📤 [PARALLEL-SEARCH] Searching for ${task.label}`);
 
-          const response = await supabase.functions.invoke('eurovips-soap', {
-            body: {
-              action: 'searchHotels',
-              data: {
-                ...eurovipsParams.hotelParams,
-                cityCode: cityCode,
-                hotelName: task.searchTerm,
-              },
+          const response = await invokeEurovipsSearch({
+            action: 'searchHotels',
+            data: {
+              ...eurovipsParams.hotelParams,
+              cityCode: cityCode,
+              hotelName: task.searchTerm,
             },
-          });
+          }, `invoke EUROVIPS parallel ${task.label}`);
 
           if (response.error) {
             console.error(`❌ [PARALLEL-SEARCH] EUROVIPS API error for ${task.label}:`, response.error);
@@ -1077,9 +1146,7 @@ export const handleHotelSearch = async (
           }
         };
 
-        const response = await supabase.functions.invoke('eurovips-soap', {
-          body: requestBody
-        });
+        const response = await invokeEurovipsSearch(requestBody, `invoke EUROVIPS chain "${chain}"`);
 
         if (response.error) {
           console.error(`❌ [MULTI-CHAIN] EUROVIPS API error for chain "${chain}":`, response.error);
@@ -1138,9 +1205,7 @@ export const handleHotelSearch = async (
       console.log('📤 [HOTEL SEARCH] Step 3: About to call EUROVIPS API (Supabase Edge Function) with name filter');
       console.log('📋 Request body:', requestBody);
 
-      const response = await supabase.functions.invoke('eurovips-soap', {
-        body: requestBody
-      });
+      const response = await invokeEurovipsSearch(requestBody, 'invoke EUROVIPS single hotel filter');
 
       console.log('✅ [HOTEL SEARCH] Step 4: EUROVIPS API response received');
       console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
@@ -1169,9 +1234,7 @@ export const handleHotelSearch = async (
       console.log('📤 [HOTEL SEARCH] Step 3: About to call EUROVIPS API (Supabase Edge Function) without filters');
       console.log('📋 Request body:', requestBody);
 
-      const response = await supabase.functions.invoke('eurovips-soap', {
-        body: requestBody
-      });
+      const response = await invokeEurovipsSearch(requestBody, 'invoke EUROVIPS city search');
 
       console.log('✅ [HOTEL SEARCH] Step 4: EUROVIPS API response received');
       console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
@@ -1194,6 +1257,7 @@ export const handleHotelSearch = async (
     // ✅ HOTELBEDS PARALLEL SEARCH: Search Hotelbeds and merge results (fail-open)
     try {
       console.log('[HOTELBEDS MERGE] Searching Hotelbeds in parallel...');
+      const hotelbedsStart = nowMs();
       const hbResponse = await supabase.functions.invoke('hotelbeds-api', {
         body: {
           action: 'searchHotels',
@@ -1208,6 +1272,10 @@ export const handleHotelSearch = async (
             hotelName: enrichedParsed.hotels?.hotelName || '',
           },
         },
+      });
+      logTimingStep('HOTEL SEARCH', 'invoke Hotelbeds merge search', hotelbedsStart, {
+        hasError: Boolean(hbResponse.error),
+        hotels: hbResponse.data?.data?.results?.length || 0,
       });
 
       if (!hbResponse.error && hbResponse.data?.data?.results) {
@@ -1571,9 +1639,17 @@ export const handleHotelSearch = async (
 
     console.log('🎉 [HOTEL SEARCH] Hotel search completed successfully');
     console.log('📋 Final result:', result);
+    timer.end('total', {
+      city: enrichedParsed.hotels?.city,
+      hotels: hotels.length,
+      totalProviderHotels: allHotels.length,
+    });
 
     return result;
   } catch (error) {
+    timer.fail('failed', error, {
+      city: parsed.hotels?.city || parsed.flights?.destination,
+    });
     console.error('❌ [HOTEL SEARCH] Error in hotel search process:', error);
 
     // Handle city not found error specifically
@@ -1802,6 +1878,11 @@ export const handleItineraryRequest = async (
 ): Promise<SearchResult> => {
   console.log('🗺️ [ITINERARY] Starting itinerary generation process');
   console.log('📋 Parsed request:', parsed);
+  const timer = createDebugTimer('ITINERARY', {
+    destinations: parsed.itinerary?.destinations?.length || 0,
+    days: parsed.itinerary?.days,
+    hasExistingPlanner: Boolean(existingPlannerState),
+  });
 
   try {
     const itinerary = parsed.itinerary || {};
@@ -1826,6 +1907,10 @@ export const handleItineraryRequest = async (
     const hasFlexibleDates = hasFlexibleItineraryDateSelection(itinerary);
 
     if (!hasUsableItineraryDates(itinerary)) {
+      timer.end('stopped - missing usable dates', {
+        hasExactDates,
+        hasFlexibleDates,
+      });
       return {
         response: generateMissingInfoMessage(['fechas exactas del viaje'], 'itinerary', {
           itinerary,
@@ -1856,6 +1941,12 @@ export const handleItineraryRequest = async (
       (!hasExactDates && !hasFlexibleDates)
     ) {
       console.warn('⚠️ [ITINERARY] Missing required fields');
+      timer.end('stopped - missing required fields', {
+        hasDestinations: Boolean(destinations?.length),
+        derivedDays,
+        hasExactDates,
+        hasFlexibleDates,
+      });
       return {
         response: generateMissingInfoMessage(['destino(s)', 'fechas exactas del viaje'], 'itinerary', {
           itinerary,
@@ -1868,6 +1959,7 @@ export const handleItineraryRequest = async (
     console.log(`🔄 [ITINERARY] Generating itinerary for ${destinations.join(', ')} - ${derivedDays} days`);
 
     // Call the travel-itinerary Edge Function
+    const invokeStart = nowMs();
     const response = await supabase.functions.invoke('travel-itinerary', {
       body: {
         destinations,
@@ -1884,14 +1976,24 @@ export const handleItineraryRequest = async (
         travelers,
         constraints,
         hotelCategory,
+        generationMode: editIntent ? 'full' : 'skeleton',
         editIntent,
         existingPlannerState
       }
+    });
+    logTimingStep('ITINERARY', 'invoke travel-itinerary', invokeStart, {
+      hasError: Boolean(response.error),
+      destinations: destinations.length,
+      days: derivedDays,
     });
 
     if (response.error) {
       console.error('❌ [ITINERARY] Edge Function error:', response.error);
       throw new Error(response.error.message);
+    }
+
+    if (response.data?.timing) {
+      console.log('⏱️ [ITINERARY BACKEND TIMING]', response.data.timing);
     }
 
     const itineraryData = response.data?.data;
@@ -1904,6 +2006,7 @@ export const handleItineraryRequest = async (
     console.log('✅ [ITINERARY] Itinerary generated successfully');
     console.log(`📊 [ITINERARY] Generated ${itineraryData.itinerary?.length || itineraryData.days || 0} days`);
 
+    const normalizeStart = nowMs();
     const plannerData = normalizePlannerState({
       ...itineraryData,
       startDate: hasExactDates ? (itineraryData.startDate || effectiveStartDate) : undefined,
@@ -1929,9 +2032,17 @@ export const handleItineraryRequest = async (
         version: (existingPlannerState?.generationMeta?.version || 0) + 1,
       },
     });
+    logTimingStep('ITINERARY', 'normalizePlannerState', normalizeStart, {
+      segments: plannerData.segments.length,
+      days: plannerData.days,
+    });
 
     // Format the response
+    const summarizeStart = nowMs();
     const formattedResponse = summarizePlannerForChat(plannerData);
+    logTimingStep('ITINERARY', 'summarizePlannerForChat', summarizeStart, {
+      segments: plannerData.segments.length,
+    });
 
     const result = {
       response: formattedResponse,
@@ -1943,9 +2054,16 @@ export const handleItineraryRequest = async (
     };
 
     console.log('🎉 [ITINERARY] Itinerary generation completed successfully');
+    timer.end('total', {
+      segments: plannerData.segments.length,
+      days: plannerData.days,
+    });
 
     return result;
   } catch (error) {
+    timer.fail('failed', error, {
+      destinations: parsed.itinerary?.destinations?.length || 0,
+    });
     console.error('❌ [ITINERARY] Error in itinerary generation:', error);
     return {
       response: '❌ **Error generando itinerario**\n\n' +

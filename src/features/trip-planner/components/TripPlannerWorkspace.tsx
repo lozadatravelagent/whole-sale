@@ -107,6 +107,7 @@ interface TripPlannerWorkspaceProps {
   onRegeneratePlanner: () => Promise<void>;
   onRegenerateSegment: (segmentId: string) => Promise<void>;
   onRegenerateDay: (segmentId: string, dayId: string) => Promise<void>;
+  onEnsureSegmentEnriched: (segmentId: string) => Promise<void>;
   onToggleDayLock: (segmentId: string, dayId: string) => Promise<void>;
   onToggleActivityLock: (segmentId: string, dayId: string, block: 'morning' | 'afternoon' | 'evening', activityId: string) => Promise<void>;
   onSelectHotel: (segmentId: string, hotelId: string) => Promise<void>;
@@ -159,6 +160,7 @@ export default function TripPlannerWorkspace({
   onRegeneratePlanner,
   onRegenerateSegment,
   onRegenerateDay,
+  onEnsureSegmentEnriched,
   onToggleDayLock,
   onToggleActivityLock,
   onSelectHotel,
@@ -203,6 +205,7 @@ export default function TripPlannerWorkspace({
   const [assistantWidth, setAssistantWidth] = useState(ASSISTANT_WIDTH_DEFAULT);
   const [isAssistantCollapsed, setIsAssistantCollapsed] = useState(false);
   const [isResizingAssistant, setIsResizingAssistant] = useState(false);
+  const segmentRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const resizeStartXRef = useRef<number | null>(null);
   const resizeStartWidthRef = useRef<number | null>(null);
 
@@ -290,12 +293,44 @@ export default function TripPlannerWorkspace({
     [plannerState]
   );
 
+  const isDraftPlanner = Boolean(plannerState?.generationMeta?.isDraft);
   const plannerDateSummary = plannerState?.isFlexibleDates
     ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
     : formatDateRange(plannerState?.startDate, plannerState?.endDate);
   const hasExactPlannerDates = Boolean(plannerState?.startDate && plannerState?.endDate && !plannerState?.isFlexibleDates);
   const isRegeneratingPlan = activePlannerMutation?.type === 'regen_plan';
-  const isDraftPlanner = Boolean(plannerState?.generationMeta?.isDraft);
+
+  useEffect(() => {
+    if (!plannerState || isDraftPlanner || typeof IntersectionObserver === 'undefined') {
+      return;
+    }
+
+    const skeletonSegments = plannerState.segments.filter((segment) => segment.contentStatus === 'skeleton');
+    if (skeletonSegments.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const segmentId = (entry.target as HTMLDivElement).dataset.segmentId;
+        if (!segmentId) return;
+        void onEnsureSegmentEnriched(segmentId);
+      });
+    }, {
+      rootMargin: '160px 0px 160px 0px',
+      threshold: 0.2,
+    });
+
+    skeletonSegments.forEach((segment) => {
+      const node = segmentRefs.current[segment.id];
+      if (node) {
+        observer.observe(node);
+      }
+    });
+
+    return () => observer.disconnect();
+  }, [isDraftPlanner, onEnsureSegmentEnriched, plannerState]);
 
   const handleExportPdf = useCallback(() => {
     if (!plannerState) return;
@@ -320,20 +355,20 @@ export default function TripPlannerWorkspace({
     const isDraftGenerating = isDraftPlanner && plannerState?.generationMeta?.uiPhase === 'draft_generating';
     if (isDraftPlanner) {
       steps.push({
-        label: 'Generando itinerario',
+        label: 'Armando el itinerario',
         status: isDraftGenerating ? 'active' : 'done',
       });
     }
 
     if (!plannerState || isDraftGenerating) {
-      return steps.length > 0 ? { busy: true, steps } : isLoadingPlanner ? { busy: true, steps: [{ label: 'Cargando planner', status: 'active' as const }] } : null;
+      return steps.length > 0 ? { busy: true, steps } : isLoadingPlanner ? { busy: true, steps: [{ label: 'Abriendo tu planner', status: 'active' as const }] } : null;
     }
 
     // Step 2: Geocoding
     const allHaveLocation = plannerState.segments.every((s) => s.location);
     if (isResolvingLocations || !allHaveLocation) {
       steps.push({
-        label: `Ubicando ${plannerState.segments.length} destinos`,
+        label: `Ubicando ${plannerState.segments.length} destinos en el mapa`,
         status: isResolvingLocations ? 'active' : allHaveLocation ? 'done' : 'pending',
       });
     } else if (plannerState.segments.length > 0) {
@@ -346,11 +381,12 @@ export default function TripPlannerWorkspace({
     const hotelsTotal = plannerState.segments.length;
     if (hasExactPlannerDates && !isDraftPlanner) {
       if (hotelsLoading.length > 0) {
-        steps.push({ label: `Buscando hoteles (${hotelsReady.length}/${hotelsTotal})`, status: 'active' });
+        const currentCity = hotelsLoading[0] ? formatDestinationLabel(hotelsLoading[0].city) : '';
+        steps.push({ label: `Consultando hoteles en ${currentCity} (${hotelsReady.length}/${hotelsTotal})`, status: 'active' });
       } else if (hotelsReady.length === hotelsTotal) {
-        steps.push({ label: `${hotelsTotal} destinos con hoteles`, status: 'done' });
+        steps.push({ label: `Hoteles listos en ${hotelsTotal} destinos`, status: 'done' });
       } else {
-        steps.push({ label: 'Hoteles pendientes', status: 'pending' });
+        steps.push({ label: 'Hoteles listos para buscar', status: 'pending' });
       }
     }
 
@@ -360,11 +396,14 @@ export default function TripPlannerWorkspace({
     const transportReady = transportSegments.filter((s) => s.transportIn?.searchStatus === 'ready' || s.transportIn?.searchStatus === 'error');
     if (hasExactPlannerDates && !isDraftPlanner && transportSegments.length > 0) {
       if (transportLoading.length > 0) {
-        steps.push({ label: `Buscando transporte (${transportReady.length}/${transportSegments.length})`, status: 'active' });
+        const currentRoute = transportLoading[0]
+          ? `${formatDestinationLabel(transportLoading[0].transportIn?.origin || '')} → ${formatDestinationLabel(transportLoading[0].city)}`
+          : '';
+        steps.push({ label: `Consultando transporte ${currentRoute} (${transportReady.length}/${transportSegments.length})`, status: 'active' });
       } else if (transportReady.length === transportSegments.length) {
-        steps.push({ label: `${transportSegments.length} tramos con transporte`, status: 'done' });
+        steps.push({ label: `Transporte listo en ${transportSegments.length} tramos`, status: 'done' });
       } else {
-        steps.push({ label: 'Transporte pendiente', status: 'pending' });
+        steps.push({ label: 'Transporte listo para buscar', status: 'pending' });
       }
     }
 
@@ -378,27 +417,27 @@ export default function TripPlannerWorkspace({
 
   const getHotelStatusText = (segment: TripPlannerState['segments'][number]) => {
     if (isDraftPlanner) {
-      return 'Los hoteles reales se habilitan cuando terminemos de generar el itinerario.';
+      return 'Cuando termine el borrador, acá vas a poder pasar de idea a precio real.';
     }
 
     const hasDates = Boolean((segment.startDate || plannerState?.startDate) && (segment.endDate || plannerState?.endDate));
 
     if (plannerState?.isFlexibleDates || !hasDates) {
-      return 'Elegi fechas exactas para cargar hoteles reales.';
+      return 'Definí fechas exactas y te muestro hoteles reales para este tramo.';
     }
     if (segment.hotelPlan.searchStatus === 'error') {
-      return 'No pudimos cargar hoteles para este destino en este momento.';
+      return 'No pude traer hoteles reales para este destino. Probá de nuevo en un momento.';
     }
     if (segment.hotelPlan.searchStatus === 'loading') {
-      return 'Buscando hoteles para este destino...';
+      return 'Estoy buscando hoteles reales para este destino...';
     }
     if (segment.hotelPlan.searchStatus === 'ready' && segment.hotelPlan.hotelRecommendations.length > 0) {
-      return `${segment.hotelPlan.hotelRecommendations.length} hoteles encontrados`;
+      return `${segment.hotelPlan.hotelRecommendations.length} opciones reales para comparar`;
     }
     if (segment.hotelPlan.searchStatus === 'ready') {
-      return 'No encontramos hoteles para este tramo con las fechas actuales.';
+      return 'No encontré hoteles para este tramo con las fechas actuales. Probá ajustar fechas o destino.';
     }
-    return 'Buscando hoteles para este destino...';
+    return 'Estoy preparando la búsqueda de hoteles para este destino...';
   };
 
   const getTransportStatusText = (
@@ -406,21 +445,21 @@ export default function TripPlannerWorkspace({
     previousSegment?: TripPlannerState['segments'][number]
   ) => {
     if (isDraftPlanner) {
-      return 'El transporte real se habilita cuando el recorrido final queda confirmado.';
+      return 'Cuando el recorrido quede listo, acá vas a ver opciones reales entre destinos.';
     }
 
     if (segment.transportIn?.searchStatus === 'error') {
-      return 'No pudimos cargar transporte para este tramo en este momento.';
+      return 'No pude traer transporte para este tramo. Probá de nuevo en un momento.';
     }
     if (segment.transportIn?.searchStatus === 'ready') {
       const optionCount = segment.transportIn.options?.length || 0;
       return optionCount > 0
-        ? `${optionCount} opciones de transporte cargadas`
-        : 'No encontramos transporte para este tramo con la informacion actual.';
+        ? `${optionCount} opciones reales para este tramo`
+        : 'No encontré transporte con la información actual. Conviene revisar fechas o ciudades.';
     }
     return previousSegment
-      ? `Carga opciones reales entre ${formatDestinationLabel(previousSegment.city)} y ${formatDestinationLabel(segment.city)}.`
-      : 'Carga opciones reales de vuelo para este tramo.';
+      ? `Cuando quieras cotizar, voy a buscar opciones entre ${formatDestinationLabel(previousSegment.city)} y ${formatDestinationLabel(segment.city)}.`
+      : 'Cuando quieras cotizar, voy a buscar opciones reales para este tramo.';
   };
 
   const visibleMessages = useMemo(() => messages.filter((m) => {
@@ -451,14 +490,14 @@ export default function TripPlannerWorkspace({
   }, [visibleMessages]);
 
   const DRAFT_GENERATING_PHRASES = useMemo(() => [
-    'Organizando destinos y noches por ciudad...',
-    'Armando el día a día de cada tramo...',
-    'Sumando recomendaciones gastronómicas...',
-    'Eligiendo actividades para cada jornada...',
-    'Calculando tiempos y ritmo del viaje...',
-    'Preparando tips y sugerencias locales...',
-    'Ajustando el orden del recorrido...',
-    'Terminando de pulir el itinerario...',
+    'Estoy ordenando destinos y noches por ciudad...',
+    'Estoy armando un día a día claro para cada tramo...',
+    'Estoy sumando paradas para comer y descansar...',
+    'Estoy eligiendo actividades que encajen con el ritmo del viaje...',
+    'Estoy acomodando tiempos para que el recorrido sea viable...',
+    'Estoy preparando tips útiles para cada ciudad...',
+    'Estoy ajustando el orden del recorrido...',
+    'Estoy cerrando los últimos detalles del itinerario...',
   ], []);
 
   const isDraftGenerating = isDraftPlanner && plannerState?.generationMeta?.uiPhase === 'draft_generating';
@@ -484,31 +523,26 @@ export default function TripPlannerWorkspace({
 
     if (plannerState.generationMeta?.uiPhase === 'draft_generating') {
       return {
-        label: 'Completando itinerario',
-        description: typingMessage || 'Estamos organizando los tramos, días y recomendaciones del viaje.',
+        label: 'Armando tu itinerario',
+        description: typingMessage || 'Estoy convirtiendo tu pedido en un planner editable con ruta, días y sugerencias.',
         generating: true,
       };
     }
 
     if (!plannerState.startDate && !plannerState.endDate && !plannerState.isFlexibleDates) {
       return {
-        label: 'Borrador inicial',
-        description: 'Tomamos destinos y preferencias. Sumá fechas para habilitar cotización real cuando el plan termine.',
+        label: 'Primer borrador listo',
+        description: 'Ya interpreté destinos y preferencias. Sumá fechas para habilitar precios reales cuando quieras cotizar.',
       };
     }
 
     return {
-      label: 'Interpretando pedido',
-      description: 'Convertimos tu prompt en un planner estructurado antes de mostrar la versión final.',
+      label: 'Leyendo tu pedido',
+      description: 'Estoy transformando tu mensaje en un planner ordenado y editable antes de mostrar la versión final.',
     };
   }, [isDraftPlanner, plannerState, typingMessage]);
 
-  const shouldShowInitialPlannerSkeleton =
-    !plannerState &&
-    isLoadingPlanner &&
-    visibleMessages.length === 0 &&
-    !isLoading &&
-    !isTyping;
+  const shouldShowInitialPlannerSkeleton = !plannerState && isLoadingPlanner;
 
   const plannerShell = (
     shouldShowInitialPlannerSkeleton ? (
@@ -856,19 +890,60 @@ export default function TripPlannerWorkspace({
 
           <div className="grid gap-4">
             {plannerState.segments.map((segment, segmentIndex) => (
-              <Card key={segment.id} id={`planner-segment-${segment.id}`} className="overflow-hidden">
+              <Card
+                key={segment.id}
+                id={`planner-segment-${segment.id}`}
+                className="overflow-hidden"
+                ref={(node) => {
+                  segmentRefs.current[segment.id] = node;
+                }}
+                data-segment-id={segment.id}
+              >
                 <CardHeader className="border-b bg-muted/30">
                   <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
                     <div>
                       <CardTitle className="trip-planner-title text-lg">
                         {segmentIndex + 1}. {formatDestinationLabel(segment.city)}
                       </CardTitle>
-                      <p className="trip-planner-body mt-1 text-sm text-muted-foreground">
-                        {formatDateRange(segment.startDate, segment.endDate)}
-                        {segment.summary ? ` • ${segment.summary}` : ''}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="trip-planner-body text-sm text-muted-foreground">
+                          {formatDateRange(segment.startDate, segment.endDate)}
+                          {segment.summary ? ` • ${segment.summary}` : ''}
+                        </p>
+                        {segment.contentStatus === 'skeleton' && (
+                          <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px]">
+                            Resumen base
+                          </Badge>
+                        )}
+                        {segment.contentStatus === 'loading' && (
+                          <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[11px]">
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                            Completando
+                          </Badge>
+                        )}
+                        {segment.contentStatus === 'error' && (
+                          <Badge variant="outline" className="rounded-full border-destructive/30 px-2 py-0.5 text-[11px] text-destructive">
+                            Pendiente
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      {segment.contentStatus === 'skeleton' || segment.contentStatus === 'loading' || segment.contentStatus === 'error' ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void onEnsureSegmentEnriched(segment.id)}
+                          disabled={isDraftPlanner || isLoadingPlanner || segment.contentStatus === 'loading'}
+                        >
+                          {segment.contentStatus === 'loading' ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Bot className="h-4 w-4 mr-2" />
+                          )}
+                          {segment.contentStatus === 'error' ? 'Reintentar tramo' : 'Completar tramo'}
+                        </Button>
+                      ) : (
                         <Button
                           variant="outline"
                           size="sm"
@@ -882,6 +957,7 @@ export default function TripPlannerWorkspace({
                           )}
                           Regenerar tramo
                         </Button>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
@@ -892,6 +968,48 @@ export default function TripPlannerWorkspace({
                         {isDraftPlanner
                           ? 'Estamos completando este destino a partir de tu prompt. En cuanto termine la generación vas a ver días, actividades y recomendaciones.'
                           : 'Este destino todavía no tiene días generados. Regenerá el planificador para completarlo.'}
+                      </div>
+                    ) : segment.contentStatus !== 'ready' ? (
+                      <div className="space-y-3">
+                        <div className="rounded-xl border border-dashed bg-muted/20 p-4">
+                          <div className="flex items-start gap-3">
+                            {segment.contentStatus === 'loading' ? (
+                              <Loader2 className="mt-0.5 h-4 w-4 animate-spin text-primary" />
+                            ) : (
+                              <Bot className="mt-0.5 h-4 w-4 text-primary" />
+                            )}
+                            <div className="space-y-1.5">
+                              <p className="trip-planner-label text-sm font-medium text-foreground">
+                                {segment.contentStatus === 'error'
+                                  ? 'No pudimos completar este tramo todavía'
+                                  : 'Estamos completando este tramo a medida que lo abrís'}
+                              </p>
+                              <p className="trip-planner-body text-xs text-muted-foreground">
+                                {segment.contentError
+                                  || 'Ya dejamos la estructura del viaje. Ahora sumamos actividades, comidas y tips reales para este destino.'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {segment.days.map((day) => (
+                          <div key={day.id} className="rounded-xl border bg-background p-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px]">
+                                Día {day.dayNumber}
+                              </Badge>
+                              {day.date && (
+                                <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[11px]">
+                                  {formatShortDate(day.date)}
+                                </Badge>
+                              )}
+                              <p className="trip-planner-label text-sm font-medium">{day.title}</p>
+                            </div>
+                            <p className="trip-planner-body mt-2 text-xs text-muted-foreground">
+                              {day.summary || 'Base del día lista. Vamos a completar mañana, tarde y noche en este tramo.'}
+                            </p>
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       segment.days.map((day) => (
@@ -1004,7 +1122,7 @@ export default function TripPlannerWorkspace({
                       <CardHeader>
                         <CardTitle className="trip-planner-title flex items-center gap-2 text-base">
                           <CalendarDays className="h-4 w-4 text-primary" />
-                          Hoteles reales
+                          Hoteles de inventario
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
@@ -1012,6 +1130,7 @@ export default function TripPlannerWorkspace({
                           segment={segment}
                           disabled={isDraftPlanner}
                           hasExactDates={!plannerState.isFlexibleDates && Boolean((segment.startDate || plannerState.startDate) && (segment.endDate || plannerState.endDate))}
+                          travelers={plannerState.travelers}
                           onResolveInventoryMatch={onResolveInventoryMatch}
                           onConfirmInventoryHotelMatch={onConfirmInventoryHotelMatch}
                           onRefreshQuotedHotel={onRefreshQuotedHotel}
@@ -1267,7 +1386,7 @@ export default function TripPlannerWorkspace({
             <div>
               <p className="trip-planner-title text-base font-semibold">Emilia Planificadora</p>
               <p className="trip-planner-body text-xs text-muted-foreground">
-                Pedí cambios, reemplazos, mejoras o una regeneración completa.
+                Pedime ajustes en días, hoteles, ritmo, presupuesto o tramos.
               </p>
             </div>
           </div>
@@ -1299,7 +1418,7 @@ export default function TripPlannerWorkspace({
           ))}
           {isTyping && (
             <div className="trip-planner-body rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">
-              {typingMessage || 'Pensando...'}
+              {typingMessage || 'Estoy trabajando en tu pedido...'}
             </div>
           )}
         </div>

@@ -194,9 +194,9 @@ export default function PlannerDateSelectionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="trip-planner-surface max-w-3xl overflow-hidden p-0">
         <DialogHeader className="border-b px-6 pt-6 pb-4">
-          <DialogTitle className="trip-planner-title">Elegí cuándo querés viajar</DialogTitle>
+          <DialogTitle className="trip-planner-title">Definamos cuándo querés viajar</DialogTitle>
           <DialogDescription className="trip-planner-body">
-            Para armar el plan necesitás definir fechas exactas o elegir un mes flexible.
+            Con fechas exactas puedo mostrarte opciones reales. Si todavía estás explorando, elegí un mes flexible.
           </DialogDescription>
         </DialogHeader>
 
@@ -210,6 +210,9 @@ export default function PlannerDateSelectionModal({
 
           {mode === 'exact' ? (
             <div className="space-y-3 rounded-2xl border p-3">
+              <p className="trip-planner-body px-2 text-xs text-muted-foreground">
+                Marcá ida y vuelta para habilitar hoteles y transporte reales en el planner.
+              </p>
               <Calendar
                 mode="range"
                 selected={range}
@@ -239,7 +242,7 @@ export default function PlannerDateSelectionModal({
               <div>
                 <p className="trip-planner-label text-sm font-medium">Elegí un mes flexible</p>
                 <p className="trip-planner-body mt-1 text-xs text-muted-foreground">
-                  Emilia va a planear el viaje dentro de ese mes, sin fijar fechas exactas todavía.
+                  Si todavía no cerraste fechas, tomamos este mes como referencia y después lo ajustás.
                 </p>
               </div>
 
@@ -299,7 +302,7 @@ export default function PlannerDateSelectionModal({
             onClick={handleConfirm}
             disabled={mode === 'exact' ? !exactSelectionValid : !flexibleSelectionValid}
           >
-            {mode === 'exact' ? 'Continuar con estas fechas' : 'Continuar con mes flexible'}
+            {mode === 'exact' ? 'Usar estas fechas' : 'Usar este mes flexible'}
           </Button>
         </DialogFooter>
       </DialogContent>

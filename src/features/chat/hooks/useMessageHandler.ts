@@ -12,6 +12,7 @@ import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { TripPlannerState } from '@/features/trip-planner/types';
 import { translateBaggage } from '../utils/translations';
+import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 
 function formatPlannerDateSelectionMessage(selection: {
   startDate?: string;
@@ -112,8 +113,16 @@ const useMessageHandler = (
     // This ensures we always have the latest value, even if called immediately after setSelectedConversation
     const currentConversationId = selectedConversationRef.current;
     console.log('💬 Selected conversation (from ref):', currentConversationId);
+    const flowTimer = createDebugTimer('MESSAGE FLOW', {
+      conversationId: currentConversationId,
+      messageLength: currentMessage.length,
+    });
 
     if (!currentMessage.trim() || !currentConversationId) {
+      flowTimer.end('stopped - invalid input', {
+        hasConversationId: Boolean(currentConversationId),
+        hasMessage: Boolean(currentMessage.trim()),
+      });
       console.warn('❌ [MESSAGE FLOW] Validation failed - aborting send');
       return;
     }
@@ -514,6 +523,7 @@ const useMessageHandler = (
         messages.length > 0;
 
       // Run DB save + context loading in parallel
+      const saveAndContextStart = nowMs();
       const [userMessage, contextFromDB, persistentState] = await Promise.all([
         addMessageViaSupabase({
           conversation_id: finalConversationId,
@@ -528,6 +538,11 @@ const useMessageHandler = (
           ? Promise.resolve(preloadedContext!.contextState)
           : loadContextState(finalConversationId) as Promise<ContextState | null>,
       ]);
+      logTimingStep('MESSAGE FLOW', 'save user message + load context', saveAndContextStart, {
+        canUsePreloaded,
+        hasContextFromDb: Boolean(contextFromDB),
+        hasPersistentState: Boolean(persistentState),
+      });
 
       console.log('✅ [MESSAGE FLOW] Step 3: User message saved + context loaded in parallel');
       console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
@@ -642,7 +657,11 @@ const useMessageHandler = (
         previousContext: contextToUse ? 'Yes' : 'No'
       });
 
+      const parseStart = nowMs();
       let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory);
+      logTimingStep('MESSAGE FLOW', 'parseMessageWithAI', parseStart, {
+        requestType: parsedRequest.requestType,
+      });
 
       // Merge persistent state into parsed request where fields are missing (user intent wins over stored)
       const mergeFlights = (a: any, b: any) => ({
@@ -881,6 +900,11 @@ const useMessageHandler = (
           });
 
           console.log('✅ [VALIDATION] Aggregated missing info message sent');
+          flowTimer.end('stopped - combined validation missing info', {
+            requestType: parsedRequest.requestType,
+            missingFlightFields: flightVal.missingFields,
+            missingHotelFields: hotelVal.missingFields,
+          });
           return;
         }
 
@@ -959,6 +983,10 @@ const useMessageHandler = (
           console.log('✅ [VALIDATION] Missing info message sent, stopping process');
           setIsTyping(false, conversationIdForThisSearch);
           setIsLoading(false);
+          flowTimer.end('stopped - flight validation missing info', {
+            requestType: parsedRequest.requestType,
+            missingFields: validation.missingFields,
+          });
           return; // Stop processing here, wait for user response
         }
 
@@ -1018,6 +1046,10 @@ const useMessageHandler = (
 
             setIsTyping(false, conversationIdForThisSearch);
             setIsLoading(false);
+            flowTimer.end('stopped - hotel validation minors only', {
+              requestType: parsedRequest.requestType,
+              missingFields: validation.missingFields,
+            });
             return;
           }
 
@@ -1087,6 +1119,10 @@ const useMessageHandler = (
 
               setIsTyping(false, conversationIdForThisSearch);
               setIsLoading(false);
+              flowTimer.end('stopped - hotel revalidation missing info', {
+                requestType: parsedRequest.requestType,
+                missingFields: reval.missingFields,
+              });
               return; // wait for user response
             }
           } else {
@@ -1115,6 +1151,10 @@ const useMessageHandler = (
 
             setIsTyping(false, conversationIdForThisSearch);
             setIsLoading(false);
+            flowTimer.end('stopped - hotel validation missing info', {
+              requestType: parsedRequest.requestType,
+              missingFields: validation.missingFields,
+            });
             return;
           }
         }
@@ -1176,6 +1216,10 @@ const useMessageHandler = (
           console.log('✅ [VALIDATION] Missing info message sent, stopping process');
           setIsTyping(false, conversationIdForThisSearch);
           setIsLoading(false);
+          flowTimer.end('stopped - itinerary validation missing info', {
+            requestType: parsedRequest.requestType,
+            missingFields: validation.missingFields,
+          });
           return; // Stop processing here, wait for user response
         }
 
@@ -1187,6 +1231,7 @@ const useMessageHandler = (
 
       // 6. Execute searches based on type (WITHOUT N8N)
       console.log('🔍 [MESSAGE FLOW] Step 12: Starting search process');
+      const searchStart = nowMs();
 
       let assistantResponse = '';
       let structuredData = null;
@@ -1278,6 +1323,10 @@ const useMessageHandler = (
           assistantResponse = await handleGeneralQuery(parsedRequest);
           console.log('✅ [MESSAGE FLOW] General query completed');
       }
+
+      logTimingStep('MESSAGE FLOW', `search handler (${parsedRequest.requestType})`, searchStart, {
+        hasStructuredData: Boolean(structuredData),
+      });
 
       console.log('📝 [MESSAGE FLOW] Step 12: Generated assistant response');
       console.log('💬 Response preview:', assistantResponse.substring(0, 100) + '...');
@@ -1399,6 +1448,7 @@ const useMessageHandler = (
       console.log('📤 [MESSAGE FLOW] Step 13: About to save assistant message (Supabase INSERT)');
 
       // Save assistant message to database
+      const saveAssistantStart = nowMs();
       await addMessageViaSupabase({
         conversation_id: finalConversationId,
         role: 'assistant' as const,
@@ -1407,6 +1457,9 @@ const useMessageHandler = (
           source: 'AI_PARSER + EUROVIPS',
           ...structuredData
         } : {}
+      });
+      logTimingStep('MESSAGE FLOW', 'save assistant message', saveAssistantStart, {
+        hasStructuredData: Boolean(structuredData),
       });
 
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
@@ -1420,8 +1473,15 @@ const useMessageHandler = (
       console.log('📋 [MESSAGE FLOW] Step 15: Automatic lead generation disabled - only manual creation available');
 
       console.log('🎉 [MESSAGE FLOW] Message processing completed successfully');
+      flowTimer.end('total', {
+        requestType: parsedRequest.requestType,
+        hasStructuredData: Boolean(structuredData),
+      });
 
     } catch (error) {
+      flowTimer.fail('failed', error, {
+        conversationId: currentConversationId,
+      });
       console.error('❌ [MESSAGE FLOW] Error in handleSendMessage process:', error);
 
       // ✅ Hide indicators for THIS conversation (not the current one)

@@ -5,7 +5,7 @@ interface PlannerCircularLoadingStateProps {
 
 export default function PlannerCircularLoadingState({
   label = 'Buscando hoteles',
-  sublabel = 'Estamos consultando opciones reales para este destino.',
+  sublabel = 'Estoy consultando opciones reales para este destino.',
 }: PlannerCircularLoadingStateProps) {
   return (
     <div className="planner-hotel-loader" aria-live="polite" aria-busy="true">

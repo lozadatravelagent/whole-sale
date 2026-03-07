@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import {
     getNormalizedFlightSegments,
     normalizeFlightRequest,
@@ -1311,6 +1312,11 @@ export async function parseMessageWithAI(
     previousContext?: ParsedTravelRequest | null,
     conversationHistory?: Array<{ role: string, content: string, timestamp: string }>
 ): Promise<ParsedTravelRequest> {
+    const timer = createDebugTimer('AI PARSER', {
+        messageLength: message.length,
+        historyLength: conversationHistory?.length || 0,
+        hasPreviousContext: Boolean(previousContext),
+    });
     console.log('🤖 Starting AI message parsing for:', message);
     console.log('✅ OpenAI parsing is ENABLED - fallback has been removed, will always use OpenAI');
 
@@ -1574,6 +1580,7 @@ export async function parseMessageWithAI(
     } catch (e) {
         console.warn('Quick pre-parse failed:', e);
     }
+    timer.checkpoint('Quick pre-parser completed');
 
     // 🕐 HORARIOS DE SALIDA/LLEGADA - Detección mediante regex
     try {
@@ -1617,6 +1624,7 @@ export async function parseMessageWithAI(
     } catch (e) {
         console.warn('⚠️ [QUICK PRE-PARSER] Time detection failed:', e);
     }
+    timer.checkpoint('Time preference pre-parser completed');
 
     try {
         console.log('🚀 Calling OpenAI via Supabase Edge Function...');
@@ -1625,6 +1633,7 @@ export async function parseMessageWithAI(
             hasPreviousContext: !!previousContext
         });
 
+        const invokeStart = nowMs();
         const response = await supabase.functions.invoke('ai-message-parser', {
             body: {
                 message,
@@ -1633,6 +1642,10 @@ export async function parseMessageWithAI(
                 previousContext: previousContext, // Include conversation context
                 conversationHistory: conversationHistory || [] // Include full conversation history
             }
+        });
+        logTimingStep('AI PARSER', 'invoke ai-message-parser', invokeStart, {
+            hasError: Boolean(response.error),
+            historyLength: conversationHistory?.length || 0,
         });
 
         if (response.error) {
@@ -1683,6 +1696,7 @@ export async function parseMessageWithAI(
             console.log(`🏨 [MERGE] Final merged hotels:`, mergedHotels);
         }
 
+        const postProcessStart = nowMs();
         const { detectMultipleHotelChains, detectMultipleHotelNames } = await import('@/features/chat/data/hotelChainAliases');
         const extractedHotelSegments = extractHotelSegmentsFromMessage(message, mergedHotels as HotelRequest, {
             detectMultipleHotelChains,
@@ -1709,9 +1723,23 @@ export async function parseMessageWithAI(
         });
 
         console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
+        logTimingStep('AI PARSER', 'post-processing', postProcessStart, {
+            requestType: mergedResult.requestType,
+            hasFlights: Boolean(mergedResult.flights),
+            hasHotels: Boolean(mergedResult.hotels),
+        });
+        timer.end('total', {
+            requestType: mergedResult.requestType,
+            hasFlights: Boolean(mergedResult.flights),
+            hasHotels: Boolean(mergedResult.hotels),
+        });
         return mergedResult;
 
     } catch (error) {
+        timer.fail('failed', error, {
+            messageLength: message.length,
+            historyLength: conversationHistory?.length || 0,
+        });
         console.error('❌ AI parsing service error:', error);
         throw error;
     }
