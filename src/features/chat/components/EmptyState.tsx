@@ -1,14 +1,15 @@
 import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Send, Loader2 } from 'lucide-react';
+import { ArrowUp, Loader2, Sparkles, Plane } from 'lucide-react';
 
 interface EmptyStateProps {
   onSendNewMessage: (message: string) => Promise<void>;
+  onCreatePlanner?: () => void;
 }
 
 // Empty state component with direct input - memoized to prevent re-renders
-const EmptyState = React.memo(({ onSendNewMessage }: EmptyStateProps) => {
+const EmptyState = React.memo(({ onSendNewMessage, onCreatePlanner }: EmptyStateProps) => {
   const [newMessage, setNewMessage] = useState('');
   const [isCreatingChat, setIsCreatingChat] = useState(false);
 
@@ -30,36 +31,62 @@ const EmptyState = React.memo(({ onSendNewMessage }: EmptyStateProps) => {
 
   return (
     <div className="flex-1 flex items-center justify-center bg-muted/20">
-      <div className="text-center max-w-2xl w-full px-6">
-        <div className="mb-12">
-          <h1 className="text-4xl font-bold mb-8 text-foreground">
-            ¿Donde queres viajar hoy?
-          </h1>
-        </div>
+      <div className="text-center max-w-xl w-full px-6">
+        <Sparkles className="h-10 w-10 mx-auto mb-6 text-muted-foreground/40" />
+
+        <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-4 text-foreground">
+          ¿Dónde querés viajar hoy?
+        </h1>
+        <p className="text-lg text-muted-foreground mb-10">
+          Buscá vuelos, hoteles o pedí una cotización completa.
+        </p>
 
         <div className="relative">
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Pregunta lo que quieras..."
+            placeholder="Preguntale algo a Emilia..."
             disabled={isCreatingChat}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendNewMessage()}
-            className="pr-12 h-12 text-base rounded-full"
+            className="pr-14 h-14 text-base rounded-2xl"
             autoComplete="off"
           />
           <Button
             onClick={handleSendNewMessage}
             disabled={isCreatingChat || !newMessage.trim()}
-            className="absolute right-1 top-1 h-10 w-10 rounded-full p-0"
+            className="absolute right-1 top-1 h-12 w-12 rounded-xl p-0"
             size="sm"
           >
             {isCreatingChat ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <Send className="h-5 w-5" />
+              <ArrowUp className="h-5 w-5" />
             )}
           </Button>
         </div>
+
+        {onCreatePlanner && (
+          <>
+            <div className="flex items-center gap-3 my-6">
+              <div className="flex-1 h-px bg-border/70" />
+              <span className="text-sm text-muted-foreground">o</span>
+              <div className="flex-1 h-px bg-border/70" />
+            </div>
+
+            <button
+              onClick={onCreatePlanner}
+              className="w-full flex items-center gap-4 rounded-2xl border border-border/70 bg-background/80 hover:bg-muted/50 transition cursor-pointer px-5 py-4 text-left"
+            >
+              <Plane className="h-5 w-5 text-muted-foreground shrink-0" />
+              <div>
+                <div className="font-medium text-foreground text-sm">Planificá un viaje</div>
+                <div className="text-sm text-muted-foreground">
+                  Armá un itinerario día a día con destinos, hoteles y vuelos
+                </div>
+              </div>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

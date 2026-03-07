@@ -91,6 +91,13 @@ function getMinRoomPrice(hotel: LocalHotelData): number {
   return Math.min(...hotel.rooms.map((room) => room.total_price || Number.POSITIVE_INFINITY));
 }
 
+function tagEurovipsHotels(hotels: LocalHotelData[]): LocalHotelData[] {
+  return hotels.map((hotel) => ({
+    ...hotel,
+    provider: 'EUROVIPS' as const,
+  }));
+}
+
 function getHotelUniqueKey(hotel: LocalHotelData): string {
   return hotel.hotel_id ? `id:${hotel.hotel_id}` : `name:${hotel.name.toLowerCase().trim()}`;
 }
@@ -1086,7 +1093,7 @@ export const handleHotelSearch = async (
             return [];
           }
 
-          const hotels = response.data.results || [];
+          const hotels = tagEurovipsHotels(response.data.results || []);
           console.log(`✅ [PARALLEL-SEARCH] ${task.label}: Received ${hotels.length} hotels`);
           return hotels;
         }),
@@ -1154,7 +1161,7 @@ export const handleHotelSearch = async (
           continue;
         }
 
-        const chainHotels = response.data.results || [];
+        const chainHotels = tagEurovipsHotels(response.data.results || []);
         console.log(`✅ [MULTI-CHAIN] Chain "${chain}": Received ${chainHotels.length} hotels`);
         hotelsByChain.set(chain, chainHotels);
 
@@ -1216,7 +1223,7 @@ export const handleHotelSearch = async (
       }
 
       console.log('📊 [HOTEL SEARCH] Raw response data:', response.data);
-      allHotels = response.data.results || [];
+      allHotels = tagEurovipsHotels(response.data.results || []);
 
     } else {
       // NO FILTER: Get all hotels for city
@@ -1245,7 +1252,7 @@ export const handleHotelSearch = async (
       }
 
       console.log('📊 [HOTEL SEARCH] Raw response data:', response.data);
-      allHotels = response.data.results || [];
+      allHotels = tagEurovipsHotels(response.data.results || []);
     }
 
     // 🔍 DEBUG: Log all hotel names received from EUROVIPS
@@ -1501,6 +1508,8 @@ export const handleHotelSearch = async (
       return minPriceA - minPriceB;
     });
 
+    const PLANNER_VISIBLE_HOTELS_LIMIT = 8;
+
     // 🎯 MULTI-CHAIN INTERLEAVING: If multiple chains requested, mix results evenly
     let hotels: LocalHotelData[];
     let chainBalance: LocalHotelChainBalance | undefined;
@@ -1508,7 +1517,7 @@ export const handleHotelSearch = async (
 
     if (requestedChains && requestedChains.length > 1) {
       console.log(`⚖️ [CHAIN BALANCE] Multiple chains requested (${requestedChains.length}): ${requestedChains.join(', ')}`);
-      const balancedSelection = selectHotelsWithStrictChainBalance(sortedHotels, requestedChains, 5);
+      const balancedSelection = selectHotelsWithStrictChainBalance(sortedHotels, requestedChains, PLANNER_VISIBLE_HOTELS_LIMIT);
       hotels = balancedSelection.hotels;
       chainBalance = balancedSelection.chainBalance;
       chainBalance.quotas.forEach((quota) => {
@@ -1546,8 +1555,8 @@ export const handleHotelSearch = async (
         console.log(`🔀 [CHAIN INTERLEAVE] Reordered ${hotels.length} hotels: ${hotels.map(h => h.name).join(' → ')}`);
       }
     } else {
-      // Single chain or no chain filter: just take top 5 by price
-      hotels = sortedHotels.slice(0, 5);
+      // Single chain or no chain filter: keep a slightly larger set for planner/map context
+      hotels = sortedHotels.slice(0, PLANNER_VISIBLE_HOTELS_LIMIT);
     }
 
     // 📦 Save ALL hotels to IndexedDB for dynamic filtering in UI
@@ -1566,7 +1575,7 @@ export const handleHotelSearch = async (
     console.log(`📦 [HOTEL SEARCH] Saved ${sortedHotels.length} hotels to IndexedDB with searchId: ${hotelSearchId}`);
 
     console.log('✅ [HOTEL SEARCH] Step 5: Hotel data filtered, sorted by price, and limited');
-    console.log('🏨 Hotels after filtering:', filteredHotels.length, '| Final count (top 5):', hotels.length);
+    console.log('🏨 Hotels after filtering:', filteredHotels.length, `| Final count (top ${PLANNER_VISIBLE_HOTELS_LIMIT}):`, hotels.length);
     if (hotels.length > 0) {
       const cheapestPrice = Math.min(...hotels[0].rooms.map(r => r.total_price));
       const mostExpensivePrice = Math.min(...hotels[hotels.length - 1].rooms.map(r => r.total_price));
@@ -1626,7 +1635,7 @@ export const handleHotelSearch = async (
         eurovipsData: { hotels },
         combinedData: {
           flights: [],
-          hotels, // ✅ Now contains ONLY hotels with matching rooms (Top 5)
+          hotels, // ✅ Now contains ONLY hotels with matching rooms (Top N for planner)
           chainBalance,
           requestType: 'hotels-only' as const,
           requestedRoomType: normalizedRoomType,

@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
-import { useMessages } from '@/hooks/useChat';
+import { useAuth } from '@/contexts/AuthContext';
+import { useMessages, useConversationSearch } from '@/hooks/useChat';
 import { updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ContextState } from './types/contextState';
+import type { ConversationWithAgency, ConversationWorkspaceMode } from './types/chat';
 
 // Import feature components and hooks
 import ChatSidebar from './components/ChatSidebar';
@@ -20,6 +23,9 @@ import useTripPlanner from '@/features/trip-planner/useTripPlanner';
 import { buildPlannerPromptContext } from '@/features/trip-planner/utils';
 
 const ChatFeature = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isOwner } = useAuth();
   const {
     // State
     selectedConversation,
@@ -29,6 +35,7 @@ const ChatFeature = () => {
     typingMessage,
     activeTab,
     workspaceMode,
+    historyMode,
     sidebarLimit,
     previousParsedRequest,
     isAddingToCRM,
@@ -44,6 +51,7 @@ const ChatFeature = () => {
     setTypingMessage,
     setActiveTab,
     setWorkspaceMode,
+    setHistoryMode,
     setPreviousParsedRequest,
     setIsAddingToCRM,
 
@@ -69,6 +77,8 @@ const ChatFeature = () => {
     updateOptimisticMessage,
     removeOptimisticMessage
   } = useMessages(selectedConversation);
+
+  const { searchResults, searching, searchMessages, clearSearch } = useConversationSearch();
 
   // Contextual memory hooks
   const { loadContextualMemory, saveContextualMemory, clearContextualMemory, loadContextState, saveContextState } = useContextualMemory();
@@ -111,15 +121,42 @@ const ChatFeature = () => {
   const planner = useTripPlanner(selectedConversation, conversationScopedMessages, toast);
   const previousPlannerConversationRef = useRef<string | null>(selectedConversation);
   const [plannerWorkspaceKey, setPlannerWorkspaceKey] = useState<string | null>(selectedConversation);
+  const [isHistorySidebarVisible, setIsHistorySidebarVisible] = useState(true);
+  const [isClosingOverlaySidebar, setIsClosingOverlaySidebar] = useState(false);
+  const [overlaySidebarTargetRoute, setOverlaySidebarTargetRoute] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isClosingOverlaySidebar) {
+      setOverlaySidebarTargetRoute(null);
+    }
+  }, [isClosingOverlaySidebar]);
+
+  useEffect(() => {
+    if (!selectedConversation && !isClosingOverlaySidebar) {
+      setIsHistorySidebarVisible(true);
+    }
+  }, [isClosingOverlaySidebar, selectedConversation]);
 
   const selectedConversationRow = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversation) || null,
     [conversations, selectedConversation]
   );
 
+  const getConversationWorkspaceMode = useCallback((conversation: ConversationWithAgency | null | undefined): ConversationWorkspaceMode => {
+    if (conversation?.workspace_mode === 'planner') {
+      return 'planner';
+    }
+
+    return conversation?.external_key === 'Planificador de Viajes' ? 'planner' : 'standard';
+  }, []);
+
   const conversationLooksLikePlanner = useMemo(() => {
     if (!selectedConversationRow && !conversationScopedMessages.length) {
       return false;
+    }
+
+    if (selectedConversationRow?.workspace_mode === 'planner') {
+      return true;
     }
 
     if (planner.plannerState || previousParsedRequest?.requestType === 'itinerary') {
@@ -150,6 +187,22 @@ const ChatFeature = () => {
     });
   }, [conversationScopedMessages, planner.plannerState, previousParsedRequest, selectedConversationRow]);
 
+  useEffect(() => {
+    if (!selectedConversationRow) {
+      return;
+    }
+
+    const nextWorkspaceMode = getConversationWorkspaceMode(selectedConversationRow);
+
+    if (workspaceMode !== nextWorkspaceMode) {
+      setWorkspaceMode(nextWorkspaceMode);
+    }
+
+    if (historyMode !== nextWorkspaceMode) {
+      setHistoryMode(nextWorkspaceMode);
+    }
+  }, [getConversationWorkspaceMode, historyMode, selectedConversationRow, setHistoryMode, setWorkspaceMode, workspaceMode]);
+
   // Keep planner mode for planner-like conversations, including empty "Nuevo plan" chats.
   useEffect(() => {
     if (
@@ -161,6 +214,7 @@ const ChatFeature = () => {
       selectedConversation &&
       !selectedConversation.startsWith('temp-') &&
       selectedConversationRow &&
+      selectedConversationRow.workspace_mode !== 'planner' &&
       !conversationLooksLikePlanner
     ) {
       setWorkspaceMode('standard');
@@ -297,6 +351,114 @@ const ChatFeature = () => {
       });
     }
   }, [selectedConversation, updateConversationState, toast, setActiveTab, setSelectedConversation]);
+
+  const handleBackToMainMenu = useCallback(() => {
+    if (isClosingOverlaySidebar) {
+      return;
+    }
+
+    const routeFromSidebar = typeof location.state === 'object' && location.state && 'from' in location.state
+      ? location.state.from
+      : null;
+
+    const targetRoute =
+      typeof routeFromSidebar === 'string' && routeFromSidebar && !routeFromSidebar.startsWith('/chat')
+        ? routeFromSidebar
+        : '/dashboard';
+
+    setOverlaySidebarTargetRoute(targetRoute);
+    setIsClosingOverlaySidebar(true);
+  }, [isClosingOverlaySidebar, location.state]);
+
+  const closeHistorySidebarForFocus = useCallback(() => {
+    if (isClosingOverlaySidebar || !isHistorySidebarVisible) {
+      return;
+    }
+
+    setOverlaySidebarTargetRoute(null);
+    setIsClosingOverlaySidebar(true);
+  }, [isClosingOverlaySidebar, isHistorySidebarVisible]);
+
+  const openHistorySidebar = useCallback(() => {
+    setOverlaySidebarTargetRoute(null);
+    setIsClosingOverlaySidebar(false);
+    setIsHistorySidebarVisible(true);
+  }, []);
+
+  const handleOverlaySidebarClosed = useCallback(() => {
+    if (!isClosingOverlaySidebar) {
+      return;
+    }
+
+    const targetRoute = overlaySidebarTargetRoute;
+
+    setIsClosingOverlaySidebar(false);
+    setIsHistorySidebarVisible(false);
+    setOverlaySidebarTargetRoute(null);
+
+    if (targetRoute) {
+      navigate(targetRoute);
+    }
+  }, [isClosingOverlaySidebar, navigate, overlaySidebarTargetRoute]);
+
+  const handlePrimaryChatNavigation = useCallback(() => {
+    if (isHistorySidebarVisible && !isClosingOverlaySidebar) {
+      return;
+    }
+
+    openHistorySidebar();
+  }, [isClosingOverlaySidebar, isHistorySidebarVisible, openHistorySidebar]);
+
+  const handleSelectConversation = useCallback((conversationId: string) => {
+    const conversation = conversations.find((item) => item.id === conversationId) || null;
+    const nextWorkspaceMode = getConversationWorkspaceMode(conversation);
+
+    closeHistorySidebarForFocus();
+    setSelectedConversation(conversationId);
+    setWorkspaceMode(nextWorkspaceMode);
+    setHistoryMode(nextWorkspaceMode);
+  }, [closeHistorySidebarForFocus, conversations, getConversationWorkspaceMode, setHistoryMode, setSelectedConversation, setWorkspaceMode]);
+
+  const handleHistoryModeChange = useCallback((mode: ConversationWorkspaceMode) => {
+    setHistoryMode(mode);
+
+    if (!selectedConversationRow) {
+      setWorkspaceMode(mode);
+      return;
+    }
+
+    const selectedMode = getConversationWorkspaceMode(selectedConversationRow);
+    if (selectedMode !== mode) {
+      setSelectedConversation(null);
+      setWorkspaceMode(mode);
+    }
+  }, [getConversationWorkspaceMode, selectedConversationRow, setHistoryMode, setSelectedConversation, setWorkspaceMode]);
+
+  const handleHistoryTabChange = useCallback((tab: string) => {
+    setActiveTab(tab);
+
+    if (!selectedConversationRow) {
+      return;
+    }
+
+    const shouldKeepSelection =
+      (tab === 'active' && selectedConversationRow.state === 'active') ||
+      (tab === 'archived' && selectedConversationRow.state === 'closed');
+
+    if (!shouldKeepSelection) {
+      setSelectedConversation(null);
+    }
+  }, [selectedConversationRow, setActiveTab, setSelectedConversation]);
+
+  const handleCreateStandardConversation = useCallback(() => {
+    closeHistorySidebarForFocus();
+    createNewChat(undefined, 'standard');
+  }, [closeHistorySidebarForFocus, createNewChat]);
+
+  const handleCreatePlannerConversation = useCallback(() => {
+    closeHistorySidebarForFocus();
+    createNewChat('Planificador de Viajes', 'planner');
+  }, [closeHistorySidebarForFocus, createNewChat]);
 
   // Handle Add to CRM button click
   const handleAddToCRM = useCallback(async () => {
@@ -538,9 +700,15 @@ const ChatFeature = () => {
     console.log('🚀 [NEW CHAT] Creating new conversation with message:', messageToSend);
 
     try {
+      const nextWorkspaceMode: ConversationWorkspaceMode = historyMode === 'planner' ? 'planner' : 'standard';
+      closeHistorySidebarForFocus();
+
       // ✅ UNIFIED FLOW: Create new conversation (with temp ID) and let normal flow handle the rest
       // This makes "type from EmptyState" follow the SAME path as "Nuevo Chat button + type message"
-      const newConversation = await createNewChat();
+      const newConversation = await createNewChat(
+        nextWorkspaceMode === 'planner' ? 'Planificador de Viajes' : undefined,
+        nextWorkspaceMode
+      );
 
       if (newConversation) {
         console.log('✅ [NEW CHAT] Conversation created:', newConversation.id);
@@ -568,34 +736,47 @@ const ChatFeature = () => {
       });
       throw error;
     }
-  }, [createNewChat, setSelectedConversation, setMessage, handleSendMessageRaw, toast]);
+  }, [closeHistorySidebarForFocus, createNewChat, handleSendMessageRaw, historyMode, setMessage, setSelectedConversation, toast]);
+
+  const sharedSidebarProps = {
+    conversations,
+    selectedConversation,
+    activeTab,
+    historyMode,
+    sidebarLimit,
+    onSelectConversation: handleSelectConversation,
+    onCreateNewChat: handleCreateStandardConversation,
+    onCreateNewPlanner: handleCreatePlannerConversation,
+    onTabChange: handleHistoryTabChange,
+    onHistoryModeChange: handleHistoryModeChange,
+    onArchiveConversation: handleArchiveConversation,
+    contentSearchResults: searchResults,
+    isSearching: searching,
+    onSearchMessages: searchMessages,
+    onClearSearch: clearSearch,
+  };
 
   return (
-    <MainLayout userRole="ADMIN">
-      <div className="h-screen flex flex-col md:flex-row">
-        {/* Conversations Sidebar - Hidden on mobile when conversation is selected */}
-        <div className={`${selectedConversation ? 'hidden md:flex' : 'flex'} md:w-80 w-full`}>
-          <ChatSidebar
-            conversations={conversations}
-            selectedConversation={selectedConversation}
-            activeTab={activeTab}
-            workspaceMode={workspaceMode}
-            sidebarLimit={sidebarLimit}
-            onSelectConversation={setSelectedConversation}
-            onCreateNewChat={() => {
-              if (workspaceMode === 'planner') {
-                createNewChat('Planificador de Viajes');
-                return;
-              }
-              createNewChat();
-            }}
-            onTabChange={setActiveTab}
-            onWorkspaceModeChange={setWorkspaceMode}
-            onArchiveConversation={handleArchiveConversation}
-          />
+    <MainLayout
+      userRole="ADMIN"
+      forceRailMode
+      onChatNavigationClick={handlePrimaryChatNavigation}
+      activeNavigationOverride={overlaySidebarTargetRoute}
+      onOverlaySidebarClosed={handleOverlaySidebarClosed}
+      overlaySidebarState={isClosingOverlaySidebar ? 'closing' : 'open'}
+      overlaySidebar={(isHistorySidebarVisible || isClosingOverlaySidebar) ? (
+        <ChatSidebar
+          {...sharedSidebarProps}
+          showBackToMainMenu
+          onBackToMainMenu={handleBackToMainMenu}
+        />
+      ) : null}
+    >
+      <div className="h-screen flex flex-col">
+        <div className={`${selectedConversation ? 'hidden' : 'flex'} md:hidden w-full`}>
+          <ChatSidebar {...sharedSidebarProps} className="border-r-0 shadow-none" />
         </div>
 
-        {/* Main Chat Area - Full width on mobile when conversation is selected */}
         <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0`}>
           {selectedConversation ? (
             workspaceMode === 'planner' ? (
@@ -623,18 +804,16 @@ const ChatFeature = () => {
                 onAddDestination={planner.addDestination}
                 onRemoveDestination={planner.removeDestination}
                 onReorderDestinations={planner.reorderDestinations}
-                onRegeneratePlanner={planner.regeneratePlanner}
-                onRegenerateSegment={planner.regenerateSegment}
-                onRegenerateDay={planner.regenerateDay}
                 onEnsureSegmentEnriched={planner.ensureSegmentEnriched}
                 onToggleDayLock={planner.toggleDayLock}
-                onToggleActivityLock={planner.toggleActivityLock}
-                onSelectHotel={planner.selectHotel}
-                onSelectHotelPlaceFromMap={planner.selectHotelPlaceFromMap}
-                onAddPlaceToPlanner={planner.addPlaceToPlanner}
-                onResolveInventoryMatch={planner.resolveInventoryMatchForSegment}
-                onConfirmInventoryHotelMatch={planner.confirmInventoryHotelMatch}
-                onRefreshQuotedHotel={planner.refreshQuotedHotel}
+	                onToggleActivityLock={planner.toggleActivityLock}
+	                onSelectHotel={planner.selectHotel}
+	                onSelectHotelPlaceFromMap={planner.selectHotelPlaceFromMap}
+	                onAddPlaceToPlanner={planner.addPlaceToPlanner}
+	                onAutoFillSegmentWithRealPlaces={planner.autoFillSegmentWithRealPlaces}
+	                onResolveInventoryMatch={planner.resolveInventoryMatchForSegment}
+	                onConfirmInventoryHotelMatch={planner.confirmInventoryHotelMatch}
+	                onRefreshQuotedHotel={planner.refreshQuotedHotel}
                 onSelectTransportOption={planner.selectTransportOption}
                 onCompletePlannerDateSelection={handlePlannerDateSelection}
               />
@@ -655,16 +834,17 @@ const ChatFeature = () => {
                 onAddToCRM={handleAddToCRM}
                 onPdfGenerated={handlePdfGenerated}
                 onBackToList={() => setSelectedConversation(null)}
-                onGoToPlanner={planner.plannerState ? () => setWorkspaceMode('planner') : undefined}
+                onGoToPlanner={planner.plannerState ? () => {
+                  setWorkspaceMode('planner');
+                  setHistoryMode('planner');
+                } : undefined}
               />
             )
           ) : (
-            <EmptyState onSendNewMessage={(messageToSend) => {
-              if (workspaceMode === 'planner') {
-                setWorkspaceMode('planner');
-              }
-              return handleSendNewMessage(messageToSend);
-            }} />
+            <EmptyState
+              onSendNewMessage={handleSendNewMessage}
+              onCreatePlanner={isOwner ? handleCreatePlannerConversation : undefined}
+            />
           )}
         </div>
       </div>

@@ -4,6 +4,8 @@ import {
   inferPlannerPlaceCategory,
   pickCanonicalPlannerPlaceCategory,
 } from './plannerPlaceMapper';
+import type { LocalHotelData } from '@/features/chat/types/chat';
+import type { PlannerPlaceHotelCandidate } from '../types';
 
 export type PlaceDetails = {
   placeId: string;
@@ -24,6 +26,7 @@ type NearbyCategory = PlannerPlaceCategory;
 
 const detailsCache = new Map<string, PlaceDetails | null>();
 const nearbyPlacesCache = new Map<string, PlannerPlaceCandidate[]>();
+const inventoryHotelCache = new Map<string, PlannerPlaceHotelCandidate | null>();
 
 function normalizeKey(title: string, city: string): string {
   return `${title}::${city}`
@@ -35,6 +38,19 @@ function normalizeKey(title: string, city: string): string {
 
 function normalizeNearbyKey(category: NearbyCategory, city: string, lat: number, lng: number): string {
   return `${category}::${normalizeKey(city, city)}::${lat.toFixed(2)}::${lng.toFixed(2)}`;
+}
+
+function normalizeInventoryHotelKey(hotel: LocalHotelData): string {
+  return [
+    hotel.hotel_id || hotel.name,
+    hotel.city,
+    hotel.address || '',
+  ]
+    .join('::')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 function mapPlaceResultToCandidate(
@@ -321,4 +337,130 @@ export async function fetchNearbyHotels(
   location: { lat: number; lng: number }
 ): Promise<PlannerPlaceCandidate[]> {
   return fetchNearbyPlacesByCategory(placesService, city, location, 'hotel');
+}
+
+async function geocodeInventoryHotel(
+  placesService: google.maps.places.PlacesService,
+  hotel: LocalHotelData,
+  city: string,
+  locationBias?: { lat: number; lng: number }
+): Promise<PlannerPlaceHotelCandidate | null> {
+  const cacheKey = normalizeInventoryHotelKey(hotel);
+  if (inventoryHotelCache.has(cacheKey)) {
+    return inventoryHotelCache.get(cacheKey)!;
+  }
+
+  const queries = [
+    [hotel.name, hotel.address, city].filter(Boolean).join(', '),
+    [hotel.name, city].filter(Boolean).join(', '),
+  ].filter(Boolean);
+
+  const buildInventoryCandidate = (
+    lat: number,
+    lng: number,
+    placeId?: string,
+    formattedAddress?: string,
+  ): PlannerPlaceHotelCandidate => ({
+    placeId: placeId || `inventory:${cacheKey}`,
+    name: hotel.name,
+    formattedAddress: hotel.address || formattedAddress,
+    photoUrls: [],
+    types: ['lodging'],
+    lat,
+    lng,
+    category: 'hotel',
+    activityType: 'hotel',
+    source: 'inventory',
+    hotelId: hotel.hotel_id || `${hotel.name}-${hotel.city}`,
+    hotel,
+    provider: hotel.provider,
+  });
+
+  const candidate = await (async () => {
+    for (const query of queries) {
+      const result = await new Promise<PlannerPlaceHotelCandidate | null>((resolve) => {
+        const request: google.maps.places.FindPlaceFromQueryRequest = {
+          query,
+          fields: ['place_id', 'name', 'formatted_address', 'geometry'],
+          ...(locationBias
+            ? { locationBias: new google.maps.LatLng(locationBias.lat, locationBias.lng) }
+            : {}),
+        };
+
+        placesService.findPlaceFromQuery(request, (results, status) => {
+          const first = results?.[0];
+          const lat = first?.geometry?.location?.lat();
+          const lng = first?.geometry?.location?.lng();
+
+          if (
+            status === google.maps.places.PlacesServiceStatus.OK &&
+            typeof lat === 'number' &&
+            typeof lng === 'number'
+          ) {
+            resolve(buildInventoryCandidate(lat, lng, first?.place_id, first?.formatted_address));
+            return;
+          }
+
+          resolve(null);
+        });
+      });
+
+      if (result) {
+        return result;
+      }
+    }
+
+    if (!hotel.address) {
+      return null;
+    }
+
+    return new Promise<PlannerPlaceHotelCandidate | null>((resolve) => {
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode(
+        {
+          address: [hotel.address, city].filter(Boolean).join(', '),
+          ...(locationBias
+            ? { location: new google.maps.LatLng(locationBias.lat, locationBias.lng) }
+            : {}),
+        },
+        (results, status) => {
+          const first = results?.[0];
+          const lat = first?.geometry?.location?.lat();
+          const lng = first?.geometry?.location?.lng();
+
+          if (
+            status === google.maps.GeocoderStatus.OK &&
+            typeof lat === 'number' &&
+            typeof lng === 'number'
+          ) {
+            resolve(buildInventoryCandidate(lat, lng, first?.place_id, first?.formatted_address));
+            return;
+          }
+
+          resolve(null);
+        }
+      );
+    });
+  })();
+
+  inventoryHotelCache.set(cacheKey, candidate);
+  return candidate;
+}
+
+export async function fetchInventoryHotelPlaces(
+  placesService: google.maps.places.PlacesService,
+  city: string,
+  hotels: LocalHotelData[],
+  locationBias?: { lat: number; lng: number },
+  limit = 12
+): Promise<PlannerPlaceHotelCandidate[]> {
+  const eurovipsHotels = hotels
+    .filter((hotel) => hotel.provider === 'EUROVIPS')
+    .slice(0, limit);
+
+  const results = await Promise.all(
+    eurovipsHotels.map((hotel) => geocodeInventoryHotel(placesService, hotel, city, locationBias))
+  );
+
+  return results.filter((hotel): hotel is PlannerPlaceHotelCandidate => Boolean(hotel));
 }

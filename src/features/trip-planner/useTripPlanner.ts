@@ -6,7 +6,7 @@ import type { LocalHotelData } from '@/features/chat/types/chat';
 import type { MessageRow } from '@/features/chat/types/chat';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { normalizePlannerDayScheduling } from './scheduling';
-import type { PlannerPlaceCandidate, PlannerPlaceHotelCandidate, TripPlannerState } from './types';
+import type { PlannerPlaceCandidate, PlannerPlaceCategory, PlannerPlaceHotelCandidate, TripPlannerState } from './types';
 import {
   buildPlannerGenerationPayload,
   createDraftPlannerFromRequest,
@@ -138,6 +138,69 @@ function shouldReplacePlannerState(
   return (current.generationMeta?.updatedAt || '') < (next.generationMeta?.updatedAt || '');
 }
 
+function mergeEnrichedSegmentState(
+  current: TripPlannerState,
+  next: TripPlannerState,
+  segmentId: string,
+): TripPlannerState {
+  const enrichedSegment = next.segments.find(
+    (segment) =>
+      segment.id === segmentId
+      || normalizeLocationLabel(segment.city) === normalizeLocationLabel(
+        current.segments.find((item) => item.id === segmentId)?.city || '',
+      ),
+  );
+
+  if (!enrichedSegment) {
+    return {
+      ...current,
+      ...next,
+      generationMeta: {
+        ...current.generationMeta,
+        source: 'system',
+        updatedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  return {
+    ...current,
+    ...next,
+    segments: current.segments.map((segment) => {
+      const matches = segment.id === segmentId
+        || segment.id === enrichedSegment.id
+        || normalizeLocationLabel(segment.city) === normalizeLocationLabel(enrichedSegment.city);
+
+      if (!matches) {
+        return segment;
+      }
+
+      return {
+        ...segment,
+        ...enrichedSegment,
+        contentStatus: 'ready',
+        contentError: undefined,
+        location: segment.location || enrichedSegment.location,
+        realPlacesStatus: segment.realPlacesStatus,
+        hotelPlan: {
+          ...enrichedSegment.hotelPlan,
+          ...segment.hotelPlan,
+          city: enrichedSegment.city || segment.hotelPlan.city || segment.city,
+          checkinDate: enrichedSegment.startDate || segment.hotelPlan.checkinDate,
+          checkoutDate: enrichedSegment.endDate || segment.hotelPlan.checkoutDate,
+        },
+        transportIn: segment.transportIn ?? enrichedSegment.transportIn,
+        transportOut: segment.transportOut ?? enrichedSegment.transportOut,
+      };
+    }),
+    generationMeta: {
+      ...current.generationMeta,
+      source: 'system',
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
+
 function buildGoogleMapsActivityDescription(place: PlannerPlaceCandidate): string {
   const parts = [place.formattedAddress];
   if (typeof place.rating === 'number') {
@@ -150,6 +213,239 @@ function buildGoogleMapsActivityDescription(place: PlannerPlaceCandidate): strin
   }
 
   return parts.filter(Boolean).join(' • ');
+}
+
+const REAL_PLACE_PRIORITY: PlannerPlaceCategory[] = ['museum', 'activity', 'restaurant', 'cafe'];
+const ICONIC_PLACE_KEYWORD_RE = /\b(museum|museo|temple|templo|shrine|santuario|palace|palacio|tower|torre|park|parque|garden|jardin|cathedral|catedral|market|mercado|castle|castillo|plaza|gallery|galeria|district|barrio|crossing|viewpoint|mirador|mosque|mezquita)\b/i;
+const GENERIC_PLACE_KEYWORD_RE = /\b(hotel|airport|aeropuerto|station|estacion|mall|shopping mall|store|shop)\b/i;
+const GENERIC_DAY_TITLE_RE = /\b(llegada|cultura|romance|compras|atardecer|exploracion|exploración|final|ultimo|último|bienvenida|dia libre|día libre|descanso)\b/i;
+const GENERIC_DAY_SUMMARY_RE = /\b(explora|visita|vive|disfruta|relajate|relájate|ambiente|energia|energía|gastronomia|gastronomía|templos|jardines|compras|miradores)\b/i;
+
+type PlannerRealPlacesBundle = Record<PlannerPlaceCategory, PlannerPlaceCandidate[]>;
+
+function hasGoogleMapsContent(day: TripPlannerState['segments'][number]['days'][number]): boolean {
+  return (
+    day.morning.some((activity) => activity.source === 'google_maps')
+    || day.afternoon.some((activity) => activity.source === 'google_maps')
+    || day.evening.some((activity) => activity.source === 'google_maps')
+    || day.restaurants.some((restaurant) => restaurant.source === 'google_maps')
+  );
+}
+
+function scoreRealPlaceCandidate(place: PlannerPlaceCandidate): number {
+  const popularityScore = (place.rating || 0) * 18 + Math.log10((place.userRatingsTotal || 0) + 1) * 22;
+  const categoryBonus = place.category === 'museum'
+    ? 18
+    : place.category === 'activity'
+      ? 14
+      : place.category === 'restaurant'
+        ? 7
+        : 4;
+  const iconicBonus = ICONIC_PLACE_KEYWORD_RE.test(place.name) ? 18 : 0;
+  const genericPenalty = GENERIC_PLACE_KEYWORD_RE.test(place.name) ? 24 : 0;
+
+  return popularityScore + categoryBonus + iconicBonus - genericPenalty;
+}
+
+function dedupeRealPlaceCandidates(candidates: PlannerPlaceCandidate[]): PlannerPlaceCandidate[] {
+  const unique = new Map<string, PlannerPlaceCandidate>();
+
+  candidates.forEach((candidate) => {
+    const key = `${candidate.placeId}::${normalizeLocationLabel(candidate.name)}`;
+    const current = unique.get(key);
+    if (!current || scoreRealPlaceCandidate(candidate) > scoreRealPlaceCandidate(current)) {
+      unique.set(key, candidate);
+    }
+  });
+
+  return Array.from(unique.values()).sort((left, right) => scoreRealPlaceCandidate(right) - scoreRealPlaceCandidate(left));
+}
+
+function getRealPlacesCandidatePool(
+  placesByCategory: PlannerRealPlacesBundle,
+  dayCount: number,
+): PlannerPlaceCandidate[] {
+  const allCandidates = REAL_PLACE_PRIORITY.flatMap((category) => placesByCategory[category] || []);
+  return dedupeRealPlaceCandidates(allCandidates).slice(0, Math.max(8, Math.min(18, dayCount * 3)));
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function seededUnit(value: string): number {
+  return (hashString(value) % 10000) / 10000;
+}
+
+function buildSegmentRealPlaceSequence(
+  segmentSeed: string,
+  candidatePool: PlannerPlaceCandidate[],
+  dayCount: number,
+): PlannerPlaceCandidate[] {
+  const limit = Math.max(6, Math.min(candidatePool.length, dayCount * 2 + 4));
+  return [...candidatePool]
+    .sort((left, right) => {
+      const leftScore = scoreRealPlaceCandidate(left) + seededUnit(`${segmentSeed}:${left.placeId}`) * 18;
+      const rightScore = scoreRealPlaceCandidate(right) + seededUnit(`${segmentSeed}:${right.placeId}`) * 18;
+      return rightScore - leftScore;
+    })
+    .slice(0, limit);
+}
+
+function pickPlaceForPlannerDay(
+  sequence: PlannerPlaceCandidate[],
+  usedPlaceIds: Set<string>,
+  daySeed: string,
+): PlannerPlaceCandidate | null {
+  for (const candidate of sequence) {
+    if (!usedPlaceIds.has(candidate.placeId)) {
+      return candidate;
+    }
+  }
+
+  if (sequence.length === 0) {
+    return null;
+  }
+
+  return sequence[hashString(daySeed) % sequence.length];
+}
+
+function getPreferredRealPlaceSlot(
+  place: PlannerPlaceCandidate,
+  day: TripPlannerState['segments'][number]['days'][number],
+  isTransferDay: boolean,
+): 'morning' | 'afternoon' | 'evening' | null {
+  const primary = place.category === 'museum'
+    ? 'morning'
+    : place.category === 'cafe'
+      ? 'morning'
+      : place.category === 'restaurant' || place.activityType === 'food' || place.activityType === 'nightlife' || place.activityType === 'viewpoint'
+        ? 'evening'
+        : 'afternoon';
+
+  const orderedSlots = isTransferDay && primary === 'morning'
+    ? ['afternoon', 'evening', 'morning']
+    : [primary, 'morning', 'afternoon', 'evening'].filter((slot, index, array) => array.indexOf(slot) === index);
+
+  for (const slot of orderedSlots) {
+    if (day[slot as 'morning' | 'afternoon' | 'evening'].length === 0) {
+      return slot as 'morning' | 'afternoon' | 'evening';
+    }
+  }
+
+  return null;
+}
+
+function shouldPromoteRealPlaceToDayTitle(
+  day: TripPlannerState['segments'][number]['days'][number],
+): boolean {
+  const normalizedTitle = normalizeLocationLabel(day.title || '');
+  if (!normalizedTitle) return true;
+  return GENERIC_DAY_TITLE_RE.test(normalizedTitle);
+}
+
+function shouldPromoteRealPlaceToDaySummary(
+  day: TripPlannerState['segments'][number]['days'][number],
+): boolean {
+  const normalizedSummary = normalizeLocationLabel(day.summary || '');
+  if (!normalizedSummary) return true;
+  return GENERIC_DAY_SUMMARY_RE.test(normalizedSummary);
+}
+
+function buildRealPlaceDayTitle(
+  place: PlannerPlaceCandidate,
+  dayNumber: number,
+  segmentCity: string,
+): string {
+  const options = place.category === 'museum'
+    ? [place.name, `Museos en ${place.name}`, `${place.name} y paseo`]
+    : place.category === 'restaurant' || place.category === 'cafe'
+      ? [`Sabores en ${place.name}`, place.name, `Parada en ${place.name}`]
+      : place.activityType === 'viewpoint'
+        ? [`Vistas desde ${place.name}`, place.name, `Atardecer en ${place.name}`]
+        : [place.name, `Recorrido por ${place.name}`, `${place.name} y alrededores`];
+
+  const seed = hashString(`${segmentCity}:${dayNumber}:${place.placeId}`);
+  return options[seed % options.length];
+}
+
+function buildRealPlaceDaySummary(
+  place: PlannerPlaceCandidate,
+  segmentCity: string,
+  dayNumber: number,
+): string {
+  const cityLabel = formatDestinationLabel(segmentCity);
+  const options = place.category === 'museum'
+    ? [
+        `Visita uno de los puntos culturales mas fuertes de ${cityLabel}.`,
+        `Arte, historia y paseo por la zona de ${place.name}.`,
+      ]
+    : place.category === 'restaurant' || place.category === 'cafe'
+      ? [
+          `Sabores locales y tiempo para recorrer el entorno de ${place.name}.`,
+          `Gastronomia y caminata por una zona con mucho movimiento.`,
+        ]
+      : place.activityType === 'viewpoint'
+        ? [
+            `Postales de la ciudad y recorrido por los alrededores.`,
+            `Un punto ideal para vistas amplias y paseo cercano.`,
+          ]
+        : [
+            `Recorrido por uno de los lugares mas conocidos de ${cityLabel}.`,
+            `Una parada fuerte del destino con tiempo para explorar la zona.`,
+          ];
+
+  const seed = hashString(`${segmentCity}:${dayNumber}:summary:${place.placeId}`);
+  return options[seed % options.length];
+}
+
+function buildRealPlaceHighlights(
+  segmentCity: string,
+  sequence: PlannerPlaceCandidate[],
+): string[] {
+  const used = new Set<string>();
+  return sequence
+    .filter((place) => {
+      const normalized = normalizeLocationLabel(place.name);
+      if (!normalized || used.has(normalized)) return false;
+      if (isFoodLikePlannerPlace(place) && used.size >= 2) return false;
+      used.add(normalized);
+      return true;
+    })
+    .slice(0, 4)
+    .map((place) => place.name || formatDestinationLabel(segmentCity));
+}
+
+function pickSlotForRealPlaceInsertion(
+  place: PlannerPlaceCandidate,
+  day: TripPlannerState['segments'][number]['days'][number],
+  isTransferDay: boolean,
+): {
+  slot: 'morning' | 'afternoon' | 'evening';
+  replaceExisting: boolean;
+} | null {
+  const primary = getPreferredRealPlaceSlot(place, day, isTransferDay);
+  const slotOrder = primary
+    ? [primary, 'morning', 'afternoon', 'evening'].filter((slot, index, array) => array.indexOf(slot) === index)
+    : ['morning', 'afternoon', 'evening'];
+
+  for (const slot of slotOrder) {
+    const items = day[slot];
+    if (items.length === 0) {
+      return { slot, replaceExisting: false };
+    }
+
+    const replaceable = items.every((activity) => !activity.locked && activity.source !== 'user' && activity.source !== 'google_maps');
+    if (replaceable) {
+      return { slot, replaceExisting: true };
+    }
+  }
+
+  return null;
 }
 
 export default function useTripPlanner(
@@ -171,6 +467,7 @@ export default function useTripPlanner(
   const isAutoLoadingHotelsRef = useRef(false);
   const isAutoLoadingTransportRef = useRef(false);
   const pendingSegmentEnrichmentRef = useRef<Set<string>>(new Set());
+  const pendingRealPlacesHydrationRef = useRef<Set<string>>(new Set());
   const plannerConversationIdRef = useRef<string | null>(conversationId);
   const suppressNextPersistedLoadUiRef = useRef(false);
   const isCurrentPlannerConversation = useCallback((targetConversationId: string | null) => {
@@ -205,6 +502,7 @@ export default function useTripPlanner(
     setIsResolvingLocations(false);
     resolvingSignatureRef.current = null;
     pendingSegmentEnrichmentRef.current.clear();
+    pendingRealPlacesHydrationRef.current.clear();
     plannerConversationIdRef.current = conversationId;
 
     if (conversationId && isPersistableConversationId(conversationId)) {
@@ -427,7 +725,7 @@ export default function useTripPlanner(
 
   const updatePlannerState = useCallback(async (
     updater: (current: TripPlannerState) => TripPlannerState,
-    source: 'ui_edit' | 'regen_day' | 'regen_segment' | 'regen_plan' = 'ui_edit'
+    source: 'ui_edit' | 'regen_day' | 'regen_segment' | 'regen_plan' | 'system' = 'ui_edit'
   ) => {
     if (!isCurrentPlannerConversation(conversationId)) {
       return;
@@ -506,11 +804,20 @@ export default function useTripPlanner(
         return;
       }
 
-      setPlannerStateIfCurrent(
-        requestConversationId,
-        (current) => shouldReplacePlannerState(current, nextState) ? nextState : current
-      );
-      await persistPlannerState(nextState, 'system');
+      let mergedState: TripPlannerState | null = null;
+      setPlannerStateIfCurrent(requestConversationId, (current) => {
+        if (!current) {
+          mergedState = nextState;
+          return nextState;
+        }
+
+        mergedState = mergeEnrichedSegmentState(current, nextState, segmentId);
+        return mergedState;
+      });
+
+      if (mergedState) {
+        await persistPlannerState(mergedState, 'system');
+      }
     } catch (error: any) {
       console.error('❌ [TRIP PLANNER] Segment enrichment failed:', error);
       if (!isCurrentPlannerConversation(requestConversationId)) {
@@ -858,6 +1165,166 @@ export default function useTripPlanner(
       description: `${input.place.name} quedó sumado en ${formatDestinationLabel(segment.city)}.`,
     });
   }, [plannerState, toast, updatePlannerState]);
+
+  const autoFillSegmentWithRealPlaces = useCallback(async (
+    segmentId: string,
+    placesByCategory: PlannerRealPlacesBundle,
+  ) => {
+    if (!conversationId || !plannerState || isDraftPlannerState(plannerState)) {
+      return;
+    }
+
+    const targetSegment = plannerState.segments.find((segment) => segment.id === segmentId);
+    if (!targetSegment || targetSegment.contentStatus !== 'ready') {
+      return;
+    }
+
+    if (targetSegment.realPlacesStatus === 'ready' || targetSegment.realPlacesStatus === 'loading') {
+      return;
+    }
+
+    if (pendingRealPlacesHydrationRef.current.has(segmentId)) {
+      return;
+    }
+
+    pendingRealPlacesHydrationRef.current.add(segmentId);
+
+    try {
+      await updatePlannerState((current) => {
+        const segmentIndex = current.segments.findIndex((segment) => segment.id === segmentId);
+        if (segmentIndex === -1) {
+          return current;
+        }
+
+        const segment = current.segments[segmentIndex];
+        if (
+          segment.contentStatus !== 'ready'
+          || segment.realPlacesStatus === 'ready'
+          || segment.realPlacesStatus === 'loading'
+        ) {
+          return current;
+        }
+
+        const candidatePool = getRealPlacesCandidatePool(placesByCategory, segment.days.length);
+        if (candidatePool.length === 0) {
+          return {
+            ...current,
+            segments: current.segments.map((currentSegment) =>
+              currentSegment.id !== segmentId
+                ? currentSegment
+                : {
+                    ...currentSegment,
+                    realPlacesStatus: 'ready',
+                    realPlacesError: undefined,
+                  }
+            ),
+          };
+        }
+
+        const sequence = buildSegmentRealPlaceSequence(
+          `${current.conversationId || conversationId || 'planner'}:${segment.id}:${segment.city}`,
+          candidatePool,
+          segment.days.length,
+        );
+        const usedPlaceIds = new Set<string>();
+        let insertedCount = 0;
+
+        const nextDays = segment.days.map((day, dayIndex) => {
+          const nextDay = {
+            ...day,
+            morning: [...day.morning],
+            afternoon: [...day.afternoon],
+            evening: [...day.evening],
+            restaurants: [...day.restaurants],
+          };
+
+          const isTransferDay = segmentIndex > 0 && dayIndex === 0 && Boolean(segment.transportIn);
+          const alreadyHasRealContent = hasGoogleMapsContent(nextDay);
+          const selectedPlace = alreadyHasRealContent
+            ? null
+            : pickPlaceForPlannerDay(sequence, usedPlaceIds, `${segment.id}:${day.id}:${dayIndex}`);
+
+          if (selectedPlace) {
+            const insertion = pickSlotForRealPlaceInsertion(selectedPlace, nextDay, isTransferDay);
+
+            if (insertion) {
+              const anchorActivity = {
+                id: `gmaps-auto-${selectedPlace.placeId}-${insertion.slot}`,
+                time: undefined,
+                title: selectedPlace.name,
+                description: buildGoogleMapsActivityDescription(selectedPlace) || undefined,
+                category: getPlannerPlaceCategoryLabel(selectedPlace.category),
+                activityType: selectedPlace.activityType,
+                recommendedSlot: insertion.slot,
+                neighborhood: selectedPlace.formattedAddress,
+                locked: false,
+                placeId: selectedPlace.placeId,
+                formattedAddress: selectedPlace.formattedAddress,
+                rating: selectedPlace.rating,
+                userRatingsTotal: selectedPlace.userRatingsTotal,
+                photoUrls: selectedPlace.photoUrls,
+                source: 'google_maps' as const,
+              };
+
+              nextDay[insertion.slot] = insertion.replaceExisting
+                ? [anchorActivity, ...nextDay[insertion.slot].slice(1)]
+                : [...nextDay[insertion.slot], anchorActivity];
+
+              if (!isFoodLikePlannerPlace(selectedPlace) && shouldPromoteRealPlaceToDayTitle(nextDay)) {
+                nextDay.title = buildRealPlaceDayTitle(selectedPlace, day.dayNumber, segment.city);
+              }
+
+              if (shouldPromoteRealPlaceToDaySummary(nextDay)) {
+                nextDay.summary = buildRealPlaceDaySummary(selectedPlace, segment.city, day.dayNumber);
+              }
+
+              if (isFoodLikePlannerPlace(selectedPlace) && !nextDay.restaurants.some((restaurant) => restaurant.placeId === selectedPlace.placeId)) {
+                nextDay.restaurants = [
+                  ...nextDay.restaurants,
+                  {
+                    id: `gmaps-auto-restaurant-${selectedPlace.placeId}`,
+                    name: selectedPlace.name,
+                    type: selectedPlace.category === 'cafe' ? 'Cafe' : 'Restaurante',
+                    placeId: selectedPlace.placeId,
+                    formattedAddress: selectedPlace.formattedAddress,
+                    rating: selectedPlace.rating,
+                    userRatingsTotal: selectedPlace.userRatingsTotal,
+                    source: 'google_maps' as const,
+                  },
+                ];
+              }
+
+              usedPlaceIds.add(selectedPlace.placeId);
+              insertedCount += 1;
+            }
+          }
+
+          return normalizePlannerDayScheduling(nextDay, {
+            pace: current.pace,
+            travelers: current.travelers,
+            isTransferDay,
+          });
+        });
+
+        return {
+          ...current,
+          segments: current.segments.map((currentSegment) =>
+            currentSegment.id !== segmentId
+              ? currentSegment
+              : {
+                  ...currentSegment,
+                  highlights: buildRealPlaceHighlights(segment.city, sequence),
+                  days: nextDays,
+                  realPlacesStatus: 'ready',
+                  realPlacesError: insertedCount > 0 ? undefined : 'No encontramos suficientes lugares reales para este tramo.',
+                }
+          ),
+        };
+      }, 'system');
+    } finally {
+      pendingRealPlacesHydrationRef.current.delete(segmentId);
+    }
+  }, [conversationId, plannerState, updatePlannerState]);
 
   const updateTripField = useCallback(async <K extends keyof TripPlannerState>(field: K, value: TripPlannerState[K]) => {
     await updatePlannerState((current) => ({
@@ -1459,6 +1926,37 @@ export default function useTripPlanner(
   }, [fetchInventoryHotels, getSegmentHotelSearchInput, plannerState, updatePlannerState]);
 
   const selectHotelPlaceFromMap = useCallback(async (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => {
+    if (placeCandidate.source === 'inventory' && placeCandidate.hotel && placeCandidate.hotelId) {
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((segment) =>
+          segment.id !== segmentId
+            ? segment
+            : {
+                ...segment,
+                hotelPlan: {
+                  ...segment.hotelPlan,
+                  searchStatus: 'ready',
+                  selectedPlaceCandidate: placeCandidate,
+                  matchStatus: 'quoted',
+                  inventoryMatchCandidates: [],
+                  confirmedInventoryHotel: placeCandidate.hotel,
+                  selectedHotelId: placeCandidate.hotelId,
+                  hotelRecommendations: mergePlannerHotels(
+                    [placeCandidate.hotel],
+                    segment.hotelPlan.hotelRecommendations
+                  ),
+                  quoteSearchId: segment.hotelPlan.linkedSearchId,
+                  quoteLastValidatedAt: new Date().toISOString(),
+                  quoteError: undefined,
+                  error: undefined,
+                },
+              }
+        ),
+      }));
+      return;
+    }
+
     await updatePlannerState((current) => ({
       ...current,
       segments: current.segments.map((segment) =>
@@ -1964,6 +2462,7 @@ export default function useTripPlanner(
     toggleDayLock,
     toggleActivityLock,
     addPlaceToPlanner,
+    autoFillSegmentWithRealPlaces,
     loadHotelsForSegment,
     selectHotel,
     selectHotelPlaceFromMap,

@@ -19,12 +19,16 @@ import type {
   PlannerPlaceHotelCandidate,
   PlannerSegment,
 } from '../types';
-import { formatDateRange, formatDestinationLabel } from '../utils';
+import { formatDateRange, formatDestinationLabel, formatPlannerPrice, formatPlannerRoomLabel, formatPlannerTravelerSummary, getPrimaryPlannerHotelRoom } from '../utils';
 import { resolveActivityLocation } from '../services/plannerGeocoding';
-import { fetchNearbyPlacesBundle, fetchPlaceDetails, type PlaceDetails } from '../services/placesService';
+import { fetchInventoryHotelPlaces, fetchNearbyPlacesBundle, fetchPlaceDetails, type PlaceDetails } from '../services/placesService';
 import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji, pickCanonicalPlannerPlaceCategory } from '../services/plannerPlaceMapper';
+import { getHotelsFromStorage } from '@/features/chat/services/hotelStorageService';
+import type { LocalHotelData } from '@/features/chat/types/chat';
 
 const DISCOVERY_CATEGORIES: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity'];
+const PLACES_FETCH_CATEGORIES: PlannerPlaceCategory[] = ['restaurant', 'cafe', 'museum', 'activity'];
+const MAP_INVENTORY_HOTELS_LIMIT = 12;
 
 const CATEGORY_STYLES: Record<PlannerPlaceCategory, { bg: string; border: string; label: string }> = {
   hotel: { bg: '#0f172a', border: '#0f172a', label: 'Hoteles' },
@@ -84,6 +88,10 @@ interface TripPlannerMapProps {
   onRequestAddPlaceToPlanner?: (payload: {
     segmentId: string;
     place: PlannerPlaceCandidate;
+  }) => void;
+  onAutoFillRealPlaces?: (payload: {
+    segmentId: string;
+    placesByCategory: PlacesByCategory;
   }) => void;
 }
 
@@ -301,6 +309,7 @@ function PlannerGoogleMapScene({
   onSelectSegment,
   onAddHotelToSegment,
   onRequestAddPlaceToPlanner,
+  onAutoFillRealPlaces,
 }: {
   segments: SegmentWithLocation[];
   selectedSegmentId: string | null;
@@ -308,6 +317,7 @@ function PlannerGoogleMapScene({
   onSelectSegment: (segmentId: string) => void;
   onAddHotelToSegment?: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => void;
   onRequestAddPlaceToPlanner?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
+  onAutoFillRealPlaces?: (payload: { segmentId: string; placesByCategory: PlacesByCategory }) => void;
 }) {
   const coreLib = useMapsLibrary('core');
   const placesLib = useMapsLibrary('places');
@@ -330,9 +340,12 @@ function PlannerGoogleMapScene({
   const [cityPlaceDetails, setCityPlaceDetails] = useState<PlaceDetails | null>(null);
   const [cityPlaceLoading, setCityPlaceLoading] = useState(false);
   const [placesByCategory, setPlacesByCategory] = useState<PlacesByCategory>(getEmptyPlacesBundle);
+  const [inventoryHotelPlaces, setInventoryHotelPlaces] = useState<PlannerPlaceHotelCandidate[]>([]);
   const [placesLoading, setPlacesLoading] = useState(false);
+  const [inventoryHotelsLoading, setInventoryHotelsLoading] = useState(false);
   const [fetchCenter, setFetchCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [showCityPanel, setShowCityPanel] = useState(false);
+  const [isPlacesServiceReady, setIsPlacesServiceReady] = useState(false);
   const geocodeGenRef = useRef(0);
   const animatedMarkerIdsRef = useRef<Set<string>>(new Set());
   const animatedCityIdsRef = useRef<Set<string>>(new Set());
@@ -341,6 +354,10 @@ function PlannerGoogleMapScene({
   useEffect(() => {
     if (placesLib && map && !placesServiceRef.current) {
       placesServiceRef.current = new placesLib.PlacesService(map);
+      setIsPlacesServiceReady(true);
+    }
+    if (!placesLib || !map) {
+      setIsPlacesServiceReady(false);
     }
   }, [placesLib, map]);
 
@@ -379,7 +396,7 @@ function PlannerGoogleMapScene({
   }, [map]);
 
   useEffect(() => {
-    if (!selectedPlace || !selectedSegment) {
+    if (!selectedPlace || !selectedSegment || selectedPlace.source === 'inventory') {
       setPlaceDetails(null);
       setPlaceLoading(false);
       return;
@@ -443,7 +460,77 @@ function PlannerGoogleMapScene({
   }, [selectedSegment, showCityPanel]);
 
   useEffect(() => {
-    if (!selectedSegment || !fetchCenter) {
+    if (!selectedSegment || !isPlacesServiceReady) {
+      setInventoryHotelPlaces([]);
+      setInventoryHotelsLoading(false);
+      return;
+    }
+
+    const service = placesServiceRef.current;
+    if (!service) {
+      return;
+    }
+
+    let cancelled = false;
+    setInventoryHotelsLoading(true);
+
+    void (async () => {
+      try {
+        const fallbackHotels = selectedSegment.hotelPlan.hotelRecommendations.filter(
+          (hotel) => hotel.provider === 'EUROVIPS'
+        );
+
+        let inventoryHotels: LocalHotelData[] = fallbackHotels;
+        const linkedSearchId = selectedSegment.hotelPlan.linkedSearchId;
+
+        if (linkedSearchId) {
+          const storedHotels = await getHotelsFromStorage(linkedSearchId).catch(() => null);
+          if (cancelled) return;
+
+          const storedEurovipsHotels = (storedHotels || []).filter(
+            (hotel): hotel is LocalHotelData => hotel.provider === 'EUROVIPS'
+          );
+
+          if (storedEurovipsHotels.length > inventoryHotels.length) {
+            inventoryHotels = storedEurovipsHotels;
+          }
+        }
+
+        if (inventoryHotels.length === 0) {
+          if (cancelled) return;
+          setInventoryHotelPlaces([]);
+          setInventoryHotelsLoading(false);
+          return;
+        }
+
+        const results = await fetchInventoryHotelPlaces(
+          service,
+          selectedSegment.city,
+          inventoryHotels,
+          {
+            lat: selectedSegment.location.lat,
+            lng: selectedSegment.location.lng,
+          },
+          MAP_INVENTORY_HOTELS_LIMIT,
+        );
+
+        if (cancelled) return;
+        setInventoryHotelPlaces(results);
+        setInventoryHotelsLoading(false);
+      } catch {
+        if (cancelled) return;
+        setInventoryHotelPlaces([]);
+        setInventoryHotelsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPlacesServiceReady, selectedSegment]);
+
+  useEffect(() => {
+    if (!selectedSegment || !fetchCenter || !isPlacesServiceReady) {
       setPlacesByCategory(getEmptyPlacesBundle());
       setSelectedPlace(null);
       setPlacesLoading(false);
@@ -458,7 +545,7 @@ function PlannerGoogleMapScene({
     let cancelled = false;
     setPlacesLoading(true);
 
-    fetchNearbyPlacesBundle(service, selectedSegment.city, fetchCenter, DISCOVERY_CATEGORIES).then((bundle) => {
+    fetchNearbyPlacesBundle(service, selectedSegment.city, fetchCenter, PLACES_FETCH_CATEGORIES).then((bundle) => {
       if (cancelled) return;
       setPlacesByCategory(bundle);
       setPlacesLoading(false);
@@ -471,7 +558,31 @@ function PlannerGoogleMapScene({
     return () => {
       cancelled = true;
     };
-  }, [selectedSegment, fetchCenter]);
+  }, [fetchCenter, isPlacesServiceReady, selectedSegment]);
+
+  useEffect(() => {
+    if (!selectedSegment || !onAutoFillRealPlaces || placesLoading) {
+      return;
+    }
+
+    if (selectedSegment.contentStatus !== 'ready') {
+      return;
+    }
+
+    if (selectedSegment.realPlacesStatus === 'ready' || selectedSegment.realPlacesStatus === 'loading') {
+      return;
+    }
+
+    const hasPlaces = Object.values(placesByCategory).some((items) => items.length > 0);
+    if (!hasPlaces) {
+      return;
+    }
+
+    onAutoFillRealPlaces({
+      segmentId: selectedSegment.id,
+      placesByCategory,
+    });
+  }, [onAutoFillRealPlaces, placesByCategory, placesLoading, selectedSegment]);
 
   useEffect(() => {
     if (segments.length === 0) {
@@ -541,15 +652,20 @@ function PlannerGoogleMapScene({
 
   const visiblePlaces = useMemo(
     () => dedupeVisiblePlaces(
-      DISCOVERY_CATEGORIES.filter((category) => activeCategories[category]).flatMap((category) => placesByCategory[category] || [])
+      DISCOVERY_CATEGORIES
+        .filter((category) => activeCategories[category])
+        .flatMap((category) => category === 'hotel' ? inventoryHotelPlaces : (placesByCategory[category] || []))
     ),
-    [activeCategories, placesByCategory]
+    [activeCategories, inventoryHotelPlaces, placesByCategory]
   );
 
   const visibleActivityMarkers = useMemo(
     () => activityMarkers.filter((marker) => activeCategories[marker.placeCategory]),
     [activeCategories, activityMarkers]
   );
+
+  const hotelInventorySearchLoading = selectedSegment?.hotelPlan.searchStatus === 'loading';
+  const discoveryLoading = placesLoading || inventoryHotelsLoading || hotelInventorySearchLoading;
 
   useEffect(() => {
     if (selectedPlace && !activeCategories[selectedPlace.category]) {
@@ -584,10 +700,21 @@ function PlannerGoogleMapScene({
     setSelectedPlace((prev) => (prev?.placeId === place.placeId ? null : place));
   }, []);
 
+  const selectedInventoryHotel = selectedPlace?.source === 'inventory' && selectedPlace.category === 'hotel'
+    ? (selectedPlace as PlannerPlaceHotelCandidate).hotel || null
+    : null;
+
   if (!coreLib) return null;
 
   return (
     <div className="relative h-full w-full overflow-hidden">
+      {discoveryLoading && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
+          <div className="planner-map-loading-rail">
+            <div className="planner-map-loading-rail__beam" />
+          </div>
+        </div>
+      )}
       <GoogleMap
         defaultCenter={initialCenter}
         defaultZoom={initialZoom}
@@ -758,14 +885,34 @@ function PlannerGoogleMapScene({
                 )}
               </div>
 
-              {placeLoading && (
+              {placeLoading && selectedPlace.source !== 'inventory' && (
                 <div className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
                   <Loader2 className="h-3 w-3 animate-spin" /> Buscando info...
                 </div>
               )}
 
-              {placeDetails?.reviewSnippet && (
+              {placeDetails?.reviewSnippet && selectedPlace.source !== 'inventory' && (
                 <p className="mt-2 line-clamp-3 text-[11px] leading-relaxed text-slate-600">{placeDetails.reviewSnippet}</p>
+              )}
+
+              {selectedInventoryHotel && (
+                <div className="mt-2 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-600">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{formatDateRange(selectedInventoryHotel.check_in, selectedInventoryHotel.check_out)}</span>
+                    <span>{selectedInventoryHotel.nights} noche{selectedInventoryHotel.nights === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">{formatPlannerRoomLabel(selectedInventoryHotel)}</span>
+                    {getPrimaryPlannerHotelRoom(selectedInventoryHotel) && (
+                      <span className="font-semibold text-slate-900">
+                        {formatPlannerPrice(getPrimaryPlannerHotelRoom(selectedInventoryHotel)?.total_price, getPrimaryPlannerHotelRoom(selectedInventoryHotel)?.currency)}
+                      </span>
+                    )}
+                  </div>
+                  {formatPlannerTravelerSummary(selectedInventoryHotel) && (
+                    <div>{formatPlannerTravelerSummary(selectedInventoryHotel)}</div>
+                  )}
+                </div>
               )}
 
               {selectedPlace.category === 'hotel' ? (
@@ -838,7 +985,7 @@ function PlannerGoogleMapScene({
               ) : (
                 <div className="mt-3 space-y-2">
                   {DISCOVERY_CATEGORIES.filter((category) => activeCategories[category]).map((category) => {
-                    const topPlaces = placesByCategory[category].slice(0, 2);
+                    const topPlaces = (category === 'hotel' ? inventoryHotelPlaces : placesByCategory[category]).slice(0, 2);
                     if (topPlaces.length === 0) return null;
 
                     return (
@@ -889,6 +1036,7 @@ export default function TripPlannerMap({
   onSelectSegment,
   onAddHotelToSegment,
   onRequestAddPlaceToPlanner,
+  onAutoFillRealPlaces,
 }: TripPlannerMapProps) {
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -998,17 +1146,18 @@ export default function TripPlannerMap({
               setMapError('No pudimos cargar Google Maps en este momento.');
             }}
           >
-            <PlannerGoogleMapScene
-              segments={mappedSegments}
-              selectedSegmentId={selectedSegmentId}
-              activeCategories={activeCategories}
+	            <PlannerGoogleMapScene
+	              segments={mappedSegments}
+	              selectedSegmentId={selectedSegmentId}
+	              activeCategories={activeCategories}
               onSelectSegment={(segmentId) => {
                 setSelectedSegmentId(segmentId);
                 onSelectSegment?.(segmentId);
               }}
-              onAddHotelToSegment={onAddHotelToSegment}
-              onRequestAddPlaceToPlanner={onRequestAddPlaceToPlanner}
-            />
+	              onAddHotelToSegment={onAddHotelToSegment}
+	              onRequestAddPlaceToPlanner={onRequestAddPlaceToPlanner}
+	              onAutoFillRealPlaces={onAutoFillRealPlaces}
+	            />
           </APIProvider>
         )}
       </div>

@@ -323,6 +323,7 @@ function summarizeExistingPlannerState(
         nights: segment?.nights,
         order: segment?.order,
         summary: truncateText(segment?.summary, 72),
+        highlights: safeArray<string>(segment?.highlights).slice(0, 4),
         transportIn: segment?.transportIn
           ? compactPromptValue({
               type: segment.transportIn.type,
@@ -586,6 +587,41 @@ function normalizeCompactRestaurantItem(item: any): any | null {
   });
 }
 
+function normalizeCompactHighlightItem(item: any): string | null {
+  if (typeof item === 'string') {
+    return truncateText(item, 40) || null;
+  }
+
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  return truncateText(item?.title || item?.name || item?.label || item?.activity, 40) || null;
+}
+
+function isGenericSegmentHighlight(value: string): boolean {
+  const normalized = normalizeLabel(value);
+  return normalized.startsWith('dia ')
+    || normalized.startsWith('llegada a ')
+    || normalized.startsWith('esenciales de ');
+}
+
+function normalizeCompactHighlights(items: any, fallbackTitles: Array<string | undefined> = []): string[] {
+  const seen = new Set<string>();
+  const candidates = [
+    ...safeArray<any>(items).map(normalizeCompactHighlightItem).filter(Boolean),
+    ...fallbackTitles.map(normalizeCompactHighlightItem).filter(Boolean),
+  ];
+
+  return candidates.filter((item): item is string => {
+    if (!item || isGenericSegmentHighlight(item)) return false;
+    const key = normalizeLabel(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 4);
+}
+
 function deriveCompactDayTitle(day: any, city: string, index: number): string {
   return (
     truncateText(day?.title, 64)
@@ -741,6 +777,10 @@ function expandCompactPlannerResponse(
     const rawSegment = matchedSegments[index] || {};
     const compactDays = fitCompactDaysToTarget(safeArray<any>(rawSegment?.days), blueprint, mode);
     const segmentId = blueprint.segmentId;
+    const highlights = normalizeCompactHighlights(
+      rawSegment?.highlights,
+      compactDays.map((day) => day?.title),
+    );
 
     const expandedDays = compactDays.map((day, dayIndex) => ({
       day: dayIndex + 1,
@@ -765,6 +805,7 @@ function expandCompactPlannerResponse(
       nights: blueprint.dayCount || undefined,
       order: blueprint.order,
       summary: truncateText(rawSegment?.summary, 120) || blueprint.existingSegment?.summary || `Recorrido por ${blueprint.city}.`,
+      highlights,
       contentStatus: mode === 'skeleton' ? 'skeleton' : 'ready',
       contentError: undefined,
       transportIn: blueprint.order === 0
@@ -1021,8 +1062,10 @@ OUTPUT LIMITS:
 - summary: max 18 words.
 - generalTips: 0 to 2 items total.
 - segment summary: max 14 words.
+- segment highlights: 2 to 4 items, max 4 words each.
 - day title: max 7 words.
 - day summary: max 12 words.
+- Each segment should include highlights with the main must-see activities, neighborhoods, or anchor experiences for that destination.
 - Do not include morning, afternoon, evening, restaurants, or travelTip in this pass.
 
 REQUEST_CONTEXT:
@@ -1038,6 +1081,7 @@ OUTPUT_TEMPLATE:
       "city": "Madrid",
       "country": "Spain",
       "summary": "Short segment summary",
+      "highlights": ["Museo del Prado", "Parque del Retiro", "Gran Via"],
       "days": [
         {
           "title": "Prado y Retiro",

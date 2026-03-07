@@ -5,7 +5,7 @@ import MessageItem from './MessageItem';
 import TypingIndicator from './TypingIndicator';
 import type { MessageRow } from '../types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
-import { FileUp } from 'lucide-react';
+import { ArrowUpFromLine } from 'lucide-react';
 
 interface ChatInterfaceProps {
   selectedConversation: string | null;
@@ -253,7 +253,7 @@ const ChatInterface = React.memo(({
           role="status"
         >
           <div className="text-center">
-            <FileUp className="h-16 w-16 text-primary mx-auto mb-4 animate-bounce" />
+            <ArrowUpFromLine className="h-16 w-16 text-primary mx-auto mb-4 animate-bounce" />
             <p className="text-xl font-semibold text-primary">Suelta el PDF aquí</p>
             <p className="text-sm text-muted-foreground mt-2">Solo archivos PDF (máx. 10MB)</p>
             <p className="text-xs text-muted-foreground mt-1">Presiona ESC para cancelar</p>

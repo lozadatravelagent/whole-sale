@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2, Paperclip } from 'lucide-react';
+import { ArrowUp, Loader2, Paperclip } from 'lucide-react';
 
 interface MessageInputProps {
   value: string;
@@ -56,7 +56,7 @@ const MessageInput = React.memo(({
           name="message"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Escribe tu mensaje..."
+          placeholder="Pedime una idea, una ruta o una cotizacion..."
           disabled={disabled}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -108,7 +108,7 @@ const MessageInput = React.memo(({
           {disabled ? (
             <Loader2 className="h-3.5 md:h-4 w-3.5 md:w-4 animate-spin" />
           ) : (
-            <Send className="h-3.5 md:h-4 w-3.5 md:w-4" />
+            <ArrowUp className="h-3.5 md:h-4 w-3.5 md:w-4" />
           )}
         </Button>
       </div>

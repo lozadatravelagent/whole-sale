@@ -1,7 +1,7 @@
 import React, { useMemo, Suspense, lazy, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { User, Bot, FileText, Download, Clock, Check, CheckCheck, Loader2, Sparkles } from 'lucide-react';
+import { CircleUser, Sparkle, FileText, ArrowDownToLine, Clock, Check, CheckCheck, Loader2, Wand2 } from 'lucide-react';
 
 // Lazy load heavy components
 const ReactMarkdown = lazy(() => import('react-markdown'));
@@ -360,7 +360,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
       <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
         <div className={`${hasCombinedTravel ? 'max-w-full md:max-w-4xl' : 'max-w-[85%] md:max-w-lg'} flex items-start space-x-1.5 md:space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
           <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-card flex items-center justify-center flex-shrink-0">
-            {msg.role === 'user' ? <User className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" /> : <Bot className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />}
+            {msg.role === 'user' ? <CircleUser className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" /> : <Sparkle className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />}
           </div>
           <div className={`rounded-lg p-3 md:p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'} text-sm md:text-base`}>
 
@@ -411,7 +411,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                       </div>
                       {onGoToPlanner ? (
                         <Button size="sm" className="gap-1.5" onClick={onGoToPlanner}>
-                          <Sparkles className="h-3.5 w-3.5" />
+                          <Wand2 className="h-3.5 w-3.5" />
                           Ir al Planificador
                         </Button>
                       ) : (
@@ -473,7 +473,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                         {isDownloading ? (
                           <Loader2 className="h-3 md:h-4 w-3 md:w-4 animate-spin md:mr-1" />
                         ) : (
-                          <Download className="h-3 md:h-4 w-3 md:w-4 md:mr-1" />
+                          <ArrowDownToLine className="h-3 md:h-4 w-3 md:w-4 md:mr-1" />
                         )}
                         <span className="hidden md:inline">{isDownloading ? 'Descargando...' : 'Descargar'}</span>
                       </Button>

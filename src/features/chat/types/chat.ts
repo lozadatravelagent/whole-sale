@@ -2,6 +2,15 @@ import type { Database } from '@/integrations/supabase/types';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 
 export type MessageRow = Database['public']['Tables']['messages']['Row'];
+export type ConversationRow = Database['public']['Tables']['conversations']['Row'];
+export type ConversationWorkspaceMode = Database['public']['Enums']['conversation_workspace_mode'];
+
+export interface ConversationWithAgency extends ConversationRow {
+  agency_name?: string | null;
+  tenant_name?: string | null;
+  creator_email?: string | null;
+  creator_role?: Database['public']['Enums']['user_role'] | null;
+}
 
 export interface FlightData {
   id: string;
@@ -206,10 +215,16 @@ export interface FlightData {
 }
 
 export interface LocalHotelData {
+  id?: string;
+  unique_id?: string;
   name: string;
   city: string;
   category?: string;
   address?: string;
+  phone?: string;
+  website?: string;
+  description?: string;
+  images?: string[];
   nights: number;
   check_in: string;
   check_out: string;
@@ -230,6 +245,8 @@ export interface LocalHotelData {
   search_children?: number;   // Niños 2-12 años
   search_infants?: number;    // Infantes 0-2 años
   search_childrenAges?: number[];
+  policy_cancellation?: string;
+  policy_lodging?: string;
   provider?: 'EUROVIPS' | 'HOTELBEDS';
 }
 
@@ -303,6 +320,7 @@ export interface ChatState {
   showInspirationText: boolean;
   activeTab: string;
   workspaceMode: 'standard' | 'planner';
+  historyMode: 'standard' | 'planner';
   // ✅ Typing state per conversation (not global)
   typingByConversation: Record<string, { isTyping: boolean; message: string }>;
   sidebarLimit: number;

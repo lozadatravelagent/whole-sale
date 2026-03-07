@@ -3,6 +3,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withRateLimit } from "../_shared/rateLimit.ts";
 import { buildSystemPrompt, PROMPT_VERSION } from "./prompt.ts";
 import { normalizeFlightRequest } from "../_shared/flightSegments.ts";
+import {
+  normalizeDestinationListToCapitals,
+  normalizeDestinationToCapitalIfCountry,
+} from "../_shared/countryCapitalResolver.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -86,6 +90,83 @@ function augmentMultiCitySegmentsFromMessage(message: string, parsed: any): any 
     ...parsed,
     flights: nextFlights
   };
+}
+
+function normalizeLocationsToCountryCapitals(parsed: any): any {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+
+  const nextParsed = { ...parsed };
+
+  if (nextParsed.itinerary) {
+    nextParsed.itinerary = {
+      ...nextParsed.itinerary,
+      ...(Array.isArray(nextParsed.itinerary.destinations)
+        ? {
+            destinations: normalizeDestinationListToCapitals(nextParsed.itinerary.destinations),
+          }
+        : {}),
+    };
+  }
+
+  if (nextParsed.hotels) {
+    nextParsed.hotels = {
+      ...nextParsed.hotels,
+      ...(nextParsed.hotels.city
+        ? { city: normalizeDestinationToCapitalIfCountry(nextParsed.hotels.city) }
+        : {}),
+      ...(Array.isArray(nextParsed.hotels.segments)
+        ? {
+            segments: nextParsed.hotels.segments.map((segment: any) => ({
+              ...segment,
+              ...(segment?.city
+                ? { city: normalizeDestinationToCapitalIfCountry(segment.city) }
+                : {}),
+            })),
+          }
+        : {}),
+    };
+  }
+
+  if (nextParsed.flights) {
+    nextParsed.flights = {
+      ...nextParsed.flights,
+      ...(nextParsed.flights.origin
+        ? { origin: normalizeDestinationToCapitalIfCountry(nextParsed.flights.origin) }
+        : {}),
+      ...(nextParsed.flights.destination
+        ? { destination: normalizeDestinationToCapitalIfCountry(nextParsed.flights.destination) }
+        : {}),
+      ...(Array.isArray(nextParsed.flights.segments)
+        ? {
+            segments: nextParsed.flights.segments.map((segment: any) => ({
+              ...segment,
+              ...(segment?.origin
+                ? { origin: normalizeDestinationToCapitalIfCountry(segment.origin) }
+                : {}),
+              ...(segment?.destination
+                ? { destination: normalizeDestinationToCapitalIfCountry(segment.destination) }
+                : {}),
+            })),
+          }
+        : {}),
+    };
+  }
+
+  if (nextParsed.packages?.destination) {
+    nextParsed.packages = {
+      ...nextParsed.packages,
+      destination: normalizeDestinationToCapitalIfCountry(nextParsed.packages.destination),
+    };
+  }
+
+  if (nextParsed.services?.city) {
+    nextParsed.services = {
+      ...nextParsed.services,
+      city: normalizeDestinationToCapitalIfCountry(nextParsed.services.city),
+    };
+  }
+
+  return nextParsed;
 }
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -271,6 +352,8 @@ serve(async (req) => {
           parsed = augmentMultiCitySegmentsFromMessage(message, parsed);
           parsed.flights = normalizeFlightRequest(parsed.flights);
         }
+
+        parsed = normalizeLocationsToCountryCapitals(parsed);
 
         // Validate the response structure
         if (!parsed.requestType || typeof parsed.confidence !== 'number') {

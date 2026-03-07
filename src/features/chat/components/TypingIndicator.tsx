@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot } from 'lucide-react';
+import { Sparkle } from 'lucide-react';
 
 interface TypingIndicatorProps {
   message?: string;
@@ -10,7 +10,7 @@ const TypingIndicator = React.memo(({ message }: TypingIndicatorProps) => (
   <div className="flex justify-start">
     <div className="max-w-lg flex items-start space-x-2">
       <div className="w-8 h-8 rounded-full bg-gradient-card flex items-center justify-center">
-        <Bot className="h-4 w-4 text-accent" />
+        <Sparkle className="h-4 w-4 text-accent" />
       </div>
       <div className="rounded-lg p-4 bg-muted">
         <div className="flex items-center space-x-3">

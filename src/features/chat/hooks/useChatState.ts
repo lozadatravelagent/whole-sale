@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
-import type { ChatState } from '../types/chat';
+import type { ChatState, ConversationWorkspaceMode } from '../types/chat';
 import { useAuth, useConversations } from '@/hooks/useChat';
 import { useAuth as useAuthContext } from '@/contexts/AuthContext'; // ⚡ OPTIMIZATION: Use cached user data
 import { useToast } from '@/hooks/use-toast';
@@ -16,6 +16,7 @@ const useChatState = () => {
     showInspirationText: false,
     activeTab: 'active',
     workspaceMode: 'standard',
+    historyMode: 'standard',
     // ✅ Typing state per conversation (not global)
     typingByConversation: {},
     sidebarLimit: 50,
@@ -113,6 +114,10 @@ const useChatState = () => {
     updateChatState({ workspaceMode });
   }, [updateChatState]);
 
+  const setHistoryMode = useCallback((historyMode: 'standard' | 'planner') => {
+    updateChatState({ historyMode });
+  }, [updateChatState]);
+
   const setPreviousParsedRequest = useCallback((request: ParsedTravelRequest | null) => {
     updateChatState({ previousParsedRequest: request });
   }, [updateChatState]);
@@ -122,7 +127,10 @@ const useChatState = () => {
   }, [updateChatState]);
 
   // Create new chat function
-  const createNewChat = useCallback(async (initialTitle?: string) => {
+  const createNewChat = useCallback(async (
+    initialTitle?: string,
+    workspaceMode: ConversationWorkspaceMode = 'standard'
+  ) => {
     const startTime = performance.now();
     console.log('🚀 [CHAT FLOW] Step 1: Starting createNewChat process', `[${startTime.toFixed(0)}ms]`);
     console.log('👤 User:', user?.id, user?.email);
@@ -147,6 +155,7 @@ const useChatState = () => {
         external_key: initialTitle || defaultTitle,
         channel: 'web' as const,
         state: 'active' as const,
+        workspace_mode: workspaceMode,
         agency_id: authUser.user?.agency_id || null,
         tenant_id: authUser.user?.tenant_id || null,
         created_by: user.id,
@@ -156,7 +165,13 @@ const useChatState = () => {
 
       // Show UI IMMEDIATELY (0ms perceived lag!)
       const uiStartTime = performance.now();
-      setSelectedConversation(tempId);
+      updateChatState({
+        selectedConversation: tempId,
+        activeTab: 'active',
+        workspaceMode,
+        historyMode: workspaceMode,
+        previousParsedRequest: null,
+      });
       console.log(`⚡ [OPTIMISTIC UI] Chat displayed instantly in ${(performance.now() - uiStartTime).toFixed(0)}ms!`);
 
       // ⚡ OPTIMIZATION: Pass cached user data to avoid DB query (saves ~50-150ms)
@@ -164,6 +179,7 @@ const useChatState = () => {
         title: initialTitle || defaultTitle,
         channel: 'web' as const,
         status: 'active' as const,
+        workspaceMode,
         userData: authUser.user ? {
           agency_id: authUser.user.agency_id,
           tenant_id: authUser.user.tenant_id,
@@ -182,7 +198,13 @@ const useChatState = () => {
       if (newConversation) {
         // Replace temp ID with real ID
         const replaceTime = performance.now();
-        setSelectedConversation(newConversation.id);
+        updateChatState({
+          selectedConversation: newConversation.id,
+          activeTab: 'active',
+          workspaceMode: newConversation.workspace_mode || workspaceMode,
+          historyMode: newConversation.workspace_mode || workspaceMode,
+          previousParsedRequest: null,
+        });
         console.log(`🔄 [OPTIMISTIC UI] Replaced temp ID with real ID in ${(performance.now() - replaceTime).toFixed(0)}ms`);
 
         const totalTime = (performance.now() - startTime).toFixed(0);
@@ -191,6 +213,11 @@ const useChatState = () => {
       }
     } catch (error) {
       console.error('❌ [CHAT FLOW] Error in createNewChat process:', error);
+      updateChatState({
+        selectedConversation: null,
+        previousParsedRequest: null,
+        isLoading: false,
+      });
       toast({
         title: "Error",
         description: "No se pudo crear la conversación. Inténtalo de nuevo.",
@@ -198,7 +225,7 @@ const useChatState = () => {
       });
       return null;
     }
-  }, [user, authUser.user, createConversation, toast, setSelectedConversation]);
+  }, [user, authUser.user, createConversation, toast, updateChatState]);
 
   // Load conversations on mount
   useEffect(() => {
@@ -254,6 +281,7 @@ const useChatState = () => {
     setIsTyping,
     setActiveTab,
     setWorkspaceMode,
+    setHistoryMode,
     setPreviousParsedRequest,
     setIsAddingToCRM,
     updateChatState,

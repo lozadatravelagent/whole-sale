@@ -218,6 +218,7 @@ export default function PlannerDateSelectionModal({
                 selected={range}
                 onSelect={setRange}
                 numberOfMonths={2}
+                showOutsideDays={false}
                 defaultMonth={range?.from || toDate(initialSelection?.startDate) || new Date()}
                 disabled={{ before: new Date(new Date().setHours(0, 0, 0, 0)) }}
                 className="planner-date-calendar p-2"

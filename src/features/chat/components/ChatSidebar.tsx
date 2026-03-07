@@ -1,225 +1,371 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChevronLeft,
+  ArchiveX,
+  ArchiveRestore,
+  Compass,
+  MessageCirclePlus,
+  Search,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Archive, Phone, Globe, ArchiveRestore, Sparkles, MessagesSquare } from 'lucide-react';
-import type { Database } from '@/integrations/supabase/types';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-
-type ConversationRow = Database['public']['Tables']['conversations']['Row'];
-
-// Extended type to include agency data from the view
-interface ConversationWithAgency extends ConversationRow {
-  agency_name?: string;
-  tenant_name?: string;
-  creator_email?: string;
-  creator_role?: string;
-}
+import type { ConversationWithAgency, ConversationWorkspaceMode } from '@/features/chat/types/chat';
 
 interface ChatSidebarProps {
   conversations: ConversationWithAgency[];
   selectedConversation: string | null;
   activeTab: string;
-  workspaceMode: 'standard' | 'planner';
+  historyMode: ConversationWorkspaceMode;
   sidebarLimit: number;
   onSelectConversation: (id: string) => void;
   onCreateNewChat: () => void;
+  onCreateNewPlanner: () => void;
   onTabChange: (tab: string) => void;
-  onWorkspaceModeChange: (mode: 'standard' | 'planner') => void;
+  onHistoryModeChange?: (mode: ConversationWorkspaceMode) => void;
   onArchiveConversation?: (conversationId: string, currentState: 'active' | 'closed') => void;
+  onBackToMainMenu?: () => void;
+  showBackToMainMenu?: boolean;
+  className?: string;
+  contentSearchResults?: Map<string, string>;
+  isSearching?: boolean;
+  onSearchMessages?: (query: string) => void;
+  onClearSearch?: () => void;
 }
 
-// Conversations sidebar component
+const tripGradients = [
+  'linear-gradient(135deg, #0f172a 0%, #2563eb 100%)',
+  'linear-gradient(135deg, #134e4a 0%, #14b8a6 100%)',
+  'linear-gradient(135deg, #3f3f46 0%, #84cc16 100%)',
+  'linear-gradient(135deg, #4c1d95 0%, #f59e0b 100%)',
+  'linear-gradient(135deg, #1d4ed8 0%, #06b6d4 100%)',
+];
+
+const formatConversationDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return new Intl.DateTimeFormat('es-AR', {
+    day: '2-digit',
+    month: 'short',
+  }).format(date);
+};
+
+const getConversationTitle = (conversation: ConversationWithAgency) => {
+  return conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`;
+};
+
+const getConversationSubtitle = (conversation: ConversationWithAgency) => {
+  return formatConversationDate(conversation.last_message_at || conversation.created_at);
+};
+
+const getTripGradient = (value: string) => {
+  const hash = Array.from(value).reduce((accumulator, character) => accumulator + character.charCodeAt(0), 0);
+  return tripGradients[hash % tripGradients.length];
+};
+
+const getTitleInitials = (title: string) => {
+  return title
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || 'VB';
+};
+
 const ChatSidebar = React.memo(({
   conversations,
   selectedConversation,
   activeTab,
-  workspaceMode,
+  historyMode,
   sidebarLimit,
   onSelectConversation,
   onCreateNewChat,
+  onCreateNewPlanner,
   onTabChange,
-  onWorkspaceModeChange,
-  onArchiveConversation
+  onHistoryModeChange,
+  onArchiveConversation,
+  onBackToMainMenu,
+  showBackToMainMenu = false,
+  className,
+  contentSearchResults,
+  isSearching,
+  onSearchMessages,
+  onClearSearch,
 }: ChatSidebarProps) => {
   const { isOwner } = useAuth();
+  const [query, setQuery] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const handleArchiveClick = (e: React.MouseEvent, conversationId: string, currentState: 'active' | 'closed' | 'pending') => {
-    e.stopPropagation(); // Prevent selecting the conversation
-    if (onArchiveConversation) {
-      onArchiveConversation(conversationId, currentState === 'active' ? 'active' : 'closed');
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    const trimmed = query.trim();
+
+    if (trimmed.length < 2) {
+      onClearSearch?.();
+      return;
     }
+
+    debounceRef.current = setTimeout(() => {
+      onSearchMessages?.(trimmed);
+    }, 200);
+
+    return () => clearTimeout(debounceRef.current);
+  }, [query, onSearchMessages, onClearSearch]);
+
+  const visibleHistoryMode: ConversationWorkspaceMode = isOwner ? historyMode : 'standard';
+  const handleHistoryModeChange = (mode: ConversationWorkspaceMode) => {
+    onHistoryModeChange?.(mode);
+  };
+
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const filteredConversations = useMemo(() => {
+    const targetState = activeTab === 'archived' ? 'closed' : 'active';
+
+    return conversations
+      .filter((conversation) => conversation.state === targetState)
+      .filter((conversation) => {
+        if (!normalizedQuery) {
+          return true;
+        }
+
+        const title = getConversationTitle(conversation).toLowerCase();
+        if (title.includes(normalizedQuery)) return true;
+
+        return contentSearchResults?.has(conversation.id) ?? false;
+      })
+      .slice(0, sidebarLimit);
+  }, [activeTab, conversations, normalizedQuery, sidebarLimit, contentSearchResults]);
+
+  const tripConversations = useMemo(() => {
+    if (!isOwner) {
+      return [];
+    }
+
+    return filteredConversations.filter((conversation) => conversation.workspace_mode === 'planner');
+  }, [filteredConversations, isOwner]);
+
+  const chatConversations = useMemo(() => {
+    return filteredConversations.filter((conversation) => conversation.workspace_mode === 'standard');
+  }, [filteredConversations]);
+
+  const orderedSections = useMemo(() => {
+    const sections = [
+      {
+        key: 'planner' as const,
+        title: 'Trips',
+        items: tripConversations,
+        visible: isOwner,
+      },
+      {
+        key: 'standard' as const,
+        title: 'Chats',
+        items: chatConversations,
+        visible: true,
+      },
+    ].filter((section) => section.visible);
+
+    if (visibleHistoryMode === 'planner') {
+      return sections.sort((left, right) => (left.key === 'planner' ? -1 : right.key === 'planner' ? 1 : 0));
+    }
+
+    return sections.sort((left, right) => (left.key === 'standard' ? -1 : right.key === 'standard' ? 1 : 0));
+  }, [chatConversations, isOwner, tripConversations, visibleHistoryMode]);
+
+  const handleArchiveClick = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    conversationId: string,
+    currentState: 'active' | 'closed' | 'pending'
+  ) => {
+    event.stopPropagation();
+
+    if (!onArchiveConversation) {
+      return;
+    }
+
+    onArchiveConversation(conversationId, currentState === 'active' ? 'active' : 'closed');
+  };
+
+  const renderConversationRow = (conversation: ConversationWithAgency) => {
+    const title = getConversationTitle(conversation);
+    const isSelected = selectedConversation === conversation.id;
+    const isTrip = conversation.workspace_mode === 'planner';
+    const isArchived = conversation.state === 'closed';
+
+    return (
+      <div
+        key={conversation.id}
+        className={cn(
+          "group relative flex cursor-pointer items-center rounded-2xl px-2.5 py-2 transition",
+          isTrip ? "gap-3" : "gap-0",
+          isSelected
+            ? "bg-foreground/6 dark:bg-white/10"
+            : "hover:bg-foreground/4 dark:hover:bg-white/5"
+        )}
+        onClick={() => {
+          handleHistoryModeChange(conversation.workspace_mode);
+          onSelectConversation(conversation.id);
+        }}
+      >
+        {isTrip ? (
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+            style={{ background: getTripGradient(title) }}
+          >
+            {getTitleInitials(title)}
+          </div>
+        ) : null}
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-medium text-foreground">{title}</p>
+          <p className="truncate text-sm text-muted-foreground">
+            {normalizedQuery && contentSearchResults?.has(conversation.id)
+              ? (contentSearchResults.get(conversation.id) ?? '').slice(0, 60)
+              : getConversationSubtitle(conversation)}
+          </p>
+        </div>
+
+        {onArchiveConversation && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(event) => handleArchiveClick(event, conversation.id, conversation.state)}
+            className="h-8 w-8 rounded-full opacity-0 transition group-hover:opacity-100 hover:bg-background dark:hover:bg-card"
+            title={isArchived ? 'Restaurar conversación' : 'Archivar conversación'}
+          >
+            {isArchived ? <ArchiveRestore className="h-4 w-4" /> : <ArchiveX className="h-4 w-4" />}
+          </Button>
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className="w-full md:w-80 border-r bg-background flex flex-col">
-      <div className="p-3 md:p-4 border-b">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-base md:text-lg font-semibold">
-            {workspaceMode === 'planner' ? 'Planificador de Viajes' : 'Conversaciones'}
-          </h3>
+    <aside
+      className={cn(
+        "flex h-full w-full flex-col border-r border-border/70 bg-gradient-card shadow-card backdrop-blur-xl",
+        className
+      )}
+    >
+      <div className="border-b border-border/60 px-4 pb-4 pt-4">
+        <div className="flex items-center gap-2">
+          {showBackToMainMenu && onBackToMainMenu && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onBackToMainMenu}
+              onMouseDown={(event) => {
+                if (event.button === 0) {
+                  onBackToMainMenu();
+                }
+              }}
+              className="h-11 w-11 shrink-0 rounded-full border border-border/70 bg-background/85 text-muted-foreground shadow-sm hover:bg-background hover:text-foreground dark:bg-card/85 dark:hover:bg-card"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          )}
+
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar..."
+              className="h-12 rounded-full border-0 bg-muted/60 pl-11 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-foreground/10 focus-visible:ring-offset-0 dark:bg-background/50"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-1">
           <Button
-            onClick={onCreateNewChat}
-            size="sm"
-            className="bg-primary hover:bg-primary/90"
+            variant="ghost"
+            onClick={() => {
+              handleHistoryModeChange('standard');
+              onCreateNewChat();
+            }}
+            className="h-12 w-full justify-start gap-3 rounded-2xl px-3 text-[15px] font-medium hover:bg-background dark:hover:bg-card/80"
           >
-            <Plus className="h-4 w-4 md:mr-2" />
-            <span className="hidden md:inline">{workspaceMode === 'planner' ? 'Nuevo plan' : 'Nuevo Chat'}</span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.9rem] border border-border/60 bg-foreground/[0.03] text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] dark:bg-white/[0.04]">
+              <MessageCirclePlus className="h-4 w-4" />
+            </span>
+            <span>Nuevo Chat</span>
+          </Button>
+
+          {isOwner && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                handleHistoryModeChange('planner');
+                onCreateNewPlanner();
+              }}
+              className="h-12 w-full justify-start gap-3 rounded-2xl px-3 text-[15px] font-medium hover:bg-background dark:hover:bg-card/80"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.9rem] border border-primary/15 bg-primary/[0.08] text-primary shadow-[0_8px_20px_rgba(37,99,235,0.12)] dark:border-primary/20 dark:bg-primary/12">
+                <Compass className="h-4 w-4" />
+              </span>
+              <span>Planifica un viaje</span>
+            </Button>
+          )}
+        </div>
+
+        <div className="mt-5 inline-flex rounded-full bg-muted/60 p-1 dark:bg-background/50">
+          <Button
+            variant="ghost"
+            onClick={() => onTabChange('active')}
+            className={cn(
+              "h-9 rounded-full px-4 text-xs font-medium",
+              activeTab === 'active' && "bg-background shadow-sm hover:bg-background dark:bg-card dark:hover:bg-card"
+            )}
+          >
+            Activas
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => onTabChange('archived')}
+            className={cn(
+              "h-9 rounded-full px-4 text-xs font-medium",
+              activeTab === 'archived' && "bg-background shadow-sm hover:bg-background dark:bg-card dark:hover:bg-card"
+            )}
+          >
+            Archivadas
           </Button>
         </div>
-        <p className="text-xs md:text-sm text-muted-foreground">
-          {workspaceMode === 'planner' ? 'Planes editables y conversaciones' : 'Chats de viajes'}
-        </p>
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="p-3 md:p-4 pb-2">
-          <div className={`grid ${isOwner ? 'grid-cols-2' : 'grid-cols-1'} gap-2 mb-3`}>
-            <Button
-              variant={workspaceMode === 'standard' ? 'secondary' : 'outline'}
-              className="justify-start gap-2"
-              onClick={() => onWorkspaceModeChange('standard')}
-            >
-              <MessagesSquare className="h-4 w-4" />
-              Chat
-            </Button>
-            {isOwner && (
-              <Button
-                variant={workspaceMode === 'planner' ? 'secondary' : 'outline'}
-                className="justify-start gap-2"
-                onClick={() => onWorkspaceModeChange('planner')}
-              >
-                <Sparkles className="h-4 w-4" />
-                Planificador
-              </Button>
-            )}
+      <div className="flex-1 overflow-y-auto px-4 py-5">
+        {isSearching && normalizedQuery.length >= 2 && (
+          <p className="mb-3 animate-pulse text-center text-sm text-muted-foreground">Buscando...</p>
+        )}
+        {orderedSections.every((section) => section.items.length === 0) ? (
+          <div className="rounded-3xl border border-dashed border-border bg-background/70 px-4 py-8 text-center text-sm text-muted-foreground dark:bg-card/60">
+            No se encontraron conversaciones en esta vista.
           </div>
-          <Tabs value={activeTab} onValueChange={onTabChange}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="active" className="text-xs md:text-sm">Chats Activos</TabsTrigger>
-              <TabsTrigger value="archived" className="text-xs md:text-sm">
-                <Archive className="h-3 w-3 mr-1" />
-                <span className="hidden sm:inline">Archivadas</span>
-                <span className="sm:hidden">Arch.</span>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+        ) : (
+          <div className="space-y-6">
+            {orderedSections.map((section) => {
+              if (section.items.length === 0) {
+                return null;
+              }
 
-        <div className="flex-1 overflow-y-auto px-3 md:px-4 pb-4">
-          {activeTab === 'active' && (
-            <div className="space-y-2">
-              {conversations
-                .filter(conv => conv.state === 'active')
-                .slice(0, sidebarLimit)
-                .map((conversation) => (
-                  <Card
-                    key={conversation.id}
-                    className={`mb-2 cursor-pointer transition-colors ${selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
-                      }`}
-                    onClick={() => onSelectConversation(conversation.id)}
-                  >
-                    <CardContent className="p-2 md:p-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-xs md:text-sm truncate">
-                            {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
-                          </h4>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] md:text-xs text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              {conversation.channel === 'wa' ? (
-                                <Phone className="h-2.5 md:h-3 w-2.5 md:w-3" />
-                              ) : (
-                                <Globe className="h-2.5 md:h-3 w-2.5 md:w-3" />
-                              )}
-                              <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
-                            </div>
-                            {conversation.agency_name && (
-                              <Badge variant="outline" className="text-[10px] md:text-xs px-1.5 py-0.5">
-                                {conversation.agency_name}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-center gap-1 ml-2">
-                          <Badge variant="secondary" className="text-[10px] md:text-xs px-1.5 md:px-2">
-                            {conversation.channel}
-                          </Badge>
-                          {onArchiveConversation && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 hover:bg-muted"
-                              onClick={(e) => handleArchiveClick(e, conversation.id, conversation.state)}
-                              title="Archivar conversación"
-                            >
-                              <Archive className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-            </div>
-          )}
+              return (
+                <section key={section.key} className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                      {section.title}
+                    </p>
+                    <span className="text-xs text-muted-foreground">{section.items.length}</span>
+                  </div>
 
-          {activeTab === 'archived' && (
-            <div className="space-y-2">
-              {conversations
-                .filter(conv => conv.state === 'closed')
-                .slice(0, sidebarLimit)
-                .map((conversation) => (
-                  <Card
-                    key={conversation.id}
-                    className={`mb-2 cursor-pointer transition-colors ${selectedConversation === conversation.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'
-                      }`}
-                    onClick={() => onSelectConversation(conversation.id)}
-                  >
-                    <CardContent className="p-2 md:p-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-xs md:text-sm truncate">
-                            {conversation.external_key || `Chat ${new Date(conversation.created_at).toLocaleDateString()}`}
-                          </h4>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] md:text-xs text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Archive className="h-2.5 md:h-3 w-2.5 md:w-3" />
-                              <span>{new Date(conversation.created_at).toLocaleDateString()}</span>
-                            </div>
-                            {conversation.agency_name && (
-                              <Badge variant="outline" className="text-[10px] md:text-xs px-1.5 py-0.5">
-                                {conversation.agency_name}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-center gap-1 ml-2">
-                          <Badge variant="outline" className="text-[10px] md:text-xs px-1.5 md:px-2">
-                            archivada
-                          </Badge>
-                          {onArchiveConversation && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 hover:bg-muted"
-                              onClick={(e) => handleArchiveClick(e, conversation.id, conversation.state)}
-                              title="Restaurar conversación"
-                            >
-                              <ArchiveRestore className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-            </div>
-          )}
-        </div>
+                  <div className="space-y-1">
+                    {section.items.map(renderConversationRow)}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
       </div>
-    </div>
+    </aside>
   );
 });
 

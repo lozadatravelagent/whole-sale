@@ -6,6 +6,10 @@ import {
     normalizeParsedFlightRequest,
     type FlightTripType
 } from '@/services/flightSegments';
+import {
+    normalizeDestinationListToCapitals,
+    normalizeDestinationToCapitalIfCountry,
+} from '@/services/countryCapitalResolver';
 
 export interface HotelStaySegment {
     id?: string;
@@ -156,6 +160,79 @@ export interface RequiredHotelFields {
     adults: boolean;
     roomType: boolean;
     mealPlan: boolean;
+}
+
+function normalizeLocationsToCountryCapitals(parsed: ParsedTravelRequest): ParsedTravelRequest {
+    const nextParsed: ParsedTravelRequest = { ...parsed };
+
+    if (nextParsed.itinerary) {
+        nextParsed.itinerary = {
+            ...nextParsed.itinerary,
+            ...(Array.isArray(nextParsed.itinerary.destinations)
+                ? { destinations: normalizeDestinationListToCapitals(nextParsed.itinerary.destinations) }
+                : {}),
+        };
+    }
+
+    if (nextParsed.hotels) {
+        nextParsed.hotels = {
+            ...nextParsed.hotels,
+            ...(nextParsed.hotels.city
+                ? { city: normalizeDestinationToCapitalIfCountry(nextParsed.hotels.city) }
+                : {}),
+            ...(Array.isArray(nextParsed.hotels.segments)
+                ? {
+                    segments: nextParsed.hotels.segments.map((segment) => ({
+                        ...segment,
+                        ...(segment.city
+                            ? { city: normalizeDestinationToCapitalIfCountry(segment.city) }
+                            : {}),
+                    })),
+                }
+                : {}),
+        };
+    }
+
+    if (nextParsed.flights) {
+        nextParsed.flights = {
+            ...nextParsed.flights,
+            ...(nextParsed.flights.origin
+                ? { origin: normalizeDestinationToCapitalIfCountry(nextParsed.flights.origin) }
+                : {}),
+            ...(nextParsed.flights.destination
+                ? { destination: normalizeDestinationToCapitalIfCountry(nextParsed.flights.destination) }
+                : {}),
+            ...(Array.isArray(nextParsed.flights.segments)
+                ? {
+                    segments: nextParsed.flights.segments.map((segment) => ({
+                        ...segment,
+                        ...(segment.origin
+                            ? { origin: normalizeDestinationToCapitalIfCountry(segment.origin) }
+                            : {}),
+                        ...(segment.destination
+                            ? { destination: normalizeDestinationToCapitalIfCountry(segment.destination) }
+                            : {}),
+                    })),
+                }
+                : {}),
+        };
+    }
+
+    if (nextParsed.packages?.destination) {
+        nextParsed.packages = {
+            ...nextParsed.packages,
+            destination: normalizeDestinationToCapitalIfCountry(nextParsed.packages.destination),
+        };
+    }
+
+    if (nextParsed.services?.city) {
+        nextParsed.services = {
+            ...nextParsed.services,
+            city: normalizeDestinationToCapitalIfCountry(nextParsed.services.city),
+        };
+    }
+
+    return nextParsed;
 }
 
 const HOTEL_MONTHS: Record<string, string> = {
@@ -1713,14 +1790,14 @@ export async function parseMessageWithAI(
                     ? 'hotels'
                     : parsedResult.requestType;
 
-        const mergedResult = normalizeParsedFlightRequest({
+        const mergedResult = normalizeLocationsToCountryCapitals(normalizeParsedFlightRequest({
             ...parsedResult,
             flights: Object.keys(mergedFlights).length ? mergedFlights : parsedResult.flights,
             // Only include hotels if there's actual data (not empty object)
             hotels: Object.keys(normalizedHotels).length ? normalizedHotels : parsedResult.hotels,
             requestType: normalizedRequestType,
             originalMessage: message
-        });
+        }));
 
         console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
         logTimingStep('AI PARSER', 'post-processing', postProcessStart, {

@@ -22,7 +22,6 @@ import {
   PanelRightClose,
   Plane,
   Plus,
-  RefreshCcw,
   Trash2,
 } from 'lucide-react';
 import type { PlannerPlaceCandidate, PlannerPlaceCategory, PlannerPlaceHotelCandidate, TripPlannerState } from '../types';
@@ -40,14 +39,8 @@ import {
   formatPlannerFlightStops,
   formatPlannerFlightTimeRange,
   formatPaceLabel,
-  formatPlannerHotelCategory,
   getPlannerFlightRoute,
-  formatPlannerPrice,
-  formatPlannerRoomLabel,
-  formatPlannerTravelerSummary,
   formatShortDate,
-  getPrimaryPlannerHotelRoom,
-  getPlannerHotelDisplayId,
   buildPlannerPdfHtml,
 } from '../utils';
 import { getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
@@ -55,12 +48,20 @@ import TripPlannerMap from './TripPlannerMap';
 import PlannerDateSelectionModal from './PlannerDateSelectionModal';
 import PlannerMapPlaceAssignModal from './PlannerMapPlaceAssignModal';
 import PlannerCircularLoadingState from './PlannerCircularLoadingState';
-import PlannerHotelMatchPanel from './PlannerHotelMatchPanel';
+import PlannerHotelInventorySection from './PlannerHotelInventorySection';
 import TripPlannerStarterTemplate from './TripPlannerStarterTemplate';
 import TripPlannerWorkspaceSkeleton from './TripPlannerWorkspaceSkeleton';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 
 const PLANNER_MAP_FILTERS: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity'];
+type PlannerPlacesByCategory = Record<PlannerPlaceCategory, PlannerPlaceCandidate[]>;
+const DEFAULT_MAP_ACTIVE_CATEGORIES: Record<PlannerPlaceCategory, boolean> = {
+  hotel: true,
+  restaurant: true,
+  cafe: true,
+  museum: true,
+  activity: true,
+};
 
 const PLANNER_MAP_FILTER_LABELS: Record<PlannerPlaceCategory, string> = {
   hotel: 'Hoteles',
@@ -104,9 +105,6 @@ interface TripPlannerWorkspaceProps {
   onAddDestination: (destination: string) => Promise<void>;
   onRemoveDestination: (segmentId: string) => Promise<void>;
   onReorderDestinations: (fromSegmentId: string, toSegmentId: string) => Promise<void>;
-  onRegeneratePlanner: () => Promise<void>;
-  onRegenerateSegment: (segmentId: string) => Promise<void>;
-  onRegenerateDay: (segmentId: string, dayId: string) => Promise<void>;
   onEnsureSegmentEnriched: (segmentId: string) => Promise<void>;
   onToggleDayLock: (segmentId: string, dayId: string) => Promise<void>;
   onToggleActivityLock: (segmentId: string, dayId: string, block: 'morning' | 'afternoon' | 'evening', activityId: string) => Promise<void>;
@@ -117,6 +115,7 @@ interface TripPlannerWorkspaceProps {
     dayId: string;
     block: 'morning' | 'afternoon' | 'evening';
   }) => Promise<void>;
+  onAutoFillSegmentWithRealPlaces: (segmentId: string, placesByCategory: PlannerPlacesByCategory) => Promise<void>;
   onResolveInventoryMatch: (segmentId: string) => Promise<void>;
   onConfirmInventoryHotelMatch: (segmentId: string, hotelId: string) => Promise<void>;
   onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
@@ -157,47 +156,33 @@ export default function TripPlannerWorkspace({
   onAddDestination,
   onRemoveDestination,
   onReorderDestinations,
-  onRegeneratePlanner,
-  onRegenerateSegment,
-  onRegenerateDay,
   onEnsureSegmentEnriched,
   onToggleDayLock,
   onToggleActivityLock,
   onSelectHotel,
   onSelectHotelPlaceFromMap,
   onAddPlaceToPlanner,
+  onAutoFillSegmentWithRealPlaces,
   onResolveInventoryMatch,
   onConfirmInventoryHotelMatch,
   onRefreshQuotedHotel,
   onSelectTransportOption,
   onCompletePlannerDateSelection,
 }: TripPlannerWorkspaceProps) {
-  const ASSISTANT_WIDTH_DEFAULT = 360;
-  const ASSISTANT_WIDTH_MIN = 320;
-  const ASSISTANT_WIDTH_MAX = 680;
+  const ASSISTANT_WIDTH_DEFAULT = 640;
+  const ASSISTANT_WIDTH_MIN = 560;
+  const ASSISTANT_WIDTH_MAX = 920;
   const ASSISTANT_WIDTH_STORAGE_KEY = 'tripPlannerAssistantWidth';
   const ASSISTANT_COLLAPSED_STORAGE_KEY = 'tripPlannerAssistantCollapsed';
   const [newDestination, setNewDestination] = useState('');
+  const [activeHeaderPanel, setActiveHeaderPanel] = useState<'destinations' | null>(null);
   const [mobileTab, setMobileTab] = useState('plan');
   const [pendingPlannerDateRequest, setPendingPlannerDateRequest] = useState<ParsedTravelRequest | null>(null);
   const [pendingMapPlaceAssignment, setPendingMapPlaceAssignment] = useState<{
     segmentId: string;
     place: PlannerPlaceCandidate;
   } | null>(null);
-  const MAP_FILTERS_STORAGE_KEY = 'tripPlannerMapFilters';
-  const [mapActiveCategories, setMapActiveCategories] = useState<Record<PlannerPlaceCategory, boolean>>(() => {
-    try {
-      const stored = localStorage.getItem(MAP_FILTERS_STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return { hotel: true, restaurant: true, cafe: true, museum: true, activity: true };
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(MAP_FILTERS_STORAGE_KEY, JSON.stringify(mapActiveCategories));
-    } catch {}
-  }, [mapActiveCategories]);
+  const [mapActiveCategories, setMapActiveCategories] = useState<Record<PlannerPlaceCategory, boolean>>(DEFAULT_MAP_ACTIVE_CATEGORIES);
   const [isDateSelectionModalOpen, setIsDateSelectionModalOpen] = useState(false);
   const [draggedSegmentId, setDraggedSegmentId] = useState<string | null>(null);
   const [dropTargetSegmentId, setDropTargetSegmentId] = useState<string | null>(null);
@@ -219,12 +204,12 @@ export default function TripPlannerWorkspace({
     const storedWidth = window.localStorage.getItem(ASSISTANT_WIDTH_STORAGE_KEY);
     const parsedWidth = storedWidth ? Number(storedWidth) : NaN;
     if (!Number.isNaN(parsedWidth)) {
-      setAssistantWidth(clampAssistantWidth(parsedWidth));
+      setAssistantWidth(clampAssistantWidth(Math.max(parsedWidth, ASSISTANT_WIDTH_DEFAULT)));
     }
 
     const storedCollapsed = window.localStorage.getItem(ASSISTANT_COLLAPSED_STORAGE_KEY);
     setIsAssistantCollapsed(storedCollapsed === 'true');
-  }, [clampAssistantWidth]);
+  }, [ASSISTANT_WIDTH_DEFAULT, clampAssistantWidth]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -283,10 +268,18 @@ export default function TripPlannerWorkspace({
     setIsAssistantCollapsed(false);
   }, [clampAssistantWidth]);
 
+  const toggleHeaderDestinationsPanel = useCallback(() => {
+    setActiveHeaderPanel((current) => current === 'destinations' ? null : 'destinations');
+  }, []);
+
   const handleSelectSegmentFromMap = useCallback((segmentId: string) => {
     const target = document.getElementById(`planner-segment-${segmentId}`);
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+
+  useEffect(() => {
+    setMapActiveCategories(DEFAULT_MAP_ACTIVE_CATEGORIES);
+  }, [selectedConversation]);
 
   const destinationLabels = useMemo(
     () => plannerState?.segments.map((segment) => formatDestinationLabel(segment.city)) ?? [],
@@ -298,38 +291,22 @@ export default function TripPlannerWorkspace({
     ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
     : formatDateRange(plannerState?.startDate, plannerState?.endDate);
   const hasExactPlannerDates = Boolean(plannerState?.startDate && plannerState?.endDate && !plannerState?.isFlexibleDates);
-  const isRegeneratingPlan = activePlannerMutation?.type === 'regen_plan';
-
   useEffect(() => {
-    if (!plannerState || isDraftPlanner || typeof IntersectionObserver === 'undefined') {
+    if (!plannerState || isDraftPlanner) {
       return;
     }
 
-    const skeletonSegments = plannerState.segments.filter((segment) => segment.contentStatus === 'skeleton');
-    if (skeletonSegments.length === 0) {
+    const hasPendingSegmentRequest = plannerState.segments.some((segment) => segment.contentStatus === 'loading');
+    if (hasPendingSegmentRequest) {
       return;
     }
 
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        const segmentId = (entry.target as HTMLDivElement).dataset.segmentId;
-        if (!segmentId) return;
-        void onEnsureSegmentEnriched(segmentId);
-      });
-    }, {
-      rootMargin: '160px 0px 160px 0px',
-      threshold: 0.2,
-    });
+    const nextSkeletonSegment = plannerState.segments.find((segment) => segment.contentStatus === 'skeleton');
+    if (!nextSkeletonSegment) {
+      return;
+    }
 
-    skeletonSegments.forEach((segment) => {
-      const node = segmentRefs.current[segment.id];
-      if (node) {
-        observer.observe(node);
-      }
-    });
-
-    return () => observer.disconnect();
+    void onEnsureSegmentEnriched(nextSkeletonSegment.id);
   }, [isDraftPlanner, onEnsureSegmentEnriched, plannerState]);
 
   const handleExportPdf = useCallback(() => {
@@ -558,38 +535,221 @@ export default function TripPlannerWorkspace({
         />
       ) : (
         <>
-          <Card className="overflow-hidden border-primary/15 shadow-sm">
-            <CardContent className="space-y-6 p-4 md:p-6">
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary" className="rounded-full px-3 py-1">
-                    {destinationLabels.length} destinos
-                  </Badge>
-                  <Badge variant="outline" className="rounded-full px-3 py-1">
-                    {plannerState.days} días
-                  </Badge>
-                  {(plannerState.startDate || plannerState.endDate || plannerState.isFlexibleDates) && (
-                    <Badge variant="outline" className="rounded-full px-3 py-1">
-                      {plannerDateSummary}
-                    </Badge>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="ml-auto"
-                    disabled={isDraftPlanner}
-                    onClick={handleExportPdf}
-                  >
-                    <FileDown className="mr-1.5 h-4 w-4" />
-                    Exportar PDF
-                  </Button>
-                </div>
+	          <Card className="overflow-hidden border-primary/15 shadow-sm">
+	            <CardContent className="space-y-6 p-4 md:p-6">
+	              <div className="space-y-4">
+		                <div className="w-full overflow-x-auto">
+		                    <div className="flex min-w-full flex-wrap items-center rounded-[28px] border border-border/70 bg-background/90 p-1 shadow-sm xl:flex-nowrap">
+		                      <button
+		                        type="button"
+		                        onClick={toggleHeaderDestinationsPanel}
+		                        disabled={isDraftPlanner}
+		                        className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition whitespace-nowrap ${activeHeaderPanel === 'destinations' ? 'bg-foreground text-background shadow-sm' : 'text-foreground hover:bg-muted'} ${isDraftPlanner ? 'cursor-default opacity-80' : ''}`}
+		                        aria-label="Editar destinos"
+		                      >
+		                        <span>{plannerState.segments.length} destinos</span>
+		                        <ChevronRight className={`h-4 w-4 transition ${activeHeaderPanel === 'destinations' ? 'rotate-90' : ''}`} />
+		                      </button>
 
-                <div className="space-y-2">
-                  <Input
-                    value={plannerState.title}
-                    onChange={(event) => {
-                      if (isDraftPlanner) return;
+		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
+
+		                      <button
+		                        type="button"
+		                        disabled={isDraftPlanner}
+		                        onClick={() => {
+		                          setPendingPlannerDateRequest(null);
+		                          setIsDateSelectionModalOpen(true);
+		                        }}
+		                        className={`flex min-w-[10.75rem] items-center rounded-full px-4 py-2 text-left text-sm font-medium transition whitespace-nowrap xl:min-w-[11.5rem] ${isDraftPlanner ? 'cursor-default opacity-80' : 'text-foreground hover:bg-muted'}`}
+		                        aria-label="Editar fechas"
+		                      >
+		                        {plannerDateSummary}
+		                      </button>
+
+		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
+
+		                      <div className="flex shrink-0 items-center rounded-full px-4 py-2 text-sm font-medium text-foreground whitespace-nowrap">
+		                        {hasExactPlannerDates ? (
+		                          <span>{plannerState.days} días</span>
+		                        ) : (
+		                          <div className="flex items-center gap-2">
+		                            <Input
+		                              type="number"
+		                              min={1}
+		                              value={plannerState.days}
+		                              onChange={(event) => void onUpdateTripField('days', Math.max(1, Number(event.target.value) || 1) as TripPlannerState['days'])}
+		                              disabled={isDraftPlanner}
+		                              className="h-7 w-14 border-0 bg-transparent px-0 py-0 text-sm font-semibold shadow-none focus-visible:ring-0"
+		                            />
+		                            <span>días</span>
+		                          </div>
+		                        )}
+		                      </div>
+
+		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
+
+		                      <div className="shrink-0">
+		                        <Select
+		                          value={plannerState.budgetLevel || 'mid'}
+		                          disabled={isDraftPlanner}
+		                          onValueChange={(value) => void onUpdateTripField('budgetLevel', value as TripPlannerState['budgetLevel'])}
+		                        >
+		                          <SelectTrigger className="h-auto w-[6.75rem] rounded-full border-0 bg-transparent px-4 py-2 text-center text-sm font-medium text-foreground shadow-none focus:ring-0">
+		                            <SelectValue placeholder="Presupuesto" />
+		                          </SelectTrigger>
+		                          <SelectContent>
+		                            <SelectItem value="low">{formatBudgetLevel('low')}</SelectItem>
+		                            <SelectItem value="mid">{formatBudgetLevel('mid')}</SelectItem>
+		                            <SelectItem value="high">{formatBudgetLevel('high')}</SelectItem>
+		                            <SelectItem value="luxury">{formatBudgetLevel('luxury')}</SelectItem>
+		                          </SelectContent>
+		                        </Select>
+		                      </div>
+
+		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
+
+		                      <div className="shrink-0">
+		                        <Select
+		                          value={plannerState.pace || 'balanced'}
+		                          disabled={isDraftPlanner}
+		                          onValueChange={(value) => void onUpdateTripField('pace', value as TripPlannerState['pace'])}
+		                        >
+		                          <SelectTrigger className="h-auto w-[8rem] rounded-full border-0 bg-transparent px-4 py-2 text-center text-sm font-medium text-foreground shadow-none focus:ring-0">
+		                            <SelectValue placeholder="Ritmo" />
+		                          </SelectTrigger>
+		                          <SelectContent>
+		                            <SelectItem value="relaxed">{formatPaceLabel('relaxed')}</SelectItem>
+		                            <SelectItem value="balanced">{formatPaceLabel('balanced')}</SelectItem>
+		                            <SelectItem value="fast">{formatPaceLabel('fast')}</SelectItem>
+		                          </SelectContent>
+		                        </Select>
+		                      </div>
+		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:ml-auto xl:block" />
+		                      <button
+		                        type="button"
+		                        disabled={isDraftPlanner}
+		                        onClick={handleExportPdf}
+		                        className={`ml-auto flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition whitespace-nowrap ${isDraftPlanner ? 'cursor-default opacity-80' : 'text-foreground hover:bg-muted'}`}
+		                        aria-label="Exportar planner en PDF"
+		                      >
+		                        <FileDown className="h-4 w-4" />
+		                        <span>Exportar PDF</span>
+		                      </button>
+		                    </div>
+	                </div>
+
+	                {activeHeaderPanel === 'destinations' && (
+	                  <div className="planner-panel-fade-in rounded-2xl border bg-muted/20 p-4 md:p-5">
+	                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+	                      <div className="space-y-2">
+	                        <p className="trip-planner-label text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+	                          Destinos
+	                        </p>
+	                        <p className="trip-planner-body text-xs text-muted-foreground">
+	                          {isReorderingRoute
+	                            ? 'Reordenando y recalculando la ruta...'
+	                            : isDraftPlanner
+	                              ? 'Cuando termine el borrador vas a poder editar la ruta y sumar destinos manualmente.'
+	                              : 'Arrastrá los destinos para cambiar el orden.'}
+	                        </p>
+	                      </div>
+	                      <Badge variant="outline" className="w-fit rounded-full px-2.5 py-0.5 text-[11px]">
+	                        {plannerState.segments.length}
+	                      </Badge>
+	                    </div>
+
+	                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+	                      {plannerState.segments.map((segment, index) => (
+	                        <div
+	                          key={segment.id}
+	                          draggable={!isDraftPlanner && !isReorderingRoute && !isLoadingPlanner}
+	                          onDragStart={() => setDraggedSegmentId(segment.id)}
+	                          onDragEnd={() => {
+	                            setDraggedSegmentId(null);
+	                            setDropTargetSegmentId(null);
+	                          }}
+	                          onDragEnter={() => {
+	                            if (draggedSegmentId && draggedSegmentId !== segment.id) {
+	                              setDropTargetSegmentId(segment.id);
+	                            }
+	                          }}
+	                          onDragOver={(event) => {
+	                            event.preventDefault();
+	                            if (draggedSegmentId && draggedSegmentId !== segment.id) {
+	                              setDropTargetSegmentId(segment.id);
+	                            }
+	                          }}
+	                          onDragLeave={() => {
+	                            if (dropTargetSegmentId === segment.id) {
+	                              setDropTargetSegmentId(null);
+	                            }
+	                          }}
+	                          onDrop={async () => {
+	                            if (!draggedSegmentId || draggedSegmentId === segment.id) return;
+	                            setIsReorderingRoute(true);
+	                            await onReorderDestinations(draggedSegmentId, segment.id);
+	                            setIsReorderingRoute(false);
+	                            setDraggedSegmentId(null);
+	                            setDropTargetSegmentId(null);
+	                          }}
+	                          className={`flex items-center justify-between gap-3 rounded-2xl border bg-background/85 px-3 py-2.5 transition ${
+	                            draggedSegmentId === segment.id
+	                              ? 'opacity-45'
+	                              : dropTargetSegmentId === segment.id
+	                                ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+	                                : ''
+	                          } ${isReorderingRoute || isLoadingPlanner ? 'cursor-wait' : 'cursor-grab'}`}
+	                        >
+	                          <div className="flex items-center gap-3">
+	                            <GripVertical className="h-4 w-4 text-muted-foreground" />
+	                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+	                              {index + 1}
+	                            </span>
+	                            <span className="trip-planner-label text-sm text-foreground">
+	                              {formatDestinationLabel(segment.city)}
+	                            </span>
+	                          </div>
+	                          <button
+	                            type="button"
+	                            className="text-muted-foreground transition hover:text-foreground"
+	                            disabled={isDraftPlanner}
+	                            onClick={() => void onRemoveDestination(segment.id)}
+	                            aria-label={`Eliminar ${formatDestinationLabel(segment.city)}`}
+	                          >
+	                            <Trash2 className="h-3.5 w-3.5" />
+	                          </button>
+	                        </div>
+	                      ))}
+	                    </div>
+
+	                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+	                      <Input
+	                        value={newDestination}
+	                        placeholder="Agregar destino"
+	                        onChange={(event) => setNewDestination(event.target.value)}
+	                        className="h-10 bg-background/80"
+	                        disabled={isDraftPlanner}
+	                      />
+	                      <Button
+	                        onClick={() => {
+	                          void onAddDestination(newDestination);
+	                          setNewDestination('');
+	                        }}
+	                        disabled={isDraftPlanner || !newDestination.trim() || isReorderingRoute || isLoadingPlanner}
+	                        className="h-10 sm:min-w-[120px]"
+	                      >
+	                        <Plus className="mr-2 h-4 w-4" />
+	                        Agregar
+	                      </Button>
+	                    </div>
+	                  </div>
+	                )}
+
+	                <div className="space-y-2">
+	                  <Input
+	                    value={plannerState.title}
+	                    onChange={(event) => {
+	                      if (isDraftPlanner) return;
                       void onUpdateTripField('title', event.target.value);
                     }}
                     readOnly={isDraftPlanner}
@@ -661,230 +821,27 @@ export default function TripPlannerWorkspace({
                 </div>
               )}
 
-              <TripPlannerMap
-                segments={plannerState.segments}
-                days={plannerState.days}
-                activeCategories={mapActiveCategories}
-                isResolvingLocations={isResolvingLocations}
-                locationWarning={plannerLocationWarning}
-                draftPhrase={isDraftGenerating ? DRAFT_GENERATING_PHRASES[draftPhraseIndex] : null}
-                onSelectSegment={handleSelectSegmentFromMap}
-                onAddHotelToSegment={isDraftPlanner
-                  ? undefined
-                  : ((segmentId, placeCandidate) => void onSelectHotelPlaceFromMap(segmentId, placeCandidate))}
-                onRequestAddPlaceToPlanner={isDraftPlanner
-                  ? undefined
-                  : ((payload) => setPendingMapPlaceAssignment(payload))}
-              />
-
-              <div className="rounded-3xl border bg-muted/20 p-4 md:p-5">
-                <div className="grid gap-5 @3xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)]">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="trip-planner-label text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                        Destinos
-                      </p>
-                      <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[11px]">
-                        {plannerState.segments.length}
-                      </Badge>
-                    </div>
-
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {plannerState.segments.map((segment, index) => (
-                        <div
-                          key={segment.id}
-                          draggable={!isDraftPlanner && !isReorderingRoute && !isLoadingPlanner}
-                          onDragStart={() => setDraggedSegmentId(segment.id)}
-                          onDragEnd={() => {
-                            setDraggedSegmentId(null);
-                            setDropTargetSegmentId(null);
-                          }}
-                          onDragEnter={() => {
-                            if (draggedSegmentId && draggedSegmentId !== segment.id) {
-                              setDropTargetSegmentId(segment.id);
-                            }
-                          }}
-                          onDragOver={(event) => {
-                            event.preventDefault();
-                            if (draggedSegmentId && draggedSegmentId !== segment.id) {
-                              setDropTargetSegmentId(segment.id);
-                            }
-                          }}
-                          onDragLeave={() => {
-                            if (dropTargetSegmentId === segment.id) {
-                              setDropTargetSegmentId(null);
-                            }
-                          }}
-                          onDrop={async () => {
-                            if (!draggedSegmentId || draggedSegmentId === segment.id) return;
-                            setIsReorderingRoute(true);
-                            await onReorderDestinations(draggedSegmentId, segment.id);
-                            setIsReorderingRoute(false);
-                            setDraggedSegmentId(null);
-                            setDropTargetSegmentId(null);
-                          }}
-                          className={`flex items-center justify-between gap-3 rounded-2xl border bg-background/85 px-3 py-2.5 transition ${
-                            draggedSegmentId === segment.id
-                              ? 'opacity-45'
-                              : dropTargetSegmentId === segment.id
-                                ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
-                                : ''
-                          } ${isReorderingRoute || isLoadingPlanner ? 'cursor-wait' : 'cursor-grab'}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <GripVertical className="h-4 w-4 text-muted-foreground" />
-                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                              {index + 1}
-                            </span>
-                            <span className="trip-planner-label text-sm text-foreground">
-                              {formatDestinationLabel(segment.city)}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            className="text-muted-foreground transition hover:text-foreground"
-                            disabled={isDraftPlanner}
-                            onClick={() => void onRemoveDestination(segment.id)}
-                            aria-label={`Eliminar ${formatDestinationLabel(segment.city)}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Input
-                        value={newDestination}
-                        placeholder="Agregar destino"
-                        onChange={(event) => setNewDestination(event.target.value)}
-                        className="h-10 bg-background/80"
-                        disabled={isDraftPlanner}
-                      />
-                      <Button
-                        onClick={() => {
-                          void onAddDestination(newDestination);
-                          setNewDestination('');
-                        }}
-                        disabled={isDraftPlanner || !newDestination.trim() || isReorderingRoute || isLoadingPlanner}
-                        className="h-10 sm:min-w-[120px]"
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Agregar
-                      </Button>
-                    </div>
-
-                    <div className="flex min-h-5 items-center gap-2 text-[11px] text-muted-foreground">
-                      {isReorderingRoute ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                          <span>Reordenando y recalculando la ruta...</span>
-                        </>
-                      ) : isDraftPlanner ? (
-                        <span>Cuando termine el borrador vas a poder editar la ruta y sumar destinos manualmente.</span>
-                      ) : (
-                        <span>Arrastrá los destinos para cambiar el orden.</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 border-t border-border/70 pt-5 @3xl:border-l @3xl:border-t-0 @3xl:pl-6 @3xl:pt-0">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="trip-planner-label text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          Configuración del viaje
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void onRegeneratePlanner()}
-                        disabled={isDraftPlanner || isLoadingPlanner || isReorderingRoute}
-                        className="sm:self-start"
-                      >
-                        {isRegeneratingPlan && !isReorderingRoute ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCcw className="mr-2 h-4 w-4" />
-                        )}
-                        Regenerar
-                      </Button>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <div className="flex min-h-11 min-w-[200px] flex-1 items-center gap-3 rounded-full border bg-background/80 px-4 py-2">
-                        <span className="trip-planner-label text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Fechas</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-8 w-full justify-start gap-2 rounded-full px-0 text-left text-sm font-medium hover:bg-transparent"
-                          disabled={isDraftPlanner}
-                          onClick={() => {
-                            setPendingPlannerDateRequest(null);
-                            setIsDateSelectionModalOpen(true);
-                          }}
-                        >
-                          <CalendarDays className="h-4 w-4 text-primary" />
-                          <span className="trip-planner-label">{plannerDateSummary}</span>
-                        </Button>
-                      </div>
-
-                      <div className="flex min-h-11 items-center gap-3 rounded-full border bg-background/80 px-4 py-2">
-                        <span className="trip-planner-label text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Días</span>
-                        {hasExactPlannerDates ? (
-                          <span className="trip-planner-label text-sm">{plannerState.days}</span>
-                        ) : (
-                          <Input
-                            type="number"
-                            min={1}
-                            value={plannerState.days}
-                            onChange={(event) => void onUpdateTripField('days', Math.max(1, Number(event.target.value) || 1) as TripPlannerState['days'])}
-                            disabled={isDraftPlanner}
-                            className="h-7 w-14 border-0 bg-transparent px-0 py-0 text-sm font-medium shadow-none focus-visible:ring-0"
-                          />
-                        )}
-                      </div>
-
-                      <div className="flex min-h-11 items-center gap-3 rounded-full border bg-background/80 px-4 py-2">
-                        <span className="trip-planner-label text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Presupuesto</span>
-                        <Select
-                          value={plannerState.budgetLevel || 'mid'}
-                          disabled={isDraftPlanner}
-                          onValueChange={(value) => void onUpdateTripField('budgetLevel', value as TripPlannerState['budgetLevel'])}
-                        >
-                          <SelectTrigger className="h-7 w-auto min-w-[88px] border-0 bg-transparent px-0 text-sm font-medium shadow-none focus:ring-0">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="low">{formatBudgetLevel('low')}</SelectItem>
-                            <SelectItem value="mid">{formatBudgetLevel('mid')}</SelectItem>
-                            <SelectItem value="high">{formatBudgetLevel('high')}</SelectItem>
-                            <SelectItem value="luxury">{formatBudgetLevel('luxury')}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="flex min-h-11 items-center gap-3 rounded-full border bg-background/80 px-4 py-2">
-                        <span className="trip-planner-label text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Ritmo</span>
-                        <Select
-                          value={plannerState.pace || 'balanced'}
-                          disabled={isDraftPlanner}
-                          onValueChange={(value) => void onUpdateTripField('pace', value as TripPlannerState['pace'])}
-                        >
-                          <SelectTrigger className="h-7 w-auto min-w-[92px] border-0 bg-transparent px-0 text-sm font-medium shadow-none focus:ring-0">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="relaxed">{formatPaceLabel('relaxed')}</SelectItem>
-                            <SelectItem value="balanced">{formatPaceLabel('balanced')}</SelectItem>
-                            <SelectItem value="fast">{formatPaceLabel('fast')}</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <div className="w-full">
+                <TripPlannerMap
+                  segments={plannerState.segments}
+                  days={plannerState.days}
+                  activeCategories={mapActiveCategories}
+                  isResolvingLocations={isResolvingLocations}
+                  locationWarning={plannerLocationWarning}
+                  draftPhrase={isDraftGenerating ? DRAFT_GENERATING_PHRASES[draftPhraseIndex] : null}
+                  onSelectSegment={handleSelectSegmentFromMap}
+                  onAddHotelToSegment={isDraftPlanner
+                    ? undefined
+                    : ((segmentId, placeCandidate) => void onSelectHotelPlaceFromMap(segmentId, placeCandidate))}
+                  onRequestAddPlaceToPlanner={isDraftPlanner
+                    ? undefined
+                    : ((payload) => setPendingMapPlaceAssignment(payload))}
+                  onAutoFillRealPlaces={isDraftPlanner
+                    ? undefined
+                    : ((payload) => void onAutoFillSegmentWithRealPlaces(payload.segmentId, payload.placesByCategory))}
+                />
               </div>
+
             </CardContent>
           </Card>
 
@@ -893,12 +850,17 @@ export default function TripPlannerWorkspace({
               <Card
                 key={segment.id}
                 id={`planner-segment-${segment.id}`}
-                className="overflow-hidden"
+                className="relative overflow-hidden"
                 ref={(node) => {
                   segmentRefs.current[segment.id] = node;
                 }}
                 data-segment-id={segment.id}
               >
+                {segment.contentStatus === 'loading' && (
+                  <div className="planner-segment-progress pointer-events-none absolute inset-x-4 top-0 z-10 h-[3px] rounded-b-full">
+                    <div className="planner-segment-progress__bar h-full" />
+                  </div>
+                )}
                 <CardHeader className="border-b bg-muted/30">
                   <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
                     <div>
@@ -929,33 +891,15 @@ export default function TripPlannerWorkspace({
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {segment.contentStatus === 'skeleton' || segment.contentStatus === 'loading' || segment.contentStatus === 'error' ? (
+                      {segment.contentStatus === 'error' && (
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => void onEnsureSegmentEnriched(segment.id)}
-                          disabled={isDraftPlanner || isLoadingPlanner || segment.contentStatus === 'loading'}
-                        >
-                          {segment.contentStatus === 'loading' ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <Bot className="h-4 w-4 mr-2" />
-                          )}
-                          {segment.contentStatus === 'error' ? 'Reintentar tramo' : 'Completar tramo'}
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void onRegenerateSegment(segment.id)}
                           disabled={isDraftPlanner || isLoadingPlanner}
                         >
-                          {activePlannerMutation?.type === 'regen_segment' && activePlannerMutation.segmentId === segment.id ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <RefreshCcw className="h-4 w-4 mr-2" />
-                          )}
-                          Regenerar tramo
+                          <Bot className="h-4 w-4 mr-2" />
+                          Reintentar tramo
                         </Button>
                       )}
                     </div>
@@ -992,6 +936,25 @@ export default function TripPlannerWorkspace({
                           </div>
                         </div>
 
+                        {segment.highlights && segment.highlights.length > 0 && (
+                          <div className="rounded-xl border bg-background/80 p-4">
+                            <p className="trip-planner-label text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Principales actividades
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {segment.highlights.map((highlight) => (
+                                <Badge
+                                  key={`${segment.id}-${highlight}`}
+                                  variant="secondary"
+                                  className="rounded-full px-3 py-1 text-[11px] font-medium"
+                                >
+                                  {highlight}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {segment.days.map((day) => (
                           <div key={day.id} className="rounded-xl border bg-background p-4">
                             <div className="flex flex-wrap items-center gap-2">
@@ -1011,12 +974,31 @@ export default function TripPlannerWorkspace({
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      segment.days.map((day) => (
-                        <Card key={day.id}>
-                          <CardHeader className="pb-3">
-                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                              <div>
+	                    ) : (
+	                      <div className="space-y-4">
+	                        {segment.highlights && segment.highlights.length > 0 && (
+	                          <div className="rounded-xl border bg-background/80 p-4">
+	                            <p className="trip-planner-label text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+	                              Principales actividades
+	                            </p>
+	                            <div className="mt-3 flex flex-wrap gap-2">
+	                              {segment.highlights.map((highlight) => (
+	                                <Badge
+	                                  key={`${segment.id}-ready-${highlight}`}
+	                                  variant="secondary"
+	                                  className="rounded-full px-3 py-1 text-[11px] font-medium"
+	                                >
+	                                  {highlight}
+	                                </Badge>
+	                              ))}
+	                            </div>
+	                          </div>
+	                        )}
+	                        {segment.days.map((day) => (
+	                        <Card key={day.id}>
+	                          <CardHeader className="pb-3">
+	                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+	                              <div>
                                 <CardTitle className="trip-planner-title text-base">
                                   Día {day.dayNumber}: {day.title}
                                 </CardTitle>
@@ -1025,19 +1007,6 @@ export default function TripPlannerWorkspace({
                                 </p>
                               </div>
                               <div className="flex gap-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => void onRegenerateDay(segment.id, day.id)}
-                                    disabled={isDraftPlanner || isLoadingPlanner}
-                                  >
-                                    {activePlannerMutation?.type === 'regen_day' && activePlannerMutation.segmentId === segment.id && activePlannerMutation.dayId === day.id ? (
-                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    ) : (
-                                      <RefreshCcw className="h-4 w-4 mr-2" />
-                                    )}
-                                    Regenerar día
-                                  </Button>
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -1065,14 +1034,19 @@ export default function TripPlannerWorkspace({
                                               {activity.time}
                                             </Badge>
                                           )}
-                                          {activity.category && (
-                                            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[11px] font-medium">
-                                              {activity.category}
-                                            </Badge>
-                                          )}
-                                          <p className="trip-planner-label text-sm font-medium">
-                                            {activity.title}
-                                          </p>
+	                                          {activity.category && (
+	                                            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[11px] font-medium">
+	                                              {activity.category}
+	                                            </Badge>
+	                                          )}
+	                                          {activity.source === 'google_maps' && (
+	                                            <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px] font-medium">
+	                                              Lugar real
+	                                            </Badge>
+	                                          )}
+	                                          <p className="trip-planner-label text-sm font-medium">
+	                                            {activity.title}
+	                                          </p>
                                         </div>
                                         {activity.description && (
                                           <p className="trip-planner-body mt-1 text-xs text-muted-foreground">{activity.description}</p>
@@ -1110,119 +1084,26 @@ export default function TripPlannerWorkspace({
                                   ))}
                                 </div>
                               </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      ))
-                    )}
-                  </div>
+	                            )}
+	                          </CardContent>
+	                        </Card>
+	                      ))}
+	                      </div>
+	                    )}
+	                  </div>
 
                   <div className="space-y-4">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="trip-planner-title flex items-center gap-2 text-base">
-                          <CalendarDays className="h-4 w-4 text-primary" />
-                          Hoteles de inventario
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <PlannerHotelMatchPanel
-                          segment={segment}
-                          disabled={isDraftPlanner}
-                          hasExactDates={!plannerState.isFlexibleDates && Boolean((segment.startDate || plannerState.startDate) && (segment.endDate || plannerState.endDate))}
-                          travelers={plannerState.travelers}
-                          onResolveInventoryMatch={onResolveInventoryMatch}
-                          onConfirmInventoryHotelMatch={onConfirmInventoryHotelMatch}
-                          onRefreshQuotedHotel={onRefreshQuotedHotel}
-                        />
-                        {segment.hotelPlan.searchStatus === 'loading' ? (
-                          <div className="planner-panel-fade-in">
-                            <PlannerCircularLoadingState
-                              label={`Buscando hoteles en ${formatDestinationLabel(segment.city)}`}
-                              sublabel="Estamos consultando opciones reales para este destino."
-                            />
-                          </div>
-                        ) : (
-                          <>
-                            <div className="planner-panel-fade-in">
-                              <p className="trip-planner-body text-xs text-muted-foreground">{getHotelStatusText(segment)}</p>
-                              {segment.hotelPlan.error && (
-                                <p className="trip-planner-body text-xs text-destructive">{segment.hotelPlan.error}</p>
-                              )}
-                            </div>
-                          </>
-                        )}
-                        {segment.hotelPlan.searchStatus !== 'loading' && !plannerState.isFlexibleDates && (segment.startDate || plannerState.startDate) && (segment.endDate || plannerState.endDate) && (
-                          <div className="planner-panel-fade-in space-y-3">
-                            {segment.hotelPlan.hotelRecommendations.slice(0, 3).map((hotel) => {
-                              const hotelId = getPlannerHotelDisplayId(hotel);
-                              const selected = segment.hotelPlan.selectedHotelId === hotelId;
-                              const primaryRoom = getPrimaryPlannerHotelRoom(hotel);
-                              const hotelCategory = formatPlannerHotelCategory(hotel.category);
-                              const travelerSummary = formatPlannerTravelerSummary(hotel);
-                              const totalPrice = formatPlannerPrice(primaryRoom?.total_price, primaryRoom?.currency);
-                              const nightlyPrice = formatPlannerPrice(primaryRoom?.price_per_night, primaryRoom?.currency);
-                              return (
-                                <button
-                                  key={hotelId}
-                                  type="button"
-                                  className={`w-full rounded-xl border p-3 text-left transition ${selected ? 'border-primary bg-primary/5 shadow-sm' : 'hover:bg-muted/40'} ${isDraftPlanner ? 'cursor-not-allowed opacity-70' : ''}`}
-                                  disabled={isDraftPlanner}
-                                  onClick={() => void onSelectHotel(segment.id, hotelId)}
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <p className="trip-planner-label text-sm font-semibold">{hotel.name}</p>
-                                      <p className="trip-planner-body mt-1 text-xs text-muted-foreground">
-                                        {hotel.address || formatDestinationLabel(hotel.city)}
-                                      </p>
-                                    </div>
-                                    {hotelCategory && (
-                                      <Badge variant={selected ? 'default' : 'secondary'} className="shrink-0 rounded-full px-2 py-0.5 text-[11px]">
-                                        {hotelCategory}
-                                      </Badge>
-                                    )}
-                                  </div>
-
-                                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                                    <span>{formatDateRange(hotel.check_in, hotel.check_out)}</span>
-                                    <span>{hotel.nights} noche{hotel.nights === 1 ? '' : 's'}</span>
-                                    {travelerSummary && <span>{travelerSummary}</span>}
-                                  </div>
-
-                                  <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2">
-                                    <p className="trip-planner-label text-xs font-medium text-foreground">
-                                      {formatPlannerRoomLabel(hotel)}
-                                    </p>
-                                    {typeof primaryRoom?.availability === 'number' && (
-                                      <p className="trip-planner-body mt-1 text-[11px] text-muted-foreground">
-                                        Disponibilidad: {primaryRoom.availability}
-                                      </p>
-                                    )}
-                                  </div>
-
-                                  <div className="mt-3 flex items-end justify-between gap-3">
-                                    <div>
-                                      <p className="trip-planner-label text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                                        Total
-                                      </p>
-                                      <p className="trip-planner-label text-sm font-semibold text-foreground">
-                                        {totalPrice || 'Consultar'}
-                                      </p>
-                                    </div>
-                                    {nightlyPrice && (
-                                      <p className="trip-planner-body text-xs text-muted-foreground">
-                                        {nightlyPrice} por noche
-                                      </p>
-                                    )}
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                    <PlannerHotelInventorySection
+                      segment={segment}
+                      disabled={isDraftPlanner}
+                      hasExactDates={!plannerState.isFlexibleDates && Boolean((segment.startDate || plannerState.startDate) && (segment.endDate || plannerState.endDate))}
+                      travelers={plannerState.travelers}
+                      statusText={getHotelStatusText(segment)}
+                      onSelectHotel={onSelectHotel}
+                      onResolveInventoryMatch={onResolveInventoryMatch}
+                      onConfirmInventoryHotelMatch={onConfirmInventoryHotelMatch}
+                      onRefreshQuotedHotel={onRefreshQuotedHotel}
+                    />
 
                     {segmentIndex > 0 && (
                       <Card>

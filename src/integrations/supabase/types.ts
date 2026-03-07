@@ -178,6 +178,7 @@ export type Database = {
           phone_number_id: string | null
           state: Database["public"]["Enums"]["conversation_state"]
           tenant_id: string | null
+          workspace_mode: Database["public"]["Enums"]["conversation_workspace_mode"]
         }
         Insert: {
           agency_id?: string | null
@@ -190,6 +191,7 @@ export type Database = {
           phone_number_id?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
           tenant_id?: string | null
+          workspace_mode?: Database["public"]["Enums"]["conversation_workspace_mode"]
         }
         Update: {
           agency_id?: string | null
@@ -202,6 +204,7 @@ export type Database = {
           phone_number_id?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
           tenant_id?: string | null
+          workspace_mode?: Database["public"]["Enums"]["conversation_workspace_mode"]
         }
         Relationships: [
           {
@@ -880,6 +883,7 @@ export type Database = {
           state: Database["public"]["Enums"]["conversation_state"]
           tenant_id: string
           tenant_name: string
+          workspace_mode: Database["public"]["Enums"]["conversation_workspace_mode"]
         }[]
       }
       get_user_agency_id: { Args: never; Returns: string }
@@ -890,6 +894,10 @@ export type Database = {
       is_same_agency: { Args: { _agency_id: string }; Returns: boolean }
       is_same_tenant: { Args: { _tenant_id: string }; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
+      search_conversations_by_content: {
+        Args: { p_query: string }
+        Returns: { conversation_id: string; snippet: string; matched_at: string }[]
+      }
       record_rate_limit_usage: {
         Args: {
           p_action: string
@@ -904,6 +912,7 @@ export type Database = {
       auth_provider: "email" | "google"
       conversation_channel: "wa" | "web"
       conversation_state: "active" | "closed" | "pending"
+      conversation_workspace_mode: "standard" | "planner"
       integration_status: "active" | "pending" | "disabled"
       lead_status: "new" | "quoted" | "negotiating" | "won" | "lost"
       message_role: "user" | "assistant" | "system"
@@ -1040,6 +1049,7 @@ export const Constants = {
       auth_provider: ["email", "google"],
       conversation_channel: ["wa", "web"],
       conversation_state: ["active", "closed", "pending"],
+      conversation_workspace_mode: ["standard", "planner"],
       integration_status: ["active", "pending", "disabled"],
       lead_status: ["new", "quoted", "negotiating", "won", "lost"],
       message_role: ["user", "assistant", "system"],

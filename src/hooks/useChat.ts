@@ -1,9 +1,40 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import type { ConversationWithAgency, ConversationWorkspaceMode } from '@/features/chat/types/chat';
 
 type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 type MessageRow = Database['public']['Tables']['messages']['Row'];
+type ConversationRpcRow = Database['public']['Functions']['get_conversations_with_agency']['Returns'][number];
+type ConversationLike = Partial<ConversationRow> & Partial<ConversationRpcRow>;
+
+function isWorkspaceModeSchemaError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
+  const details = 'details' in error && typeof error.details === 'string' ? error.details : '';
+  const hint = 'hint' in error && typeof error.hint === 'string' ? error.hint : '';
+  const combined = `${message} ${details} ${hint}`.toLowerCase();
+
+  return combined.includes('workspace_mode');
+}
+
+function inferConversationWorkspaceMode(conversation: ConversationLike | null | undefined): ConversationWorkspaceMode {
+  if (conversation?.workspace_mode === 'planner') {
+    return 'planner';
+  }
+
+  return conversation?.external_key === 'Planificador de Viajes' ? 'planner' : 'standard';
+}
+
+function normalizeConversation<T extends ConversationLike>(conversation: T): T & { workspace_mode: ConversationWorkspaceMode } {
+  return {
+    ...conversation,
+    workspace_mode: inferConversationWorkspaceMode(conversation),
+  };
+}
 
 // ✅ Global Set to track processed message IDs across ALL instances (prevents duplicates from multiple listeners)
 const globalProcessedMessageIds = new Set<string>();
@@ -58,7 +89,7 @@ export function setRefreshMessagesCallback(callback: ((conversationId: string) =
 }
 
 export function useConversations() {
-  const [conversations, setConversations] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<ConversationWithAgency[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadConversations = useCallback(async () => {
@@ -76,8 +107,11 @@ export function useConversations() {
 
       if (error) throw error;
 
-      // @ts-ignore - Data type from RPC is compatible with array
-      setConversations(data || []);
+      const normalizedConversations = ((data || []) as ConversationWithAgency[]).map((conversation) =>
+        normalizeConversation(conversation)
+      );
+
+      setConversations(normalizedConversations);
     } catch (error) {
       console.error('Error loading conversations:', error);
     } finally {
@@ -155,6 +189,7 @@ export function useConversations() {
     user_id?: string;
     status?: 'active' | 'closed';
     channel?: 'web' | 'whatsapp';
+    workspaceMode?: ConversationWorkspaceMode;
     meta?: Record<string, unknown>;
     userData?: { agency_id: string | null; tenant_id: string | null; role: string }; // ⚡ OPTIMIZATION: Accept cached user data
   }) => {
@@ -205,6 +240,7 @@ export function useConversations() {
         external_key: params?.title || defaultTitle,
         channel: (params?.channel === 'whatsapp' ? 'wa' : params?.channel || 'web') as 'web' | 'wa',
         state: (params?.status || 'active') as 'active' | 'closed' | 'pending',
+        workspace_mode: (params?.workspaceMode || 'standard') as ConversationWorkspaceMode,
         agency_id: userData.agency_id || null, // NULL for OWNER and SUPERADMIN
         tenant_id: userData.tenant_id || null, // NULL for OWNER, required for SUPERADMIN
         created_by: user.id, // Set conversation owner
@@ -214,11 +250,25 @@ export function useConversations() {
       console.log('📤 [SUPABASE] About to INSERT into conversations table');
       console.log('📋 Data to insert:', newConversation);
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('conversations')
         .insert(newConversation)
         .select()
         .single();
+
+      if (error && isWorkspaceModeSchemaError(error)) {
+        console.warn('⚠️ [SUPABASE] workspace_mode is not available in this database yet, retrying without that column');
+
+        const { workspace_mode, ...legacyConversation } = newConversation;
+        const retryResult = await supabase
+          .from('conversations')
+          .insert(legacyConversation)
+          .select()
+          .single();
+
+        data = retryResult.data;
+        error = retryResult.error;
+      }
 
       console.log('📨 [SUPABASE] INSERT response received');
       console.log('✅ Success:', !error);
@@ -230,11 +280,13 @@ export function useConversations() {
         throw error;
       }
 
+      const normalizedConversation = normalizeConversation(data);
+
       console.log('🔄 [SUPABASE] Updating local conversations state');
-      setConversations(prev => [data, ...prev]);
+      setConversations(prev => [normalizedConversation, ...prev]);
 
       console.log('✅ [SUPABASE] createConversation completed successfully');
-      return data;
+      return normalizedConversation;
     } catch (error) {
       console.error('❌ [SUPABASE] Error in createConversation process:', error);
       throw error;
@@ -252,8 +304,10 @@ export function useConversations() {
 
       if (error) throw error;
 
+      const normalizedConversation = normalizeConversation(data);
+
       setConversations(prev =>
-        prev.map(conv => conv.id === id ? data : conv)
+        prev.map(conv => conv.id === id ? normalizedConversation : conv)
       );
     } catch (error) {
       console.error('Error updating conversation state:', error);
@@ -275,8 +329,10 @@ export function useConversations() {
 
       if (error) throw error;
 
+      const normalizedConversation = normalizeConversation(data);
+
       setConversations(prev =>
-        prev.map(conv => conv.id === id ? data : conv)
+        prev.map(conv => conv.id === id ? normalizedConversation : conv)
       );
     } catch (error) {
       console.error('Error updating conversation title:', error);
@@ -292,6 +348,46 @@ export function useConversations() {
     updateConversationState,
     updateConversationTitle
   };
+}
+
+export function useConversationSearch() {
+  const [searchResults, setSearchResults] = useState<Map<string, string>>(new Map());
+  const [searching, setSearching] = useState(false);
+  const counterRef = useRef(0);
+
+  const searchMessages = useCallback(async (query: string) => {
+    const id = ++counterRef.current;
+    setSearching(true);
+
+    try {
+      const { data, error } = await supabase.rpc('search_conversations_by_content', { p_query: query });
+
+      if (id !== counterRef.current) return; // stale
+
+      if (error) {
+        console.error('[useConversationSearch] RPC error:', error);
+        setSearchResults(new Map());
+      } else {
+        const map = new Map<string, string>();
+        for (const row of data ?? []) {
+          map.set(row.conversation_id, row.snippet);
+        }
+        setSearchResults(map);
+      }
+    } catch {
+      if (id === counterRef.current) setSearchResults(new Map());
+    } finally {
+      if (id === counterRef.current) setSearching(false);
+    }
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    counterRef.current++;
+    setSearchResults(new Map());
+    setSearching(false);
+  }, []);
+
+  return { searchResults, searching, searchMessages, clearSearch };
 }
 
 export function useMessages(conversationId: string | null) {

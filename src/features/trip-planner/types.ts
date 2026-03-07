@@ -32,6 +32,7 @@ export type PlannerActivityType =
   | 'unknown';
 export type PlannerSchedulingConfidence = 'high' | 'medium' | 'low';
 export type PlannerSegmentContentStatus = 'skeleton' | 'loading' | 'ready' | 'error';
+export type PlannerSegmentRealPlacesStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export interface PlannerActivity {
   id: string;
@@ -102,11 +103,14 @@ export interface PlannerPlaceCandidate {
   isOpenNow?: boolean;
   category: PlannerPlaceCategory;
   activityType?: PlannerActivityType;
-  source?: 'google_maps';
+  source?: 'google_maps' | 'inventory';
 }
 
 export interface PlannerPlaceHotelCandidate extends PlannerPlaceCandidate {
   category: 'hotel';
+  hotelId?: string;
+  hotel?: LocalHotelData | null;
+  provider?: LocalHotelData['provider'];
 }
 
 export interface PlannerInventoryHotelCandidate {
@@ -179,8 +183,11 @@ export interface PlannerSegment {
   nights?: number;
   order: number;
   summary?: string;
+  highlights?: string[];
   contentStatus?: PlannerSegmentContentStatus;
   contentError?: string;
+  realPlacesStatus?: PlannerSegmentRealPlacesStatus;
+  realPlacesError?: string;
   hotelPlan: SegmentHotelPlan;
   transportIn?: PlannerTransport | null;
   transportOut?: PlannerTransport | null;

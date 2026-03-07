@@ -90,8 +90,9 @@ export default function TripPlannerStarterTemplate({
             </div>
           )}
 
-          <div className="overflow-hidden rounded-[28px] border border-primary/15 shadow-sm">
-            <div className="relative h-[320px] sm:h-[380px]">
+          <div className="w-full">
+            <div className="overflow-hidden rounded-[28px] border border-primary/15 shadow-sm">
+              <div className="relative h-[320px] sm:h-[380px]">
               {HAS_PLANNER_GOOGLE_MAPS ? (
                 <APIProvider
                   apiKey={PLANNER_GOOGLE_MAPS_API_KEY}
@@ -132,6 +133,7 @@ export default function TripPlannerStarterTemplate({
                 </div>
               </div>
             </div>
+          </div>
           </div>
 
           <div className="grid gap-4 @4xl:grid-cols-[1.2fr,0.8fr]">

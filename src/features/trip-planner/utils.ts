@@ -150,6 +150,18 @@ function normalizePlannerLocation(rawLocation: any, fallbackCity: string, fallba
   };
 }
 
+function normalizePlannerHighlights(rawHighlights: any): string[] {
+  return uniqueStringList(
+    safeArray<any>(rawHighlights).map((item) => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') {
+        return item.title || item.name || item.label;
+      }
+      return undefined;
+    })
+  ).slice(0, 4);
+}
+
 function normalizePlannerPlaceHotelCandidate(rawCandidate: any) {
   if (!rawCandidate?.placeId || !rawCandidate?.name) {
     return null;
@@ -172,6 +184,9 @@ function normalizePlannerPlaceHotelCandidate(rawCandidate: any) {
     category: (rawCandidate.category || 'hotel') as PlannerPlaceCategory,
     activityType: rawCandidate.activityType,
     source: rawCandidate.source || 'google_maps',
+    hotelId: rawCandidate.hotelId,
+    hotel: rawCandidate.hotel || null,
+    provider: rawCandidate.provider,
   };
 }
 
@@ -239,8 +254,11 @@ function normalizeSegment(rawSegment: any, index: number): PlannerSegment {
     location: normalizePlannerLocation(rawSegment?.location, city, rawSegment?.country),
     order: rawSegment?.order ?? index,
     summary: rawSegment?.summary,
+    highlights: normalizePlannerHighlights(rawSegment?.highlights),
     contentStatus: (rawSegment?.contentStatus || 'ready') as PlannerSegmentContentStatus,
     contentError: rawSegment?.contentError,
+    realPlacesStatus: rawSegment?.realPlacesStatus || 'idle',
+    realPlacesError: rawSegment?.realPlacesError,
     startDate,
     endDate,
     nights: rawSegment?.nights ?? days.length,
@@ -313,6 +331,7 @@ function buildDraftSegment(
       ? 'Preparando la propuesta base para este destino.'
       : `Organizando el tramo desde ${formatDestinationLabel(previousCity || '')} hacia ${formatDestinationLabel(city)}.`,
     contentStatus: 'loading',
+    realPlacesStatus: 'idle',
     startDate: undefined,
     endDate: undefined,
     nights: undefined,
@@ -582,7 +601,7 @@ export function formatPlannerHotelCategory(category?: string): string | undefine
   if (match) {
     const stars = Math.round(Number(match[1].replace(',', '.')));
     if (Number.isFinite(stars) && stars > 0) {
-      return `${stars} estrella${stars === 1 ? '' : 's'}`;
+      return '⭐'.repeat(Math.max(1, Math.min(5, stars)));
     }
   }
 
