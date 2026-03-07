@@ -10,6 +10,7 @@ import {
   formatRelativeValidationTime,
   getPlannerHotelDisplayId,
   getPrimaryPlannerHotelRoom,
+  isEurovipsInventoryHotel,
 } from '../utils';
 import PlannerCircularLoadingState from './PlannerCircularLoadingState';
 import PlannerHotelInventoryDetailPanel from './PlannerHotelInventoryDetailPanel';
@@ -42,11 +43,11 @@ export default function PlannerHotelInventorySection({
 
   const inventoryHotels = useMemo(() => {
     const eurovipsHotels = segment.hotelPlan.hotelRecommendations.filter(
-      (hotel) => hotel.provider !== 'HOTELBEDS'
+      isEurovipsInventoryHotel
     );
     const confirmedHotel = segment.hotelPlan.confirmedInventoryHotel;
 
-    if (!confirmedHotel || confirmedHotel.provider === 'HOTELBEDS') {
+    if (!isEurovipsInventoryHotel(confirmedHotel)) {
       return eurovipsHotels;
     }
 

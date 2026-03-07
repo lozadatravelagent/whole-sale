@@ -187,10 +187,12 @@ export default function TripPlannerWorkspace({
   const [draggedSegmentId, setDraggedSegmentId] = useState<string | null>(null);
   const [dropTargetSegmentId, setDropTargetSegmentId] = useState<string | null>(null);
   const [isReorderingRoute, setIsReorderingRoute] = useState(false);
+  const [activeMapSegmentId, setActiveMapSegmentId] = useState<string | null>(null);
   const [assistantWidth, setAssistantWidth] = useState(ASSISTANT_WIDTH_DEFAULT);
   const [isAssistantCollapsed, setIsAssistantCollapsed] = useState(false);
   const [isResizingAssistant, setIsResizingAssistant] = useState(false);
   const segmentRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const segmentVisibilityRef = useRef<Record<string, number>>({});
   const resizeStartXRef = useRef<number | null>(null);
   const resizeStartWidthRef = useRef<number | null>(null);
 
@@ -272,10 +274,76 @@ export default function TripPlannerWorkspace({
     setActiveHeaderPanel((current) => current === 'destinations' ? null : 'destinations');
   }, []);
 
+  const handleViewportSegmentSelection = useCallback((segmentId: string) => {
+    setActiveMapSegmentId((current) => current === segmentId ? current : segmentId);
+  }, []);
+
   const handleSelectSegmentFromMap = useCallback((segmentId: string) => {
+    setActiveMapSegmentId(segmentId);
     const target = document.getElementById(`planner-segment-${segmentId}`);
     target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+
+  useEffect(() => {
+    if (!plannerState?.segments.length) {
+      setActiveMapSegmentId(null);
+      segmentVisibilityRef.current = {};
+      return;
+    }
+
+    if (!activeMapSegmentId || !plannerState.segments.some((segment) => segment.id === activeMapSegmentId)) {
+      setActiveMapSegmentId(plannerState.segments[0].id);
+    }
+  }, [activeMapSegmentId, plannerState]);
+
+  useEffect(() => {
+    if (!plannerState?.segments.length || typeof IntersectionObserver === 'undefined') {
+      return;
+    }
+
+    const observedEntries = plannerState.segments
+      .map((segment) => ({
+        segmentId: segment.id,
+        node: segmentRefs.current[segment.id],
+      }))
+      .filter((entry): entry is { segmentId: string; node: HTMLDivElement } => Boolean(entry.node));
+
+    if (observedEntries.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const segmentId = (entry.target as HTMLDivElement).dataset.segmentId;
+          if (!segmentId) return;
+          segmentVisibilityRef.current[segmentId] = entry.isIntersecting ? entry.intersectionRatio : 0;
+        });
+
+        const bestVisibleSegment = plannerState.segments
+          .map((segment) => ({
+            segmentId: segment.id,
+            ratio: segmentVisibilityRef.current[segment.id] || 0,
+          }))
+          .sort((left, right) => right.ratio - left.ratio)[0];
+
+        if (bestVisibleSegment && bestVisibleSegment.ratio > 0.18) {
+          setActiveMapSegmentId((current) => current === bestVisibleSegment.segmentId ? current : bestVisibleSegment.segmentId);
+        }
+      },
+      {
+        root: null,
+        threshold: [0.2, 0.35, 0.5, 0.7],
+        rootMargin: '-18% 0px -42% 0px',
+      }
+    );
+
+    observedEntries.forEach(({ node }) => observer.observe(node));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [plannerState]);
 
   useEffect(() => {
     setMapActiveCategories(DEFAULT_MAP_ACTIVE_CATEGORIES);
@@ -825,11 +893,13 @@ export default function TripPlannerWorkspace({
                 <TripPlannerMap
                   segments={plannerState.segments}
                   days={plannerState.days}
+                  selectedSegmentId={activeMapSegmentId}
                   activeCategories={mapActiveCategories}
                   isResolvingLocations={isResolvingLocations}
                   locationWarning={plannerLocationWarning}
                   draftPhrase={isDraftGenerating ? DRAFT_GENERATING_PHRASES[draftPhraseIndex] : null}
                   onSelectSegment={handleSelectSegmentFromMap}
+                  onViewportSelectSegment={handleViewportSegmentSelection}
                   onAddHotelToSegment={isDraftPlanner
                     ? undefined
                     : ((segmentId, placeCandidate) => void onSelectHotelPlaceFromMap(segmentId, placeCandidate))}

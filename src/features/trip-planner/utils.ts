@@ -708,6 +708,10 @@ export function formatPlannerTravelerSummary(hotel: LocalHotelData): string | un
   return parts.length > 0 ? parts.join(', ') : undefined;
 }
 
+export function isEurovipsInventoryHotel(hotel?: LocalHotelData | null): hotel is LocalHotelData {
+  return Boolean(hotel) && hotel.provider !== 'HOTELBEDS';
+}
+
 export function formatPlannerRoomLabel(hotel: LocalHotelData): string {
   const room = getPrimaryPlannerHotelRoom(hotel);
   if (!room) return 'Habitacion disponible';

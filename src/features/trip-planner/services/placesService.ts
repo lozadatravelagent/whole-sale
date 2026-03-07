@@ -6,6 +6,7 @@ import {
 } from './plannerPlaceMapper';
 import type { LocalHotelData } from '@/features/chat/types/chat';
 import type { PlannerPlaceHotelCandidate } from '../types';
+import { isEurovipsInventoryHotel } from '../utils';
 
 export type PlaceDetails = {
   placeId: string;
@@ -373,8 +374,8 @@ async function geocodeInventoryHotel(
     source: 'inventory',
     hotelId: hotel.hotel_id || `${hotel.name}-${hotel.city}`,
     hotel,
-    provider: hotel.provider,
-  });
+      provider: hotel.provider,
+    });
 
   const candidate = await (async () => {
     for (const query of queries) {
@@ -455,12 +456,29 @@ export async function fetchInventoryHotelPlaces(
   limit = 12
 ): Promise<PlannerPlaceHotelCandidate[]> {
   const eurovipsHotels = hotels
-    .filter((hotel) => hotel.provider === 'EUROVIPS')
+    .filter(isEurovipsInventoryHotel)
     .slice(0, limit);
 
   const results = await Promise.all(
     eurovipsHotels.map((hotel) => geocodeInventoryHotel(placesService, hotel, city, locationBias))
   );
 
-  return results.filter((hotel): hotel is PlannerPlaceHotelCandidate => Boolean(hotel));
+  const successfulResults = results.filter((hotel): hotel is PlannerPlaceHotelCandidate => Boolean(hotel));
+
+  console.log('🗺️ [PLANNER MAP HOTELS] Inventory hotel geocoding completed', {
+    city,
+    requested: eurovipsHotels.length,
+    geocoded: successfulResults.length,
+    failed: eurovipsHotels.length - successfulResults.length,
+    failedHotels: eurovipsHotels
+      .filter((hotel, index) => !results[index])
+      .slice(0, 5)
+      .map((hotel) => ({
+        name: hotel.name,
+        address: hotel.address,
+        city: hotel.city,
+      })),
+  });
+
+  return successfulResults;
 }

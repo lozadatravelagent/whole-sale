@@ -9,7 +9,7 @@ import {
   useMap,
   useMapsLibrary,
 } from '@vis.gl/react-google-maps';
-import { AlertCircle, Calendar, Clock, Lightbulb, Loader2, MapPin, MapPinned, Route, Star } from 'lucide-react';
+import { AlertCircle, Calendar, Clock, Lightbulb, Loader2, MapPin, MapPinned, Star } from 'lucide-react';
 import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY, PLANNER_GOOGLE_MAPS_MAP_ID } from '../map';
 import type {
   PlannerActivity,
@@ -19,7 +19,7 @@ import type {
   PlannerPlaceHotelCandidate,
   PlannerSegment,
 } from '../types';
-import { formatDateRange, formatDestinationLabel, formatPlannerPrice, formatPlannerRoomLabel, formatPlannerTravelerSummary, getPrimaryPlannerHotelRoom } from '../utils';
+import { formatDateRange, formatDestinationLabel, formatPlannerPrice, formatPlannerRoomLabel, formatPlannerTravelerSummary, getPrimaryPlannerHotelRoom, isEurovipsInventoryHotel } from '../utils';
 import { resolveActivityLocation } from '../services/plannerGeocoding';
 import { fetchInventoryHotelPlaces, fetchNearbyPlacesBundle, fetchPlaceDetails, type PlaceDetails } from '../services/placesService';
 import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji, pickCanonicalPlannerPlaceCategory } from '../services/plannerPlaceMapper';
@@ -79,11 +79,13 @@ type ActivityMarkerEntry = {
 interface TripPlannerMapProps {
   segments: PlannerSegment[];
   days: number;
+  selectedSegmentId?: string | null;
   activeCategories: Record<PlannerPlaceCategory, boolean>;
   isResolvingLocations?: boolean;
   locationWarning?: string | null;
   draftPhrase?: string | null;
   onSelectSegment?: (segmentId: string) => void;
+  onViewportSelectSegment?: (segmentId: string) => void;
   onAddHotelToSegment?: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => void;
   onRequestAddPlaceToPlanner?: (payload: {
     segmentId: string;
@@ -307,6 +309,7 @@ function PlannerGoogleMapScene({
   selectedSegmentId,
   activeCategories,
   onSelectSegment,
+  onViewportSelectSegment,
   onAddHotelToSegment,
   onRequestAddPlaceToPlanner,
   onAutoFillRealPlaces,
@@ -315,6 +318,7 @@ function PlannerGoogleMapScene({
   selectedSegmentId: string | null;
   activeCategories: Record<PlannerPlaceCategory, boolean>;
   onSelectSegment: (segmentId: string) => void;
+  onViewportSelectSegment?: (segmentId: string) => void;
   onAddHotelToSegment?: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => void;
   onRequestAddPlaceToPlanner?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
   onAutoFillRealPlaces?: (payload: { segmentId: string; placesByCategory: PlacesByCategory }) => void;
@@ -352,6 +356,20 @@ function PlannerGoogleMapScene({
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
 
   useEffect(() => {
+    if (!selectedSegmentId) return;
+
+    const matchedSegment = segments.find((segment) => segment.id === selectedSegmentId) || null;
+    if (!matchedSegment && segments[0]) {
+      console.warn('🗺️ [PLANNER MAP] Selected segment is not mappable, falling back to first mapped segment', {
+        selectedSegmentId,
+        fallbackSegmentId: segments[0].id,
+        fallbackCity: segments[0].city,
+        mappedSegmentIds: segments.map((segment) => segment.id),
+      });
+    }
+  }, [segments, selectedSegmentId]);
+
+  useEffect(() => {
     if (placesLib && map && !placesServiceRef.current) {
       placesServiceRef.current = new placesLib.PlacesService(map);
       setIsPlacesServiceReady(true);
@@ -380,6 +398,32 @@ function PlannerGoogleMapScene({
         if (!center) return;
         const lat = center.lat();
         const lng = center.lng();
+
+        const nearestSegment = segments.reduce<SegmentWithLocation | null>((closest, segment) => {
+          const distance =
+            Math.pow(segment.location.lat - lat, 2) +
+            Math.pow(segment.location.lng - lng, 2);
+
+          if (!closest) {
+            return segment;
+          }
+
+          const closestDistance =
+            Math.pow(closest.location.lat - lat, 2) +
+            Math.pow(closest.location.lng - lng, 2);
+
+          return distance < closestDistance ? segment : closest;
+        }, null);
+
+        if (nearestSegment && nearestSegment.id !== selectedSegmentId) {
+          console.log('🗺️ [PLANNER MAP] Viewport changed nearest segment', {
+            previousSegmentId: selectedSegmentId,
+            nextSegmentId: nearestSegment.id,
+            nextCity: nearestSegment.city,
+          });
+          onViewportSelectSegment?.(nearestSegment.id);
+        }
+
         setFetchCenter((prev) => {
           if (!prev) return { lat, lng };
           if (Math.abs(lat - prev.lat) < 0.027 && Math.abs(lng - prev.lng) < 0.027) return prev;
@@ -393,7 +437,7 @@ function PlannerGoogleMapScene({
       clearTimeout(timer);
       google.maps.event.removeListener(listener);
     };
-  }, [map]);
+  }, [map, onViewportSelectSegment, segments, selectedSegmentId]);
 
   useEffect(() => {
     if (!selectedPlace || !selectedSegment || selectedPlace.source === 'inventory') {
@@ -477,24 +521,37 @@ function PlannerGoogleMapScene({
     void (async () => {
       try {
         const fallbackHotels = selectedSegment.hotelPlan.hotelRecommendations.filter(
-          (hotel) => hotel.provider === 'EUROVIPS'
+          isEurovipsInventoryHotel
         );
 
         let inventoryHotels: LocalHotelData[] = fallbackHotels;
         const linkedSearchId = selectedSegment.hotelPlan.linkedSearchId;
+        let storedHotelCount = 0;
 
         if (linkedSearchId) {
           const storedHotels = await getHotelsFromStorage(linkedSearchId).catch(() => null);
           if (cancelled) return;
 
           const storedEurovipsHotels = (storedHotels || []).filter(
-            (hotel): hotel is LocalHotelData => hotel.provider === 'EUROVIPS'
+            isEurovipsInventoryHotel
           );
+          storedHotelCount = storedEurovipsHotels.length;
 
           if (storedEurovipsHotels.length > inventoryHotels.length) {
             inventoryHotels = storedEurovipsHotels;
           }
         }
+
+        console.log('🗺️ [PLANNER MAP HOTELS] Segment inventory input', {
+          segmentId: selectedSegment.id,
+          city: selectedSegment.city,
+          linkedSearchId,
+          fallbackHotels: fallbackHotels.length,
+          storedHotels: storedHotelCount,
+          selectedHotelsForMap: inventoryHotels.length,
+          searchStatus: selectedSegment.hotelPlan.searchStatus,
+          hasLocation: Boolean(selectedSegment.location),
+        });
 
         if (inventoryHotels.length === 0) {
           if (cancelled) return;
@@ -517,10 +574,19 @@ function PlannerGoogleMapScene({
         if (cancelled) return;
         setInventoryHotelPlaces(results);
         setInventoryHotelsLoading(false);
+        console.log('🗺️ [PLANNER MAP HOTELS] Segment inventory markers ready', {
+          segmentId: selectedSegment.id,
+          city: selectedSegment.city,
+          markers: results.length,
+        });
       } catch {
         if (cancelled) return;
         setInventoryHotelPlaces([]);
         setInventoryHotelsLoading(false);
+        console.error('🗺️ [PLANNER MAP HOTELS] Segment inventory markers failed', {
+          segmentId: selectedSegment.id,
+          city: selectedSegment.city,
+        });
       }
     })();
 
@@ -1029,17 +1095,21 @@ function PlannerGoogleMapScene({
 export default function TripPlannerMap({
   segments,
   days,
+  selectedSegmentId: controlledSelectedSegmentId,
   activeCategories,
   isResolvingLocations = false,
   locationWarning,
   draftPhrase,
   onSelectSegment,
+  onViewportSelectSegment,
   onAddHotelToSegment,
   onRequestAddPlaceToPlanner,
   onAutoFillRealPlaces,
 }: TripPlannerMapProps) {
-  const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
+  const [uncontrolledSelectedSegmentId, setUncontrolledSelectedSegmentId] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+
+  const selectedSegmentId = controlledSelectedSegmentId ?? uncontrolledSelectedSegmentId;
 
   const mappedSegments = useMemo(
     () => segments.filter(
@@ -1050,19 +1120,44 @@ export default function TripPlannerMap({
   );
 
   useEffect(() => {
+    console.log('🗺️ [PLANNER MAP] Segment diagnostics', {
+      selectedSegmentId,
+      totalSegments: segments.length,
+      mappedSegments: mappedSegments.length,
+      unresolvedSegments: segments
+        .filter((segment) => !segment.location || !Number.isFinite(segment.location.lat) || !Number.isFinite(segment.location.lng))
+        .map((segment) => ({
+          id: segment.id,
+          city: segment.city,
+          location: segment.location,
+        })),
+      mappedSegmentIds: mappedSegments.map((segment) => ({
+        id: segment.id,
+        city: segment.city,
+      })),
+    });
+  }, [mappedSegments, segments, selectedSegmentId]);
+
+  useEffect(() => {
     if (!selectedSegmentId && mappedSegments.length > 0) {
-      setSelectedSegmentId(mappedSegments[0].id);
+      setUncontrolledSelectedSegmentId(mappedSegments[0].id);
       return;
     }
 
     if (selectedSegmentId && !mappedSegments.some((segment) => segment.id === selectedSegmentId)) {
-      setSelectedSegmentId(mappedSegments[0]?.id || null);
+      setUncontrolledSelectedSegmentId(mappedSegments[0]?.id || null);
     }
   }, [mappedSegments, selectedSegmentId]);
 
   const unresolvedCount = segments.length - mappedSegments.length;
   const destinationSummary = segments.map((segment) => formatDestinationLabel(segment.city)).join(' • ');
   const canRenderMap = HAS_PLANNER_GOOGLE_MAPS && mappedSegments.length > 0 && !mapError;
+  const footerMessage =
+    mapError ||
+    locationWarning ||
+    (!isResolvingLocations && unresolvedCount > 0
+      ? `No pudimos ubicar ${unresolvedCount} destino${unresolvedCount > 1 ? 's' : ''} en el mapa.`
+      : null);
 
   return (
     <div className="relative overflow-hidden rounded-[28px] border border-primary/15 bg-transparent shadow-sm">
@@ -1151,9 +1246,12 @@ export default function TripPlannerMap({
 	              selectedSegmentId={selectedSegmentId}
 	              activeCategories={activeCategories}
               onSelectSegment={(segmentId) => {
-                setSelectedSegmentId(segmentId);
+                if (controlledSelectedSegmentId === undefined) {
+                  setUncontrolledSelectedSegmentId(segmentId);
+                }
                 onSelectSegment?.(segmentId);
               }}
+	              onViewportSelectSegment={onViewportSelectSegment}
 	              onAddHotelToSegment={onAddHotelToSegment}
 	              onRequestAddPlaceToPlanner={onRequestAddPlaceToPlanner}
 	              onAutoFillRealPlaces={onAutoFillRealPlaces}
@@ -1162,20 +1260,14 @@ export default function TripPlannerMap({
         )}
       </div>
 
-      <div className="border-t bg-white/85 px-4 py-3 backdrop-blur">
-        <div className="flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <Route className="h-3.5 w-3.5 text-primary" />
-            {canRenderMap ? 'Google Maps interactivo con filtros de hoteles, gastronomía, museos y actividades' : 'Vista del recorrido preparada para Google Maps'}
+      {footerMessage && (
+        <div className="border-t bg-white/85 px-4 py-3 backdrop-blur">
+          <div className="flex items-center gap-2 text-xs text-amber-600">
+            <AlertCircle className="h-3.5 w-3.5" />
+            {footerMessage}
           </div>
-          {(unresolvedCount > 0 || locationWarning || mapError) && (
-            <div className="flex items-center gap-2 text-amber-600">
-              <AlertCircle className="h-3.5 w-3.5" />
-              {mapError || locationWarning || `No pudimos ubicar ${unresolvedCount} destino${unresolvedCount > 1 ? 's' : ''} en el mapa.`}
-            </div>
-          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
