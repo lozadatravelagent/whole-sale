@@ -8,7 +8,6 @@ import {
   formatPlannerHotelCategory,
   formatPlannerPrice,
   formatPlannerRoomLabel,
-  formatRelativeValidationTime,
   getHotelDistanceTag,
   getPlannerHotelDisplayId,
   getPrimaryPlannerHotelRoom,
@@ -123,11 +122,6 @@ export default function PlannerHotelInventorySection({
                 const isQuoted =
                   isSelected &&
                   (segment.hotelPlan.matchStatus === 'quoted' || segment.hotelPlan.matchStatus === 'matched');
-                const validationRelative =
-                  isSelected && segment.hotelPlan.quoteLastValidatedAt
-                    ? formatRelativeValidationTime(segment.hotelPlan.quoteLastValidatedAt)
-                    : undefined;
-
                 const hotelNameNorm = hotel.name?.trim().toLowerCase();
                 const matchedPlace = hotelPlaces?.find(
                   (p) => p.name?.trim().toLowerCase() === hotelNameNorm
@@ -167,7 +161,7 @@ export default function PlannerHotelInventorySection({
                           )}
                           {isSelected && (
                             <Badge variant={isQuoted ? 'default' : 'outline'} className="rounded-full px-2 py-0.5 text-[10px]">
-                              {isQuoted ? 'Precio real' : 'Seleccionado'}
+                              {isQuoted ? 'Precio final' : 'Seleccionado'}
                             </Badge>
                           )}
                         </div>
@@ -180,7 +174,7 @@ export default function PlannerHotelInventorySection({
                           {typeof primaryRoom?.availability === 'number' && (
                             <span>{primaryRoom.availability} disponibles</span>
                           )}
-                          {validationRelative && <span>Validado {validationRelative}</span>}
+                          {!isSelected && <span>(precio sin taxes)</span>}
                         </div>
                       </div>
 

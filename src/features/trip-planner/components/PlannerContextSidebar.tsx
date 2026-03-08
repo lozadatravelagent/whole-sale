@@ -47,7 +47,7 @@ interface PlannerContextSidebarProps {
   onResolveInventoryMatch: (segmentId: string) => Promise<void>;
   onConfirmInventoryHotelMatch: (segmentId: string, hotelId: string) => Promise<void>;
   onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
-  onSelectHotel: (segmentId: string, hotelId: string) => Promise<void>;
+  onSelectHotel: (segmentId: string, hotelId: string, roomIndex?: number) => Promise<void>;
   onSelectTransportOption: (segmentId: string, optionId: string) => Promise<void>;
   hotelPlaces?: PlannerPlaceHotelCandidate[];
   activeHotelDistanceKm?: number;

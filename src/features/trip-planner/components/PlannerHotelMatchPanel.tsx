@@ -1,16 +1,11 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, MapPin, RefreshCcw, ShieldCheck } from 'lucide-react';
+import { Loader2, MapPin, ShieldCheck } from 'lucide-react';
 import type { PlannerSegment } from '../types';
 import {
   formatPlannerHotelCategory,
   formatPlannerPrice,
   formatPlannerRoomLabel,
-  formatRelativeValidationTime,
-  getValidationFreshnessColor,
-  getPriceConfidenceLevel,
-  getPriceConfidenceLabel,
-  getPriceConfidenceBadgeClass,
   getPrimaryPlannerHotelRoom,
 } from '../utils';
 
@@ -37,27 +32,19 @@ export default function PlannerHotelMatchPanel({
   const selectedPlace = hotelPlan.selectedPlaceCandidate;
   const confirmedHotel = hotelPlan.confirmedInventoryHotel;
   const confirmedRoom = confirmedHotel ? getPrimaryPlannerHotelRoom(confirmedHotel) : undefined;
-  const confirmedPrice = confirmedRoom
-    ? formatPlannerPrice(confirmedRoom.total_price, confirmedRoom.currency)
-    : undefined;
+  const confirmedPrice = hotelPlan.budgetPrice
+    ? formatPlannerPrice(hotelPlan.budgetPrice, hotelPlan.budgetCurrency || confirmedRoom?.currency || 'USD')
+    : confirmedRoom
+      ? formatPlannerPrice(confirmedRoom.total_price, confirmedRoom.currency)
+      : undefined;
+  const hasBudgetPrice = Boolean(hotelPlan.budgetPrice);
   const isBusy = hotelPlan.matchStatus === 'matching_inventory' || hotelPlan.matchStatus === 'quoting';
 
   if (!selectedPlace && !confirmedHotel && !hotelPlan.quoteError && (hotelPlan.inventoryMatchCandidates?.length || 0) === 0) {
     return null;
   }
 
-  const isQuoted = hotelPlan.matchStatus === 'quoted' || hotelPlan.matchStatus === 'matched';
-
-  const validationRelative = hotelPlan.quoteLastValidatedAt
-    ? formatRelativeValidationTime(hotelPlan.quoteLastValidatedAt)
-    : undefined;
-  const validationColor = hotelPlan.quoteLastValidatedAt
-    ? getValidationFreshnessColor(hotelPlan.quoteLastValidatedAt)
-    : undefined;
-
-  const confidenceLevel = isQuoted ? getPriceConfidenceLevel(hotelPlan.quoteLastValidatedAt) : undefined;
-  const confidenceLabel = confidenceLevel ? getPriceConfidenceLabel(confidenceLevel) : undefined;
-  const confidenceBadgeClass = confidenceLevel ? getPriceConfidenceBadgeClass(confidenceLevel) : undefined;
+  const isQuoted = hotelPlan.matchStatus === 'quoted' || hotelPlan.matchStatus === 'matched' || hotelPlan.matchStatus === 'quoting';
 
   // --- Quoted state: clean summary only ---
   if (isQuoted && confirmedHotel) {
@@ -78,43 +65,28 @@ export default function PlannerHotelMatchPanel({
                 {hotelCategory}
               </Badge>
             )}
-            <Badge className="rounded-full px-2 py-0.5 text-[10px]">Precio final</Badge>
+            {hasBudgetPrice ? (
+              <Badge className="rounded-full px-2 py-0.5 text-[10px]">Precio final</Badge>
+            ) : (
+              <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px]">Precio estimado</Badge>
+            )}
           </div>
         </div>
 
-        <div className="mt-3 flex items-end justify-between gap-3">
+        <div className="mt-3">
           <div>
-            <p className="trip-planner-label text-lg font-bold text-primary">{confirmedPrice || 'Consultar'}</p>
+            {hotelPlan.matchStatus === 'quoting' ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-sm text-muted-foreground">Presupuestando...</span>
+              </div>
+            ) : (
+              <p className="trip-planner-label text-lg font-bold text-primary">{confirmedPrice || 'Consultar'}</p>
+            )}
             <p className="trip-planner-body mt-0.5 text-xs text-muted-foreground">
               {formatPlannerRoomLabel(confirmedHotel)}
             </p>
-            {confidenceLabel && confidenceBadgeClass && (
-              <span className={`mt-1.5 inline-block rounded-full border px-2 py-0.5 text-[10px] font-medium ${confidenceBadgeClass}`}>
-                {confidenceLabel}
-                {validationRelative ? ` (${validationRelative})` : ''}
-              </span>
-            )}
-            {!confidenceLabel && validationRelative && (
-              <p className={`mt-1.5 text-[11px] ${validationColor}`}>
-                Validado {validationRelative}
-              </p>
-            )}
           </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-8 gap-1.5 px-2 text-xs text-muted-foreground"
-            disabled={disabled || !hasExactDates || isBusy}
-            onClick={() => void onRefreshQuotedHotel(segment.id)}
-          >
-            {hotelPlan.matchStatus === 'quoting' ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCcw className="h-3.5 w-3.5" />
-            )}
-            Actualizar
-          </Button>
         </div>
 
         {hotelPlan.quoteError && (

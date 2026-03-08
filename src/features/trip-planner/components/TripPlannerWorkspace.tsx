@@ -116,7 +116,7 @@ interface TripPlannerWorkspaceProps {
   onRemoveDestination: (segmentId: string) => Promise<void>;
   onReorderDestinations: (fromSegmentId: string, toSegmentId: string) => Promise<void>;
   onEnsureSegmentEnriched: (segmentId: string) => Promise<void>;
-  onSelectHotel: (segmentId: string, hotelId: string) => Promise<void>;
+  onSelectHotel: (segmentId: string, hotelId: string, roomIndex?: number) => Promise<void>;
   onSelectHotelPlaceFromMap: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => Promise<void>;
   onAddPlaceToPlanner: (segmentId: string, input: {
     place: PlannerPlaceCandidate;

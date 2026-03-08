@@ -1,4 +1,5 @@
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { MakeBudgetParams } from '@/services/hotelSearch';
 import type { FlightData, LocalHotelData } from '@/features/chat/types/chat';
 import type {
   PlannerActivity,
@@ -718,6 +719,27 @@ export function getPriceConfidenceBadgeClass(level: PriceConfidenceLevel): strin
 
 export function getPlannerHotelDisplayId(hotel: LocalHotelData): string {
   return hotel.hotel_id || `${hotel.name}-${hotel.city}`;
+}
+
+export function buildMakeBudgetOccupancies(
+  room: { occupancy_id?: string; xml_occupancy_id?: string },
+  travelers: { adults: number; children: number; infants: number },
+  childrenAges?: number[]
+): MakeBudgetParams['occupancies'] {
+  const occupancyId = room.occupancy_id || room.xml_occupancy_id || '1';
+  const passengers: Array<{ type: 'ADT' | 'CHD' | 'CNN' | 'INF'; age?: number }> = [];
+
+  for (let i = 0; i < (travelers.adults || 2); i++) {
+    passengers.push({ type: 'ADT' });
+  }
+  for (let i = 0; i < (travelers.children || 0); i++) {
+    passengers.push({ type: 'CNN', age: childrenAges?.[i] || 8 });
+  }
+  for (let i = 0; i < (travelers.infants || 0); i++) {
+    passengers.push({ type: 'INF', age: 1 });
+  }
+
+  return [{ occupancyId, passengers }];
 }
 
 export function formatPlannerTravelerSummary(hotel: LocalHotelData): string | undefined {

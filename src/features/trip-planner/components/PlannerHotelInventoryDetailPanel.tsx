@@ -47,7 +47,7 @@ export interface PlannerHotelInventoryDetailPanelProps {
   segment: PlannerSegment;
   hasExactDates: boolean;
   disabled?: boolean;
-  onSelectHotel: (segmentId: string, hotelId: string) => Promise<void>;
+  onSelectHotel: (segmentId: string, hotelId: string, roomIndex?: number) => Promise<void>;
   onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
   distanceKm?: number;
 }
@@ -122,7 +122,7 @@ export function PlannerHotelInventoryDetailBody({
     if (disabled || selectedRoomIndex === null) return;
     setIsConfirming(true);
     try {
-      await onSelectHotel(segment.id, hotelId);
+      await onSelectHotel(segment.id, hotelId, selectedRoomIndex ?? 0);
       onConfirmed?.();
     } finally {
       setIsConfirming(false);
@@ -133,7 +133,7 @@ export function PlannerHotelInventoryDetailBody({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4 sm:px-6">
+      <div className="flex-1 overflow-x-hidden overflow-y-auto px-4 pb-6 pt-4 sm:px-6">
         <div className="space-y-5">
           <div className="space-y-3">
             {heroImage ? (

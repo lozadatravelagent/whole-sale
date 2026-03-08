@@ -3,12 +3,14 @@ import { createDebugTimer } from '@/utils/debugTiming';
 import { runWithConcurrency, type CancelToken } from '@/utils/concurrencyPool';
 import { supabase } from '@/integrations/supabase/client';
 import { handleFlightSearch, handleHotelSearch } from '@/features/chat/services/searchHandlers';
+import { makeBudget } from '@/services/hotelSearch';
 import type { LocalHotelData } from '@/features/chat/types/chat';
 import type { MessageRow } from '@/features/chat/types/chat';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { normalizePlannerDayScheduling } from './scheduling';
 import type { PlannerPlaceCandidate, PlannerPlaceCategory, PlannerPlaceHotelCandidate, TripPlannerState } from './types';
 import {
+  buildMakeBudgetOccupancies,
   buildPlannerGenerationPayload,
   createDraftPlannerFromRequest,
   formatDestinationLabel,
@@ -2156,6 +2158,9 @@ export default function useTripPlanner(
         return;
       }
 
+      const refreshedHotelId = getPlannerHotelDisplayId(selectedHotel);
+
+      // Update state with refreshed hotel data (still quoting)
       await updatePlannerState((current) => ({
         ...current,
         segments: current.segments.map((item) =>
@@ -2166,8 +2171,8 @@ export default function useTripPlanner(
                 hotelPlan: {
                   ...item.hotelPlan,
                   searchStatus: 'ready',
-                  matchStatus: 'quoted',
-                  selectedHotelId: getPlannerHotelDisplayId(selectedHotel),
+                  matchStatus: 'quoting',
+                  selectedHotelId: refreshedHotelId,
                   confirmedInventoryHotel: selectedHotel,
                   hotelRecommendations: mergePlannerHotels(
                     [selectedHotel],
@@ -2176,13 +2181,91 @@ export default function useTripPlanner(
                   ),
                   linkedSearchId: refreshedResult.hotelSearchId || item.hotelPlan.linkedSearchId,
                   quoteSearchId: refreshedResult.hotelSearchId,
-                  quoteLastValidatedAt: new Date().toISOString(),
                   quoteError: undefined,
                   error: undefined,
+                  budgetId: undefined,
+                  budgetPrice: undefined,
+                  budgetCurrency: undefined,
+                  budgetAgencyPricing: undefined,
                 },
               }
         ),
       }));
+
+      // Call makeBudget for exact pricing
+      const roomIdx = segment.hotelPlan.selectedRoomIndex ?? 0;
+      const budgetRoom = selectedHotel.rooms?.[roomIdx] || selectedHotel.rooms?.[0];
+
+      if (selectedHotel.unique_id && budgetRoom?.fare_id_broker && searchInput) {
+        try {
+          const budgetResult = await makeBudget({
+            fareId: selectedHotel.unique_id,
+            fareIdBroker: budgetRoom.fare_id_broker,
+            checkinDate: searchInput.checkinDate,
+            checkoutDate: searchInput.checkoutDate,
+            occupancies: buildMakeBudgetOccupancies(budgetRoom, {
+              adults: searchInput.adults,
+              children: searchInput.children,
+              infants: searchInput.infants,
+            }),
+          });
+
+          await updatePlannerState((current) => ({
+            ...current,
+            segments: current.segments.map((item) =>
+              item.id !== segmentId
+                ? item
+                : {
+                    ...item,
+                    hotelPlan: {
+                      ...item.hotelPlan,
+                      matchStatus: 'quoted',
+                      quoteLastValidatedAt: new Date().toISOString(),
+                      budgetId: budgetResult.budgetId,
+                      budgetPrice: budgetResult.subTotalAmount,
+                      budgetCurrency: budgetResult.currency,
+                      budgetAgencyPricing: budgetResult.agencyPricing,
+                      quoteError: budgetResult.success ? undefined : (budgetResult.error || 'Error al presupuestar'),
+                    },
+                  }
+            ),
+          }));
+        } catch (budgetErr: any) {
+          await updatePlannerState((current) => ({
+            ...current,
+            segments: current.segments.map((item) =>
+              item.id !== segmentId
+                ? item
+                : {
+                    ...item,
+                    hotelPlan: {
+                      ...item.hotelPlan,
+                      matchStatus: 'quoted',
+                      quoteLastValidatedAt: new Date().toISOString(),
+                      quoteError: `No se pudo obtener precio final: ${budgetErr.message || 'Error desconocido'}`,
+                    },
+                  }
+            ),
+          }));
+        }
+      } else {
+        // No data for makeBudget — mark as quoted with search price
+        await updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((item) =>
+            item.id !== segmentId
+              ? item
+              : {
+                  ...item,
+                  hotelPlan: {
+                    ...item.hotelPlan,
+                    matchStatus: 'quoted',
+                    quoteLastValidatedAt: new Date().toISOString(),
+                  },
+                }
+          ),
+        }));
+      }
     } catch (error: any) {
       await updatePlannerState((current) => ({
         ...current,
@@ -2209,36 +2292,114 @@ export default function useTripPlanner(
     updatePlannerState,
   ]);
 
-  const selectHotel = useCallback(async (segmentId: string, hotelId: string) => {
+  const selectHotel = useCallback(async (segmentId: string, hotelId: string, roomIndex?: number) => {
+    if (!plannerState) return;
+
+    const segment = plannerState.segments.find(s => s.id === segmentId);
+    if (!segment) return;
+
+    const selectedHotel = segment.hotelPlan.hotelRecommendations.find(
+      (hotel) => getPlannerHotelDisplayId(hotel) === hotelId
+    );
+
+    // 1) Mark hotel as selected with "quoting" state
     await updatePlannerState((current) => ({
       ...current,
-      segments: current.segments.map((segment) => {
-        if (segment.id !== segmentId) {
-          return segment;
-        }
-
-        const selectedHotel = segment.hotelPlan.hotelRecommendations.find(
-          (hotel) => getPlannerHotelDisplayId(hotel) === hotelId
-        );
-
+      segments: current.segments.map((seg) => {
+        if (seg.id !== segmentId) return seg;
         return {
-          ...segment,
+          ...seg,
           hotelPlan: {
-            ...segment.hotelPlan,
+            ...seg.hotelPlan,
             selectedHotelId: hotelId,
-            confirmedInventoryHotel: selectedHotel || segment.hotelPlan.confirmedInventoryHotel || null,
-            matchStatus: selectedHotel ? 'quoted' : (segment.hotelPlan.matchStatus || 'idle'),
-            inventoryMatchCandidates: selectedHotel ? [] : segment.hotelPlan.inventoryMatchCandidates,
-            quoteSearchId: selectedHotel ? segment.hotelPlan.linkedSearchId : segment.hotelPlan.quoteSearchId,
-            quoteLastValidatedAt: selectedHotel
-              ? new Date().toISOString()
-              : segment.hotelPlan.quoteLastValidatedAt,
-            quoteError: selectedHotel ? undefined : segment.hotelPlan.quoteError,
+            confirmedInventoryHotel: selectedHotel || seg.hotelPlan.confirmedInventoryHotel || null,
+            matchStatus: 'quoting',
+            inventoryMatchCandidates: selectedHotel ? [] : seg.hotelPlan.inventoryMatchCandidates,
+            quoteSearchId: selectedHotel ? seg.hotelPlan.linkedSearchId : seg.hotelPlan.quoteSearchId,
+            quoteError: undefined,
+            selectedRoomIndex: roomIndex ?? 0,
+            budgetId: undefined,
+            budgetPrice: undefined,
+            budgetCurrency: undefined,
+            budgetAgencyPricing: undefined,
           },
         };
-      })
+      }),
     }));
-  }, [updatePlannerState]);
+
+    // 2) Attempt makeBudget
+    const hotel = selectedHotel || segment.hotelPlan.confirmedInventoryHotel;
+    const room = hotel?.rooms?.[roomIndex ?? 0];
+    const searchInput = getSegmentHotelSearchInput(plannerState, segmentId);
+
+    if (hotel?.unique_id && room?.fare_id_broker && searchInput) {
+      try {
+        const budgetResult = await makeBudget({
+          fareId: hotel.unique_id,
+          fareIdBroker: room.fare_id_broker,
+          checkinDate: searchInput.checkinDate,
+          checkoutDate: searchInput.checkoutDate,
+          occupancies: buildMakeBudgetOccupancies(room, {
+            adults: searchInput.adults,
+            children: searchInput.children,
+            infants: searchInput.infants,
+          }),
+        });
+
+        await updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((seg) => {
+            if (seg.id !== segmentId) return seg;
+            return {
+              ...seg,
+              hotelPlan: {
+                ...seg.hotelPlan,
+                matchStatus: 'quoted',
+                quoteLastValidatedAt: new Date().toISOString(),
+                budgetId: budgetResult.budgetId,
+                budgetPrice: budgetResult.subTotalAmount,
+                budgetCurrency: budgetResult.currency,
+                budgetAgencyPricing: budgetResult.agencyPricing,
+                quoteError: budgetResult.success ? undefined : (budgetResult.error || 'Error al presupuestar'),
+              },
+            };
+          }),
+        }));
+      } catch (err: any) {
+        await updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((seg) => {
+            if (seg.id !== segmentId) return seg;
+            return {
+              ...seg,
+              hotelPlan: {
+                ...seg.hotelPlan,
+                matchStatus: 'quoted',
+                quoteLastValidatedAt: new Date().toISOString(),
+                quoteError: `No se pudo obtener precio final: ${err.message || 'Error desconocido'}`,
+              },
+            };
+          }),
+        }));
+      }
+    } else {
+      // Not enough data for makeBudget — mark as quoted with search price
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((seg) => {
+          if (seg.id !== segmentId) return seg;
+          return {
+            ...seg,
+            hotelPlan: {
+              ...seg.hotelPlan,
+              matchStatus: 'quoted',
+              quoteLastValidatedAt: new Date().toISOString(),
+            },
+          };
+        }),
+      }));
+    }
+  }, [getSegmentHotelSearchInput, plannerState, updatePlannerState]);
 
   const loadTransportForSegment = useCallback(async (segmentId: string) => {
     if (!plannerState) return;

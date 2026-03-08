@@ -158,6 +158,15 @@ export interface SegmentHotelPlan {
   quoteError?: string;
   lastSearchSignature?: string;
   error?: string;
+  budgetId?: string;
+  budgetPrice?: number;
+  budgetCurrency?: string;
+  budgetAgencyPricing?: {
+    netoAgencia: number;
+    importeBruto: number;
+    comision: number;
+  };
+  selectedRoomIndex?: number;
 }
 
 export interface PlannerTransport {
