@@ -290,13 +290,13 @@ function PlannerViewportManager({
     if (!map || typeof google === 'undefined' || currentSegments.length === 0) return;
 
     if (currentSelected) {
-      map.setCenter({ lat: currentSelected.location.lat, lng: currentSelected.location.lng });
+      map.panTo({ lat: currentSelected.location.lat, lng: currentSelected.location.lng });
       map.setZoom(12);
       return;
     }
 
     if (currentSegments.length === 1) {
-      map.setCenter({ lat: currentSegments[0].location.lat, lng: currentSegments[0].location.lng });
+      map.panTo({ lat: currentSegments[0].location.lat, lng: currentSegments[0].location.lng });
       map.setZoom(12);
       return;
     }
@@ -1325,47 +1325,6 @@ export default function TripPlannerMap({
               </p>
             </div>
           </div>
-        ) : mappedSegments.length === 0 ? (
-          <div className="relative h-full">
-            <APIProvider
-              apiKey={PLANNER_GOOGLE_MAPS_API_KEY}
-              language="es"
-              region="ES"
-            >
-              <GoogleMap
-                defaultCenter={{ lat: 30, lng: 10 }}
-                defaultZoom={2.2}
-                mapId={PLANNER_GOOGLE_MAPS_MAP_ID || undefined}
-                reuseMaps
-                disableDefaultUI
-                gestureHandling="cooperative"
-                colorScheme="LIGHT"
-                renderingType={RenderingType.VECTOR}
-                style={{ width: '100%', height: '100%' }}
-              />
-            </APIProvider>
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/60 px-6 text-center backdrop-blur-[2px]">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <MapPinned className="h-6 w-6" />
-              </div>
-              <div className="space-y-1">
-                <p className="font-medium text-slate-900">
-                  {isResolvingLocations ? 'Ubicando destinos en el mapa...' : 'Esperando destinos del viaje'}
-                </p>
-                {draftPhrase ? (
-                  <div className="h-[18px] overflow-hidden">
-                    <p key={draftPhrase} className="planner-phrase-rotate text-sm font-medium text-primary">
-                      {draftPhrase}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    {locationWarning || 'El mapa mostrará la ruta completa cuando se definan los destinos.'}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
         ) : (
           <APIProvider
             apiKey={PLANNER_GOOGLE_MAPS_API_KEY}
@@ -1377,25 +1336,62 @@ export default function TripPlannerMap({
               setMapError('No pudimos cargar Google Maps en este momento.');
             }}
           >
-	            <PlannerGoogleMapScene
-	              segments={mappedSegments}
-	              selectedSegmentId={selectedSegmentId}
-	              activeCategories={activeCategories}
-              onSelectSegment={(segmentId) => {
-                if (controlledSelectedSegmentId === undefined) {
-                  setUncontrolledSelectedSegmentId(segmentId);
-                }
-                onSelectSegment?.(segmentId);
-              }}
-	              onViewportSelectSegment={onViewportSelectSegment}
-	              onAddHotelToSegment={onAddHotelToSegment}
-	              onRequestAddPlaceToPlanner={onRequestAddPlaceToPlanner}
-	              onAutoFillRealPlaces={onAutoFillRealPlaces}
-	              onOpenPlaceDetail={onOpenPlaceDetail}
-	              onPlaceDetailsLoaded={onPlaceDetailsLoaded}
-	              fetchPlaceDetailFor={fetchPlaceDetailFor}
-	              onInventoryHotelPlacesReady={onInventoryHotelPlacesReady}
-	            />
+            <div className="relative h-full">
+              {mappedSegments.length > 0 ? (
+                <PlannerGoogleMapScene
+                  segments={mappedSegments}
+                  selectedSegmentId={selectedSegmentId}
+                  activeCategories={activeCategories}
+                  onSelectSegment={(segmentId) => {
+                    if (controlledSelectedSegmentId === undefined) {
+                      setUncontrolledSelectedSegmentId(segmentId);
+                    }
+                    onSelectSegment?.(segmentId);
+                  }}
+                  onViewportSelectSegment={onViewportSelectSegment}
+                  onAddHotelToSegment={onAddHotelToSegment}
+                  onRequestAddPlaceToPlanner={onRequestAddPlaceToPlanner}
+                  onAutoFillRealPlaces={onAutoFillRealPlaces}
+                  onOpenPlaceDetail={onOpenPlaceDetail}
+                  onPlaceDetailsLoaded={onPlaceDetailsLoaded}
+                  fetchPlaceDetailFor={fetchPlaceDetailFor}
+                  onInventoryHotelPlacesReady={onInventoryHotelPlacesReady}
+                />
+              ) : (
+                <GoogleMap
+                  defaultCenter={{ lat: 30, lng: 10 }}
+                  defaultZoom={2.2}
+                  mapId={PLANNER_GOOGLE_MAPS_MAP_ID || undefined}
+                  reuseMaps
+                  disableDefaultUI
+                  gestureHandling="cooperative"
+                  colorScheme="LIGHT"
+                  renderingType={RenderingType.VECTOR}
+                  style={{ width: '100%', height: '100%' }}
+                />
+              )}
+              <div className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/60 px-6 text-center backdrop-blur-[2px] transition-opacity duration-500 ${mappedSegments.length > 0 ? 'opacity-0' : 'opacity-100'}`}>
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <MapPinned className="h-6 w-6" />
+                </div>
+                <div className="space-y-1">
+                  <p className="font-medium text-slate-900">
+                    {isResolvingLocations ? 'Ubicando destinos en el mapa...' : 'Esperando destinos del viaje'}
+                  </p>
+                  {draftPhrase ? (
+                    <div className="h-[18px] overflow-hidden">
+                      <p key={draftPhrase} className="planner-phrase-rotate text-sm font-medium text-primary">
+                        {draftPhrase}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      {locationWarning || 'El mapa mostrará la ruta completa cuando se definan los destinos.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
           </APIProvider>
         )}
       </div>
