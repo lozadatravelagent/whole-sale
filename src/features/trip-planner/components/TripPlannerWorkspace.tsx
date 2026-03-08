@@ -162,6 +162,12 @@ const SLOT_GRADIENT: Record<string, string> = {
   evening: 'from-indigo-100 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/20',
 };
 
+const ACTIVITY_TYPE_GRADIENT: Record<string, string> = {
+  food: 'from-orange-200 to-amber-100 dark:from-orange-950/50 dark:to-amber-950/30',
+  hotel: 'from-blue-200 to-sky-100 dark:from-blue-950/50 dark:to-sky-950/30',
+  transport: 'from-slate-200 to-gray-100 dark:from-slate-950/50 dark:to-gray-950/30',
+};
+
 const SLOT_LABEL: Record<string, string> = {
   morning: 'Mañana',
   afternoon: 'Tarde',
@@ -271,7 +277,7 @@ function DayCarousel({ items, dayId, onCardClick, onAddToDay, suggestions, onLoa
                 )}
               </div>
             ) : (
-              <div className={`relative flex h-28 items-end bg-gradient-to-br ${SLOT_GRADIENT[item.slot || 'morning'] || SLOT_GRADIENT.morning}`}>
+              <div className={`relative flex h-28 items-end bg-gradient-to-br ${(item.activityType && ACTIVITY_TYPE_GRADIENT[item.activityType]) || SLOT_GRADIENT[item.slot || 'morning'] || SLOT_GRADIENT.morning}`}>
                 {item.category && (
                   <span className="absolute left-2.5 top-2.5 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
                     {item.category}

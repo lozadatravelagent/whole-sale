@@ -1356,7 +1356,7 @@ export default function TripPlannerMap({
                   fetchPlaceDetailFor={fetchPlaceDetailFor}
                   onInventoryHotelPlacesReady={onInventoryHotelPlacesReady}
                 />
-              <div className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/60 px-6 text-center backdrop-blur-[2px] transition-opacity duration-500 ${mappedSegments.length > 0 ? 'opacity-0' : 'opacity-100'}`}>
+              <div className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[linear-gradient(180deg,#f8fafc,#e2e8f0)] px-6 text-center transition-opacity duration-500 ${mappedSegments.length > 0 ? 'opacity-0' : 'opacity-100'}`}>
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <MapPinned className="h-6 w-6" />
                 </div>

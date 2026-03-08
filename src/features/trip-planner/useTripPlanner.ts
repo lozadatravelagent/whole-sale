@@ -667,7 +667,11 @@ export default function useTripPlanner(
   }, [conversationId, messages]);
 
   useEffect(() => {
-    if (!plannerState || plannerState.segments.length === 0 || isDraftPlannerState(plannerState)) {
+    // Allow location resolution for drafts that finished generating so the map
+    // can show cities while waiting for the full plan to arrive.
+    const isDraftStillGenerating = isDraftPlannerState(plannerState)
+      && plannerState?.generationMeta?.uiPhase === 'draft_generating';
+    if (!plannerState || plannerState.segments.length === 0 || isDraftStillGenerating) {
       setIsResolvingLocations(false);
       setPlannerLocationWarning(null);
       resolvingSignatureRef.current = null;
@@ -711,7 +715,9 @@ export default function useTripPlanner(
         }
 
         setPlannerState(nextState);
-        await persistPlannerState(nextState, 'system');
+        // If the current state is a draft, persist as 'draft' to preserve the
+        // isDraft flag — we only resolved locations, not promoting the draft.
+        await persistPlannerState(nextState, isDraftPlannerState(plannerState) ? 'draft' : 'system');
       })
       .catch((error) => {
         if (cancelled) return;
