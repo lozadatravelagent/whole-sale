@@ -1660,7 +1660,7 @@ export default function TripPlannerWorkspace({
                           ] as (PlannerActivity & { _slot: 'morning' | 'afternoon' | 'evening' })[];
 
                           const restaurantCards: DayCardItem[] = day.restaurants
-                            .filter((r) => r.placeId || r.name)
+                            .filter((r) => r.placeId || (r.photoUrls && r.photoUrls.length > 0))
                             .map((r) => ({
                               id: r.id,
                               title: r.name,
