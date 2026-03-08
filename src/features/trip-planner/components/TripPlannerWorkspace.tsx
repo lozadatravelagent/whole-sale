@@ -14,6 +14,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   FileDown,
   GripVertical,
   Hotel,
@@ -150,6 +151,7 @@ interface DayCardItem {
   time?: string;
   activityType?: PlannerActivity['activityType'];
   placeId?: string;
+  formattedAddress?: string;
 }
 
 const SLOT_GRADIENT: Record<string, string> = {
@@ -240,7 +242,7 @@ function DayCarousel({ items, dayId, onCardClick, onAddToDay, suggestions, onLoa
         {allItems.map((item) => (
           <div
             key={`${dayId}-${item.id}`}
-            className="group/card relative w-[240px] flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-background shadow-md transition-shadow hover:shadow-xl"
+            className="group/card relative w-[calc(33.333%-8px)] min-w-[260px] flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-background shadow-md transition-shadow hover:shadow-xl"
             onClick={() => onCardClick?.(item.id)}
           >
             {onAddToDay && item.placeId && (
@@ -258,6 +260,7 @@ function DayCarousel({ items, dayId, onCardClick, onAddToDay, suggestions, onLoa
                 <img
                   src={item.photo}
                   alt={item.title}
+                  loading="lazy"
                   className="h-36 w-full object-cover"
                 />
                 {item.category && (
@@ -298,6 +301,18 @@ function DayCarousel({ items, dayId, onCardClick, onAddToDay, suggestions, onLoa
               )}
               {item.description && (
                 <p className="line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
+              )}
+              {item.placeId && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title)}&query_place_id=${item.placeId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Ver en Google Maps
+                </a>
               )}
             </div>
           </div>
@@ -379,7 +394,7 @@ export default function TripPlannerWorkspace({
   const [placeDetailState, setPlaceDetailState] = useState<PlaceDetailData | null>(null);
   const [placeDetailSegmentId, setPlaceDetailSegmentId] = useState<string | null>(null);
   const [discoveryPlacesBySegment, setDiscoveryPlacesBySegment] = useState<Record<string, PlannerPlaceCandidate[]>>({});
-  const [discoveryVisibleCount, setDiscoveryVisibleCount] = useState<Record<string, number>>({});
+
   const segmentRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const segmentVisibilityRef = useRef<Record<string, number>>({});
   const resizeStartXRef = useRef<number | null>(null);
@@ -1604,37 +1619,54 @@ export default function TripPlannerWorkspace({
                             ...day.evening.map((a) => ({ ...a, _slot: 'evening' as const })),
                           ] as (PlannerActivity & { _slot: 'morning' | 'afternoon' | 'evening' })[];
 
-                          const dayActivities: DayCardItem[] = allActivities
-                            .filter((a) => {
-                              if ((a.activityType === 'hotel' || a.activityType === 'transport') && !a.placeId) return false;
-                              if (a.source === 'generated' && !a.placeId && (!a.photoUrls || a.photoUrls.length === 0)) return false;
-                              return true;
-                            })
-                            .map((a) => ({
-                              id: a.id,
-                              title: a.title,
-                              photo: a.photoUrls?.find(Boolean) || undefined,
-                              category: a.category,
-                              rating: a.rating,
-                              userRatingsTotal: a.userRatingsTotal,
-                              description: a.description,
-                              slot: a._slot,
-                              time: a.time,
-                              activityType: a.activityType,
-                              placeId: a.placeId,
+                          const restaurantCards: DayCardItem[] = day.restaurants
+                            .filter((r) => r.placeId || r.name)
+                            .map((r) => ({
+                              id: r.id,
+                              title: r.name,
+                              category: '🍽️ Restaurante',
+                              rating: r.rating,
+                              userRatingsTotal: r.userRatingsTotal,
+                              description: [r.type, r.priceRange].filter(Boolean).join(' · ') || undefined,
+                              activityType: 'food' as const,
+                              placeId: r.placeId,
+                              formattedAddress: r.formattedAddress,
                             }));
+
+                          const dayActivities: DayCardItem[] = [
+                            ...allActivities
+                              .filter((a) => {
+                                if ((a.activityType === 'hotel' || a.activityType === 'transport') && !a.placeId) return false;
+                                if (a.source === 'generated' && !a.placeId && (!a.photoUrls || a.photoUrls.length === 0)) return false;
+                                return true;
+                              })
+                              .map((a) => ({
+                                id: a.id,
+                                title: a.title,
+                                photo: a.photoUrls?.find(Boolean) || undefined,
+                                category: a.category,
+                                rating: a.rating,
+                                userRatingsTotal: a.userRatingsTotal,
+                                description: a.description,
+                                slot: a._slot,
+                                time: a.time,
+                                activityType: a.activityType,
+                                placeId: a.placeId,
+                                formattedAddress: a.formattedAddress,
+                              })),
+                            ...restaurantCards,
+                          ];
 
                           const usedPlaceIds = new Set(
                             segment.days
-                              .flatMap((d) => [...d.morning, ...d.afternoon, ...d.evening])
-                              .map((a) => a.placeId)
+                              .flatMap((d) => [...d.morning, ...d.afternoon, ...d.evening, ...d.restaurants])
+                              .map((a) => ('placeId' in a ? a.placeId : undefined))
                               .filter(Boolean)
                           );
                           const segmentDiscovery = discoveryPlacesBySegment[segment.id] || [];
                           const availableDiscovery = segmentDiscovery.filter((p) => !usedPlaceIds.has(p.placeId));
-                          const visibleCount = discoveryVisibleCount[day.id] || 4;
-                          const visibleSuggestions: DayCardItem[] = availableDiscovery
-                            .slice(0, visibleCount)
+                          const suggestions: DayCardItem[] = availableDiscovery
+                            .slice(0, 6)
                             .map((p) => ({
                               id: `suggest-${p.placeId}`,
                               title: p.name,
@@ -1644,8 +1676,8 @@ export default function TripPlannerWorkspace({
                               userRatingsTotal: p.userRatingsTotal,
                               placeId: p.placeId,
                               activityType: p.activityType,
+                              formattedAddress: p.formattedAddress,
                             }));
-                          const hasMoreDiscovery = availableDiscovery.length > visibleCount;
 
                           return (
                             <div key={day.id} className="space-y-3">
@@ -1661,14 +1693,7 @@ export default function TripPlannerWorkspace({
                               <DayCarousel
                                 items={dayActivities}
                                 dayId={day.id}
-                                suggestions={visibleSuggestions}
-                                hasMore={hasMoreDiscovery}
-                                onLoadMore={() => {
-                                  setDiscoveryVisibleCount((prev) => ({
-                                    ...prev,
-                                    [day.id]: (prev[day.id] || 4) + 4,
-                                  }));
-                                }}
+                                suggestions={suggestions}
                                 onCardClick={(itemId) => {
                                   const suggestPlace = segmentDiscovery.find((p) => `suggest-${p.placeId}` === itemId);
                                   if (suggestPlace) {

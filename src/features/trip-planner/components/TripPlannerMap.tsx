@@ -10,7 +10,7 @@ import {
   useMapsLibrary,
 } from '@vis.gl/react-google-maps';
 import { logTimingStep, nowMs } from '@/utils/debugTiming';
-import { AlertCircle, Calendar, Clock, Lightbulb, Loader2, MapPin, MapPinned, Star } from 'lucide-react';
+import { AlertCircle, Calendar, Clock, ExternalLink, Lightbulb, Loader2, MapPin, MapPinned, Star } from 'lucide-react';
 import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY, PLANNER_GOOGLE_MAPS_MAP_ID } from '../map';
 import type {
   PlannerActivity,
@@ -365,6 +365,12 @@ function PlannerGoogleMapScene({
   const animatedCityIdsRef = useRef<Set<string>>(new Set());
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
   const prefetchedBundlesRef = useRef<Map<string, PlacesByCategory>>(new Map());
+  const selectedSegmentRef = useRef(selectedSegment);
+  const onPlaceDetailsLoadedRef = useRef(onPlaceDetailsLoaded);
+  const fetchPlaceDetailForRef = useRef(fetchPlaceDetailFor);
+  selectedSegmentRef.current = selectedSegment;
+  onPlaceDetailsLoadedRef.current = onPlaceDetailsLoaded;
+  fetchPlaceDetailForRef.current = fetchPlaceDetailFor;
 
   useEffect(() => {
     if (!selectedSegmentId) return;
@@ -451,7 +457,8 @@ function PlannerGoogleMapScene({
   }, [map, onViewportSelectSegment, segments, selectedSegmentId]);
 
   useEffect(() => {
-    if (!selectedPlace || !selectedSegment || selectedPlace.source === 'inventory') {
+    const segment = selectedSegmentRef.current;
+    if (!selectedPlace || !segment || selectedPlace.source === 'inventory') {
       setPlaceDetails(null);
       setPlaceLoading(false);
       return;
@@ -468,31 +475,27 @@ function PlannerGoogleMapScene({
     setPlaceDetails(null);
     setPlaceLoading(true);
 
-    fetchPlaceDetails(service, selectedPlace.name, selectedSegment.city, {
-      lat: selectedPlace.lat || selectedSegment.location.lat,
-      lng: selectedPlace.lng || selectedSegment.location.lng,
+    fetchPlaceDetails(service, selectedPlace.name, segment.city, {
+      lat: selectedPlace.lat || segment.location.lat,
+      lng: selectedPlace.lng || segment.location.lng,
     }).then((details) => {
       if (cancelled) return;
       setPlaceDetails(details);
       setPlaceLoading(false);
+      if (details) onPlaceDetailsLoadedRef.current?.(details);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [selectedPlace, selectedSegment]);
+  }, [selectedPlace?.placeId, selectedSegment?.id]);
 
   useEffect(() => {
-    if (placeDetails && selectedPlace && onPlaceDetailsLoaded) {
-      onPlaceDetailsLoaded(placeDetails);
-    }
-  }, [placeDetails, selectedPlace, onPlaceDetailsLoaded]);
-
-  useEffect(() => {
-    if (!fetchPlaceDetailFor || !selectedSegment) return;
-    if (selectedPlace?.placeId === fetchPlaceDetailFor.placeId) return;
-    setSelectedPlace(fetchPlaceDetailFor);
-  }, [fetchPlaceDetailFor, selectedSegment, selectedPlace?.placeId]);
+    const target = fetchPlaceDetailForRef.current;
+    if (!target || !selectedSegment) return;
+    if (selectedPlace?.placeId === target.placeId) return;
+    setSelectedPlace(target);
+  }, [fetchPlaceDetailFor?.placeId, selectedSegment?.id, selectedPlace?.placeId]);
 
   useEffect(() => {
     if (!showCityPanel || !selectedSegment) {
@@ -1008,6 +1011,17 @@ function PlannerGoogleMapScene({
                   </div>
                 </div>
               )}
+              {selectedActivity.placeId && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedActivity.title)}&query_place_id=${selectedActivity.placeId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Ver en Google Maps
+                </a>
+              )}
             </div>
           </InfoWindow>
         )}
@@ -1079,6 +1093,18 @@ function PlannerGoogleMapScene({
                     <div>{formatPlannerTravelerSummary(selectedInventoryHotel)}</div>
                   )}
                 </div>
+              )}
+
+              {selectedPlace.placeId && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedPlace.name)}&query_place_id=${selectedPlace.placeId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Ver en Google Maps
+                </a>
               )}
 
               {selectedPlace.category === 'hotel' ? (

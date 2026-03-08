@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Clock,
+  ExternalLink,
   Globe,
   Loader2,
   MapPin,
@@ -140,6 +141,19 @@ export function PlannerPlaceDetailBody({ data, onAddToItinerary, canAdd = true }
                   try { return new URL(website).hostname; }
                   catch { return website; }
                 })()}
+              </a>
+            </div>
+          )}
+          {place.placeId && (
+            <div className="flex items-center gap-3 text-sm">
+              <ExternalLink className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.placeId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Ver en Google Maps
               </a>
             </div>
           )}
