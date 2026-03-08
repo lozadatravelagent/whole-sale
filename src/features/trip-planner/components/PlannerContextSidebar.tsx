@@ -192,6 +192,7 @@ function PlannerContextSidebarContent({
           onSelectHotel={onSelectHotel}
           onRefreshQuotedHotel={onRefreshQuotedHotel}
           distanceKm={activeHotelDistanceKm}
+          onConfirmed={onBackFromHotelDetail}
         />
       </div>
     );

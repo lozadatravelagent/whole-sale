@@ -47,8 +47,6 @@ export default function PlannerHotelMatchPanel({
   }
 
   const isQuoted = hotelPlan.matchStatus === 'quoted' || hotelPlan.matchStatus === 'matched';
-  const sourceLabel = isQuoted ? 'Precio de inventario' : 'Sugerencia del planner';
-  const sourceBadgeVariant = isQuoted ? 'default' : 'secondary';
 
   const validationRelative = hotelPlan.quoteLastValidatedAt
     ? formatRelativeValidationTime(hotelPlan.quoteLastValidatedAt)
@@ -60,13 +58,78 @@ export default function PlannerHotelMatchPanel({
   const confidenceLevel = isQuoted ? getPriceConfidenceLevel(hotelPlan.quoteLastValidatedAt) : undefined;
   const confidenceLabel = confidenceLevel ? getPriceConfidenceLabel(confidenceLevel) : undefined;
   const confidenceBadgeClass = confidenceLevel ? getPriceConfidenceBadgeClass(confidenceLevel) : undefined;
+
+  // --- Quoted state: clean summary only ---
+  if (isQuoted && confirmedHotel) {
+    const hotelCategory = formatPlannerHotelCategory(confirmedHotel.category);
+    return (
+      <div className="rounded-xl border border-primary/15 bg-primary/5 p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="trip-planner-label text-sm font-semibold text-foreground">{confirmedHotel.name}</p>
+            <p className="trip-planner-body mt-1 flex items-start gap-1 text-xs text-muted-foreground">
+              <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>{confirmedHotel.address || confirmedHotel.city}</span>
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {hotelCategory && (
+              <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px]">
+                {hotelCategory}
+              </Badge>
+            )}
+            <Badge className="rounded-full px-2 py-0.5 text-[10px]">Precio final</Badge>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div>
+            <p className="trip-planner-label text-lg font-bold text-primary">{confirmedPrice || 'Consultar'}</p>
+            <p className="trip-planner-body mt-0.5 text-xs text-muted-foreground">
+              {formatPlannerRoomLabel(confirmedHotel)}
+            </p>
+            {confidenceLabel && confidenceBadgeClass && (
+              <span className={`mt-1.5 inline-block rounded-full border px-2 py-0.5 text-[10px] font-medium ${confidenceBadgeClass}`}>
+                {confidenceLabel}
+                {validationRelative ? ` (${validationRelative})` : ''}
+              </span>
+            )}
+            {!confidenceLabel && validationRelative && (
+              <p className={`mt-1.5 text-[11px] ${validationColor}`}>
+                Validado {validationRelative}
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-8 gap-1.5 px-2 text-xs text-muted-foreground"
+            disabled={disabled || !hasExactDates || isBusy}
+            onClick={() => void onRefreshQuotedHotel(segment.id)}
+          >
+            {hotelPlan.matchStatus === 'quoting' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-3.5 w-3.5" />
+            )}
+            Actualizar
+          </Button>
+        </div>
+
+        {hotelPlan.quoteError && (
+          <p className="trip-planner-body mt-3 text-xs text-destructive">{hotelPlan.quoteError}</p>
+        )}
+      </div>
+    );
+  }
+
+  // --- Non-quoted state: show selection info + action buttons ---
   const helperText = !hasExactDates && selectedPlace
     ? 'Definí fechas exactas y te muestro si este hotel tiene precio real.'
-    : confirmedHotel
-      ? 'Ya encontramos una opción real en inventario. Si querés, podés volver a actualizar el precio.'
-      : selectedPlace
-        ? 'Primero busco el hotel equivalente en inventario. Después podés volver a actualizar el precio.'
-        : undefined;
+    : selectedPlace
+      ? 'Buscamos el hotel equivalente en inventario para cotizar el precio real.'
+      : undefined;
 
   return (
     <div className="rounded-xl border border-primary/15 bg-primary/5 p-3">
@@ -76,8 +139,8 @@ export default function PlannerHotelMatchPanel({
             <p className="trip-planner-label text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               Hotel que elegiste en el mapa
             </p>
-            <Badge variant={sourceBadgeVariant} className="rounded-full px-2 py-0.5 text-[10px]">
-              {sourceLabel}
+            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px]">
+              Sugerencia del planner
             </Badge>
           </div>
           {selectedPlace ? (
@@ -116,20 +179,6 @@ export default function PlannerHotelMatchPanel({
           )}
           Buscar este hotel en inventario
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={disabled || (!selectedPlace && !confirmedHotel) || !hasExactDates || isBusy}
-          onClick={() => void onRefreshQuotedHotel(segment.id)}
-        >
-          {hotelPlan.matchStatus === 'quoting' ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCcw className="mr-2 h-4 w-4" />
-          )}
-          Actualizar precio real
-        </Button>
       </div>
 
       {helperText && (
@@ -145,48 +194,7 @@ export default function PlannerHotelMatchPanel({
       )}
 
       {hotelPlan.quoteError && (
-        <p className="trip-planner-body mt-3 text-xs text-muted-foreground">{hotelPlan.quoteError}</p>
-      )}
-
-      {confirmedHotel && (
-        <div className="mt-3 rounded-lg border bg-background/80 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="trip-planner-label text-sm font-semibold text-foreground">{confirmedHotel.name}</p>
-              <p className="trip-planner-body mt-1 text-xs text-muted-foreground">
-                {confirmedHotel.address || confirmedHotel.city}
-              </p>
-              {selectedPlace && selectedPlace.name !== confirmedHotel.name && (
-                <p className="trip-planner-body mt-1 text-[11px] text-muted-foreground/70">
-                  Elegiste en mapa: {selectedPlace.name} · En inventario aparece como: {confirmedHotel.name}
-                  {formatPlannerHotelCategory(confirmedHotel.category) ? ` · ${formatPlannerHotelCategory(confirmedHotel.category)}` : ''}
-                </p>
-              )}
-            </div>
-            {formatPlannerHotelCategory(confirmedHotel.category) && (
-              <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px]">
-                {formatPlannerHotelCategory(confirmedHotel.category)}
-              </Badge>
-            )}
-          </div>
-          <div className="mt-2 flex items-end justify-between gap-3">
-            <div>
-              <p className="trip-planner-label text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-                Precio real de inventario
-              </p>
-              <p className="trip-planner-label text-sm font-semibold text-foreground">{confirmedPrice || 'Consultar'}</p>
-              {confidenceLabel && confidenceBadgeClass && (
-                <span className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-[10px] font-medium ${confidenceBadgeClass}`}>
-                  {confidenceLabel}
-                  {validationRelative ? ` (${validationRelative})` : ''}
-                </span>
-              )}
-            </div>
-            <p className="trip-planner-body text-xs text-muted-foreground">
-              {formatPlannerRoomLabel(confirmedHotel)}
-            </p>
-          </div>
-        </div>
+        <p className="trip-planner-body mt-3 text-xs text-destructive">{hotelPlan.quoteError}</p>
       )}
 
       {hotelPlan.matchStatus === 'needs_confirmation' && (hotelPlan.inventoryMatchCandidates?.length || 0) > 0 && (
@@ -234,12 +242,6 @@ export default function PlannerHotelMatchPanel({
             );
           })}
         </div>
-      )}
-
-      {confirmedHotel && hotelPlan.quoteLastValidatedAt && validationRelative && !confidenceLabel && (
-        <p className={`trip-planner-body mt-3 text-[11px] ${validationColor}`}>
-          Ultima consulta de precio: {validationRelative}
-        </p>
       )}
     </div>
   );

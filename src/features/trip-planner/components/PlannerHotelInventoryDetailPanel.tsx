@@ -16,7 +16,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Check, ExternalLink, Hotel, MapPin, Phone } from 'lucide-react';
+import { Check, ExternalLink, Hotel, Loader2, MapPin, Phone } from 'lucide-react';
 import type { LocalHotelData } from '@/features/chat/types/chat';
 import type { PlannerSegment } from '../types';
 import {
@@ -82,7 +82,8 @@ export function PlannerHotelInventoryDetailBody({
   disabled = false,
   onSelectHotel,
   distanceKm,
-}: Omit<PlannerHotelInventoryDetailPanelProps, 'open' | 'onOpenChange'>) {
+  onConfirmed,
+}: Omit<PlannerHotelInventoryDetailPanelProps, 'open' | 'onOpenChange'> & { onConfirmed?: () => void }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedRoomIndex, setSelectedRoomIndex] = useState<number | null>(null);
   const hotelId = getPlannerHotelDisplayId(hotel);
@@ -109,11 +110,21 @@ export function PlannerHotelInventoryDetailBody({
     [hotel.check_in, hotel.check_out, hotel.nights, travelerSummary]
   );
 
+  const [isConfirming, setIsConfirming] = useState(false);
+
   const handleRoomClick = (index: number) => {
     if (disabled) return;
     setSelectedRoomIndex(index);
-    if (!isSelected) {
-      void onSelectHotel(segment.id, hotelId);
+  };
+
+  const handleConfirmHotel = async () => {
+    if (disabled || selectedRoomIndex === null) return;
+    setIsConfirming(true);
+    try {
+      await onSelectHotel(segment.id, hotelId);
+      onConfirmed?.();
+    } finally {
+      setIsConfirming(false);
     }
   };
 
@@ -205,6 +216,16 @@ export function PlannerHotelInventoryDetailBody({
                 ))}
               </div>
             )}
+
+            {selectedRoom && (
+              <div className="flex items-center justify-between rounded-2xl border-2 border-primary/30 bg-primary/5 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Habitación seleccionada</p>
+                  <p className="mt-0.5 text-sm font-medium text-foreground">{selectedRoom.type || 'Estándar'}</p>
+                </div>
+                <p className="shrink-0 text-lg font-bold text-primary">{formatPlannerPrice(selectedRoom.total_price, selectedRoom.currency)}</p>
+              </div>
+            )}
           </div>
 
           {(hotel.description || roomLabel) && (
@@ -286,38 +307,6 @@ export function PlannerHotelInventoryDetailBody({
             </div>
           </section>
 
-          {selectedRoom && (
-            <section className="rounded-3xl border-2 border-primary/30 bg-primary/5 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                Resumen de tu selección
-              </p>
-              <div className="mt-3 space-y-1.5 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Hotel</span>
-                  <span className="font-medium text-foreground">{hotel.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Habitación</span>
-                  <span className="font-medium text-foreground">{selectedRoom.type || 'Estándar'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Noches</span>
-                  <span className="font-medium text-foreground">{hotel.nights}</span>
-                </div>
-                {selectedRoom.price_per_night != null && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Precio por noche</span>
-                    <span className="font-medium text-foreground">{formatPlannerPrice(selectedRoom.price_per_night, selectedRoom.currency)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between border-t border-primary/20 pt-2">
-                  <span className="font-semibold text-foreground">Total</span>
-                  <span className="text-lg font-bold text-primary">{formatPlannerPrice(selectedRoom.total_price, selectedRoom.currency)}</span>
-                </div>
-              </div>
-            </section>
-          )}
-
           {(hotel.policy_cancellation || hotel.policy_lodging) && (
             <section className="rounded-3xl border border-border/70 bg-card/80 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -345,6 +334,40 @@ export function PlannerHotelInventoryDetailBody({
           )}
         </div>
       </div>
+
+      {selectedRoom && (
+        <div className="shrink-0 border-t border-border/70 bg-background/95 px-4 py-4 backdrop-blur sm:px-6">
+          <div className="mb-3 space-y-1.5 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{selectedRoom.type || 'Estándar'}</span>
+              <span className="font-medium text-foreground">{hotel.nights} noche{hotel.nights === 1 ? '' : 's'}</span>
+            </div>
+            {selectedRoom.price_per_night != null && (
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Precio por noche</span>
+                <span>{formatPlannerPrice(selectedRoom.price_per_night, selectedRoom.currency)}</span>
+              </div>
+            )}
+            <div className="flex justify-between border-t border-primary/20 pt-2">
+              <span className="font-semibold text-foreground">Total</span>
+              <span className="text-lg font-bold text-primary">{formatPlannerPrice(selectedRoom.total_price, selectedRoom.currency)}</span>
+            </div>
+          </div>
+          <Button
+            type="button"
+            className="w-full"
+            disabled={disabled || isConfirming}
+            onClick={() => void handleConfirmHotel()}
+          >
+            {isConfirming ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="mr-2 h-4 w-4" />
+            )}
+            Presupuestar y agregar al itinerario
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -368,7 +391,7 @@ export default function PlannerHotelInventoryDetailPanel(props: PlannerHotelInve
             <DrawerTitle>{title}</DrawerTitle>
             <DrawerDescription>{description}</DrawerDescription>
           </DrawerHeader>
-          <PlannerHotelInventoryDetailBody {...props} />
+          <PlannerHotelInventoryDetailBody {...props} onConfirmed={() => onOpenChange(false)} />
         </DrawerContent>
       </Drawer>
     );
@@ -381,7 +404,7 @@ export default function PlannerHotelInventoryDetailPanel(props: PlannerHotelInve
           <SheetTitle>{title}</SheetTitle>
           <SheetDescription>{description}</SheetDescription>
         </SheetHeader>
-        <PlannerHotelInventoryDetailBody {...props} />
+        <PlannerHotelInventoryDetailBody {...props} onConfirmed={() => onOpenChange(false)} />
       </SheetContent>
     </Sheet>
   );
