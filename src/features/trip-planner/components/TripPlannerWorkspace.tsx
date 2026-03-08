@@ -19,7 +19,6 @@ import {
   GripVertical,
   Hotel,
   Loader2,
-  MapPin,
   PanelRightClose,
   Plane,
   Plus,
@@ -52,6 +51,7 @@ import type { PlaceDetailData } from './PlannerPlaceDetailPanel';
 import TripPlannerMap from './TripPlannerMap';
 import PlannerDateSelectionModal from './PlannerDateSelectionModal';
 import PlannerMapPlaceAssignModal from './PlannerMapPlaceAssignModal';
+import PlannerChatDestinationCards from './PlannerChatDestinationCards';
 import TripPlannerStarterTemplate from './TripPlannerStarterTemplate';
 import TripPlannerWorkspaceSkeleton from './TripPlannerWorkspaceSkeleton';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
@@ -574,21 +574,6 @@ export default function TripPlannerWorkspace({
     () => plannerState?.segments.map((segment) => formatDestinationLabel(segment.city)) ?? [],
     [plannerState]
   );
-
-  const destinationDiscoveryHighlights = useMemo(() => {
-    if (!plannerState || Object.keys(discoveryPlacesBySegment).length === 0) return null;
-    const highlights = plannerState.segments.map((segment) => {
-      const places = discoveryPlacesBySegment[segment.id];
-      if (!places?.length) return null;
-      const topPlaces = places
-        .filter((p) => p.category !== 'hotel')
-        .sort((a, b) => ((b.rating || 0) * (b.userRatingsTotal || 0)) - ((a.rating || 0) * (a.userRatingsTotal || 0)))
-        .slice(0, 5);
-      if (topPlaces.length === 0) return null;
-      return { city: segment.city, places: topPlaces };
-    }).filter(Boolean) as { city: string; places: PlannerPlaceCandidate[] }[];
-    return highlights.length > 0 ? highlights : null;
-  }, [plannerState, discoveryPlacesBySegment]);
 
   const isDraftPlanner = Boolean(plannerState?.generationMeta?.isDraft);
   const plannerDateSummary = plannerState?.isFlexibleDates
@@ -1900,42 +1885,12 @@ export default function TripPlannerWorkspace({
               </div>
             );
           })}
-          {!isTyping && !isDraftPlanner && destinationDiscoveryHighlights && (
-            <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-primary/[0.04] to-transparent p-4">
-              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-                <MapPin className="h-3.5 w-3.5" />
-                Qué hacer en cada destino
-              </p>
-              <div className="mt-3 space-y-4">
-                {destinationDiscoveryHighlights.map((dh) => (
-                  <div key={dh.city}>
-                    <p className="text-sm font-semibold text-foreground">{formatDestinationLabel(dh.city)}</p>
-                    <div className="mt-2 space-y-1.5">
-                      {dh.places.map((place) => (
-                        <div key={place.placeId} className="flex items-center gap-2.5">
-                          {place.photoUrls?.[0] ? (
-                            <img src={place.photoUrls[0]} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
-                          ) : (
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                              <MapPin className="h-3.5 w-3.5 text-primary" />
-                            </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-[13px] font-medium text-foreground">{place.name}</p>
-                            {place.rating != null && (
-                              <p className="text-[11px] text-muted-foreground">
-                                <Star className="mr-0.5 inline h-3 w-3 text-amber-500" />
-                                {place.rating.toFixed(1)}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {!isTyping && plannerState && !isDraftPlanner && (
+            <PlannerChatDestinationCards
+              destinations={plannerState.destinations}
+              segments={plannerState.segments}
+              discoveryPlacesBySegment={discoveryPlacesBySegment}
+            />
           )}
           {isTyping && (
             <div className="trip-planner-body rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">
