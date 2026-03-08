@@ -116,9 +116,9 @@ function DestinationHighlightsFetcher({
 // Card components
 // ---------------------------------------------------------------------------
 
-function PlaceCard({ place }: { place: PlaceHighlight }) {
+function PlaceCard({ place, onClick }: { place: PlaceHighlight; onClick?: () => void }) {
   return (
-    <div className="w-40 shrink-0 overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md">
+    <div className="w-40 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md" onClick={onClick}>
       {place.photo ? (
         <img
           src={place.photo}
@@ -152,9 +152,9 @@ function PlaceCard({ place }: { place: PlaceHighlight }) {
   );
 }
 
-function DiscoveryPlaceCard({ place }: { place: PlannerPlaceCandidate }) {
+function DiscoveryPlaceCard({ place, onClick }: { place: PlannerPlaceCandidate; onClick?: () => void }) {
   return (
-    <div className="w-40 shrink-0 overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md">
+    <div className="w-40 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md" onClick={onClick}>
       {place.photoUrls?.[0] ? (
         <img
           src={place.photoUrls[0]}
@@ -196,12 +196,14 @@ interface PlannerChatDestinationCardsProps {
   destinations: string[];
   segments: { id: string; city: string }[];
   discoveryPlacesBySegment: Record<string, PlannerPlaceCandidate[]>;
+  onPlaceClick?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
 }
 
 export default function PlannerChatDestinationCards({
   destinations,
   segments,
   discoveryPlacesBySegment,
+  onPlaceClick,
 }: PlannerChatDestinationCardsProps) {
   const [fetchedHighlights, setFetchedHighlights] = useState<
     DestinationHighlight[] | null
@@ -231,9 +233,9 @@ export default function PlannerChatDestinationCards({
               (a.rating || 0) * (a.userRatingsTotal || 0)
           )
           .slice(0, 4);
-        return top.length > 0 ? { city: segment.city, places: top } : null;
+        return top.length > 0 ? { segmentId: segment.id, city: segment.city, places: top } : null;
       })
-      .filter(Boolean) as { city: string; places: PlannerPlaceCandidate[] }[];
+      .filter(Boolean) as { segmentId: string; city: string; places: PlannerPlaceCandidate[] }[];
 
     if (highlightsFromDiscovery.length === 0) return null;
 
@@ -249,7 +251,11 @@ export default function PlannerChatDestinationCards({
               style={{ scrollbarWidth: 'none' }}
             >
               {dh.places.map((place) => (
-                <DiscoveryPlaceCard key={place.placeId} place={place} />
+                <DiscoveryPlaceCard
+                  key={place.placeId}
+                  place={place}
+                  onClick={() => onPlaceClick?.({ segmentId: dh.segmentId, place })}
+                />
               ))}
             </div>
           </div>
@@ -277,7 +283,28 @@ export default function PlannerChatDestinationCards({
               style={{ scrollbarWidth: 'none' }}
             >
               {dh.places.map((place) => (
-                <PlaceCard key={place.placeId} place={place} />
+                <PlaceCard
+                  key={place.placeId}
+                  place={place}
+                  onClick={() => {
+                    const seg = segments.find(s =>
+                      s.city.toLowerCase().includes(dh.city.toLowerCase())
+                      || dh.city.toLowerCase().includes(s.city.toLowerCase())
+                    );
+                    if (!seg || !onPlaceClick) return;
+                    onPlaceClick({
+                      segmentId: seg.id,
+                      place: {
+                        placeId: place.placeId,
+                        name: place.name,
+                        photoUrls: place.photo ? [place.photo] : [],
+                        rating: place.rating,
+                        userRatingsTotal: place.userRatingsTotal,
+                        category: 'activity',
+                      },
+                    });
+                  }}
+                />
               ))}
             </div>
           </div>

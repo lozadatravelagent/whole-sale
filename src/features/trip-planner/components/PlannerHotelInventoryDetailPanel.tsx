@@ -92,6 +92,7 @@ export function PlannerHotelInventoryDetailBody({
   const travelerSummary = formatPlannerTravelerSummary(hotel);
   const roomLabel = formatPlannerRoomLabel(hotel);
   const isSelected = segment.hotelPlan.selectedHotelId === hotelId;
+  const hasOtherHotelBooked = Boolean(segment.hotelPlan.selectedHotelId && segment.hotelPlan.selectedHotelId !== hotelId);
   const images = Array.isArray(hotel.images) ? hotel.images.filter(Boolean) : [];
   const heroImage = images[activeImageIndex] || images[0];
   const roomCount = hotel.rooms?.length || 0;
@@ -353,6 +354,11 @@ export function PlannerHotelInventoryDetailBody({
               <span className="text-lg font-bold text-primary">{formatPlannerPrice(selectedRoom.total_price, selectedRoom.currency)}</span>
             </div>
           </div>
+          {hasOtherHotelBooked && (
+            <p className="mb-2 text-xs text-muted-foreground">
+              Reemplaza a <span className="font-medium text-foreground">{segment.hotelPlan.confirmedInventoryHotel?.name || 'el hotel actual'}</span> en este tramo.
+            </p>
+          )}
           <Button
             type="button"
             className="w-full"
@@ -364,7 +370,7 @@ export function PlannerHotelInventoryDetailBody({
             ) : (
               <Check className="mr-2 h-4 w-4" />
             )}
-            Presupuestar y agregar al itinerario
+            {hasOtherHotelBooked ? 'Reemplazar hotel y presupuestar' : 'Presupuestar y agregar al itinerario'}
           </Button>
         </div>
       )}

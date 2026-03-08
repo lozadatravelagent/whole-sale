@@ -64,6 +64,7 @@ export interface PlannerRestaurant {
   formattedAddress?: string;
   rating?: number;
   userRatingsTotal?: number;
+  photoUrls?: string[];
   source?: 'generated' | 'user' | 'google_maps';
 }
 

@@ -3,12 +3,10 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   APIProvider,
-  Map as GoogleMap,
-  RenderingType,
   useMapsLibrary,
 } from '@vis.gl/react-google-maps';
 import { CalendarDays, MapPinned, Route, Send, Sparkles } from 'lucide-react';
-import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY, PLANNER_GOOGLE_MAPS_MAP_ID } from '../map';
+import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY } from '../map';
 
 const STARTER_CARDS = [
   {
@@ -208,29 +206,9 @@ export default function TripPlannerStarterTemplate({
           <div className="w-full">
             <div className="overflow-hidden rounded-[28px] border border-primary/15 shadow-sm">
               <div className="relative h-[320px] sm:h-[380px]">
-              {HAS_PLANNER_GOOGLE_MAPS ? (
-                <APIProvider
-                  apiKey={PLANNER_GOOGLE_MAPS_API_KEY}
-                  language="es"
-                  region="ES"
-                >
-                  <GoogleMap
-                    defaultCenter={{ lat: 30, lng: 10 }}
-                    defaultZoom={2.2}
-                    mapId={PLANNER_GOOGLE_MAPS_MAP_ID || undefined}
-                    reuseMaps
-                    disableDefaultUI
-                    gestureHandling="cooperative"
-                    colorScheme="LIGHT"
-                    renderingType={RenderingType.VECTOR}
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                </APIProvider>
-              ) : (
-                <div className="flex h-full bg-[linear-gradient(180deg,rgba(248,250,252,1),rgba(226,232,240,0.92))] p-4">
+              <div className="flex h-full bg-[linear-gradient(180deg,rgba(248,250,252,1),rgba(226,232,240,0.92))] p-4">
                   <StarterMapPlaceholder isProcessing={isProcessing} />
                 </div>
-              )}
               <div className="pointer-events-none absolute inset-x-4 top-4 z-10">
                 <div className="inline-flex items-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-4 py-3 shadow-lg backdrop-blur">
                   <MapPinned className="h-3.5 w-3.5 text-primary" />

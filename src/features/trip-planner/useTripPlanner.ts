@@ -240,8 +240,10 @@ function scoreRealPlaceCandidate(place: PlannerPlaceCandidate): number {
     : place.category === 'activity'
       ? 14
       : place.category === 'restaurant'
-        ? 7
-        : 4;
+        ? 12
+        : place.category === 'cafe'
+          ? 10
+          : 4;
   const iconicBonus = ICONIC_PLACE_KEYWORD_RE.test(place.name) ? 18 : 0;
   const genericPenalty = GENERIC_PLACE_KEYWORD_RE.test(place.name) ? 24 : 0;
 
@@ -1244,6 +1246,7 @@ export default function useTripPlanner(
                   formattedAddress: selectedPlace.formattedAddress,
                   rating: selectedPlace.rating,
                   userRatingsTotal: selectedPlace.userRatingsTotal,
+                  photoUrls: selectedPlace.photoUrls,
                   source: 'google_maps' as const,
                 },
               ];
@@ -1251,6 +1254,50 @@ export default function useTripPlanner(
 
             usedPlaceIds.add(selectedPlace.placeId);
             insertedCount += 1;
+          }
+
+          // Guarantee at least one food place per day for gastronomic variety
+          const dayHasFood = nextDay.restaurants.some((r) => r.source === 'google_maps');
+          if (!dayHasFood) {
+            const foodCandidate = sequence.find(
+              (c) => !usedPlaceIds.has(c.placeId) && isFoodLikePlannerPlace(c)
+            );
+            if (foodCandidate) {
+              const foodSlot = isTransferDay ? 'evening' : 'afternoon';
+              const foodActivity = {
+                id: `gmaps-auto-${foodCandidate.placeId}-food`,
+                time: undefined,
+                title: foodCandidate.name,
+                description: buildGoogleMapsActivityDescription(foodCandidate) || undefined,
+                category: getPlannerPlaceCategoryLabel(foodCandidate.category),
+                activityType: foodCandidate.activityType,
+                recommendedSlot: foodSlot,
+                neighborhood: foodCandidate.formattedAddress,
+                placeId: foodCandidate.placeId,
+                formattedAddress: foodCandidate.formattedAddress,
+                rating: foodCandidate.rating,
+                userRatingsTotal: foodCandidate.userRatingsTotal,
+                photoUrls: foodCandidate.photoUrls,
+                source: 'google_maps' as const,
+              };
+              nextDay[foodSlot] = [...nextDay[foodSlot], foodActivity];
+              nextDay.restaurants = [
+                ...nextDay.restaurants,
+                {
+                  id: `gmaps-auto-restaurant-${foodCandidate.placeId}`,
+                  name: foodCandidate.name,
+                  type: foodCandidate.category === 'cafe' ? 'Cafe' : 'Restaurante',
+                  placeId: foodCandidate.placeId,
+                  formattedAddress: foodCandidate.formattedAddress,
+                  rating: foodCandidate.rating,
+                  userRatingsTotal: foodCandidate.userRatingsTotal,
+                  photoUrls: foodCandidate.photoUrls,
+                  source: 'google_maps' as const,
+                },
+              ];
+              usedPlaceIds.add(foodCandidate.placeId);
+              insertedCount += 1;
+            }
           }
 
           if (titleDonor && shouldPromoteRealPlaceToDayTitle(nextDay)) {

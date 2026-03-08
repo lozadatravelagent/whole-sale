@@ -213,7 +213,7 @@ function DayCarousel({ items, dayId, onCardClick, onAddToDay, suggestions, onLoa
     el.scrollBy({ left: direction === 'left' ? -300 : 300, behavior: 'smooth' });
   }, []);
 
-  const allItems = (suggestions ? [...items, ...suggestions] : items).slice(0, 6);
+  const allItems = (suggestions ? [...items, ...suggestions] : items).slice(0, 8);
   if (allItems.length === 0) return null;
 
   return (
@@ -1658,6 +1658,7 @@ export default function TripPlannerWorkspace({
                             .map((r) => ({
                               id: r.id,
                               title: r.name,
+                              photo: r.photoUrls?.find(Boolean) || undefined,
                               category: '🍽️ Restaurante',
                               rating: r.rating,
                               userRatingsTotal: r.userRatingsTotal,
@@ -1735,7 +1736,25 @@ export default function TripPlannerWorkspace({
                                     return;
                                   }
                                   const activity = allActivities.find((a) => a.id === itemId);
-                                  if (activity) handleCardClick(activity, segment.id);
+                                  if (activity) {
+                                    handleCardClick(activity, segment.id);
+                                    return;
+                                  }
+                                  const restaurant = day.restaurants.find((r) => r.id === itemId);
+                                  if (restaurant) {
+                                    const place: PlannerPlaceCandidate = {
+                                      placeId: restaurant.placeId || restaurant.id,
+                                      name: restaurant.name,
+                                      formattedAddress: restaurant.formattedAddress,
+                                      rating: restaurant.rating,
+                                      userRatingsTotal: restaurant.userRatingsTotal,
+                                      photoUrls: restaurant.photoUrls || [],
+                                      category: 'restaurant',
+                                      activityType: 'food',
+                                      source: restaurant.source === 'google_maps' ? 'google_maps' : undefined,
+                                    };
+                                    handleOpenPlaceDetail({ segmentId: segment.id, place });
+                                  }
                                 }}
                                 onAddToDay={(itemId) => {
                                   const suggestPlace = segmentDiscovery.find((p) => `suggest-${p.placeId}` === itemId);
@@ -1890,6 +1909,7 @@ export default function TripPlannerWorkspace({
               destinations={plannerState.destinations}
               segments={plannerState.segments}
               discoveryPlacesBySegment={discoveryPlacesBySegment}
+              onPlaceClick={handleOpenPlaceDetail}
             />
           )}
           {isTyping && (

@@ -1337,8 +1337,7 @@ export default function TripPlannerMap({
             }}
           >
             <div className="relative h-full">
-              {mappedSegments.length > 0 ? (
-                <PlannerGoogleMapScene
+              <PlannerGoogleMapScene
                   segments={mappedSegments}
                   selectedSegmentId={selectedSegmentId}
                   activeCategories={activeCategories}
@@ -1357,19 +1356,6 @@ export default function TripPlannerMap({
                   fetchPlaceDetailFor={fetchPlaceDetailFor}
                   onInventoryHotelPlacesReady={onInventoryHotelPlacesReady}
                 />
-              ) : (
-                <GoogleMap
-                  defaultCenter={{ lat: 30, lng: 10 }}
-                  defaultZoom={2.2}
-                  mapId={PLANNER_GOOGLE_MAPS_MAP_ID || undefined}
-                  reuseMaps
-                  disableDefaultUI
-                  gestureHandling="cooperative"
-                  colorScheme="LIGHT"
-                  renderingType={RenderingType.VECTOR}
-                  style={{ width: '100%', height: '100%' }}
-                />
-              )}
               <div className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/60 px-6 text-center backdrop-blur-[2px] transition-opacity duration-500 ${mappedSegments.length > 0 ? 'opacity-0' : 'opacity-100'}`}>
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <MapPinned className="h-6 w-6" />
