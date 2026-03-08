@@ -362,7 +362,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
           <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-card flex items-center justify-center flex-shrink-0">
             {msg.role === 'user' ? <CircleUser className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" /> : <Sparkle className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />}
           </div>
-          <div className={`rounded-lg p-3 md:p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'} text-sm md:text-base`}>
+          <div className={`rounded-lg p-3 md:p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : ''} text-sm md:text-base`}>
 
             {/* Interactive selectors */}
             {hasCombinedTravel && combinedTravelData ? (
@@ -391,53 +391,56 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                   )}
                 </Suspense>
 
-                {plannerData && (
-                  <div className="mt-3 rounded-lg border border-primary/20 bg-background/60 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold">{plannerData.title}</p>
-                        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
-                          <li>
-                            {plannerData.days} días
-                            {plannerData.isFlexibleDates
-                              ? ` • ${formatFlexibleMonth(plannerData.flexibleMonth, plannerData.flexibleYear)}`
-                              : ` • ${formatDateRange(plannerData.startDate, plannerData.endDate)}`}
-                          </li>
-                          <li>Destinos: {plannerData.destinations.map(formatDestinationLabel).join(', ')}</li>
-                          <li>
-                            Presupuesto: {formatBudgetLevel(plannerData.budgetLevel || 'mid')} • Ritmo: {formatPaceLabel(plannerData.pace || 'balanced')}
-                          </li>
-                        </ul>
+                {plannerData && (() => {
+                  const destLabel = plannerData.destinations.map(formatDestinationLabel).join(', ');
+                  const dateLabel = plannerData.isFlexibleDates
+                    ? formatFlexibleMonth(plannerData.flexibleMonth, plannerData.flexibleYear)
+                    : formatDateRange(plannerData.startDate, plannerData.endDate);
+                  const meta = [
+                    `${plannerData.days} días`,
+                    dateLabel,
+                    destLabel,
+                  ].filter(Boolean).join(' · ');
+
+                  return (
+                    <div className="mt-3 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.04] to-transparent p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-base font-semibold text-foreground">{plannerData.title}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{meta}</p>
+                        </div>
+                        {onGoToPlanner ? (
+                          <Button size="sm" className="shrink-0 gap-1.5" onClick={onGoToPlanner}>
+                            <Wand2 className="h-3.5 w-3.5" />
+                            Abrir
+                          </Button>
+                        ) : (
+                          <Badge variant="secondary">Planificador</Badge>
+                        )}
                       </div>
-                      {onGoToPlanner ? (
-                        <Button size="sm" className="gap-1.5" onClick={onGoToPlanner}>
-                          <Wand2 className="h-3.5 w-3.5" />
-                          Ir al Planificador
-                        </Button>
-                      ) : (
-                        <Badge variant="secondary">Planificador</Badge>
+                      {plannerSegments.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {plannerSegments.slice(0, 4).map((segment) => (
+                            <span key={segment.id} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-foreground">
+                              {formatDestinationLabel(segment.city)}
+                              {segment.startDate && (
+                                <span className="text-muted-foreground">· {formatDateRange(segment.startDate, segment.endDate)}</span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
-                    <div className="mt-3 grid gap-2 md:grid-cols-2">
-                      {plannerSegments.slice(0, 4).map((segment) => (
-                        <div key={segment.id} className="rounded-md border bg-muted/40 p-2">
-                          <p className="text-xs font-medium">{formatDestinationLabel(segment.city)}</p>
-                          <p className="text-[11px] text-muted-foreground mt-1">
-                            {formatDateRange(segment.startDate, segment.endDate)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {plannerDateSelectorRequest && onOpenPlannerDateSelector && (
                   <div className="mt-3 rounded-lg border border-primary/20 bg-background/70 p-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-sm font-medium">Elegí tus fechas desde el chat</p>
+                        <p className="text-sm font-medium">Elegí las fechas de tu viaje</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Podés seleccionar un rango exacto o un mes flexible sin escribirlo a mano.
+                          Seleccioná un rango de fechas o un mes flexible y me pongo a armar todo.
                         </p>
                       </div>
                       <Button

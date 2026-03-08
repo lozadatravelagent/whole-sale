@@ -1036,7 +1036,14 @@ function generateItineraryDateClarificationMessage(
         ? suggestedRanges.map((option, index) => `${index + 1}. ${option.label}`).join('\n')
         : 'Por ejemplo:\n1. Del 2 al 11 de mayo de 2026\n2. Del 9 al 18 de mayo de 2026\n3. Del 16 al 25 de mayo de 2026';
 
-    return `Antes de armar el plan necesito que me confirmes **cuándo querés viajar**.${contextLines.length > 0 ? `\n\n${contextLines.join('\n')}` : ''}\n\nPodés elegir **fechas exactas** o usar un **mes flexible** desde el selector del chat.\n\nSi preferís responder por texto, también podés escribir algo como: **"del 6 al 15 de mayo de 2026"**.\n\n${suggestedRanges.length > 0 ? `Si querés una referencia, estas fechas podrían funcionar:\n${suggestionsBlock}` : ''}`;
+    const destText = destinations || 'tu destino';
+    const greeting = `¡Qué lindo viaje a **${destText}**! Ya me lo estoy imaginando.`;
+    const dateAsk = `Solo me falta un dato para ponerme a armar todo: **¿en qué fechas te gustaría ir?**`;
+    const suggestionsPart = suggestedRanges.length > 0
+        ? `\n\nSi te sirve como referencia, te dejo algunas opciones:\n${suggestionsBlock}`
+        : '';
+
+    return `${greeting}${contextLines.length > 0 ? `\n\n${contextLines.join('\n')}` : ''}\n\n${dateAsk}\n\nPodés escribirme algo como **"del 6 al 15 de mayo"** o elegir las fechas desde el botón de abajo.${suggestionsPart}`;
 }
 
 export function generateMissingInfoMessage(
@@ -1062,12 +1069,12 @@ export function generateMissingInfoMessage(
     }
 
     const baseMessage = requestType === 'flights'
-        ? 'Para buscar los mejores vuelos, necesito que me proporciones la siguiente información:'
+        ? '¡Me encanta! Para encontrarte los mejores vuelos necesito que me cuentes un poquito más:'
         : requestType === 'hotels'
-            ? 'Para buscar los mejores hoteles, necesito que me proporciones la siguiente información:'
+            ? '¡Genial! Para buscar los hoteles ideales necesito algunos datos más:'
             : requestType === 'itinerary'
-                ? 'Para armar tu itinerario de viaje, necesito que me proporciones la siguiente información:'
-                : 'Para buscar las mejores opciones de viaje, necesito que me proporciones la siguiente información:';
+                ? '¡Me encanta la idea del viaje! Para armar un itinerario a tu medida, necesito que me cuentes:'
+                : '¡Buenísimo! Para buscar las mejores opciones necesito un poco más de info:';
 
     const fieldsList = missingFieldsSpanish.map((field, index) =>
         `${index + 1}. **${field.charAt(0).toUpperCase() + field.slice(1)}**`
@@ -1081,7 +1088,7 @@ ${fieldsList}
 
 ${examples}
 
-Por favor, proporciona esta información para que pueda hacer una búsqueda más precisa. 😊`;
+Contame y me pongo a buscar.`;
 }
 
 // Función para generar ejemplos de los campos faltantes

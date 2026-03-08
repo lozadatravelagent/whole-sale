@@ -919,21 +919,27 @@ export function summarizePlannerForChat(plannerState: TripPlannerState): string 
   const paceLabel = formatPaceLabel(plannerState.pace);
   const budgetLabel = formatBudgetLevel(plannerState.budgetLevel);
 
-  return `🧭 **${plannerState.title}**\n\n` +
+  const destList = plannerState.destinations.map(formatDestinationLabel).join(', ');
+  const dateStr = plannerState.isFlexibleDates
+    ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
+    : plannerState.startDate || plannerState.endDate
+      ? formatDateRange(plannerState.startDate, plannerState.endDate)
+      : '';
+
+  const detailParts = [
+    `**${effectiveDays} días** por ${destList}`,
+    dateStr ? `📅 ${dateStr}` : '',
+    paceLabel ? `Ritmo ${paceLabel.toLowerCase()}` : '',
+    budgetLabel ? `Presupuesto ${budgetLabel.toLowerCase()}` : '',
+  ].filter(Boolean);
+
+  return `¡Tu viaje a **${destList}** ya está tomando forma!\n\n` +
     `${plannerState.summary}\n\n` +
-    `**Destinos:** ${plannerState.destinations.map(formatDestinationLabel).join(', ')}\n` +
-    `**Duración:** ${effectiveDays} días\n` +
-    `${plannerState.isFlexibleDates
-      ? `**Fechas:** ${formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)}\n`
-      : plannerState.startDate || plannerState.endDate
-        ? `**Fechas:** ${formatDateRange(plannerState.startDate, plannerState.endDate)}\n`
-        : ''}` +
-    `${paceLabel ? `**Ritmo:** ${paceLabel}\n` : ''}` +
-    `${budgetLabel ? `**Presupuesto:** ${budgetLabel}\n` : ''}` +
-    `\n**Tramos**\n${segmentLines}\n` +
-    `${tips ? `\n**Consejos**\n${tips}\n` : ''}` +
-    `${hasSkeletonSegments ? '\nAbrí el Planificador y voy completando cada tramo a medida que lo revisás.\n' : ''}` +
-    `\nUsá el Planificador de Viajes para editar días, destinos, hoteles y transporte.`;
+    `${detailParts.join(' · ')}\n` +
+    `\n${segmentLines}\n` +
+    `${tips ? `\n💡 ${plannerState.generalTips.slice(0, 3).join(' | ')}\n` : ''}` +
+    `${hasSkeletonSegments ? '\nEstoy completando cada tramo, podés ir revisándolos en el planificador.\n' : ''}` +
+    `\nTodo listo para que lo ajustes desde el Planificador.`;
 }
 
 export function buildPlannerPdfHtml(plannerState: TripPlannerState): string {

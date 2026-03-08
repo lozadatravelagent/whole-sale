@@ -19,10 +19,10 @@ import {
   GripVertical,
   Hotel,
   Loader2,
+  MapPin,
   PanelRightClose,
   Plane,
   Plus,
-  Sparkles,
   Star,
   Trash2,
 } from 'lucide-react';
@@ -213,7 +213,7 @@ function DayCarousel({ items, dayId, onCardClick, onAddToDay, suggestions, onLoa
     el.scrollBy({ left: direction === 'left' ? -300 : 300, behavior: 'smooth' });
   }, []);
 
-  const allItems = suggestions ? [...items, ...suggestions] : items;
+  const allItems = (suggestions ? [...items, ...suggestions] : items).slice(0, 6);
   if (allItems.length === 0) return null;
 
   return (
@@ -396,8 +396,6 @@ export default function TripPlannerWorkspace({
   const [placeDetailSegmentId, setPlaceDetailSegmentId] = useState<string | null>(null);
   const [discoveryPlacesBySegment, setDiscoveryPlacesBySegment] = useState<Record<string, PlannerPlaceCandidate[]>>({});
   const [inventoryHotelPlacesMap, setInventoryHotelPlacesMap] = useState<Record<string, PlannerPlaceHotelCandidate[]>>({});
-  const [showMissingInfoSpotlight, setShowMissingInfoSpotlight] = useState(false);
-  const missingInfoShownRef = useRef<string | null>(null);
 
   const segmentRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const segmentVisibilityRef = useRef<Record<string, number>>({});
@@ -577,6 +575,21 @@ export default function TripPlannerWorkspace({
     [plannerState]
   );
 
+  const destinationDiscoveryHighlights = useMemo(() => {
+    if (!plannerState || Object.keys(discoveryPlacesBySegment).length === 0) return null;
+    const highlights = plannerState.segments.map((segment) => {
+      const places = discoveryPlacesBySegment[segment.id];
+      if (!places?.length) return null;
+      const topPlaces = places
+        .filter((p) => p.category !== 'hotel')
+        .sort((a, b) => ((b.rating || 0) * (b.userRatingsTotal || 0)) - ((a.rating || 0) * (a.userRatingsTotal || 0)))
+        .slice(0, 5);
+      if (topPlaces.length === 0) return null;
+      return { city: segment.city, places: topPlaces };
+    }).filter(Boolean) as { city: string; places: PlannerPlaceCandidate[] }[];
+    return highlights.length > 0 ? highlights : null;
+  }, [plannerState, discoveryPlacesBySegment]);
+
   const isDraftPlanner = Boolean(plannerState?.generationMeta?.isDraft);
   const plannerDateSummary = plannerState?.isFlexibleDates
     ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
@@ -721,12 +734,23 @@ export default function TripPlannerWorkspace({
   }, [openRailForSegment]);
 
   const handleOpenPlaceDetail = useCallback((payload: { segmentId: string; place: PlannerPlaceCandidate }) => {
+    // Inventory hotels have fake placeIds (inventory:*) that can't be resolved via
+    // Google Places API.  Instead of opening the place-detail flow (which would stay
+    // stuck in "loading"), open the hotel inventory detail directly.
+    if (payload.place.source === 'inventory' && payload.place.category === 'hotel') {
+      const hotelPlace = payload.place as PlannerPlaceHotelCandidate;
+      if (hotelPlace.hotelId) {
+        openHotelDetail(payload.segmentId, hotelPlace.hotelId);
+        return;
+      }
+    }
+
     setPlaceDetailState({ place: payload.place, details: null, loading: true });
     setPlaceDetailSegmentId(payload.segmentId);
     setActiveMapSegmentId(payload.segmentId);
     setHotelDetailState(null);
     setIsContextSidebarOpen(true);
-  }, []);
+  }, [openHotelDetail]);
 
   const handlePlaceDetailsLoaded = useCallback((details: import('../services/placesService').PlaceDetails) => {
     setPlaceDetailState((prev) => prev ? { ...prev, details, loading: false } : null);
@@ -1109,33 +1133,6 @@ export default function TripPlannerWorkspace({
     };
   }, [isDraftPlanner, plannerState, typingMessage]);
 
-  const plannerMissingInfo = useMemo(() => {
-    if (!plannerState || !isDraftPlanner) return null;
-    if (plannerState.generationMeta?.uiPhase === 'draft_generating') return null;
-    const missing: string[] = [];
-    if (!plannerState.startDate && !plannerState.endDate && !plannerState.isFlexibleDates) {
-      missing.push('fechas de viaje');
-    }
-    if (plannerState.segments.length === 0) {
-      missing.push('destinos');
-    }
-    return missing.length > 0 ? missing : null;
-  }, [isDraftPlanner, plannerState]);
-
-  useEffect(() => {
-    if (!plannerMissingInfo || !plannerState) return;
-    const key = `${plannerState.id || 'unknown'}-${plannerMissingInfo.join(',')}`;
-    if (missingInfoShownRef.current === key) return;
-    missingInfoShownRef.current = key;
-    const timer = setTimeout(() => setShowMissingInfoSpotlight(true), 800);
-    return () => clearTimeout(timer);
-  }, [plannerMissingInfo, plannerState]);
-
-  useEffect(() => {
-    if (!plannerMissingInfo) {
-      setShowMissingInfoSpotlight(false);
-    }
-  }, [plannerMissingInfo]);
 
   const shouldShowInitialPlannerSkeleton = !plannerState && isLoadingPlanner;
 
@@ -1888,35 +1885,10 @@ export default function TripPlannerWorkspace({
         </div>
       </div>
       <div className="relative flex-1 overflow-y-auto p-4">
-        {showMissingInfoSpotlight && (
-          <div
-            className="absolute inset-0 z-30 bg-black/60 backdrop-blur-[2px] animate-in fade-in duration-300 cursor-pointer"
-            onClick={() => setShowMissingInfoSpotlight(false)}
-            aria-hidden="true"
-          />
-        )}
         <div className="space-y-4">
-          {visibleMessages.map((msg, index) => {
-            const isLastAssistant =
-              showMissingInfoSpotlight &&
-              msg.role === 'assistant' &&
-              index === visibleMessages.map((m) => m.role).lastIndexOf('assistant');
-
+          {visibleMessages.map((msg) => {
             return (
-              <div
-                key={msg.id}
-                className={
-                  isLastAssistant
-                    ? 'relative z-40 rounded-2xl ring-2 ring-primary/60 ring-offset-2 ring-offset-background shadow-[0_0_30px_rgba(var(--primary-rgb,59,130,246),0.35)] animate-in zoom-in-95 duration-500'
-                    : ''
-                }
-              >
-                {isLastAssistant && plannerMissingInfo && (
-                  <div className="mb-2 flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground shadow-lg animate-in slide-in-from-top-2 duration-300">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Falta info: {plannerMissingInfo.join(', ')}
-                  </div>
-                )}
+              <div key={msg.id}>
                 <MessageItem
                   msg={msg}
                   onPdfGenerated={onPdfGenerated}
@@ -1928,6 +1900,43 @@ export default function TripPlannerWorkspace({
               </div>
             );
           })}
+          {!isTyping && !isDraftPlanner && destinationDiscoveryHighlights && (
+            <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-primary/[0.04] to-transparent p-4">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                <MapPin className="h-3.5 w-3.5" />
+                Qué hacer en cada destino
+              </p>
+              <div className="mt-3 space-y-4">
+                {destinationDiscoveryHighlights.map((dh) => (
+                  <div key={dh.city}>
+                    <p className="text-sm font-semibold text-foreground">{formatDestinationLabel(dh.city)}</p>
+                    <div className="mt-2 space-y-1.5">
+                      {dh.places.map((place) => (
+                        <div key={place.placeId} className="flex items-center gap-2.5">
+                          {place.photoUrls?.[0] ? (
+                            <img src={place.photoUrls[0]} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
+                          ) : (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                              <MapPin className="h-3.5 w-3.5 text-primary" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[13px] font-medium text-foreground">{place.name}</p>
+                            {place.rating != null && (
+                              <p className="text-[11px] text-muted-foreground">
+                                <Star className="mr-0.5 inline h-3 w-3 text-amber-500" />
+                                {place.rating.toFixed(1)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {isTyping && (
             <div className="trip-planner-body rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">
               {typingMessage || 'Estoy trabajando en tu pedido...'}

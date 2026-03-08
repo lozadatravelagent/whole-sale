@@ -71,7 +71,7 @@ const MessageInput = React.memo(({
           onBlur={(e) => {
             // ✅ Removed auto-refocus on blur - was causing focus loops
           }}
-          className="flex-1 min-h-[50px] md:min-h-[60px] resize-y text-sm md:text-base"
+          className="flex-1 min-h-[80px] md:min-h-[100px] resize-y text-sm md:text-base"
           autoComplete="off"
         />
 
