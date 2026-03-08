@@ -1,3 +1,4 @@
+import { logTimingStep, nowMs } from '@/utils/debugTiming';
 import type { LocalHotelData } from '@/features/chat/types/chat';
 import type {
   PlannerInventoryHotelCandidate,
@@ -154,6 +155,7 @@ export function rankInventoryHotelsForPlace(input: {
   autoSelectedHotelId?: string;
   candidates: PlannerInventoryHotelCandidate[];
 } {
+  const t0 = nowMs();
   const candidates = input.hotels
     .map((hotel) => {
       const { score, reasons } = calculateHotelMatchScore(input.placeCandidate.name, hotel.name);
@@ -170,6 +172,7 @@ export function rankInventoryHotelsForPlace(input: {
     .sort((left, right) => right.score - left.score);
 
   if (candidates.length === 0) {
+    logTimingStep('hotel-matcher', 'rank', t0, { place: input.placeCandidate.name, status: 'not_found', compared: 0 });
     return {
       status: 'not_found',
       candidates: [],
@@ -180,26 +183,34 @@ export function rankInventoryHotelsForPlace(input: {
   const secondCandidate = candidates[1];
   const scoreGap = topCandidate.score - (secondCandidate?.score || 0);
 
+  let result: { status: 'matched' | 'needs_confirmation' | 'not_found'; autoSelectedHotelId?: string; candidates: PlannerInventoryHotelCandidate[] };
+
   if (
     topCandidate.score >= 0.88 &&
     (scoreGap >= 0.08 || !secondCandidate || secondCandidate.score < 0.75)
   ) {
-    return {
+    result = {
       status: 'matched',
       autoSelectedHotelId: topCandidate.hotelId,
       candidates: candidates.slice(0, 5),
     };
-  }
-
-  if (topCandidate.score >= 0.62) {
-    return {
+  } else if (topCandidate.score >= 0.62) {
+    result = {
       status: 'needs_confirmation',
+      candidates: candidates.slice(0, 5),
+    };
+  } else {
+    result = {
+      status: 'not_found',
       candidates: candidates.slice(0, 5),
     };
   }
 
-  return {
-    status: 'not_found',
-    candidates: candidates.slice(0, 5),
-  };
+  logTimingStep('hotel-matcher', 'rank', t0, {
+    place: input.placeCandidate.name,
+    status: result.status,
+    topScore: topCandidate.score.toFixed(2),
+    compared: input.hotels.length,
+  });
+  return result;
 }

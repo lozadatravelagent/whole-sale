@@ -1,3 +1,5 @@
+import { logTimingStep, nowMs } from '@/utils/debugTiming';
+import { runWithConcurrency } from '@/utils/concurrencyPool';
 import type { PlannerPlaceCandidate, PlannerPlaceCategory } from '../types';
 import {
   buildPlannerPlaceCandidate,
@@ -7,6 +9,13 @@ import {
 import type { LocalHotelData } from '@/features/chat/types/chat';
 import type { PlannerPlaceHotelCandidate } from '../types';
 import { isEurovipsInventoryHotel } from '../utils';
+
+export interface PlaceReview {
+  authorName: string;
+  rating: number;
+  text: string;
+  relativeTime: string;
+}
 
 export type PlaceDetails = {
   placeId: string;
@@ -20,6 +29,7 @@ export type PlaceDetails = {
   isOpenNow?: boolean;
   photoUrls: string[];
   reviewSnippet?: string;
+  reviews?: PlaceReview[];
   types?: string[];
 };
 
@@ -68,7 +78,7 @@ function mapPlaceResultToCandidate(
     formattedAddress: result.vicinity,
     rating: result.rating,
     userRatingsTotal: result.user_ratings_total,
-    photoUrls: (result.photos ?? []).slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 400 })),
+    photoUrls: (result.photos ?? []).slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 1600 })),
     types: result.types,
     lat: result.geometry?.location?.lat(),
     lng: result.geometry?.location?.lng(),
@@ -263,7 +273,14 @@ export async function fetchPlaceDetails(
 
           const photoUrls = (place.photos ?? [])
             .slice(0, 3)
-            .map((photo) => photo.getUrl({ maxWidth: 400 }));
+            .map((photo) => photo.getUrl({ maxWidth: 1600 }));
+
+          const reviews: PlaceReview[] = (place.reviews ?? []).slice(0, 5).map((r) => ({
+            authorName: r.author_name || 'Anónimo',
+            rating: r.rating ?? 0,
+            text: r.text || '',
+            relativeTime: r.relative_time_description || '',
+          }));
 
           const details: PlaceDetails = {
             placeId: place.place_id || placeId,
@@ -277,6 +294,7 @@ export async function fetchPlaceDetails(
             isOpenNow: place.opening_hours?.isOpen?.(),
             photoUrls,
             reviewSnippet: place.reviews?.[0]?.text,
+            reviews: reviews.length > 0 ? reviews : undefined,
             types: place.types,
           };
 
@@ -299,6 +317,7 @@ export async function fetchNearbyPlacesByCategory(
     return nearbyPlacesCache.get(key)!;
   }
 
+  const t0 = nowMs();
   const requests = buildNearbyRequests(category, city, location);
   const results = await Promise.all(requests.map((request) => runNearbySearch(placesService, request)));
   const places = dedupePlaces(
@@ -309,6 +328,7 @@ export async function fetchNearbyPlacesByCategory(
       .filter((place) => shouldKeepPlaceForCategory(category, place))
   ).slice(0, 48);
 
+  logTimingStep('places-service', `fetchNearby:${category}`, t0, { city, results: places.length });
   nearbyPlacesCache.set(key, places);
   return places;
 }
@@ -319,17 +339,22 @@ export async function fetchNearbyPlacesBundle(
   location: { lat: number; lng: number },
   categories: NearbyCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity']
 ): Promise<Record<NearbyCategory, PlannerPlaceCandidate[]>> {
+  const t0 = nowMs();
   const entries = await Promise.all(
     categories.map(async (category) => [category, await fetchNearbyPlacesByCategory(placesService, city, location, category)] as const)
   );
 
-  return {
+  const bundle = {
     hotel: entries.find(([category]) => category === 'hotel')?.[1] || [],
     restaurant: entries.find(([category]) => category === 'restaurant')?.[1] || [],
     cafe: entries.find(([category]) => category === 'cafe')?.[1] || [],
     museum: entries.find(([category]) => category === 'museum')?.[1] || [],
     activity: entries.find(([category]) => category === 'activity')?.[1] || [],
   };
+
+  const totalPlaces = Object.values(bundle).reduce((sum, arr) => sum + arr.length, 0);
+  logTimingStep('places-service', 'fetchBundle', t0, { city, categories: categories.length, totalPlaces });
+  return bundle;
 }
 
 export async function fetchNearbyHotels(
@@ -459,8 +484,9 @@ export async function fetchInventoryHotelPlaces(
     .filter(isEurovipsInventoryHotel)
     .slice(0, limit);
 
-  const results = await Promise.all(
-    eurovipsHotels.map((hotel) => geocodeInventoryHotel(placesService, hotel, city, locationBias))
+  const results = await runWithConcurrency(
+    eurovipsHotels.map((hotel) => () => geocodeInventoryHotel(placesService, hotel, city, locationBias)),
+    4
   );
 
   const successfulResults = results.filter((hotel): hotel is PlannerPlaceHotelCandidate => Boolean(hotel));

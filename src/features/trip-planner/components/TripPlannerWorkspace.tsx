@@ -7,46 +7,48 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import MessageInput from '@/features/chat/components/MessageInput';
 import MessageItem from '@/features/chat/components/MessageItem';
-import type { MessageRow } from '@/features/chat/types/chat';
+import type { LocalHotelData, MessageRow } from '@/features/chat/types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import {
   Bot,
-  CalendarDays,
   Check,
+  ChevronLeft,
   ChevronRight,
   FileDown,
   GripVertical,
+  Hotel,
   Loader2,
   PanelRightClose,
   Plane,
   Plus,
+  Star,
   Trash2,
 } from 'lucide-react';
-import type { PlannerPlaceCandidate, PlannerPlaceCategory, PlannerPlaceHotelCandidate, TripPlannerState } from '../types';
+import type {
+  PlannerActivity,
+  PlannerPlaceCandidate,
+  PlannerPlaceCategory,
+  PlannerPlaceHotelCandidate,
+  TripPlannerState,
+} from '../types';
 import {
   formatBudgetLevel,
   formatDateRange,
   formatDayBlockLabel,
   formatDestinationLabel,
   formatFlexibleMonth,
-  formatPlannerFlightBaggage,
-  formatPlannerFlightCabin,
-  formatPlannerFlightDuration,
-  formatPlannerFlightPrice,
-  getPlannerFlightSegments,
-  formatPlannerFlightStops,
-  formatPlannerFlightTimeRange,
   formatPaceLabel,
-  getPlannerFlightRoute,
+  getPlannerHotelDisplayId,
+  isEurovipsInventoryHotel,
   formatShortDate,
   buildPlannerPdfHtml,
 } from '../utils';
-import { getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
+import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
+import PlannerContextSidebar from './PlannerContextSidebar';
+import type { PlaceDetailData } from './PlannerPlaceDetailPanel';
 import TripPlannerMap from './TripPlannerMap';
 import PlannerDateSelectionModal from './PlannerDateSelectionModal';
 import PlannerMapPlaceAssignModal from './PlannerMapPlaceAssignModal';
-import PlannerCircularLoadingState from './PlannerCircularLoadingState';
-import PlannerHotelInventorySection from './PlannerHotelInventorySection';
 import TripPlannerStarterTemplate from './TripPlannerStarterTemplate';
 import TripPlannerWorkspaceSkeleton from './TripPlannerWorkspaceSkeleton';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
@@ -68,6 +70,13 @@ const PLANNER_MAP_FILTER_LABELS: Record<PlannerPlaceCategory, string> = {
   museum: 'Museos',
   activity: 'Que hacer',
 };
+
+type PlannerRailTab = 'hotels' | 'transport';
+
+interface PlannerHotelDetailState {
+  segmentId: string;
+  hotelId: string;
+}
 
 interface TripPlannerWorkspaceProps {
   selectedConversation: string | null;
@@ -129,6 +138,185 @@ interface TripPlannerWorkspaceProps {
   ) => Promise<void>;
 }
 
+interface DayCardItem {
+  id: string;
+  title: string;
+  photo?: string;
+  category?: string;
+  rating?: number;
+  userRatingsTotal?: number;
+  description?: string;
+  slot?: 'morning' | 'afternoon' | 'evening';
+  time?: string;
+  activityType?: PlannerActivity['activityType'];
+  placeId?: string;
+}
+
+const SLOT_GRADIENT: Record<string, string> = {
+  morning: 'from-amber-100 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/20',
+  afternoon: 'from-sky-100 to-blue-50 dark:from-sky-950/40 dark:to-blue-950/20',
+  evening: 'from-indigo-100 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/20',
+};
+
+const SLOT_LABEL: Record<string, string> = {
+  morning: 'Mañana',
+  afternoon: 'Tarde',
+  evening: 'Noche',
+};
+
+const ACTIVITY_EMOJI: Record<string, string> = {
+  museum: '🏛️',
+  landmark: '🏰',
+  walk: '🚶',
+  food: '🍽️',
+  market: '🛒',
+  nightlife: '🌙',
+  shopping: '🛍️',
+  nature: '🌿',
+  family: '👨‍👩‍👧‍👦',
+  wellness: '🧘',
+  transport: '🚌',
+  hotel: '🏨',
+  viewpoint: '👀',
+  culture: '🎭',
+  experience: '✨',
+  unknown: '📍',
+};
+
+function DayCarousel({ items, dayId, onCardClick, onAddToDay, suggestions, onLoadMore, hasMore }: { items: DayCardItem[]; dayId: string; onCardClick?: (itemId: string) => void; onAddToDay?: (itemId: string) => void; suggestions?: DayCardItem[]; onLoadMore?: () => void; hasMore?: boolean }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateScrollState();
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    return () => el.removeEventListener('scroll', updateScrollState);
+  }, [updateScrollState, items.length, suggestions?.length]);
+
+  const scroll = useCallback((direction: 'left' | 'right') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction === 'left' ? -300 : 300, behavior: 'smooth' });
+  }, []);
+
+  const allItems = suggestions ? [...items, ...suggestions] : items;
+  if (allItems.length === 0) return null;
+
+  return (
+    <div className="group/carousel relative -mx-1">
+      {canScrollLeft && (
+        <button
+          type="button"
+          onClick={() => scroll('left')}
+          className="absolute -left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border bg-background shadow-lg opacity-0 transition-opacity group-hover/carousel:opacity-100"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      )}
+      {canScrollRight && (
+        <button
+          type="button"
+          onClick={() => scroll('right')}
+          className="absolute -right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border bg-background shadow-lg opacity-0 transition-opacity group-hover/carousel:opacity-100"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      )}
+      <div
+        ref={scrollRef}
+        className="flex gap-3 overflow-x-auto scroll-smooth px-1 py-1"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {allItems.map((item) => (
+          <div
+            key={`${dayId}-${item.id}`}
+            className="group/card relative w-[240px] flex-shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-background shadow-md transition-shadow hover:shadow-xl"
+            onClick={() => onCardClick?.(item.id)}
+          >
+            {onAddToDay && item.placeId && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onAddToDay(item.id); }}
+                className="absolute right-2.5 top-2.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-600 shadow-md backdrop-blur-sm transition-all duration-200 hover:bg-primary hover:text-white hover:scale-110 opacity-0 group-hover/card:opacity-100"
+                aria-label="Agregar al itinerario"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {item.photo ? (
+              <div className="relative">
+                <img
+                  src={item.photo}
+                  alt={item.title}
+                  className="h-36 w-full object-cover"
+                />
+                {item.category && (
+                  <span className="absolute left-2.5 top-2.5 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
+                    {item.category}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className={`relative flex h-28 items-end bg-gradient-to-br ${SLOT_GRADIENT[item.slot || 'morning'] || SLOT_GRADIENT.morning}`}>
+                {item.category && (
+                  <span className="absolute left-2.5 top-2.5 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
+                    {item.category}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="space-y-1 p-3">
+              <div className="flex items-center gap-1.5">
+                {item.slot && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {SLOT_LABEL[item.slot]}
+                  </span>
+                )}
+                {item.time && (
+                  <span className="text-[11px] text-muted-foreground">{item.time}</span>
+                )}
+              </div>
+              <p className="line-clamp-1 text-[14px] font-semibold leading-snug">{item.title}</p>
+              {item.rating != null && (
+                <div className="flex items-center gap-1 text-xs">
+                  <Star className="h-3 w-3 fill-current text-foreground" />
+                  <span className="font-medium">{item.rating.toFixed(1)}</span>
+                  {item.userRatingsTotal != null && (
+                    <span className="text-muted-foreground">({item.userRatingsTotal.toLocaleString()})</span>
+                  )}
+                </div>
+              )}
+              {item.description && (
+                <p className="line-clamp-2 text-xs text-muted-foreground">{item.description}</p>
+              )}
+            </div>
+          </div>
+        ))}
+        {hasMore && onLoadMore && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onLoadMore(); }}
+            className="flex h-full min-h-[160px] w-[100px] flex-shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-muted-foreground/20 bg-muted/30 text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+          >
+            <Plus className="h-5 w-5" />
+            <span className="text-[11px] font-medium leading-tight text-center">Ver mas</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TripPlannerWorkspace({
   selectedConversation,
   message,
@@ -185,6 +373,13 @@ export default function TripPlannerWorkspace({
   const [assistantWidth, setAssistantWidth] = useState(ASSISTANT_WIDTH_DEFAULT);
   const [isAssistantCollapsed, setIsAssistantCollapsed] = useState(false);
   const [isResizingAssistant, setIsResizingAssistant] = useState(false);
+  const [activeRailTab, setActiveRailTab] = useState<PlannerRailTab>('hotels');
+  const [isContextSidebarOpen, setIsContextSidebarOpen] = useState(false);
+  const [hotelDetailState, setHotelDetailState] = useState<PlannerHotelDetailState | null>(null);
+  const [placeDetailState, setPlaceDetailState] = useState<PlaceDetailData | null>(null);
+  const [placeDetailSegmentId, setPlaceDetailSegmentId] = useState<string | null>(null);
+  const [discoveryPlacesBySegment, setDiscoveryPlacesBySegment] = useState<Record<string, PlannerPlaceCandidate[]>>({});
+  const [discoveryVisibleCount, setDiscoveryVisibleCount] = useState<Record<string, number>>({});
   const segmentRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const segmentVisibilityRef = useRef<Record<string, number>>({});
   const resizeStartXRef = useRef<number | null>(null);
@@ -343,6 +538,12 @@ export default function TripPlannerWorkspace({
     setMapActiveCategories(DEFAULT_MAP_ACTIVE_CATEGORIES);
   }, [selectedConversation]);
 
+  useEffect(() => {
+    setActiveRailTab('hotels');
+    setIsContextSidebarOpen(false);
+    setHotelDetailState(null);
+  }, [selectedConversation]);
+
   const destinationLabels = useMemo(
     () => plannerState?.segments.map((segment) => formatDestinationLabel(segment.city)) ?? [],
     [plannerState]
@@ -353,6 +554,306 @@ export default function TripPlannerWorkspace({
     ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
     : formatDateRange(plannerState?.startDate, plannerState?.endDate);
   const hasExactPlannerDates = Boolean(plannerState?.startDate && plannerState?.endDate && !plannerState?.isFlexibleDates);
+
+  const getSegmentHasExactDates = useCallback((segment: TripPlannerState['segments'][number]) => {
+    return !plannerState?.isFlexibleDates && Boolean((segment.startDate || plannerState?.startDate) && (segment.endDate || plannerState?.endDate));
+  }, [plannerState]);
+
+  const getInventoryHotelsForSegment = useCallback((segment: TripPlannerState['segments'][number]): LocalHotelData[] => {
+    const inventoryHotels = segment.hotelPlan.hotelRecommendations.filter(isEurovipsInventoryHotel);
+    const confirmedHotel = segment.hotelPlan.confirmedInventoryHotel;
+
+    if (!isEurovipsInventoryHotel(confirmedHotel)) {
+      return inventoryHotels;
+    }
+
+    const confirmedHotelId = getPlannerHotelDisplayId(confirmedHotel);
+    const alreadyIncluded = inventoryHotels.some((hotel) => getPlannerHotelDisplayId(hotel) === confirmedHotelId);
+    return alreadyIncluded ? inventoryHotels : [confirmedHotel, ...inventoryHotels];
+  }, []);
+
+  const getSegmentHeaderImage = useCallback((segment: TripPlannerState['segments'][number]) => {
+    const getDestinationImagePriority = (activity: PlannerActivity) => {
+      const normalizedCategory = (activity.category || '').toLowerCase();
+      const normalizedTitle = (activity.title || '').toLowerCase();
+      const mentionsHotel = normalizedCategory.includes('hotel') || normalizedTitle.includes('hotel');
+
+      if (activity.activityType === 'hotel' || mentionsHotel) {
+        return -1;
+      }
+
+      let score = 0;
+
+      if (activity.source === 'google_maps') score += 5;
+      if (activity.placeId) score += 2;
+      if (activity.formattedAddress) score += 1;
+
+      switch (activity.activityType) {
+        case 'culture':
+        case 'museum':
+        case 'viewpoint':
+        case 'landmark':
+        case 'nature':
+        case 'experience':
+        case 'walk':
+          score += 9;
+          break;
+        case 'food':
+        case 'market':
+        case 'nightlife':
+        case 'shopping':
+          score += 5;
+          break;
+        default:
+          score += 2;
+          break;
+      }
+
+      return score;
+    };
+
+    const destinationActivities = segment.days
+      .flatMap((day) => [...day.morning, ...day.afternoon, ...day.evening])
+      .filter((activity) => (activity.photoUrls?.length || 0) > 0)
+      .map((activity) => ({
+        activity,
+        score: getDestinationImagePriority(activity),
+      }))
+      .filter((entry) => entry.score >= 0)
+      .sort((left, right) => right.score - left.score);
+
+    return destinationActivities[0]?.activity.photoUrls?.find(Boolean);
+  }, []);
+
+  const activeRailSegment = useMemo(() => {
+    if (!plannerState?.segments.length) return null;
+    const targetSegmentId = activeMapSegmentId || plannerState.segments[0]?.id;
+    return plannerState.segments.find((segment) => segment.id === targetSegmentId) || plannerState.segments[0] || null;
+  }, [activeMapSegmentId, plannerState]);
+
+  const activeRailSegmentIndex = useMemo(() => {
+    if (!plannerState || !activeRailSegment) return -1;
+    return plannerState.segments.findIndex((segment) => segment.id === activeRailSegment.id);
+  }, [activeRailSegment, plannerState]);
+
+  const activeRailPreviousSegment = useMemo(() => {
+    if (!plannerState || activeRailSegmentIndex <= 0) return null;
+    return plannerState.segments[activeRailSegmentIndex - 1] || null;
+  }, [activeRailSegmentIndex, plannerState]);
+
+  useEffect(() => {
+    if (activeRailTab === 'transport' && !activeRailPreviousSegment) {
+      setActiveRailTab('hotels');
+    }
+  }, [activeRailPreviousSegment, activeRailTab]);
+
+  useEffect(() => {
+    if (hotelDetailState && activeRailSegment && hotelDetailState.segmentId !== activeRailSegment.id) {
+      setHotelDetailState(null);
+    }
+  }, [activeRailSegment, hotelDetailState]);
+
+  const activeHotelDetail = useMemo(() => {
+    if (!plannerState || !hotelDetailState) return null;
+    const segment = plannerState.segments.find((item) => item.id === hotelDetailState.segmentId);
+    if (!segment) return null;
+    const hotel = getInventoryHotelsForSegment(segment).find(
+      (item) => getPlannerHotelDisplayId(item) === hotelDetailState.hotelId
+    );
+
+    if (!hotel) return null;
+
+    return { segment, hotel };
+  }, [getInventoryHotelsForSegment, hotelDetailState, plannerState]);
+
+  useEffect(() => {
+    if (hotelDetailState && !activeHotelDetail) {
+      setHotelDetailState(null);
+    }
+  }, [activeHotelDetail, hotelDetailState]);
+
+  const openRailForSegment = useCallback((segmentId: string, tab: PlannerRailTab) => {
+    setActiveMapSegmentId(segmentId);
+    setActiveRailTab(tab);
+    setHotelDetailState(null);
+    setPlaceDetailState(null);
+    setIsContextSidebarOpen(true);
+  }, []);
+
+  const openHotelDetail = useCallback((segmentId: string, hotelId: string) => {
+    setActiveMapSegmentId(segmentId);
+    setActiveRailTab('hotels');
+    setHotelDetailState({ segmentId, hotelId });
+    setPlaceDetailState(null);
+    setIsContextSidebarOpen(true);
+  }, []);
+
+  const openHotelListForSegment = useCallback((segmentId: string) => {
+    openRailForSegment(segmentId, 'hotels');
+  }, [openRailForSegment]);
+
+  const handleOpenPlaceDetail = useCallback((payload: { segmentId: string; place: PlannerPlaceCandidate }) => {
+    setPlaceDetailState({ place: payload.place, details: null, loading: true });
+    setPlaceDetailSegmentId(payload.segmentId);
+    setActiveMapSegmentId(payload.segmentId);
+    setHotelDetailState(null);
+    setIsContextSidebarOpen(true);
+  }, []);
+
+  const handlePlaceDetailsLoaded = useCallback((details: import('../services/placesService').PlaceDetails) => {
+    setPlaceDetailState((prev) => prev ? { ...prev, details, loading: false } : null);
+  }, []);
+
+  const handleCardClick = useCallback((activity: PlannerActivity, segmentId: string) => {
+    const place: PlannerPlaceCandidate = {
+      placeId: activity.placeId || activity.id,
+      name: activity.title,
+      formattedAddress: activity.formattedAddress,
+      rating: activity.rating,
+      userRatingsTotal: activity.userRatingsTotal,
+      photoUrls: activity.photoUrls || [],
+      category: (activity.category as PlannerPlaceCategory) || 'activity',
+      activityType: activity.activityType,
+      source: activity.source === 'google_maps' ? 'google_maps' : undefined,
+    };
+    setPlaceDetailState({ place, details: null, loading: Boolean(activity.placeId) });
+    setPlaceDetailSegmentId(segmentId);
+    setActiveMapSegmentId(segmentId);
+    setHotelDetailState(null);
+    setIsContextSidebarOpen(true);
+  }, []);
+
+  const handleCardAddToDay = useCallback((activity: PlannerActivity, segmentId: string) => {
+    if (!activity.placeId) return;
+    const place: PlannerPlaceCandidate = {
+      placeId: activity.placeId,
+      name: activity.title,
+      formattedAddress: activity.formattedAddress,
+      rating: activity.rating,
+      userRatingsTotal: activity.userRatingsTotal,
+      photoUrls: activity.photoUrls || [],
+      category: (activity.category as PlannerPlaceCategory) || 'activity',
+      activityType: activity.activityType,
+      source: 'google_maps',
+    };
+    setPendingMapPlaceAssignment({ segmentId, place });
+  }, []);
+
+  const getHotelCtaState = useCallback((segment: TripPlannerState['segments'][number]) => {
+    const inventoryHotels = getInventoryHotelsForSegment(segment);
+
+    if (!getSegmentHasExactDates(segment)) {
+      return {
+        label: 'Definir fechas',
+        tone: 'outline' as const,
+        summary: 'Necesitás fechas exactas para ver hoteles reales.',
+      };
+    }
+
+    if (segment.hotelPlan.matchStatus === 'matching_inventory' || segment.hotelPlan.searchStatus === 'loading') {
+      return {
+        label: 'Buscando hotel',
+        tone: 'secondary' as const,
+        summary: 'Estoy consultando inventario real para este destino.',
+      };
+    }
+
+    if (segment.hotelPlan.matchStatus === 'quoting') {
+      return {
+        label: 'Actualizando precio',
+        tone: 'secondary' as const,
+        summary: 'Refrescando la cotización del hotel seleccionado.',
+      };
+    }
+
+    if (segment.hotelPlan.selectedHotelId || segment.hotelPlan.confirmedInventoryHotel) {
+      return {
+        label: 'Hotel elegido',
+        tone: 'default' as const,
+        summary: segment.hotelPlan.confirmedInventoryHotel?.name || inventoryHotels[0]?.name || 'Hotel listo para revisar.',
+      };
+    }
+
+    if (segment.hotelPlan.selectedPlaceCandidate) {
+      return {
+        label: 'Buscar hotel real',
+        tone: 'outline' as const,
+        summary: 'Ya elegiste un hotel en mapa; falta resolverlo en inventario.',
+      };
+    }
+
+    if (inventoryHotels.length > 0) {
+      return {
+        label: 'Elegir hotel',
+        tone: 'outline' as const,
+        summary: `${inventoryHotels.length} opcion${inventoryHotels.length === 1 ? '' : 'es'} reales para comparar.`,
+      };
+    }
+
+    if (segment.hotelPlan.searchStatus === 'error') {
+      return {
+        label: 'Revisar hoteles',
+        tone: 'outline' as const,
+        summary: 'No pude traer hoteles reales para este destino.',
+      };
+    }
+
+    return {
+      label: 'Ver hoteles',
+      tone: 'outline' as const,
+      summary: 'Abrí el panel para revisar disponibilidad y match con inventario.',
+    };
+  }, [getInventoryHotelsForSegment, getSegmentHasExactDates]);
+
+  const getTransportCtaState = useCallback((
+    segment: TripPlannerState['segments'][number],
+    previousSegment?: TripPlannerState['segments'][number]
+  ) => {
+    if (!previousSegment) {
+      return null;
+    }
+
+    if (segment.transportIn?.searchStatus === 'loading') {
+      return {
+        label: 'Buscando transporte',
+        tone: 'secondary' as const,
+        summary: `Consultando opciones entre ${formatDestinationLabel(previousSegment.city)} y ${formatDestinationLabel(segment.city)}.`,
+      };
+    }
+
+    if (segment.transportIn?.selectedOptionId) {
+      return {
+        label: 'Transporte elegido',
+        tone: 'default' as const,
+        summary: 'Hay una opción seleccionada para este tramo.',
+      };
+    }
+
+    if (segment.transportIn?.searchStatus === 'ready') {
+      const optionCount = segment.transportIn.options?.length || 0;
+      return {
+        label: optionCount > 0 ? 'Ver transporte' : 'Sin opciones',
+        tone: 'outline' as const,
+        summary: optionCount > 0
+          ? `${optionCount} opcion${optionCount === 1 ? '' : 'es'} reales para este tramo.`
+          : 'No encontramos transporte con la información actual.',
+      };
+    }
+
+    if (segment.transportIn?.searchStatus === 'error') {
+      return {
+        label: 'Revisar transporte',
+        tone: 'outline' as const,
+        summary: 'No pude traer transporte para este tramo.',
+      };
+    }
+
+    return {
+      label: 'Ver transporte',
+      tone: 'outline' as const,
+      summary: `Opciones entre ${formatDestinationLabel(previousSegment.city)} y ${formatDestinationLabel(segment.city)}.`,
+    };
+  }, []);
   useEffect(() => {
     if (!plannerState || isDraftPlanner) {
       return;
@@ -459,9 +960,7 @@ export default function TripPlannerWorkspace({
       return 'Cuando termine el borrador, acá vas a poder pasar de idea a precio real.';
     }
 
-    const hasDates = Boolean((segment.startDate || plannerState?.startDate) && (segment.endDate || plannerState?.endDate));
-
-    if (plannerState?.isFlexibleDates || !hasDates) {
+    if (!getSegmentHasExactDates(segment)) {
       return 'Definí fechas exactas y te muestro hoteles reales para este tramo.';
     }
     if (segment.hotelPlan.searchStatus === 'error') {
@@ -470,8 +969,9 @@ export default function TripPlannerWorkspace({
     if (segment.hotelPlan.searchStatus === 'loading') {
       return 'Estoy buscando hoteles reales para este destino...';
     }
-    if (segment.hotelPlan.searchStatus === 'ready' && segment.hotelPlan.hotelRecommendations.length > 0) {
-      return `${segment.hotelPlan.hotelRecommendations.length} opciones reales para comparar`;
+    const inventoryOptions = getInventoryHotelsForSegment(segment);
+    if (segment.hotelPlan.searchStatus === 'ready' && inventoryOptions.length > 0) {
+      return `${inventoryOptions.length} opciones reales para comparar`;
     }
     if (segment.hotelPlan.searchStatus === 'ready') {
       return 'No encontré hoteles para este tramo con las fechas actuales. Probá ajustar fechas o destino.';
@@ -587,7 +1087,7 @@ export default function TripPlannerWorkspace({
     shouldShowInitialPlannerSkeleton ? (
       <TripPlannerWorkspaceSkeleton />
     ) : (
-    <div className="trip-planner-surface @container flex flex-col gap-4 overflow-y-auto p-4 lg:p-6">
+    <div className="trip-planner-surface @container flex flex-col gap-4 p-4 lg:p-6">
       {!plannerState ? (
         <TripPlannerStarterTemplate
           mode={isLoading || isTyping ? 'processing' : 'idle'}
@@ -807,17 +1307,29 @@ export default function TripPlannerWorkspace({
 	                  </div>
 	                )}
 
-	                <div className="space-y-2">
-	                  <Input
-	                    value={plannerState.title}
-	                    onChange={(event) => {
-	                      if (isDraftPlanner) return;
+                <div className="space-y-2">
+                  <Input
+                    value={plannerState.title}
+                    onChange={(event) => {
+                      if (isDraftPlanner) return;
                       void onUpdateTripField('title', event.target.value);
                     }}
                     readOnly={isDraftPlanner}
                     className="trip-planner-title h-auto border-0 px-0 text-3xl font-semibold shadow-none focus-visible:ring-0 md:text-4xl"
                   />
                   <p className="trip-planner-body max-w-3xl text-sm leading-6 text-muted-foreground">{plannerState.summary}</p>
+                  <div className="md:hidden">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full"
+                      onClick={() => openRailForSegment(activeRailSegment?.id || plannerState.segments[0].id, activeRailPreviousSegment ? activeRailTab : 'hotels')}
+                    >
+                      <Hotel className="mr-2 h-4 w-4" />
+                      Hoteles y transporte
+                    </Button>
+                  </div>
                   <div className="flex flex-wrap justify-center gap-2 pt-1">
                     {PLANNER_MAP_FILTERS.map((category) => (
                       <button
@@ -902,7 +1414,14 @@ export default function TripPlannerWorkspace({
                     : ((payload) => setPendingMapPlaceAssignment(payload))}
                   onAutoFillRealPlaces={isDraftPlanner
                     ? undefined
-                    : ((payload) => void onAutoFillSegmentWithRealPlaces(payload.segmentId, payload.placesByCategory))}
+                    : ((payload) => {
+                        void onAutoFillSegmentWithRealPlaces(payload.segmentId, payload.placesByCategory);
+                        const allPlaces = Object.values(payload.placesByCategory).flat().filter((p) => p.category !== 'hotel');
+                        setDiscoveryPlacesBySegment((prev) => ({ ...prev, [payload.segmentId]: allPlaces }));
+                      })}
+                  onOpenPlaceDetail={isDraftPlanner ? undefined : handleOpenPlaceDetail}
+                  onPlaceDetailsLoaded={handlePlaceDetailsLoaded}
+                  fetchPlaceDetailFor={placeDetailState?.loading ? placeDetailState.place : null}
                 />
               </div>
 
@@ -910,66 +1429,104 @@ export default function TripPlannerWorkspace({
           </Card>
 
           <div className="grid gap-4">
-            {plannerState.segments.map((segment, segmentIndex) => (
+            {plannerState.segments.map((segment, segmentIndex) => {
+              const previousSegment = segmentIndex > 0 ? plannerState.segments[segmentIndex - 1] : undefined;
+              const hotelCtaState = getHotelCtaState(segment);
+              const segmentHeaderImage = getSegmentHeaderImage(segment);
+
+              if (!segmentHeaderImage) {
+                return (
+                  <Card
+                    key={segment.id}
+                    id={`planner-segment-${segment.id}`}
+                    className="relative overflow-hidden"
+                    ref={(node) => { segmentRefs.current[segment.id] = node; }}
+                    data-segment-id={segment.id}
+                  >
+                    <CardContent className="flex items-center gap-4 p-5">
+                      <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
+                      <div className="flex-1 space-y-2">
+                        <p className="text-sm font-medium">
+                          {segmentIndex + 1}. {formatDestinationLabel(segment.city)}
+                        </p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Preparando destino…
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              return (
               <Card
                 key={segment.id}
                 id={`planner-segment-${segment.id}`}
-                className="relative overflow-hidden"
+                className={`relative overflow-hidden ${activeRailSegment?.id === segment.id ? 'border-primary/30 shadow-sm ring-1 ring-primary/10' : ''}`}
                 ref={(node) => {
                   segmentRefs.current[segment.id] = node;
                 }}
                 data-segment-id={segment.id}
               >
-                {segment.contentStatus === 'loading' && (
-                  <div className="planner-segment-progress pointer-events-none absolute inset-x-4 top-0 z-10 h-[3px] rounded-b-full">
-                    <div className="planner-segment-progress__bar h-full" />
-                  </div>
-                )}
-                <CardHeader className="border-b bg-muted/30">
-                  <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
-                    <div>
-                      <CardTitle className="trip-planner-title text-lg">
-                        {segmentIndex + 1}. {formatDestinationLabel(segment.city)}
-                      </CardTitle>
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <p className="trip-planner-body text-sm text-muted-foreground">
-                          {formatDateRange(segment.startDate, segment.endDate)}
-                          {segment.summary ? ` • ${segment.summary}` : ''}
-                        </p>
-                        {segment.contentStatus === 'skeleton' && (
-                          <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px]">
-                            Resumen base
-                          </Badge>
-                        )}
-                        {segment.contentStatus === 'loading' && (
-                          <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[11px]">
-                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                            Completando
-                          </Badge>
-                        )}
-                        {segment.contentStatus === 'error' && (
-                          <Badge variant="outline" className="rounded-full border-destructive/30 px-2 py-0.5 text-[11px] text-destructive">
+                <CardHeader className="relative overflow-hidden border-b p-0">
+                  <div className="relative min-h-[248px]">
+                    <img
+                      src={segmentHeaderImage}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.18)_0%,rgba(15,23,42,0.48)_38%,rgba(15,23,42,0.86)_100%)]" />
+
+                    <div className="relative z-10 flex h-full min-h-[248px] flex-col justify-end p-6">
+                      {segment.contentStatus === 'error' && (
+                        <div className="absolute right-4 top-4 flex items-center gap-2">
+                          <Badge className="rounded-full border-white/20 bg-destructive/25 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
                             Pendiente
                           </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {segment.contentStatus === 'error' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void onEnsureSegmentEnriched(segment.id)}
-                          disabled={isDraftPlanner || isLoadingPlanner}
-                        >
-                          <Bot className="h-4 w-4 mr-2" />
-                          Reintentar tramo
-                        </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-white/20 bg-white/10 text-white backdrop-blur-sm hover:bg-white/16 hover:text-white"
+                            onClick={() => void onEnsureSegmentEnriched(segment.id)}
+                            disabled={isDraftPlanner || isLoadingPlanner}
+                          >
+                            <Bot className="mr-2 h-4 w-4" />
+                            Reintentar
+                          </Button>
+                        </div>
                       )}
+
+                      <div className="space-y-4">
+                        <div>
+                          <CardTitle className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                            {segmentIndex + 1}. {formatDestinationLabel(segment.city)}
+                          </CardTitle>
+                          <p className="mt-2 text-base text-white/80 sm:text-lg">
+                            {formatDateRange(segment.startDate, segment.endDate)}
+                            {segment.nights != null && <> · {segment.nights} noche{segment.nights === 1 ? '' : 's'}</>}
+                          </p>
+                        </div>
+
+                        <Button
+                          variant={hotelCtaState.tone}
+                          size="sm"
+                          className="rounded-full shadow-sm"
+                          onClick={() => openHotelListForSegment(segment.id)}
+                        >
+                          {hotelCtaState.label === 'Buscando hotel' || hotelCtaState.label === 'Actualizando precio' ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Hotel className="mr-2 h-4 w-4" />
+                          )}
+                          Reservar alojamiento y transporte
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="grid gap-4 p-4 @4xl:grid-cols-[1.2fr,0.8fr]">
+                <CardContent className="p-4">
                   <div className="space-y-4">
                     {segment.days.length === 0 ? (
                       <div className="trip-planner-body rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
@@ -1038,260 +1595,165 @@ export default function TripPlannerWorkspace({
                           </div>
                         ))}
                       </div>
-	                    ) : (
-	                      <div className="space-y-4">
-	                        {segment.highlights && segment.highlights.length > 0 && (
-	                          <div className="rounded-xl border bg-background/80 p-4">
-	                            <p className="trip-planner-label text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-	                              Principales actividades
-	                            </p>
-	                            <div className="mt-3 flex flex-wrap gap-2">
-	                              {segment.highlights.map((highlight) => (
-	                                <Badge
-	                                  key={`${segment.id}-ready-${highlight}`}
-	                                  variant="secondary"
-	                                  className="rounded-full px-3 py-1 text-[11px] font-medium"
-	                                >
-	                                  {highlight}
-	                                </Badge>
-	                              ))}
-	                            </div>
-	                          </div>
-	                        )}
-	                        {segment.days.map((day) => (
-	                        <Card key={day.id}>
-	                          <CardHeader className="pb-3">
-	                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-	                              <div>
-                                <CardTitle className="trip-planner-title text-base">
-                                  Día {day.dayNumber}: {day.title}
-                                </CardTitle>
-                                <p className="trip-planner-body text-sm text-muted-foreground">
-                                  {day.date ? `${formatShortDate(day.date)} • ` : ''}{formatDestinationLabel(day.city)}
-                                </p>
-                              </div>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="grid gap-4 @xl:grid-cols-3">
-                            {(['morning', 'afternoon', 'evening'] as const).map((block) => (
-                              <div key={block} className="space-y-2">
-                                <p className="trip-planner-label text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                  {formatDayBlockLabel(block)}
-                                </p>
-                                {day[block].map((activity) => (
-                                  <div key={activity.id} className="rounded-lg border p-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="space-y-2">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          {activity.time && (
-                                            <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px] font-medium">
-                                              {activity.time}
-                                            </Badge>
-                                          )}
-	                                          {activity.category && (
-	                                            <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[11px] font-medium">
-	                                              {activity.category}
-	                                            </Badge>
-	                                          )}
-	                                          {activity.source === 'google_maps' && (
-	                                            <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[11px] font-medium">
-	                                              Lugar real
-	                                            </Badge>
-	                                          )}
-	                                          <p className="trip-planner-label text-sm font-medium">
-	                                            {activity.title}
-	                                          </p>
-                                        </div>
-                                        {activity.description && (
-                                          <p className="trip-planner-body mt-1 text-xs text-muted-foreground">{activity.description}</p>
-                                        )}
-                                        {activity.tip && (
-                                          <p className="trip-planner-body mt-2 text-xs text-primary">{activity.tip}</p>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ))}
-                            {day.restaurants.length > 0 && (
-                              <div className="@xl:col-span-3 space-y-2 rounded-xl border border-dashed p-3">
-                                <p className="trip-planner-label text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                  Restaurantes guardados
-                                </p>
-                                <div className="flex flex-wrap gap-2">
-                                  {day.restaurants.map((restaurant) => (
-                                    <div key={restaurant.id} className="rounded-full border bg-muted/35 px-3 py-1.5 text-xs text-foreground">
-                                      <span className="font-medium">{restaurant.name}</span>
-                                      {restaurant.type ? ` • ${restaurant.type}` : ''}
-                                      {restaurant.source === 'google_maps' ? ' • Google Maps' : ''}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-	                            )}
-	                          </CardContent>
-	                        </Card>
-	                      ))}
-	                      </div>
-	                    )}
-	                  </div>
+                    ) : (
+                      <div className="space-y-8">
+                        {segment.days.map((day) => {
+                          const allActivities = [
+                            ...day.morning.map((a) => ({ ...a, _slot: 'morning' as const })),
+                            ...day.afternoon.map((a) => ({ ...a, _slot: 'afternoon' as const })),
+                            ...day.evening.map((a) => ({ ...a, _slot: 'evening' as const })),
+                          ] as (PlannerActivity & { _slot: 'morning' | 'afternoon' | 'evening' })[];
 
-                  <div className="space-y-4">
-                    <PlannerHotelInventorySection
-                      segment={segment}
-                      disabled={isDraftPlanner}
-                      hasExactDates={!plannerState.isFlexibleDates && Boolean((segment.startDate || plannerState.startDate) && (segment.endDate || plannerState.endDate))}
-                      travelers={plannerState.travelers}
-                      statusText={getHotelStatusText(segment)}
-                      onSelectHotel={onSelectHotel}
-                      onResolveInventoryMatch={onResolveInventoryMatch}
-                      onConfirmInventoryHotelMatch={onConfirmInventoryHotelMatch}
-                      onRefreshQuotedHotel={onRefreshQuotedHotel}
-                    />
+                          const dayActivities: DayCardItem[] = allActivities
+                            .filter((a) => {
+                              if ((a.activityType === 'hotel' || a.activityType === 'transport') && !a.placeId) return false;
+                              if (a.source === 'generated' && !a.placeId && (!a.photoUrls || a.photoUrls.length === 0)) return false;
+                              return true;
+                            })
+                            .map((a) => ({
+                              id: a.id,
+                              title: a.title,
+                              photo: a.photoUrls?.find(Boolean) || undefined,
+                              category: a.category,
+                              rating: a.rating,
+                              userRatingsTotal: a.userRatingsTotal,
+                              description: a.description,
+                              slot: a._slot,
+                              time: a.time,
+                              activityType: a.activityType,
+                              placeId: a.placeId,
+                            }));
 
-                    {segmentIndex > 0 && (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="trip-planner-title flex items-center gap-2 text-base">
-                            <Plane className="h-4 w-4 text-primary" />
-                            Transporte entre destinos
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          {segment.transportIn?.searchStatus === 'loading' ? (
-                            <div className="planner-panel-fade-in">
-                              <PlannerCircularLoadingState
-                                label={`Buscando transporte a ${formatDestinationLabel(segment.city)}`}
-                                sublabel={`Estamos consultando opciones reales entre ${formatDestinationLabel(plannerState.segments[segmentIndex - 1].city)} y ${formatDestinationLabel(segment.city)}.`}
+                          const usedPlaceIds = new Set(
+                            segment.days
+                              .flatMap((d) => [...d.morning, ...d.afternoon, ...d.evening])
+                              .map((a) => a.placeId)
+                              .filter(Boolean)
+                          );
+                          const segmentDiscovery = discoveryPlacesBySegment[segment.id] || [];
+                          const availableDiscovery = segmentDiscovery.filter((p) => !usedPlaceIds.has(p.placeId));
+                          const visibleCount = discoveryVisibleCount[day.id] || 4;
+                          const visibleSuggestions: DayCardItem[] = availableDiscovery
+                            .slice(0, visibleCount)
+                            .map((p) => ({
+                              id: `suggest-${p.placeId}`,
+                              title: p.name,
+                              photo: p.photoUrls?.[0] || undefined,
+                              category: getPlannerPlaceCategoryLabel(p.category),
+                              rating: p.rating,
+                              userRatingsTotal: p.userRatingsTotal,
+                              placeId: p.placeId,
+                              activityType: p.activityType,
+                            }));
+                          const hasMoreDiscovery = availableDiscovery.length > visibleCount;
+
+                          return (
+                            <div key={day.id} className="space-y-3">
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-lg font-semibold tracking-tight">
+                                  Día {day.dayNumber}
+                                </span>
+                                <span className="text-sm text-muted-foreground">
+                                  {day.date ? `${formatShortDate(day.date)} · ` : ''}{day.title}
+                                </span>
+                              </div>
+
+                              <DayCarousel
+                                items={dayActivities}
+                                dayId={day.id}
+                                suggestions={visibleSuggestions}
+                                hasMore={hasMoreDiscovery}
+                                onLoadMore={() => {
+                                  setDiscoveryVisibleCount((prev) => ({
+                                    ...prev,
+                                    [day.id]: (prev[day.id] || 4) + 4,
+                                  }));
+                                }}
+                                onCardClick={(itemId) => {
+                                  const suggestPlace = segmentDiscovery.find((p) => `suggest-${p.placeId}` === itemId);
+                                  if (suggestPlace) {
+                                    handleOpenPlaceDetail({ segmentId: segment.id, place: suggestPlace });
+                                    return;
+                                  }
+                                  const activity = allActivities.find((a) => a.id === itemId);
+                                  if (activity) handleCardClick(activity, segment.id);
+                                }}
+                                onAddToDay={(itemId) => {
+                                  const suggestPlace = segmentDiscovery.find((p) => `suggest-${p.placeId}` === itemId);
+                                  if (suggestPlace) {
+                                    setPendingMapPlaceAssignment({ segmentId: segment.id, place: suggestPlace });
+                                    return;
+                                  }
+                                  const activity = allActivities.find((a) => a.id === itemId);
+                                  if (activity) handleCardAddToDay(activity, segment.id);
+                                }}
                               />
                             </div>
-                          ) : (
-                            <>
-                              <div className="planner-panel-fade-in">
-                                <p className="trip-planner-body text-xs text-muted-foreground">
-                                  {getTransportStatusText(segment, plannerState.segments[segmentIndex - 1])}
-                                </p>
-                                {segment.transportIn?.error && (
-                                  <p className="trip-planner-body text-xs text-destructive">{segment.transportIn.error}</p>
-                                )}
-                              </div>
-                            </>
-                          )}
-                          {segment.transportIn?.searchStatus !== 'loading' && (
-                            <div className="planner-panel-fade-in space-y-3">
-                              {segment.transportIn?.options?.slice(0, 3).map((option) => {
-                                const selected = segment.transportIn?.selectedOptionId === option.id;
-                                const routeLabel = getPlannerFlightRoute(option);
-                                const timeRange = formatPlannerFlightTimeRange(option);
-                                const durationLabel = formatPlannerFlightDuration(option);
-                                const stopsLabel = formatPlannerFlightStops(option);
-                                const cabinLabel = formatPlannerFlightCabin(option);
-                                const baggageLabel = formatPlannerFlightBaggage(option);
-                                const totalPrice = formatPlannerFlightPrice(option);
-                                const flightSegments = getPlannerFlightSegments(option);
-                                return (
-                                  <button
-                                    key={option.id}
-                                    type="button"
-                                    className={`w-full rounded-xl border p-3 text-left transition ${selected ? 'border-primary bg-primary/5 shadow-sm' : 'hover:bg-muted/40'} ${isDraftPlanner ? 'cursor-not-allowed opacity-70' : ''}`}
-                                    disabled={isDraftPlanner}
-                                    onClick={() => void onSelectTransportOption(segment.id, option.id)}
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <p className="trip-planner-label text-sm font-semibold">
-                                          {option.airline?.name || 'Opcion de vuelo'}
-                                        </p>
-                                        <p className="trip-planner-body mt-1 text-xs text-muted-foreground">
-                                          {[routeLabel, option.departure_date].filter(Boolean).join(' • ')}
-                                        </p>
-                                      </div>
-                                      <Badge variant={selected ? 'default' : 'secondary'} className="shrink-0 rounded-full px-2 py-0.5 text-[11px]">
-                                        {stopsLabel}
-                                      </Badge>
-                                    </div>
-
-                                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                                      {timeRange && <span>{timeRange}</span>}
-                                      {durationLabel && <span>{durationLabel}</span>}
-                                    </div>
-
-                                    {flightSegments.length > 0 && (
-                                      <div className="mt-3 space-y-2 rounded-lg bg-muted/35 px-3 py-2">
-                                        {flightSegments.slice(0, 3).map((flightSegment) => (
-                                          <div key={`${option.id}-${flightSegment.segmentNumber}`} className="flex items-start justify-between gap-3 text-[11px]">
-                                            <div className="min-w-0">
-                                              <p className="trip-planner-label text-xs font-medium text-foreground">
-                                                {flightSegment.departure.airportCode} {flightSegment.departure.time} - {flightSegment.arrival.airportCode} {flightSegment.arrival.time}
-                                              </p>
-                                              <p className="trip-planner-body mt-1 text-[11px] text-muted-foreground">
-                                                {flightSegment.operatingAirlineName || option.airline?.name || 'Vuelo'} {flightSegment.flightNumber}
-                                              </p>
-                                            </div>
-                                            <div className="shrink-0 text-right">
-                                              <p className="trip-planner-body text-[11px] text-muted-foreground">
-                                                {flightSegment.cabinClass}
-                                              </p>
-                                              {flightSegment.stops?.length > 0 && (
-                                                <p className="trip-planner-body mt-1 text-[11px] text-muted-foreground">
-                                                  {flightSegment.stops.length} parada{flightSegment.stops.length === 1 ? '' : 's'}
-                                                </p>
-                                              )}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {(cabinLabel || baggageLabel) && (
-                                      <div className="mt-3 rounded-lg bg-muted/50 px-3 py-2">
-                                        {cabinLabel && (
-                                          <p className="trip-planner-label text-xs font-medium text-foreground">
-                                            {cabinLabel}
-                                          </p>
-                                        )}
-                                        {baggageLabel && (
-                                          <p className="trip-planner-body mt-1 text-[11px] text-muted-foreground">
-                                            {baggageLabel}
-                                          </p>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    <div className="mt-3 flex items-end justify-between gap-3">
-                                      <div>
-                                        <p className="trip-planner-label text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                                          Total
-                                        </p>
-                                        <p className="trip-planner-label text-sm font-semibold text-foreground">
-                                          {totalPrice || 'Consultar'}
-                                        </p>
-                                      </div>
-                                      {option.airline?.code && (
-                                        <p className="trip-planner-body text-xs text-muted-foreground">
-                                          {option.airline.code}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
+                          );
+                        })}
+                      </div>
                     )}
-                  </div>
+	                  </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
     </div>
     )
   );
+
+  const contextSidebar = plannerState ? (
+    <PlannerContextSidebar
+      open={isContextSidebarOpen}
+      onOpenChange={(open) => {
+        setIsContextSidebarOpen(open);
+        if (!open) {
+          setHotelDetailState(null);
+          setPlaceDetailState(null);
+        }
+      }}
+      onHideSidebar={() => {
+        setIsContextSidebarOpen(false);
+        setHotelDetailState(null);
+        setPlaceDetailState(null);
+      }}
+      segment={activeRailSegment}
+      previousSegment={activeRailPreviousSegment}
+      headerImageUrl={activeRailSegment ? getSegmentHeaderImage(activeRailSegment) : undefined}
+      activeTab={activeRailTab}
+      onTabChange={setActiveRailTab}
+      activeHotel={activeHotelDetail?.hotel || null}
+      onBackFromHotelDetail={() => setHotelDetailState(null)}
+      hasExactDates={activeRailSegment ? getSegmentHasExactDates(activeRailSegment) : false}
+      disabled={isDraftPlanner}
+      travelers={plannerState.travelers}
+      hotelStatusText={activeRailSegment ? getHotelStatusText(activeRailSegment) : ''}
+      transportStatusText={activeRailSegment ? getTransportStatusText(activeRailSegment, activeRailPreviousSegment || undefined) : ''}
+      onOpenHotelDetail={openHotelDetail}
+      onResolveInventoryMatch={onResolveInventoryMatch}
+      onConfirmInventoryHotelMatch={onConfirmInventoryHotelMatch}
+      onRefreshQuotedHotel={onRefreshQuotedHotel}
+      onSelectHotel={onSelectHotel}
+      onSelectTransportOption={onSelectTransportOption}
+      activePlace={placeDetailState}
+      onBackFromPlaceDetail={() => setPlaceDetailState(null)}
+      onAddPlaceToItinerary={placeDetailState && placeDetailSegmentId ? () => {
+        setPendingMapPlaceAssignment({
+          segmentId: placeDetailSegmentId,
+          place: placeDetailState.place,
+        });
+        setPlaceDetailState(null);
+      } : undefined}
+      canAddPlace={Boolean(
+        placeDetailState
+        && placeDetailSegmentId
+        && plannerState?.segments.find((s) => s.id === placeDetailSegmentId)?.days.length
+      )}
+    />
+  ) : null;
 
   const assistantRail = (
     <div className="trip-planner-surface flex h-full flex-col border-l bg-background">
@@ -1362,7 +1824,7 @@ export default function TripPlannerWorkspace({
   );
 
   return (
-    <div className="h-full min-h-0 bg-background relative">
+    <div className="h-full min-h-0 bg-background relative overflow-hidden">
       {plannerLoadingPhase?.busy && (
         <div className="planner-global-progress absolute inset-x-0 top-0 z-50 h-[3px]" aria-hidden="true">
           <div className="planner-global-progress__bar h-full w-full bg-primary/80" />
@@ -1382,7 +1844,7 @@ export default function TripPlannerWorkspace({
               Mostrar asistente
             </Button>
           )}
-          <div className="min-h-0 h-full">{plannerShell}</div>
+          <div className="min-h-0 h-full overflow-y-auto">{plannerShell}</div>
         </div>
         {!isAssistantCollapsed && (
           <>
@@ -1416,6 +1878,8 @@ export default function TripPlannerWorkspace({
           </TabsContent>
         </Tabs>
       </div>
+
+      {contextSidebar}
 
       <PlannerDateSelectionModal
         open={isDateSelectionModalOpen}

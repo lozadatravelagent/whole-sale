@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChevronRight, Hotel, MapPin } from 'lucide-react';
@@ -13,7 +13,6 @@ import {
   isEurovipsInventoryHotel,
 } from '../utils';
 import PlannerCircularLoadingState from './PlannerCircularLoadingState';
-import PlannerHotelInventoryDetailPanel from './PlannerHotelInventoryDetailPanel';
 import PlannerHotelMatchPanel from './PlannerHotelMatchPanel';
 
 interface PlannerHotelInventorySectionProps {
@@ -22,7 +21,7 @@ interface PlannerHotelInventorySectionProps {
   disabled?: boolean;
   travelers?: { adults: number; children: number; infants: number };
   statusText: string;
-  onSelectHotel: (segmentId: string, hotelId: string) => Promise<void>;
+  onOpenHotelDetail: (segmentId: string, hotelId: string) => void;
   onResolveInventoryMatch: (segmentId: string) => Promise<void>;
   onConfirmInventoryHotelMatch: (segmentId: string, hotelId: string) => Promise<void>;
   onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
@@ -34,13 +33,11 @@ export default function PlannerHotelInventorySection({
   disabled = false,
   travelers,
   statusText,
-  onSelectHotel,
+  onOpenHotelDetail,
   onResolveInventoryMatch,
   onConfirmInventoryHotelMatch,
   onRefreshQuotedHotel,
 }: PlannerHotelInventorySectionProps) {
-  const [detailHotelId, setDetailHotelId] = useState<string | null>(null);
-
   const inventoryHotels = useMemo(() => {
     const eurovipsHotels = segment.hotelPlan.hotelRecommendations.filter(
       isEurovipsInventoryHotel
@@ -56,17 +53,6 @@ export default function PlannerHotelInventorySection({
 
     return alreadyIncluded ? eurovipsHotels : [confirmedHotel, ...eurovipsHotels];
   }, [segment.hotelPlan.confirmedInventoryHotel, segment.hotelPlan.hotelRecommendations]);
-
-  const detailHotel = useMemo(() => {
-    if (!detailHotelId) return null;
-    return inventoryHotels.find((hotel) => getPlannerHotelDisplayId(hotel) === detailHotelId) || null;
-  }, [detailHotelId, inventoryHotels]);
-
-  useEffect(() => {
-    if (detailHotelId && !detailHotel) {
-      setDetailHotelId(null);
-    }
-  }, [detailHotel, detailHotelId]);
 
   const showInventoryList =
     hasExactDates &&
@@ -140,7 +126,7 @@ export default function PlannerHotelInventorySection({
                         ? 'border-primary/50 bg-primary/5 shadow-sm'
                         : 'border-border/70 hover:border-primary/30 hover:bg-muted/30'
                     }`}
-                    onClick={() => setDetailHotelId(hotelId)}
+                    onClick={() => onOpenHotelDetail(segment.id, hotelId)}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -202,21 +188,6 @@ export default function PlannerHotelInventorySection({
           )}
         </CardContent>
       </Card>
-
-      <PlannerHotelInventoryDetailPanel
-        open={Boolean(detailHotel)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDetailHotelId(null);
-          }
-        }}
-        hotel={detailHotel}
-        segment={segment}
-        hasExactDates={hasExactDates}
-        disabled={disabled}
-        onSelectHotel={onSelectHotel}
-        onRefreshQuotedHotel={onRefreshQuotedHotel}
-      />
     </>
   );
 }

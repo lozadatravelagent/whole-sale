@@ -9,6 +9,7 @@ import {
   useMap,
   useMapsLibrary,
 } from '@vis.gl/react-google-maps';
+import { logTimingStep, nowMs } from '@/utils/debugTiming';
 import { AlertCircle, Calendar, Clock, Lightbulb, Loader2, MapPin, MapPinned, Star } from 'lucide-react';
 import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY, PLANNER_GOOGLE_MAPS_MAP_ID } from '../map';
 import type {
@@ -95,6 +96,9 @@ interface TripPlannerMapProps {
     segmentId: string;
     placesByCategory: PlacesByCategory;
   }) => void;
+  onOpenPlaceDetail?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
+  onPlaceDetailsLoaded?: (details: PlaceDetails) => void;
+  fetchPlaceDetailFor?: PlannerPlaceCandidate | null;
 }
 
 function buildEmojiMarkerIcon(emoji: string, bg = 'white', border = '#0f172a'): string {
@@ -313,6 +317,9 @@ function PlannerGoogleMapScene({
   onAddHotelToSegment,
   onRequestAddPlaceToPlanner,
   onAutoFillRealPlaces,
+  onOpenPlaceDetail,
+  onPlaceDetailsLoaded,
+  fetchPlaceDetailFor,
 }: {
   segments: SegmentWithLocation[];
   selectedSegmentId: string | null;
@@ -322,6 +329,9 @@ function PlannerGoogleMapScene({
   onAddHotelToSegment?: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => void;
   onRequestAddPlaceToPlanner?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
   onAutoFillRealPlaces?: (payload: { segmentId: string; placesByCategory: PlacesByCategory }) => void;
+  onOpenPlaceDetail?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
+  onPlaceDetailsLoaded?: (details: PlaceDetails) => void;
+  fetchPlaceDetailFor?: PlannerPlaceCandidate | null;
 }) {
   const coreLib = useMapsLibrary('core');
   const placesLib = useMapsLibrary('places');
@@ -354,6 +364,7 @@ function PlannerGoogleMapScene({
   const animatedMarkerIdsRef = useRef<Set<string>>(new Set());
   const animatedCityIdsRef = useRef<Set<string>>(new Set());
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
+  const prefetchedBundlesRef = useRef<Map<string, PlacesByCategory>>(new Map());
 
   useEffect(() => {
     if (!selectedSegmentId) return;
@@ -470,6 +481,18 @@ function PlannerGoogleMapScene({
       cancelled = true;
     };
   }, [selectedPlace, selectedSegment]);
+
+  useEffect(() => {
+    if (placeDetails && selectedPlace && onPlaceDetailsLoaded) {
+      onPlaceDetailsLoaded(placeDetails);
+    }
+  }, [placeDetails, selectedPlace, onPlaceDetailsLoaded]);
+
+  useEffect(() => {
+    if (!fetchPlaceDetailFor || !selectedSegment) return;
+    if (selectedPlace?.placeId === fetchPlaceDetailFor.placeId) return;
+    setSelectedPlace(fetchPlaceDetailFor);
+  }, [fetchPlaceDetailFor, selectedSegment, selectedPlace?.placeId]);
 
   useEffect(() => {
     if (!showCityPanel || !selectedSegment) {
@@ -611,8 +634,10 @@ function PlannerGoogleMapScene({
     let cancelled = false;
     setPlacesLoading(true);
 
+    const t0 = nowMs();
     fetchNearbyPlacesBundle(service, selectedSegment.city, fetchCenter, PLACES_FETCH_CATEGORIES).then((bundle) => {
       if (cancelled) return;
+      logTimingStep('planner-map', 'selected-segment-places', t0, { city: selectedSegment.city });
       setPlacesByCategory(bundle);
       setPlacesLoading(false);
     }).catch(() => {
@@ -649,6 +674,76 @@ function PlannerGoogleMapScene({
       placesByCategory,
     });
   }, [onAutoFillRealPlaces, placesByCategory, placesLoading, selectedSegment]);
+
+  // Pre-fetch real places for ALL segments as soon as they have city + location,
+  // without waiting for contentStatus === 'ready'. This way photos load in parallel
+  // with content enrichment and appear as soon as the segment is ready.
+  useEffect(() => {
+    if (!isPlacesServiceReady || !onAutoFillRealPlaces) return;
+
+    const service = placesServiceRef.current;
+    if (!service) return;
+
+    const pending = segments.filter(
+      (seg) =>
+        seg.city &&
+        seg.location?.lat != null &&
+        seg.realPlacesStatus !== 'ready' &&
+        seg.realPlacesStatus !== 'loading' &&
+        seg.id !== selectedSegment?.id &&
+        !prefetchedBundlesRef.current.has(seg.id),
+    );
+
+    if (pending.length === 0) return;
+
+    let cancelled = false;
+
+    (async () => {
+      for (const seg of pending) {
+        if (cancelled) break;
+        try {
+          const t0 = nowMs();
+          const bundle = await fetchNearbyPlacesBundle(
+            service,
+            seg.city,
+            { lat: seg.location!.lat, lng: seg.location!.lng },
+            PLACES_FETCH_CATEGORIES,
+          );
+          if (cancelled) break;
+          const hasPlaces = Object.values(bundle).some((items) => items.length > 0);
+          if (!hasPlaces) continue;
+
+          if (seg.contentStatus === 'ready') {
+            logTimingStep('planner-map', 'prefetch-applied', t0, { city: seg.city });
+            onAutoFillRealPlaces({ segmentId: seg.id, placesByCategory: bundle });
+          } else {
+            logTimingStep('planner-map', 'prefetch-cached', t0, { city: seg.city, contentStatus: seg.contentStatus });
+            prefetchedBundlesRef.current.set(seg.id, bundle);
+          }
+        } catch {
+          // Silently skip failed segments — they'll be retried when selected
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPlacesServiceReady, segments, selectedSegment?.id, onAutoFillRealPlaces]);
+
+  // Apply pre-fetched bundles as soon as segments transition to 'ready'.
+  useEffect(() => {
+    if (!onAutoFillRealPlaces || prefetchedBundlesRef.current.size === 0) return;
+
+    for (const seg of segments) {
+      if (seg.contentStatus !== 'ready') continue;
+      const cached = prefetchedBundlesRef.current.get(seg.id);
+      if (!cached) continue;
+
+      prefetchedBundlesRef.current.delete(seg.id);
+      onAutoFillRealPlaces({ segmentId: seg.id, placesByCategory: cached });
+    }
+  }, [segments, onAutoFillRealPlaces]);
 
   useEffect(() => {
     if (segments.length === 0) {
@@ -763,8 +858,13 @@ function PlannerGoogleMapScene({
   const handleDiscoveryPlaceClick = useCallback((place: PlannerPlaceCandidate) => {
     setSelectedActivity(null);
     setShowCityPanel(false);
-    setSelectedPlace((prev) => (prev?.placeId === place.placeId ? null : place));
-  }, []);
+    if (onOpenPlaceDetail && selectedSegment) {
+      setSelectedPlace(place);
+      onOpenPlaceDetail({ segmentId: selectedSegment.id, place });
+    } else {
+      setSelectedPlace((prev) => (prev?.placeId === place.placeId ? null : place));
+    }
+  }, [onOpenPlaceDetail, selectedSegment]);
 
   const selectedInventoryHotel = selectedPlace?.source === 'inventory' && selectedPlace.category === 'hotel'
     ? (selectedPlace as PlannerPlaceHotelCandidate).hotel || null
@@ -912,7 +1012,7 @@ function PlannerGoogleMapScene({
           </InfoWindow>
         )}
 
-        {!selectedActivity && selectedPlace && selectedSegment && (
+        {!selectedActivity && selectedPlace && selectedSegment && !onOpenPlaceDetail && (
           <InfoWindow
             position={{ lat: selectedPlace.lat || selectedSegment.location.lat, lng: selectedPlace.lng || selectedSegment.location.lng }}
             onCloseClick={() => setSelectedPlace(null)}
@@ -1105,6 +1205,9 @@ export default function TripPlannerMap({
   onAddHotelToSegment,
   onRequestAddPlaceToPlanner,
   onAutoFillRealPlaces,
+  onOpenPlaceDetail,
+  onPlaceDetailsLoaded,
+  fetchPlaceDetailFor,
 }: TripPlannerMapProps) {
   const [uncontrolledSelectedSegmentId, setUncontrolledSelectedSegmentId] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -1255,6 +1358,9 @@ export default function TripPlannerMap({
 	              onAddHotelToSegment={onAddHotelToSegment}
 	              onRequestAddPlaceToPlanner={onRequestAddPlaceToPlanner}
 	              onAutoFillRealPlaces={onAutoFillRealPlaces}
+	              onOpenPlaceDetail={onOpenPlaceDetail}
+	              onPlaceDetailsLoaded={onPlaceDetailsLoaded}
+	              fetchPlaceDetailFor={fetchPlaceDetailFor}
 	            />
           </APIProvider>
         )}

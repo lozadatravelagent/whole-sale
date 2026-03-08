@@ -32,7 +32,7 @@ import {
   getPriceConfidenceLevel,
 } from '../utils';
 
-interface PlannerHotelInventoryDetailPanelProps {
+export interface PlannerHotelInventoryDetailPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   hotel: LocalHotelData | null;
@@ -66,7 +66,7 @@ function HotelImagePlaceholder({
   );
 }
 
-function HotelDetailBody({
+export function PlannerHotelInventoryDetailBody({
   hotel,
   segment,
   hasExactDates,
@@ -348,7 +348,7 @@ export default function PlannerHotelInventoryDetailPanel(props: PlannerHotelInve
             <DrawerTitle>{title}</DrawerTitle>
             <DrawerDescription>{description}</DrawerDescription>
           </DrawerHeader>
-          <HotelDetailBody {...props} />
+          <PlannerHotelInventoryDetailBody {...props} />
         </DrawerContent>
       </Drawer>
     );
@@ -361,7 +361,7 @@ export default function PlannerHotelInventoryDetailPanel(props: PlannerHotelInve
           <SheetTitle>{title}</SheetTitle>
           <SheetDescription>{description}</SheetDescription>
         </SheetHeader>
-        <HotelDetailBody {...props} />
+        <PlannerHotelInventoryDetailBody {...props} />
       </SheetContent>
     </Sheet>
   );

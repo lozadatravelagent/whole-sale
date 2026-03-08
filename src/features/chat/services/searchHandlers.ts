@@ -841,8 +841,8 @@ export const handleHotelSearch = async (
     if (hotelSegments.length > 1) {
       console.log(`🧭 [HOTEL SEARCH] Multi-segment hotel search detected: ${hotelSegments.length} tramos`);
 
-      const segmentResults = await Promise.all(
-        hotelSegments.map(async (segment, index): Promise<LocalHotelSegmentResult> => {
+      const segmentResults = await runWithConcurrency<LocalHotelSegmentResult>(
+        hotelSegments.map((segment, index) => async (): Promise<LocalHotelSegmentResult> => {
           const segmentRequest = buildHotelRequestFromSegment(segment);
           const segmentParsed: ParsedTravelRequest = {
             ...parsed,
@@ -884,7 +884,8 @@ export const handleHotelSearch = async (
               error: errorMessage
             };
           }
-        })
+        }),
+        2
       );
 
       const flattenedHotels = segmentResults.flatMap((segment) => segment.hotels);

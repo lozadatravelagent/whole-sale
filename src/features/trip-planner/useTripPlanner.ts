@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
+import { createDebugTimer } from '@/utils/debugTiming';
 import { runWithConcurrency, type CancelToken } from '@/utils/concurrencyPool';
 import { supabase } from '@/integrations/supabase/client';
 import { handleFlightSearch, handleHotelSearch } from '@/features/chat/services/searchHandlers';
@@ -266,7 +267,7 @@ function getRealPlacesCandidatePool(
   dayCount: number,
 ): PlannerPlaceCandidate[] {
   const allCandidates = REAL_PLACE_PRIORITY.flatMap((category) => placesByCategory[category] || []);
-  return dedupeRealPlaceCandidates(allCandidates).slice(0, Math.max(8, Math.min(18, dayCount * 3)));
+  return dedupeRealPlaceCandidates(allCandidates).slice(0, Math.max(12, Math.min(48, dayCount * 6)));
 }
 
 function hashString(value: string): number {
@@ -286,7 +287,7 @@ function buildSegmentRealPlaceSequence(
   candidatePool: PlannerPlaceCandidate[],
   dayCount: number,
 ): PlannerPlaceCandidate[] {
-  const limit = Math.max(6, Math.min(candidatePool.length, dayCount * 2 + 4));
+  const limit = Math.max(12, Math.min(candidatePool.length, dayCount * 4 + 6));
   return [...candidatePool]
     .sort((left, right) => {
       const leftScore = scoreRealPlaceCandidate(left) + seededUnit(`${segmentSeed}:${left.placeId}`) * 18;
@@ -416,7 +417,7 @@ function buildRealPlaceHighlights(
       used.add(normalized);
       return true;
     })
-    .slice(0, 4)
+    .slice(0, 6)
     .map((place) => place.name || formatDestinationLabel(segmentCity));
 }
 
@@ -763,6 +764,8 @@ export default function useTripPlanner(
 
     pendingSegmentEnrichmentRef.current.add(segmentId);
 
+    const timer = createDebugTimer('segment-enrich', { segmentId, city: targetSegment.city });
+
     setPlannerStateIfCurrent(requestConversationId, (current) => {
       if (!current) return current;
       return {
@@ -795,9 +798,7 @@ export default function useTripPlanner(
         throw response.error;
       }
 
-      if (response.data?.timing) {
-        console.log('⏱️ [TRIP PLANNER SEGMENT TIMING]', response.data.timing);
-      }
+      timer.checkpoint('edge-function-response', response.data?.timing ? { serverTiming: response.data.timing } : undefined);
 
       const nextState = normalizePlannerState(response.data?.data, conversationId);
       if (!isCurrentPlannerConversation(requestConversationId)) {
@@ -818,7 +819,9 @@ export default function useTripPlanner(
       if (mergedState) {
         await persistPlannerState(mergedState, 'system');
       }
+      timer.end('enriched', { days: mergedState?.segments.find((s) => s.id === segmentId)?.days.length });
     } catch (error: any) {
+      timer.fail('enrichment-failed', error);
       console.error('❌ [TRIP PLANNER] Segment enrichment failed:', error);
       if (!isCurrentPlannerConversation(requestConversationId)) {
         return;
@@ -1137,6 +1140,9 @@ export default function useTripPlanner(
     }
 
     pendingRealPlacesHydrationRef.current.add(segmentId);
+    const timer = createDebugTimer('auto-fill-places', { segmentId, city: targetSegment.city });
+
+    let insertedCount = 0;
 
     try {
       await updatePlannerState((current) => {
@@ -1176,7 +1182,7 @@ export default function useTripPlanner(
           segment.days.length,
         );
         const usedPlaceIds = new Set<string>();
-        let insertedCount = 0;
+        insertedCount = 0;
 
         const nextDays = segment.days.map((day, dayIndex) => {
           const nextDay = {
@@ -1188,63 +1194,70 @@ export default function useTripPlanner(
           };
 
           const isTransferDay = segmentIndex > 0 && dayIndex === 0 && Boolean(segment.transportIn);
-          const alreadyHasRealContent = hasGoogleMapsContent(nextDay);
-          const selectedPlace = alreadyHasRealContent
-            ? null
-            : pickPlaceForPlannerDay(sequence, usedPlaceIds, `${segment.id}:${day.id}:${dayIndex}`);
+          const slotsToFill: ('morning' | 'afternoon' | 'evening')[] = isTransferDay
+            ? ['afternoon', 'evening']
+            : ['morning', 'afternoon', 'evening'];
+          let titleDonor: PlannerPlaceCandidate | null = null;
 
-          if (selectedPlace) {
-            const insertion = pickSlotForRealPlaceInsertion(selectedPlace, nextDay, isTransferDay);
+          for (const targetSlot of slotsToFill) {
+            const slotHasReal = nextDay[targetSlot].some((a) => a.source === 'google_maps');
+            if (slotHasReal) continue;
 
-            if (insertion) {
-              const anchorActivity = {
-                id: `gmaps-auto-${selectedPlace.placeId}-${insertion.slot}`,
-                time: undefined,
-                title: selectedPlace.name,
-                description: buildGoogleMapsActivityDescription(selectedPlace) || undefined,
-                category: getPlannerPlaceCategoryLabel(selectedPlace.category),
-                activityType: selectedPlace.activityType,
-                recommendedSlot: insertion.slot,
-                neighborhood: selectedPlace.formattedAddress,
-                placeId: selectedPlace.placeId,
-                formattedAddress: selectedPlace.formattedAddress,
-                rating: selectedPlace.rating,
-                userRatingsTotal: selectedPlace.userRatingsTotal,
-                photoUrls: selectedPlace.photoUrls,
-                source: 'google_maps' as const,
-              };
+            const selectedPlace = pickPlaceForPlannerDay(sequence, usedPlaceIds, `${segment.id}:${day.id}:${dayIndex}:${targetSlot}`);
+            if (!selectedPlace) continue;
 
-              nextDay[insertion.slot] = insertion.replaceExisting
-                ? [anchorActivity, ...nextDay[insertion.slot].slice(1)]
-                : [...nextDay[insertion.slot], anchorActivity];
+            const anchorActivity = {
+              id: `gmaps-auto-${selectedPlace.placeId}-${targetSlot}`,
+              time: undefined,
+              title: selectedPlace.name,
+              description: buildGoogleMapsActivityDescription(selectedPlace) || undefined,
+              category: getPlannerPlaceCategoryLabel(selectedPlace.category),
+              activityType: selectedPlace.activityType,
+              recommendedSlot: targetSlot,
+              neighborhood: selectedPlace.formattedAddress,
+              placeId: selectedPlace.placeId,
+              formattedAddress: selectedPlace.formattedAddress,
+              rating: selectedPlace.rating,
+              userRatingsTotal: selectedPlace.userRatingsTotal,
+              photoUrls: selectedPlace.photoUrls,
+              source: 'google_maps' as const,
+            };
 
-              if (!isFoodLikePlannerPlace(selectedPlace) && shouldPromoteRealPlaceToDayTitle(nextDay)) {
-                nextDay.title = buildRealPlaceDayTitle(selectedPlace, day.dayNumber, segment.city);
-              }
+            const existing = nextDay[targetSlot];
+            const replaceable = existing.length > 0 && existing.every((a) => a.source !== 'user' && a.source !== 'google_maps');
+            nextDay[targetSlot] = replaceable
+              ? [anchorActivity, ...existing.slice(1)]
+              : [...existing, anchorActivity];
 
-              if (shouldPromoteRealPlaceToDaySummary(nextDay)) {
-                nextDay.summary = buildRealPlaceDaySummary(selectedPlace, segment.city, day.dayNumber);
-              }
-
-              if (isFoodLikePlannerPlace(selectedPlace) && !nextDay.restaurants.some((restaurant) => restaurant.placeId === selectedPlace.placeId)) {
-                nextDay.restaurants = [
-                  ...nextDay.restaurants,
-                  {
-                    id: `gmaps-auto-restaurant-${selectedPlace.placeId}`,
-                    name: selectedPlace.name,
-                    type: selectedPlace.category === 'cafe' ? 'Cafe' : 'Restaurante',
-                    placeId: selectedPlace.placeId,
-                    formattedAddress: selectedPlace.formattedAddress,
-                    rating: selectedPlace.rating,
-                    userRatingsTotal: selectedPlace.userRatingsTotal,
-                    source: 'google_maps' as const,
-                  },
-                ];
-              }
-
-              usedPlaceIds.add(selectedPlace.placeId);
-              insertedCount += 1;
+            if (!isFoodLikePlannerPlace(selectedPlace) && !titleDonor) {
+              titleDonor = selectedPlace;
             }
+
+            if (isFoodLikePlannerPlace(selectedPlace) && !nextDay.restaurants.some((r) => r.placeId === selectedPlace.placeId)) {
+              nextDay.restaurants = [
+                ...nextDay.restaurants,
+                {
+                  id: `gmaps-auto-restaurant-${selectedPlace.placeId}`,
+                  name: selectedPlace.name,
+                  type: selectedPlace.category === 'cafe' ? 'Cafe' : 'Restaurante',
+                  placeId: selectedPlace.placeId,
+                  formattedAddress: selectedPlace.formattedAddress,
+                  rating: selectedPlace.rating,
+                  userRatingsTotal: selectedPlace.userRatingsTotal,
+                  source: 'google_maps' as const,
+                },
+              ];
+            }
+
+            usedPlaceIds.add(selectedPlace.placeId);
+            insertedCount += 1;
+          }
+
+          if (titleDonor && shouldPromoteRealPlaceToDayTitle(nextDay)) {
+            nextDay.title = buildRealPlaceDayTitle(titleDonor, day.dayNumber, segment.city);
+          }
+          if (titleDonor && shouldPromoteRealPlaceToDaySummary(nextDay)) {
+            nextDay.summary = buildRealPlaceDaySummary(titleDonor, segment.city, day.dayNumber);
           }
 
           return normalizePlannerDayScheduling(nextDay, {
@@ -1269,6 +1282,7 @@ export default function useTripPlanner(
           ),
         };
       }, 'system');
+      timer.end('filled', { insertedCount });
     } finally {
       pendingRealPlacesHydrationRef.current.delete(segmentId);
     }
