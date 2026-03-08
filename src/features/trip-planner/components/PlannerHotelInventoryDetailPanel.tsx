@@ -16,21 +16,29 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Building2, ExternalLink, Hotel, Loader2, MapPin, Phone, ShieldCheck } from 'lucide-react';
+import { Check, ExternalLink, Hotel, MapPin, Phone } from 'lucide-react';
 import type { LocalHotelData } from '@/features/chat/types/chat';
 import type { PlannerSegment } from '../types';
 import {
   formatDateRange,
+  formatHotelDistanceLabel,
   formatPlannerHotelCategory,
   formatPlannerPrice,
   formatPlannerRoomLabel,
   formatPlannerTravelerSummary,
   formatRelativeValidationTime,
+  getHotelDistanceTag,
   getPlannerHotelDisplayId,
   getPriceConfidenceBadgeClass,
   getPriceConfidenceLabel,
   getPriceConfidenceLevel,
 } from '../utils';
+
+const DISTANCE_TAG_CLASSES = {
+  centro: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
+  cercano: 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400',
+  alejado: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400',
+} as const;
 
 export interface PlannerHotelInventoryDetailPanelProps {
   open: boolean;
@@ -41,6 +49,7 @@ export interface PlannerHotelInventoryDetailPanelProps {
   disabled?: boolean;
   onSelectHotel: (segmentId: string, hotelId: string) => Promise<void>;
   onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
+  distanceKm?: number;
 }
 
 function HotelImagePlaceholder({
@@ -72,30 +81,23 @@ export function PlannerHotelInventoryDetailBody({
   hasExactDates,
   disabled = false,
   onSelectHotel,
-  onRefreshQuotedHotel,
+  distanceKm,
 }: Omit<PlannerHotelInventoryDetailPanelProps, 'open' | 'onOpenChange'>) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [selectedRoomIndex, setSelectedRoomIndex] = useState<number | null>(null);
   const hotelId = getPlannerHotelDisplayId(hotel);
   const category = formatPlannerHotelCategory(hotel.category);
+  const distanceTag = distanceKm != null ? getHotelDistanceTag(distanceKm) : undefined;
   const travelerSummary = formatPlannerTravelerSummary(hotel);
   const roomLabel = formatPlannerRoomLabel(hotel);
   const isSelected = segment.hotelPlan.selectedHotelId === hotelId;
-  const isQuoted = isSelected && (segment.hotelPlan.matchStatus === 'quoted' || segment.hotelPlan.matchStatus === 'matched');
-  const isRefreshing = isSelected && segment.hotelPlan.matchStatus === 'quoting';
-  const selectedPriceFreshness = isSelected && segment.hotelPlan.quoteLastValidatedAt
-    ? formatRelativeValidationTime(segment.hotelPlan.quoteLastValidatedAt)
-    : undefined;
-  const confidenceLevel = isSelected && segment.hotelPlan.quoteLastValidatedAt
-    ? getPriceConfidenceLevel(segment.hotelPlan.quoteLastValidatedAt)
-    : undefined;
-  const confidenceLabel = confidenceLevel ? getPriceConfidenceLabel(confidenceLevel) : undefined;
-  const confidenceBadgeClass = confidenceLevel ? getPriceConfidenceBadgeClass(confidenceLevel) : undefined;
   const images = Array.isArray(hotel.images) ? hotel.images.filter(Boolean) : [];
   const heroImage = images[activeImageIndex] || images[0];
   const roomCount = hotel.rooms?.length || 0;
 
   useEffect(() => {
     setActiveImageIndex(0);
+    setSelectedRoomIndex(null);
   }, [hotelId]);
 
   const topMeta = useMemo(
@@ -107,9 +109,19 @@ export function PlannerHotelInventoryDetailBody({
     [hotel.check_in, hotel.check_out, hotel.nights, travelerSummary]
   );
 
+  const handleRoomClick = (index: number) => {
+    if (disabled) return;
+    setSelectedRoomIndex(index);
+    if (!isSelected) {
+      void onSelectHotel(segment.id, hotelId);
+    }
+  };
+
+  const selectedRoom = selectedRoomIndex !== null ? hotel.rooms[selectedRoomIndex] : null;
+
   return (
-    <div className="relative flex h-full flex-col overflow-hidden">
-      <div className="overflow-y-auto px-4 pb-32 pt-4 sm:px-6">
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex-1 overflow-y-auto px-4 pb-6 pt-4 sm:px-6">
         <div className="space-y-5">
           <div className="space-y-3">
             {heroImage ? (
@@ -147,10 +159,13 @@ export function PlannerHotelInventoryDetailBody({
                   {category}
                 </Badge>
               )}
+              {distanceTag && (
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${DISTANCE_TAG_CLASSES[distanceTag]}`}>
+                  {formatHotelDistanceLabel(distanceTag)}
+                </span>
+              )}
               {isSelected && (
-                <Badge className="rounded-full px-3 py-1">
-                  {isQuoted ? 'Precio real activo' : 'Hotel seleccionado'}
-                </Badge>
+                <Badge className="rounded-full px-3 py-1">Agregado al viaje</Badge>
               )}
             </div>
 
@@ -206,7 +221,7 @@ export function PlannerHotelInventoryDetailBody({
           <section className="rounded-3xl border border-border/70 bg-card/80 p-4">
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Habitaciones
+                Elegí una habitación
               </p>
               <span className="text-xs text-muted-foreground">
                 {roomCount} opcion{roomCount === 1 ? '' : 'es'}
@@ -217,32 +232,50 @@ export function PlannerHotelInventoryDetailBody({
                 hotel.rooms.map((room, index) => {
                   const totalPrice = formatPlannerPrice(room.total_price, room.currency);
                   const nightlyPrice = formatPlannerPrice(room.price_per_night, room.currency);
+                  const isRoomSelected = selectedRoomIndex === index;
                   return (
-                    <div key={`${hotelId}-room-${index}`} className="rounded-2xl border border-border/60 bg-background/80 p-3">
+                    <button
+                      key={`${hotelId}-room-${index}`}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleRoomClick(index)}
+                      className={`w-full rounded-2xl border-2 p-3 text-left transition-all ${
+                        isRoomSelected
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                          : 'border-border/60 bg-background/80 hover:border-primary/40 hover:bg-primary/[0.02]'
+                      }`}
+                    >
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground">
-                            {room.type || `Habitacion ${index + 1}`}
-                          </p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-semibold text-foreground">
+                              {room.type || `Habitación ${index + 1}`}
+                            </p>
+                            {isRoomSelected && (
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">
+                                <Check className="h-3 w-3" />
+                              </span>
+                            )}
+                          </div>
                           {room.description && room.description !== room.type && (
                             <p className="mt-1 text-xs leading-5 text-muted-foreground">
                               {room.description}
                             </p>
                           )}
+                          {typeof room.availability === 'number' && (
+                            <p className="mt-1.5 text-[11px] text-muted-foreground">
+                              Disponibilidad: {room.availability}
+                            </p>
+                          )}
                         </div>
-                        <div className="text-right">
+                        <div className="text-right shrink-0">
                           <p className="text-sm font-semibold text-foreground">{totalPrice || 'Consultar'}</p>
                           {nightlyPrice && (
-                            <p className="text-[11px] text-muted-foreground">{nightlyPrice} por noche</p>
+                            <p className="text-[11px] text-muted-foreground">{nightlyPrice}/noche</p>
                           )}
                         </div>
                       </div>
-                      {typeof room.availability === 'number' && (
-                        <p className="mt-2 text-[11px] text-muted-foreground">
-                          Disponibilidad: {room.availability}
-                        </p>
-                      )}
-                    </div>
+                    </button>
                   );
                 })
               ) : (
@@ -253,15 +286,47 @@ export function PlannerHotelInventoryDetailBody({
             </div>
           </section>
 
+          {selectedRoom && (
+            <section className="rounded-3xl border-2 border-primary/30 bg-primary/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                Resumen de tu selección
+              </p>
+              <div className="mt-3 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Hotel</span>
+                  <span className="font-medium text-foreground">{hotel.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Habitación</span>
+                  <span className="font-medium text-foreground">{selectedRoom.type || 'Estándar'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Noches</span>
+                  <span className="font-medium text-foreground">{hotel.nights}</span>
+                </div>
+                {selectedRoom.price_per_night != null && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Precio por noche</span>
+                    <span className="font-medium text-foreground">{formatPlannerPrice(selectedRoom.price_per_night, selectedRoom.currency)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-primary/20 pt-2">
+                  <span className="font-semibold text-foreground">Total</span>
+                  <span className="text-lg font-bold text-primary">{formatPlannerPrice(selectedRoom.total_price, selectedRoom.currency)}</span>
+                </div>
+              </div>
+            </section>
+          )}
+
           {(hotel.policy_cancellation || hotel.policy_lodging) && (
             <section className="rounded-3xl border border-border/70 bg-card/80 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Politicas
+                Políticas
               </p>
               <div className="mt-4 space-y-3">
                 {hotel.policy_cancellation && (
                   <div>
-                    <p className="text-sm font-medium text-foreground">Cancelacion</p>
+                    <p className="text-sm font-medium text-foreground">Cancelación</p>
                     <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
                       {hotel.policy_cancellation}
                     </p>
@@ -278,51 +343,6 @@ export function PlannerHotelInventoryDetailBody({
               </div>
             </section>
           )}
-        </div>
-      </div>
-
-      <div className="absolute inset-x-0 bottom-0 border-t border-border/70 bg-background/95 px-4 py-4 backdrop-blur sm:px-6">
-        <div className="space-y-3">
-          {isSelected && selectedPriceFreshness && confidenceLabel && confidenceBadgeClass && (
-            <div className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-medium ${confidenceBadgeClass}`}>
-              {confidenceLabel} ({selectedPriceFreshness})
-            </div>
-          )}
-          {isSelected && selectedPriceFreshness && !confidenceLabel && (
-            <div className="text-[11px] text-muted-foreground">
-              Ultima validacion: {selectedPriceFreshness}
-            </div>
-          )}
-          {!hasExactDates && (
-            <p className="text-[11px] text-muted-foreground">
-              Defini fechas exactas para validar disponibilidad y precio real.
-            </p>
-          )}
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button
-              type="button"
-              className="flex-1"
-              disabled={disabled || isSelected}
-              onClick={() => void onSelectHotel(segment.id, hotelId)}
-            >
-              <ShieldCheck className="mr-2 h-4 w-4" />
-              {isSelected ? 'Hotel seleccionado' : 'Usar este hotel'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              disabled={disabled || !hasExactDates || !isSelected || isRefreshing}
-              onClick={() => void onRefreshQuotedHotel(segment.id)}
-            >
-              {isRefreshing ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Building2 className="mr-2 h-4 w-4" />
-              )}
-              Actualizar precio real
-            </Button>
-          </div>
         </div>
       </div>
     </div>

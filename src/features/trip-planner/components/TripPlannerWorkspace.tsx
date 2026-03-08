@@ -22,6 +22,7 @@ import {
   PanelRightClose,
   Plane,
   Plus,
+  Sparkles,
   Star,
   Trash2,
 } from 'lucide-react';
@@ -43,6 +44,7 @@ import {
   isEurovipsInventoryHotel,
   formatShortDate,
   buildPlannerPdfHtml,
+  haversineDistanceKm,
 } from '../utils';
 import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
 import PlannerContextSidebar from './PlannerContextSidebar';
@@ -260,7 +262,6 @@ function DayCarousel({ items, dayId, onCardClick, onAddToDay, suggestions, onLoa
                 <img
                   src={item.photo}
                   alt={item.title}
-                  loading="lazy"
                   className="h-36 w-full object-cover"
                 />
                 {item.category && (
@@ -394,6 +395,9 @@ export default function TripPlannerWorkspace({
   const [placeDetailState, setPlaceDetailState] = useState<PlaceDetailData | null>(null);
   const [placeDetailSegmentId, setPlaceDetailSegmentId] = useState<string | null>(null);
   const [discoveryPlacesBySegment, setDiscoveryPlacesBySegment] = useState<Record<string, PlannerPlaceCandidate[]>>({});
+  const [inventoryHotelPlacesMap, setInventoryHotelPlacesMap] = useState<Record<string, PlannerPlaceHotelCandidate[]>>({});
+  const [showMissingInfoSpotlight, setShowMissingInfoSpotlight] = useState(false);
+  const missingInfoShownRef = useRef<string | null>(null);
 
   const segmentRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const segmentVisibilityRef = useRef<Record<string, number>>({});
@@ -481,6 +485,15 @@ export default function TripPlannerWorkspace({
   const handleViewportSegmentSelection = useCallback((segmentId: string) => {
     setActiveMapSegmentId((current) => current === segmentId ? current : segmentId);
   }, []);
+
+  const handleInventoryHotelPlacesReady = useCallback((segmentId: string, places: PlannerPlaceHotelCandidate[]) => {
+    setInventoryHotelPlacesMap((prev) => ({ ...prev, [segmentId]: places }));
+  }, []);
+
+  const handleStarterPrompt = useCallback((prompt: string) => {
+    onMessageChange(prompt);
+    setTimeout(() => onSendMessage(), 0);
+  }, [onMessageChange, onSendMessage]);
 
   const handleSelectSegmentFromMap = useCallback((segmentId: string) => {
     setActiveMapSegmentId(segmentId);
@@ -1096,6 +1109,34 @@ export default function TripPlannerWorkspace({
     };
   }, [isDraftPlanner, plannerState, typingMessage]);
 
+  const plannerMissingInfo = useMemo(() => {
+    if (!plannerState || !isDraftPlanner) return null;
+    if (plannerState.generationMeta?.uiPhase === 'draft_generating') return null;
+    const missing: string[] = [];
+    if (!plannerState.startDate && !plannerState.endDate && !plannerState.isFlexibleDates) {
+      missing.push('fechas de viaje');
+    }
+    if (plannerState.segments.length === 0) {
+      missing.push('destinos');
+    }
+    return missing.length > 0 ? missing : null;
+  }, [isDraftPlanner, plannerState]);
+
+  useEffect(() => {
+    if (!plannerMissingInfo || !plannerState) return;
+    const key = `${plannerState.id || 'unknown'}-${plannerMissingInfo.join(',')}`;
+    if (missingInfoShownRef.current === key) return;
+    missingInfoShownRef.current = key;
+    const timer = setTimeout(() => setShowMissingInfoSpotlight(true), 800);
+    return () => clearTimeout(timer);
+  }, [plannerMissingInfo, plannerState]);
+
+  useEffect(() => {
+    if (!plannerMissingInfo) {
+      setShowMissingInfoSpotlight(false);
+    }
+  }, [plannerMissingInfo]);
+
   const shouldShowInitialPlannerSkeleton = !plannerState && isLoadingPlanner;
 
   const plannerShell = (
@@ -1109,6 +1150,7 @@ export default function TripPlannerWorkspace({
           promptPreview={latestUserPrompt}
           typingMessage={typingMessage}
           plannerError={plannerError}
+          onSendPrompt={handleStarterPrompt}
         />
       ) : (
         <>
@@ -1423,7 +1465,16 @@ export default function TripPlannerWorkspace({
                   onViewportSelectSegment={handleViewportSegmentSelection}
                   onAddHotelToSegment={isDraftPlanner
                     ? undefined
-                    : ((segmentId, placeCandidate) => void onSelectHotelPlaceFromMap(segmentId, placeCandidate))}
+                    : ((segmentId, placeCandidate) => {
+                        void (async () => {
+                          await onSelectHotelPlaceFromMap(segmentId, placeCandidate);
+                          if (placeCandidate.source === 'inventory' && placeCandidate.hotelId) {
+                            openHotelDetail(segmentId, placeCandidate.hotelId);
+                          } else {
+                            openRailForSegment(segmentId, 'hotels');
+                          }
+                        })();
+                      })}
                   onRequestAddPlaceToPlanner={isDraftPlanner
                     ? undefined
                     : ((payload) => setPendingMapPlaceAssignment(payload))}
@@ -1437,6 +1488,7 @@ export default function TripPlannerWorkspace({
                   onOpenPlaceDetail={isDraftPlanner ? undefined : handleOpenPlaceDetail}
                   onPlaceDetailsLoaded={handlePlaceDetailsLoaded}
                   fetchPlaceDetailFor={placeDetailState?.loading ? placeDetailState.place : null}
+                  onInventoryHotelPlacesReady={handleInventoryHotelPlacesReady}
                 />
               </div>
 
@@ -1730,6 +1782,23 @@ export default function TripPlannerWorkspace({
     )
   );
 
+  const activeSegmentHotelPlaces = activeRailSegment
+    ? inventoryHotelPlacesMap[activeRailSegment.id]
+    : undefined;
+
+  const activeHotelDistanceKm = useMemo(() => {
+    if (!activeHotelDetail || !activeSegmentHotelPlaces) return undefined;
+    const segment = activeHotelDetail.segment;
+    if (!segment.location) return undefined;
+    const hotelName = activeHotelDetail.hotel.name?.trim().toLowerCase();
+    if (!hotelName) return undefined;
+    const matched = activeSegmentHotelPlaces.find(
+      (p) => p.name?.trim().toLowerCase() === hotelName
+    );
+    if (!matched || matched.lat == null || matched.lng == null) return undefined;
+    return haversineDistanceKm(segment.location, { lat: matched.lat, lng: matched.lng });
+  }, [activeHotelDetail, activeSegmentHotelPlaces]);
+
   const contextSidebar = plannerState ? (
     <PlannerContextSidebar
       open={isContextSidebarOpen}
@@ -1763,6 +1832,8 @@ export default function TripPlannerWorkspace({
       onRefreshQuotedHotel={onRefreshQuotedHotel}
       onSelectHotel={onSelectHotel}
       onSelectTransportOption={onSelectTransportOption}
+      hotelPlaces={activeSegmentHotelPlaces}
+      activeHotelDistanceKm={activeHotelDistanceKm}
       activePlace={placeDetailState}
       onBackFromPlaceDetail={() => setPlaceDetailState(null)}
       onAddPlaceToItinerary={placeDetailState && placeDetailSegmentId ? () => {
@@ -1816,19 +1887,47 @@ export default function TripPlannerWorkspace({
           </div>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="relative flex-1 overflow-y-auto p-4">
+        {showMissingInfoSpotlight && (
+          <div
+            className="absolute inset-0 z-30 bg-black/60 backdrop-blur-[2px] animate-in fade-in duration-300 cursor-pointer"
+            onClick={() => setShowMissingInfoSpotlight(false)}
+            aria-hidden="true"
+          />
+        )}
         <div className="space-y-4">
-          {visibleMessages.map((msg) => (
-            <MessageItem
-              key={msg.id}
-              msg={msg}
-              onPdfGenerated={onPdfGenerated}
-              onOpenPlannerDateSelector={(request) => {
-                setPendingPlannerDateRequest(request);
-                setIsDateSelectionModalOpen(true);
-              }}
-            />
-          ))}
+          {visibleMessages.map((msg, index) => {
+            const isLastAssistant =
+              showMissingInfoSpotlight &&
+              msg.role === 'assistant' &&
+              index === visibleMessages.map((m) => m.role).lastIndexOf('assistant');
+
+            return (
+              <div
+                key={msg.id}
+                className={
+                  isLastAssistant
+                    ? 'relative z-40 rounded-2xl ring-2 ring-primary/60 ring-offset-2 ring-offset-background shadow-[0_0_30px_rgba(var(--primary-rgb,59,130,246),0.35)] animate-in zoom-in-95 duration-500'
+                    : ''
+                }
+              >
+                {isLastAssistant && plannerMissingInfo && (
+                  <div className="mb-2 flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-[11px] font-semibold text-primary-foreground shadow-lg animate-in slide-in-from-top-2 duration-300">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Falta info: {plannerMissingInfo.join(', ')}
+                  </div>
+                )}
+                <MessageItem
+                  msg={msg}
+                  onPdfGenerated={onPdfGenerated}
+                  onOpenPlannerDateSelector={(request) => {
+                    setPendingPlannerDateRequest(request);
+                    setIsDateSelectionModalOpen(true);
+                  }}
+                />
+              </div>
+            );
+          })}
           {isTyping && (
             <div className="trip-planner-body rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">
               {typingMessage || 'Estoy trabajando en tu pedido...'}

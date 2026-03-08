@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Hotel, PanelRightClose, Plane } from 'lucide-react';
 import type { LocalHotelData } from '@/features/chat/types/chat';
-import type { PlannerSegment, TripPlannerState } from '../types';
+import type { PlannerPlaceHotelCandidate, PlannerSegment, TripPlannerState } from '../types';
 import { formatDateRange, formatDestinationLabel } from '../utils';
 import {
   PlannerHotelInventoryDetailBody,
@@ -49,6 +49,8 @@ interface PlannerContextSidebarProps {
   onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
   onSelectHotel: (segmentId: string, hotelId: string) => Promise<void>;
   onSelectTransportOption: (segmentId: string, optionId: string) => Promise<void>;
+  hotelPlaces?: PlannerPlaceHotelCandidate[];
+  activeHotelDistanceKm?: number;
   activePlace?: PlaceDetailData | null;
   onBackFromPlaceDetail?: () => void;
   onAddPlaceToItinerary?: () => void;
@@ -96,6 +98,8 @@ function PlannerContextSidebarContent({
   onRefreshQuotedHotel,
   onSelectHotel,
   onSelectTransportOption,
+  hotelPlaces,
+  activeHotelDistanceKm,
   activePlace,
   onBackFromPlaceDetail,
   onAddPlaceToItinerary,
@@ -187,6 +191,7 @@ function PlannerContextSidebarContent({
           disabled={disabled}
           onSelectHotel={onSelectHotel}
           onRefreshQuotedHotel={onRefreshQuotedHotel}
+          distanceKm={activeHotelDistanceKm}
         />
       </div>
     );
@@ -258,6 +263,7 @@ function PlannerContextSidebarContent({
               onResolveInventoryMatch={onResolveInventoryMatch}
               onConfirmInventoryHotelMatch={onConfirmInventoryHotelMatch}
               onRefreshQuotedHotel={onRefreshQuotedHotel}
+              hotelPlaces={hotelPlaces}
             />
           </TabsContent>
 

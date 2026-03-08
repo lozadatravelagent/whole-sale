@@ -99,6 +99,7 @@ interface TripPlannerMapProps {
   onOpenPlaceDetail?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
   onPlaceDetailsLoaded?: (details: PlaceDetails) => void;
   fetchPlaceDetailFor?: PlannerPlaceCandidate | null;
+  onInventoryHotelPlacesReady?: (segmentId: string, places: PlannerPlaceHotelCandidate[]) => void;
 }
 
 function buildEmojiMarkerIcon(emoji: string, bg = 'white', border = '#0f172a'): string {
@@ -320,6 +321,7 @@ function PlannerGoogleMapScene({
   onOpenPlaceDetail,
   onPlaceDetailsLoaded,
   fetchPlaceDetailFor,
+  onInventoryHotelPlacesReady,
 }: {
   segments: SegmentWithLocation[];
   selectedSegmentId: string | null;
@@ -332,6 +334,7 @@ function PlannerGoogleMapScene({
   onOpenPlaceDetail?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
   onPlaceDetailsLoaded?: (details: PlaceDetails) => void;
   fetchPlaceDetailFor?: PlannerPlaceCandidate | null;
+  onInventoryHotelPlacesReady?: (segmentId: string, places: PlannerPlaceHotelCandidate[]) => void;
 }) {
   const coreLib = useMapsLibrary('core');
   const placesLib = useMapsLibrary('places');
@@ -368,9 +371,11 @@ function PlannerGoogleMapScene({
   const selectedSegmentRef = useRef(selectedSegment);
   const onPlaceDetailsLoadedRef = useRef(onPlaceDetailsLoaded);
   const fetchPlaceDetailForRef = useRef(fetchPlaceDetailFor);
+  const onInventoryHotelPlacesReadyRef = useRef(onInventoryHotelPlacesReady);
   selectedSegmentRef.current = selectedSegment;
   onPlaceDetailsLoadedRef.current = onPlaceDetailsLoaded;
   fetchPlaceDetailForRef.current = fetchPlaceDetailFor;
+  onInventoryHotelPlacesReadyRef.current = onInventoryHotelPlacesReady;
 
   useEffect(() => {
     if (!selectedSegmentId) return;
@@ -600,6 +605,7 @@ function PlannerGoogleMapScene({
         if (cancelled) return;
         setInventoryHotelPlaces(results);
         setInventoryHotelsLoading(false);
+        onInventoryHotelPlacesReadyRef.current?.(selectedSegment.id, results);
         console.log('🗺️ [PLANNER MAP HOTELS] Segment inventory markers ready', {
           segmentId: selectedSegment.id,
           city: selectedSegment.city,
@@ -1234,6 +1240,7 @@ export default function TripPlannerMap({
   onOpenPlaceDetail,
   onPlaceDetailsLoaded,
   fetchPlaceDetailFor,
+  onInventoryHotelPlacesReady,
 }: TripPlannerMapProps) {
   const [uncontrolledSelectedSegmentId, setUncontrolledSelectedSegmentId] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -1387,6 +1394,7 @@ export default function TripPlannerMap({
 	              onOpenPlaceDetail={onOpenPlaceDetail}
 	              onPlaceDetailsLoaded={onPlaceDetailsLoaded}
 	              fetchPlaceDetailFor={fetchPlaceDetailFor}
+	              onInventoryHotelPlacesReady={onInventoryHotelPlacesReady}
 	            />
           </APIProvider>
         )}

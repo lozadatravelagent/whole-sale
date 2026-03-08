@@ -2,18 +2,27 @@ import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChevronRight, Hotel, MapPin } from 'lucide-react';
-import type { PlannerSegment } from '../types';
+import type { PlannerPlaceHotelCandidate, PlannerSegment } from '../types';
 import {
+  formatHotelDistanceLabel,
   formatPlannerHotelCategory,
   formatPlannerPrice,
   formatPlannerRoomLabel,
   formatRelativeValidationTime,
+  getHotelDistanceTag,
   getPlannerHotelDisplayId,
   getPrimaryPlannerHotelRoom,
+  haversineDistanceKm,
   isEurovipsInventoryHotel,
 } from '../utils';
 import PlannerCircularLoadingState from './PlannerCircularLoadingState';
 import PlannerHotelMatchPanel from './PlannerHotelMatchPanel';
+
+const DISTANCE_TAG_CLASSES = {
+  centro: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
+  cercano: 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400',
+  alejado: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400',
+} as const;
 
 interface PlannerHotelInventorySectionProps {
   segment: PlannerSegment;
@@ -25,6 +34,7 @@ interface PlannerHotelInventorySectionProps {
   onResolveInventoryMatch: (segmentId: string) => Promise<void>;
   onConfirmInventoryHotelMatch: (segmentId: string, hotelId: string) => Promise<void>;
   onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
+  hotelPlaces?: PlannerPlaceHotelCandidate[];
 }
 
 export default function PlannerHotelInventorySection({
@@ -37,6 +47,7 @@ export default function PlannerHotelInventorySection({
   onResolveInventoryMatch,
   onConfirmInventoryHotelMatch,
   onRefreshQuotedHotel,
+  hotelPlaces,
 }: PlannerHotelInventorySectionProps) {
   const inventoryHotels = useMemo(() => {
     const eurovipsHotels = segment.hotelPlan.hotelRecommendations.filter(
@@ -117,6 +128,16 @@ export default function PlannerHotelInventorySection({
                     ? formatRelativeValidationTime(segment.hotelPlan.quoteLastValidatedAt)
                     : undefined;
 
+                const hotelNameNorm = hotel.name?.trim().toLowerCase();
+                const matchedPlace = hotelPlaces?.find(
+                  (p) => p.name?.trim().toLowerCase() === hotelNameNorm
+                );
+                const distanceKm =
+                  matchedPlace?.lat != null && matchedPlace?.lng != null && segment.location
+                    ? haversineDistanceKm(segment.location, { lat: matchedPlace.lat, lng: matchedPlace.lng })
+                    : undefined;
+                const distanceTag = distanceKm != null ? getHotelDistanceTag(distanceKm) : undefined;
+
                 return (
                   <button
                     key={hotelId}
@@ -138,6 +159,11 @@ export default function PlannerHotelInventorySection({
                             <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[10px]">
                               {hotelCategory}
                             </Badge>
+                          )}
+                          {distanceTag && (
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${DISTANCE_TAG_CLASSES[distanceTag]}`}>
+                              {formatHotelDistanceLabel(distanceTag)}
+                            </span>
                           )}
                           {isSelected && (
                             <Badge variant={isQuoted ? 'default' : 'outline'} className="rounded-full px-2 py-0.5 text-[10px]">

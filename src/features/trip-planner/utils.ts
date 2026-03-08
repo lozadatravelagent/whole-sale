@@ -16,6 +16,39 @@ import type {
 } from './types';
 import { classifyPlannerActivityType, normalizePlannerSegmentsScheduling } from './scheduling';
 
+// ---------------------------------------------------------------------------
+// Haversine distance helpers
+// ---------------------------------------------------------------------------
+
+export function haversineDistanceKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h =
+    sinLat * sinLat +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * sinLng * sinLng;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+export type HotelDistanceTag = 'centro' | 'cercano' | 'alejado';
+
+export function getHotelDistanceTag(km: number): HotelDistanceTag {
+  if (km <= 2) return 'centro';
+  if (km <= 5) return 'cercano';
+  return 'alejado';
+}
+
+export function formatHotelDistanceLabel(tag: HotelDistanceTag): string {
+  if (tag === 'centro') return 'Centro';
+  if (tag === 'cercano') return 'Cercano al centro';
+  return 'Alejado del centro';
+}
+
 function slugify(value: string): string {
   return value
     .trim()

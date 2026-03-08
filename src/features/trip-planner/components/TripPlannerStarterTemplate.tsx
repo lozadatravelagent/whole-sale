@@ -1,18 +1,123 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   APIProvider,
   Map as GoogleMap,
   RenderingType,
+  useMapsLibrary,
 } from '@vis.gl/react-google-maps';
-import { CalendarDays, MapPinned, Route, Sparkles } from 'lucide-react';
+import { CalendarDays, MapPinned, Route, Send, Sparkles } from 'lucide-react';
 import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY, PLANNER_GOOGLE_MAPS_MAP_ID } from '../map';
+
+const STARTER_CARDS = [
+  {
+    id: 'roma-florencia',
+    title: 'Roma & Florencia',
+    subtitle: '7 dias · Italia',
+    emoji: '🏛️',
+    gradient: 'from-amber-600 via-orange-500 to-rose-500',
+    prompt: 'Quiero 7 días por Italia visitando Roma y Florencia, 2 adultos, presupuesto medio',
+    photoQuery: 'Colosseum Rome Italy',
+  },
+  {
+    id: 'paris-londres',
+    title: 'París & Londres',
+    subtitle: '10 dias · Francia & UK',
+    emoji: '🗼',
+    gradient: 'from-blue-600 via-indigo-500 to-violet-500',
+    prompt: 'Armame 10 días por París y Londres para una pareja, hoteles 4 estrellas',
+    photoQuery: 'Eiffel Tower Paris France',
+  },
+  {
+    id: 'barcelona-madrid',
+    title: 'Barcelona & Madrid',
+    subtitle: '5 dias · España',
+    emoji: '⛪',
+    gradient: 'from-red-600 via-rose-500 to-pink-500',
+    prompt: 'Viaje de 5 días por España, Barcelona y Madrid, 2 adultos y 1 niño de 8 años',
+    photoQuery: 'Sagrada Familia Barcelona Spain',
+  },
+] as const;
+
+// ---------------------------------------------------------------------------
+// Photo fetcher — runs inside an APIProvider to access the Places library
+// ---------------------------------------------------------------------------
+
+const cityPhotoCache = new Map<string, string>();
+
+function StarterCityPhotoFetcher({
+  onPhotosLoaded,
+}: {
+  onPhotosLoaded: (photos: Record<string, string>) => void;
+}) {
+  const placesLib = useMapsLibrary('places');
+  const fetchedRef = useRef(false);
+  const onPhotosLoadedRef = useRef(onPhotosLoaded);
+  onPhotosLoadedRef.current = onPhotosLoaded;
+
+  useEffect(() => {
+    if (!placesLib || fetchedRef.current) return;
+    fetchedRef.current = true;
+
+    // Check cache first
+    const cached: Record<string, string> = {};
+    let allCached = true;
+    for (const card of STARTER_CARDS) {
+      const url = cityPhotoCache.get(card.id);
+      if (url) {
+        cached[card.id] = url;
+      } else {
+        allCached = false;
+      }
+    }
+
+    if (allCached) {
+      onPhotosLoadedRef.current(cached);
+      return;
+    }
+
+    const container = document.createElement('div');
+    const service = new placesLib.PlacesService(container);
+    const photos: Record<string, string> = { ...cached };
+    let remaining = STARTER_CARDS.filter((c) => !cached[c.id]).length;
+
+    STARTER_CARDS.forEach((card) => {
+      if (cached[card.id]) return;
+
+      service.findPlaceFromQuery(
+        { query: card.photoQuery, fields: ['photos'] },
+        (results, status) => {
+          if (
+            status === google.maps.places.PlacesServiceStatus.OK &&
+            results?.[0]?.photos?.[0]
+          ) {
+            const url = results[0].photos[0].getUrl({ maxWidth: 800 });
+            photos[card.id] = url;
+            cityPhotoCache.set(card.id, url);
+          }
+          remaining--;
+          if (remaining <= 0) {
+            onPhotosLoadedRef.current(photos);
+          }
+        },
+      );
+    });
+  }, [placesLib]);
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Template helpers
+// ---------------------------------------------------------------------------
 
 interface TripPlannerStarterTemplateProps {
   mode: 'idle' | 'processing';
   promptPreview?: string;
   typingMessage?: string;
   plannerError?: string | null;
+  onSendPrompt?: (prompt: string) => void;
 }
 
 function TemplateBlock({ className = '' }: { className?: string }) {
@@ -41,13 +146,23 @@ function StarterMapPlaceholder({ isProcessing }: { isProcessing: boolean }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export default function TripPlannerStarterTemplate({
   mode,
   promptPreview,
   typingMessage,
   plannerError,
+  onSendPrompt,
 }: TripPlannerStarterTemplateProps) {
   const isProcessing = mode === 'processing';
+  const [cityPhotos, setCityPhotos] = useState<Record<string, string>>({});
+
+  const handlePhotosLoaded = useCallback((photos: Record<string, string>) => {
+    setCityPhotos(photos);
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -135,6 +250,58 @@ export default function TripPlannerStarterTemplate({
             </div>
           </div>
           </div>
+
+          {!isProcessing && onSendPrompt && (
+            <>
+              {HAS_PLANNER_GOOGLE_MAPS && (
+                <APIProvider apiKey={PLANNER_GOOGLE_MAPS_API_KEY} language="es" region="ES">
+                  <StarterCityPhotoFetcher onPhotosLoaded={handlePhotosLoaded} />
+                </APIProvider>
+              )}
+              <div className="grid gap-3 sm:grid-cols-3">
+                {STARTER_CARDS.map((card) => {
+                  const photoUrl = cityPhotos[card.id];
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      className="group relative flex h-56 flex-col justify-end overflow-hidden rounded-3xl text-left shadow-md transition-all hover:scale-[1.02] hover:shadow-xl"
+                      onClick={() => onSendPrompt(card.prompt)}
+                    >
+                      {photoUrl ? (
+                        <img
+                          src={photoUrl}
+                          alt={card.title}
+                          className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className={`absolute inset-0 bg-gradient-to-br ${card.gradient}`} />
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                      <span className="absolute right-4 top-4 text-5xl opacity-25 drop-shadow-lg transition-transform group-hover:scale-110">
+                        {card.emoji}
+                      </span>
+                      <div className="relative z-10 p-5">
+                        <p className="text-[11px] font-medium uppercase tracking-widest text-white/70">
+                          {card.subtitle}
+                        </p>
+                        <p className="mt-1 text-lg font-bold tracking-tight text-white drop-shadow-sm">
+                          {card.title}
+                        </p>
+                        <p className="mt-2 line-clamp-2 text-[13px] leading-5 text-white/85">
+                          {card.prompt}
+                        </p>
+                        <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-sm transition-all group-hover:bg-white/30">
+                          <Send className="h-3 w-3" />
+                          Probar este viaje
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           <div className="grid gap-4 @4xl:grid-cols-[1.2fr,0.8fr]">
             <div className="space-y-4">
