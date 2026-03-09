@@ -1,13 +1,22 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, MapPin, ShieldCheck } from 'lucide-react';
-import type { PlannerSegment } from '../types';
+import type { PlannerPlaceHotelCandidate, PlannerSegment } from '../types';
 import {
+  formatHotelDistanceLabel,
   formatPlannerHotelCategory,
   formatPlannerPrice,
   formatPlannerRoomLabel,
+  getHotelDistanceTag,
   getPrimaryPlannerHotelRoom,
+  haversineDistanceKm,
 } from '../utils';
+
+const DISTANCE_TAG_CLASSES = {
+  centro: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
+  cercano: 'bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-400',
+  alejado: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400',
+} as const;
 
 interface PlannerHotelMatchPanelProps {
   segment: PlannerSegment;
@@ -17,6 +26,7 @@ interface PlannerHotelMatchPanelProps {
   onResolveInventoryMatch: (segmentId: string) => Promise<void>;
   onConfirmInventoryHotelMatch: (segmentId: string, hotelId: string) => Promise<void>;
   onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
+  hotelPlaces?: PlannerPlaceHotelCandidate[];
 }
 
 export default function PlannerHotelMatchPanel({
@@ -27,6 +37,7 @@ export default function PlannerHotelMatchPanel({
   onResolveInventoryMatch,
   onConfirmInventoryHotelMatch,
   onRefreshQuotedHotel,
+  hotelPlaces,
 }: PlannerHotelMatchPanelProps) {
   const { hotelPlan } = segment;
   const selectedPlace = hotelPlan.selectedPlaceCandidate;
@@ -176,13 +187,22 @@ export default function PlannerHotelMatchPanel({
           </p>
           {selectedPlace && (
             <p className="trip-planner-body text-[11px] text-muted-foreground/70">
-              Tu elección en el mapa fue {selectedPlace.name}. Estas son las opciones más parecidas en inventario:
+              Tu elección en el mapa fue {selectedPlace.name}. Estas son las opciones en inventario:
             </p>
           )}
           {hotelPlan.inventoryMatchCandidates?.map((candidate) => {
             const room = getPrimaryPlannerHotelRoom(candidate.hotel);
             const totalPrice = room ? formatPlannerPrice(room.total_price, room.currency) : undefined;
             const candidateCategory = formatPlannerHotelCategory(candidate.hotel.category);
+            const hotelNameNorm = candidate.name?.trim().toLowerCase();
+            const matchedPlace = hotelPlaces?.find(
+              (p) => p.name?.trim().toLowerCase() === hotelNameNorm
+            );
+            const distanceKm =
+              matchedPlace?.lat != null && matchedPlace?.lng != null && segment.location
+                ? haversineDistanceKm(segment.location, { lat: matchedPlace.lat, lng: matchedPlace.lng })
+                : candidate.distanceKm;
+            const distanceTag = distanceKm != null ? getHotelDistanceTag(distanceKm) : candidate.distanceTag;
             return (
               <button
                 key={candidate.hotelId}
@@ -195,12 +215,14 @@ export default function PlannerHotelMatchPanel({
                   <div className="min-w-0">
                     <p className="trip-planner-label text-sm font-semibold text-foreground">{candidate.name}</p>
                     <p className="trip-planner-body mt-1 text-xs text-muted-foreground">
-                      {[candidateCategory, ...(candidate.reasons || [])].filter(Boolean).join(' • ') || candidate.city}
+                      {[candidateCategory].filter(Boolean).join(' • ') || candidate.city}
                     </p>
                   </div>
-                  <Badge variant="secondary" className="rounded-full px-2 py-0.5 text-[11px]">
-                    {(candidate.score * 100).toFixed(0)}%
-                  </Badge>
+                  {distanceTag && (
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${DISTANCE_TAG_CLASSES[distanceTag]}`}>
+                      {formatHotelDistanceLabel(distanceTag)}
+                    </span>
+                  )}
                 </div>
                 <div className="mt-2 flex items-end justify-between gap-3">
                   <span className="trip-planner-body text-xs text-muted-foreground">

@@ -54,15 +54,34 @@ export default function PlannerHotelInventorySection({
     );
     const confirmedHotel = segment.hotelPlan.confirmedInventoryHotel;
 
-    if (!isEurovipsInventoryHotel(confirmedHotel)) {
-      return eurovipsHotels;
+    let hotels = eurovipsHotels;
+    if (isEurovipsInventoryHotel(confirmedHotel)) {
+      const confirmedHotelId = getPlannerHotelDisplayId(confirmedHotel);
+      const alreadyIncluded = eurovipsHotels.some((hotel) => getPlannerHotelDisplayId(hotel) === confirmedHotelId);
+      if (!alreadyIncluded) {
+        hotels = [confirmedHotel, ...eurovipsHotels];
+      }
     }
 
-    const confirmedHotelId = getPlannerHotelDisplayId(confirmedHotel);
-    const alreadyIncluded = eurovipsHotels.some((hotel) => getPlannerHotelDisplayId(hotel) === confirmedHotelId);
+    if (!segment.location || !hotelPlaces?.length) {
+      return hotels;
+    }
 
-    return alreadyIncluded ? eurovipsHotels : [confirmedHotel, ...eurovipsHotels];
-  }, [segment.hotelPlan.confirmedInventoryHotel, segment.hotelPlan.hotelRecommendations]);
+    const loc = segment.location;
+    return [...hotels].sort((a, b) => {
+      const aName = a.name?.trim().toLowerCase();
+      const bName = b.name?.trim().toLowerCase();
+      const aPlace = hotelPlaces?.find((p) => p.name?.trim().toLowerCase() === aName);
+      const bPlace = hotelPlaces?.find((p) => p.name?.trim().toLowerCase() === bName);
+      const aDist = aPlace?.lat != null && aPlace?.lng != null
+        ? haversineDistanceKm(loc, { lat: aPlace.lat, lng: aPlace.lng })
+        : Infinity;
+      const bDist = bPlace?.lat != null && bPlace?.lng != null
+        ? haversineDistanceKm(loc, { lat: bPlace.lat, lng: bPlace.lng })
+        : Infinity;
+      return aDist - bDist;
+    });
+  }, [segment.hotelPlan.confirmedInventoryHotel, segment.hotelPlan.hotelRecommendations, segment.location, hotelPlaces]);
 
   const showInventoryList =
     hasExactDates &&
@@ -92,6 +111,7 @@ export default function PlannerHotelInventorySection({
             onResolveInventoryMatch={onResolveInventoryMatch}
             onConfirmInventoryHotelMatch={onConfirmInventoryHotelMatch}
             onRefreshQuotedHotel={onRefreshQuotedHotel}
+            hotelPlaces={hotelPlaces}
           />
 
           {segment.hotelPlan.searchStatus === 'loading' ? (
