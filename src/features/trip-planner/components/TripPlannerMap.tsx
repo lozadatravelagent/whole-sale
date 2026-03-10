@@ -102,12 +102,22 @@ interface TripPlannerMapProps {
   onInventoryHotelPlacesReady?: (segmentId: string, places: PlannerPlaceHotelCandidate[]) => void;
 }
 
+function safeSvgDataUri(svg: string): string {
+  try {
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  } catch {
+    // Remove lone surrogates that cause URIError: URI malformed
+    const cleaned = svg.replace(/[\uD800-\uDFFF]/g, '');
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(cleaned)}`;
+  }
+}
+
 function buildEmojiMarkerIcon(emoji: string, bg = 'white', border = '#0f172a'): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36">
     <circle cx="18" cy="18" r="16" fill="${bg}" stroke="${border}" stroke-width="2"/>
     <text x="18" y="19" text-anchor="middle" dominant-baseline="central" font-size="16">${emoji}</text>
   </svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  return safeSvgDataUri(svg);
 }
 
 function escapeSvgText(value: string): string {
@@ -158,7 +168,7 @@ function buildDiscoveryChipMarkerIcon(input: {
       ${escapeSvgText(labelText)}
     </text>
   </svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  return safeSvgDataUri(svg);
 }
 
 function buildCityMarkerIcon(index: number, isSelected: boolean): string {
@@ -169,7 +179,7 @@ function buildCityMarkerIcon(index: number, isSelected: boolean): string {
     <circle cx="18" cy="18" r="16" fill="${bg}" stroke="${border}" stroke-width="2"/>
     <text x="18" y="19" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="700" fill="${textColor}" font-family="system-ui, sans-serif">${index + 1}</text>
   </svg>`;
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  return safeSvgDataUri(svg);
 }
 
 function collectSegmentActivities(segment: PlannerSegment): Array<PlannerActivity & { slot: string }> {
