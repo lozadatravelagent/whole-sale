@@ -89,11 +89,7 @@ class HotelbedsCacheClient {
 // CORS & HANDLER
 // ============================================================================
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -217,7 +213,7 @@ serve(async (req) => {
     console.error('[CACHE_SYNC] Error:', error);
     return new Response(JSON.stringify({
       success: false,
-      error: error.message,
+      error: 'Internal server error',
       timestamp: new Date().toISOString(),
     }), {
       status: 500,

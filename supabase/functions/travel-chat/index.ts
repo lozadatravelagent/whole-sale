@@ -1,10 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-// CORS universal
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
-};
+import { corsHeaders } from '../_shared/cors.ts';
 serve(async (req) => {
   // Pre-flight
   if (req.method === 'OPTIONS') {
@@ -60,7 +56,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in travel-chat function:', error);
     return new Response(JSON.stringify({
-      error: error.message,
+      error: 'Internal server error',
       message: 'Lo siento, ha ocurrido un error. Por favor, inténtalo de nuevo.'
     }), {
       status: 500,

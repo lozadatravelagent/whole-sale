@@ -74,11 +74,11 @@ import {
 const USE_REDIS_RATE_LIMIT = Deno.env.get('USE_REDIS_RATE_LIMIT') === 'true';
 const USE_REDIS_IDEMPOTENCY = Deno.env.get('USE_REDIS_IDEMPOTENCY') === 'true';
 
-// CORS headers
+import { corsHeaders as _baseCorsHeaders } from '../_shared/cors.ts';
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  ..._baseCorsHeaders,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, x-api-key, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
 // =============================================================================

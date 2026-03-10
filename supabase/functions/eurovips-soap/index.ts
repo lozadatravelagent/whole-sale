@@ -3,11 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.45/deno-dom-wasm.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withRateLimit, extractIdentifiers } from "../_shared/rateLimit.ts";
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
-};
+import { corsHeaders } from '../_shared/cors.ts';
 function normalizeCategory(category: string): number {
   const match = category.match(/(\d)/);
   return match ? parseInt(match[1], 10) : 0;
@@ -1463,7 +1459,7 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({
           success: false,
-          error: error.message,
+          error: 'Internal server error',
           jobId: body?.jobId,
           timestamp: new Date().toISOString()
         }), {

@@ -7,12 +7,7 @@ import {
   normalizeDestinationListToCapitals,
   normalizeDestinationToCapitalIfCountry,
 } from "../_shared/countryCapitalResolver.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
 function cleanLocation(value: string | undefined): string {
   return (value || '')
@@ -383,19 +378,10 @@ serve(async (req) => {
       } catch (error) {
         console.error('❌ AI Message Parser error:', error);
         console.error('❌ Error stack:', error.stack);
-        // More specific error handling
-        let errorMessage = 'Unknown error occurred';
-        let statusCode = 500;
-        if (error.message) {
-          errorMessage = error.message;
-        }
-        if (error.message?.includes('OpenAI')) {
-          statusCode = 502; // Bad Gateway for external service errors
-        }
+        const statusCode = error.message?.includes('OpenAI') ? 502 : 500;
         return new Response(JSON.stringify({
           success: false,
-          error: errorMessage,
-          errorType: error.constructor.name,
+          error: 'AI parsing failed. Please try again.',
           timestamp: new Date().toISOString(),
           meta: {
             promptVersion: PROMPT_VERSION

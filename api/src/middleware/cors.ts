@@ -5,7 +5,9 @@
  */
 
 export const corsOptions = {
-  origin: true, // Allow all origins (change to whitelist in production)
+  origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:8080,http://localhost:5173')
+    .split(',')
+    .map(o => o.trim()),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: [

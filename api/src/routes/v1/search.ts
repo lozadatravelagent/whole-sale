@@ -263,7 +263,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
         status: 'error',
         error: {
           code: 'SEARCH_ERROR',
-          message: error.message || 'An unexpected error occurred',
+          message: 'An unexpected error occurred. Please try again.',
           status: 500
         },
         metadata: {

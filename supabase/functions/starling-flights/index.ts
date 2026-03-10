@@ -308,11 +308,7 @@ class StarlingTvcApi {
 // ============================================================================
 // CORS HEADERS
 // ============================================================================
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS'
-};
+import { corsHeaders } from '../_shared/cors.ts';
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
@@ -498,7 +494,7 @@ serve(async (req) => {
 
         const errorResponse = {
           success: false,
-          error: error.message,
+          error: 'Internal server error',
           provider: 'TVC',
           jobId: requestBody?.jobId,
           timestamp: new Date().toISOString()

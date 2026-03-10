@@ -2,11 +2,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import pdf from "npm:pdf-parse@1.1.1";
 import { Buffer } from "node:buffer";
+import { corsHeaders as _baseCorsHeaders } from '../_shared/cors.ts';
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+    ..._baseCorsHeaders,
     'Access-Control-Max-Age': '86400'
 };
 
@@ -233,7 +232,7 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({
             success: false,
-            error: error instanceof Error ? error.message : 'Unknown error occurred',
+            error: 'Internal server error',
             timestamp: new Date().toISOString()
         }), {
             status: 500,

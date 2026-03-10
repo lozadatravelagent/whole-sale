@@ -1,9 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
-};
+import { corsHeaders } from '../_shared/cors.ts';
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -224,8 +221,7 @@ serve(async (req) => {
       }
 
       return new Response(JSON.stringify({
-        error: 'Failed to insert message - Access denied or invalid data',
-        details: error.message
+        error: 'Failed to insert message - Access denied or invalid data'
       }), {
         status: 403,
         headers: {
@@ -254,8 +250,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in add-message function:', error);
     return new Response(JSON.stringify({
-      error: 'Internal server error',
-      details: error.message
+      error: 'Internal server error'
     }), {
       status: 500,
       headers: {
