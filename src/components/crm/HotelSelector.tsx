@@ -148,18 +148,33 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
             budgetId: result.budgetId || ''
           }
         }));
+      } else if (result.success && result.subTotalAmount && result.subTotalAmount > 0) {
+        console.warn('⚠️ [EXACT_PRICE] makeBudget succeeded without agency net parity, using subTotalAmount as fallback:', {
+          hasAgencyPricing: !!result.agencyPricing,
+          subTotalAmount: result.subTotalAmount
+        });
+        setExactPrices(prev => ({
+          ...prev,
+          [priceKey]: {
+            price: result.subTotalAmount!,
+            currency: result.currency || 'USD',
+            budgetId: result.budgetId || ''
+          }
+        }));
       } else if (result.success) {
-        console.warn('⚠️ [EXACT_PRICE] makeBudget succeeded without agency net parity, keeping approximate label:', {
+        console.warn('⚠️ [EXACT_PRICE] makeBudget succeeded but no usable price:', {
           hasAgencyPricing: !!result.agencyPricing,
           subTotalAmount: result.subTotalAmount
         });
       } else {
-        console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', {
+        console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', JSON.stringify({
           success: result.success,
           error: result.error,
+          errorCode: result.errorCode,
+          rawResponse: result.rawResponse,
           hasAgencyPricing: !!result.agencyPricing,
           subTotalAmount: result.subTotalAmount
-        });
+        }, null, 2));
         // Mark as failed - show "Consultar disponibilidad" in UI
         setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
       }

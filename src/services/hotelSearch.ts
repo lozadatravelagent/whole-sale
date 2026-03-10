@@ -28,6 +28,7 @@ export interface MakeBudgetResponse {
   };
   error?: string;
   errorCode?: string;
+  rawResponse?: string;
   timestamp?: string;
 }
 
@@ -1221,7 +1222,7 @@ function extractPictures(hotelEl: Element): string[] {
 
     if (type === 'img' && url) {
       // Ensure URL has protocol
-      const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+      const fullUrl = url.startsWith('https://') ? url : url.startsWith('http://') ? url.replace('http://', 'https://') : `https://${url}`;
       images.push(fullUrl);
     }
   });
@@ -1316,7 +1317,7 @@ export async function makeBudget(params: MakeBudgetParams): Promise<MakeBudgetRe
     }
 
     const result = await response.json();
-    console.log('📥 [MAKE_BUDGET] Response:', result);
+    console.log('📥 [MAKE_BUDGET] Response:', JSON.stringify(result, null, 2));
 
     if (result.success && result.results) {
       const budgetResult: MakeBudgetResponse = result.results;

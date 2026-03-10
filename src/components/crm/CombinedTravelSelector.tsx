@@ -753,18 +753,33 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
             budgetId: result.budgetId || ''
           }
         }));
+      } else if (result.success && result.subTotalAmount && result.subTotalAmount > 0) {
+        console.warn('⚠️ [EXACT_PRICE] makeBudget succeeded without agency net parity, using subTotalAmount as fallback:', {
+          hasAgencyPricing: !!result.agencyPricing,
+          subTotalAmount: result.subTotalAmount
+        });
+        setExactPrices(prev => ({
+          ...prev,
+          [priceKey]: {
+            price: result.subTotalAmount!,
+            currency: result.currency || 'USD',
+            budgetId: result.budgetId || ''
+          }
+        }));
       } else if (result.success) {
-        console.warn('⚠️ [EXACT_PRICE] makeBudget succeeded without agency net parity, keeping approximate label:', {
+        console.warn('⚠️ [EXACT_PRICE] makeBudget succeeded but no usable price:', {
           hasAgencyPricing: !!result.agencyPricing,
           subTotalAmount: result.subTotalAmount
         });
       } else {
-        console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', {
+        console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', JSON.stringify({
           success: result.success,
           error: result.error,
+          errorCode: result.errorCode,
+          rawResponse: result.rawResponse,
           hasAgencyPricing: !!result.agencyPricing,
           subTotalAmount: result.subTotalAmount
-        });
+        }, null, 2));
         // Mark as failed - show "Consultar disponibilidad" in UI
         setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
       }
@@ -1386,17 +1401,17 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                         className={`relative w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0 ${hotel.images?.length ? 'cursor-pointer hover:opacity-90' : ''} transition-opacity`}
                         onClick={() => hotel.images?.length && setGalleryHotel(hotel)}
                       >
-                        {hotel.images?.[0] ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Hotel className="h-6 w-6 text-muted-foreground/50" />
+                        </div>
+                        {hotel.images?.[0] && (
                           <img
                             src={hotel.images[0]}
                             alt={hotel.name}
-                            className="w-full h-full object-cover"
+                            className="absolute inset-0 w-full h-full object-cover"
                             loading="lazy"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                           />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Hotel className="h-6 w-6 text-muted-foreground/50" />
-                          </div>
                         )}
                         {hotel.images && hotel.images.length > 1 && (
                           <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded">
@@ -1567,6 +1582,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                   alt={`${galleryHotel.name} - ${idx + 1}`}
                   className="w-full aspect-[4/3] object-cover rounded-lg hover:opacity-95 transition-opacity"
                   loading="lazy"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
               ))}
             </div>

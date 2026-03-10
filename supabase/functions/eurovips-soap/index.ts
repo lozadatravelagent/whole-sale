@@ -1302,7 +1302,7 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
 
       if (type === 'img' && url) {
         // Ensure URL has protocol
-        const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+        const fullUrl = url.startsWith('https://') ? url : url.startsWith('http://') ? url.replace('http://', 'https://') : `https://${url}`;
         images.push(fullUrl);
       }
     });
