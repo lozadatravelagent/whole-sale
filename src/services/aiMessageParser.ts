@@ -808,6 +808,15 @@ function normalizeIncomingHotelsPayload(rawHotels: unknown): Partial<HotelReques
     }
 
     if (typeof rawHotels === 'object') {
+        // Detect numeric-keyed objects from AI (e.g. {0: {...}, 1: {...}}) and convert to array
+        const keys = Object.keys(rawHotels as Record<string, unknown>);
+        const isNumericKeyed = keys.length > 0 && keys.every(k => /^\d+$/.test(k));
+        if (isNumericKeyed) {
+            const asArray = keys
+                .sort((a, b) => Number(a) - Number(b))
+                .map(k => (rawHotels as Record<string, unknown>)[k]);
+            return normalizeIncomingHotelsPayload(asArray);
+        }
         return rawHotels as Partial<HotelRequest>;
     }
 
