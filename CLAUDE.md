@@ -15,6 +15,7 @@ Guidance for Claude Code when working with **WholeSale Connect AI** — a multi-
 - NEVER proactively create documentation (*.md) unless explicitly requested
 - NO over-engineering: only make requested changes, avoid unnecessary refactoring/comments/type annotations
 - NO backwards-compatibility hacks: delete unused code completely
+- `api/` is a SEPARATE project (Fastify API Gateway) — changes there NEVER impact the frontend (`src/`) and vice versa. They share zero code and deploy independently.
 
 ## Commands
 - `npm run dev` — Development server (port 8080)
