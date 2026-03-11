@@ -33,8 +33,13 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
 
     console.log('[PLANNER AGENT] Plan action:', plan.action);
 
-    // Direct response — done
+    // Direct response — done, but attach structuredData from previous tool results
     if (plan.action === 'respond') {
+      const accumulated = extractResultsFromSteps(steps);
+      if (accumulated.flightResult || accumulated.hotelResult || accumulated.packageResult || accumulated.itineraryResult) {
+        const built = buildResponseFromResults(steps, accumulated.flightResult, accumulated.hotelResult, accumulated.packageResult, accumulated.itineraryResult);
+        return { ...built, response: plan.response || built.response };
+      }
       return {
         response: plan.response || '',
         steps,
@@ -83,37 +88,30 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
 
       console.log('[PLANNER AGENT] Tool results:', step.results.map(r => `${r.tool}: ${r.result.success}`));
 
-      // Build structured data from successful results
-      const flightResult = step.results.find(r => r.tool === 'search_flights' && r.result.success);
-      const hotelResult = step.results.find(r => r.tool === 'search_hotels' && r.result.success);
-      const packageResult = step.results.find(r => r.tool === 'search_packages' && r.result.success);
-      const itineraryResult = step.results.find(r => r.tool === 'generate_itinerary' && r.result.success);
-
-      // If we got results and it's the last iteration, build final response
-      if ((flightResult || hotelResult || packageResult || itineraryResult) && iteration === GUARDRAILS.maxIterations - 1) {
-        return buildResponseFromResults(steps, flightResult, hotelResult, packageResult, itineraryResult);
-      }
-
-      // Otherwise, continue loop — LLM will see results and decide
+      // Continue loop — LLM will see results and decide next action
       continue;
     }
   }
 
   // Max iterations reached — try to build response from whatever we have
-  const lastStep = steps[steps.length - 1];
-  if (lastStep) {
-    const flightResult = lastStep.results.find(r => r.tool === 'search_flights' && r.result.success);
-    const hotelResult = lastStep.results.find(r => r.tool === 'search_hotels' && r.result.success);
-    const packageResult = lastStep.results.find(r => r.tool === 'search_packages' && r.result.success);
-    const itineraryResult = lastStep.results.find(r => r.tool === 'generate_itinerary' && r.result.success);
-    if (flightResult || hotelResult || packageResult || itineraryResult) {
-      return buildResponseFromResults(steps, flightResult, hotelResult, packageResult, itineraryResult);
-    }
+  const accumulated = extractResultsFromSteps(steps);
+  if (accumulated.flightResult || accumulated.hotelResult || accumulated.packageResult || accumulated.itineraryResult) {
+    return buildResponseFromResults(steps, accumulated.flightResult, accumulated.hotelResult, accumulated.packageResult, accumulated.itineraryResult);
   }
 
   return {
     response: 'Se alcanzó el límite de iteraciones sin completar la búsqueda. Por favor, intenta con una solicitud más específica.',
     steps,
+  };
+}
+
+function extractResultsFromSteps(steps: AgentStep[]) {
+  const allResults = steps.flatMap(s => s.results);
+  return {
+    flightResult: allResults.find(r => r.tool === 'search_flights' && r.result.success),
+    hotelResult: allResults.find(r => r.tool === 'search_hotels' && r.result.success),
+    packageResult: allResults.find(r => r.tool === 'search_packages' && r.result.success),
+    itineraryResult: allResults.find(r => r.tool === 'generate_itinerary' && r.result.success),
   };
 }
 

@@ -338,6 +338,12 @@ const CITY_MAPPINGS: Record<string, CityCodeMapping> = {
     country: 'IT',
     aliases: ['roma']
   },
+  'florence': {
+    iata: 'FLR',
+    hotelCode: 'FLR',
+    country: 'IT',
+    aliases: ['florencia', 'firenze']
+  },
   'amsterdam': {
     iata: 'AMS',
     hotelCode: 'AMS',
