@@ -401,6 +401,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const [galleryHotel, setGalleryHotel] = useState<HotelData | null>(null);
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
+  const requestedPricesRef = useRef(new Set<string>());
 
   // Hook para cache de resultados y filtrado dinámico de vuelos
   // Pasa el searchId para cargar todos los vuelos desde localStorage
@@ -683,47 +684,30 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     });
   };
 
-  const handleRoomSelect = useCallback(async (hotel: HotelData, roomId: string) => {
+  const fetchExactPrice = useCallback(async (hotel: HotelData, roomId: string) => {
     const hotelId = hotel.id;
-
-    // 1. Update selection immediately for responsive UI
-    setSelectedRooms(prev => ({
-      ...prev,
-      [hotelId]: roomId
-    }));
-
-    setSelectedHotelSnapshots(prev => ({
-      ...prev,
-      [hotelId]: hotel
-    }));
-
-    // 2. Find hotel and room data
     const room = hotel?.rooms.find(r => r.occupancy_id === roomId);
 
-    // 3. Check if we have required data for makeBudget
     if (!room?.fare_id_broker || !hotel?.unique_id) {
-      console.log('⚠️ [EXACT_PRICE] Missing fare_id_broker or unique_id, skipping makeBudget');
+      console.log('⚠️ [AUTO_PRICE] Missing fare_id_broker or unique_id, skipping makeBudget for:', hotel.name);
       return;
     }
 
-    // 4. Generate price key for caching
     const priceKey = `${hotelId}-${roomId}`;
 
-    // 5. Check if we already have exact price cached
-    if (exactPrices[priceKey]) {
-      console.log('✅ [EXACT_PRICE] Already have exact price for:', priceKey);
+    // Deduplicate using ref (avoids stale closure issues with state)
+    if (requestedPricesRef.current.has(priceKey)) {
       return;
     }
+    requestedPricesRef.current.add(priceKey);
 
-    // 6. Show loading state
     setLoadingPrices(prev => ({ ...prev, [priceKey]: true }));
 
     try {
-      console.log('💰 [EXACT_PRICE] Calling makeBudget for hotel:', hotel.name);
+      console.log('💰 [AUTO_PRICE] Calling makeBudget for hotel:', hotel.name);
 
-      // 7. Build passenger list from hotel search params or room data
       const occupancy = resolveHotelOccupancyForBudget(hotel, room);
-      console.log('👥 [EXACT_PRICE] Resolved occupancy:', {
+      console.log('👥 [AUTO_PRICE] Resolved occupancy:', {
         adults: occupancy.adults,
         children: occupancy.children,
         infants: occupancy.infants,
@@ -731,8 +715,6 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         signature: occupancy.signature
       });
 
-      // 8. Call makeBudget
-      // Use xml_occupancy_id (from EUROVIPS XML) for makeBudget, fallback to occupancy_id
       const result = await makeBudget({
         fareId: hotel.unique_id,
         fareIdBroker: room.fare_id_broker,
@@ -745,10 +727,9 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         }]
       });
 
-      // 9. Save exact price only when we have agency net parity (not gross fallback)
       const exactAgencyNet = result.agencyPricing?.netoAgencia;
       if (result.success && exactAgencyNet && exactAgencyNet > 0) {
-        console.log('✅ [EXACT_PRICE] Got exact agency net price:', exactAgencyNet, result.currency);
+        console.log('✅ [AUTO_PRICE] Got exact agency net price:', exactAgencyNet, result.currency);
         setExactPrices(prev => ({
           ...prev,
           [priceKey]: {
@@ -758,7 +739,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           }
         }));
       } else if (result.success && result.subTotalAmount && result.subTotalAmount > 0) {
-        console.warn('⚠️ [EXACT_PRICE] makeBudget succeeded without agency net parity, using subTotalAmount as fallback:', {
+        console.warn('⚠️ [AUTO_PRICE] makeBudget succeeded without agency net parity, using subTotalAmount as fallback:', {
           hasAgencyPricing: !!result.agencyPricing,
           subTotalAmount: result.subTotalAmount
         });
@@ -771,12 +752,12 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           }
         }));
       } else if (result.success) {
-        console.warn('⚠️ [EXACT_PRICE] makeBudget succeeded but no usable price:', {
+        console.warn('⚠️ [AUTO_PRICE] makeBudget succeeded but no usable price:', {
           hasAgencyPricing: !!result.agencyPricing,
           subTotalAmount: result.subTotalAmount
         });
       } else {
-        console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', JSON.stringify({
+        console.warn('⚠️ [AUTO_PRICE] makeBudget failed:', JSON.stringify({
           success: result.success,
           error: result.error,
           errorCode: result.errorCode,
@@ -786,11 +767,40 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         }, null, 2));
       }
     } catch (error) {
-      console.error('❌ [EXACT_PRICE] Error getting exact price:', error);
+      console.error('❌ [AUTO_PRICE] Error getting exact price:', error);
     } finally {
       setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
     }
-  }, [exactPrices]);
+  }, []);
+
+  const handleRoomSelect = useCallback(async (hotel: HotelData, roomId: string) => {
+    setSelectedRooms(prev => ({ ...prev, [hotel.id]: roomId }));
+    setSelectedHotelSnapshots(prev => ({ ...prev, [hotel.id]: hotel }));
+    await fetchExactPrice(hotel, roomId);
+  }, [fetchExactPrice]);
+
+  // Auto-pricing: fetch exact prices for all hotels immediately after search results arrive
+  useEffect(() => {
+    const allHotels: HotelData[] = [];
+
+    if (combinedData.hotels?.length) {
+      allHotels.push(...combinedData.hotels);
+    }
+    if (combinedData.hotelSegments?.length) {
+      combinedData.hotelSegments.forEach(segment => {
+        if (segment.hotels?.length) allHotels.push(...segment.hotels);
+      });
+    }
+
+    if (allHotels.length === 0) return;
+
+    console.log(`🔄 [AUTO_PRICE] Auto-pricing ${allHotels.length} hotels post-search`);
+
+    allHotels.forEach(hotel => {
+      const room = hotel.rooms?.[0];
+      if (room) fetchExactPrice(hotel, room.occupancy_id);
+    });
+  }, [combinedData.hotels, combinedData.hotelSegments, fetchExactPrice]);
 
   const handleGeneratePdf = async () => {
     // Validate selections
@@ -799,6 +809,19 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         title: "Selección requerida",
         description: "Selecciona al menos un vuelo o un hotel para generar el PDF.",
         variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if any selected hotel's room still has a loading price
+    const hasLoadingPrices = selectedHotels.some(hotelId => {
+      const roomId = selectedRooms[hotelId];
+      return roomId && loadingPrices[`${hotelId}-${roomId}`];
+    });
+    if (hasLoadingPrices) {
+      toast({
+        title: "Esperando precios exactos...",
+        description: "Los precios se están actualizando. Intenta nuevamente en unos segundos.",
       });
       return;
     }
