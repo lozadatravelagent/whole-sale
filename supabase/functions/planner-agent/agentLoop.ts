@@ -1,9 +1,6 @@
 import type { AgentContext, AgentResponse, AgentStep } from "./types.ts";
 import { planNextAction } from "./planner.ts";
-
-const MAX_ITERATIONS = 3;
-const MAX_EXECUTION_MS = 55000;
-const MAX_PARALLEL_TOOLS = 3;
+import { GUARDRAILS } from "./guardrails.ts";
 
 export async function runAgentLoop(context: AgentContext): Promise<AgentResponse> {
   const startTime = Date.now();
@@ -12,10 +9,10 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
   console.log('[PLANNER AGENT] Starting agent loop');
   console.log('[PLANNER AGENT] User message:', context.userMessage);
 
-  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+  for (let iteration = 0; iteration < GUARDRAILS.maxIterations; iteration++) {
     // Timeout check
     const elapsed = Date.now() - startTime;
-    if (elapsed > MAX_EXECUTION_MS) {
+    if (elapsed > GUARDRAILS.maxExecutionMs) {
       console.warn(`[PLANNER AGENT] Timeout reached at iteration ${iteration} (${elapsed}ms)`);
       return {
         response: 'La búsqueda tomó demasiado tiempo. Por favor, intenta de nuevo con una consulta más específica.',
@@ -23,7 +20,7 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
       };
     }
 
-    console.log(`[PLANNER AGENT] === Iteration ${iteration + 1}/${MAX_ITERATIONS} ===`);
+    console.log(`[PLANNER AGENT] === Iteration ${iteration + 1}/${GUARDRAILS.maxIterations} ===`);
 
     // Plan next action
     const plan = await planNextAction({
@@ -56,7 +53,7 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
 
     // Execute tool calls
     if (plan.action === 'use_tools' && plan.toolCalls) {
-      const toolCalls = plan.toolCalls.slice(0, MAX_PARALLEL_TOOLS);
+      const toolCalls = plan.toolCalls.slice(0, GUARDRAILS.maxParallelTools);
 
       const step: AgentStep = {
         iteration,
@@ -89,10 +86,12 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
       // Build structured data from successful results
       const flightResult = step.results.find(r => r.tool === 'search_flights' && r.result.success);
       const hotelResult = step.results.find(r => r.tool === 'search_hotels' && r.result.success);
+      const packageResult = step.results.find(r => r.tool === 'search_packages' && r.result.success);
+      const itineraryResult = step.results.find(r => r.tool === 'generate_itinerary' && r.result.success);
 
       // If we got results and it's the last iteration, build final response
-      if ((flightResult || hotelResult) && iteration === MAX_ITERATIONS - 1) {
-        return buildResponseFromResults(steps, flightResult, hotelResult);
+      if ((flightResult || hotelResult || packageResult || itineraryResult) && iteration === GUARDRAILS.maxIterations - 1) {
+        return buildResponseFromResults(steps, flightResult, hotelResult, packageResult, itineraryResult);
       }
 
       // Otherwise, continue loop — LLM will see results and decide
@@ -105,8 +104,10 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
   if (lastStep) {
     const flightResult = lastStep.results.find(r => r.tool === 'search_flights' && r.result.success);
     const hotelResult = lastStep.results.find(r => r.tool === 'search_hotels' && r.result.success);
-    if (flightResult || hotelResult) {
-      return buildResponseFromResults(steps, flightResult, hotelResult);
+    const packageResult = lastStep.results.find(r => r.tool === 'search_packages' && r.result.success);
+    const itineraryResult = lastStep.results.find(r => r.tool === 'generate_itinerary' && r.result.success);
+    if (flightResult || hotelResult || packageResult || itineraryResult) {
+      return buildResponseFromResults(steps, flightResult, hotelResult, packageResult, itineraryResult);
     }
   }
 
@@ -120,6 +121,8 @@ function buildResponseFromResults(
   steps: AgentStep[],
   flightResult?: { tool: string; result: any },
   hotelResult?: { tool: string; result: any },
+  packageResult?: { tool: string; result: any },
+  itineraryResult?: { tool: string; result: any },
 ): AgentResponse {
   const structuredData: Record<string, unknown> = {};
   const parts: string[] = [];
@@ -133,6 +136,16 @@ function buildResponseFromResults(
     structuredData.hotels = hotelResult.result.data;
     const count = hotelResult.result.data.totalFound || 0;
     parts.push(`${count} hotel(es)`);
+  }
+  if (packageResult?.result?.data) {
+    structuredData.packages = packageResult.result.data;
+    const count = packageResult.result.data.totalFound || 0;
+    parts.push(`${count} paquete(s) turístico(s)`);
+  }
+  if (itineraryResult?.result?.data) {
+    structuredData.itinerary = itineraryResult.result.data;
+    const totalDays = itineraryResult.result.data.totalDays || 0;
+    parts.push(`un itinerario de ${totalDays} día(s)`);
   }
 
   const response = parts.length > 0

@@ -2,6 +2,9 @@ import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import type { ToolDefinition } from "../types.ts";
 import { createSearchFlightsTool } from "./searchFlights.ts";
 import { createSearchHotelsTool } from "./searchHotels.ts";
+import { createSearchPackagesTool } from "./searchPackages.ts";
+import { createGenerateItineraryTool } from "./generateItinerary.ts";
+import { createResolveCityCodeTool } from "./resolveCityCode.ts";
 
 const askUserTool: ToolDefinition = {
   name: 'ask_user',
@@ -33,6 +36,9 @@ export function buildToolRegistry(supabase: SupabaseClient): ToolDefinition[] {
   return [
     createSearchFlightsTool(supabase),
     createSearchHotelsTool(supabase),
+    createSearchPackagesTool(supabase),
+    createGenerateItineraryTool(supabase),
+    createResolveCityCodeTool(),
     askUserTool,
   ];
 }
