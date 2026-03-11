@@ -5,6 +5,24 @@ Replicar el patrón de Sabre (MCP Server + Agentic APIs + Agent Loop) adaptado a
 
 ---
 
+## Corrección de Arquitectura — Por qué NO va en `api/`
+
+El frontend **NUNCA** llama al API Gateway (`api/`). Todo va directo a Supabase Edge Functions:
+
+```
+Frontend (React)
+  └─ supabase.functions.invoke('starling-flights')   ← directo
+  └─ supabase.functions.invoke('eurovips-soap')       ← directo
+  └─ supabase.functions.invoke('ai-message-parser')   ← directo
+  └─ supabase.functions.invoke('travel-itinerary')    ← directo
+
+API Gateway (api/) ← solo para consumidores externos, el frontend NO lo usa
+```
+
+**El agente debe ser una Edge Function** (`supabase/functions/planner-agent/`), no código en `api/`. Así sigue el mismo patrón que el resto del sistema.
+
+---
+
 ## Diagnóstico: Estado Actual vs. Objetivo
 
 ### Lo que YA existe (piezas de abajo)
@@ -15,13 +33,13 @@ Replicar el patrón de Sabre (MCP Server + Agentic APIs + Agent Loop) adaptado a
 | Hotel Search | `searchHandlers.ts` → `eurovips-soap` | ✅ Funciona |
 | Package/Service Search | `searchHandlers.ts` → `eurovips-soap` | ✅ Funciona |
 | Itinerary Generator | `travel-itinerary` edge function | ✅ Funciona |
-| Iteration Detection | `iterationDetection.ts` | ✅ Funciona (regex patterns) |
+| Iteration Detection | `iterationDetection.ts` (frontend) | ✅ Funciona (regex patterns) |
 | Context Persistence | `contextState.ts` + system messages | ✅ Funciona |
-| City Code Resolution | `cityCodeResolver.ts` | ✅ Funciona |
-| Advanced Filters | `advancedFilters.ts` | ✅ Funciona |
+| City Code Resolution | `_shared/cityCodeResolver.ts` | ✅ Funciona |
+| Advanced Filters | `_shared/advancedFilters.ts` | ✅ Funciona |
 | Response Formatters | `responseFormatters.ts` | ✅ Funciona |
-| Redis Cache | `api/src/lib/redis.ts` | ✅ Funciona |
-| API Gateway | `api/src/server.ts` + routes | ✅ Funciona |
+| Trip Planner UI | `src/features/trip-planner/` | ✅ Funciona |
+| Workspace Mode | `conversation_workspace_mode: 'standard' \| 'planner'` | ✅ Existe en DB |
 
 ### Lo que FALTA (capa del medio — el "MCP")
 | Componente | Equivalente Sabre | Estado |
@@ -49,22 +67,28 @@ Esto es el equivalente a las APIs de Sabre **antes** del MCP. Funciona, pero:
 
 ---
 
-## Arquitectura Propuesta
+## Arquitectura Propuesta (Corregida)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    CHAT UI (React)                       │
-│              useMessageHandler.ts (simplificado)         │
+│              useMessageHandler.ts                        │
+│                                                          │
+│  workspace_mode === 'planner'                            │
+│    → supabase.functions.invoke('planner-agent')          │
+│  workspace_mode === 'standard'                           │
+│    → switch existente (sin cambios)                      │
 └──────────────────────┬──────────────────────────────────┘
-                       │ POST /v1/agent
+                       │ supabase.functions.invoke
                        ▼
 ┌─────────────────────────────────────────────────────────┐
-│              PLANNER AGENT (Edge Function)               │
+│        PLANNER AGENT (Supabase Edge Function)            │
+│        supabase/functions/planner-agent/                 │
 │                                                          │
 │  ┌─────────────────────────────────────────────────┐    │
 │  │  TOOL REGISTRY                                   │    │
 │  │  Cada tool = { name, description, inputSchema,  │    │
-│  │                execute, outputSchema }            │    │
+│  │                execute }                          │    │
 │  └─────────────────────────────────────────────────┘    │
 │                                                          │
 │  ┌─────────────────────────────────────────────────┐    │
@@ -72,7 +96,7 @@ Esto es el equivalente a las APIs de Sabre **antes** del MCP. Funciona, pero:
 │  │                                                   │    │
 │  │  1. PERCEIVE: User message + context + history   │    │
 │  │  2. PLAN: LLM decides tools + sequence           │    │
-│  │  3. ACT: Execute tool(s), parallel if possible   │    │
+│  │  3. ACT: Execute tool(s) via other Edge Fns      │    │
 │  │  4. OBSERVE: Parse results, check completeness   │    │
 │  │  5. DECIDE: Done? → respond. Need more? → loop   │    │
 │  └─────────────────────────────────────────────────┘    │
@@ -80,383 +104,585 @@ Esto es el equivalente a las APIs de Sabre **antes** del MCP. Funciona, pero:
 │  ┌─────────────────────────────────────────────────┐    │
 │  │  GUARDRAILS                                      │    │
 │  │  - Max 5 iterations per request                  │    │
-│  │  - Max 60s total execution time                  │    │
+│  │  - Max 55s execution (Edge Fn limit ~60s)        │    │
 │  │  - No booking without human confirmation         │    │
 │  │  - Minors-only validation                        │    │
-│  │  - Budget/policy compliance                      │    │
 │  └─────────────────────────────────────────────────┘    │
 └──────────────────────┬──────────────────────────────────┘
-                       │
+                       │ supabase.functions.invoke (server-to-server)
         ┌──────────────┼──────────────┐
         ▼              ▼              ▼
 ┌──────────────┐┌──────────────┐┌──────────────┐
-│ search_flights││search_hotels ││ generate_    │  ... más tools
-│ (starling)   ││ (eurovips)   ││ itinerary    │
+│starling-     ││eurovips-     ││travel-       │
+│flights       ││soap          ││itinerary     │
+│(Edge Fn)     ││(Edge Fn)     ││(Edge Fn)     │
 └──────────────┘└──────────────┘└──────────────┘
+```
+
+### Por qué Edge Function y no API Gateway
+
+| Criterio | Edge Function | API Gateway (`api/`) |
+|----------|:---:|:---:|
+| Frontend ya lo consume | ✅ `supabase.functions.invoke()` | ❌ Nunca lo llama |
+| Puede llamar otras Edge Fns | ✅ Server-to-server con service key | ⚠️ Puede, pero indirecto |
+| Auth/RLS integrado | ✅ JWT + `withRateLimit()` | ❌ Tiene su propio auth (API keys) |
+| Patrón consistente | ✅ Mismo patrón que ai-message-parser | ❌ Stack diferente (Fastify) |
+| Shared utilities | ✅ `_shared/` ya tiene todo | ❌ Tiene copias propias |
+| Deploy | ✅ `supabase functions deploy` | ❌ Railway (separado) |
+| Caching | ✅ `_shared/cache.ts` (soft/hard TTL) | ✅ Redis |
+| Rate limiting | ✅ `_shared/rateLimit.ts` (DB-based) | ✅ Redis-based |
+
+---
+
+## Plan de Implementación — 5 Pasos
+
+### Paso 1: Edge Function `planner-agent` — Estructura Base
+**Archivos nuevos en:** `supabase/functions/planner-agent/`
+
+Siguiendo el patrón exacto de las Edge Functions existentes (`ai-message-parser`, `travel-itinerary`):
+
+```typescript
+// supabase/functions/planner-agent/index.ts
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { withRateLimit } from "../_shared/rateLimit.ts";
+import { corsHeaders } from '../_shared/cors.ts';
+import { runAgentLoop } from './agentLoop.ts';
+import { buildToolRegistry } from './tools/registry.ts';
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  return await withRateLimit(req, supabase,
+    { action: 'api_call', resource: 'planner-agent' },
+    async () => {
+      const body = await req.json();
+      const { message, conversation_id, context, conversationHistory, plannerState } = body;
+
+      // Build tool registry with supabase client for Edge Fn calls
+      const tools = buildToolRegistry(supabase);
+
+      // Run agent loop
+      const result = await runAgentLoop({
+        userMessage: message,
+        conversationHistory: conversationHistory || [],
+        previousContext: context || null,
+        plannerState: plannerState || null,
+        tools,
+      });
+
+      return new Response(JSON.stringify({
+        success: true,
+        ...result,
+        timestamp: new Date().toISOString(),
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  );
+});
+```
+
+**Archivos a crear:**
+```
+supabase/functions/planner-agent/
+├── index.ts              # Entry point (CORS + rate limit + serve)
+├── agentLoop.ts          # Loop: perceive → plan → act → observe → decide
+├── planner.ts            # LLM planning con OpenAI function calling
+├── guardrails.ts         # Límites y validaciones
+├── types.ts              # AgentContext, AgentStep, ToolResult, PlanResult
+├── prompts/
+│   └── system.ts         # System prompt del planner
+└── tools/
+    ├── registry.ts       # Tool registry + getToolsForLLM()
+    ├── searchFlights.ts  # Wrapper → supabase.functions.invoke('starling-flights')
+    ├── searchHotels.ts   # Wrapper → supabase.functions.invoke('eurovips-soap')
+    ├── searchPackages.ts # Wrapper → supabase.functions.invoke('eurovips-soap')
+    ├── generateItinerary.ts  # Wrapper → supabase.functions.invoke('travel-itinerary')
+    ├── resolveCityCode.ts    # Wrapper → _shared/cityCodeResolver
+    └── askUser.ts        # Retorna señal para pedir info
 ```
 
 ---
 
-## Plan de Implementación — 6 Pasos
+### Paso 2: Tool Registry — Wrappers sobre Edge Functions existentes
 
-### Paso 1: Tool Registry — Definición de Tools
-**Archivo nuevo:** `api/src/agent/tools/registry.ts`
-
-Crear un registry tipado donde cada tool existente se registra con:
-- `name`: Identificador único (ej: `search_flights`)
-- `description`: Descripción en lenguaje natural para el LLM
-- `inputSchema`: JSON Schema de parámetros (derivado de los tipos existentes)
-- `execute`: Función que ejecuta la lógica existente
-- `outputSchema`: Descripción de qué devuelve
+Cada tool wrapper llama a Edge Functions existentes via `supabase.functions.invoke()` — **no duplica lógica**:
 
 ```typescript
-// api/src/agent/tools/registry.ts
+// supabase/functions/planner-agent/tools/registry.ts
 
 interface ToolDefinition {
   name: string;
   description: string;
-  inputSchema: JSONSchema;
-  execute: (params: any, context: AgentContext) => Promise<ToolResult>;
+  inputSchema: Record<string, unknown>;
+  execute: (params: Record<string, unknown>) => Promise<ToolResult>;
 }
 
-const toolRegistry: Record<string, ToolDefinition> = {};
-
-function registerTool(tool: ToolDefinition) {
-  toolRegistry[tool.name] = tool;
+export function buildToolRegistry(supabase: SupabaseClient): ToolDefinition[] {
+  return [
+    buildSearchFlightsTool(supabase),
+    buildSearchHotelsTool(supabase),
+    buildSearchPackagesTool(supabase),
+    buildGenerateItineraryTool(supabase),
+    buildResolveCityCodeTool(),
+    buildAskUserTool(),
+  ];
 }
 
-function getToolsForLLM(): ToolDefinition[] {
-  return Object.values(toolRegistry).map(t => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: t.inputSchema,
+export function getToolsForLLM(tools: ToolDefinition[]) {
+  return tools.map(t => ({
+    type: 'function' as const,
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.inputSchema,
+    },
   }));
 }
 ```
 
-**Tools a registrar (wrappers sobre lógica existente):**
+```typescript
+// supabase/functions/planner-agent/tools/searchFlights.ts
 
-| Tool Name | Wraps | Descripción para LLM |
-|-----------|-------|----------------------|
-| `search_flights` | `executeFlightSearch()` | Buscar vuelos disponibles entre dos ciudades |
-| `search_hotels` | `executeHotelSearch()` | Buscar hoteles disponibles en una ciudad |
-| `search_packages` | `executePackageSearch()` | Buscar paquetes turísticos |
-| `search_services` | `executeServiceSearch()` | Buscar transfers y excursiones |
-| `generate_itinerary` | `travel-itinerary` | Generar itinerario de viaje día por día |
-| `resolve_city_code` | `cityCodeResolver` | Resolver nombre de ciudad a código IATA |
-| `check_fare_rules` | Nuevo (parse de fare data) | Consultar reglas de tarifa de un vuelo |
-| `get_context` | `loadContextState()` | Obtener contexto de búsqueda anterior |
-| `ask_user` | Nuevo | Pedir información faltante al usuario |
+export function buildSearchFlightsTool(supabase: SupabaseClient): ToolDefinition {
+  return {
+    name: 'search_flights',
+    description: 'Busca vuelos disponibles entre dos ciudades. Devuelve los 5 vuelos más baratos con precios, aerolíneas, escalas y duración. Usa códigos IATA (EZE, BCN, JFK) o nombres de ciudad.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        origin: { type: 'string', description: 'Ciudad o código IATA de origen (ej: "Buenos Aires" o "EZE")' },
+        destination: { type: 'string', description: 'Ciudad o código IATA de destino' },
+        departureDate: { type: 'string', description: 'Fecha de salida YYYY-MM-DD' },
+        returnDate: { type: 'string', description: 'Fecha de regreso YYYY-MM-DD (null para one-way)' },
+        adults: { type: 'number', description: 'Cantidad de adultos (default 1)' },
+        children: { type: 'number', description: 'Cantidad de niños' },
+        infants: { type: 'number', description: 'Cantidad de bebés' },
+        stops: { type: 'string', enum: ['direct', 'one_stop', 'any'], description: 'Preferencia de escalas' },
+        luggage: { type: 'string', enum: ['carry_on', 'checked', 'both', 'none'] },
+        preferredAirline: { type: 'string', description: 'Código IATA de aerolínea preferida' },
+      },
+      required: ['origin', 'destination', 'departureDate', 'adults'],
+    },
+    execute: async (params) => {
+      // Llama a la MISMA Edge Function que ya usa searchHandlers.ts
+      const { data, error } = await supabase.functions.invoke('starling-flights', {
+        body: {
+          action: 'searchFlights',
+          data: formatParamsForStarling(params),
+        },
+      });
+      if (error) return { success: false, error: error.message };
+      return { success: true, flights: data?.data?.fares || [], count: data?.data?.fares?.length || 0 };
+    },
+  };
+}
+```
 
-**Archivos a crear:**
-- `api/src/agent/tools/registry.ts` — Registry central
-- `api/src/agent/tools/searchFlights.ts` — Tool wrapper
-- `api/src/agent/tools/searchHotels.ts` — Tool wrapper
-- `api/src/agent/tools/searchPackages.ts` — Tool wrapper
-- `api/src/agent/tools/searchServices.ts` — Tool wrapper
-- `api/src/agent/tools/generateItinerary.ts` — Tool wrapper
-- `api/src/agent/tools/resolveCityCode.ts` — Tool wrapper
-- `api/src/agent/tools/askUser.ts` — Tool para pedir info
+**Lo mismo para cada tool** — wrappers finos que llaman Edge Functions existentes.
 
-Cada tool wrapper llama a la lógica existente en `searchExecutor.ts` — **no duplica lógica**.
+**Tools a registrar:**
+
+| Tool Name | Llama a | Descripción para LLM |
+|-----------|---------|----------------------|
+| `search_flights` | `starling-flights` | Buscar vuelos entre dos ciudades |
+| `search_hotels` | `eurovips-soap` | Buscar hoteles en una ciudad |
+| `search_packages` | `eurovips-soap` | Buscar paquetes turísticos |
+| `generate_itinerary` | `travel-itinerary` | Generar itinerario día por día |
+| `resolve_city_code` | `_shared/cityCodeResolver` | Resolver nombre de ciudad a código IATA |
+| `ask_user` | — (señal) | Pedir información faltante al usuario |
 
 ---
 
-### Paso 2: Agent Loop — El Orquestador
-**Archivo nuevo:** `api/src/agent/agentLoop.ts`
-
-Implementar el loop Perceive → Plan → Act → Observe → Decide:
+### Paso 3: Agent Loop + Planner (LLM con function calling)
 
 ```typescript
-// api/src/agent/agentLoop.ts
+// supabase/functions/planner-agent/agentLoop.ts
 
-interface AgentContext {
-  userMessage: string;
-  conversationHistory: Message[];
-  previousContext: ContextState | null;
-  tenantId: string;
-  agencyId: string;
-  turnNumber: number;
-}
+import { GUARDRAILS } from './guardrails.ts';
+import { planNextAction } from './planner.ts';
+import type { AgentContext, AgentStep, AgentResponse, ToolDefinition } from './types.ts';
 
-interface AgentStep {
-  thought: string;
-  toolCalls: Array<{ tool: string; params: any }>;
-  observations: any[];
-}
-
-async function runAgentLoop(context: AgentContext): Promise<AgentResponse> {
-  const tools = getToolsForLLM();
+export async function runAgentLoop(context: AgentContext): Promise<AgentResponse> {
   const steps: AgentStep[] = [];
+  const startTime = Date.now();
 
-  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    // 1. PLAN: LLM decides what to do
-    const plan = await planNextAction(context, tools, steps);
+  for (let iteration = 0; iteration < GUARDRAILS.maxIterations; iteration++) {
+    // Timeout check (Edge Functions tienen ~60s límite)
+    if (Date.now() - startTime > GUARDRAILS.maxExecutionTimeMs) {
+      return { response: 'Se agotó el tiempo de procesamiento.', steps, timedOut: true };
+    }
 
+    // 1. PLAN: LLM decides what to do next
+    const plan = await planNextAction(context, steps);
+
+    // 2. If done, respond to user
     if (plan.action === 'respond') {
-      return { response: plan.response, steps, context: updatedContext };
+      return {
+        response: plan.response,
+        steps,
+        structuredData: plan.structuredData || null,
+        contextForNext: buildContextForNext(context, steps),
+      };
     }
 
+    // 3. If needs user input, signal frontend
     if (plan.action === 'ask_user') {
-      return { response: plan.question, needsInput: true, steps };
+      return {
+        response: plan.question,
+        needsInput: true,
+        missingFields: plan.missingFields,
+        steps,
+      };
     }
 
-    // 2. ACT: Execute tool(s) — parallel if independent
-    const results = await executeTools(plan.toolCalls);
+    // 4. ACT: Execute tool(s) — parallel if independent
+    const results = await Promise.all(
+      plan.toolCalls.map(async (call) => {
+        const tool = context.tools.find(t => t.name === call.tool);
+        if (!tool) return { tool: call.tool, error: `Tool "${call.tool}" not found` };
+        try {
+          return { tool: call.tool, result: await tool.execute(call.params) };
+        } catch (err) {
+          return { tool: call.tool, error: err.message };
+        }
+      })
+    );
 
-    // 3. OBSERVE: Record results
+    // 5. OBSERVE: Record for next iteration
     steps.push({
       thought: plan.thought,
       toolCalls: plan.toolCalls,
       observations: results,
     });
-
-    // Update context with results for next iteration
-    context = updateContext(context, results);
   }
 
-  return { response: 'Límite de iteraciones alcanzado', steps };
+  return { response: 'Se alcanzó el límite de iteraciones.', steps };
 }
 ```
 
-**Archivos a crear:**
-- `api/src/agent/agentLoop.ts` — Loop principal
-- `api/src/agent/planner.ts` — LLM planning (prompt + OpenAI call)
-- `api/src/agent/executor.ts` — Tool execution engine
-- `api/src/agent/types.ts` — Tipos del agente
-
----
-
-### Paso 3: Planner Prompt — El "Cerebro"
-**Archivo nuevo:** `api/src/agent/planner.ts`
-
-El planner es una llamada a OpenAI con **function calling** (tool_use). El system prompt incluye:
-
-1. Las herramientas disponibles (del registry)
-2. El contexto de la conversación
-3. Reglas de dominio (fare rules, validaciones, restricciones)
-4. Instrucciones de cuándo pedir info vs. asumir defaults
-
 ```typescript
-// api/src/agent/planner.ts
+// supabase/functions/planner-agent/planner.ts
 
-async function planNextAction(
+import { getToolsForLLM } from './tools/registry.ts';
+import { SYSTEM_PROMPT } from './prompts/system.ts';
+import type { AgentContext, AgentStep, PlanResult } from './types.ts';
+
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+
+export async function planNextAction(
   context: AgentContext,
-  tools: ToolDefinition[],
   previousSteps: AgentStep[]
 ): Promise<PlanResult> {
+  const toolDefs = getToolsForLLM(context.tools);
 
-  const systemPrompt = buildPlannerPrompt(tools, context);
-
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      ...formatConversationHistory(context),
-      ...formatPreviousSteps(previousSteps),
-      { role: 'user', content: context.userMessage },
-    ],
-    tools: tools.map(t => ({
-      type: 'function',
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.inputSchema,
-      }
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    // Conversation history (last 10 messages)
+    ...context.conversationHistory.slice(-10).map(m => ({
+      role: m.role,
+      content: typeof m.content === 'string' ? m.content : m.content.text,
     })),
-    tool_choice: 'auto',
-  });
+    // Previous agent steps (so LLM knows what already happened)
+    ...previousSteps.flatMap(step => [
+      { role: 'assistant', content: step.thought, tool_calls: step.toolCalls },
+      { role: 'tool', content: JSON.stringify(step.observations) },
+    ]),
+    // Current user message
+    { role: 'user', content: context.userMessage },
+  ];
 
-  return parsePlanResult(response);
-}
-```
-
-**El prompt del planner reusa la lógica de `emilia-parser-v3`** para interpretación de mensajes, pero agrega la capa de planning y tool selection.
-
-**Archivos a crear:**
-- `api/src/agent/planner.ts` — LLM planner con function calling
-- `api/src/agent/prompts/plannerSystem.ts` — System prompt del planner
-
----
-
-### Paso 4: Ruta del Agente en API Gateway
-**Archivo a editar:** `api/src/routes/v1/` (agregar nueva ruta)
-**Archivo nuevo:** `api/src/routes/v1/agent.ts`
-
-```typescript
-// api/src/routes/v1/agent.ts
-
-// POST /v1/agent
-// Input: { message, conversation_id, context? }
-// Output: { response, tool_calls_made, context_for_next, needs_input? }
-```
-
-Esta ruta:
-1. Recibe el mensaje del usuario
-2. Carga contexto de la conversación
-3. Ejecuta `runAgentLoop()`
-4. Devuelve respuesta + metadata de tools usados
-5. Cachea en Redis (idempotencia)
-
-**Archivos a crear:**
-- `api/src/routes/v1/agent.ts` — Nueva ruta
-
-**Archivos a editar:**
-- `api/src/server.ts` — Registrar nueva ruta
-
----
-
-### Paso 5: Integración con Frontend
-**Archivo a editar:** `src/features/chat/hooks/useMessageHandler.ts`
-
-El cambio principal en el frontend es **simplificar el switch gigante**. En vez de 1700 líneas de routing manual, el handler llama al agente:
-
-```typescript
-// En useMessageHandler.ts — el nuevo flujo (modo planner)
-
-if (workspaceMode === 'planner') {
-  // Nuevo flujo agéntico
-  const agentResponse = await fetch('/v1/agent', {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({
-      message: currentMessage,
-      conversation_id: selectedConversation,
-      context: persistentState,
+      model: 'gpt-4o-mini',
+      messages,
+      tools: toolDefs,
+      tool_choice: 'auto',
+      temperature: 0.1,
+      max_tokens: 1500,
     }),
   });
 
-  // El agente ya hizo todo: parseó, buscó, filtró, formateó
-  assistantResponse = agentResponse.response;
-  structuredData = agentResponse.data;
-} else {
-  // Flujo legacy (switch existente) — sin cambios
-  switch (parsedRequest.requestType) { ... }
+  const data = await response.json();
+  return parsePlanResult(data);
 }
 ```
 
-**Estrategia**: Feature flag usando `conversation_workspace_mode` que ya existe en la DB (`'standard'` | `'planner'`). El modo `planner` usa el agente, el modo `standard` mantiene el flujo actual.
+---
+
+### Paso 4: Integración con Frontend
+**Archivo a editar:** `src/features/chat/hooks/useMessageHandler.ts`
+
+El cambio es un branch condicional que intercepta ANTES del switch (línea ~1245), solo cuando `workspace_mode === 'planner'`:
+
+```typescript
+// En handleSendMessage, ANTES del switch actual (línea ~1240)
+
+if (isPlannerMode) {
+  // Nuevo flujo agéntico — llama a la Edge Function
+  setTypingMessage('El agente está planificando...', finalConversationId);
+
+  const { data: agentResult, error: agentError } = await supabase.functions.invoke('planner-agent', {
+    body: {
+      message: currentMessage,
+      conversation_id: finalConversationId,
+      context: persistentState,
+      conversationHistory: conversationHistoryForAI,
+      plannerState: plannerState || null,
+    },
+  });
+
+  if (agentError) throw agentError;
+
+  assistantResponse = agentResult.response;
+  structuredData = agentResult.structuredData;
+
+  // Si el agente generó plannerData, persistir
+  if (agentResult.structuredData?.plannerData && persistPlannerState) {
+    await persistPlannerState(agentResult.structuredData.plannerData, 'chat');
+  }
+} else {
+  // Flujo legacy (switch existente) — SIN CAMBIOS
+  switch (parsedRequest.requestType) {
+    case 'flights': ...
+    case 'hotels': ...
+    // ... todo igual
+  }
+}
+```
+
+**Cómo se determina `isPlannerMode`:**
+- `ChatFeature.tsx` ya calcula `workspaceMode` (línea 145-151)
+- Se pasa como prop a `useMessageHandler` (nuevo parámetro)
+- La conversación ya tiene `workspace_mode: 'planner'` en la DB
 
 **Archivos a editar:**
-- `src/features/chat/hooks/useMessageHandler.ts` — Agregar branch para modo planner
+- `src/features/chat/hooks/useMessageHandler.ts` — Agregar branch condicional (~20 líneas)
+- `src/features/chat/ChatFeature.tsx` — Pasar `workspaceMode` como prop al hook
 
 ---
 
-### Paso 6: Guardrails y Observabilidad
-**Archivo nuevo:** `api/src/agent/guardrails.ts`
-
-Reglas server-side que el agente NO puede bypassear:
+### Paso 5: Guardrails
 
 ```typescript
-const GUARDRAILS = {
+// supabase/functions/planner-agent/guardrails.ts
+
+export const GUARDRAILS = {
   maxIterations: 5,           // Max loops por request
-  maxExecutionTimeMs: 60000,  // 60 segundos total
+  maxExecutionTimeMs: 55000,  // 55s (Edge Fn limit ~60s)
   maxToolCallsPerIteration: 3, // Max tools en paralelo
   requireHumanConfirmation: [  // Tools que requieren confirmación
     'create_booking',
     'process_payment',
-    'cancel_booking',
   ],
   blockedPatterns: [           // Nunca ejecutar
-    'minors_only_flight',
+    'minors_only_flight',      // Sin adultos = rechazar
   ],
 };
 ```
-
-**Archivos a crear:**
-- `api/src/agent/guardrails.ts` — Reglas de seguridad
 
 ---
 
 ## Estructura de Archivos Final
 
+### Archivos NUEVOS (todos en Edge Functions)
 ```
-api/src/agent/
-├── types.ts              # AgentContext, AgentStep, ToolResult, etc.
+supabase/functions/planner-agent/
+├── index.ts              # Entry point (serve + CORS + rate limit)
 ├── agentLoop.ts          # Loop principal (perceive→plan→act→observe)
-├── planner.ts            # LLM planning con function calling
-├── executor.ts           # Ejecuta tools del registry
-├── guardrails.ts         # Límites y validaciones server-side
+├── planner.ts            # LLM planning con OpenAI function calling
+├── guardrails.ts         # Límites y validaciones
+├── types.ts              # AgentContext, AgentStep, ToolResult, PlanResult
 ├── prompts/
-│   └── plannerSystem.ts  # System prompt del planner
+│   └── system.ts         # System prompt del planner
 └── tools/
-    ├── registry.ts       # Tool registry + discovery
-    ├── searchFlights.ts  # Wrapper → executeFlightSearch
-    ├── searchHotels.ts   # Wrapper → executeHotelSearch
-    ├── searchPackages.ts # Wrapper → executePackageSearch
-    ├── searchServices.ts # Wrapper → executeServiceSearch
-    ├── generateItinerary.ts # Wrapper → travel-itinerary
-    ├── resolveCityCode.ts   # Wrapper → cityCodeResolver
-    └── askUser.ts        # Pedir info al usuario
+    ├── registry.ts       # buildToolRegistry() + getToolsForLLM()
+    ├── searchFlights.ts  # → supabase.functions.invoke('starling-flights')
+    ├── searchHotels.ts   # → supabase.functions.invoke('eurovips-soap')
+    ├── searchPackages.ts # → supabase.functions.invoke('eurovips-soap')
+    ├── generateItinerary.ts  # → supabase.functions.invoke('travel-itinerary')
+    ├── resolveCityCode.ts    # → _shared/cityCodeResolver
+    └── askUser.ts        # Señal para pedir info al usuario
 ```
 
-**Archivos existentes a editar:**
-- `api/src/server.ts` — Registrar ruta `/v1/agent`
-- `src/features/chat/hooks/useMessageHandler.ts` — Branch para modo planner
+**Total: 13 archivos nuevos** — todos aislados en una nueva Edge Function.
+
+### Archivos EXISTENTES a editar (2 archivos, cambios mínimos)
+
+| Archivo | Cambio | Líneas afectadas |
+|---------|--------|-----------------|
+| `src/features/chat/hooks/useMessageHandler.ts` | Branch `if (isPlannerMode)` antes del switch | ~20 líneas nuevas, 0 líneas modificadas |
+| `src/features/chat/ChatFeature.tsx` | Pasar `workspaceMode` como prop al hook | ~3 líneas |
+
+### Archivos que NO se modifican (consumidos server-to-server)
+
+| Edge Function | Cómo la consume el agente |
+|---------------|--------------------------|
+| `starling-flights` | `supabase.functions.invoke()` desde `searchFlights.ts` |
+| `eurovips-soap` | `supabase.functions.invoke()` desde `searchHotels.ts` |
+| `travel-itinerary` | `supabase.functions.invoke()` desde `generateItinerary.ts` |
+| `ai-message-parser` | **No se usa** — el planner LLM hace NLU directo |
+| `_shared/cityCodeResolver.ts` | Import directo desde `resolveCityCode.ts` |
+| `_shared/rateLimit.ts` | Import en `index.ts` (patrón estándar) |
+| `_shared/cors.ts` | Import en `index.ts` (patrón estándar) |
 
 ---
 
-## Ejemplo de Flujo Completo
-
-**Usuario:** "Quiero ir a ver el Barça-Real Madrid el 26 de octubre, vuelo desde Buenos Aires, hotel cerca del Camp Nou, all inclusive"
-
-**Agent Loop:**
+## Diagrama de Impacto Real
 
 ```
-ITERATION 1:
-  Thought: "Necesito buscar vuelos EZE→BCN y hoteles en Barcelona
-            cerca del Camp Nou con all inclusive"
-  Tool calls:
-    - search_flights({ origin: "EZE", destination: "BCN",
-                       departureDate: "2026-10-25", returnDate: "2026-10-28",
-                       adults: 1 })
-    - search_hotels({ city: "Barcelona", checkinDate: "2026-10-25",
-                      checkoutDate: "2026-10-28", adults: 1,
-                      mealPlan: "all_inclusive" })
+ARCHIVOS EDITADOS (2)              ARCHIVOS NUEVOS (13)
+═════════════════════              ═════════════════════
 
-  Observations:
-    - flights: 4 resultados (AR, IB, AF, LH)
-    - hotels: 0 resultados con all inclusive en Barcelona centro
+useMessageHandler.ts ──────┐
+  (+20 líneas: if branch)  │
+                            │      supabase/functions/planner-agent/
+ChatFeature.tsx ───────────┤      ├── index.ts ←── entry point
+  (+3 líneas: prop)        │      ├── agentLoop.ts
+                            │      ├── planner.ts ──→ OpenAI API
+                            │      ├── guardrails.ts
+                            └────→ ├── types.ts
+                                   ├── prompts/system.ts
+                                   └── tools/
+                                       ├── registry.ts
+                                       ├── searchFlights.ts ──→ starling-flights (Edge Fn)
+                                       ├── searchHotels.ts ───→ eurovips-soap (Edge Fn)
+                                       ├── searchPackages.ts ─→ eurovips-soap (Edge Fn)
+                                       ├── generateItinerary.ts → travel-itinerary (Edge Fn)
+                                       ├── resolveCityCode.ts ─→ _shared/cityCodeResolver
+                                       └── askUser.ts
 
-ITERATION 2:
-  Thought: "No hay all inclusive en Barcelona centro
-            (es más común en resorts). Debo informar al usuario
-            y sugerir alternativa: media pensión o solo desayuno"
-  Action: respond
-  Response: "Encontré 4 opciones de vuelo EZE→BCN.
-             Para hoteles, Barcelona centro no suele ofrecer
-             all inclusive. ¿Preferís media pensión o solo desayuno?
-             Te muestro los vuelos mientras tanto:
-             1. Iberia directo — USD 1,240
-             2. Air France vía CDG — USD 980
-             ..."
+                              EDGE FUNCTIONS EXISTENTES (read-only, no se tocan)
+                              ═════════════════════════════════════════════════
+                              starling-flights/    ← consumida por searchFlights tool
+                              eurovips-soap/       ← consumida por searchHotels tool
+                              travel-itinerary/    ← consumida por generateItinerary tool
+                              ai-message-parser/   ← NO se usa (planner tiene NLU propio)
+                              _shared/             ← imports directos (cors, rateLimit, cityCode)
 ```
-
-**Esto es lo que el switch actual NO puede hacer**: el agente observó que no hay resultados de hotel, razonó por qué (domain knowledge), y adaptó la respuesta — todo en el mismo request.
 
 ---
 
-## Principios de Diseño
+## Flujo Completo Corregido
 
-1. **No duplicar lógica** — Los tools son wrappers finos sobre `searchExecutor.ts`
-2. **Feature flag** — `workspace_mode: 'planner'` activa el agente; `'standard'` mantiene el flujo actual
-3. **Incremental** — Se puede lanzar solo con `search_flights` + `search_hotels` e ir agregando tools
-4. **Model-agnostic** — El planner usa OpenAI hoy pero la interfaz es abstracta
-5. **Observable** — Cada step del loop se logguea con correlation_id para debugging
+```
+MODO PLANNER (workspace_mode === 'planner')
+════════════════════════════════════════════
+
+User: "Quiero ir a ver el Barça-Real Madrid, vuelo desde Buenos Aires,
+       hotel cerca del Camp Nou, all inclusive"
+  │
+  ▼
+useMessageHandler.ts
+  │ isPlannerMode === true
+  │
+  ▼
+supabase.functions.invoke('planner-agent', {
+  message, context, conversationHistory, plannerState
+})
+  │
+  ▼
+┌─────────────────────────────────────────────┐
+│ PLANNER-AGENT (Edge Function)               │
+│                                              │
+│ ITERATION 1:                                 │
+│   Thought: "Necesito vuelos EZE→BCN          │
+│             y hoteles Barcelona all inclusive"│
+│   Tool calls (parallel):                     │
+│     → search_flights → starling-flights EF   │
+│     → search_hotels  → eurovips-soap EF      │
+│                                              │
+│   Observations:                              │
+│     flights: 4 resultados ✅                  │
+│     hotels: 0 resultados con AI ❌            │
+│                                              │
+│ ITERATION 2:                                 │
+│   Thought: "No hay AI en BCN centro.         │
+│     Puedo: sugerir media pensión, o buscar   │
+│     resorts en Costa Brava con AI"           │
+│   Action: respond                            │
+│   Response: "Encontré 4 vuelos EZE→BCN.      │
+│     Barcelona centro no ofrece all inclusive. │
+│     ¿Preferís media pensión o busco resorts  │
+│     en la Costa Brava con all inclusive?"     │
+│     1. Iberia directo — USD 1,240            │
+│     2. Air France vía CDG — USD 980 ..."     │
+└─────────────────────────────────────────────┘
+  │
+  ▼
+Frontend recibe respuesta + structuredData
+  → Muestra en chat
+  → Persiste plannerState si existe
+  → Guarda contextState para next iteration
+
+
+MODO STANDARD (workspace_mode === 'standard')
+═════════════════════════════════════════════
+  │
+  ▼
+Switch existente — SIN CAMBIOS
+  case 'flights': handleFlightSearch(...)
+  case 'hotels': handleHotelSearch(...)
+  case 'combined': handleCombinedSearch(...)
+  ...
+```
+
+---
+
+## Puntos de Intercepción en el Frontend
+
+El agente intercepta en 4 puntos del ciclo de vida del planner:
+
+| Punto | Ubicación | Cuándo | Qué hace el agente |
+|-------|-----------|--------|-------------------|
+| **A** | `useMessageHandler:1168` | Mensaje parseado como itinerary | Puede enriquecer el ParsedTravelRequest |
+| **B** | `useMessageHandler:1313` | Pre-generación (draft_generating) | Puede modificar params antes de Edge Fn |
+| **C** | `useMessageHandler:1349` | Post-generación (persistPlannerState) | Puede modificar plannerData antes de guardar |
+| **D** | `useTripPlanner` mutations | User edita segmentos/días | Puede sugerir mejoras post-edit |
+
+Con el agente, **los 4 puntos se unifican en un solo flujo**: el agent loop decide internamente qué hacer en cada paso, sin necesidad de hooks separados.
+
+---
+
+## Resumen de Riesgo
+
+| Componente | Archivos tocados | Riesgo | Razón |
+|-----------|-----------------|--------|-------|
+| **Edge Function nueva** | 13 archivos nuevos | **Nulo** | Aislada, no modifica nada existente |
+| **Frontend branch** | `useMessageHandler.ts` (+20 ln) | **Bajo** | `if/else` alrededor del switch, no modifica código interno |
+| **ChatFeature prop** | `ChatFeature.tsx` (+3 ln) | **Bajo** | Solo pasa un prop existente |
+| **Edge Functions existentes** | Ninguno | **Nulo** | Se consumen server-to-server |
+| **Database** | Ninguno | **Nulo** | Usa `workspace_mode` que ya existe |
+| **_shared utilities** | Ninguno | **Nulo** | Se importan, no se editan |
+
+**Blast radius total**: 2 archivos existentes con cambios mínimos (~23 líneas) + 13 archivos nuevos aislados en una Edge Function nueva.
 
 ---
 
 ## Dependencias
 
-- OpenAI API (ya configurada para `ai-message-parser`)
-- Redis (ya configurado para caching)
-- Supabase Edge Functions (ya deployadas)
-- No se requieren nuevas dependencias npm
+- OpenAI API key (ya configurada como env var en Edge Functions: `OPENAI_API_KEY`)
+- Supabase service role key (ya disponible en Edge Functions)
+- `_shared/rateLimit.ts`, `_shared/cors.ts`, `_shared/cityCodeResolver.ts` (ya existen)
+- **No se requieren nuevas dependencias** — todo usa Deno imports + shared utilities
 
-## Riesgos
+## Deploy
 
-| Riesgo | Mitigación |
-|--------|-----------|
-| Latencia del agent loop (múltiples LLM calls) | gpt-4o-mini para planning, cache agresivo |
-| LLM toma decisiones incorrectas | Guardrails server-side + human confirmation para booking |
-| Costo de API (más calls a OpenAI) | Limitar a 5 iteraciones, usar modelo mini |
-| Regresión en flujo existente | Feature flag, modo standard intacto |
+```bash
+supabase functions deploy planner-agent
+```
+
+Un solo comando. No afecta ninguna otra Edge Function ni el frontend existente.
