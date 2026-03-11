@@ -453,7 +453,12 @@ export function getSmartAirportCode(cityName: string, destination?: string): str
       const domesticDestinations = [
         'cordoba', 'córdoba', 'mendoza', 'bariloche', 'ushuaia', 'salta',
         'rosario', 'neuquen', 'neuquén', 'tucuman', 'tucumán', 'jujuy',
-        'la plata', 'mar del plata', 'san martin de los andes', 'el calafate'
+        'la plata', 'mar del plata', 'san martin de los andes', 'el calafate',
+        'iguazu', 'iguazú', 'puerto iguazu',
+        'comodoro rivadavia', 'resistencia', 'corrientes', 'trelew', 'puerto madryn',
+        'rio gallegos', 'posadas', 'san juan', 'santiago del estero',
+        'formosa', 'bahia blanca', 'santa rosa', 'rio grande',
+        'catamarca', 'la rioja', 'san luis', 'parana', 'santa fe', 'viedma'
       ];
 
       // Regional destinations (South America - use EZE)
@@ -870,10 +875,19 @@ export async function getUnifiedAirportCode(
     const normalizedResolvedCity = normalizeString(resolvedCityName);
     const cityMapping = CITY_MAPPINGS[normalizedResolvedCity];
 
-    // If city has multiple airports and input is a metro code (not an actual airport code),
-    // fall through to Layer 1 for smart resolution (e.g. BUE → AEP for domestic, EZE for intl)
-    if (cityMapping?.iataSecondary && upperInput !== cityMapping.iata && upperInput !== cityMapping.iataSecondary) {
-      console.log(`⏭️ [LAYER 0] "${upperInput}" is a metro code for "${resolvedCityName}" (airports: ${cityMapping.iata}/${cityMapping.iataSecondary}), falling through to smart logic...`);
+    if (cityMapping?.iataSecondary) {
+      // Metro code (e.g. BUE) — siempre cae a smart logic
+      if (upperInput !== cityMapping.iata && upperInput !== cityMapping.iataSecondary) {
+        console.log(`⏭️ [LAYER 0] "${upperInput}" is a metro code for "${resolvedCityName}" (airports: ${cityMapping.iata}/${cityMapping.iataSecondary}), falling through to smart logic...`);
+      // Aeropuerto real (EZE/AEP) CON destino — cae a smart logic para elegir el correcto
+      } else if (context?.destination) {
+        console.log(`⏭️ [LAYER 0] "${upperInput}" is an airport for multi-airport city "${resolvedCityName}", destination "${context.destination}" present, falling through to smart logic...`);
+      // Aeropuerto real SIN destino — devolver tal cual
+      } else {
+        const elapsed = Date.now() - startTime;
+        console.log(`✅ [LAYER 0] Input "${cityName}" is already a known IATA code → ${upperInput} (${resolvedCityName}, ${elapsed}ms)`);
+        return upperInput;
+      }
     } else {
       const elapsed = Date.now() - startTime;
       console.log(`✅ [LAYER 0] Input "${cityName}" is already a known IATA code → ${upperInput} (${resolvedCityName}, ${elapsed}ms)`);
