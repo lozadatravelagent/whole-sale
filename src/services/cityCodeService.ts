@@ -38,6 +38,54 @@ const CITY_MAPPINGS: Record<string, CityCodeMapping> = {
     country: 'AR',
     aliases: ['san carlos de bariloche']
   },
+  'rosario': {
+    iata: 'ROS',
+    hotelCode: 'ROS',
+    country: 'AR',
+    aliases: []
+  },
+  'salta': {
+    iata: 'SLA',
+    hotelCode: 'SLA',
+    country: 'AR',
+    aliases: []
+  },
+  'tucuman': {
+    iata: 'TUC',
+    hotelCode: 'TUC',
+    country: 'AR',
+    aliases: ['tucumán', 'san miguel de tucuman']
+  },
+  'neuquen': {
+    iata: 'NQN',
+    hotelCode: 'NQN',
+    country: 'AR',
+    aliases: ['neuquén']
+  },
+  'ushuaia': {
+    iata: 'USH',
+    hotelCode: 'USH',
+    country: 'AR',
+    aliases: []
+  },
+  'iguazu': {
+    iata: 'IGR',
+    hotelCode: 'IGR',
+    country: 'AR',
+    aliases: ['iguazú', 'puerto iguazu', 'cataratas']
+  },
+  'el calafate': {
+    iata: 'FTE',
+    hotelCode: 'FTE',
+    country: 'AR',
+    aliases: ['calafate']
+  },
+  'mar del plata': {
+    iata: 'MDQ',
+    hotelCode: 'MDQ',
+    country: 'AR',
+    aliases: []
+  },
 
   // República Dominicana
   'punta cana': {
@@ -589,7 +637,7 @@ export function getCountryFromAirportCode(airportCode: string): string | null {
  */
 const IATA_TO_CITY: Record<string, string> = {
   // Argentina
-  'EZE': 'Buenos Aires', 'AEP': 'Buenos Aires', 'COR': 'Córdoba', 'MDZ': 'Mendoza',
+  'BUE': 'Buenos Aires', 'EZE': 'Buenos Aires', 'AEP': 'Buenos Aires', 'COR': 'Córdoba', 'MDZ': 'Mendoza',
   'BRC': 'Bariloche', 'IGR': 'Iguazú', 'USH': 'Ushuaia', 'FTE': 'El Calafate',
   'SLA': 'Salta', 'TUC': 'Tucumán', 'ROS': 'Rosario', 'NQN': 'Neuquén',
 
@@ -809,6 +857,17 @@ export async function getUnifiedAirportCode(
   console.log(`\n🔍 [UNIFIED RESOLVER] Starting resolution for: "${cityName}"`);
   if (context?.destination) console.log(`   → Destination context: "${context.destination}"`);
   if (context?.country) console.log(`   → Country hint: "${context.country}"`);
+
+  // ============================================
+  // LAYER 0: IATA Code Passthrough
+  // If input is already a known IATA code, return it directly
+  // ============================================
+  const upperInput = cityName.trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(upperInput) && IATA_TO_CITY[upperInput]) {
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ [LAYER 0] Input "${cityName}" is already a known IATA code → ${upperInput} (${IATA_TO_CITY[upperInput]}, ${elapsed}ms)`);
+    return upperInput;
+  }
 
   // ============================================
   // LAYER 1: Smart Context-Aware Logic
