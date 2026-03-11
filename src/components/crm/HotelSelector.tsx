@@ -175,13 +175,9 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
           hasAgencyPricing: !!result.agencyPricing,
           subTotalAmount: result.subTotalAmount
         }, null, 2));
-        // Mark as failed - show "Consultar disponibilidad" in UI
-        setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
       }
     } catch (error) {
       console.error('❌ [EXACT_PRICE] Error getting exact price:', error);
-      // Mark as failed on error
-      setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
     } finally {
       setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
     }

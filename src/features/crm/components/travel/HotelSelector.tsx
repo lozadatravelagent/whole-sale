@@ -43,7 +43,7 @@ export function HotelSelector({
     }
 
     let newSelectedHotels;
-    let newSelectedRooms = { ...selectedRooms };
+    const newSelectedRooms = { ...selectedRooms };
 
     if (isSelected) {
       newSelectedHotels = selectedHotels.filter(h => h.id !== hotel.id);
@@ -129,13 +129,13 @@ export function HotelSelector({
           subTotalAmount: result.subTotalAmount
         });
       } else {
-        // Mark as failed - show "Consultar disponibilidad" in UI
-        setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
+        console.warn('⚠️ [EXACT_PRICE] makeBudget failed:', {
+          success: result.success,
+          error: result.error
+        });
       }
     } catch (error) {
       console.error('❌ [EXACT_PRICE] Error:', error);
-      // Mark as failed on error
-      setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
     } finally {
       setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
     }

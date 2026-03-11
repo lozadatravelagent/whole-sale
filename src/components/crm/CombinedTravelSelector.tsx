@@ -44,6 +44,9 @@ import { getCityNameFromCode } from '@/features/chat/utils/flightHelpers';
 import BaggageIcon from '@/components/ui/BaggageIcon';
 import { supabase } from '@/integrations/supabase/client';
 
+const ensureHttps = (url: string) =>
+  url.startsWith('http://') ? url.replace('http://', 'https://') : url;
+
 interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
   conversationId?: string; // Add conversation ID to get agency_id
@@ -780,13 +783,9 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           hasAgencyPricing: !!result.agencyPricing,
           subTotalAmount: result.subTotalAmount
         }, null, 2));
-        // Mark as failed - show "Consultar disponibilidad" in UI
-        setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
       }
     } catch (error) {
       console.error('❌ [EXACT_PRICE] Error getting exact price:', error);
-      // Mark as failed on error
-      setFailedPrices(prev => ({ ...prev, [priceKey]: true }));
     } finally {
       setLoadingPrices(prev => ({ ...prev, [priceKey]: false }));
     }
@@ -1406,7 +1405,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                         </div>
                         {hotel.images?.[0] && (
                           <img
-                            src={hotel.images[0]}
+                            src={ensureHttps(hotel.images[0])}
                             alt={hotel.name}
                             className="absolute inset-0 w-full h-full object-cover"
                             loading="lazy"
@@ -1578,7 +1577,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               {galleryHotel?.images?.map((img, idx) => (
                 <img
                   key={idx}
-                  src={img}
+                  src={ensureHttps(img)}
                   alt={`${galleryHotel.name} - ${idx + 1}`}
                   className="w-full aspect-[4/3] object-cover rounded-lg hover:opacity-95 transition-opacity"
                   loading="lazy"
