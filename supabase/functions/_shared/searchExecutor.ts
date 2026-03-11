@@ -591,96 +591,18 @@ async function executeHotelSearch(
   console.log('[HOTEL_SEARCH] Calling eurovips-soap Edge Function', nameFilter ? `with name filter: "${nameFilter}"` : 'without name filter');
   console.log(`   → cityCode: ${cityCode}, dates: ${hotels.checkinDate} to ${hotels.checkoutDate}, adults: ${inferredAdults}`);
 
-  // ✅ Call BOTH providers in parallel (fail-open with Promise.allSettled)
-  const hotelbedsDestCode = resolveHotelbedsDestination(hotels.city || '');
-  const hotelbedsRequest = {
-    action: 'searchHotels',
-    data: {
-      cityCode: hotelbedsDestCode,
-      checkinDate: hotels.checkinDate,
-      checkoutDate: hotels.checkoutDate,
-      adults: inferredAdults,
-      children: childrenCount,
-      childrenAges,
-      infants: hotels.infants || 0,
-      hotelName: nameFilter,
-    }
-  };
+  // ✅ Call EUROVIPS provider
+  console.log('[HOTEL_SEARCH] Calling EUROVIPS');
 
-  console.log('[HOTEL_SEARCH] Calling EUROVIPS + Hotelbeds in parallel');
+  const eurovipsResponse = await invokeWithTimeout(supabase, 'eurovips-soap', eurovipsRequest);
 
-  const [eurovipsResult, hotelbedsResult] = await Promise.allSettled([
-    invokeWithTimeout(supabase, 'eurovips-soap', eurovipsRequest),
-    invokeWithTimeout(supabase, 'hotelbeds-api', hotelbedsRequest),
-  ]);
-
-  // Extract results from settled promises (fail-open)
-  let eurovipsHotels: any[] = [];
-  let hotelbedsHotels: any[] = [];
-  const providersSearched: string[] = ['EUROVIPS', 'HOTELBEDS'];
-  const providersSucceeded: string[] = [];
-
-  if (eurovipsResult.status === 'fulfilled') {
-    eurovipsHotels = (eurovipsResult.value?.results || []).map((h: any) => ({
-      ...h,
-      provider: 'EUROVIPS',
-    }));
-    providersSucceeded.push('EUROVIPS');
-    console.log(`[HOTEL_SEARCH] EUROVIPS returned ${eurovipsHotels.length} hotels`);
-  } else {
-    console.error('[HOTEL_SEARCH] EUROVIPS failed:', eurovipsResult.reason?.message);
-  }
-
-  if (hotelbedsResult.status === 'fulfilled') {
-    const hbData = hotelbedsResult.value?.data || hotelbedsResult.value;
-    hotelbedsHotels = (hbData?.results || []).map((h: any) => ({
-      ...h,
-      provider: h.provider || 'HOTELBEDS',
-    }));
-    providersSucceeded.push('HOTELBEDS');
-    console.log(`[HOTEL_SEARCH] Hotelbeds returned ${hotelbedsHotels.length} hotels`);
-  } else {
-    console.error('[HOTEL_SEARCH] Hotelbeds failed:', hotelbedsResult.reason?.message);
-  }
-
-  // If both providers failed, return error
-  if (providersSucceeded.length === 0) {
-    return {
-      status: 'error',
-      type: 'hotels',
-      error: {
-        message: 'All hotel providers failed',
-        details: {
-          eurovips: eurovipsResult.status === 'rejected' ? eurovipsResult.reason?.message : undefined,
-          hotelbeds: hotelbedsResult.status === 'rejected' ? hotelbedsResult.reason?.message : undefined,
-        }
-      }
-    };
-  }
-
-  // Merge and deduplicate: when same hotel appears in both, keep cheaper option
-  const merged = [...eurovipsHotels, ...hotelbedsHotels];
-  const deduped = new Map<string, any>();
-
-  for (const hotel of merged) {
-    const key = hotel.name?.toLowerCase().trim() || hotel.unique_id;
-    const existing = deduped.get(key);
-    if (!existing) {
-      deduped.set(key, hotel);
-    } else {
-      // Keep the cheaper one
-      const existingMin = Math.min(...(existing.rooms || []).map((r: any) => r.total_price || Infinity));
-      const currentMin = Math.min(...(hotel.rooms || []).map((r: any) => r.total_price || Infinity));
-      if (currentMin < existingMin) {
-        deduped.set(key, hotel);
-      }
-    }
-  }
-
-  let allHotels = Array.from(deduped.values());
+  let allHotels = (eurovipsResponse?.results || []).map((h: any) => ({
+    ...h,
+    provider: 'EUROVIPS',
+  }));
   const totalFromProvider = allHotels.length;
 
-  console.log(`[HOTEL_SEARCH] Merged: ${merged.length} → ${totalFromProvider} hotels (after dedup)`);
+  console.log(`[HOTEL_SEARCH] EUROVIPS returned ${totalFromProvider} hotels`);
 
   // ✅ STEP 1: Apply destination-specific filters (e.g., Punta Cana whitelist)
   const beforeWhitelist = allHotels.length;
@@ -750,12 +672,9 @@ async function executeHotelSearch(
   }
 
   // Provider metadata
-  metadata.providers_searched = providersSearched;
-  metadata.providers_succeeded = providersSucceeded;
+  metadata.providers_searched = ['EUROVIPS'];
   metadata.provider_counts = {
-    eurovips: eurovipsHotels.length,
-    hotelbeds: hotelbedsHotels.length,
-    merged_total: totalFromProvider,
+    eurovips: totalFromProvider,
   };
 
   return {

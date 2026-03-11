@@ -7,6 +7,7 @@ export interface MakeBudgetParams {
   fareIdBroker: string;     // FareIdBroker de la habitación seleccionada
   checkinDate: string;      // Fecha check-in YYYY-MM-DD
   checkoutDate: string;     // Fecha check-out YYYY-MM-DD
+  roomType?: string;        // Room type for FareTypeSelection (ej: "SGL", "DBL")
   occupancies: Array<{
     occupancyId: string;
     passengers: Array<{ type: 'ADT' | 'CHD' | 'CNN' | 'INF'; age?: number }>

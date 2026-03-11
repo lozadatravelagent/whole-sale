@@ -198,6 +198,7 @@ ${occupantsXml}        </Ocuppancy>
     fareIdBroker: string;     // FareIdBroker de la habitación seleccionada
     checkinDate: string;      // Fecha check-in YYYY-MM-DD
     checkoutDate: string;     // Fecha check-out YYYY-MM-DD
+    roomType?: string;        // Room type for FareTypeSelection (ej: "SGL", "DBL")
     occupancies: Array<{
       occupancyId: string;
       passengers: Array<{ type: 'ADT' | 'CHD' | 'CNN' | 'INF'; age?: number }>
@@ -210,7 +211,8 @@ ${occupantsXml}        </Ocuppancy>
 
     // Build FareTypeSelection XML
     const buildFareTypeSelectionXml = () => {
-      return `<bud1:FareTypeSelection FareIdBroker="${params.fareIdBroker}" OccupancyId="${params.occupancies[0]?.occupancyId || '1'}">1</bud1:FareTypeSelection>`;
+      const typeAttr = params.roomType ? ` type="${params.roomType}"` : '';
+      return `<bud1:FareTypeSelection${typeAttr} FareIdBroker="${params.fareIdBroker}" OccupancyId="${params.occupancies[0]?.occupancyId || '1'}">1</bud1:FareTypeSelection>`;
     };
 
     // Build Occupancy XML - INSIDE FareTypeSelectionList
@@ -222,7 +224,7 @@ ${occupantsXml}        </Ocuppancy>
           // IMPORTANT parity fix:
           // EUROVIPS hotel makeBudget expects child type CNN for correct pricing parity with portal.
           // Some clients may still send CHD (legacy), so normalize CHD -> CNN server-side.
-          const normalizedType = pax.type === 'CHD' ? 'CNN' : pax.type;
+          const normalizedType = pax.type === 'CHD' ? 'CNN' : pax.type === 'INF' ? 'INFOA' : pax.type;
 
           if (normalizedType === 'ADT') {
             xml += `               <bud1:Occupants type="ADT"/>\n`;

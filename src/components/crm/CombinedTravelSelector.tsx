@@ -738,6 +738,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         fareIdBroker: room.fare_id_broker,
         checkinDate: hotel.check_in,
         checkoutDate: hotel.check_out,
+        roomType: room.type,
         occupancies: [{
           occupancyId: room.xml_occupancy_id || room.occupancy_id,
           passengers: occupancy.passengers
