@@ -861,12 +861,41 @@ export async function getUnifiedAirportCode(
   // ============================================
   // LAYER 0: IATA Code Passthrough
   // If input is already a known IATA code, return it directly
+  // EXCEPTION: Metro codes (e.g. BUE) for multi-airport cities
+  // fall through to Layer 1 for context-aware resolution (AEP vs EZE)
   // ============================================
   const upperInput = cityName.trim().toUpperCase();
   if (/^[A-Z]{3}$/.test(upperInput) && IATA_TO_CITY[upperInput]) {
-    const elapsed = Date.now() - startTime;
-    console.log(`✅ [LAYER 0] Input "${cityName}" is already a known IATA code → ${upperInput} (${IATA_TO_CITY[upperInput]}, ${elapsed}ms)`);
-    return upperInput;
+    const resolvedCityName = IATA_TO_CITY[upperInput];
+    const normalizedResolvedCity = normalizeString(resolvedCityName);
+    const cityMapping = CITY_MAPPINGS[normalizedResolvedCity];
+
+    // If city has multiple airports and input is a metro code (not an actual airport code),
+    // fall through to Layer 1 for smart resolution (e.g. BUE → AEP for domestic, EZE for intl)
+    if (cityMapping?.iataSecondary && upperInput !== cityMapping.iata && upperInput !== cityMapping.iataSecondary) {
+      console.log(`⏭️ [LAYER 0] "${upperInput}" is a metro code for "${resolvedCityName}" (airports: ${cityMapping.iata}/${cityMapping.iataSecondary}), falling through to smart logic...`);
+    } else {
+      const elapsed = Date.now() - startTime;
+      console.log(`✅ [LAYER 0] Input "${cityName}" is already a known IATA code → ${upperInput} (${resolvedCityName}, ${elapsed}ms)`);
+      return upperInput;
+    }
+  }
+
+  // Resolve IATA codes to city names for Layer 1/2 (needed when metro code falls through)
+  let effectiveCityName = cityName;
+  let effectiveDestination = context?.destination;
+
+  if (/^[A-Z]{3}$/.test(upperInput) && IATA_TO_CITY[upperInput]) {
+    effectiveCityName = IATA_TO_CITY[upperInput];
+    console.log(`   → Resolved "${upperInput}" to city name "${effectiveCityName}"`);
+  }
+
+  if (effectiveDestination) {
+    const upperDest = effectiveDestination.trim().toUpperCase();
+    if (/^[A-Z]{3}$/.test(upperDest) && IATA_TO_CITY[upperDest]) {
+      effectiveDestination = IATA_TO_CITY[upperDest];
+      console.log(`   → Resolved destination "${upperDest}" to city name "${effectiveDestination}"`);
+    }
   }
 
   // ============================================
@@ -874,7 +903,7 @@ export async function getUnifiedAirportCode(
   // ============================================
   if (context?.searchType === 'flight' || !context?.searchType) {
     console.log(`\n1️⃣ [LAYER 1] Trying smart context-aware logic...`);
-    const smartCode = getSmartAirportCode(cityName, context?.destination);
+    const smartCode = getSmartAirportCode(effectiveCityName, effectiveDestination);
 
     if (smartCode) {
       const elapsed = Date.now() - startTime;
@@ -888,7 +917,7 @@ export async function getUnifiedAirportCode(
   // LAYER 2: Local Static Dictionary
   // ============================================
   console.log(`\n2️⃣ [LAYER 2] Trying local static dictionary (200 cities)...`);
-  const localCode = getAirportCode(cityName);
+  const localCode = getAirportCode(effectiveCityName);
 
   if (localCode) {
     const elapsed = Date.now() - startTime;
