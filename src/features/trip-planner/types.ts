@@ -1,4 +1,5 @@
 import type { FlightData, LocalHotelData } from '@/features/chat/types/chat';
+import type { HotelDistanceTag } from './utils';
 
 export type PlannerBudgetLevel = 'low' | 'mid' | 'high' | 'luxury';
 export type PlannerPace = 'relaxed' | 'balanced' | 'fast';
@@ -118,8 +119,8 @@ export interface PlannerInventoryHotelCandidate {
   hotelId: string;
   name: string;
   city: string;
-  score: number;
-  reasons: string[];
+  distanceKm?: number;
+  distanceTag?: HotelDistanceTag;
   linkedSearchId?: string;
   hotel: LocalHotelData;
 }

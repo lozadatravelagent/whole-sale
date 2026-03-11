@@ -232,8 +232,8 @@ function normalizePlannerInventoryMatchCandidates(rawCandidates: any) {
         hotelId: candidate?.hotelId || getPlannerHotelDisplayId(hotel),
         name: candidate?.name || hotel.name,
         city: candidate?.city || hotel.city,
-        score: typeof candidate?.score === 'number' ? candidate.score : 0,
-        reasons: safeArray<string>(candidate?.reasons),
+        distanceKm: typeof candidate?.distanceKm === 'number' ? candidate.distanceKm : undefined,
+        distanceTag: candidate?.distanceTag,
         linkedSearchId: candidate?.linkedSearchId,
         hotel,
       };
