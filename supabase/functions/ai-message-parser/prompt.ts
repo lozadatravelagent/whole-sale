@@ -21,6 +21,23 @@ export function buildSystemPrompt({
   conversationHistoryText = '',
   previousContext,
 }: BuildSystemPromptArgs): string {
+  // Helper vars for dynamic prompt examples
+  const [yearStr, monthStr, dayStr] = currentDate.split('-');
+  const year = parseInt(yearStr);
+  const month = parseInt(monthStr);
+  const day = parseInt(dayStr);
+  const nextYear = year + 1;
+  const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const currentMonthName = monthNames[month - 1];
+  const futureDay = Math.min(day + 1, 28);
+  const pastDay = day > 3 ? day - 2 : 1;
+  const pastMonthName = month > 1 ? monthNames[month - 2] : monthNames[11];
+  const pastMonthNum = month > 1 ? String(month - 1).padStart(2, '0') : '12';
+  const pastYear = month > 1 ? nextYear : nextYear;
+  const futureMonthName = month < 12 ? monthNames[month] : monthNames[0];
+  const futureMonthNum = month < 12 ? String(month + 1).padStart(2, '0') : '01';
+  const futureMonthYear = month < 12 ? year : nextYear;
+
   return `
 Eres un experto asistente de viajes que analiza solicitudes de viaje en ESPAÑOL y extrae datos estructurados en JSON.
 
@@ -150,10 +167,14 @@ CRITICAL INSTRUCTION:
 - "primer/primera semana de [mes]" → first day of month
 - **CRITICAL YEAR LOGIC:**
   * Current date is: ${currentDate}
-  * If the mentioned month has ALREADY PASSED in the current year → use NEXT YEAR (${parseInt(currentDate.split('-')[0]) + 1})
-  * If the mentioned month is in the FUTURE (hasn't happened yet this year) → use CURRENT YEAR (${currentDate.split('-')[0]})
-  * Example: Today is ${currentDate}. If user says "marzo" (March), since March ${currentDate.split('-')[0]} already passed, use March ${parseInt(currentDate.split('-')[0]) + 1}
-  * Example: Today is ${currentDate}. If user says "noviembre" (November), since November ${currentDate.split('-')[0]} hasn't happened yet, use November ${currentDate.split('-')[0]}
+  * Compare the FULL DATE (month AND day), not just the month:
+    - If the specific date (month+day) is TODAY or still upcoming this year → use ${year}
+    - If the specific date (month+day) has ALREADY PASSED this year → use ${nextYear}
+  * When only a month is mentioned (no day): if the month hasn't ended yet (current or future month) → ${year}; if it already ended (past month) → ${nextYear}
+  * Examples for today (${currentDate}):
+    - "${futureDay} de ${currentMonthName}" → ${yearStr}-${monthStr}-${String(futureDay).padStart(2, '0')} (hasn't passed yet, current year)
+    - "${pastDay} de ${pastMonthName}" → ${pastYear}-${pastMonthNum}-${String(pastDay).padStart(2, '0')} (already passed, next year)
+    - "${futureMonthName}" → ${futureMonthYear}-${futureMonthNum}-01 (future month, current year)
 - No date mentioned → current date + 7 days
 - Round trip indicators: "vuelta", "regreso", "ida y vuelta" → require returnDate
 

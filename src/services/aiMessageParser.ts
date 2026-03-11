@@ -568,7 +568,7 @@ function resolveHotelDate(
     const requestedMonth = parseInt(monthNum, 10);
     const baseMonth = baseDate.getMonth() + 1;
 
-    if (requestedMonth < baseMonth) {
+    if (requestedMonth < baseMonth || (requestedMonth === baseMonth && parseInt(day, 10) < baseDate.getDate())) {
         year += 1;
     }
 
@@ -1540,7 +1540,10 @@ export async function parseMessageWithAI(
             const currentYear = now.getFullYear();
             const currentMonth = now.getMonth() + 1; // 0-indexed
             const requestedMonth = parseInt(mesNum, 10);
-            const año = requestedMonth < currentMonth ? (currentYear + 1).toString() : currentYear.toString();
+            const requestedDay = parseInt(fechaMatch[1], 10);
+            const currentDay = now.getDate();
+            const año = (requestedMonth < currentMonth || (requestedMonth === currentMonth && requestedDay < currentDay))
+                ? (currentYear + 1).toString() : currentYear.toString();
 
             quick.flights.departureDate = `${año}-${mesNum}-${fechaMatch[1].padStart(2, '0')}`;
 
@@ -1550,8 +1553,10 @@ export async function parseMessageWithAI(
                 const mes2Num = meses[mes2] || mesNum;
                 const requestedMonth2 = parseInt(mes2Num, 10);
                 // For return date, compare with current month and consider if it wraps to next year
-                const año2 = requestedMonth2 < currentMonth ? (currentYear + 1).toString() :
-                    (requestedMonth2 < requestedMonth ? (parseInt(año) + 1).toString() : año);
+                const requestedDay2 = parseInt(fechaMatch[3], 10);
+                const año2 = (requestedMonth2 < currentMonth || (requestedMonth2 === currentMonth && requestedDay2 < currentDay))
+                    ? (currentYear + 1).toString()
+                    : (requestedMonth2 < requestedMonth ? (parseInt(año) + 1).toString() : año);
                 quick.flights.returnDate = `${año2}-${mes2Num}-${fechaMatch[3].padStart(2, '0')}`;
             }
         } else if (fechaAltMatch && quick.flights) {
@@ -1563,7 +1568,10 @@ export async function parseMessageWithAI(
             const currentYear = now.getFullYear();
             const currentMonth = now.getMonth() + 1;
             const requestedMonth = parseInt(mesNum, 10);
-            const año = requestedMonth < currentMonth ? (currentYear + 1).toString() : currentYear.toString();
+            const requestedDay = parseInt(fechaAltMatch[1], 10);
+            const currentDay = now.getDate();
+            const año = (requestedMonth < currentMonth || (requestedMonth === currentMonth && requestedDay < currentDay))
+                ? (currentYear + 1).toString() : currentYear.toString();
 
             quick.flights.departureDate = `${año}-${mesNum}-${fechaAltMatch[1].padStart(2, '0')}`;
             quick.flights.returnDate = `${año}-${mesNum}-${fechaAltMatch[2].padStart(2, '0')}`;
@@ -1881,8 +1889,8 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
         result.flightParams = {
             originCode: normalizedParsed.flights.origin,
             destinationCode: normalizedParsed.flights.destination,
-            departureDate: normalizedParsed.flights.departureDate,
-            returnDate: normalizedParsed.flights.returnDate,
+            departureDate: ensureCorrectYear(normalizedParsed.flights.departureDate),
+            returnDate: normalizedParsed.flights.returnDate ? ensureCorrectYear(normalizedParsed.flights.returnDate) : undefined,
             adults: normalizedParsed.flights.adults,
             children: normalizedParsed.flights.children,
             infants: normalizedParsed.flights.infants
@@ -1923,6 +1931,30 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
     }
 
     return result;
+}
+
+function ensureCorrectYear(dateStr: string): string {
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const parsed = new Date(dateStr + 'T00:00:00');
+
+    const diffDays = (parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+
+    // If date is ~1 year away (358-372 days) but the same month+day in current year is within 7 days
+    if (diffDays >= 358 && diffDays <= 372) {
+        const currentYearDate = new Date(parsed);
+        currentYearDate.setFullYear(today.getFullYear());
+        const altDiffDays = (currentYearDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+
+        if (altDiffDays >= 0 && altDiffDays <= 7) {
+            console.warn(`⚠️ [YEAR FIX] Corrected ${dateStr} → ${today.getFullYear()}-${dateStr.slice(5)} (was ~1 year from a near-future date)`);
+            return `${today.getFullYear()}-${dateStr.slice(5)}`;
+        }
+    }
+
+    return dateStr;
 }
 
 /**
@@ -2009,7 +2041,7 @@ export async function formatForStarling(parsed: ParsedTravelRequest) {
             legs.push({
                 DepartureAirportCity: originCode,
                 ArrivalAirportCity: destinationCode,
-                FlightDate: segment.departureDate
+                FlightDate: ensureCorrectYear(segment.departureDate)
             });
         } catch (error) {
             console.error('\n❌ [CITY CONVERSION FAILED]', error);
