@@ -41,7 +41,7 @@ export function createSearchHotelsTool(supabase: SupabaseClient): ToolDefinition
         const cityCode = resolveHotelCode(city);
 
         const eurovipsData: Record<string, unknown> = {
-          action: 'searchHotelFares',
+          action: 'searchHotels',
           data: {
             CityCode: cityCode,
             CheckIn: checkinDate,

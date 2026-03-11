@@ -14,6 +14,7 @@ import type { TripPlannerState } from '@/features/trip-planner/types';
 import { translateBaggage } from '../utils/translations';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { supabase } from '@/integrations/supabase/client';
+import { transformStarlingResults } from '../services/flightTransformer';
 
 function formatPlannerDateSelectionMessage(selection: {
   startDate?: string;
@@ -685,30 +686,123 @@ const useMessageHandler = (
         if (agentError) throw new Error('Planner agent: ' + agentError.message);
 
         const assistantResponse = agentResult.response;
-        let structuredData: any = null;
 
-        if (agentResult.structuredData) {
-          structuredData = agentResult.structuredData;
-        }
-
+        // Handle needsInput case — return early with missing info
         if (agentResult.needsInput) {
-          structuredData = {
-            messageType: 'missing_info_request',
-            missingFields: agentResult.missingFields || [],
-          };
+          await addMessageViaSupabase({
+            conversation_id: finalConversationId,
+            role: 'assistant' as const,
+            content: { text: assistantResponse },
+            meta: {
+              source: 'planner-agent',
+              messageType: 'missing_info_request',
+              missingFields: agentResult.missingFields || [],
+            }
+          });
+          setIsTyping(false, conversationIdForThisSearch);
+          setIsLoading(false);
+          flowTimer.end('planner-agent needs-input');
+          return;
         }
 
-        // Save assistant message
+        // Transform planner results → combinedData format for card rendering
+        const rawStructuredData = agentResult.structuredData;
+        let combinedData: any = null;
+        let plannerFlights: any[] = [];
+        let plannerHotels: any[] = [];
+
+        if (rawStructuredData) {
+          // Transform raw Starling fares → FlightData[] via existing transformer
+          if (rawStructuredData.flights?.rawFlights?.length > 0) {
+            try {
+              plannerFlights = await transformStarlingResults(
+                { Fares: rawStructuredData.flights.rawFlights }
+              );
+            } catch (e) {
+              console.warn('[PLANNER] Flight transformation failed:', e);
+            }
+          }
+
+          // rawHotels from EUROVIPS are already LocalHotelData-shaped
+          if (rawStructuredData.hotels?.rawHotels?.length > 0) {
+            plannerHotels = rawStructuredData.hotels.rawHotels;
+          }
+
+          if (plannerFlights.length > 0 || plannerHotels.length > 0) {
+            const requestType = plannerFlights.length > 0 && plannerHotels.length > 0
+              ? 'combined'
+              : plannerFlights.length > 0 ? 'flights-only' : 'hotels-only';
+
+            combinedData = {
+              flights: plannerFlights,
+              hotels: plannerHotels,
+              requestType,
+            };
+          }
+        }
+
+        // Save assistant message with combinedData (same shape as standard flow)
         await addMessageViaSupabase({
           conversation_id: finalConversationId,
           role: 'assistant' as const,
           content: { text: assistantResponse },
-          meta: structuredData ? { source: 'planner-agent', ...structuredData } : { source: 'planner-agent' }
+          meta: combinedData
+            ? { source: 'planner-agent', combinedData }
+            : { source: 'planner-agent' }
         });
+
+        // Save ContextState for iterative refinement (same pattern as standard flow)
+        if (combinedData) {
+          const flightSearchParams = rawStructuredData?.flights?.searchParams;
+          const hotelSearchParams = rawStructuredData?.hotels?.searchParams;
+
+          const newContextState: ContextState = {
+            lastSearch: {
+              requestType: (plannerFlights.length > 0 && plannerHotels.length > 0
+                ? 'combined'
+                : plannerFlights.length > 0 ? 'flights' : 'hotels') as 'flights' | 'hotels' | 'combined',
+              timestamp: new Date().toISOString(),
+              ...(flightSearchParams && {
+                flightsParams: {
+                  origin: flightSearchParams.origin || '',
+                  destination: flightSearchParams.destination || '',
+                  departureDate: flightSearchParams.departureDate || '',
+                  returnDate: flightSearchParams.returnDate,
+                  adults: flightSearchParams.adults || 1,
+                  children: flightSearchParams.children || 0,
+                  infants: flightSearchParams.infants || 0,
+                }
+              }),
+              ...(hotelSearchParams && {
+                hotelsParams: {
+                  city: hotelSearchParams.city || '',
+                  checkinDate: hotelSearchParams.checkinDate || '',
+                  checkoutDate: hotelSearchParams.checkoutDate || '',
+                  adults: hotelSearchParams.adults || 1,
+                  children: hotelSearchParams.children || 0,
+                  infants: hotelSearchParams.infants || 0,
+                }
+              }),
+              resultsSummary: {
+                flightsCount: plannerFlights.length,
+                hotelsCount: plannerHotels.length,
+              }
+            },
+            constraintsHistory: persistentState?.constraintsHistory || [],
+            turnNumber: (persistentState?.turnNumber || 0) + 1,
+            schemaVersion: 1,
+          };
+
+          setPreviousParsedRequest(null);
+          await clearContextualMemory(finalConversationId);
+          saveContextState(finalConversationId, newContextState).catch(e =>
+            console.warn('[PLANNER] Failed to save context state:', e)
+          );
+        }
 
         setIsTyping(false, conversationIdForThisSearch);
         setIsLoading(false);
-        flowTimer.end('planner-agent complete', { hasStructuredData: Boolean(structuredData) });
+        flowTimer.end('planner-agent complete', { hasStructuredData: Boolean(combinedData) });
         return; // Skip entire standard flow
       }
       // === END PLANNER AGENT BRANCH ===

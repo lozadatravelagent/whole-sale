@@ -68,7 +68,7 @@ export function createSearchFlightsTool(supabase: SupabaseClient): ToolDefinitio
         }
 
         const rawFlights = data?.data || data;
-        const flights = Array.isArray(rawFlights) ? rawFlights : rawFlights?.flights || [];
+        const flights = Array.isArray(rawFlights) ? rawFlights : rawFlights?.Fares || rawFlights?.flights || [];
 
         // Extract top 5 flights summary
         const topFlights = flights.slice(0, 5).map((f: any, i: number) => {
