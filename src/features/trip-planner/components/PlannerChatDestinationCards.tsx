@@ -221,21 +221,39 @@ export default function PlannerChatDestinationCards({
 
   // If we have discovery data, render from that
   if (hasDiscoveryData) {
-    const highlightsFromDiscovery = segments
-      .map((segment) => {
-        const places = discoveryPlacesBySegment[segment.id];
-        if (!places?.length) return null;
-        const top = places
-          .filter((p) => p.category !== 'hotel')
-          .sort(
-            (a, b) =>
-              (b.rating || 0) * (b.userRatingsTotal || 0) -
-              (a.rating || 0) * (a.userRatingsTotal || 0)
-          )
-          .slice(0, 4);
-        return top.length > 0 ? { segmentId: segment.id, city: segment.city, places: top } : null;
-      })
-      .filter(Boolean) as { segmentId: string; city: string; places: PlannerPlaceCandidate[] }[];
+    const highlightsFromDiscovery: { segmentId: string; city: string; places: PlannerPlaceCandidate[] }[] = [];
+    const seenCities = new Set<string>();
+
+    for (const segment of segments) {
+      const cityKey = segment.city.trim().toLowerCase();
+      if (seenCities.has(cityKey)) continue;
+      seenCities.add(cityKey);
+
+      // Merge places from all segments that share the same city
+      const allPlaces = segments
+        .filter((s) => s.city.trim().toLowerCase() === cityKey)
+        .flatMap((s) => discoveryPlacesBySegment[s.id] || []);
+
+      if (!allPlaces.length) continue;
+
+      // Deduplicate places by placeId
+      const uniquePlaces = Array.from(
+        new Map(allPlaces.map((p) => [p.placeId, p])).values()
+      );
+
+      const top = uniquePlaces
+        .filter((p) => p.category !== 'hotel')
+        .sort(
+          (a, b) =>
+            (b.rating || 0) * (b.userRatingsTotal || 0) -
+            (a.rating || 0) * (a.userRatingsTotal || 0)
+        )
+        .slice(0, 4);
+
+      if (top.length > 0) {
+        highlightsFromDiscovery.push({ segmentId: segment.id, city: segment.city, places: top });
+      }
+    }
 
     if (highlightsFromDiscovery.length === 0) return null;
 
@@ -265,10 +283,21 @@ export default function PlannerChatDestinationCards({
   }
 
   // If no discovery data yet, fetch via Google Places text search
-  if (!HAS_PLANNER_GOOGLE_MAPS || destinations.length === 0) return null;
+  // Deduplicate destinations by normalized city name
+  const uniqueDestinations = destinations.filter(
+    (d, i, arr) => arr.findIndex((x) => x.trim().toLowerCase() === d.trim().toLowerCase()) === i
+  );
+  if (!HAS_PLANNER_GOOGLE_MAPS || uniqueDestinations.length === 0) return null;
 
   if (fetchedHighlights) {
-    const nonEmpty = fetchedHighlights.filter((h) => h.places.length > 0);
+    // Deduplicate fetched highlights by city
+    const seenFetchedCities = new Set<string>();
+    const nonEmpty = fetchedHighlights.filter((h) => {
+      const key = h.city.trim().toLowerCase();
+      if (seenFetchedCities.has(key) || h.places.length === 0) return false;
+      seenFetchedCities.add(key);
+      return true;
+    });
     if (nonEmpty.length === 0) return null;
 
     return (
@@ -317,7 +346,7 @@ export default function PlannerChatDestinationCards({
   return (
     <APIProvider apiKey={PLANNER_GOOGLE_MAPS_API_KEY} language="es" region="ES">
       <DestinationHighlightsFetcher
-        destinations={destinations}
+        destinations={uniqueDestinations}
         onLoaded={handleLoaded}
       />
     </APIProvider>
