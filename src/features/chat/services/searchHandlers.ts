@@ -1262,66 +1262,6 @@ export const handleHotelSearch = async (
       console.log(`   ${index + 1}. "${hotel.name}"`);
     });
 
-    // ✅ HOTELBEDS PARALLEL SEARCH: Search Hotelbeds and merge results (fail-open)
-    try {
-      console.log('[HOTELBEDS MERGE] Searching Hotelbeds in parallel...');
-      const hotelbedsStart = nowMs();
-      const hbResponse = await supabase.functions.invoke('hotelbeds-api', {
-        body: {
-          action: 'searchHotels',
-          data: {
-            cityCode: enrichedParsed.hotels?.city || '',
-            checkinDate: enrichedParsed.hotels?.checkinDate || '',
-            checkoutDate: enrichedParsed.hotels?.checkoutDate || '',
-            adults: enrichedParsed.hotels?.adults || 2,
-            children: enrichedParsed.hotels?.children || 0,
-            childrenAges: enrichedParsed.hotels?.childrenAges || [],
-            infants: enrichedParsed.hotels?.infants || 0,
-            hotelName: enrichedParsed.hotels?.hotelName || '',
-          },
-        },
-      });
-      logTimingStep('HOTEL SEARCH', 'invoke Hotelbeds merge search', hotelbedsStart, {
-        hasError: Boolean(hbResponse.error),
-        hotels: hbResponse.data?.data?.results?.length || 0,
-      });
-
-      if (!hbResponse.error && hbResponse.data?.data?.results) {
-        const hbHotels: LocalHotelData[] = hbResponse.data.data.results.map((h: any) => ({
-          ...h,
-          provider: 'HOTELBEDS' as const,
-        }));
-        console.log(`[HOTELBEDS MERGE] Received ${hbHotels.length} hotels from Hotelbeds`);
-
-        // Merge: deduplicate by name, keep cheaper option
-        const existingNames = new Set(allHotels.map(h => h.name?.toLowerCase().trim()));
-        for (const hbHotel of hbHotels) {
-          const key = hbHotel.name?.toLowerCase().trim();
-          if (existingNames.has(key)) {
-            // Find existing and compare price
-            const existingIdx = allHotels.findIndex(h => h.name?.toLowerCase().trim() === key);
-            if (existingIdx >= 0) {
-              const existingMin = Math.min(...allHotels[existingIdx].rooms.map(r => r.total_price));
-              const hbMin = Math.min(...hbHotel.rooms.map(r => r.total_price));
-              if (hbMin < existingMin) {
-                allHotels[existingIdx] = hbHotel;
-                console.log(`[HOTELBEDS MERGE] Replaced "${key}" with cheaper Hotelbeds rate`);
-              }
-            }
-          } else {
-            allHotels.push(hbHotel);
-            existingNames.add(key);
-          }
-        }
-        console.log(`[HOTELBEDS MERGE] Total after merge: ${allHotels.length} hotels`);
-      } else {
-        console.warn('[HOTELBEDS MERGE] Hotelbeds returned no results or error:', hbResponse.error?.message);
-      }
-    } catch (hbError) {
-      // Fail-open: Hotelbeds failure doesn't block EUROVIPS results
-      console.warn('[HOTELBEDS MERGE] Hotelbeds search failed (continuing with EUROVIPS only):', hbError instanceof Error ? hbError.message : hbError);
-    }
-
     // Attach search occupancy to each hotel so downstream components (CombinedTravelSelector, makeBudget) know the passenger mix
     const searchAdults = enrichedParsed.hotels?.adults || 1;
     const searchChildren = enrichedParsed.hotels?.children || 0;
