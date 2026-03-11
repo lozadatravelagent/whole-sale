@@ -407,7 +407,7 @@ export async function planNextAction(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',  // Best balance of function calling quality, speed, and cost for agentic loops
       messages,
       tools: toolDefs,
       tool_choice: 'auto',
