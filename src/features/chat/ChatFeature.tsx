@@ -299,7 +299,8 @@ const ChatFeature = () => {
     planner.persistPlannerState,
     planner.setDraftPlannerFromRequest,
     planner.setPlannerDraftPhase,
-    preloadedContext
+    preloadedContext,
+    workspaceMode
   );
 
   // CTA: Retry with stops when no direct flights

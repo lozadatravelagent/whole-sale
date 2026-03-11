@@ -13,6 +13,7 @@ import type { ContextState } from '../types/contextState';
 import type { TripPlannerState } from '@/features/trip-planner/types';
 import { translateBaggage } from '../utils/translations';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
+import { supabase } from '@/integrations/supabase/client';
 
 function formatPlannerDateSelectionMessage(selection: {
   startDate?: string;
@@ -74,6 +75,7 @@ const useMessageHandler = (
     contextualMemory: ParsedTravelRequest | null;
     contextState: ContextState | null;
   } | null,
+  workspaceMode?: 'standard' | 'planner',
 ) => {
   // ✅ Messages are now passed as parameter - no need for second useMessages call
 
@@ -656,6 +658,60 @@ const useMessageHandler = (
         filtered: (messages?.length || 0) - conversationHistory.length,
         previousContext: contextToUse ? 'Yes' : 'No'
       });
+
+      // === PLANNER AGENT BRANCH ===
+      // Must run BEFORE parseMessageWithAI to avoid unnecessary AI parser cost/latency
+      if (workspaceMode === 'planner') {
+        console.log('🤖 [PLANNER AGENT] Planner mode detected, skipping standard parser');
+        setTypingMessage('El agente está analizando tu solicitud...', conversationIdForThisSearch);
+
+        const conversationHistoryForAgent = (messages || [])
+          .filter(m => m.conversation_id === finalConversationId)
+          .slice(-10)
+          .map(m => ({
+            role: m.role as string,
+            content: typeof m.content === 'string' ? m.content : (m.content as any)?.text || JSON.stringify(m.content),
+          }));
+
+        const { data: agentResult, error: agentError } = await supabase.functions.invoke('planner-agent', {
+          body: {
+            message: currentMessage,
+            conversationId: finalConversationId,
+            conversationHistory: conversationHistoryForAgent,
+            previousContext: persistentState?.lastSearch || null,
+          }
+        });
+
+        if (agentError) throw new Error('Planner agent: ' + agentError.message);
+
+        const assistantResponse = agentResult.response;
+        let structuredData: any = null;
+
+        if (agentResult.structuredData) {
+          structuredData = agentResult.structuredData;
+        }
+
+        if (agentResult.needsInput) {
+          structuredData = {
+            messageType: 'missing_info_request',
+            missingFields: agentResult.missingFields || [],
+          };
+        }
+
+        // Save assistant message
+        await addMessageViaSupabase({
+          conversation_id: finalConversationId,
+          role: 'assistant' as const,
+          content: { text: assistantResponse },
+          meta: structuredData ? { source: 'planner-agent', ...structuredData } : { source: 'planner-agent' }
+        });
+
+        setIsTyping(false, conversationIdForThisSearch);
+        setIsLoading(false);
+        flowTimer.end('planner-agent complete', { hasStructuredData: Boolean(structuredData) });
+        return; // Skip entire standard flow
+      }
+      // === END PLANNER AGENT BRANCH ===
 
       const parseStart = nowMs();
       let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory);
@@ -1519,7 +1575,8 @@ const useMessageHandler = (
     setTypingMessage,
     addOptimisticMessage,
     updateOptimisticMessage,
-    removeOptimisticMessage
+    removeOptimisticMessage,
+    workspaceMode
   ]);
 
   const handlePlannerDateSelection = useCallback(async (
