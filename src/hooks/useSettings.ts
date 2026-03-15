@@ -8,6 +8,9 @@ export interface AgencyBranding {
   logoUrl?: string;
   primaryColor: string;
   secondaryColor: string;
+  pdfFooterText?: string;
+  pdfHeaderBgColor?: string;
+  pdfFooterBgColor?: string;
   contact: {
     name: string;
     email: string;

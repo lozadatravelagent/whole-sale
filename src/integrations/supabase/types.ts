@@ -97,6 +97,7 @@ export type Database = {
           id: string
           name: string
           pdf_backgrounds: Json | null
+          pdf_provider: string
           phones: string[]
           status: string
           tenant_id: string
@@ -109,6 +110,7 @@ export type Database = {
           id?: string
           name: string
           pdf_backgrounds?: Json | null
+          pdf_provider?: string
           phones?: string[]
           status?: string
           tenant_id: string
@@ -121,6 +123,7 @@ export type Database = {
           id?: string
           name?: string
           pdf_backgrounds?: Json | null
+          pdf_provider?: string
           phones?: string[]
           status?: string
           tenant_id?: string

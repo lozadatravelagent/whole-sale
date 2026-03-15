@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Upload,
   Palette,
@@ -35,6 +36,7 @@ import {
 import { useSettings } from '@/hooks/useSettings';
 import { useAuth } from '@/contexts/AuthContext';
 import SimplePdfTemplateManager from '@/components/settings/SimplePdfTemplateManager';
+import PdfTemplateManager from '@/components/settings/PdfTemplateManager';
 
 const Settings = () => {
   const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuth();
@@ -162,7 +164,7 @@ const Settings = () => {
     }
   };
 
-  const handleColorChange = (field: 'primaryColor' | 'secondaryColor', value: string) => {
+  const handleColorChange = (field: 'primaryColor' | 'secondaryColor' | 'pdfHeaderBgColor' | 'pdfFooterBgColor', value: string) => {
     if (!editedBranding) return;
     setEditedBranding(prev => prev ? {
       ...prev,
@@ -374,6 +376,61 @@ const Settings = () => {
                   </div>
                 </div>
 
+                {/* PDF Header/Footer Background Colors */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="pdfHeaderBgColor">Color de Fondo Header PDF</Label>
+                    <div className="flex items-center space-x-3">
+                      <div
+                        className="w-10 h-10 rounded-lg border"
+                        style={{ backgroundColor: editedBranding?.pdfHeaderBgColor || 'transparent' }}
+                      />
+                      <Input
+                        id="pdfHeaderBgColor"
+                        type="color"
+                        value={editedBranding?.pdfHeaderBgColor || '#ffffff'}
+                        onChange={(e) => handleColorChange('pdfHeaderBgColor', e.target.value)}
+                        className="w-20 h-10 p-1"
+                      />
+                      <Input
+                        value={editedBranding?.pdfHeaderBgColor || ''}
+                        onChange={(e) => handleColorChange('pdfHeaderBgColor', e.target.value)}
+                        placeholder="Transparente"
+                        className="flex-1"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Dejar vacío para fondo transparente
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="pdfFooterBgColor">Color de Fondo Footer PDF</Label>
+                    <div className="flex items-center space-x-3">
+                      <div
+                        className="w-10 h-10 rounded-lg border"
+                        style={{ backgroundColor: editedBranding?.pdfFooterBgColor || 'transparent' }}
+                      />
+                      <Input
+                        id="pdfFooterBgColor"
+                        type="color"
+                        value={editedBranding?.pdfFooterBgColor || '#ffffff'}
+                        onChange={(e) => handleColorChange('pdfFooterBgColor', e.target.value)}
+                        className="w-20 h-10 p-1"
+                      />
+                      <Input
+                        value={editedBranding?.pdfFooterBgColor || ''}
+                        onChange={(e) => handleColorChange('pdfFooterBgColor', e.target.value)}
+                        placeholder="Transparente"
+                        className="flex-1"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Dejar vacío para fondo transparente
+                    </p>
+                  </div>
+                </div>
+
                 {/* Preview */}
                 <div className="space-y-2">
                   <Label>Vista Previa</Label>
@@ -412,10 +469,17 @@ const Settings = () => {
 
             {/* PDF TEMPLATES SECTION */}
             {selectedAgencyId && agency ? (
-              <SimplePdfTemplateManager
-                agencyId={selectedAgencyId}
-                agencyName={agency.name}
-              />
+              agency.pdf_provider === 'pdfmonkey' ? (
+                <PdfTemplateManager
+                  agencyId={selectedAgencyId}
+                  agencyName={agency.name}
+                />
+              ) : (
+                <SimplePdfTemplateManager
+                  agencyId={selectedAgencyId}
+                  agencyName={agency.name}
+                />
+              )
             ) : (
               <Card className="shadow-card">
                 <CardContent className="p-8 text-center">
@@ -496,6 +560,23 @@ const Settings = () => {
                       placeholder="+34 123 456 789"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="pdfFooterText">Texto para pie de página del PDF</Label>
+                  <Textarea
+                    id="pdfFooterText"
+                    value={editedBranding?.pdfFooterText || ''}
+                    onChange={(e) => {
+                      if (!editedBranding) return;
+                      setEditedBranding(prev => prev ? { ...prev, pdfFooterText: e.target.value } : prev);
+                    }}
+                    placeholder="Ej: Dirección, CUIT, sitio web, condiciones..."
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Este texto aparecerá en el pie de página de los PDFs generados por tu agencia
+                  </p>
                 </div>
               </CardContent>
             </Card>

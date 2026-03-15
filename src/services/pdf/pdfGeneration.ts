@@ -1,6 +1,21 @@
 import { reconstructFlightData, reconstructHotelData, extractAirlineCode } from './pdfDataReconstructor';
 import { parseDateRange } from './pdfParsingUtils';
 import type { PdfAnalysisResult } from './pdfTypes';
+import { supabase } from '@/integrations/supabase/client';
+
+async function resolveAgencyId(conversationId: string): Promise<string | undefined> {
+  try {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('agency_id')
+      .eq('id', conversationId)
+      .single();
+    if (error || !data?.agency_id) return undefined;
+    return data.agency_id;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Generate modified PDF with individual flight prices
@@ -13,6 +28,7 @@ export async function generateModifiedPdfWithIndividualPrices(
     try {
         console.log('🔄 Generating modified PDF with individual prices:', priceChanges);
 
+        const agencyId = await resolveAgencyId(conversationId);
         const { generateCombinedTravelPdf, generateFlightPdf } = await import('../pdfMonkey');
 
         if (!analysis.content) {
@@ -107,10 +123,10 @@ export async function generateModifiedPdfWithIndividualPrices(
 
         if (reconstructedHotels.length > 0) {
             console.log('🏨 Generating combined PDF (flights + hotels)');
-            pdfResult = await generateCombinedTravelPdf(reconstructedFlights, reconstructedHotels);
+            pdfResult = await generateCombinedTravelPdf(reconstructedFlights, reconstructedHotels, agencyId);
         } else {
             console.log('✈️ Generating flights-only PDF');
-            pdfResult = await generateFlightPdf(reconstructedFlights);
+            pdfResult = await generateFlightPdf(reconstructedFlights, agencyId);
         }
 
         if (!pdfResult.success || !pdfResult.document_url) {
@@ -144,6 +160,7 @@ export async function generateModifiedPdfWithHotelPrice(
     try {
         console.log('🏨 Generating modified PDF with new hotel price:', newHotelPrice);
 
+        const agencyId = await resolveAgencyId(conversationId);
         const { generateCombinedTravelPdf } = await import('../pdfMonkey');
 
         if (!analysis.content) {
@@ -265,7 +282,7 @@ export async function generateModifiedPdfWithHotelPrice(
         const result = await generateCombinedTravelPdf(
             adjustedFlights,
             adjustedHotels,
-            conversationId
+            agencyId
         );
 
         if (result.success && result.document_url) {
@@ -300,6 +317,7 @@ export async function generateModifiedPdfWithMultipleHotelPrices(
     try {
         console.log('🏨🏨 Generating modified PDF with multiple hotel price changes:', hotelChanges);
 
+        const agencyId = await resolveAgencyId(conversationId);
         const { generateCombinedTravelPdf } = await import('../pdfMonkey');
 
         if (!analysis.content) {
@@ -457,7 +475,7 @@ export async function generateModifiedPdfWithMultipleHotelPrices(
         const result = await generateCombinedTravelPdf(
             adjustedFlights,
             adjustedHotels,
-            conversationId
+            agencyId
         );
 
         if (result.success && result.document_url) {
@@ -494,6 +512,7 @@ export async function generateModifiedPdf(
         console.log('🔄 Generating modified PDF with new price:', newPrice);
         console.log('🎯 PDF source:', analysis.content?.extractedFromPdfMonkey ? 'PdfMonkey Template' : 'External PDF');
 
+        const agencyId = await resolveAgencyId(conversationId);
         const { generateCombinedTravelPdf, generateFlightPdf } = await import('../pdfMonkey');
 
         if (!analysis.content) {
@@ -890,10 +909,10 @@ export async function generateModifiedPdf(
 
         if (adjustedHotels.length > 0) {
             console.log('📄 Using combined PDF generation (flights + hotels)');
-            pdfResult = await generateCombinedTravelPdf(adjustedFlights, adjustedHotels, undefined, true);
+            pdfResult = await generateCombinedTravelPdf(adjustedFlights, adjustedHotels, agencyId, true);
         } else {
             console.log('📄 Using flights-only PDF generation with intelligent template selection');
-            pdfResult = await generateFlightPdf(adjustedFlights);
+            pdfResult = await generateFlightPdf(adjustedFlights, agencyId);
         }
 
         if (pdfResult.success && pdfResult.document_url) {

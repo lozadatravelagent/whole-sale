@@ -94,6 +94,60 @@ async function getTemplateId(
   }
 }
 
+// Fetch agency branding data for dynamic header/footer in PDF
+async function fetchAgencyBranding(agencyId?: string): Promise<{
+  agency_name: string;
+  agency_logo_url: string;
+  agency_primary_color: string;
+  agency_secondary_color: string;
+  agency_contact_name: string;
+  agency_contact_email: string;
+  agency_contact_phone: string;
+  has_custom_background: boolean;
+  custom_background_url: string;
+  pdf_provider?: string;
+  pdf_footer_text?: string;
+  pdf_header_bg_color?: string;
+  pdf_footer_bg_color?: string;
+} | null> {
+  if (!agencyId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('agencies')
+      .select('name, branding, pdf_backgrounds, pdf_provider')
+      .eq('id', agencyId)
+      .single();
+    if (error || !data) {
+      console.warn('⚠️ [PDF] Could not fetch agency branding:', error?.message);
+      return null;
+    }
+    const branding = (data as any).branding || {};
+    const pdfBackgrounds = (data as any).pdf_backgrounds || {};
+    console.log('[PDF BRANDING DEBUG] Raw branding from DB:', JSON.stringify(branding));
+    console.log('[PDF BRANDING DEBUG] pdfFooterText:', JSON.stringify(branding.pdfFooterText));
+    console.log('[PDF BRANDING DEBUG] pdf_footer_text:', JSON.stringify(branding.pdf_footer_text));
+    console.log('[PDF BRANDING DEBUG] All branding keys:', Object.keys(branding));
+    return {
+      agency_name: data.name || '',
+      agency_logo_url: branding.logoUrl || branding.logo_url || '',
+      agency_primary_color: branding.primaryColor || branding.primary_color || '#333333',
+      agency_secondary_color: branding.secondaryColor || branding.secondary_color || '#666666',
+      agency_contact_name: branding.contact?.name || branding.contact_name || '',
+      agency_contact_email: branding.contact?.email || branding.contact_email || '',
+      agency_contact_phone: branding.contact?.phone || branding.contact_phone || '',
+      has_custom_background: !!pdfBackgrounds.combined,
+      custom_background_url: pdfBackgrounds.combined || '',
+      pdf_provider: (data as any).pdf_provider || 'custom',
+      pdf_footer_text: branding.pdfFooterText || '',
+      pdf_header_bg_color: branding.pdfHeaderBgColor || '',
+      pdf_footer_bg_color: branding.pdfFooterBgColor || ''
+    };
+  } catch (err) {
+    console.error('❌ [PDF] Error fetching agency branding:', err);
+    return null;
+  }
+}
+
 // New function for combined travel PDF (flights + hotels)
 export async function generateCombinedTravelPdf(
   selectedFlights: FlightData[],
@@ -109,8 +163,29 @@ export async function generateCombinedTravelPdf(
       };
     }
 
+    // Fetch agency branding for dynamic header/footer
+    const brandingData = await fetchAgencyBranding(agencyId);
+
+    // Route to custom PDF generator if agency uses custom provider
+    if (brandingData?.pdf_provider === 'custom') {
+      console.log('[PDF] Routing to custom PDF generator for combined PDF');
+      const { generateCustomCombinedPdf } = await import('./pdf/customPdfGenerator');
+      return generateCustomCombinedPdf(selectedFlights, selectedHotels, {
+        agency_name: brandingData.agency_name,
+        agency_logo_url: brandingData.agency_logo_url,
+        agency_primary_color: brandingData.agency_primary_color,
+        agency_secondary_color: brandingData.agency_secondary_color,
+        agency_contact_name: brandingData.agency_contact_name,
+        agency_contact_email: brandingData.agency_contact_email,
+        agency_contact_phone: brandingData.agency_contact_phone,
+        pdf_footer_text: brandingData.pdf_footer_text,
+        pdf_header_bg_color: brandingData.pdf_header_bg_color,
+        pdf_footer_bg_color: brandingData.pdf_footer_bg_color
+      }, isPriceModified);
+    }
+
     // Prepare combined data for PdfMonkey template
-    const pdfData = prepareCombinedPdfData(selectedFlights, selectedHotels, isPriceModified);
+    const pdfData = prepareCombinedPdfData(selectedFlights, selectedHotels, isPriceModified, brandingData);
 
     console.log('🔍 SELECTED FLIGHTS:', selectedFlights.length);
     console.log('🔍 SELECTED HOTELS:', selectedHotels.length);
@@ -162,6 +237,27 @@ export async function generateFlightPdf(selectedFlights: FlightData[], agencyId?
       };
     }
 
+    // Fetch agency branding for dynamic header/footer (needed for routing check)
+    const brandingData = await fetchAgencyBranding(agencyId);
+
+    // Route to custom PDF generator if agency uses custom provider
+    if (brandingData?.pdf_provider === 'custom') {
+      console.log('[PDF] Routing to custom PDF generator for flight PDF');
+      const { generateCustomFlightPdf } = await import('./pdf/customPdfGenerator');
+      return generateCustomFlightPdf(selectedFlights, {
+        agency_name: brandingData.agency_name,
+        agency_logo_url: brandingData.agency_logo_url,
+        agency_primary_color: brandingData.agency_primary_color,
+        agency_secondary_color: brandingData.agency_secondary_color,
+        agency_contact_name: brandingData.agency_contact_name,
+        agency_contact_email: brandingData.agency_contact_email,
+        agency_contact_phone: brandingData.agency_contact_phone,
+        pdf_footer_text: brandingData.pdf_footer_text,
+        pdf_header_bg_color: brandingData.pdf_header_bg_color,
+        pdf_footer_bg_color: brandingData.pdf_footer_bg_color
+      });
+    }
+
     // Analyze flight structure to determine appropriate template
     const flightAnalysis = analyzeFlightStructure(selectedFlights);
     const templateType = flightAnalysis.templateType;
@@ -174,7 +270,7 @@ export async function generateFlightPdf(selectedFlights: FlightData[], agencyId?
     console.log(`🎯 Using template: ${templateName} (${templateId}) for ${selectedFlights.length} flight(s)`);
 
     // Prepare data for PdfMonkey template
-    const pdfData = preparePdfData(selectedFlights);
+    const pdfData = preparePdfData(selectedFlights, brandingData);
 
     console.log('🔍 RAW SELECTED FLIGHTS:', JSON.stringify(selectedFlights, null, 2));
     console.log('🔍 PREPARED PDF DATA:', JSON.stringify(pdfData, null, 2));
@@ -209,7 +305,7 @@ export async function generateFlightPdf(selectedFlights: FlightData[], agencyId?
 /**
  * Analyze flight structure to determine the appropriate template
  */
-function analyzeFlightStructure(flights: FlightData[]): {
+export function analyzeFlightStructure(flights: FlightData[]): {
   templateType: 'flights' | 'flights2';
   defaultTemplateId: string;
   templateName: string;
@@ -302,7 +398,17 @@ function analyzeFlightStructure(flights: FlightData[]): {
   };
 }
 
-function preparePdfData(flights: FlightData[]) {
+export function preparePdfData(flights: FlightData[], brandingData?: {
+  agency_name: string;
+  agency_logo_url: string;
+  agency_primary_color: string;
+  agency_secondary_color: string;
+  agency_contact_name: string;
+  agency_contact_email: string;
+  agency_contact_phone: string;
+  has_custom_background: boolean;
+  custom_background_url: string;
+} | null) {
   console.log('🔧 PREPARING PDF DATA - Input flights count:', flights.length);
 
   // Transform flight data to match the template structure exactly
@@ -419,7 +525,17 @@ function preparePdfData(flights: FlightData[]) {
       selected_flights: selected_flights,
       // Root-level flags for the INCLUDES box in the template
       travel_assistance: hasTravelAssistance ? 1 : 0,
-      transfers: hasTransfers ? 1 : 0
+      transfers: hasTransfers ? 1 : 0,
+      // Agency branding
+      agency_name: brandingData?.agency_name || '',
+      agency_logo_url: brandingData?.agency_logo_url || '',
+      agency_primary_color: brandingData?.agency_primary_color || '#333333',
+      agency_secondary_color: brandingData?.agency_secondary_color || '#666666',
+      agency_contact_name: brandingData?.agency_contact_name || '',
+      agency_contact_email: brandingData?.agency_contact_email || '',
+      agency_contact_phone: brandingData?.agency_contact_phone || '',
+      has_custom_background: brandingData?.has_custom_background || false,
+      custom_background_url: brandingData?.custom_background_url || ''
     };
 
     console.log('🎯 SENDING MULTI-FLIGHT DATA:', {
@@ -446,7 +562,17 @@ function preparePdfData(flights: FlightData[]) {
     selected_flights: selected_flights,
     // Root-level flags for the INCLUDES box in the template
     travel_assistance: hasTravelAssistance ? 1 : 0,
-    transfers: hasTransfers ? 1 : 0
+    transfers: hasTransfers ? 1 : 0,
+    // Agency branding
+    agency_name: brandingData?.agency_name || '',
+    agency_logo_url: brandingData?.agency_logo_url || '',
+    agency_primary_color: brandingData?.agency_primary_color || '#333333',
+    agency_secondary_color: brandingData?.agency_secondary_color || '#666666',
+    agency_contact_name: brandingData?.agency_contact_name || '',
+    agency_contact_email: brandingData?.agency_contact_email || '',
+    agency_contact_phone: brandingData?.agency_contact_phone || '',
+    has_custom_background: brandingData?.has_custom_background || false,
+    custom_background_url: brandingData?.custom_background_url || ''
   };
 
   console.log('🎯 SENDING SINGLE FLIGHT DATA AS ARRAY:', {
@@ -752,7 +878,17 @@ function formatPdfShortDateLabel(date?: string): string {
 }
 
 // Function to prepare combined travel data (flights + hotels) for the specific template
-function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | HotelDataWithSelectedRoom[], isPriceModified: boolean = false) {
+export function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | HotelDataWithSelectedRoom[], isPriceModified: boolean = false, brandingData?: {
+  agency_name: string;
+  agency_logo_url: string;
+  agency_primary_color: string;
+  agency_secondary_color: string;
+  agency_contact_name: string;
+  agency_contact_email: string;
+  agency_contact_phone: string;
+  has_custom_background: boolean;
+  custom_background_url: string;
+} | null) {
   console.log('🔧 PREPARING COMBINED PDF DATA FOR TEMPLATE');
   console.log('📊 Input:', { flights: flights.length, hotels: hotels.length });
   const normalizedHotels = hotels as HotelPdfInput[];
@@ -1393,7 +1529,18 @@ function prepareCombinedPdfData(flights: FlightData[], hotels: HotelData[] | Hot
     is_price_modified: isPriceModified,
 
     // 🍽️ MEAL PLAN - For "INCLUYE" section in PDF
-    meal_plan: mealPlan
+    meal_plan: mealPlan,
+
+    // 🏢 AGENCY BRANDING - Dynamic header/footer in PDF
+    agency_name: brandingData?.agency_name || '',
+    agency_logo_url: brandingData?.agency_logo_url || '',
+    agency_primary_color: brandingData?.agency_primary_color || '#333333',
+    agency_secondary_color: brandingData?.agency_secondary_color || '#666666',
+    agency_contact_name: brandingData?.agency_contact_name || '',
+    agency_contact_email: brandingData?.agency_contact_email || '',
+    agency_contact_phone: brandingData?.agency_contact_phone || '',
+    has_custom_background: brandingData?.has_custom_background || false,
+    custom_background_url: brandingData?.custom_background_url || ''
   };
 
   console.log('✅ PREPARED TEMPLATE DATA:', {

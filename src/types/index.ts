@@ -7,6 +7,7 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 export type LeadStatus = 'new' | 'quoted' | 'negotiating' | 'won' | 'lost';
 export type IntegrationStatus = 'active' | 'pending' | 'disabled';
 export type ProviderCode = 'EUROVIPS' | 'LOZADA' | 'DELFOS' | 'ICARO' | 'STARLING' | 'HOTELBEDS';
+export type PdfProvider = 'pdfmonkey' | 'custom';
 
 // Database entities
 export interface Tenant {
@@ -26,12 +27,14 @@ export interface Agency {
     logoUrl?: string;
     primaryColor: string;
     secondaryColor: string;
+    pdfFooterText?: string;
     contact: {
       name: string;
       email: string;
       phone: string;
     };
   };
+  pdf_provider: PdfProvider;
   phones: string[];
   created_at: string;
   updated_at: string;
