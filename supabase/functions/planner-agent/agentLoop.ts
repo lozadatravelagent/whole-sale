@@ -1,4 +1,4 @@
-import type { AgentContext, AgentResponse, AgentStep } from "./types.ts";
+import type { AgentContext, AgentResponse, AgentStep, ToolResult } from "./types.ts";
 import { planNextAction } from "./planner.ts";
 import { GUARDRAILS } from "./guardrails.ts";
 
@@ -77,9 +77,9 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
         try {
           const result = await tool.execute(tc.arguments);
           return { tool: tc.name, result };
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error(`[PLANNER AGENT] Tool ${tc.name} error:`, err);
-          return { tool: tc.name, result: { success: false, error: err.message || 'Tool execution failed' } };
+          return { tool: tc.name, result: { success: false, error: err instanceof Error ? err.message : 'Tool execution failed' } };
         }
       });
 
@@ -117,32 +117,36 @@ function extractResultsFromSteps(steps: AgentStep[]) {
 
 function buildResponseFromResults(
   steps: AgentStep[],
-  flightResult?: { tool: string; result: any },
-  hotelResult?: { tool: string; result: any },
-  packageResult?: { tool: string; result: any },
-  itineraryResult?: { tool: string; result: any },
+  flightResult?: { tool: string; result: ToolResult },
+  hotelResult?: { tool: string; result: ToolResult },
+  packageResult?: { tool: string; result: ToolResult },
+  itineraryResult?: { tool: string; result: ToolResult },
 ): AgentResponse {
   const structuredData: Record<string, unknown> = {};
   const parts: string[] = [];
 
   if (flightResult?.result?.data) {
-    structuredData.flights = flightResult.result.data;
-    const count = flightResult.result.data.totalFound || 0;
+    const data = flightResult.result.data as Record<string, unknown>;
+    structuredData.flights = data;
+    const count = (data.totalFound as number) || 0;
     parts.push(`Encontré ${count} vuelo(s)`);
   }
   if (hotelResult?.result?.data) {
-    structuredData.hotels = hotelResult.result.data;
-    const count = hotelResult.result.data.totalFound || 0;
+    const data = hotelResult.result.data as Record<string, unknown>;
+    structuredData.hotels = data;
+    const count = (data.totalFound as number) || 0;
     parts.push(`${count} hotel(es)`);
   }
   if (packageResult?.result?.data) {
-    structuredData.packages = packageResult.result.data;
-    const count = packageResult.result.data.totalFound || 0;
+    const data = packageResult.result.data as Record<string, unknown>;
+    structuredData.packages = data;
+    const count = (data.totalFound as number) || 0;
     parts.push(`${count} paquete(s) turístico(s)`);
   }
   if (itineraryResult?.result?.data) {
-    structuredData.itinerary = itineraryResult.result.data;
-    const totalDays = itineraryResult.result.data.totalDays || 0;
+    const data = itineraryResult.result.data as Record<string, unknown>;
+    structuredData.itinerary = data;
+    const totalDays = (data.totalDays as number) || 0;
     parts.push(`un itinerario de ${totalDays} día(s)`);
   }
 

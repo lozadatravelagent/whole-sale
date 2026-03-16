@@ -105,7 +105,9 @@ function formatFlexibleMonth(month?: string, year?: number): string {
   return `${monthLabel}${year ? ` de ${year}` : ''}`;
 }
 
-function stripGeneratedDates(rawSegments: any[]): any[] {
+type RawPlannerRecord = Record<string, unknown>;
+
+function stripGeneratedDates(rawSegments: RawPlannerRecord[]): RawPlannerRecord[] {
   return safeArray(rawSegments).map((segment) => ({
     ...segment,
     startDate: undefined,
@@ -136,9 +138,9 @@ function stripGeneratedDates(rawSegments: any[]): any[] {
   }));
 }
 
-function normalizeScheduling(raw: any, input: PlannerRequest, debugContext: TimingDetails = {}) {
+function normalizeScheduling(raw: RawPlannerRecord, input: PlannerRequest, debugContext: TimingDetails = {}) {
   const schedulingStart = nowMs();
-  const sourceSegments = safeArray<any>(raw?.segments);
+  const sourceSegments = safeArray<RawPlannerRecord>(raw?.segments as RawPlannerRecord[]);
   const nextSegments = normalizePlannerSegmentsScheduling(sourceSegments, {
     pace: raw?.pace || input.pace,
     travelers: raw?.travelers || input.travelers,
@@ -152,7 +154,7 @@ function normalizeScheduling(raw: any, input: PlannerRequest, debugContext: Timi
   return {
     ...raw,
     segments: nextSegments,
-    itinerary: nextSegments.flatMap((segment: any) => safeArray<any>(segment?.days)),
+    itinerary: nextSegments.flatMap((segment: RawPlannerRecord) => safeArray<RawPlannerRecord>(segment?.days as RawPlannerRecord[])),
   };
 }
 
@@ -227,7 +229,7 @@ function compactPromptValue(value: unknown): unknown {
   return value;
 }
 
-function summarizePromptActivity(activity: any): unknown {
+function summarizePromptActivity(activity: RawPlannerRecord): unknown {
   return compactPromptValue({
     time: activity?.time,
     title: truncateText(activity?.title, 48),
@@ -235,7 +237,7 @@ function summarizePromptActivity(activity: any): unknown {
   });
 }
 
-function summarizePromptDay(day: any, includeDetails = false): unknown {
+function summarizePromptDay(day: RawPlannerRecord, includeDetails = false): unknown {
   const base = compactPromptValue({
     id: day?.id,
     dayNumber: typeof day?.dayNumber === 'number' ? day.dayNumber : day?.day,
@@ -251,10 +253,10 @@ function summarizePromptDay(day: any, includeDetails = false): unknown {
 
   return compactPromptValue({
     ...(base as Record<string, unknown>),
-    morning: safeArray<any>(day?.morning).slice(0, 2).map(summarizePromptActivity),
-    afternoon: safeArray<any>(day?.afternoon).slice(0, 2).map(summarizePromptActivity),
-    evening: safeArray<any>(day?.evening).slice(0, 2).map(summarizePromptActivity),
-    restaurants: safeArray<any>(day?.restaurants).slice(0, 1).map((restaurant) =>
+    morning: safeArray<RawPlannerRecord>(day?.morning as RawPlannerRecord[]).slice(0, 2).map(summarizePromptActivity),
+    afternoon: safeArray<RawPlannerRecord>(day?.afternoon as RawPlannerRecord[]).slice(0, 2).map(summarizePromptActivity),
+    evening: safeArray<RawPlannerRecord>(day?.evening as RawPlannerRecord[]).slice(0, 2).map(summarizePromptActivity),
+    restaurants: safeArray<RawPlannerRecord>(day?.restaurants as RawPlannerRecord[]).slice(0, 1).map((restaurant) =>
       compactPromptValue({
         name: truncateText(restaurant?.name, 40),
         type: truncateText(restaurant?.type, 24),
@@ -282,7 +284,7 @@ function summarizeExistingPlannerState(
     return null;
   }
 
-  const state = existingPlannerState as Record<string, any>;
+  const state = existingPlannerState as RawPlannerRecord;
   const targetSegmentId = editIntent?.targetSegmentId;
   const targetDayId = editIntent?.targetDayId;
   const includeDetailedSegments = Boolean(editIntent?.action);
@@ -301,8 +303,8 @@ function summarizeExistingPlannerState(
     travelers: compactPromptValue(state.travelers),
     interests: safeArray<string>(state.interests).slice(0, 8),
     constraints: safeArray<string>(state.constraints).slice(0, 8),
-    segments: safeArray<any>(state.segments).map((segment) => {
-      const days = safeArray<any>(segment?.days);
+    segments: safeArray<RawPlannerRecord>(state.segments as RawPlannerRecord[]).map((segment) => {
+      const days = safeArray<RawPlannerRecord>(segment?.days as RawPlannerRecord[]);
       const includeDetails = includeDetailedSegments && (
         segment?.id === targetSegmentId || days.some((day) => day?.id === targetDayId)
       );
@@ -355,7 +357,7 @@ interface SegmentBlueprint {
   startDate?: string;
   endDate?: string;
   previousCity?: string;
-  existingSegment?: any;
+  existingSegment?: RawPlannerRecord;
 }
 
 function slugify(value: string): string {
@@ -392,15 +394,15 @@ function addIsoDays(value: string, offset: number): string | undefined {
   return date.toISOString().split('T')[0];
 }
 
-function getExistingSegments(existingPlannerState: unknown): any[] {
+function getExistingSegments(existingPlannerState: unknown): RawPlannerRecord[] {
   if (!existingPlannerState || typeof existingPlannerState !== 'object') {
     return [];
   }
 
-  return safeArray<any>((existingPlannerState as Record<string, any>)?.segments);
+  return safeArray<RawPlannerRecord>((existingPlannerState as RawPlannerRecord)?.segments as RawPlannerRecord[]);
 }
 
-function mapExistingSegmentsByDestination(destinations: string[], existingSegments: any[]): Array<any | null> {
+function mapExistingSegmentsByDestination(destinations: string[], existingSegments: RawPlannerRecord[]): Array<RawPlannerRecord | null> {
   const used = new Set<number>();
 
   return destinations.map((destination, index) => {
@@ -426,8 +428,8 @@ function mapExistingSegmentsByDestination(destinations: string[], existingSegmen
   });
 }
 
-function getExistingSegmentDayWeight(segment: any): number {
-  const dayCount = safeArray<any>(segment?.days).length;
+function getExistingSegmentDayWeight(segment: RawPlannerRecord): number {
+  const dayCount = safeArray<RawPlannerRecord>(segment?.days as RawPlannerRecord[]).length;
   if (dayCount > 0) return dayCount;
 
   const nights = typeof segment?.nights === 'number' ? Math.round(segment.nights) : 0;
@@ -535,7 +537,7 @@ function getTargetSegmentBlueprint(input: PlannerRequest, blueprints: SegmentBlu
   return blueprints[0] || null;
 }
 
-function normalizeCompactActivityItem(item: any): any | null {
+function normalizeCompactActivityItem(item: unknown): RawPlannerRecord | null {
   if (typeof item === 'string') {
     const title = truncateText(item, 72);
     return title ? { title } : null;
@@ -545,20 +547,21 @@ function normalizeCompactActivityItem(item: any): any | null {
     return null;
   }
 
-  const title = truncateText(item?.title || item?.name || item?.activity, 72);
+  const rec = item as RawPlannerRecord;
+  const title = truncateText(rec?.title || rec?.name || rec?.activity, 72);
   if (!title) {
     return null;
   }
 
   return compactPromptValue({
     title,
-    category: truncateText(item?.category, 24),
-    description: truncateText(item?.description || item?.detail, 96),
-    tip: truncateText(item?.tip, 96),
-  });
+    category: truncateText(rec?.category, 24),
+    description: truncateText(rec?.description || rec?.detail, 96),
+    tip: truncateText(rec?.tip, 96),
+  }) as RawPlannerRecord | null;
 }
 
-function normalizeCompactRestaurantItem(item: any): any | null {
+function normalizeCompactRestaurantItem(item: unknown): RawPlannerRecord | null {
   if (typeof item === 'string') {
     const name = truncateText(item, 48);
     return name ? { name } : null;
@@ -568,19 +571,20 @@ function normalizeCompactRestaurantItem(item: any): any | null {
     return null;
   }
 
-  const name = truncateText(item?.name || item?.title, 48);
+  const rec = item as RawPlannerRecord;
+  const name = truncateText(rec?.name || rec?.title, 48);
   if (!name) {
     return null;
   }
 
   return compactPromptValue({
     name,
-    type: truncateText(item?.type, 24),
-    priceRange: truncateText(item?.priceRange, 6),
-  });
+    type: truncateText(rec?.type, 24),
+    priceRange: truncateText(rec?.priceRange, 6),
+  }) as RawPlannerRecord | null;
 }
 
-function normalizeCompactHighlightItem(item: any): string | null {
+function normalizeCompactHighlightItem(item: unknown): string | null {
   if (typeof item === 'string') {
     return truncateText(item, 40) || null;
   }
@@ -589,7 +593,8 @@ function normalizeCompactHighlightItem(item: any): string | null {
     return null;
   }
 
-  return truncateText(item?.title || item?.name || item?.label || item?.activity, 40) || null;
+  const rec = item as RawPlannerRecord;
+  return truncateText(rec?.title || rec?.name || rec?.label || rec?.activity, 40) || null;
 }
 
 function isGenericSegmentHighlight(value: string): boolean {
@@ -599,10 +604,10 @@ function isGenericSegmentHighlight(value: string): boolean {
     || normalized.startsWith('esenciales de ');
 }
 
-function normalizeCompactHighlights(items: any, fallbackTitles: Array<string | undefined> = []): string[] {
+function normalizeCompactHighlights(items: unknown, fallbackTitles: Array<string | undefined> = []): string[] {
   const seen = new Set<string>();
   const candidates = [
-    ...safeArray<any>(items).map(normalizeCompactHighlightItem).filter(Boolean),
+    ...safeArray<unknown>(items as unknown[]).map(normalizeCompactHighlightItem).filter(Boolean),
     ...fallbackTitles.map(normalizeCompactHighlightItem).filter(Boolean),
   ];
 
@@ -615,11 +620,12 @@ function normalizeCompactHighlights(items: any, fallbackTitles: Array<string | u
   }).slice(0, 4);
 }
 
-function deriveCompactDayTitle(day: any, city: string, index: number): string {
+function deriveCompactDayTitle(day: RawPlannerRecord, city: string, index: number): string {
+  const firstActivity = (slot: unknown) => (Array.isArray(slot) && slot[0] && typeof slot[0] === 'object') ? (slot[0] as RawPlannerRecord)?.title : undefined;
   return (
     truncateText(day?.title, 64)
     || truncateText(day?.summary, 64)
-    || truncateText(day?.morning?.[0]?.title || day?.afternoon?.[0]?.title || day?.evening?.[0]?.title, 64)
+    || truncateText(firstActivity(day?.morning) || firstActivity(day?.afternoon) || firstActivity(day?.evening), 64)
     || `Día ${index + 1} en ${city}`
   );
 }
@@ -629,7 +635,7 @@ function buildFallbackCompactDay(
   dayIndex: number,
   isTransferDay: boolean,
   mode: PlannerGenerationMode,
-): any {
+): RawPlannerRecord {
   if (mode === 'skeleton') {
     return {
       title: isTransferDay ? `Llegada a ${city}` : `Día ${dayIndex + 1} en ${city}`,
@@ -663,42 +669,44 @@ function buildFallbackCompactDay(
 }
 
 function normalizeCompactDay(
-  day: any,
+  day: unknown,
   city: string,
   index: number,
   isTransferDay: boolean,
   mode: PlannerGenerationMode,
-): any | null {
+): RawPlannerRecord | null {
   if (!day || typeof day !== 'object') {
     return buildFallbackCompactDay(city, index, isTransferDay, mode);
   }
 
+  const rec = day as RawPlannerRecord;
+
   if (mode === 'skeleton') {
     const normalized = compactPromptValue({
-      title: deriveCompactDayTitle(day, city, index),
-      summary: truncateText(day?.summary, 120),
+      title: deriveCompactDayTitle(rec, city, index),
+      summary: truncateText(rec?.summary, 120),
     });
 
     if (!normalized || typeof normalized !== 'object') {
       return buildFallbackCompactDay(city, index, isTransferDay, mode);
     }
 
-    return normalized;
+    return normalized as RawPlannerRecord;
   }
 
-  const morning = safeArray<any>(day?.morning).map(normalizeCompactActivityItem).filter(Boolean);
-  const afternoon = safeArray<any>(day?.afternoon).map(normalizeCompactActivityItem).filter(Boolean);
-  const evening = safeArray<any>(day?.evening).map(normalizeCompactActivityItem).filter(Boolean);
-  const restaurants = safeArray<any>(day?.restaurants).map(normalizeCompactRestaurantItem).filter(Boolean);
+  const morning = safeArray<unknown>(rec?.morning as unknown[]).map(normalizeCompactActivityItem).filter(Boolean);
+  const afternoon = safeArray<unknown>(rec?.afternoon as unknown[]).map(normalizeCompactActivityItem).filter(Boolean);
+  const evening = safeArray<unknown>(rec?.evening as unknown[]).map(normalizeCompactActivityItem).filter(Boolean);
+  const restaurants = safeArray<unknown>(rec?.restaurants as unknown[]).map(normalizeCompactRestaurantItem).filter(Boolean);
 
   const normalized = compactPromptValue({
-    title: deriveCompactDayTitle(day, city, index),
-    summary: truncateText(day?.summary, 120),
+    title: deriveCompactDayTitle(rec, city, index),
+    summary: truncateText(rec?.summary, 120),
     morning: morning.slice(0, 1),
     afternoon: afternoon.slice(0, 1),
     evening: evening.slice(0, 1),
     restaurants: restaurants.slice(0, 1),
-    travelTip: truncateText(day?.travelTip, 100),
+    travelTip: truncateText(rec?.travelTip, 100),
   });
 
   if (!normalized || typeof normalized !== 'object') {
@@ -708,10 +716,10 @@ function normalizeCompactDay(
   const hasContent = ['morning', 'afternoon', 'evening', 'restaurants', 'travelTip', 'summary']
     .some((key) => Boolean((normalized as Record<string, unknown>)[key]));
 
-  return hasContent ? normalized : buildFallbackCompactDay(city, index, isTransferDay, mode);
+  return hasContent ? (normalized as RawPlannerRecord) : buildFallbackCompactDay(city, index, isTransferDay, mode);
 }
 
-function fitCompactDaysToTarget(rawDays: any[], blueprint: SegmentBlueprint, mode: PlannerGenerationMode): any[] {
+function fitCompactDaysToTarget(rawDays: RawPlannerRecord[], blueprint: SegmentBlueprint, mode: PlannerGenerationMode): RawPlannerRecord[] {
   const normalizedDays = rawDays
     .map((day, index) => normalizeCompactDay(day, blueprint.city, index, blueprint.order > 0 && index === 0, mode))
     .filter(Boolean);
@@ -731,7 +739,7 @@ function fitCompactDaysToTarget(rawDays: any[], blueprint: SegmentBlueprint, mod
   return trimmedDays;
 }
 
-function matchRawSegmentsToBlueprints(rawSegments: any[], blueprints: SegmentBlueprint[]): Array<any | null> {
+function matchRawSegmentsToBlueprints(rawSegments: RawPlannerRecord[], blueprints: SegmentBlueprint[]): Array<RawPlannerRecord | null> {
   const used = new Set<number>();
 
   return blueprints.map((blueprint, index) => {
@@ -758,21 +766,21 @@ function matchRawSegmentsToBlueprints(rawSegments: any[], blueprints: SegmentBlu
 }
 
 function expandCompactPlannerResponse(
-  raw: any,
+  raw: RawPlannerRecord,
   input: PlannerRequest,
   blueprints: SegmentBlueprint[],
   mode: PlannerGenerationMode,
-): any {
-  const rawSegments = safeArray<any>(raw?.segments);
+): RawPlannerRecord {
+  const rawSegments = safeArray<RawPlannerRecord>(raw?.segments as RawPlannerRecord[]);
   const matchedSegments = matchRawSegmentsToBlueprints(rawSegments, blueprints);
 
   const segments = blueprints.map((blueprint, index) => {
-    const rawSegment = matchedSegments[index] || {};
-    const compactDays = fitCompactDaysToTarget(safeArray<any>(rawSegment?.days), blueprint, mode);
+    const rawSegment = matchedSegments[index] || {} as RawPlannerRecord;
+    const compactDays = fitCompactDaysToTarget(safeArray<RawPlannerRecord>(rawSegment?.days as RawPlannerRecord[]), blueprint, mode);
     const segmentId = blueprint.segmentId;
     const highlights = normalizeCompactHighlights(
       rawSegment?.highlights,
-      compactDays.map((day) => day?.title),
+      compactDays.map((day) => day?.title as string | undefined),
     );
 
     const expandedDays = compactDays.map((day, dayIndex) => ({
@@ -780,12 +788,12 @@ function expandCompactPlannerResponse(
       dayNumber: dayIndex + 1,
       date: blueprint.startDate ? addIsoDays(blueprint.startDate, dayIndex) : undefined,
       city: blueprint.city,
-      title: day?.title || `Día ${dayIndex + 1} en ${blueprint.city}`,
+      title: (day?.title as string) || `Día ${dayIndex + 1} en ${blueprint.city}`,
       summary: day?.summary,
-      morning: safeArray<any>(day?.morning),
-      afternoon: safeArray<any>(day?.afternoon),
-      evening: safeArray<any>(day?.evening),
-      restaurants: safeArray<any>(day?.restaurants),
+      morning: safeArray<RawPlannerRecord>(day?.morning as RawPlannerRecord[]),
+      afternoon: safeArray<RawPlannerRecord>(day?.afternoon as RawPlannerRecord[]),
+      evening: safeArray<RawPlannerRecord>(day?.evening as RawPlannerRecord[]),
+      restaurants: safeArray<RawPlannerRecord>(day?.restaurants as RawPlannerRecord[]),
       travelTip: day?.travelTip,
     }));
 
@@ -845,19 +853,19 @@ function expandCompactPlannerResponse(
   };
 }
 
-function isCompactPlannerResponse(raw: any): boolean {
-  const segments = safeArray<any>(raw?.segments);
+function isCompactPlannerResponse(raw: RawPlannerRecord): boolean {
+  const segments = safeArray<RawPlannerRecord>(raw?.segments as RawPlannerRecord[]);
   if (segments.length === 0) return false;
   const firstSegment = segments[0];
   return !firstSegment?.hotelPlan && !firstSegment?.transportIn && !firstSegment?.transportOut;
 }
 
 function expandCompactTargetSegment(
-  raw: any,
+  raw: RawPlannerRecord,
   input: PlannerRequest,
   blueprint: SegmentBlueprint,
-): any | null {
-  const targetSegment = raw?.segment || safeArray<any>(raw?.segments)[0];
+): RawPlannerRecord | null {
+  const targetSegment = (raw?.segment as RawPlannerRecord) || safeArray<RawPlannerRecord>(raw?.segments as RawPlannerRecord[])[0];
   if (!targetSegment) {
     return null;
   }
@@ -869,14 +877,14 @@ function expandCompactTargetSegment(
     'full',
   );
 
-  return safeArray<any>(expanded?.segments)[0] || null;
+  return safeArray<RawPlannerRecord>(expanded?.segments as RawPlannerRecord[])[0] || null;
 }
 
 function mergeEnrichedSegmentIntoExistingPlanner(
   existingPlannerState: unknown,
-  enrichedSegment: any,
+  enrichedSegment: RawPlannerRecord,
   blueprints: SegmentBlueprint[],
-): any {
+): RawPlannerRecord {
   if (!existingPlannerState || typeof existingPlannerState !== 'object') {
     return {
       segments: [enrichedSegment],
@@ -884,9 +892,9 @@ function mergeEnrichedSegmentIntoExistingPlanner(
     };
   }
 
-  const existing = existingPlannerState as Record<string, any>;
+  const existing = existingPlannerState as RawPlannerRecord;
   let replaced = false;
-  const nextSegments = safeArray<any>(existing?.segments).map((segment) => {
+  const nextSegments = safeArray<RawPlannerRecord>(existing?.segments as RawPlannerRecord[]).map((segment) => {
     const matches = segment?.id === enrichedSegment?.id
       || normalizeLabel(segment?.city) === normalizeLabel(enrichedSegment?.city);
 
@@ -1107,7 +1115,7 @@ function buildSegmentEnrichmentPrompt(input: PlannerRequest, blueprints: Segment
           id: targetBlueprint.existingSegment.id,
           city: targetBlueprint.existingSegment.city,
           summary: truncateText(targetBlueprint.existingSegment.summary, 72),
-          days: safeArray<any>(targetBlueprint.existingSegment.days).map((day) =>
+          days: safeArray<RawPlannerRecord>(targetBlueprint.existingSegment.days as RawPlannerRecord[]).map((day) =>
             compactPromptValue({
               id: day?.id,
               dayNumber: day?.dayNumber,
@@ -1280,7 +1288,7 @@ async function requestPlannerCompletion(
   systemPrompt: string,
   userMessage: string,
   maxTokens: number,
-): Promise<any> {
+): Promise<RawPlannerRecord> {
   const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -1312,7 +1320,7 @@ async function requestPlannerCompletion(
 }
 
 function normalizePlannerResponse(
-  raw: any,
+  raw: RawPlannerRecord,
   input: PlannerRequest,
   blueprints: SegmentBlueprint[],
   mode: PlannerGenerationMode,
@@ -1328,13 +1336,13 @@ function normalizePlannerResponse(
   logTimingStep('TRAVEL-ITINERARY', 'expand compact planner response', compactExpansionStart, {
     ...debugContext,
     usedCompactExpansion: sourceRaw !== raw,
-    segmentCount: safeArray<any>(sourceRaw?.segments).length,
+    segmentCount: safeArray<RawPlannerRecord>(sourceRaw?.segments as RawPlannerRecord[]).length,
   });
 
   const datesStart = nowMs();
   const segments = preserveDates
-    ? safeArray<any>(sourceRaw?.segments)
-    : stripGeneratedDates(safeArray<any>(sourceRaw?.segments));
+    ? safeArray<RawPlannerRecord>(sourceRaw?.segments as RawPlannerRecord[])
+    : stripGeneratedDates(safeArray<RawPlannerRecord>(sourceRaw?.segments as RawPlannerRecord[]));
   logTimingStep('TRAVEL-ITINERARY', preserveDates ? 'preserve generated dates' : 'strip generated dates', datesStart, {
     ...debugContext,
     segmentCount: segments.length,
@@ -1342,8 +1350,8 @@ function normalizePlannerResponse(
 
   const schedulingStart = nowMs();
   const scheduledRaw = normalizeScheduling({ ...sourceRaw, segments }, input, debugContext);
-  const scheduledSegments = safeArray<any>(scheduledRaw?.segments);
-  const itinerary = scheduledSegments.flatMap((segment) => safeArray<any>(segment?.days));
+  const scheduledSegments = safeArray<RawPlannerRecord>(scheduledRaw?.segments as RawPlannerRecord[]);
+  const itinerary = scheduledSegments.flatMap((segment) => safeArray<RawPlannerRecord>(segment?.days as RawPlannerRecord[]));
   logTimingStep('TRAVEL-ITINERARY', 'apply scheduling to normalized response', schedulingStart, {
     ...debugContext,
     segmentCount: scheduledSegments.length,
@@ -1566,7 +1574,7 @@ serve(async (req) => {
         }
         const parsePlannerJsonMs = timer.step('parse planner JSON', parsePlannerJsonStart, {
           parseStrategy,
-          segmentCount: safeArray<any>(parsed?.segments).length,
+          segmentCount: safeArray<RawPlannerRecord>(parsed?.segments as RawPlannerRecord[]).length,
           finishReason: openaiFinishReason,
         });
 
@@ -1594,14 +1602,14 @@ serve(async (req) => {
           generationMode,
         });
         const normalizePlannerMs = timer.step('normalize planner response', normalizeStart, {
-          segmentCount: safeArray<any>(normalized?.segments).length,
-          itineraryDays: safeArray<any>(normalized?.itinerary).length,
+          segmentCount: safeArray<RawPlannerRecord>(normalized?.segments as RawPlannerRecord[]).length,
+          itineraryDays: safeArray<RawPlannerRecord>(normalized?.itinerary as RawPlannerRecord[]).length,
           generationMode,
         });
 
         const totalMs = timer.end('total', {
-          segmentCount: safeArray<any>(normalized?.segments).length,
-          itineraryDays: safeArray<any>(normalized?.itinerary).length,
+          segmentCount: safeArray<RawPlannerRecord>(normalized?.segments as RawPlannerRecord[]).length,
+          itineraryDays: safeArray<RawPlannerRecord>(normalized?.itinerary as RawPlannerRecord[]).length,
         });
 
         const timing = {
@@ -1639,10 +1647,11 @@ serve(async (req) => {
             'Content-Type': 'application/json'
           }
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         timer.fail('total', error);
         console.error('❌ Travel Itinerary Generator error:', error);
-        const statusCode = (error?.message || '').includes('OpenAI') ? 502 : 500;
+        const errorMessage = error instanceof Error ? error.message : '';
+        const statusCode = errorMessage.includes('OpenAI') ? 502 : 500;
 
         return new Response(JSON.stringify({
           success: false,

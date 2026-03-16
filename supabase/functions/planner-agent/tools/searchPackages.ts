@@ -46,10 +46,12 @@ export function createSearchPackagesTool(supabase: SupabaseClient): ToolDefiniti
         const rawPackages = data?.results || data?.data || data || [];
         const packages = Array.isArray(rawPackages) ? rawPackages : [];
 
-        const topPackages = packages
-          .sort((a: any, b: any) => (a.price?.amount || 0) - (b.price?.amount || 0))
+        interface RawPackage { name?: string; destination?: string; duration_nights?: number; duration_days?: number; departure_date?: string; return_date?: string; price?: { amount?: number; currency?: string }; includes?: Record<string, unknown>; included_services?: string[] }
+
+        const topPackages = (packages as RawPackage[])
+          .sort((a, b) => (a.price?.amount || 0) - (b.price?.amount || 0))
           .slice(0, 5)
-          .map((p: any, i: number) => ({
+          .map((p, i: number) => ({
             index: i + 1,
             name: p.name || 'N/A',
             destination: p.destination || destination,
@@ -74,9 +76,9 @@ export function createSearchPackagesTool(supabase: SupabaseClient): ToolDefiniti
             rawPackages: packages.slice(0, 5),
           },
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[PLANNER AGENT] search_packages exception:', err);
-        return { success: false, error: err.message || 'Error inesperado buscando paquetes' };
+        return { success: false, error: err instanceof Error ? err.message : 'Error inesperado buscando paquetes' };
       }
     },
   };

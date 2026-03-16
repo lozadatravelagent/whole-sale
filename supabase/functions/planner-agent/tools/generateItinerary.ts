@@ -59,7 +59,9 @@ export function createGenerateItineraryTool(supabase: SupabaseClient): ToolDefin
         const plannerData = data.data;
         const segments = plannerData?.segments || [];
 
-        const summary = segments.map((seg: any) => ({
+        interface RawItinerarySegment { city?: string; nights?: number; highlights?: string[]; days?: unknown[] }
+
+        const summary = (segments as RawItinerarySegment[]).map((seg) => ({
           city: seg.city,
           nights: seg.nights || 0,
           highlights: seg.highlights || [],
@@ -74,13 +76,13 @@ export function createGenerateItineraryTool(supabase: SupabaseClient): ToolDefin
             title: plannerData?.title || '',
             summary: plannerData?.summary || '',
             segments: summary,
-            totalDays: plannerData?.days || segments.reduce((sum: number, s: any) => sum + (s.days?.length || 0), 0),
+            totalDays: plannerData?.days || (segments as RawItinerarySegment[]).reduce((sum: number, s) => sum + (s.days?.length || 0), 0),
             rawItinerary: plannerData,
           },
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[PLANNER AGENT] generate_itinerary exception:', err);
-        return { success: false, error: err.message || 'Error inesperado generando itinerario' };
+        return { success: false, error: err instanceof Error ? err.message : 'Error inesperado generando itinerario' };
       }
     },
   };

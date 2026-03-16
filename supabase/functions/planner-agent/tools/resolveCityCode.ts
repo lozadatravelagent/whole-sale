@@ -25,8 +25,8 @@ export function createResolveCityCodeTool(): ToolDefinition {
           success: true,
           data: { city, airportCode, hotelCode },
         };
-      } catch (err: any) {
-        return { success: false, error: `No se pudo resolver la ciudad "${params.city}": ${err.message}` };
+      } catch (err: unknown) {
+        return { success: false, error: `No se pudo resolver la ciudad "${params.city}": ${err instanceof Error ? err.message : 'error desconocido'}` };
       }
     },
   };

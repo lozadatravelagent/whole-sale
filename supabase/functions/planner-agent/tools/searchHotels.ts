@@ -75,9 +75,12 @@ export function createSearchHotelsTool(supabase: SupabaseClient): ToolDefinition
         const hotels = Array.isArray(rawHotels) ? rawHotels : [];
 
         // Extract top 5 hotels summary
-        const topHotels = hotels.slice(0, 5).map((h: any, i: number) => {
+        interface RawHotelRoom { total_price?: number; TotalPrice?: number; currency?: string; Currency?: string; meal_plan?: string; MealPlan?: string; room_type?: string; RoomType?: string }
+        interface RawHotel { hotel_name?: string; HotelName?: string; name?: string; category?: number; Category?: number; stars?: number; city?: string; City?: string; rooms?: RawHotelRoom[]; Rooms?: RawHotelRoom[] }
+
+        const topHotels = (hotels as RawHotel[]).slice(0, 5).map((h, i) => {
           const rooms = h.rooms || h.Rooms || [];
-          const cheapestRoom = rooms.reduce((min: any, r: any) => {
+          const cheapestRoom = rooms.reduce<RawHotelRoom | undefined>((min, r) => {
             const price = r.total_price || r.TotalPrice || Infinity;
             const minPrice = min?.total_price || min?.TotalPrice || Infinity;
             return price < minPrice ? r : min;
@@ -106,9 +109,9 @@ export function createSearchHotelsTool(supabase: SupabaseClient): ToolDefinition
             rawHotels: hotels.slice(0, 5),
           }
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[PLANNER AGENT] search_hotels exception:', err);
-        return { success: false, error: err.message || 'Error inesperado buscando hoteles' };
+        return { success: false, error: err instanceof Error ? err.message : 'Error inesperado buscando hoteles' };
       }
     }
   };

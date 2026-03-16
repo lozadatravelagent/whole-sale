@@ -71,20 +71,24 @@ export function createSearchFlightsTool(supabase: SupabaseClient): ToolDefinitio
         const flights = Array.isArray(rawFlights) ? rawFlights : rawFlights?.Fares || rawFlights?.flights || [];
 
         // Extract top 5 flights summary
-        const topFlights = flights.slice(0, 5).map((f: any, i: number) => {
-          const firstLeg = f.legs?.[0] || f.Legs?.[0] || {};
-          const segments = firstLeg.segments || firstLeg.Segments || [];
-          const firstSeg = segments[0] || {};
-          const lastSeg = segments[segments.length - 1] || {};
+        interface RawFlightSegment { airline?: { name?: string }; Airline?: { Name?: string }; carrier?: string; departure?: unknown; Departure?: unknown; arrival?: unknown; Arrival?: unknown }
+        interface RawFlightLeg { segments?: RawFlightSegment[]; Segments?: RawFlightSegment[] }
+        interface RawFlight { legs?: RawFlightLeg[]; Legs?: RawFlightLeg[]; price?: { amount?: number; currency?: string }; Price?: { Amount?: number; Currency?: string }; total_price?: number }
+
+        const topFlights = (flights as RawFlight[]).slice(0, 5).map((f, i) => {
+          const firstLeg = f.legs?.[0] || f.Legs?.[0];
+          const segments = firstLeg?.segments || firstLeg?.Segments || [];
+          const firstSeg = segments[0];
+          const lastSeg = segments[segments.length - 1];
 
           return {
             index: i + 1,
             price: f.price?.amount || f.Price?.Amount || f.total_price || 0,
             currency: f.price?.currency || f.Price?.Currency || 'USD',
-            airline: firstSeg.airline?.name || firstSeg.Airline?.Name || firstSeg.carrier || 'N/A',
+            airline: firstSeg?.airline?.name || firstSeg?.Airline?.Name || firstSeg?.carrier || 'N/A',
             stops: Math.max(0, segments.length - 1),
-            departure: firstSeg.departure || firstSeg.Departure || {},
-            arrival: lastSeg.arrival || lastSeg.Arrival || {},
+            departure: firstSeg?.departure || firstSeg?.Departure || {},
+            arrival: lastSeg?.arrival || lastSeg?.Arrival || {},
           };
         });
 
@@ -99,9 +103,9 @@ export function createSearchFlightsTool(supabase: SupabaseClient): ToolDefinitio
             rawFlights: flights.slice(0, 5),
           }
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[PLANNER AGENT] search_flights exception:', err);
-        return { success: false, error: err.message || 'Error inesperado buscando vuelos' };
+        return { success: false, error: err instanceof Error ? err.message : 'Error inesperado buscando vuelos' };
       }
     }
   };
