@@ -13,8 +13,9 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
   } = state;
 
   const isAutoLoadingTransportRef = useRef(false);
+  const lastCompletedTransportSignatureRef = useRef<string | null>(null);
 
-  const loadTransportForSegment = useCallback(async (segmentId: string) => {
+  const loadTransportForSegment = useCallback(async (segmentId: string, signal?: AbortSignal) => {
     if (!plannerState) return;
     const segmentIndex = plannerState.segments.findIndex((item) => item.id === segmentId);
     if (segmentIndex <= 0 || plannerState.isFlexibleDates) return;
@@ -32,6 +33,8 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
       children: plannerState.travelers.children || 0,
       infants: plannerState.travelers.infants || 0,
     });
+
+    if (signal?.aborted) return;
 
     await updatePlannerState((current) => ({
       ...current,
@@ -76,8 +79,11 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
       originalMessage: `Trip planner transport search from ${previousSegment.city} to ${segment.city}`,
     };
 
+    if (signal?.aborted) return;
+
     try {
       const result = await handleFlightSearch(flightRequest);
+      if (signal?.aborted) return;
       const flights = result.data?.combinedData?.flights || [];
       const flightSearchId = result.data?.combinedData?.flightSearchId;
 
@@ -109,6 +115,7 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
         ),
       }));
     } catch (error: unknown) {
+      if (signal?.aborted) return;
       const errorMessage = error instanceof Error ? error.message : 'No se pudieron cargar las opciones de transporte.';
       await updatePlannerState((current) => ({
         ...current,
@@ -171,6 +178,28 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
       return;
     }
 
+    const batchSignature = pendingSegments
+      .map((s) => {
+        const idx = plannerState.segments.findIndex((seg) => seg.id === s.id);
+        const prev = plannerState.segments[idx - 1];
+        const departureDate = s.startDate || plannerState.startDate || '';
+        return `${s.id}|${buildPlannerTransportSearchSignature({
+          origin: prev.city,
+          destination: s.city,
+          departureDate,
+          adults: plannerState.travelers.adults || 1,
+          children: plannerState.travelers.children || 0,
+          infants: plannerState.travelers.infants || 0,
+        })}`;
+      })
+      .join('::');
+
+    if (lastCompletedTransportSignatureRef.current === batchSignature) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const { signal } = controller;
     const cancelToken: CancelToken = { current: false };
     isAutoLoadingTransportRef.current = true;
 
@@ -187,15 +216,22 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
     void (async () => {
       try {
         const tasks = pendingSegments.map(
-          (segment) => () => loadTransportForSegment(segment.id),
+          (segment) => () => {
+            if (signal.aborted) return Promise.resolve();
+            return loadTransportForSegment(segment.id, signal);
+          },
         );
         await runWithConcurrency(tasks, 2, cancelToken);
+        if (!signal.aborted) {
+          lastCompletedTransportSignatureRef.current = batchSignature;
+        }
       } finally {
         isAutoLoadingTransportRef.current = false;
       }
     })();
 
     return () => {
+      controller.abort();
       cancelToken.current = true;
     };
   }, [loadTransportForSegment, plannerState, updatePlannerState]);

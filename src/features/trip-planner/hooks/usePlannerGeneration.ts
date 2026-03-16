@@ -23,7 +23,7 @@ export default function usePlannerGeneration(state: PlannerStateAPI) {
     toast,
   } = state;
 
-  const ensureSegmentEnriched = useCallback(async (segmentId: string) => {
+  const ensureSegmentEnriched = useCallback(async (segmentId: string, signal?: AbortSignal) => {
     const requestConversationId = conversationId;
     if (!conversationId || !plannerState || isDraftPlannerState(plannerState)) {
       return;
@@ -63,6 +63,8 @@ export default function usePlannerGeneration(state: PlannerStateAPI) {
     });
 
     try {
+      if (signal?.aborted) return;
+
       const response = await supabase.functions.invoke('travel-itinerary', {
         body: buildPlannerGenerationPayload(plannerState, {
           generationMode: 'segment',
@@ -74,6 +76,8 @@ export default function usePlannerGeneration(state: PlannerStateAPI) {
         }),
       });
 
+      if (signal?.aborted) return;
+
       if (response.error) {
         throw response.error;
       }
@@ -84,6 +88,8 @@ export default function usePlannerGeneration(state: PlannerStateAPI) {
       if (!isCurrentPlannerConversation(requestConversationId)) {
         return;
       }
+
+      if (signal?.aborted) return;
 
       let mergedState: TripPlannerState | null = null;
       setPlannerStateIfCurrent(requestConversationId, (current) => {
@@ -101,6 +107,7 @@ export default function usePlannerGeneration(state: PlannerStateAPI) {
       }
       timer.end('enriched', { days: mergedState?.segments.find((s) => s.id === segmentId)?.days.length });
     } catch (error: unknown) {
+      if (signal?.aborted) return;
       timer.fail('enrichment-failed', error);
       console.error('\u274c [TRIP PLANNER] Segment enrichment failed:', error);
       if (!isCurrentPlannerConversation(requestConversationId)) {

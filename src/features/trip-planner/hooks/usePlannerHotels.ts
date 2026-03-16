@@ -26,6 +26,7 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
   } = state;
 
   const isAutoLoadingHotelsRef = useRef(false);
+  const lastCompletedHotelSignatureRef = useRef<string | null>(null);
 
   const getSegmentHotelSearchInput = useCallback((searchState: TripPlannerState, segmentId: string) => {
     const segment = searchState.segments.find((item) => item.id === segmentId);
@@ -88,7 +89,7 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
     };
   }, []);
 
-  const loadHotelsForSegment = useCallback(async (segmentId: string) => {
+  const loadHotelsForSegment = useCallback(async (segmentId: string, signal?: AbortSignal) => {
     if (!plannerState) return;
     const segment = plannerState.segments.find((item) => item.id === segmentId);
     if (!segment) return;
@@ -119,6 +120,8 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
 
     const signature = buildPlannerHotelSearchSignature(searchInput);
     const searchChanged = segment.hotelPlan.lastSearchSignature !== signature;
+
+    if (signal?.aborted) return;
 
     await updatePlannerState((current) => ({
       ...current,
@@ -168,8 +171,11 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
       ),
     }));
 
+    if (signal?.aborted) return;
+
     try {
       const { hotels, hotelSearchId, serviceError } = await fetchInventoryHotels(searchInput);
+      if (signal?.aborted) return;
       const noHotels = hotels.length === 0;
       const hotelError = noHotels ? serviceError : undefined;
       const hasServiceError = Boolean(hotelError);
@@ -203,6 +209,7 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
         ),
       }));
     } catch (error: unknown) {
+      if (signal?.aborted) return;
       const errorMessage = error instanceof Error ? error.message : 'No se pudieron cargar los hoteles.';
       await updatePlannerState((current) => ({
         ...current,
@@ -247,6 +254,19 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
       return;
     }
 
+    const batchSignature = pendingSegments
+      .map((s) => {
+        const input = getSegmentHotelSearchInput(plannerState, s.id)!;
+        return `${s.id}|${buildPlannerHotelSearchSignature(input)}`;
+      })
+      .join('::');
+
+    if (lastCompletedHotelSignatureRef.current === batchSignature) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const { signal } = controller;
     const cancelToken: CancelToken = { current: false };
     isAutoLoadingHotelsRef.current = true;
 
@@ -263,15 +283,22 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
     void (async () => {
       try {
         const tasks = pendingSegments.map(
-          (segment) => () => loadHotelsForSegment(segment.id),
+          (segment) => () => {
+            if (signal.aborted) return Promise.resolve();
+            return loadHotelsForSegment(segment.id, signal);
+          },
         );
         await runWithConcurrency(tasks, 2, cancelToken);
+        if (!signal.aborted) {
+          lastCompletedHotelSignatureRef.current = batchSignature;
+        }
       } finally {
         isAutoLoadingHotelsRef.current = false;
       }
     })();
 
     return () => {
+      controller.abort();
       cancelToken.current = true;
     };
   }, [getSegmentHotelSearchInput, loadHotelsForSegment, plannerState, updatePlannerState]);

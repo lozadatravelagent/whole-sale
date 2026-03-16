@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { enrichPlannerWithLocations } from '../services/plannerGeocoding';
 import { isDraftPlannerState, normalizeLocationLabel } from '../helpers';
 import type { PlannerStateAPI } from './usePlannerState';
@@ -12,6 +12,8 @@ export default function usePlannerLocations(state: PlannerStateAPI) {
     setPlannerState,
     persistPlannerState,
   } = state;
+
+  const locationVersionRef = useRef(0);
 
   useEffect(() => {
     const isDraftStillGenerating = isDraftPlannerState(plannerState)
@@ -42,11 +44,11 @@ export default function usePlannerLocations(state: PlannerStateAPI) {
     resolvingSignatureRef.current = signature;
     setIsResolvingLocations(true);
 
-    let cancelled = false;
+    const version = ++locationVersionRef.current;
 
     void enrichPlannerWithLocations(plannerState)
       .then(async ({ plannerState: nextState, changed, unresolvedCities }) => {
-        if (cancelled) return;
+        if (locationVersionRef.current !== version) return;
 
         setPlannerLocationWarning(
           unresolvedCities.length > 0
@@ -62,15 +64,15 @@ export default function usePlannerLocations(state: PlannerStateAPI) {
         setPlannerState(nextState);
         await persistPlannerState(nextState, isDraftPlannerState(plannerState) ? 'draft' : 'system');
       })
-      .catch((error) => {
-        if (cancelled) return;
+      .catch((error: unknown) => {
+        if (locationVersionRef.current !== version) return;
         console.error('\u274c [TRIP PLANNER] Failed to resolve planner locations:', error);
         setIsResolvingLocations(false);
         setPlannerLocationWarning('No pudimos ubicar algunos destinos en el mapa por ahora.');
       });
 
     return () => {
-      cancelled = true;
+      locationVersionRef.current++;
       resolvingSignatureRef.current = null;
     };
   }, [persistPlannerState, plannerState, setIsResolvingLocations, setPlannerLocationWarning, setPlannerState, resolvingSignatureRef]);
