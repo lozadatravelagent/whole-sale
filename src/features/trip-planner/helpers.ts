@@ -3,6 +3,13 @@ import type { LocalHotelData } from '@/features/chat/types/chat';
 import type { TripPlannerState } from './types';
 import { getPlannerHotelDisplayId, normalizePlannerState } from './utils';
 
+export interface PlannerMessageMeta {
+  plannerData?: unknown;
+  plannerState?: unknown;
+  messageType?: string;
+  timestamp?: string;
+}
+
 export function isPersistableConversationId(value: string | null): value is string {
   if (!value || value.startsWith('temp-')) {
     return false;
@@ -15,7 +22,7 @@ export function getLatestPlannerMessage(messages: MessageRow[], conversationId: 
   return [...messages]
     .reverse()
     .find((message) => {
-      const meta = message.meta as any;
+      const meta = message.meta as PlannerMessageMeta | null;
       return (
         message.conversation_id === conversationId &&
         message.role === 'assistant' &&

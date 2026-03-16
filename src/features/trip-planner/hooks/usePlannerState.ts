@@ -13,6 +13,7 @@ import {
   isDraftPlannerState,
   isPersistableConversationId,
   shouldReplacePlannerState,
+  type PlannerMessageMeta,
 } from '../helpers';
 
 export default function usePlannerState(
@@ -193,7 +194,7 @@ export default function usePlannerState(
       }
 
       const snapshot = data?.[0];
-      const meta = snapshot?.meta as any;
+      const meta = snapshot?.meta as PlannerMessageMeta | null;
       const nextState = meta?.plannerState ? normalizePlannerState(meta.plannerState, conversationId) : null;
 
       if (nextState) {
@@ -222,7 +223,7 @@ export default function usePlannerState(
   useEffect(() => {
     if (!conversationId) return;
     const latestPlannerMessage = getLatestPlannerMessage(messages, conversationId);
-    const meta = latestPlannerMessage?.meta as any;
+    const meta = latestPlannerMessage?.meta as PlannerMessageMeta | null;
     if (!meta?.plannerData) return;
 
     const nextState = normalizePlannerState(meta.plannerData, conversationId);

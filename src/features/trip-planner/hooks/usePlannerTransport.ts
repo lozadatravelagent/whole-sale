@@ -108,7 +108,8 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
             }
         ),
       }));
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'No se pudieron cargar las opciones de transporte.';
       await updatePlannerState((current) => ({
         ...current,
         segments: current.segments.map((item) =>
@@ -127,7 +128,7 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
                 selectedOptionId: undefined,
                 lastSearchSignature: signature,
                 options: [],
-                error: error?.message || 'No se pudieron cargar las opciones de transporte.',
+                error: errorMessage,
               },
             }
         ),

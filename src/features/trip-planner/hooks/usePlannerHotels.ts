@@ -202,7 +202,8 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
               })()
         ),
       }));
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'No se pudieron cargar los hoteles.';
       await updatePlannerState((current) => ({
         ...current,
         segments: current.segments.map((item) =>
@@ -214,7 +215,7 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
                   ...item.hotelPlan,
                   searchStatus: 'error',
                   lastSearchSignature: signature,
-                  error: error?.message || 'No se pudieron cargar los hoteles.',
+                  error: errorMessage,
                 },
               }
         ),
@@ -473,7 +474,8 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
               }
         ),
       }));
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo confirmar disponibilidad del hotel elegido.';
       await updatePlannerState((current) => ({
         ...current,
         segments: current.segments.map((item) =>
@@ -486,8 +488,8 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
                   matchStatus: 'error',
                   selectedPlaceCandidate: placeCandidate,
                   inventoryMatchCandidates: [],
-                  quoteError: error?.message || 'No se pudo confirmar disponibilidad del hotel elegido.',
-                  error: error?.message || 'No se pudo confirmar disponibilidad del hotel elegido.',
+                  quoteError: errorMessage,
+                  error: errorMessage,
                 },
               }
         ),
@@ -783,7 +785,8 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
                   }
             ),
           }));
-        } catch (budgetErr: any) {
+        } catch (budgetErr: unknown) {
+          const budgetErrMessage = budgetErr instanceof Error ? budgetErr.message : 'Error desconocido';
           await updatePlannerState((current) => ({
             ...current,
             segments: current.segments.map((item) =>
@@ -795,7 +798,7 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
                       ...item.hotelPlan,
                       matchStatus: 'quoted',
                       quoteLastValidatedAt: new Date().toISOString(),
-                      quoteError: `No se pudo obtener precio final: ${budgetErr.message || 'Error desconocido'}`,
+                      quoteError: `No se pudo obtener precio final: ${budgetErrMessage}`,
                     },
                   }
             ),
@@ -819,7 +822,8 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
           ),
         }));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo refrescar la cotización real.';
       await updatePlannerState((current) => ({
         ...current,
         segments: current.segments.map((item) =>
@@ -830,8 +834,8 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
                 hotelPlan: {
                   ...item.hotelPlan,
                   matchStatus: 'error',
-                  quoteError: error?.message || 'No se pudo refrescar la cotizaci\u00f3n real.',
-                  error: error?.message || 'No se pudo refrescar la cotizaci\u00f3n real.',
+                  quoteError: errorMessage,
+                  error: errorMessage,
                 },
               }
         ),
@@ -918,7 +922,8 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
             };
           }),
         }));
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const errMessage = err instanceof Error ? err.message : 'Error desconocido';
         await updatePlannerState((current) => ({
           ...current,
           segments: current.segments.map((seg) => {
@@ -929,7 +934,7 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
                 ...seg.hotelPlan,
                 matchStatus: 'quoted',
                 quoteLastValidatedAt: new Date().toISOString(),
-                quoteError: `No se pudo obtener precio final: ${err.message || 'Error desconocido'}`,
+                quoteError: `No se pudo obtener precio final: ${errMessage}`,
               },
             };
           }),

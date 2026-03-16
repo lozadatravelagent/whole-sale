@@ -100,13 +100,14 @@ export default function usePlannerGeneration(state: PlannerStateAPI) {
         await persistPlannerState(mergedState, 'system');
       }
       timer.end('enriched', { days: mergedState?.segments.find((s) => s.id === segmentId)?.days.length });
-    } catch (error: any) {
+    } catch (error: unknown) {
       timer.fail('enrichment-failed', error);
       console.error('\u274c [TRIP PLANNER] Segment enrichment failed:', error);
       if (!isCurrentPlannerConversation(requestConversationId)) {
         return;
       }
 
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo completar este tramo por ahora.';
       let nextErrorState: TripPlannerState | null = null;
 
       setPlannerStateIfCurrent(requestConversationId, (current) => {
@@ -120,7 +121,7 @@ export default function usePlannerGeneration(state: PlannerStateAPI) {
               : {
                   ...segment,
                   contentStatus: 'error' as const,
-                  contentError: error?.message || 'No se pudo completar este tramo por ahora.',
+                  contentError: errorMessage,
                 }
           ),
         };
@@ -186,16 +187,17 @@ export default function usePlannerGeneration(state: PlannerStateAPI) {
         title: 'Planificador actualizado',
         description: 'El itinerario se regener\u00f3 correctamente.',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('\u274c [TRIP PLANNER] Regeneration failed:', error);
       if (!isCurrentPlannerConversation(requestConversationId)) {
         return;
       }
 
-      setPlannerError(error?.message || 'No se pudo regenerar el planificador.');
+      const errorMessage = error instanceof Error ? error.message : 'No se pudo regenerar el planificador.';
+      setPlannerError(errorMessage);
       toast({
         title: 'No se pudo actualizar el planificador',
-        description: error?.message || 'No se pudo regenerar el planificador.',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
