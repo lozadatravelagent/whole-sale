@@ -116,14 +116,14 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
 
   // If the model wants to call tools
   if (finishReason === 'tool_calls' || (message.tool_calls && message.tool_calls.length > 0)) {
-    const toolCalls = message.tool_calls.map((tc: any) => ({
+    const toolCalls = message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
       id: tc.id,
       name: tc.function.name,
       arguments: JSON.parse(tc.function.arguments),
     }));
 
     // Check if ask_user is among the tool calls
-    const askUserCall = toolCalls.find((tc: any) => tc.name === 'ask_user');
+    const askUserCall = toolCalls.find((tc: { name: string; arguments: Record<string, unknown> }) => tc.name === 'ask_user');
     if (askUserCall) {
       return {
         action: 'ask_user',

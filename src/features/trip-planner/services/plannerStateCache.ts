@@ -3,6 +3,7 @@ import type { TripPlannerState } from '../types';
 const DB_NAME = 'PlannerStateDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'states';
+const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 interface PlannerStateRecord {
   conversationId: string;
@@ -51,7 +52,17 @@ export async function getPlannerStateFromCache(conversationId: string): Promise<
 
       request.onsuccess = () => {
         const record = request.result as PlannerStateRecord | undefined;
-        resolve(record?.state ?? null);
+        if (!record) {
+          resolve(null);
+          return;
+        }
+        if (Date.now() - record.timestamp > TTL_MS) {
+          // Expired — clean up in background
+          plannerStateCacheDelete(conversationId).catch(() => {});
+          resolve(null);
+          return;
+        }
+        resolve(record.state);
       };
 
       request.onerror = () => resolve(null);
@@ -69,8 +80,55 @@ export async function setPlannerStateInCache(conversationId: string, state: Trip
       const store = tx.objectStore(STORE_NAME);
       const record: PlannerStateRecord = { conversationId, state, timestamp: Date.now() };
       const request = store.put(record);
+      request.onsuccess = () => {
+        resolve();
+        // Proactively clean expired entries after each write
+        plannerStateCacheCleanup().catch(() => {});
+      };
+      request.onerror = () => resolve();
+    });
+  } catch {
+    // Ignore
+  }
+}
+
+async function plannerStateCacheDelete(conversationId: string): Promise<void> {
+  try {
+    const database = await openDB();
+    return new Promise((resolve) => {
+      const tx = database.transaction([STORE_NAME], 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.delete(conversationId);
       request.onsuccess = () => resolve();
       request.onerror = () => resolve();
+    });
+  } catch {
+    // Ignore
+  }
+}
+
+/** Remove all expired entries from the planner state cache. */
+async function plannerStateCacheCleanup(): Promise<void> {
+  try {
+    const database = await openDB();
+    const now = Date.now();
+    return new Promise((resolve) => {
+      const tx = database.transaction([STORE_NAME], 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const cursorReq = store.openCursor();
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        const record = cursor.value as PlannerStateRecord;
+        if (now - record.timestamp > TTL_MS) {
+          cursor.delete();
+        }
+        cursor.continue();
+      };
+      cursorReq.onerror = () => resolve();
     });
   } catch {
     // Ignore

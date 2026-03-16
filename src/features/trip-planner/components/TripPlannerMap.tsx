@@ -417,7 +417,7 @@ function PlannerGoogleMapScene({
     } else {
       setFetchCenter(null);
     }
-  }, [selectedSegmentId]);
+  }, [selectedSegmentId, selectedSegment]);
 
   useEffect(() => {
     if (!map) return;

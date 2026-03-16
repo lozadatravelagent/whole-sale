@@ -90,7 +90,7 @@ function DestinationHighlightsFetcher({
               photo: r.photos?.[0]?.getUrl({ maxWidth: 400 }),
               rating: r.rating,
               userRatingsTotal: r.user_ratings_total,
-              vicinity: r.formatted_address || (r as any).vicinity,
+              vicinity: r.formatted_address || (r as google.maps.places.PlaceResult).vicinity,
             }));
             results[city] = places;
             cityHighlightsCache.set(city.trim().toLowerCase(), places);

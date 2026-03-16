@@ -78,8 +78,40 @@ export async function geocodeCacheSet(key: string, value: string): Promise<void>
       const store = tx.objectStore(STORE_NAME);
       const record: GeocodeCacheRecord = { key, value, timestamp: Date.now() };
       const request = store.put(record);
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => {
+        resolve();
+        // Proactively clean expired entries after each write
+        geocodeCacheCleanup().catch(() => {});
+      };
       request.onerror = () => resolve();
+    });
+  } catch {
+    // Ignore
+  }
+}
+
+/** Remove all expired entries from the geocoding cache. */
+export async function geocodeCacheCleanup(): Promise<void> {
+  try {
+    const database = await openDB();
+    const now = Date.now();
+    return new Promise((resolve) => {
+      const tx = database.transaction([STORE_NAME], 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const cursorReq = store.openCursor();
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        const record = cursor.value as GeocodeCacheRecord;
+        if (now - record.timestamp > TTL_MS) {
+          cursor.delete();
+        }
+        cursor.continue();
+      };
+      cursorReq.onerror = () => resolve();
     });
   } catch {
     // Ignore

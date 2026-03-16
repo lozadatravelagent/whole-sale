@@ -99,7 +99,7 @@ function buildPlannerMeta(
   };
 }
 
-function activityToPlannerActivity(activity: any, index: number, segmentId: string, dayNumber: number, block: string): PlannerActivity {
+function activityToPlannerActivity(activity: Record<string, unknown>, index: number, segmentId: string, dayNumber: number, block: string): PlannerActivity {
   const title = activity?.title || activity?.activity || activity?.name || 'Actividad';
   const activityType = (activity?.activityType as PlannerActivityType | undefined) || classifyPlannerActivityType(activity || {});
   return {
@@ -123,7 +123,7 @@ function activityToPlannerActivity(activity: any, index: number, segmentId: stri
   };
 }
 
-function restaurantToPlannerRestaurant(restaurant: any, index: number, segmentId: string, dayNumber: number): PlannerRestaurant {
+function restaurantToPlannerRestaurant(restaurant: Record<string, unknown>, index: number, segmentId: string, dayNumber: number): PlannerRestaurant {
   return {
     id: `${segmentId}-day-${dayNumber}-restaurant-${index + 1}`,
     name: restaurant?.name || 'Restaurante',
@@ -137,32 +137,32 @@ function restaurantToPlannerRestaurant(restaurant: any, index: number, segmentId
   };
 }
 
-function legacyDayToPlannerDay(rawDay: any, index: number, city: string, segmentId: string): PlannerDay {
-  const dayNumber = rawDay?.day || index + 1;
+function legacyDayToPlannerDay(rawDay: Record<string, unknown>, index: number, city: string, segmentId: string): PlannerDay {
+  const dayNumber = (rawDay?.day as number) || index + 1;
   return {
     id: `${segmentId}-day-${dayNumber}`,
     dayNumber,
-    date: rawDay?.date,
-    city: rawDay?.city || city,
-    title: rawDay?.title || `Día ${dayNumber}`,
-    summary: rawDay?.summary,
-    morning: safeArray(rawDay?.morning).map((item, itemIndex) =>
-      activityToPlannerActivity(item, itemIndex, segmentId, dayNumber, 'morning')
+    date: rawDay?.date as string | undefined,
+    city: (rawDay?.city as string) || city,
+    title: (rawDay?.title as string) || `Día ${dayNumber}`,
+    summary: rawDay?.summary as string | undefined,
+    morning: safeArray(rawDay?.morning as unknown[]).map((item, itemIndex) =>
+      activityToPlannerActivity(item as Record<string, unknown>, itemIndex, segmentId, dayNumber, 'morning')
     ),
-    afternoon: safeArray(rawDay?.afternoon).map((item, itemIndex) =>
-      activityToPlannerActivity(item, itemIndex, segmentId, dayNumber, 'afternoon')
+    afternoon: safeArray(rawDay?.afternoon as unknown[]).map((item, itemIndex) =>
+      activityToPlannerActivity(item as Record<string, unknown>, itemIndex, segmentId, dayNumber, 'afternoon')
     ),
-    evening: safeArray(rawDay?.evening).map((item, itemIndex) =>
-      activityToPlannerActivity(item, itemIndex, segmentId, dayNumber, 'evening')
+    evening: safeArray(rawDay?.evening as unknown[]).map((item, itemIndex) =>
+      activityToPlannerActivity(item as Record<string, unknown>, itemIndex, segmentId, dayNumber, 'evening')
     ),
-    restaurants: safeArray(rawDay?.restaurants).map((item, itemIndex) =>
-      restaurantToPlannerRestaurant(item, itemIndex, segmentId, dayNumber)
+    restaurants: safeArray(rawDay?.restaurants as unknown[]).map((item, itemIndex) =>
+      restaurantToPlannerRestaurant(item as Record<string, unknown>, itemIndex, segmentId, dayNumber)
     ),
-    travelTip: rawDay?.travelTip,
+    travelTip: rawDay?.travelTip as string | undefined,
   };
 }
 
-function normalizePlannerLocation(rawLocation: any, fallbackCity: string, fallbackCountry?: string): PlannerLocation | undefined {
+function normalizePlannerLocation(rawLocation: Record<string, unknown> | null | undefined, fallbackCity: string, fallbackCountry?: string): PlannerLocation | undefined {
   if (!rawLocation) return undefined;
 
   const lat = Number(rawLocation?.lat);
@@ -182,9 +182,9 @@ function normalizePlannerLocation(rawLocation: any, fallbackCity: string, fallba
   };
 }
 
-function normalizePlannerHighlights(rawHighlights: any): string[] {
+function normalizePlannerHighlights(rawHighlights: unknown): string[] {
   return uniqueStringList(
-    safeArray<any>(rawHighlights).map((item) => {
+    safeArray<unknown>(rawHighlights as unknown[]).map((item) => {
       if (typeof item === 'string') return item;
       if (item && typeof item === 'object') {
         return item.title || item.name || item.label;
@@ -194,7 +194,7 @@ function normalizePlannerHighlights(rawHighlights: any): string[] {
   ).slice(0, 4);
 }
 
-function normalizePlannerPlaceHotelCandidate(rawCandidate: any) {
+function normalizePlannerPlaceHotelCandidate(rawCandidate: Record<string, unknown>) {
   if (!rawCandidate?.placeId || !rawCandidate?.name) {
     return null;
   }
@@ -222,8 +222,8 @@ function normalizePlannerPlaceHotelCandidate(rawCandidate: any) {
   };
 }
 
-function normalizePlannerInventoryMatchCandidates(rawCandidates: any) {
-  return safeArray<any>(rawCandidates)
+function normalizePlannerInventoryMatchCandidates(rawCandidates: unknown) {
+  return safeArray<Record<string, unknown>>(rawCandidates as Record<string, unknown>[])
     .map((candidate) => {
       const hotel = candidate?.hotel;
       if (!hotel) return null;
@@ -241,11 +241,11 @@ function normalizePlannerInventoryMatchCandidates(rawCandidates: any) {
     .filter(Boolean);
 }
 
-function buildSegmentFromLegacyItinerary(raw: any): PlannerSegment {
+function buildSegmentFromLegacyItinerary(raw: Record<string, unknown>): PlannerSegment {
   const destinations = safeArray<string>(raw?.destinations);
   const city = destinations[0] || 'Destino';
   const segmentId = `segment-${slugify(city) || 'destination'}-1`;
-  const days = safeArray<any>(raw?.itinerary).map((day, index) => legacyDayToPlannerDay(day, index, city, segmentId));
+  const days = safeArray<Record<string, unknown>>(raw?.itinerary as Record<string, unknown>[]).map((day, index) => legacyDayToPlannerDay(day, index, city, segmentId));
 
   return {
     id: segmentId,
@@ -270,10 +270,10 @@ function buildSegmentFromLegacyItinerary(raw: any): PlannerSegment {
   };
 }
 
-function normalizeSegment(rawSegment: any, index: number): PlannerSegment {
-  const city = rawSegment?.city || rawSegment?.destination || `Destino ${index + 1}`;
-  const segmentId = rawSegment?.id || `segment-${slugify(city) || 'destination'}-${index + 1}`;
-  const days = safeArray<any>(rawSegment?.days).map((rawDay, dayIndex) =>
+function normalizeSegment(rawSegment: Record<string, unknown>, index: number): PlannerSegment {
+  const city = (rawSegment?.city as string) || (rawSegment?.destination as string) || `Destino ${index + 1}`;
+  const segmentId = (rawSegment?.id as string) || `segment-${slugify(city) || 'destination'}-${index + 1}`;
+  const days = safeArray<Record<string, unknown>>(rawSegment?.days as Record<string, unknown>[]).map((rawDay, dayIndex) =>
     legacyDayToPlannerDay(rawDay, dayIndex, city, segmentId)
   );
   const startDate = rawSegment?.startDate || days[0]?.date;
@@ -496,10 +496,10 @@ export function createDraftPlannerFromRequest(
   };
 }
 
-export function normalizePlannerState(raw: any, conversationId?: string): TripPlannerState {
-  const source = raw?.plannerData || raw;
-  const rawSegments = safeArray<any>(source?.segments).length > 0
-    ? safeArray<any>(source?.segments).map(normalizeSegment)
+export function normalizePlannerState(raw: Record<string, unknown>, conversationId?: string): TripPlannerState {
+  const source = (raw?.plannerData as Record<string, unknown>) || raw;
+  const rawSegments = safeArray<Record<string, unknown>>(source?.segments as Record<string, unknown>[]).length > 0
+    ? safeArray<Record<string, unknown>>(source?.segments as Record<string, unknown>[]).map(normalizeSegment)
     : [buildSegmentFromLegacyItinerary(source)];
   const segments = normalizePlannerSegmentsScheduling(rawSegments, {
     pace: source?.pace,

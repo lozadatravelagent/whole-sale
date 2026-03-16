@@ -10,6 +10,48 @@ import type { LocalHotelData } from '@/features/chat/types/chat';
 import type { PlannerPlaceHotelCandidate } from '../types';
 import { isEurovipsInventoryHotel } from '../utils';
 
+// ---------------------------------------------------------------------------
+// TTL Cache helper — wraps Map with expiration and max size
+// ---------------------------------------------------------------------------
+
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const CACHE_MAX_ENTRIES = 500;
+
+interface TTLEntry<T> { value: T; expiresAt: number }
+
+class TTLCache<T> {
+  private map = new Map<string, TTLEntry<T>>();
+
+  has(key: string): boolean {
+    const entry = this.map.get(key);
+    if (!entry) return false;
+    if (Date.now() > entry.expiresAt) {
+      this.map.delete(key);
+      return false;
+    }
+    return true;
+  }
+
+  get(key: string): T | undefined {
+    const entry = this.map.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      this.map.delete(key);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  set(key: string, value: T): void {
+    if (this.map.size >= CACHE_MAX_ENTRIES) {
+      // Delete the oldest entry (first inserted)
+      const firstKey = this.map.keys().next().value;
+      if (firstKey !== undefined) this.map.delete(firstKey);
+    }
+    this.map.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  }
+}
+
 export interface PlaceReview {
   authorName: string;
   rating: number;
@@ -35,9 +77,9 @@ export type PlaceDetails = {
 
 type NearbyCategory = PlannerPlaceCategory;
 
-const detailsCache = new Map<string, PlaceDetails | null>();
-const nearbyPlacesCache = new Map<string, PlannerPlaceCandidate[]>();
-const inventoryHotelCache = new Map<string, PlannerPlaceHotelCandidate | null>();
+const detailsCache = new TTLCache<PlaceDetails | null>();
+const nearbyPlacesCache = new TTLCache<PlannerPlaceCandidate[]>();
+const inventoryHotelCache = new TTLCache<PlannerPlaceHotelCandidate | null>();
 
 function normalizeKey(title: string, city: string): string {
   return `${title}::${city}`
@@ -191,25 +233,29 @@ function buildNearbyRequests(
     radius: 12000,
   };
 
+  // Google Maps types don't include all valid place type strings, so we cast via `string`
+  type PlaceType = google.maps.places.PlaceSearchRequest['type'];
+  const asPlaceType = (value: string) => value as PlaceType;
+
   switch (category) {
     case 'hotel':
       return [
-        { ...base, type: 'lodging' as any },
-        { ...base, keyword: city, type: 'lodging' as any },
+        { ...base, type: asPlaceType('lodging') },
+        { ...base, keyword: city, type: asPlaceType('lodging') },
       ];
     case 'restaurant':
-      return [{ ...base, type: 'restaurant' as any }];
+      return [{ ...base, type: asPlaceType('restaurant') }];
     case 'cafe':
-      return [{ ...base, type: 'cafe' as any }];
+      return [{ ...base, type: asPlaceType('cafe') }];
     case 'museum':
-      return [{ ...base, type: 'museum' as any }];
+      return [{ ...base, type: asPlaceType('museum') }];
     case 'activity':
     default:
       return [
-        { ...base, type: 'tourist_attraction' as any },
-        { ...base, type: 'point_of_interest' as any },
-        { ...base, type: 'park' as any },
-        { ...base, type: 'art_gallery' as any },
+        { ...base, type: asPlaceType('tourist_attraction') },
+        { ...base, type: asPlaceType('point_of_interest') },
+        { ...base, type: asPlaceType('park') },
+        { ...base, type: asPlaceType('art_gallery') },
       ];
   }
 }
