@@ -44,6 +44,7 @@ export interface PlannerFieldProvenance {
   budgetLevel?: PlannerFieldSource;
   pace?: PlannerFieldSource;
   travelers?: PlannerFieldSource;
+  origin?: PlannerFieldSource;
 }
 
 export interface PlannerSyncingFields {
@@ -263,6 +264,8 @@ export interface TripPlannerState {
   interests: string[];
   constraints: string[];
   destinations: string[];
+  origin?: string;        // Detected or user-provided departure city
+  originCountry?: string; // Country of origin (for context)
   segments: PlannerSegment[];
   notes?: string[];
   generalTips: string[];

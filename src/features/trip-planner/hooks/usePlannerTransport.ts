@@ -23,7 +23,19 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
     if (!plannerState || plannerState.isFlexibleDates || isDraftPlannerState(plannerState)) return null;
     return plannerState.segments
       .map((s, index) => {
-        if (index === 0) return '';
+        if (index === 0) {
+          if (!plannerState.origin) return '';
+          const departureDate = s.startDate || plannerState.startDate || '';
+          if (!s.city || !departureDate) return '';
+          return `${s.id}|${buildPlannerTransportSearchSignature({
+            origin: plannerState.origin,
+            destination: s.city,
+            departureDate,
+            adults: plannerState.travelers.adults || 1,
+            children: plannerState.travelers.children || 0,
+            infants: plannerState.travelers.infants || 0,
+          })}`;
+        }
         const prev = plannerState.segments[index - 1];
         const departureDate = s.startDate || plannerState.startDate || '';
         if (!prev.city || !s.city || !departureDate) return '';
@@ -43,15 +55,17 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
     const currentState = plannerStateRef.current;
     if (!currentState) return;
     const segmentIndex = currentState.segments.findIndex((item) => item.id === segmentId);
-    if (segmentIndex <= 0 || currentState.isFlexibleDates) return;
+    if (segmentIndex < 0 || currentState.isFlexibleDates) return;
 
     const segment = currentState.segments[segmentIndex];
-    const previousSegment = currentState.segments[segmentIndex - 1];
+    const originCity = segmentIndex === 0
+      ? currentState.origin
+      : currentState.segments[segmentIndex - 1]?.city;
     const departureDate = segment.startDate || currentState.startDate || '';
-    if (!previousSegment.city || !segment.city || !departureDate) return;
+    if (!originCity || !segment.city || !departureDate) return;
 
     const signature = buildPlannerTransportSearchSignature({
-      origin: previousSegment.city,
+      origin: originCity,
       destination: segment.city,
       departureDate,
       adults: currentState.travelers.adults || 1,
@@ -71,11 +85,11 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
               transportIn: {
                 ...(item.transportIn || {
                   type: 'flight',
-                  summary: `${previousSegment.city} a ${item.city}`,
+                  summary: `${originCity} a ${item.city}`,
                 }),
                 type: 'flight',
-                summary: `${formatDestinationLabel(previousSegment.city)} a ${formatDestinationLabel(item.city)}`,
-                origin: previousSegment.city,
+                summary: `${formatDestinationLabel(originCity)} a ${formatDestinationLabel(item.city)}`,
+                origin: originCity,
                 destination: item.city,
                 date: item.startDate,
                 searchStatus: 'loading',
@@ -92,7 +106,7 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
     const flightRequest: ParsedTravelRequest = {
       requestType: 'flights',
       flights: {
-        origin: previousSegment.city,
+        origin: originCity,
         destination: segment.city,
         departureDate,
         adults: currentState.travelers.adults || 1,
@@ -101,7 +115,7 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
         stops: 'any',
       },
       confidence: 1,
-      originalMessage: `Trip planner transport search from ${previousSegment.city} to ${segment.city}`,
+      originalMessage: `Trip planner transport search from ${originCity} to ${segment.city}`,
     };
 
     if (signal?.aborted) {
@@ -147,8 +161,8 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
               ...item,
               transportIn: {
                 type: 'flight',
-                summary: `${formatDestinationLabel(previousSegment.city)} a ${formatDestinationLabel(item.city)}`,
-                origin: previousSegment.city,
+                summary: `${formatDestinationLabel(originCity)} a ${formatDestinationLabel(item.city)}`,
+                origin: originCity,
                 destination: item.city,
                 date: item.startDate,
                 searchStatus: 'ready',
@@ -190,8 +204,8 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
                 ...item,
                 transportIn: {
                   type: 'flight',
-                  summary: `${formatDestinationLabel(previousSegment.city)} a ${formatDestinationLabel(item.city)}`,
-                origin: previousSegment.city,
+                  summary: `${formatDestinationLabel(originCity)} a ${formatDestinationLabel(item.city)}`,
+                origin: originCity,
                 destination: item.city,
                 date: item.startDate,
                 searchStatus: 'error',
@@ -215,11 +229,11 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
     }
 
     const pendingSegments = currentState.segments.filter((segment, index) => {
-      if (index === 0) return false;
+      if (index === 0 && !currentState.origin) return false;
 
-      const previousSegment = currentState.segments[index - 1];
+      const originCity = index === 0 ? currentState.origin! : currentState.segments[index - 1]?.city;
       const departureDate = segment.startDate || currentState.startDate || '';
-      if (!previousSegment?.city || !segment.city || !departureDate) {
+      if (!originCity || !segment.city || !departureDate) {
         return false;
       }
 
@@ -228,7 +242,7 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
       }
 
       const signature = buildPlannerTransportSearchSignature({
-        origin: previousSegment.city,
+        origin: originCity,
         destination: segment.city,
         departureDate,
         adults: currentState.travelers.adults || 1,
@@ -246,10 +260,10 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
     const batchSignature = pendingSegments
       .map((s) => {
         const idx = currentState.segments.findIndex((seg) => seg.id === s.id);
-        const prev = currentState.segments[idx - 1];
+        const batchOriginCity = idx === 0 ? currentState.origin! : currentState.segments[idx - 1].city;
         const departureDate = s.startDate || currentState.startDate || '';
         return `${s.id}|${buildPlannerTransportSearchSignature({
-          origin: prev.city,
+          origin: batchOriginCity,
           destination: s.city,
           departureDate,
           adults: currentState.travelers.adults || 1,

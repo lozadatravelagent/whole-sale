@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { MessageRow } from '@/features/chat/types/chat';
 import usePlannerState from './hooks/usePlannerState';
 import usePlannerLocations from './hooks/usePlannerLocations';
@@ -6,6 +7,9 @@ import usePlannerDestinations from './hooks/usePlannerDestinations';
 import usePlannerPlaces from './hooks/usePlannerPlaces';
 import usePlannerHotels from './hooks/usePlannerHotels';
 import usePlannerTransport from './hooks/usePlannerTransport';
+import { detectUserOriginCity } from './services/plannerGeocoding';
+import { isDraftPlannerState } from './helpers';
+import { formatDestinationLabel } from './utils';
 
 export default function useTripPlanner(
   conversationId: string | null,
@@ -14,6 +18,55 @@ export default function useTripPlanner(
 ) {
   const state = usePlannerState(conversationId, messages, toast);
   usePlannerLocations(state);
+
+  // Auto-detect user origin when planner state exists but has no origin
+  useEffect(() => {
+    if (!state.plannerState || state.plannerState.origin) return;
+    if (isDraftPlannerState(state.plannerState)) return;
+
+    let cancelled = false;
+    detectUserOriginCity().then((result) => {
+      if (cancelled) return;
+      const city = result?.city || 'Buenos Aires';
+      const country = result?.country || 'Argentina';
+
+      state.updatePlannerState((current) => {
+        if (current.origin) return current;
+
+        const firstSegment = current.segments[0];
+        const updatedSegments = firstSegment
+          ? current.segments.map((seg, i) =>
+              i === 0 && !seg.transportIn
+                ? {
+                    ...seg,
+                    transportIn: {
+                      type: 'flight' as const,
+                      summary: `${formatDestinationLabel(city)} a ${formatDestinationLabel(seg.city)}`,
+                      origin: city,
+                      destination: seg.city,
+                      searchStatus: 'idle' as const,
+                      options: [],
+                    },
+                  }
+                : seg
+            )
+          : current.segments;
+
+        return {
+          ...current,
+          origin: city,
+          originCountry: country,
+          fieldProvenance: {
+            ...current.fieldProvenance,
+            origin: 'assumed' as const,
+          },
+          segments: updatedSegments,
+        };
+      });
+    });
+
+    return () => { cancelled = true; };
+  }, [state.plannerState?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generation = usePlannerGeneration(state);
   const destinations = usePlannerDestinations(state, generation.invokePlannerGeneration);

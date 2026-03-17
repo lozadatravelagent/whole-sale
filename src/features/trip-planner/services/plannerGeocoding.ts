@@ -272,6 +272,78 @@ function initGeocodingCache() {
 
 initGeocodingCache();
 
+const REVERSE_GEOCODER_URL = 'https://nominatim.openstreetmap.org/reverse';
+
+async function reverseGeocodeNominatim(lat: number, lng: number): Promise<{ city: string; country: string } | null> {
+  const cacheKey = `reverse::${lat.toFixed(3)}::${lng.toFixed(3)}`;
+  const cached = memoryCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached ? { city: cached.city, country: cached.country || '' } : null;
+  }
+
+  try {
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lng),
+      format: 'jsonv2',
+      'accept-language': 'es',
+    });
+    const response = await fetch(`${REVERSE_GEOCODER_URL}?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) return null;
+
+    const data = await response.json() as {
+      address?: { city?: string; town?: string; village?: string; country?: string };
+    };
+    const city = data.address?.city || data.address?.town || data.address?.village;
+    const country = data.address?.country || '';
+    if (!city) return null;
+
+    // Cache as PlannerLocation for reuse
+    memoryCache.set(cacheKey, { city, country, lat, lng, source: 'provider' });
+    return { city, country };
+  } catch {
+    return null;
+  }
+}
+
+let cachedOriginResult: { city: string; country: string } | null | undefined = undefined;
+
+export async function detectUserOriginCity(): Promise<{ city: string; country: string } | null> {
+  if (cachedOriginResult !== undefined) return cachedOriginResult;
+
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    cachedOriginResult = null;
+    return null;
+  }
+
+  try {
+    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+    });
+    const result = await reverseGeocodeNominatim(position.coords.latitude, position.coords.longitude);
+    if (result) {
+      // Normalize against FALLBACK_CITY_COORDINATES keys
+      const normalizedKey = normalizeLocationKey(result.city);
+      const fallbackEntry = FALLBACK_CITY_COORDINATES[normalizedKey];
+      if (fallbackEntry) {
+        result.city = formatDestinationLabel(
+          Object.keys(FALLBACK_CITY_COORDINATES).find(
+            (k) => FALLBACK_CITY_COORDINATES[k] === fallbackEntry
+          ) || result.city
+        );
+        result.country = fallbackEntry.country || result.country;
+      }
+    }
+    cachedOriginResult = result;
+    return result;
+  } catch {
+    cachedOriginResult = null;
+    return null;
+  }
+}
+
 export async function enrichPlannerWithLocations(plannerState: TripPlannerState): Promise<EnrichedPlannerLocations> {
   const unresolvedCities: string[] = [];
   let changed = false;
