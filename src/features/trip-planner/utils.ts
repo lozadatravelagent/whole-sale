@@ -18,6 +18,7 @@ import type {
   TripPlannerState,
 } from './types';
 import { classifyPlannerActivityType, normalizePlannerSegmentsScheduling } from './scheduling';
+import { FALLBACK_CITY_COORDINATES_FLAT } from './services/plannerGeocoding';
 
 // ---------------------------------------------------------------------------
 // Haversine distance helpers
@@ -514,6 +515,48 @@ const ARGENTINA_CITIES = new Set([
   'buenos aires', 'caba', 'capital federal',
 ]);
 
+const WINTER_KEYWORDS = ['esquí', 'esqui', 'ski', 'nieve', 'snow', 'invierno', 'winter', 'aurora boreal', 'snowboard'];
+const SUMMER_KEYWORDS = ['playa', 'beach', 'sol', 'verano', 'summer', 'buceo', 'diving', 'snorkel', 'surf'];
+
+type SeasonHint = 'winter' | 'summer' | null;
+
+function detectSeasonHint(interests: string[], travelStyle: string[]): SeasonHint {
+  const all = [...interests, ...travelStyle].map(s => s.toLowerCase());
+  if (all.some(k => WINTER_KEYWORDS.some(w => k.includes(w)))) return 'winter';
+  if (all.some(k => SUMMER_KEYWORDS.some(w => k.includes(w)))) return 'summer';
+  return null;
+}
+
+function pickSeasonalMonth(
+  seasonHint: SeasonHint,
+  destinationLat: number | null,
+): { month: number; year: number } {
+  const now = new Date();
+  if (!seasonHint) {
+    const future = new Date(now.getFullYear(), now.getMonth() + 2, 1);
+    return { month: future.getMonth(), year: future.getFullYear() };
+  }
+
+  const isSouthern = destinationLat !== null && destinationLat < 0;
+  let targetMonths: number[];
+  if (seasonHint === 'winter') {
+    targetMonths = isSouthern ? [5, 6, 7] : [11, 0, 1];
+  } else {
+    targetMonths = isSouthern ? [11, 0, 1] : [5, 6, 7];
+  }
+
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  for (let offset = 1; offset <= 12; offset++) {
+    const candidateMonth = (currentMonth + offset) % 12;
+    const candidateYear = currentYear + Math.floor((currentMonth + offset) / 12);
+    if (targetMonths.includes(candidateMonth)) {
+      return { month: candidateMonth, year: candidateYear };
+    }
+  }
+  return { month: targetMonths[0], year: currentYear + (targetMonths[0] <= currentMonth ? 1 : 0) };
+}
+
 function isDomesticDestination(destination: string): boolean {
   const normalized = destination.toLowerCase().trim()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -582,11 +625,33 @@ export function applySmartDefaults(
     provenance.endDate = 'user';
   } else {
     isFlexibleDates = true;
-    const now = new Date();
-    const monthsAhead = allDomestic ? 1 : 2;
-    const futureDate = new Date(now.getFullYear(), now.getMonth() + monthsAhead, 1);
-    flexibleMonth = futureDate.toLocaleString('es-AR', { month: 'long' });
-    flexibleYear = futureDate.getFullYear();
+
+    const interests = safeArray<string>(base.interests);
+    const travelStyle = safeArray<string>(base.travelStyle);
+    const seasonHint = detectSeasonHint(interests, travelStyle);
+
+    let targetMonth: number;
+    let targetYear: number;
+
+    if (seasonHint && destinations.length > 0) {
+      const firstDest = destinations[0].toLowerCase().trim()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const fallback = FALLBACK_CITY_COORDINATES_FLAT[firstDest];
+      const destLat = fallback?.lat ?? null;
+      const picked = pickSeasonalMonth(seasonHint, destLat);
+      targetMonth = picked.month;
+      targetYear = picked.year;
+    } else {
+      const now = new Date();
+      const monthsAhead = allDomestic ? 1 : 2;
+      const futureDate = new Date(now.getFullYear(), now.getMonth() + monthsAhead, 1);
+      targetMonth = futureDate.getMonth();
+      targetYear = futureDate.getFullYear();
+    }
+
+    const dateForLocale = new Date(targetYear, targetMonth, 1);
+    flexibleMonth = dateForLocale.toLocaleString('es-AR', { month: 'long' });
+    flexibleYear = targetYear;
     startDate = undefined;
     endDate = undefined;
     provenance.startDate = 'assumed';
@@ -1072,6 +1137,33 @@ export function detectPlannerGaps(plannerState: TripPlannerState): PlannerSugges
     });
   }
 
+  // P0.5: Combined origin + dates confirmation chip
+  if (plannerState.fieldProvenance) {
+    const originAssumed = plannerState.fieldProvenance.origin === 'assumed' && plannerState.origin;
+    const datesAssumed = plannerState.fieldProvenance.startDate === 'assumed';
+
+    if (originAssumed && datesAssumed) {
+      const dateLabel = plannerState.isFlexibleDates && plannerState.flexibleMonth
+        ? `${plannerState.flexibleMonth} ${plannerState.flexibleYear || ''}`
+        : plannerState.startDate || 'fechas';
+      add({
+        label: `Confirmar: desde ${formatDestinationLabel(plannerState.origin!)} en ${dateLabel.trim()}`,
+        action: 'confirm_location_dates',
+        type: 'confirm',
+        payload: {},
+        priority: 0.5,
+      });
+    } else if (originAssumed) {
+      add({
+        label: `Confirmar origen: ${formatDestinationLabel(plannerState.origin!)}`,
+        action: 'confirm_field',
+        type: 'confirm',
+        payload: { field: 'origin' },
+        priority: 1,
+      });
+    }
+  }
+
   // P1: Assumed fields needing confirmation
   if (plannerState.fieldProvenance) {
     const fieldLabels: Record<string, string> = {
@@ -1079,10 +1171,11 @@ export function detectPlannerGaps(plannerState: TripPlannerState): PlannerSugges
       budgetLevel: formatBudgetLevel(plannerState.budgetLevel)?.toLowerCase() ?? 'medio',
       pace: formatPaceLabel(plannerState.pace)?.toLowerCase() ?? 'equilibrado',
       travelers: `${plannerState.travelers.adults} adulto${plannerState.travelers.adults !== 1 ? 's' : ''}`,
+      origin: plannerState.origin ? formatDestinationLabel(plannerState.origin) : '',
     };
     for (const [field, source] of Object.entries(plannerState.fieldProvenance)) {
       if (source !== 'assumed') continue;
-      if (field === 'startDate' || field === 'endDate') continue; // handled by P0
+      if (field === 'startDate' || field === 'endDate' || field === 'origin') continue;
       const label = fieldLabels[field];
       if (!label) continue;
       add({

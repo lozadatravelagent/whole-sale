@@ -47,6 +47,23 @@ export default function useSuggestionActions(deps: UseSuggestionActionsDeps) {
           }
           break;
         }
+        case 'confirm_location_dates': {
+          if (plannerState) {
+            if (plannerState.origin) {
+              await updateTripField('origin', plannerState.origin);
+            }
+            if (plannerState.startDate !== undefined) {
+              await updateTripField('startDate', plannerState.startDate);
+            }
+            if (plannerState.endDate !== undefined) {
+              await updateTripField('endDate', plannerState.endDate);
+            }
+            if (plannerState.isFlexibleDates) {
+              await updateTripField('isFlexibleDates', plannerState.isFlexibleDates);
+            }
+          }
+          break;
+        }
         case 'select_dates': {
           onOpenDateSelector?.();
           break;

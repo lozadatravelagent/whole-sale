@@ -52,6 +52,11 @@ const FALLBACK_CITY_COORDINATES: Record<string, Omit<PlannerLocation, 'city'>> =
   singapore: { lat: 1.3521, lng: 103.8198, country: 'Singapur', placeLabel: 'Singapur', source: 'fallback' },
 };
 
+export const FALLBACK_CITY_COORDINATES_FLAT: Record<string, { lat: number }> =
+  Object.fromEntries(
+    Object.entries(FALLBACK_CITY_COORDINATES).map(([k, v]) => [k, { lat: v.lat }])
+  );
+
 const memoryCache = new Map<string, PlannerLocation | null>();
 
 function normalizeLocationKey(value: string): string {

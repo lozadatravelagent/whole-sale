@@ -129,6 +129,26 @@ export function shouldReplacePlannerState(
   return (current.generationMeta?.updatedAt || '') < (next.generationMeta?.updatedAt || '');
 }
 
+const PROTECTABLE_PLANNER_FIELDS = new Set([
+  'startDate', 'endDate', 'days', 'budgetLevel', 'pace', 'travelers',
+  'origin', 'originCountry', 'isFlexibleDates', 'flexibleMonth', 'flexibleYear',
+]);
+
+function stripProtectedFields(
+  next: TripPlannerState,
+  currentProvenance?: PlannerFieldProvenance,
+): Partial<TripPlannerState> {
+  if (!currentProvenance) return next;
+  const filtered = { ...next } as Record<string, unknown>;
+  for (const field of PROTECTABLE_PLANNER_FIELDS) {
+    const source = currentProvenance[field as keyof PlannerFieldProvenance];
+    if (source === 'user' || source === 'confirmed') {
+      delete filtered[field];
+    }
+  }
+  return filtered as Partial<TripPlannerState>;
+}
+
 export function mergeEnrichedSegmentState(
   current: TripPlannerState,
   next: TripPlannerState,
@@ -145,7 +165,8 @@ export function mergeEnrichedSegmentState(
   if (!enrichedSegment) {
     return {
       ...current,
-      ...next,
+      ...stripProtectedFields(next, current.fieldProvenance),
+      fieldProvenance: current.fieldProvenance,
       generationMeta: {
         ...current.generationMeta,
         source: 'system',
@@ -156,7 +177,8 @@ export function mergeEnrichedSegmentState(
 
   return {
     ...current,
-    ...next,
+    ...stripProtectedFields(next, current.fieldProvenance),
+    fieldProvenance: current.fieldProvenance,
     segments: current.segments.map((segment) => {
       const matches = segment.id === segmentId
         || segment.id === enrichedSegment.id
