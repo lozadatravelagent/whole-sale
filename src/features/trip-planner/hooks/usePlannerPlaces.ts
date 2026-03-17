@@ -141,6 +141,69 @@ export default function usePlannerPlaces(state: PlannerStateAPI) {
     });
   }, [plannerState, toast, updatePlannerState]);
 
+  const addPlaceToFirstAvailableSlot = useCallback(async (
+    place: {
+      name: string;
+      description?: string;
+      category: string;
+      suggestedSlot: 'morning' | 'afternoon' | 'evening';
+      segmentCity: string;
+    }
+  ) => {
+    if (!plannerState) return;
+
+    // Map category string to PlannerPlaceCategory
+    const mapCategory = (cat: string): PlannerPlaceCandidate['category'] => {
+      const lower = cat.toLowerCase();
+      if (/museo|museum/.test(lower)) return 'museum';
+      if (/restaurante|gastronom|cena|almuerzo/.test(lower)) return 'restaurant';
+      if (/cafe|cafeter/.test(lower)) return 'cafe';
+      return 'activity';
+    };
+
+    // Build PlannerPlaceCandidate
+    const placeCandidate: PlannerPlaceCandidate = {
+      placeId: `recommended-${place.name.toLowerCase().replace(/\s+/g, '-')}`,
+      name: place.name,
+      photoUrls: [],
+      category: mapCategory(place.category),
+    };
+
+    // Normalize city for comparison (strip accents, lowercase)
+    const normalize = (s: string) =>
+      s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+    const targetCity = normalize(place.segmentCity);
+
+    // Find matching segment by city
+    let segment = plannerState.segments.find(
+      (s) => normalize(s.city) === targetCity || normalize(s.city).includes(targetCity) || targetCity.includes(normalize(s.city))
+    );
+    // Fallback to first segment
+    if (!segment) segment = plannerState.segments[0];
+    if (!segment) {
+      toast({ title: 'No hay espacio disponible', variant: 'destructive' });
+      return;
+    }
+
+    const slotOrder: ('morning' | 'afternoon' | 'evening')[] = ['morning', 'afternoon', 'evening'];
+    // Prefer suggestedSlot first, then others
+    const orderedSlots = [place.suggestedSlot, ...slotOrder.filter((s) => s !== place.suggestedSlot)];
+
+    for (const day of segment.days) {
+      for (const slot of orderedSlots) {
+        const activities = day[slot];
+        const isAvailable = activities.length === 0 || activities.every((a) => a.source === 'generated');
+        if (isAvailable) {
+          await addPlaceToPlanner(segment.id, { place: placeCandidate, dayId: day.id, block: slot });
+          return;
+        }
+      }
+    }
+
+    toast({ title: 'No hay espacio disponible', description: 'Todos los bloques están ocupados.', variant: 'destructive' });
+  }, [plannerState, toast, addPlaceToPlanner]);
+
   const autoFillSegmentWithRealPlaces = useCallback(async (
     segmentId: string,
     placesByCategory: PlannerRealPlacesBundle,
@@ -358,6 +421,7 @@ export default function usePlannerPlaces(state: PlannerStateAPI) {
 
   return {
     addPlaceToPlanner,
+    addPlaceToFirstAvailableSlot,
     autoFillSegmentWithRealPlaces,
   };
 }

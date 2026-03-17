@@ -810,6 +810,7 @@ const ChatFeature = () => {
 	                onSelectHotel={planner.selectHotel}
 	                onSelectHotelPlaceFromMap={planner.selectHotelPlaceFromMap}
 	                onAddPlaceToPlanner={planner.addPlaceToPlanner}
+	                onAddPlaceToFirstAvailableSlot={planner.addPlaceToFirstAvailableSlot}
 	                onAutoFillSegmentWithRealPlaces={planner.autoFillSegmentWithRealPlaces}
 	                onResolveInventoryMatch={planner.resolveInventoryMatchForSegment}
 	                onConfirmInventoryHotelMatch={planner.confirmInventoryHotelMatch}

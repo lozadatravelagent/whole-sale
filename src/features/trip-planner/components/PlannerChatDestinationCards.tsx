@@ -116,7 +116,7 @@ function DestinationHighlightsFetcher({
 // Card components
 // ---------------------------------------------------------------------------
 
-function PlaceCard({ place, onClick }: { place: PlaceHighlight; onClick?: () => void }) {
+function PlaceCard({ place, onClick, onAddClick }: { place: PlaceHighlight; onClick?: () => void; onAddClick?: () => void }) {
   return (
     <div className="group relative w-40 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md" onClick={onClick}>
       <div className="relative">
@@ -131,11 +131,11 @@ function PlaceCard({ place, onClick }: { place: PlaceHighlight; onClick?: () => 
             <MapPin className="h-6 w-6 text-primary/40" />
           </div>
         )}
-        {onClick && (
+        {(onAddClick || onClick) && (
           <button
             type="button"
             className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-primary shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
-            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            onClick={(e) => { e.stopPropagation(); (onAddClick || onClick)?.(); }}
             title="Agregar al itinerario"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -164,7 +164,7 @@ function PlaceCard({ place, onClick }: { place: PlaceHighlight; onClick?: () => 
   );
 }
 
-function DiscoveryPlaceCard({ place, onClick }: { place: PlannerPlaceCandidate; onClick?: () => void }) {
+function DiscoveryPlaceCard({ place, onClick, onAddClick }: { place: PlannerPlaceCandidate; onClick?: () => void; onAddClick?: () => void }) {
   return (
     <div className="group relative w-40 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md" onClick={onClick}>
       <div className="relative">
@@ -179,11 +179,11 @@ function DiscoveryPlaceCard({ place, onClick }: { place: PlannerPlaceCandidate; 
             <MapPin className="h-6 w-6 text-primary/40" />
           </div>
         )}
-        {onClick && (
+        {(onAddClick || onClick) && (
           <button
             type="button"
             className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-primary shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
-            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            onClick={(e) => { e.stopPropagation(); (onAddClick || onClick)?.(); }}
             title="Agregar al itinerario"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -221,6 +221,7 @@ interface PlannerChatDestinationCardsProps {
   segments: { id: string; city: string }[];
   discoveryPlacesBySegment: Record<string, PlannerPlaceCandidate[]>;
   onPlaceClick?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
+  onAutoSlotPlace?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
 }
 
 export default function PlannerChatDestinationCards({
@@ -228,6 +229,7 @@ export default function PlannerChatDestinationCards({
   segments,
   discoveryPlacesBySegment,
   onPlaceClick,
+  onAutoSlotPlace,
 }: PlannerChatDestinationCardsProps) {
   const [fetchedHighlights, setFetchedHighlights] = useState<
     DestinationHighlight[] | null
@@ -297,6 +299,7 @@ export default function PlannerChatDestinationCards({
                   key={place.placeId}
                   place={place}
                   onClick={() => onPlaceClick?.({ segmentId: dh.segmentId, place })}
+                  onAddClick={onAutoSlotPlace ? () => onAutoSlotPlace({ segmentId: dh.segmentId, place }) : undefined}
                 />
               ))}
             </div>
@@ -335,30 +338,31 @@ export default function PlannerChatDestinationCards({
               className="flex gap-2.5 overflow-x-auto pb-1"
               style={{ scrollbarWidth: 'none' }}
             >
-              {dh.places.map((place) => (
-                <PlaceCard
-                  key={place.placeId}
-                  place={place}
-                  onClick={() => {
-                    const seg = segments.find(s =>
-                      s.city.toLowerCase().includes(dh.city.toLowerCase())
-                      || dh.city.toLowerCase().includes(s.city.toLowerCase())
-                    );
-                    if (!seg || !onPlaceClick) return;
-                    onPlaceClick({
-                      segmentId: seg.id,
-                      place: {
-                        placeId: place.placeId,
-                        name: place.name,
-                        photoUrls: place.photo ? [place.photo] : [],
-                        rating: place.rating,
-                        userRatingsTotal: place.userRatingsTotal,
-                        category: 'activity',
-                      },
-                    });
-                  }}
-                />
-              ))}
+              {dh.places.map((place) => {
+                const seg = segments.find(s =>
+                  s.city.toLowerCase().includes(dh.city.toLowerCase())
+                  || dh.city.toLowerCase().includes(s.city.toLowerCase())
+                );
+                const placeCandidate: PlannerPlaceCandidate = {
+                  placeId: place.placeId,
+                  name: place.name,
+                  photoUrls: place.photo ? [place.photo] : [],
+                  rating: place.rating,
+                  userRatingsTotal: place.userRatingsTotal,
+                  category: 'activity',
+                };
+                return (
+                  <PlaceCard
+                    key={place.placeId}
+                    place={place}
+                    onClick={() => {
+                      if (!seg || !onPlaceClick) return;
+                      onPlaceClick({ segmentId: seg.id, place: placeCandidate });
+                    }}
+                    onAddClick={onAutoSlotPlace && seg ? () => onAutoSlotPlace({ segmentId: seg.id, place: placeCandidate }) : undefined}
+                  />
+                );
+              })}
             </div>
           </div>
         ))}

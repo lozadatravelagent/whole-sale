@@ -128,6 +128,13 @@ interface TripPlannerWorkspaceProps {
     dayId: string;
     block: 'morning' | 'afternoon' | 'evening';
   }) => Promise<void>;
+  onAddPlaceToFirstAvailableSlot: (place: {
+    name: string;
+    description?: string;
+    category: string;
+    suggestedSlot: 'morning' | 'afternoon' | 'evening';
+    segmentCity: string;
+  }) => Promise<void>;
   onAutoFillSegmentWithRealPlaces: (segmentId: string, placesByCategory: PlannerPlacesByCategory) => Promise<void>;
   onResolveInventoryMatch: (segmentId: string) => Promise<void>;
   onConfirmInventoryHotelMatch: (segmentId: string, hotelId: string) => Promise<void>;
@@ -176,6 +183,7 @@ export default function TripPlannerWorkspace({
   onSelectHotel,
   onSelectHotelPlaceFromMap,
   onAddPlaceToPlanner,
+  onAddPlaceToFirstAvailableSlot,
   onAutoFillSegmentWithRealPlaces,
   onResolveInventoryMatch,
   onConfirmInventoryHotelMatch,
@@ -433,6 +441,25 @@ export default function TripPlannerWorkspace({
     setHotelDetailState(null);
     setIsContextSidebarOpen(true);
   }, [openHotelDetail]);
+
+  const handleAutoSlotPlace = useCallback((payload: { segmentId: string; place: PlannerPlaceCandidate }) => {
+    onAddPlaceToFirstAvailableSlot({
+      name: payload.place.name,
+      category: payload.place.category,
+      suggestedSlot: 'morning',
+      segmentCity: plannerState?.segments.find((s) => s.id === payload.segmentId)?.city || '',
+    });
+  }, [onAddPlaceToFirstAvailableSlot, plannerState?.segments]);
+
+  const handleAutoSlotRecommendedPlace = useCallback((rp: {
+    name: string;
+    description?: string;
+    category: string;
+    suggestedSlot: 'morning' | 'afternoon' | 'evening';
+    segmentCity: string;
+  }) => {
+    onAddPlaceToFirstAvailableSlot(rp);
+  }, [onAddPlaceToFirstAvailableSlot]);
 
   const handlePlaceDetailsLoaded = useCallback((details: import('../services/placesService').PlaceDetails) => {
     setPlaceDetailState((prev) => prev ? { ...prev, details, loading: false } : null);
@@ -1592,6 +1619,17 @@ export default function TripPlannerWorkspace({
       <div className="relative flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
           {visibleMessages.map((msg) => {
+            const msgMeta = (msg as Record<string, unknown>).meta as Record<string, unknown> | undefined;
+            const recommendedPlaces = msgMeta?.recommendedPlaces as Array<{
+              name: string;
+              description?: string;
+              category: string;
+              suggestedSlot: 'morning' | 'afternoon' | 'evening';
+              segmentCity: string;
+            }> | undefined;
+            const slotLabel = (slot: string) =>
+              slot === 'morning' ? 'Mañana' : slot === 'afternoon' ? 'Tarde' : 'Noche';
+
             return (
               <div key={msg.id}>
                 <MessageItem
@@ -1602,6 +1640,29 @@ export default function TripPlannerWorkspace({
                     setIsDateSelectionModalOpen(true);
                   }}
                 />
+                {recommendedPlaces && recommendedPlaces.length > 0 && (
+                  <div className="mt-2 ml-9">
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                      Lugares recomendados:
+                    </p>
+                    <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                      {recommendedPlaces.map((rp) => (
+                        <button
+                          key={rp.name}
+                          type="button"
+                          className="group shrink-0 flex items-center gap-2 rounded-xl border border-border/60 bg-background px-3 py-2 text-left text-xs shadow-sm transition-shadow hover:shadow-md"
+                          onClick={() => handleAutoSlotRecommendedPlace(rp)}
+                        >
+                          <div>
+                            <p className="font-semibold text-foreground">{rp.name}</p>
+                            <p className="text-muted-foreground">{rp.segmentCity} · {slotLabel(rp.suggestedSlot)}</p>
+                          </div>
+                          <Plus className="h-4 w-4 shrink-0 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1618,6 +1679,7 @@ export default function TripPlannerWorkspace({
               segments={plannerState.segments}
               discoveryPlacesBySegment={discoveryPlacesBySegment}
               onPlaceClick={handleOpenPlaceDetail}
+              onAutoSlotPlace={handleAutoSlotPlace}
             />
           )}
           {isTyping && (

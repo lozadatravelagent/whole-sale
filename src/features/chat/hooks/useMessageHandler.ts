@@ -744,14 +744,19 @@ const useMessageHandler = (
           }
         }
 
+        // Extract recommendedPlaces from planner-agent structured data
+        const recommendedPlaces = rawStructuredData?.recommendedPlaces || null;
+
         // Save assistant message with combinedData (same shape as standard flow)
         await addMessageViaSupabase({
           conversation_id: finalConversationId,
           role: 'assistant' as const,
           content: { text: assistantResponse },
-          meta: combinedData
-            ? { source: 'planner-agent', combinedData }
-            : { source: 'planner-agent' }
+          meta: {
+            source: 'planner-agent',
+            ...(combinedData && { combinedData }),
+            ...(recommendedPlaces && { recommendedPlaces }),
+          }
         });
 
         // Save ContextState for iterative refinement (same pattern as standard flow)

@@ -44,6 +44,7 @@ export default function useTripPlanner(
     regenerateSegment: generation.regenerateSegment,
     regenerateDay: generation.regenerateDay,
     addPlaceToPlanner: places.addPlaceToPlanner,
+    addPlaceToFirstAvailableSlot: places.addPlaceToFirstAvailableSlot,
     autoFillSegmentWithRealPlaces: places.autoFillSegmentWithRealPlaces,
     loadHotelsForSegment: hotels.loadHotelsForSegment,
     selectHotel: hotels.selectHotel,
