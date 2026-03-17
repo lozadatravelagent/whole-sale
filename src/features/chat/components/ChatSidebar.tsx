@@ -92,7 +92,7 @@ const ChatSidebar = React.memo(({
   onSearchMessages,
   onClearSearch,
 }: ChatSidebarProps) => {
-  const { isOwner } = useAuth();
+  const { isOwner, isSuperAdmin } = useAuth();
   const [query, setQuery] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -112,7 +112,7 @@ const ChatSidebar = React.memo(({
     return () => clearTimeout(debounceRef.current);
   }, [query, onSearchMessages, onClearSearch]);
 
-  const visibleHistoryMode: ConversationWorkspaceMode = isOwner ? historyMode : 'standard';
+  const visibleHistoryMode: ConversationWorkspaceMode = isOwner || isSuperAdmin ? historyMode : 'standard';
   const handleHistoryModeChange = (mode: ConversationWorkspaceMode) => {
     onHistoryModeChange?.(mode);
   };
@@ -138,12 +138,12 @@ const ChatSidebar = React.memo(({
   }, [activeTab, conversations, normalizedQuery, sidebarLimit, contentSearchResults]);
 
   const tripConversations = useMemo(() => {
-    if (!isOwner) {
+    if (!isOwner && !isSuperAdmin) {
       return [];
     }
 
     return filteredConversations.filter((conversation) => conversation.workspace_mode === 'planner');
-  }, [filteredConversations, isOwner]);
+  }, [filteredConversations, isOwner, isSuperAdmin]);
 
   const chatConversations = useMemo(() => {
     return filteredConversations.filter((conversation) => conversation.workspace_mode === 'standard');
@@ -155,7 +155,7 @@ const ChatSidebar = React.memo(({
         key: 'planner' as const,
         title: 'Trips',
         items: tripConversations,
-        visible: isOwner,
+        visible: isOwner || isSuperAdmin,
       },
       {
         key: 'standard' as const,
@@ -170,7 +170,7 @@ const ChatSidebar = React.memo(({
     }
 
     return sections.sort((left, right) => (left.key === 'standard' ? -1 : right.key === 'standard' ? 1 : 0));
-  }, [chatConversations, isOwner, tripConversations, visibleHistoryMode]);
+  }, [chatConversations, isOwner, isSuperAdmin, tripConversations, visibleHistoryMode]);
 
   const handleArchiveClick = (
     event: React.MouseEvent<HTMLButtonElement>,
@@ -291,7 +291,7 @@ const ChatSidebar = React.memo(({
             <span>Nuevo Chat</span>
           </Button>
 
-          {isOwner && (
+          {(isOwner || isSuperAdmin) && (
             <Button
               variant="ghost"
               onClick={() => {

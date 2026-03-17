@@ -25,7 +25,7 @@ import { buildPlannerPromptContext } from '@/features/trip-planner/utils';
 const ChatFeature = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isOwner } = useAuth();
+  const { isOwner, isSuperAdmin } = useAuth();
   const {
     // State
     selectedConversation,
@@ -847,7 +847,7 @@ const ChatFeature = () => {
           ) : (
             <EmptyState
               onSendNewMessage={handleSendNewMessage}
-              onCreatePlanner={isOwner ? handleCreatePlannerConversation : undefined}
+              onCreatePlanner={isOwner || isSuperAdmin ? handleCreatePlannerConversation : undefined}
             />
           )}
         </div>
