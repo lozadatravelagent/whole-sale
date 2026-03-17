@@ -8,6 +8,7 @@ interface PlannerInput {
   previousContext: Record<string, unknown> | null;
   previousSteps: AgentStep[];
   tools: ToolDefinition[];
+  userContext?: { currentCity: string; country?: string; timezone?: string } | null;
 }
 
 function buildPreviousStepsMessages(steps: AgentStep[]): Array<Record<string, unknown>> {
@@ -69,6 +70,10 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
   let userContent = input.userMessage;
   if (input.previousContext && Object.keys(input.previousContext).length > 0) {
     userContent = `[Contexto previo de búsquedas anteriores: ${JSON.stringify(input.previousContext)}]\n\n${input.userMessage}`;
+  }
+
+  if (input.userContext?.currentCity) {
+    userContent = `[Ubicación del usuario: ${input.userContext.currentCity}, ${input.userContext.country || ''}. Si no se especifica un origen, usá ${input.userContext.currentCity} como punto de partida para vuelos.]\n\n${userContent}`;
   }
 
   // Only add user message if there are no previous steps (to avoid duplication)

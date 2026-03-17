@@ -29,6 +29,7 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
       previousContext: context.previousContext,
       previousSteps: steps,
       tools: context.tools,
+      userContext: context.userContext,
     });
 
     console.log('[PLANNER AGENT] Plan action:', plan.action);

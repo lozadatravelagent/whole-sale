@@ -2,6 +2,7 @@ export interface AgentContext {
   userMessage: string;
   conversationHistory: Array<{ role: string; content: string }>;
   previousContext: Record<string, unknown> | null;
+  userContext?: { currentCity: string; country?: string; timezone?: string } | null;
   tools: ToolDefinition[];
 }
 

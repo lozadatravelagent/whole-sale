@@ -683,6 +683,11 @@ const useMessageHandler = (
             conversationId: finalConversationId,
             conversationHistory: conversationHistoryForAgent,
             previousContext: persistentState?.lastSearch || null,
+            userContext: plannerState?.origin ? {
+              currentCity: plannerState.origin,
+              country: plannerState.originCountry || '',
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            } : null,
           }
         });
 
