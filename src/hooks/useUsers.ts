@@ -246,6 +246,14 @@ export function useUsers() {
     try {
       console.log('[USERS] Deleting user:', userId);
 
+      // Reassign conversations to the current user (OWNER) before deleting
+      const { error: reassignError } = await supabase
+        .from('conversations')
+        .update({ created_by: user!.id })
+        .eq('created_by', userId);
+
+      if (reassignError) throw reassignError;
+
       // Delete from public.users (cascade will handle auth.users via FK)
       const { error } = await supabase
         .from('users')
