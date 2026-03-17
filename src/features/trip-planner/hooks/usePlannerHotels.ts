@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { runWithConcurrency, type CancelToken } from '@/utils/concurrencyPool';
 import { handleHotelSearch } from '@/features/chat/services/searchHandlers';
 import { makeBudget } from '@/services/hotelSearch';
@@ -27,6 +27,10 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
 
   const isAutoLoadingHotelsRef = useRef(false);
   const lastCompletedHotelSignatureRef = useRef<string | null>(null);
+  const autoLoadHotelDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const plannerStateRef = useRef(plannerState);
+  plannerStateRef.current = plannerState;
 
   const getSegmentHotelSearchInput = useCallback((searchState: TripPlannerState, segmentId: string) => {
     const segment = searchState.segments.find((item) => item.id === segmentId);
@@ -49,6 +53,16 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
       infants: searchState.travelers.infants || 0,
     };
   }, []);
+
+  const hotelSearchInputSignature = useMemo(() => {
+    if (!plannerState || plannerState.isFlexibleDates || isDraftPlannerState(plannerState)) return null;
+    return plannerState.segments
+      .map((s) => {
+        const input = getSegmentHotelSearchInput(plannerState, s.id);
+        return input ? `${s.id}|${buildPlannerHotelSearchSignature(input)}` : '';
+      })
+      .join('::');
+  }, [plannerState, getSegmentHotelSearchInput]);
 
   const fetchInventoryHotels = useCallback(async (input: {
     city: string;
@@ -90,11 +104,11 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
   }, []);
 
   const loadHotelsForSegment = useCallback(async (segmentId: string, signal?: AbortSignal) => {
-    if (!plannerState) return;
-    const segment = plannerState.segments.find((item) => item.id === segmentId);
+    if (!plannerStateRef.current) return;
+    const segment = plannerStateRef.current.segments.find((item) => item.id === segmentId);
     if (!segment) return;
 
-    const searchInput = getSegmentHotelSearchInput(plannerState, segmentId);
+    const searchInput = getSegmentHotelSearchInput(plannerStateRef.current, segmentId);
     if (!searchInput) {
       await updatePlannerState((current) => ({
         ...current,
@@ -171,11 +185,31 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
       ),
     }));
 
-    if (signal?.aborted) return;
+    if (signal?.aborted) {
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((item) =>
+          item.id !== segmentId ? item : {
+            ...item, hotelPlan: { ...item.hotelPlan, searchStatus: 'idle' },
+          }
+        ),
+      }));
+      return;
+    }
 
     try {
       const { hotels, hotelSearchId, serviceError } = await fetchInventoryHotels(searchInput);
-      if (signal?.aborted) return;
+      if (signal?.aborted) {
+        await updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((item) =>
+            item.id !== segmentId ? item : {
+              ...item, hotelPlan: { ...item.hotelPlan, searchStatus: 'idle' },
+            }
+          ),
+        }));
+        return;
+      }
       const noHotels = hotels.length === 0;
       const hotelError = noHotels ? serviceError : undefined;
       const hasServiceError = Boolean(hotelError);
@@ -209,7 +243,17 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
         ),
       }));
     } catch (error: unknown) {
-      if (signal?.aborted) return;
+      if (signal?.aborted) {
+        await updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((item) =>
+            item.id !== segmentId ? item : {
+              ...item, hotelPlan: { ...item.hotelPlan, searchStatus: 'idle' },
+            }
+          ),
+        }));
+        return;
+      }
       const errorMessage = error instanceof Error ? error.message : 'No se pudieron cargar los hoteles.';
       await updatePlannerState((current) => ({
         ...current,
@@ -228,16 +272,17 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
         ),
       }));
     }
-  }, [fetchInventoryHotels, getSegmentHotelSearchInput, plannerState, updatePlannerState]);
+  }, [fetchInventoryHotels, getSegmentHotelSearchInput, updatePlannerState]);
 
-  // Auto-load hotels effect
+  // Auto-load hotels effect (800ms debounce)
   useEffect(() => {
-    if (!plannerState || plannerState.isFlexibleDates || isDraftPlannerState(plannerState) || isAutoLoadingHotelsRef.current) {
+    const currentState = plannerStateRef.current;
+    if (!currentState || !hotelSearchInputSignature || isAutoLoadingHotelsRef.current) {
       return;
     }
 
-    const pendingSegments = plannerState.segments.filter((segment) => {
-      const searchInput = getSegmentHotelSearchInput(plannerState, segment.id);
+    const pendingSegments = currentState.segments.filter((segment) => {
+      const searchInput = getSegmentHotelSearchInput(currentState, segment.id);
       if (!searchInput) {
         return false;
       }
@@ -256,7 +301,7 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
 
     const batchSignature = pendingSegments
       .map((s) => {
-        const input = getSegmentHotelSearchInput(plannerState, s.id)!;
+        const input = getSegmentHotelSearchInput(currentState, s.id)!;
         return `${s.id}|${buildPlannerHotelSearchSignature(input)}`;
       })
       .join('::');
@@ -265,43 +310,102 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
       return;
     }
 
+    // Clear previous debounce timer
+    if (autoLoadHotelDebounceRef.current) {
+      clearTimeout(autoLoadHotelDebounceRef.current);
+    }
+
     const controller = new AbortController();
     const { signal } = controller;
     const cancelToken: CancelToken = { current: false };
-    isAutoLoadingHotelsRef.current = true;
 
-    const pendingIds = new Set(pendingSegments.map((s) => s.id));
-    updatePlannerState((current) => ({
-      ...current,
-      segments: current.segments.map((seg) =>
-        !pendingIds.has(seg.id)
-          ? seg
-          : { ...seg, hotelPlan: { ...seg.hotelPlan, searchStatus: 'loading' as const } }
-      ),
-    }));
+    autoLoadHotelDebounceRef.current = setTimeout(() => {
+      autoLoadHotelDebounceRef.current = null;
+      isAutoLoadingHotelsRef.current = true;
 
-    void (async () => {
-      try {
-        const tasks = pendingSegments.map(
-          (segment) => () => {
-            if (signal.aborted) return Promise.resolve();
-            return loadHotelsForSegment(segment.id, signal);
-          },
-        );
-        await runWithConcurrency(tasks, 2, cancelToken);
-        if (!signal.aborted) {
-          lastCompletedHotelSignatureRef.current = batchSignature;
-        }
-      } finally {
+      const pendingIds = new Set(pendingSegments.map((s) => s.id));
+      updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((seg) =>
+          !pendingIds.has(seg.id)
+            ? seg
+            : { ...seg, hotelPlan: { ...seg.hotelPlan, searchStatus: 'loading' as const } }
+        ),
+      }));
+
+      if (signal.aborted) {
+        console.error('[usePlannerHotels] Signal already aborted before task launch');
+        updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((seg) =>
+            !pendingIds.has(seg.id) ? seg : {
+              ...seg, hotelPlan: { ...seg.hotelPlan, searchStatus: 'idle' as const },
+            }
+          ),
+        }));
         isAutoLoadingHotelsRef.current = false;
+        return;
       }
-    })();
+
+      void (async () => {
+        const safetyTimeout = setTimeout(() => {
+          console.error('[usePlannerHotels] Safety timeout (45s) — forcing error state');
+          updatePlannerState((current) => ({
+            ...current,
+            segments: current.segments.map((seg) =>
+              !pendingIds.has(seg.id) ? seg : {
+                ...seg,
+                hotelPlan: {
+                  ...seg.hotelPlan,
+                  searchStatus: seg.hotelPlan.searchStatus === 'loading' ? 'error' : seg.hotelPlan.searchStatus,
+                  error: seg.hotelPlan.searchStatus === 'loading'
+                    ? 'La búsqueda tardó demasiado. Intentá de nuevo.'
+                    : seg.hotelPlan.error,
+                },
+              }
+            ),
+          }));
+        }, 45_000);
+
+        try {
+          const tasks = pendingSegments.map(
+            (segment) => () => {
+              if (signal.aborted) return Promise.resolve();
+              return loadHotelsForSegment(segment.id, signal);
+            },
+          );
+          await runWithConcurrency(tasks, 2, cancelToken);
+          if (!signal.aborted) {
+            lastCompletedHotelSignatureRef.current = batchSignature;
+          }
+        } finally {
+          clearTimeout(safetyTimeout);
+          isAutoLoadingHotelsRef.current = false;
+          // Clear syncing fields related to hotels
+          if (!signal.aborted) {
+            updatePlannerState((current) => {
+              if (!current.syncingFields) return current;
+              const { dates, travelers, ...rest } = current.syncingFields;
+              const hasRemaining = Object.values(rest).some(Boolean);
+              return {
+                ...current,
+                syncingFields: hasRemaining ? rest : undefined,
+              };
+            });
+          }
+        }
+      })();
+    }, 800);
 
     return () => {
+      if (autoLoadHotelDebounceRef.current) {
+        clearTimeout(autoLoadHotelDebounceRef.current);
+        autoLoadHotelDebounceRef.current = null;
+      }
       controller.abort();
       cancelToken.current = true;
     };
-  }, [getSegmentHotelSearchInput, loadHotelsForSegment, plannerState, updatePlannerState]);
+  }, [getSegmentHotelSearchInput, hotelSearchInputSignature, loadHotelsForSegment, updatePlannerState]);
 
   const resolveInventoryMatchForSegment = useCallback(async (
     segmentId: string,

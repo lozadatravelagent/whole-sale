@@ -35,6 +35,24 @@ export type PlannerSchedulingConfidence = 'high' | 'medium' | 'low';
 export type PlannerSegmentContentStatus = 'skeleton' | 'loading' | 'ready' | 'error';
 export type PlannerSegmentRealPlacesStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+export type PlannerFieldSource = 'user' | 'assumed' | 'confirmed';
+
+export interface PlannerFieldProvenance {
+  days?: PlannerFieldSource;
+  startDate?: PlannerFieldSource;
+  endDate?: PlannerFieldSource;
+  budgetLevel?: PlannerFieldSource;
+  pace?: PlannerFieldSource;
+  travelers?: PlannerFieldSource;
+}
+
+export interface PlannerSyncingFields {
+  budgetLevel?: boolean;
+  dates?: boolean;
+  travelers?: boolean;
+  pace?: boolean;
+}
+
 export interface PlannerActivity {
   id: string;
   time?: string;
@@ -199,10 +217,28 @@ export interface PlannerSegment {
   contentError?: string;
   realPlacesStatus?: PlannerSegmentRealPlacesStatus;
   realPlacesError?: string;
+  bufferedDays?: PlannerDay[];
   hotelPlan: SegmentHotelPlan;
   transportIn?: PlannerTransport | null;
   transportOut?: PlannerTransport | null;
   days: PlannerDay[];
+}
+
+export type PlannerSuggestionType = 'flight' | 'hotel' | 'activity' | 'edit' | 'confirm';
+
+export interface PlannerSuggestion {
+  id: string;
+  label: string;
+  action: string;
+  type: PlannerSuggestionType;
+  payload: {
+    segmentId?: string;
+    segmentCity?: string;
+    field?: string;
+    dayNumber?: number;
+    slot?: 'morning' | 'afternoon' | 'evening';
+  };
+  priority: number;
 }
 
 export interface TripPlannerState {
@@ -230,6 +266,8 @@ export interface TripPlannerState {
   segments: PlannerSegment[];
   notes?: string[];
   generalTips: string[];
+  fieldProvenance?: PlannerFieldProvenance;
+  syncingFields?: PlannerSyncingFields;
   generationMeta: {
     source: PlannerGenerationSource;
     updatedAt: string;

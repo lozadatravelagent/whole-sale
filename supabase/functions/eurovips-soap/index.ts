@@ -30,15 +30,30 @@ class EurovipsSOAPClient {
   </soap:Body>
 </soap:Envelope>`;
     console.log(`📝 SOAP REQUEST [${soapAction}]:`, soapEnvelope.length, 'chars');
-    const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': soapAction,
-        'Accept': 'text/xml, application/xml, application/soap+xml'
-      },
-      body: soapEnvelope
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+    let response: Response;
+    try {
+      response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/xml; charset=utf-8',
+          'SOAPAction': soapAction,
+          'Accept': 'text/xml, application/xml, application/soap+xml'
+        },
+        body: soapEnvelope,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        console.error(`❌ [makeSOAPRequest] Timed out after 30s [${soapAction}]`);
+        throw new Error(`SOAP request timed out after 30s [${soapAction}]`);
+      }
+      throw err;
+    }
+    clearTimeout(timeoutId);
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`❌ SOAP Error ${response.status}:`, errorText);

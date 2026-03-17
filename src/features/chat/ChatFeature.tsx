@@ -299,6 +299,7 @@ const ChatFeature = () => {
     planner.persistPlannerState,
     planner.setDraftPlannerFromRequest,
     planner.setPlannerDraftPhase,
+    planner.updatePlannerState,
     preloadedContext,
     workspaceMode
   );
@@ -814,6 +815,9 @@ const ChatFeature = () => {
 	                onConfirmInventoryHotelMatch={planner.confirmInventoryHotelMatch}
 	                onRefreshQuotedHotel={planner.refreshQuotedHotel}
                 onSelectTransportOption={planner.selectTransportOption}
+                onLoadHotelsForSegment={planner.loadHotelsForSegment}
+                onLoadTransportForSegment={planner.loadTransportForSegment}
+                onSendMessageRaw={handleSendMessageRaw}
                 onCompletePlannerDateSelection={handlePlannerDateSelection}
               />
             ) : (

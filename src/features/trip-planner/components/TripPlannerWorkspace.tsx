@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import MessageInput from '@/features/chat/components/MessageInput';
 import MessageItem from '@/features/chat/components/MessageItem';
 import type { LocalHotelData, MessageRow } from '@/features/chat/types/chat';
@@ -26,9 +27,11 @@ import { useDragReorder } from '@/features/trip-planner/hooks/useDragReorder';
 import { useSegmentVisibility } from '@/features/trip-planner/hooks/useSegmentVisibility';
 import type {
   PlannerActivity,
+  PlannerFieldProvenance,
   PlannerPlaceCandidate,
   PlannerPlaceCategory,
   PlannerPlaceHotelCandidate,
+  PlannerSyncingFields,
   TripPlannerState,
 } from '../types';
 import {
@@ -51,6 +54,9 @@ import TripPlannerMap from './TripPlannerMap';
 import PlannerDateSelectionModal from './PlannerDateSelectionModal';
 import PlannerMapPlaceAssignModal from './PlannerMapPlaceAssignModal';
 import PlannerChatDestinationCards from './PlannerChatDestinationCards';
+import SuggestionChips from '@/features/chat/components/SuggestionChips';
+import usePlannerSuggestions from '../hooks/usePlannerSuggestions';
+import useSuggestionActions from '../hooks/useSuggestionActions';
 import TripPlannerStarterTemplate from './TripPlannerStarterTemplate';
 import TripPlannerWorkspaceSkeleton from './TripPlannerWorkspaceSkeleton';
 import DayCarousel, { type DayCardItem } from './DayCarousel';
@@ -127,6 +133,9 @@ interface TripPlannerWorkspaceProps {
   onConfirmInventoryHotelMatch: (segmentId: string, hotelId: string) => Promise<void>;
   onRefreshQuotedHotel: (segmentId: string) => Promise<void>;
   onSelectTransportOption: (segmentId: string, optionId: string) => Promise<void>;
+  onLoadHotelsForSegment: (segmentId: string) => Promise<void>;
+  onLoadTransportForSegment: (segmentId: string) => void;
+  onSendMessageRaw: (message: string) => void;
   onCompletePlannerDateSelection: (
     baseRequest: ParsedTravelRequest,
     selection: {
@@ -172,6 +181,9 @@ export default function TripPlannerWorkspace({
   onConfirmInventoryHotelMatch,
   onRefreshQuotedHotel,
   onSelectTransportOption,
+  onLoadHotelsForSegment,
+  onLoadTransportForSegment,
+  onSendMessageRaw,
   onCompletePlannerDateSelection,
 }: TripPlannerWorkspaceProps) {
   const {
@@ -245,6 +257,22 @@ export default function TripPlannerWorkspace({
   );
 
   const isDraftPlanner = Boolean(plannerState?.generationMeta?.isDraft);
+
+  const suggestions = usePlannerSuggestions(plannerState);
+  const openDateSelectorForSuggestion = useCallback(() => {
+    setIsDateSelectionModalOpen(true);
+  }, []);
+  const { handleSuggestionClick, loadingActionId } = useSuggestionActions({
+    loadTransportForSegment: onLoadTransportForSegment,
+    loadHotelsForSegment: onLoadHotelsForSegment,
+    updateTripField: onUpdateTripField,
+    plannerState,
+    onSendMessage: onSendMessageRaw,
+    onOpenDateSelector: openDateSelectorForSuggestion,
+  });
+
+  const isAssumed = useCallback((field: keyof PlannerFieldProvenance) => plannerState?.fieldProvenance?.[field] === 'assumed', [plannerState?.fieldProvenance]);
+  const fieldIsSyncing = useCallback((field: keyof PlannerSyncingFields) => Boolean(plannerState?.syncingFields?.[field]), [plannerState?.syncingFields]);
   const plannerDateSummary = plannerState?.isFlexibleDates
     ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
     : formatDateRange(plannerState?.startDate, plannerState?.endDate);
@@ -823,64 +851,92 @@ export default function TripPlannerWorkspace({
 
 		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
 
-		                      <button
-		                        type="button"
-		                        disabled={isDraftPlanner}
-		                        onClick={() => {
-		                          setPendingPlannerDateRequest(null);
-		                          setIsDateSelectionModalOpen(true);
-		                        }}
-		                        className={`flex min-w-[10.75rem] items-center rounded-full px-4 py-2 text-left text-sm font-medium transition whitespace-nowrap xl:min-w-[11.5rem] ${isDraftPlanner ? 'cursor-default opacity-80' : 'text-foreground hover:bg-muted'}`}
-		                        aria-label="Editar fechas"
-		                      >
-		                        {plannerDateSummary}
-		                      </button>
-
-		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
-
-		                      <div className="flex shrink-0 items-center rounded-full px-4 py-2 text-sm font-medium text-foreground whitespace-nowrap">
-		                        {hasExactPlannerDates ? (
-		                          <span>{plannerState.days} días</span>
-		                        ) : (
-		                          <div className="flex items-center gap-2">
-		                            <Input
-		                              type="number"
-		                              min={1}
-		                              value={plannerState.days}
-		                              onChange={(event) => void onUpdateTripField('days', Math.max(1, Number(event.target.value) || 1) as TripPlannerState['days'])}
+		                      <TooltipProvider delayDuration={300}>
+		                        <Tooltip>
+		                          <TooltipTrigger asChild>
+		                            <button
+		                              type="button"
 		                              disabled={isDraftPlanner}
-		                              className="h-7 w-14 border-0 bg-transparent px-0 py-0 text-sm font-semibold shadow-none focus-visible:ring-0"
-		                            />
-		                            <span>días</span>
-		                          </div>
-		                        )}
-		                      </div>
+		                              onClick={() => {
+		                                setPendingPlannerDateRequest(null);
+		                                setIsDateSelectionModalOpen(true);
+		                              }}
+		                              className={`relative flex min-w-[10.75rem] items-center rounded-full px-4 py-2 text-left text-sm font-medium transition whitespace-nowrap xl:min-w-[11.5rem] ${isAssumed('startDate') ? 'ring-1 ring-amber-300/60' : ''} ${isDraftPlanner ? 'cursor-default opacity-80' : 'text-foreground hover:bg-muted'}`}
+		                              aria-label="Editar fechas"
+		                            >
+		                              {fieldIsSyncing('dates') ? <Loader2 className="absolute -top-1 -right-1 h-3 w-3 animate-spin text-muted-foreground" /> : isAssumed('startDate') && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 animate-pulse rounded-full bg-amber-400" />}
+		                              {plannerDateSummary}
+		                            </button>
+		                          </TooltipTrigger>
+		                          {isAssumed('startDate') && <TooltipContent>Valor sugerido — hacé clic para modificar</TooltipContent>}
+		                        </Tooltip>
+		                      </TooltipProvider>
 
 		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
 
-		                      <div className="shrink-0">
-		                        <Select
-		                          value={plannerState.budgetLevel || 'mid'}
-		                          disabled={isDraftPlanner}
-		                          onValueChange={(value) => void onUpdateTripField('budgetLevel', value as TripPlannerState['budgetLevel'])}
-		                        >
-		                          <SelectTrigger className="h-auto w-[6.75rem] rounded-full border-0 bg-transparent px-4 py-2 text-center text-sm font-medium text-foreground shadow-none focus:ring-0">
-		                            <SelectValue placeholder="Presupuesto" />
-		                          </SelectTrigger>
-		                          <SelectContent>
-		                            <SelectItem value="low">{formatBudgetLevel('low')}</SelectItem>
-		                            <SelectItem value="mid">{formatBudgetLevel('mid')}</SelectItem>
-		                            <SelectItem value="high">{formatBudgetLevel('high')}</SelectItem>
-		                            <SelectItem value="luxury">{formatBudgetLevel('luxury')}</SelectItem>
-		                          </SelectContent>
-		                        </Select>
-		                      </div>
+		                      <TooltipProvider delayDuration={300}>
+		                        <Tooltip>
+		                          <TooltipTrigger asChild>
+		                            <div className={`relative flex shrink-0 items-center rounded-full px-4 py-2 text-sm font-medium text-foreground whitespace-nowrap ${isAssumed('days') ? 'ring-1 ring-amber-300/60' : ''}`}>
+		                              {fieldIsSyncing('dates') ? <Loader2 className="absolute -top-1 -right-1 h-3 w-3 animate-spin text-muted-foreground" /> : isAssumed('days') && <span className="absolute -top-0.5 -right-0.5 h-2 w-2 animate-pulse rounded-full bg-amber-400" />}
+		                              {hasExactPlannerDates ? (
+		                                <span>{plannerState.days} días</span>
+		                              ) : (
+		                                <div className="flex items-center gap-2">
+		                                  <Input
+		                                    type="number"
+		                                    min={1}
+		                                    value={plannerState.days}
+		                                    onChange={(event) => void onUpdateTripField('days', Math.max(1, Number(event.target.value) || 1) as TripPlannerState['days'])}
+		                                    disabled={isDraftPlanner}
+		                                    className="h-7 w-14 border-0 bg-transparent px-0 py-0 text-sm font-semibold shadow-none focus-visible:ring-0"
+		                                  />
+		                                  <span>días</span>
+		                                </div>
+		                              )}
+		                            </div>
+		                          </TooltipTrigger>
+		                          {isAssumed('days') && <TooltipContent>Valor sugerido — hacé clic para modificar</TooltipContent>}
+		                        </Tooltip>
+		                      </TooltipProvider>
 
 		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
 
-		                      <div className="shrink-0">
-		                        <Select
-		                          value={plannerState.pace || 'balanced'}
+		                      <TooltipProvider delayDuration={300}>
+		                        <Tooltip>
+		                          <TooltipTrigger asChild>
+		                            <div className={`relative shrink-0 ${isAssumed('budgetLevel') ? 'rounded-full ring-1 ring-amber-300/60' : ''}`}>
+		                              {fieldIsSyncing('budgetLevel') ? <Loader2 className="absolute -top-1 -right-1 z-10 h-3 w-3 animate-spin text-muted-foreground" /> : isAssumed('budgetLevel') && <span className="absolute -top-0.5 -right-0.5 z-10 h-2 w-2 animate-pulse rounded-full bg-amber-400" />}
+		                              <Select
+		                                value={plannerState.budgetLevel || 'mid'}
+		                                disabled={isDraftPlanner}
+		                                onValueChange={(value) => void onUpdateTripField('budgetLevel', value as TripPlannerState['budgetLevel'])}
+		                              >
+		                                <SelectTrigger className="h-auto w-[6.75rem] rounded-full border-0 bg-transparent px-4 py-2 text-center text-sm font-medium text-foreground shadow-none focus:ring-0">
+		                                  <SelectValue placeholder="Presupuesto" />
+		                                </SelectTrigger>
+		                                <SelectContent>
+		                                  <SelectItem value="low">{formatBudgetLevel('low')}</SelectItem>
+		                                  <SelectItem value="mid">{formatBudgetLevel('mid')}</SelectItem>
+		                                  <SelectItem value="high">{formatBudgetLevel('high')}</SelectItem>
+		                                  <SelectItem value="luxury">{formatBudgetLevel('luxury')}</SelectItem>
+		                                </SelectContent>
+		                              </Select>
+		                            </div>
+		                          </TooltipTrigger>
+		                          {isAssumed('budgetLevel') && <TooltipContent>Valor sugerido — hacé clic para modificar</TooltipContent>}
+		                        </Tooltip>
+		                      </TooltipProvider>
+
+		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
+
+		                      <TooltipProvider delayDuration={300}>
+		                        <Tooltip>
+		                          <TooltipTrigger asChild>
+		                            <div className={`relative shrink-0 ${isAssumed('pace') ? 'rounded-full ring-1 ring-amber-300/60' : ''}`}>
+		                              {fieldIsSyncing('pace') ? <Loader2 className="absolute -top-1 -right-1 z-10 h-3 w-3 animate-spin text-muted-foreground" /> : isAssumed('pace') && <span className="absolute -top-0.5 -right-0.5 z-10 h-2 w-2 animate-pulse rounded-full bg-amber-400" />}
+		                              <Select
+		                                value={plannerState.pace || 'balanced'}
 		                          disabled={isDraftPlanner}
 		                          onValueChange={(value) => void onUpdateTripField('pace', value as TripPlannerState['pace'])}
 		                        >
@@ -893,7 +949,11 @@ export default function TripPlannerWorkspace({
 		                            <SelectItem value="fast">{formatPaceLabel('fast')}</SelectItem>
 		                          </SelectContent>
 		                        </Select>
-		                      </div>
+		                            </div>
+		                          </TooltipTrigger>
+		                          {isAssumed('pace') && <TooltipContent>Valor sugerido — hacé clic para modificar</TooltipContent>}
+		                        </Tooltip>
+		                      </TooltipProvider>
 		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:ml-auto xl:block" />
 		                      <button
 		                        type="button"
@@ -1545,6 +1605,13 @@ export default function TripPlannerWorkspace({
               </div>
             );
           })}
+          {!isTyping && plannerState && !isDraftPlanner && suggestions.length > 0 && (
+            <SuggestionChips
+              suggestions={suggestions}
+              onSuggestionClick={handleSuggestionClick}
+              loadingAction={loadingActionId}
+            />
+          )}
           {!isTyping && plannerState && !isDraftPlanner && (
             <PlannerChatDestinationCards
               destinations={plannerState.destinations}

@@ -452,12 +452,17 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     }
 
     const invokeStarlingSearch = async (params: unknown) => {
-      return supabase.functions.invoke('starling-flights', {
-        body: {
-          action: 'searchFlights',
-          data: params
-        }
-      });
+      return Promise.race([
+        supabase.functions.invoke('starling-flights', {
+          body: {
+            action: 'searchFlights',
+            data: params
+          }
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Starling search timed out after 45s')), 45_000)
+        ),
+      ]);
     };
 
     console.log('📤 [FLIGHT SEARCH] Step 2: About to call Starling API (Supabase Edge Function)');
@@ -1019,9 +1024,14 @@ export const handleHotelSearch = async (
 
     const invokeEurovipsSearch = async (requestBody: unknown, label: string) => {
       const invokeStart = nowMs();
-      const response = await supabase.functions.invoke('eurovips-soap', {
-        body: requestBody
-      });
+      const response = await Promise.race([
+        supabase.functions.invoke('eurovips-soap', {
+          body: requestBody
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('EUROVIPS search timed out after 45s')), 45_000)
+        ),
+      ]);
       logTimingStep('HOTEL SEARCH', label, invokeStart, {
         hasError: Boolean(response.error),
         hotels: response.data?.results?.length || 0,

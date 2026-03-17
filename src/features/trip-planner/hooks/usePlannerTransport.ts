@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { runWithConcurrency, type CancelToken } from '@/utils/concurrencyPool';
 import { handleFlightSearch } from '@/features/chat/services/searchHandlers';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
@@ -14,24 +14,49 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
 
   const isAutoLoadingTransportRef = useRef(false);
   const lastCompletedTransportSignatureRef = useRef<string | null>(null);
+  const autoLoadTransportDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const plannerStateRef = useRef(plannerState);
+  plannerStateRef.current = plannerState;
+
+  const transportSearchInputSignature = useMemo(() => {
+    if (!plannerState || plannerState.isFlexibleDates || isDraftPlannerState(plannerState)) return null;
+    return plannerState.segments
+      .map((s, index) => {
+        if (index === 0) return '';
+        const prev = plannerState.segments[index - 1];
+        const departureDate = s.startDate || plannerState.startDate || '';
+        if (!prev.city || !s.city || !departureDate) return '';
+        return `${s.id}|${buildPlannerTransportSearchSignature({
+          origin: prev.city,
+          destination: s.city,
+          departureDate,
+          adults: plannerState.travelers.adults || 1,
+          children: plannerState.travelers.children || 0,
+          infants: plannerState.travelers.infants || 0,
+        })}`;
+      })
+      .join('::');
+  }, [plannerState]);
 
   const loadTransportForSegment = useCallback(async (segmentId: string, signal?: AbortSignal) => {
-    if (!plannerState) return;
-    const segmentIndex = plannerState.segments.findIndex((item) => item.id === segmentId);
-    if (segmentIndex <= 0 || plannerState.isFlexibleDates) return;
+    const currentState = plannerStateRef.current;
+    if (!currentState) return;
+    const segmentIndex = currentState.segments.findIndex((item) => item.id === segmentId);
+    if (segmentIndex <= 0 || currentState.isFlexibleDates) return;
 
-    const segment = plannerState.segments[segmentIndex];
-    const previousSegment = plannerState.segments[segmentIndex - 1];
-    const departureDate = segment.startDate || plannerState.startDate || '';
+    const segment = currentState.segments[segmentIndex];
+    const previousSegment = currentState.segments[segmentIndex - 1];
+    const departureDate = segment.startDate || currentState.startDate || '';
     if (!previousSegment.city || !segment.city || !departureDate) return;
 
     const signature = buildPlannerTransportSearchSignature({
       origin: previousSegment.city,
       destination: segment.city,
       departureDate,
-      adults: plannerState.travelers.adults || 1,
-      children: plannerState.travelers.children || 0,
-      infants: plannerState.travelers.infants || 0,
+      adults: currentState.travelers.adults || 1,
+      children: currentState.travelers.children || 0,
+      infants: currentState.travelers.infants || 0,
     });
 
     if (signal?.aborted) return;
@@ -70,20 +95,46 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
         origin: previousSegment.city,
         destination: segment.city,
         departureDate,
-        adults: plannerState.travelers.adults || 1,
-        children: plannerState.travelers.children || 0,
-        infants: plannerState.travelers.infants || 0,
+        adults: currentState.travelers.adults || 1,
+        children: currentState.travelers.children || 0,
+        infants: currentState.travelers.infants || 0,
         stops: 'any',
       },
       confidence: 1,
       originalMessage: `Trip planner transport search from ${previousSegment.city} to ${segment.city}`,
     };
 
-    if (signal?.aborted) return;
+    if (signal?.aborted) {
+      await updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((item) =>
+          item.id !== segmentId ? item : {
+            ...item,
+            transportIn: item.transportIn
+              ? { ...item.transportIn, searchStatus: 'idle' }
+              : item.transportIn,
+          }
+        ),
+      }));
+      return;
+    }
 
     try {
       const result = await handleFlightSearch(flightRequest);
-      if (signal?.aborted) return;
+      if (signal?.aborted) {
+        await updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((item) =>
+            item.id !== segmentId ? item : {
+              ...item,
+              transportIn: item.transportIn
+                ? { ...item.transportIn, searchStatus: 'idle' }
+                : item.transportIn,
+            }
+          ),
+        }));
+        return;
+      }
       const flights = result.data?.combinedData?.flights || [];
       const flightSearchId = result.data?.combinedData?.flightSearchId;
 
@@ -115,7 +166,20 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
         ),
       }));
     } catch (error: unknown) {
-      if (signal?.aborted) return;
+      if (signal?.aborted) {
+        await updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((item) =>
+            item.id !== segmentId ? item : {
+              ...item,
+              transportIn: item.transportIn
+                ? { ...item.transportIn, searchStatus: 'idle' }
+                : item.transportIn,
+            }
+          ),
+        }));
+        return;
+      }
       const errorMessage = error instanceof Error ? error.message : 'No se pudieron cargar las opciones de transporte.';
       await updatePlannerState((current) => ({
         ...current,
@@ -141,19 +205,20 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
         ),
       }));
     }
-  }, [plannerState, updatePlannerState]);
+  }, [updatePlannerState]);
 
-  // Auto-load transport effect
+  // Auto-load transport effect (800ms debounce)
   useEffect(() => {
-    if (!plannerState || plannerState.isFlexibleDates || isDraftPlannerState(plannerState) || isAutoLoadingTransportRef.current) {
+    const currentState = plannerStateRef.current;
+    if (!currentState || !transportSearchInputSignature || isAutoLoadingTransportRef.current) {
       return;
     }
 
-    const pendingSegments = plannerState.segments.filter((segment, index) => {
+    const pendingSegments = currentState.segments.filter((segment, index) => {
       if (index === 0) return false;
 
-      const previousSegment = plannerState.segments[index - 1];
-      const departureDate = segment.startDate || plannerState.startDate || '';
+      const previousSegment = currentState.segments[index - 1];
+      const departureDate = segment.startDate || currentState.startDate || '';
       if (!previousSegment?.city || !segment.city || !departureDate) {
         return false;
       }
@@ -166,9 +231,9 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
         origin: previousSegment.city,
         destination: segment.city,
         departureDate,
-        adults: plannerState.travelers.adults || 1,
-        children: plannerState.travelers.children || 0,
-        infants: plannerState.travelers.infants || 0,
+        adults: currentState.travelers.adults || 1,
+        children: currentState.travelers.children || 0,
+        infants: currentState.travelers.infants || 0,
       });
 
       return segment.transportIn?.lastSearchSignature !== signature;
@@ -180,16 +245,16 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
 
     const batchSignature = pendingSegments
       .map((s) => {
-        const idx = plannerState.segments.findIndex((seg) => seg.id === s.id);
-        const prev = plannerState.segments[idx - 1];
-        const departureDate = s.startDate || plannerState.startDate || '';
+        const idx = currentState.segments.findIndex((seg) => seg.id === s.id);
+        const prev = currentState.segments[idx - 1];
+        const departureDate = s.startDate || currentState.startDate || '';
         return `${s.id}|${buildPlannerTransportSearchSignature({
           origin: prev.city,
           destination: s.city,
           departureDate,
-          adults: plannerState.travelers.adults || 1,
-          children: plannerState.travelers.children || 0,
-          infants: plannerState.travelers.infants || 0,
+          adults: currentState.travelers.adults || 1,
+          children: currentState.travelers.children || 0,
+          infants: currentState.travelers.infants || 0,
         })}`;
       })
       .join('::');
@@ -198,43 +263,102 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
       return;
     }
 
+    // Clear previous debounce timer
+    if (autoLoadTransportDebounceRef.current) {
+      clearTimeout(autoLoadTransportDebounceRef.current);
+    }
+
     const controller = new AbortController();
     const { signal } = controller;
     const cancelToken: CancelToken = { current: false };
-    isAutoLoadingTransportRef.current = true;
 
-    const pendingIds = new Set(pendingSegments.map((s) => s.id));
-    updatePlannerState((current) => ({
-      ...current,
-      segments: current.segments.map((seg) =>
-        !pendingIds.has(seg.id) || !seg.transportIn
-          ? seg
-          : { ...seg, transportIn: { ...seg.transportIn, searchStatus: 'loading' as const } }
-      ),
-    }));
+    autoLoadTransportDebounceRef.current = setTimeout(() => {
+      autoLoadTransportDebounceRef.current = null;
+      isAutoLoadingTransportRef.current = true;
 
-    void (async () => {
-      try {
-        const tasks = pendingSegments.map(
-          (segment) => () => {
-            if (signal.aborted) return Promise.resolve();
-            return loadTransportForSegment(segment.id, signal);
-          },
-        );
-        await runWithConcurrency(tasks, 2, cancelToken);
-        if (!signal.aborted) {
-          lastCompletedTransportSignatureRef.current = batchSignature;
-        }
-      } finally {
+      const pendingIds = new Set(pendingSegments.map((s) => s.id));
+      updatePlannerState((current) => ({
+        ...current,
+        segments: current.segments.map((seg) =>
+          !pendingIds.has(seg.id) || !seg.transportIn
+            ? seg
+            : { ...seg, transportIn: { ...seg.transportIn, searchStatus: 'loading' as const } }
+        ),
+      }));
+
+      if (signal.aborted) {
+        console.error('[usePlannerTransport] Signal already aborted before task launch');
+        updatePlannerState((current) => ({
+          ...current,
+          segments: current.segments.map((seg) =>
+            !pendingIds.has(seg.id) || !seg.transportIn ? seg : {
+              ...seg, transportIn: { ...seg.transportIn, searchStatus: 'idle' as const },
+            }
+          ),
+        }));
         isAutoLoadingTransportRef.current = false;
+        return;
       }
-    })();
+
+      void (async () => {
+        const safetyTimeout = setTimeout(() => {
+          console.error('[usePlannerTransport] Safety timeout (45s) — forcing error state');
+          updatePlannerState((current) => ({
+            ...current,
+            segments: current.segments.map((seg) =>
+              !pendingIds.has(seg.id) || !seg.transportIn ? seg : {
+                ...seg,
+                transportIn: {
+                  ...seg.transportIn,
+                  searchStatus: seg.transportIn.searchStatus === 'loading' ? 'error' : seg.transportIn.searchStatus,
+                  error: seg.transportIn.searchStatus === 'loading'
+                    ? 'La búsqueda tardó demasiado. Intentá de nuevo.'
+                    : seg.transportIn.error,
+                },
+              }
+            ),
+          }));
+        }, 45_000);
+
+        try {
+          const tasks = pendingSegments.map(
+            (segment) => () => {
+              if (signal.aborted) return Promise.resolve();
+              return loadTransportForSegment(segment.id, signal);
+            },
+          );
+          await runWithConcurrency(tasks, 2, cancelToken);
+          if (!signal.aborted) {
+            lastCompletedTransportSignatureRef.current = batchSignature;
+          }
+        } finally {
+          clearTimeout(safetyTimeout);
+          isAutoLoadingTransportRef.current = false;
+          // Clear syncing fields related to transport
+          if (!signal.aborted) {
+            updatePlannerState((current) => {
+              if (!current.syncingFields) return current;
+              const { dates, travelers, ...rest } = current.syncingFields;
+              const hasRemaining = Object.values(rest).some(Boolean);
+              return {
+                ...current,
+                syncingFields: hasRemaining ? rest : undefined,
+              };
+            });
+          }
+        }
+      })();
+    }, 800);
 
     return () => {
+      if (autoLoadTransportDebounceRef.current) {
+        clearTimeout(autoLoadTransportDebounceRef.current);
+        autoLoadTransportDebounceRef.current = null;
+      }
       controller.abort();
       cancelToken.current = true;
     };
-  }, [loadTransportForSegment, plannerState, updatePlannerState]);
+  }, [transportSearchInputSignature, loadTransportForSegment, updatePlannerState]);
 
   const selectTransportOption = useCallback(async (segmentId: string, optionId: string) => {
     await updatePlannerState((current) => ({

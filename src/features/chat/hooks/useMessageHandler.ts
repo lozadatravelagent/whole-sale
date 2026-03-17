@@ -10,7 +10,9 @@ import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from 
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
-import type { TripPlannerState } from '@/features/trip-planner/types';
+import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
+import { applySmartDefaults } from '@/features/trip-planner/utils';
+import { mergePlannerFieldUpdate } from '@/features/trip-planner/helpers';
 import { translateBaggage } from '../utils/translations';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { supabase } from '@/integrations/supabase/client';
@@ -69,8 +71,9 @@ const useMessageHandler = (
   plannerContextRequest: ParsedTravelRequest | null,
   plannerState: any,
   persistPlannerState?: (state: any, source: TripPlannerState['generationMeta']['source']) => Promise<void>,
-  setDraftPlannerFromRequest?: (request: ParsedTravelRequest) => void,
+  setDraftPlannerFromRequest?: (request: ParsedTravelRequest, fieldProvenance?: PlannerFieldProvenance) => void,
   setPlannerDraftPhase?: (phase: 'draft_parsing' | 'draft_generating') => void,
+  updatePlannerState?: (updater: (current: TripPlannerState) => TripPlannerState, source?: 'ui_edit' | 'system') => Promise<void>,
   preloadedContext?: {
     conversationId: string;
     contextualMemory: ParsedTravelRequest | null;
@@ -662,7 +665,7 @@ const useMessageHandler = (
 
       // === PLANNER AGENT BRANCH ===
       // Must run BEFORE parseMessageWithAI to avoid unnecessary AI parser cost/latency
-      if (workspaceMode === 'planner') {
+      if (workspaceMode === 'planner' && plannerState && !plannerState?.generationMeta?.isDraft) {
         console.log('🤖 [PLANNER AGENT] Planner mode detected, skipping standard parser');
         setTypingMessage('El agente está analizando tu solicitud...', conversationIdForThisSearch);
 
@@ -1315,35 +1318,22 @@ const useMessageHandler = (
         await clearContextualMemory(finalConversationId);
       } else if (parsedRequest.requestType === 'itinerary') {
         console.log('🗺️ [VALIDATION] Validating itinerary required fields');
-        setDraftPlannerFromRequest?.(parsedRequest);
-        const validation = validateItineraryRequiredFields(parsedRequest.itinerary);
 
-        console.log('📋 [VALIDATION] Itinerary validation result:', {
-          isValid: validation.isValid,
-          missingFields: validation.missingFields,
-          missingFieldsSpanish: validation.missingFieldsSpanish
-        });
-
-        if (!validation.isValid) {
-          console.log('⚠️ [VALIDATION] Missing itinerary required fields, requesting more info');
-
-          // Store the current parsed request for future combination
+        // Hard requirement: at least 1 destination
+        if (!parsedRequest.itinerary?.destinations?.length) {
+          console.log('⚠️ [VALIDATION] No destinations provided, requesting more info');
           setPreviousParsedRequest(parsedRequest);
           await saveContextualMemory(finalConversationId, parsedRequest);
 
-          // Generate message asking for missing information
           const missingInfoMessage = generateMissingInfoMessage(
-            validation.missingFieldsSpanish,
+            ['destino(s)'],
             'itinerary',
             {
               itinerary: parsedRequest.itinerary,
-              originalMessage: parsedRequest.originalMessage
+              originalMessage: parsedRequest.originalMessage,
             }
           );
 
-          console.log('💬 [VALIDATION] Generated missing info message for itinerary');
-
-          // Add assistant message with missing info request
           await addMessageViaSupabase({
             conversation_id: finalConversationId,
             role: 'assistant' as const,
@@ -1351,30 +1341,89 @@ const useMessageHandler = (
             meta: {
               status: 'sent',
               messageType: 'missing_info_request',
-              missingFields: validation.missingFields,
+              missingFields: ['destinations'],
               originalRequest: parsedRequest,
-              plannerPromptAction: validation.missingFields.includes('exact_dates') ? 'open_date_selector' : undefined,
-              plannerDateSelector: validation.missingFields.includes('exact_dates') ? {
-                enabled: true,
-                mode: 'required',
-                suggestedDurationDays: parsedRequest.itinerary?.days,
-                suggestedMonthText: parsedRequest.originalMessage,
-              } : undefined,
             }
           });
 
-          console.log('✅ [VALIDATION] Missing info message sent, stopping process');
           setIsTyping(false, conversationIdForThisSearch);
           setIsLoading(false);
-          flowTimer.end('stopped - itinerary validation missing info', {
+          flowTimer.end('stopped - itinerary missing destinations', {
             requestType: parsedRequest.requestType,
-            missingFields: validation.missingFields,
           });
-          return; // Stop processing here, wait for user response
+          return;
         }
 
-        console.log('✅ [VALIDATION] All itinerary required fields present, proceeding with generation');
-        // Clear previous request since we have all required fields
+        // Merge follow-up into existing planner with assumed fields
+        if (plannerState?.fieldProvenance) {
+          const hasAssumedFields = Object.values(plannerState.fieldProvenance).some(
+            (source: string) => source === 'assumed'
+          );
+          if (hasAssumedFields && parsedRequest.itinerary) {
+            console.log('🔄 [VALIDATION] Merging follow-up into existing planner with assumed fields');
+            const { merged, fieldProvenance: updatedProvenance, requiresRegeneration } =
+              mergePlannerFieldUpdate(plannerState, parsedRequest.itinerary);
+
+            if (!requiresRegeneration) {
+              // Cosmetic update only — update state and respond without regeneration
+              await updatePlannerState?.((current) => ({
+                ...current,
+                ...merged,
+                fieldProvenance: updatedProvenance,
+              }));
+
+              const confirmedFields = Object.entries(updatedProvenance)
+                .filter(([, source]) => source === 'confirmed')
+                .map(([field]) => field);
+              const confirmMsg = confirmedFields.length > 0
+                ? `Actualicé ${confirmedFields.join(', ')} en tu planificador.`
+                : 'Tu planificador fue actualizado.';
+
+              await addMessageViaSupabase({
+                conversation_id: finalConversationId,
+                role: 'assistant' as const,
+                content: { text: confirmMsg },
+                meta: { status: 'sent', messageType: 'planner_field_update' },
+              });
+
+              setIsTyping(false, conversationIdForThisSearch);
+              setIsLoading(false);
+              flowTimer.end('completed - planner cosmetic update', {});
+              return;
+            }
+
+            // Structural change — update parsedRequest with merged data for regeneration
+            parsedRequest = {
+              ...parsedRequest,
+              itinerary: {
+                ...parsedRequest.itinerary,
+                destinations: merged.destinations,
+                days: merged.days,
+                startDate: merged.startDate,
+                endDate: merged.endDate,
+                isFlexibleDates: merged.isFlexibleDates,
+                flexibleMonth: merged.flexibleMonth,
+                flexibleYear: merged.flexibleYear,
+                budgetLevel: merged.budgetLevel,
+                pace: merged.pace,
+                travelers: merged.travelers,
+              },
+            };
+            setDraftPlannerFromRequest?.(parsedRequest, updatedProvenance);
+          }
+        }
+
+        // Apply smart defaults for missing optional fields
+        if (!plannerState?.fieldProvenance) {
+          const { enrichedItinerary, fieldProvenance } = applySmartDefaults(parsedRequest.itinerary);
+          parsedRequest = {
+            ...parsedRequest,
+            itinerary: enrichedItinerary,
+          };
+          setDraftPlannerFromRequest?.(parsedRequest, fieldProvenance);
+        }
+
+        console.log('✅ [VALIDATION] Itinerary proceeding with generation (smart defaults applied)');
         setPreviousParsedRequest(null);
         await clearContextualMemory(finalConversationId);
       }
@@ -1666,6 +1715,7 @@ const useMessageHandler = (
     plannerState,
     setDraftPlannerFromRequest,
     setPlannerDraftPhase,
+    updatePlannerState,
     setTypingMessage,
     addOptimisticMessage,
     updateOptimisticMessage,

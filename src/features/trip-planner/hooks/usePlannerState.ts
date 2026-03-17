@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'r
 import { supabase } from '@/integrations/supabase/client';
 import type { MessageRow } from '@/features/chat/types/chat';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
-import type { TripPlannerState } from '../types';
+import type { PlannerFieldProvenance, TripPlannerState } from '../types';
 import {
   createDraftPlannerFromRequest,
   normalizePlannerState,
@@ -95,8 +95,9 @@ export default function usePlannerState(
   ) => {
     if (!isPersistableConversationId(conversationId) || !isCurrentPlannerConversation(conversationId)) return;
 
+    const { syncingFields: _ephemeral, ...stateForPersistence } = state;
     const normalizedState: TripPlannerState = {
-      ...state,
+      ...stateForPersistence,
       conversationId,
       generationMeta: {
         ...state.generationMeta,
@@ -249,8 +250,8 @@ export default function usePlannerState(
     });
   }, [conversationId, isCurrentPlannerConversation, persistPlannerState]);
 
-  const setDraftPlannerFromRequest = useCallback((request: ParsedTravelRequest) => {
-    const draftState = createDraftPlannerFromRequest(request, conversationId || undefined);
+  const setDraftPlannerFromRequest = useCallback((request: ParsedTravelRequest, fieldProvenance?: PlannerFieldProvenance) => {
+    const draftState = createDraftPlannerFromRequest(request, conversationId || undefined, fieldProvenance);
     if (!draftState) {
       return;
     }

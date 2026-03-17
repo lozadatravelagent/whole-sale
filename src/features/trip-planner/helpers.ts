@@ -1,6 +1,7 @@
 import type { MessageRow } from '@/features/chat/types/chat';
 import type { LocalHotelData } from '@/features/chat/types/chat';
-import type { TripPlannerState } from './types';
+import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { PlannerDay, PlannerFieldProvenance, PlannerSegment, TripPlannerState } from './types';
 import { getPlannerHotelDisplayId, normalizePlannerState } from './utils';
 
 export interface PlannerMessageMeta {
@@ -189,4 +190,212 @@ export function mergeEnrichedSegmentState(
       updatedAt: new Date().toISOString(),
     },
   };
+}
+
+const STRUCTURAL_FIELDS = new Set(['destinations', 'startDate', 'endDate', 'days']);
+
+export function mergePlannerFieldUpdate(
+  current: TripPlannerState,
+  updates: Partial<NonNullable<ParsedTravelRequest['itinerary']>>,
+): {
+  merged: TripPlannerState;
+  fieldProvenance: PlannerFieldProvenance;
+  requiresRegeneration: boolean;
+} {
+  const currentProvenance: PlannerFieldProvenance = { ...current.fieldProvenance };
+  let requiresRegeneration = false;
+
+  const merged = { ...current };
+
+  if (updates.days != null && updates.days > 0) {
+    merged.days = updates.days;
+    currentProvenance.days = 'confirmed';
+    requiresRegeneration = true;
+  }
+
+  if (updates.startDate) {
+    merged.startDate = updates.startDate;
+    merged.isFlexibleDates = false;
+    currentProvenance.startDate = 'confirmed';
+    requiresRegeneration = true;
+  }
+
+  if (updates.endDate) {
+    merged.endDate = updates.endDate;
+    merged.isFlexibleDates = false;
+    currentProvenance.endDate = 'confirmed';
+    requiresRegeneration = true;
+  }
+
+  if (updates.isFlexibleDates != null) {
+    merged.isFlexibleDates = updates.isFlexibleDates;
+    if (updates.flexibleMonth) merged.flexibleMonth = updates.flexibleMonth;
+    if (updates.flexibleYear) merged.flexibleYear = updates.flexibleYear;
+    currentProvenance.startDate = 'confirmed';
+    currentProvenance.endDate = 'confirmed';
+    requiresRegeneration = true;
+  }
+
+  if (updates.destinations && updates.destinations.length > 0) {
+    const currentDests = current.destinations.map(d => d.toLowerCase()).sort().join(',');
+    const newDests = updates.destinations.map(d => d.toLowerCase()).sort().join(',');
+    if (currentDests !== newDests) {
+      requiresRegeneration = true;
+    }
+  }
+
+  if (updates.budgetLevel) {
+    merged.budgetLevel = updates.budgetLevel as TripPlannerState['budgetLevel'];
+    currentProvenance.budgetLevel = 'confirmed';
+  }
+
+  if (updates.pace) {
+    merged.pace = updates.pace as TripPlannerState['pace'];
+    currentProvenance.pace = 'confirmed';
+  }
+
+  if (updates.travelers?.adults != null) {
+    merged.travelers = {
+      adults: updates.travelers.adults ?? current.travelers.adults,
+      children: updates.travelers.children ?? current.travelers.children,
+      infants: updates.travelers.infants ?? current.travelers.infants,
+    };
+    currentProvenance.travelers = 'confirmed';
+  }
+
+  merged.fieldProvenance = currentProvenance;
+
+  return { merged, fieldProvenance: currentProvenance, requiresRegeneration };
+}
+
+// --- Partial state update helpers ---
+
+const HOTEL_TRIGGER_FIELDS = new Set(['startDate', 'endDate', 'days', 'travelers']);
+const TRANSPORT_TRIGGER_FIELDS = new Set(['startDate', 'endDate', 'days', 'travelers']);
+
+export function shouldRefetch(
+  changedField: string,
+  target: 'hotels' | 'transport',
+): boolean {
+  const triggers = target === 'hotels' ? HOTEL_TRIGGER_FIELDS : TRANSPORT_TRIGGER_FIELDS;
+  return triggers.has(changedField);
+}
+
+function addDaysISO(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export function reindexSegmentDays(
+  segment: PlannerSegment,
+  newDayCount: number,
+  segmentStartDate?: string,
+): { days: PlannerDay[]; bufferedDays: PlannerDay[] } {
+  const currentDays = segment.days;
+  const existingBuffer = segment.bufferedDays || [];
+
+  if (newDayCount === currentDays.length) {
+    return { days: currentDays, bufferedDays: existingBuffer };
+  }
+
+  if (newDayCount < currentDays.length) {
+    // Shrinking — trim from end, push to buffer
+    const kept = currentDays.slice(0, newDayCount);
+    const trimmed = currentDays.slice(newDayCount);
+    const maxBuffer = Math.max(currentDays.length * 2, 4);
+    const nextBuffer = [...trimmed, ...existingBuffer].slice(0, maxBuffer);
+
+    const reindexed = kept.map((day, i) => ({
+      ...day,
+      id: `${segment.id}-day-${i + 1}`,
+      dayNumber: i + 1,
+      date: segmentStartDate ? addDaysISO(segmentStartDate, i) : day.date,
+    }));
+
+    return { days: reindexed, bufferedDays: nextBuffer };
+  }
+
+  // Expanding — restore from buffer first (LIFO: first items in buffer were last trimmed)
+  const toRestore = Math.min(newDayCount - currentDays.length, existingBuffer.length);
+  const restoredFromBuffer = existingBuffer.slice(0, toRestore);
+  const remainingBuffer = existingBuffer.slice(toRestore);
+
+  const baseDays = [...currentDays, ...restoredFromBuffer];
+
+  // Fill remaining empty slots
+  const emptySlots = newDayCount - baseDays.length;
+  const emptyDays: PlannerDay[] = Array.from({ length: emptySlots }, (_, i) => {
+    const dayNum = baseDays.length + i + 1;
+    return {
+      id: `${segment.id}-day-${dayNum}`,
+      dayNumber: dayNum,
+      date: segmentStartDate ? addDaysISO(segmentStartDate, baseDays.length + i) : undefined,
+      city: segment.city,
+      title: `Día ${dayNum}`,
+      morning: [],
+      afternoon: [],
+      evening: [],
+      restaurants: [],
+    };
+  });
+
+  const allDays = [...baseDays, ...emptyDays];
+  const reindexed = allDays.map((day, i) => ({
+    ...day,
+    id: `${segment.id}-day-${i + 1}`,
+    dayNumber: i + 1,
+    date: segmentStartDate ? addDaysISO(segmentStartDate, i) : day.date,
+  }));
+
+  const maxBuffer = Math.max(currentDays.length * 2, 4);
+  return { days: reindexed, bufferedDays: remainingBuffer.slice(0, maxBuffer) };
+}
+
+export function redistributeDaysAcrossSegments(
+  segments: PlannerSegment[],
+  newTotalDays: number,
+  dateSelection?: { startDate?: string; endDate?: string },
+): PlannerSegment[] {
+  if (segments.length === 0) return segments;
+
+  // Floor division, remainder to first segments
+  const baseDays = Math.floor(newTotalDays / segments.length);
+  let remainder = newTotalDays - baseDays * segments.length;
+
+  const dayAllocation = segments.map(() => {
+    const extra = remainder > 0 ? 1 : 0;
+    remainder -= extra;
+    return baseDays + extra;
+  });
+
+  let runningDate = dateSelection?.startDate;
+
+  return segments.map((segment, i) => {
+    const allocatedDays = dayAllocation[i];
+    const segmentStart = runningDate;
+    const { days, bufferedDays } = reindexSegmentDays(segment, allocatedDays, segmentStart);
+
+    const segmentEnd = segmentStart && allocatedDays > 0
+      ? addDaysISO(segmentStart, allocatedDays - 1)
+      : segment.endDate;
+
+    if (runningDate && allocatedDays > 0) {
+      runningDate = addDaysISO(runningDate, allocatedDays);
+    }
+
+    return {
+      ...segment,
+      days,
+      bufferedDays,
+      nights: Math.max(0, allocatedDays - 1),
+      startDate: segmentStart,
+      endDate: segmentEnd,
+      hotelPlan: {
+        ...segment.hotelPlan,
+        checkinDate: segmentStart || segment.hotelPlan.checkinDate,
+        checkoutDate: segmentEnd ? addDaysISO(segmentEnd, 1) : segment.hotelPlan.checkoutDate,
+      },
+    };
+  });
 }

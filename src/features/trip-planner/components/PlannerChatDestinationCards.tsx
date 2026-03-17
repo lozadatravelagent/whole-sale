@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { APIProvider, useMapsLibrary } from '@vis.gl/react-google-maps';
-import { MapPin, Star } from 'lucide-react';
+import { MapPin, Plus, Star } from 'lucide-react';
 import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY } from '../map';
 import { formatDestinationLabel } from '../utils';
 import type { PlannerPlaceCandidate } from '../types';
@@ -118,18 +118,30 @@ function DestinationHighlightsFetcher({
 
 function PlaceCard({ place, onClick }: { place: PlaceHighlight; onClick?: () => void }) {
   return (
-    <div className="w-40 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md" onClick={onClick}>
-      {place.photo ? (
-        <img
-          src={place.photo}
-          alt={place.name}
-          className="h-28 w-full object-cover"
-        />
-      ) : (
-        <div className="flex h-28 w-full items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-          <MapPin className="h-6 w-6 text-primary/40" />
-        </div>
-      )}
+    <div className="group relative w-40 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md" onClick={onClick}>
+      <div className="relative">
+        {place.photo ? (
+          <img
+            src={place.photo}
+            alt={place.name}
+            className="h-28 w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-28 w-full items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+            <MapPin className="h-6 w-6 text-primary/40" />
+          </div>
+        )}
+        {onClick && (
+          <button
+            type="button"
+            className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-primary shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            title="Agregar al itinerario"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
       <div className="p-2.5">
         <p className="line-clamp-1 text-[13px] font-semibold leading-tight text-foreground">
           {place.name}
@@ -154,18 +166,30 @@ function PlaceCard({ place, onClick }: { place: PlaceHighlight; onClick?: () => 
 
 function DiscoveryPlaceCard({ place, onClick }: { place: PlannerPlaceCandidate; onClick?: () => void }) {
   return (
-    <div className="w-40 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md" onClick={onClick}>
-      {place.photoUrls?.[0] ? (
-        <img
-          src={place.photoUrls[0]}
-          alt={place.name}
-          className="h-28 w-full object-cover"
-        />
-      ) : (
-        <div className="flex h-28 w-full items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
-          <MapPin className="h-6 w-6 text-primary/40" />
-        </div>
-      )}
+    <div className="group relative w-40 shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-border/60 bg-background shadow-sm transition-shadow hover:shadow-md" onClick={onClick}>
+      <div className="relative">
+        {place.photoUrls?.[0] ? (
+          <img
+            src={place.photoUrls[0]}
+            alt={place.name}
+            className="h-28 w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-28 w-full items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5">
+            <MapPin className="h-6 w-6 text-primary/40" />
+          </div>
+        )}
+        {onClick && (
+          <button
+            type="button"
+            className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-primary shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            title="Agregar al itinerario"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
       <div className="p-2.5">
         <p className="line-clamp-1 text-[13px] font-semibold leading-tight text-foreground">
           {place.name}

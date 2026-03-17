@@ -12,7 +12,11 @@ export async function runWithConcurrency<T>(
     while (nextIndex < tasks.length) {
       if (cancelToken?.current) break;
       const index = nextIndex++;
-      results[index] = await tasks[index]();
+      try {
+        results[index] = await tasks[index]();
+      } catch (err) {
+        console.error(`[runWithConcurrency] Task ${index} failed:`, err);
+      }
     }
   }
 

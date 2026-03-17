@@ -467,7 +467,7 @@ function renderHotelOptionsCards(data: CombinedTemplateInput, hasFlights: boolea
         <div style="font-size:8px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:0.3px;margin-top:2px;">Total paquete${hasFlights ? ' (vuelo + hotel)' : ''}</div>
       </div>
       <div style="font-size:11px;">
-        <div style="font-weight:600;margin-bottom:4px;">🏨 ${opt.hotel!.name || opt.hotel!.location || 'Hotel'}</div>
+        <div style="font-weight:600;color:#333;margin-bottom:4px;">🏨 ${opt.hotel!.name || opt.hotel!.location || 'Hotel'}</div>
         <div style="color:#666;font-size:10px;">${opt.hotel!.stars} estrellas</div>
         <div style="color:#666;font-size:10px;">${opt.hotel!.location}</div>
         ${opt.hotel!.roomDescription ? `<div style="color:#666;font-size:10px;font-style:italic;">🛏️ ${opt.hotel!.roomDescription}</div>` : ''}

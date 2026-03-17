@@ -5,6 +5,7 @@ import type {
   PlannerActivity,
   PlannerBudgetLevel,
   PlannerDay,
+  PlannerFieldProvenance,
   PlannerGenerationSource,
   PlannerActivityType,
   PlannerSegmentContentStatus,
@@ -13,6 +14,7 @@ import type {
   PlannerPlaceCategory,
   PlannerRestaurant,
   PlannerSegment,
+  PlannerSuggestion,
   TripPlannerState,
 } from './types';
 import { classifyPlannerActivityType, normalizePlannerSegmentsScheduling } from './scheduling';
@@ -437,7 +439,8 @@ function buildDraftPlannerSummary(
 
 export function createDraftPlannerFromRequest(
   request: ParsedTravelRequest,
-  conversationId?: string
+  conversationId?: string,
+  fieldProvenance?: PlannerFieldProvenance,
 ): TripPlannerState | null {
   if (request.requestType !== 'itinerary' || !request.itinerary) {
     return null;
@@ -493,6 +496,118 @@ export function createDraftPlannerFromRequest(
       isDraft: true,
       draftOriginMessage: request.originalMessage,
     }),
+    fieldProvenance,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Smart defaults for progressive enrichment
+// ---------------------------------------------------------------------------
+
+const ARGENTINA_CITIES = new Set([
+  'mendoza', 'bariloche', 'cordoba', 'salta', 'ushuaia', 'el calafate',
+  'iguazu', 'puerto iguazu', 'mar del plata', 'san martin de los andes',
+  'villa la angostura', 'jujuy', 'purmamarca', 'tilcara', 'tucuman',
+  'rosario', 'neuquen', 'trelew', 'puerto madryn', 'el bolson',
+  'cafayate', 'cachi', 'la rioja', 'san juan', 'san rafael',
+  'villa carlos paz', 'merlo', 'mina clavero', 'tandil',
+  'buenos aires', 'caba', 'capital federal',
+]);
+
+function isDomesticDestination(destination: string): boolean {
+  const normalized = destination.toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return ARGENTINA_CITIES.has(normalized);
+}
+
+export function applySmartDefaults(
+  itinerary: ParsedTravelRequest['itinerary'],
+): {
+  enrichedItinerary: NonNullable<ParsedTravelRequest['itinerary']>;
+  fieldProvenance: PlannerFieldProvenance;
+} {
+  const base = itinerary || { destinations: [] };
+  const destinations = base.destinations || [];
+  const provenance: PlannerFieldProvenance = {};
+
+  const allDomestic = destinations.length > 0 && destinations.every(isDomesticDestination);
+
+  // --- days ---
+  let days = base.days;
+  if (days && days > 0) {
+    provenance.days = 'user';
+  } else {
+    if (destinations.length > 1) {
+      days = 3 * destinations.length;
+    } else {
+      days = allDomestic ? 5 : 7;
+    }
+    provenance.days = 'assumed';
+  }
+
+  // --- budgetLevel ---
+  let budgetLevel = base.budgetLevel;
+  if (budgetLevel) {
+    provenance.budgetLevel = 'user';
+  } else {
+    budgetLevel = 'mid';
+    provenance.budgetLevel = 'assumed';
+  }
+
+  // --- pace ---
+  let pace = base.pace;
+  if (pace) {
+    provenance.pace = 'user';
+  } else {
+    pace = 'balanced';
+    provenance.pace = 'assumed';
+  }
+
+  // --- travelers ---
+  let travelers = base.travelers;
+  if (travelers?.adults) {
+    provenance.travelers = 'user';
+  } else {
+    travelers = { adults: 2, children: 0, infants: 0 };
+    provenance.travelers = 'assumed';
+  }
+
+  // --- dates ---
+  let { startDate, endDate, isFlexibleDates, flexibleMonth, flexibleYear } = base;
+  if (startDate && endDate) {
+    provenance.startDate = 'user';
+    provenance.endDate = 'user';
+  } else if (isFlexibleDates && flexibleMonth) {
+    provenance.startDate = 'user';
+    provenance.endDate = 'user';
+  } else {
+    isFlexibleDates = true;
+    const now = new Date();
+    const monthsAhead = allDomestic ? 1 : 2;
+    const futureDate = new Date(now.getFullYear(), now.getMonth() + monthsAhead, 1);
+    flexibleMonth = futureDate.toLocaleString('es-AR', { month: 'long' });
+    flexibleYear = futureDate.getFullYear();
+    startDate = undefined;
+    endDate = undefined;
+    provenance.startDate = 'assumed';
+    provenance.endDate = 'assumed';
+  }
+
+  return {
+    enrichedItinerary: {
+      ...base,
+      destinations,
+      days,
+      budgetLevel,
+      pace,
+      travelers,
+      startDate,
+      endDate,
+      isFlexibleDates,
+      flexibleMonth,
+      flexibleYear,
+    },
+    fieldProvenance: provenance,
   };
 }
 
@@ -538,6 +653,7 @@ export function normalizePlannerState(raw: Record<string, unknown>, conversation
     segments,
     notes: safeArray(source?.notes),
     generalTips: safeArray(source?.generalTips),
+    fieldProvenance: source?.fieldProvenance as PlannerFieldProvenance | undefined,
     generationMeta: buildPlannerMeta(source?.generationMeta?.source || 'system', {
       updatedAt: source?.generationMeta?.updatedAt,
       version: source?.generationMeta?.version || 1,
@@ -928,6 +1044,147 @@ export function buildPlannerGenerationPayload(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Gap detection for proactive suggestion chips
+// ---------------------------------------------------------------------------
+
+const MAX_SUGGESTIONS = 4;
+
+export function detectPlannerGaps(plannerState: TripPlannerState): PlannerSuggestion[] {
+  const suggestions: PlannerSuggestion[] = [];
+  const seen = new Set<string>();
+
+  const add = (s: Omit<PlannerSuggestion, 'id'>) => {
+    const key = `${s.action}:${s.payload.segmentId ?? ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    suggestions.push({ ...s, id: `sug-${key}` });
+  };
+
+  // P0: Flexible dates without start date
+  if (plannerState.isFlexibleDates && !plannerState.startDate) {
+    add({
+      label: 'Seleccionar fechas exactas',
+      action: 'select_dates',
+      type: 'edit',
+      payload: {},
+      priority: 0,
+    });
+  }
+
+  // P1: Assumed fields needing confirmation
+  if (plannerState.fieldProvenance) {
+    const fieldLabels: Record<string, string> = {
+      days: `${plannerState.days} días`,
+      budgetLevel: formatBudgetLevel(plannerState.budgetLevel)?.toLowerCase() ?? 'medio',
+      pace: formatPaceLabel(plannerState.pace)?.toLowerCase() ?? 'equilibrado',
+      travelers: `${plannerState.travelers.adults} adulto${plannerState.travelers.adults !== 1 ? 's' : ''}`,
+    };
+    for (const [field, source] of Object.entries(plannerState.fieldProvenance)) {
+      if (source !== 'assumed') continue;
+      if (field === 'startDate' || field === 'endDate') continue; // handled by P0
+      const label = fieldLabels[field];
+      if (!label) continue;
+      add({
+        label: `Confirmar: ${label}`,
+        action: 'confirm_field',
+        type: 'confirm',
+        payload: { field },
+        priority: 1,
+      });
+    }
+  }
+
+  const isFlexible = Boolean(plannerState.isFlexibleDates);
+
+  // P2: Transport search needed (skip first segment, skip if flexible dates)
+  if (!isFlexible) {
+    for (const segment of plannerState.segments) {
+      if (segment.order === 0) continue;
+      const transport = segment.transportIn;
+      if (!transport || transport.searchStatus === 'idle') {
+        add({
+          label: `Buscar vuelos a ${formatDestinationLabel(segment.city)}`,
+          action: 'search_transport',
+          type: 'flight',
+          payload: { segmentId: segment.id, segmentCity: segment.city },
+          priority: 2,
+        });
+      }
+    }
+  }
+
+  // P3: Hotel search needed (context-aware: include stars if requested)
+  if (!isFlexible) {
+    for (const segment of plannerState.segments) {
+      const status = segment.hotelPlan.searchStatus;
+      if (status === 'idle' || status === 'error') {
+        const stars = segment.hotelPlan.requestedStars;
+        const cityLabel = formatDestinationLabel(segment.city);
+        add({
+          label: stars
+            ? `Buscar hoteles ${stars}\u2605 en ${cityLabel}`
+            : `Ver hoteles en ${cityLabel}`,
+          action: 'search_hotels',
+          type: 'hotel',
+          payload: { segmentId: segment.id, segmentCity: segment.city },
+          priority: 3,
+        });
+      }
+    }
+  }
+
+  // Couple detection: 2 adults, no children/infants
+  const isCouple =
+    plannerState.travelers.adults === 2 &&
+    (plannerState.travelers.children || 0) === 0 &&
+    (plannerState.travelers.infants || 0) === 0;
+
+  // P4: Empty activity slots (max 2) — couple-aware labels
+  let activityCount = 0;
+  for (const segment of plannerState.segments) {
+    if (activityCount >= 2) break;
+    for (const day of segment.days) {
+      if (activityCount >= 2) break;
+      if (day.afternoon.length === 0 || day.evening.length === 0) {
+        const slot = day.afternoon.length === 0 ? 'afternoon' : 'evening';
+        const cityLabel = formatDestinationLabel(segment.city);
+        const label = isCouple && slot === 'evening'
+          ? `Cena exclusiva en ${cityLabel}`
+          : `Explorar actividades en ${cityLabel}`;
+        add({
+          label,
+          action: 'fill_slot',
+          type: 'activity',
+          payload: { segmentId: segment.id, segmentCity: segment.city, dayNumber: day.dayNumber, slot },
+          priority: 4,
+        });
+        activityCount++;
+      }
+    }
+  }
+
+  // P5: Luxury budget without transfers
+  if (plannerState.budgetLevel === 'luxury') {
+    const hasTransfer = plannerState.segments.some((seg) =>
+      seg.transportIn?.type === 'transfer' || seg.transportOut?.type === 'transfer'
+    );
+    if (!hasTransfer) {
+      add({
+        label: 'Añadir traslados privados',
+        action: 'add_transfers',
+        type: 'edit',
+        payload: {},
+        priority: 5,
+      });
+    }
+  }
+
+  return suggestions
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, MAX_SUGGESTIONS);
+}
+
 export function summarizePlannerForChat(plannerState: TripPlannerState): string {
   const effectiveDays = !plannerState.isFlexibleDates
     ? getInclusiveDateRangeDays(plannerState.startDate, plannerState.endDate) || plannerState.days
@@ -955,10 +1212,34 @@ export function summarizePlannerForChat(plannerState: TripPlannerState): string 
     budgetLabel ? `Presupuesto ${budgetLabel.toLowerCase()}` : '',
   ].filter(Boolean);
 
+  const assumedFields = plannerState.fieldProvenance
+    ? Object.entries(plannerState.fieldProvenance)
+        .filter(([, source]) => source === 'assumed')
+        .map(([field]) => field)
+    : [];
+
+  const assumedSuffix = assumedFields.length > 0
+    ? (() => {
+        const fieldMap: Record<string, string> = {
+          days: `Duración: ${plannerState.days} días`,
+          startDate: 'Fechas: flexibles',
+          endDate: 'Fechas: flexibles',
+          budgetLevel: `Presupuesto: ${formatBudgetLevel(plannerState.budgetLevel)?.toLowerCase()}`,
+          pace: `Ritmo: ${formatPaceLabel(plannerState.pace)?.toLowerCase()}`,
+          travelers: `Viajeros: ${plannerState.travelers.adults} adulto${plannerState.travelers.adults !== 1 ? 's' : ''}`,
+        };
+        const lines = [...new Set(assumedFields.map(f => fieldMap[f]).filter(Boolean))];
+        return lines.length > 0
+          ? `\n> ⚠️ Datos supuestos (podés confirmarlos o cambiarlos):\n${lines.map(l => `> - ${l}`).join('\n')}\n> Decime si están bien o modificalos desde el planificador.\n`
+          : '';
+      })()
+    : '';
+
   return `¡Tu viaje a **${destList}** ya está tomando forma!\n\n` +
     `${plannerState.summary}\n\n` +
     `${detailParts.join(' · ')}\n` +
     `\n${segmentLines}\n` +
+    `${assumedSuffix}` +
     `${tips ? `\n💡 ${plannerState.generalTips.slice(0, 3).join(' | ')}\n` : ''}` +
     `${hasSkeletonSegments ? '\nEstoy completando cada tramo, podés ir revisándolos en el planificador.\n' : ''}` +
     `\nTodo listo para que lo ajustes desde el Planificador.`;

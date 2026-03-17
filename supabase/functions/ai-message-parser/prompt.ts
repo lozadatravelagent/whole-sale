@@ -360,9 +360,10 @@ If the user wants to plan activities/things to do in a destination WITHOUT booki
 
 **Destination Extraction:**
 - Single city: "Roma", "Barcelona", "Tokyo"
-- Single country: "Italia", "España", "Japón"
+- Single country (no cities mentioned): "Italia", "España", "Japón"
 - Multiple destinations: "Italia y Francia", "Madrid, Barcelona y Valencia"
 - Regions: "Europa", "Patagonia", "Caribe"
+- IMPORTANT: When the user mentions BOTH a country AND specific cities within it (e.g., "Italia visitando Roma y Florencia"), use ONLY the cities — do NOT also include the country. The country is just context, not a separate destination.
 
 **CRITICAL: Itinerary vs Flights/Hotels Distinction:**
 - If user mentions "vuelo", "hotel", "reservar", "cotizar" → NOT itinerary, use flights/hotels/combined
