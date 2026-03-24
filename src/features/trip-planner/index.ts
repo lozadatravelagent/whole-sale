@@ -1,5 +1,6 @@
 export {
   buildPlannerPromptContext,
+  expandDestinationsIfRegional,
   formatBudgetLevel,
   formatDateRange,
   formatDestinationLabel,

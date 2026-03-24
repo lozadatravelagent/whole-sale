@@ -242,6 +242,41 @@ export interface PlannerSuggestion {
   priority: number;
 }
 
+export interface RegionalRouteCity {
+  id: string;
+  name: string;
+  weight: number;
+  min_days: number;
+}
+
+export interface RegionalRoute {
+  region_name: string;
+  suggested_duration_range: [number, number];
+  default_pace: PlannerPace;
+  cities: RegionalRouteCity[];
+  seasonality: Record<string, number>;
+  alert: string;
+}
+
+export interface RegionalExpansionResult {
+  expanded: boolean;
+  regionKey: string | null;
+  regionName: string | null;
+  cities: Array<{ name: string; days: number; weight: number }>;
+  seasonalityScore: number | null;
+  seasonalityAlert: string | null;
+  suggestedDays: number;
+  suggestedPace: PlannerPace | null;
+}
+
+export interface DiscoveryCard {
+  label: string;
+  type: 'activity' | 'restaurant' | 'experience';
+  city: string;
+  slot: 'morning' | 'afternoon' | 'evening';
+  description?: string;
+}
+
 export interface TripPlannerState {
   id: string;
   conversationId?: string;
@@ -271,6 +306,12 @@ export interface TripPlannerState {
   generalTips: string[];
   fieldProvenance?: PlannerFieldProvenance;
   syncingFields?: PlannerSyncingFields;
+  seasonalityAlert?: string;
+  regionalExpansion?: {
+    regionKey: string;
+    regionName: string;
+    expandedFrom: string;
+  };
   generationMeta: {
     source: PlannerGenerationSource;
     updatedAt: string;

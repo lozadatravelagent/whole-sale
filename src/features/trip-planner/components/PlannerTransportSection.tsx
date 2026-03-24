@@ -21,6 +21,8 @@ interface PlannerTransportSectionProps {
   disabled?: boolean;
   statusText: string;
   onSelectTransportOption: (segmentId: string, optionId: string) => Promise<void>;
+  isLastSegment?: boolean;
+  origin?: string;
 }
 
 export default function PlannerTransportSection({
@@ -29,6 +31,8 @@ export default function PlannerTransportSection({
   disabled = false,
   statusText,
   onSelectTransportOption,
+  isLastSegment = false,
+  origin,
 }: PlannerTransportSectionProps) {
   if (!previousSegment) {
     return (
@@ -179,6 +183,26 @@ export default function PlannerTransportSection({
                 </p>
               </div>
             )}
+          </div>
+        )}
+        {isLastSegment && !segment.transportOut && segment.transportIn?.searchStatus === 'ready' && (
+          <div className="planner-panel-fade-in mt-3 rounded-2xl border border-dashed border-amber-300/70 bg-amber-50/50 px-4 py-3 dark:border-amber-700/50 dark:bg-amber-950/20">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="trip-planner-label text-sm font-medium text-foreground">
+                  Vuelo de regreso
+                </p>
+                <p className="trip-planner-body mt-0.5 text-xs text-muted-foreground">
+                  {formatDestinationLabel(segment.city)} → {origin || 'origen'}
+                </p>
+              </div>
+              <Badge variant="outline" className="shrink-0 rounded-full border-amber-400 px-2 py-0.5 text-[11px] text-amber-600 dark:border-amber-600 dark:text-amber-400">
+                Pendiente
+              </Badge>
+            </div>
+            <p className="trip-planner-body mt-2 text-[11px] text-muted-foreground">
+              Pedile a Emilia que busque el vuelo de regreso en el chat.
+            </p>
           </div>
         )}
       </CardContent>

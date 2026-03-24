@@ -1,11 +1,14 @@
 /**
  * City Code Resolver for Edge Functions
- * 
- * IMPORTANTE: Este archivo es una copia EXACTA de src/services/cityCodeService.ts
- * adaptada para Deno Edge Functions. Si modificas el mapeo de ciudades,
- * asegúrate de actualizar AMBOS archivos para mantener consistencia.
- * 
- * Convierte nombres de ciudades a códigos IATA de aeropuertos para Starling API.
+ *
+ * FUENTE DE VERDAD para mapeos: src/services/cityCodeService.ts
+ * Este archivo es una copia adaptada para Deno Edge Functions.
+ * CITY_MAPPINGS sincronizado con el frontend (63 ciudades).
+ * 3 funciones simplificadas (sin EUROVIPS Layer 3 fallback).
+ *
+ * Si agregás ciudades, actualizá AMBOS archivos.
+ * TODO: Migrar a shared package para eliminar duplicación.
+ * Última sincronización: 2026-03-23 (Sprint 2)
  */
 
 interface CityCodeMapping {
@@ -17,7 +20,7 @@ interface CityCodeMapping {
 }
 
 /**
- * CITY_MAPPINGS - COPIA EXACTA de src/services/cityCodeService.ts
+ * CITY_MAPPINGS - Sincronizado con src/services/cityCodeService.ts
  * Mantener sincronizado con el archivo original
  */
 const CITY_MAPPINGS: Record<string, CityCodeMapping> = {
@@ -46,6 +49,54 @@ const CITY_MAPPINGS: Record<string, CityCodeMapping> = {
         hotelCode: 'BRC',
         country: 'AR',
         aliases: ['san carlos de bariloche']
+    },
+    'rosario': {
+        iata: 'ROS',
+        hotelCode: 'ROS',
+        country: 'AR',
+        aliases: []
+    },
+    'salta': {
+        iata: 'SLA',
+        hotelCode: 'SLA',
+        country: 'AR',
+        aliases: []
+    },
+    'tucuman': {
+        iata: 'TUC',
+        hotelCode: 'TUC',
+        country: 'AR',
+        aliases: ['tucumán', 'san miguel de tucuman']
+    },
+    'neuquen': {
+        iata: 'NQN',
+        hotelCode: 'NQN',
+        country: 'AR',
+        aliases: ['neuquén']
+    },
+    'ushuaia': {
+        iata: 'USH',
+        hotelCode: 'USH',
+        country: 'AR',
+        aliases: []
+    },
+    'iguazu': {
+        iata: 'IGR',
+        hotelCode: 'IGR',
+        country: 'AR',
+        aliases: ['iguazú', 'puerto iguazu', 'cataratas']
+    },
+    'el calafate': {
+        iata: 'FTE',
+        hotelCode: 'FTE',
+        country: 'AR',
+        aliases: ['calafate']
+    },
+    'mar del plata': {
+        iata: 'MDQ',
+        hotelCode: 'MDQ',
+        country: 'AR',
+        aliases: []
     },
 
     // República Dominicana

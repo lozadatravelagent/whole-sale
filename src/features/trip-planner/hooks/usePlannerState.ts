@@ -8,6 +8,8 @@ import {
   normalizePlannerState,
 } from '../utils';
 import { getPlannerStateFromCache, setPlannerStateInCache } from '../services/plannerStateCache';
+import { upsertTrip } from '../services/tripService';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   getLatestPlannerMessage,
   isDraftPlannerState,
@@ -21,9 +23,11 @@ export default function usePlannerState(
   messages: MessageRow[],
   toast: (args: { title: string; description?: string; variant?: 'default' | 'destructive' }) => void
 ) {
+  const { user } = useAuth();
   const [plannerState, setPlannerState] = useState<TripPlannerState | null>(null);
   const [isLoadingPlanner, setIsLoadingPlanner] = useState(false);
   const [plannerError, setPlannerError] = useState<string | null>(null);
+  const lastTripUpsertRef = useRef(0);
   const [activePlannerMutation, setActivePlannerMutation] = useState<{
     type: 'regen_plan' | 'regen_segment' | 'regen_day';
     segmentId?: string;
@@ -142,7 +146,14 @@ export default function usePlannerState(
     if (error) {
       console.error('\u274c [TRIP PLANNER] Failed to persist planner state:', error);
     }
-  }, [conversationId, isCurrentPlannerConversation]);
+
+    // Fire-and-forget: sync to trips table (throttled: max 1 per 5s)
+    const now = Date.now();
+    if (user?.id && user?.agency_id && user?.tenant_id && now - lastTripUpsertRef.current > 5000) {
+      lastTripUpsertRef.current = now;
+      upsertTrip(normalizedState, conversationId, user.id, user.agency_id, user.tenant_id).catch(() => {});
+    }
+  }, [conversationId, isCurrentPlannerConversation, user]);
 
   const loadPersistedPlannerState = useCallback(async () => {
     const requestConversationId = conversationId;

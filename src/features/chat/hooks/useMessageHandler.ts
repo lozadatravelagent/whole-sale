@@ -12,7 +12,7 @@ import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
 import { applySmartDefaults } from '@/features/trip-planner/utils';
-import { mergePlannerFieldUpdate } from '@/features/trip-planner/helpers';
+import { mergePlannerFieldUpdate, normalizeLocationLabel, buildPlannerHotelSearchSignature, buildPlannerTransportSearchSignature, applyStructuralModification, type StructuralModification } from '@/features/trip-planner/helpers';
 import { translateBaggage } from '../utils/translations';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { supabase } from '@/integrations/supabase/client';
@@ -667,29 +667,150 @@ const useMessageHandler = (
       // Must run BEFORE parseMessageWithAI to avoid unnecessary AI parser cost/latency
       if (workspaceMode === 'planner' && plannerState && !plannerState?.generationMeta?.isDraft) {
         console.log('🤖 [PLANNER AGENT] Planner mode detected, skipping standard parser');
-        setTypingMessage('El agente está analizando tu solicitud...', conversationIdForThisSearch);
+        setTypingMessage('Emilia está analizando tu solicitud...', conversationIdForThisSearch);
+
+        // Progressive typing labels
+        const typingLabels = [
+          { delay: 3000, label: 'Buscando opciones...' },
+          { delay: 8000, label: 'Consultando disponibilidad...' },
+          { delay: 15000, label: 'Esto puede tomar unos segundos más...' },
+        ];
+        const typingTimers = typingLabels.map(({ delay, label }) =>
+          setTimeout(() => setTypingMessage(label, conversationIdForThisSearch), delay)
+        );
+        const clearTypingTimers = () => typingTimers.forEach(clearTimeout);
 
         const conversationHistoryForAgent = (messages || [])
           .filter(m => m.conversation_id === finalConversationId)
-          .slice(-10)
+          .slice(-20)
           .map(m => ({
             role: m.role as string,
             content: typeof m.content === 'string' ? m.content : (m.content as any)?.text || JSON.stringify(m.content),
           }));
 
-        const { data: agentResult, error: agentError } = await supabase.functions.invoke('planner-agent', {
-          body: {
-            message: currentMessage,
-            conversationId: finalConversationId,
-            conversationHistory: conversationHistoryForAgent,
-            previousContext: persistentState?.lastSearch || null,
-            userContext: plannerState?.origin ? {
-              currentCity: plannerState.origin,
-              country: plannerState.originCountry || '',
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // Build slim plannerState for the agent (strip heavy data: activities, recommendations, options)
+        const slimState = plannerState ? {
+          destinations: plannerState.destinations,
+          days: plannerState.days,
+          startDate: plannerState.startDate,
+          endDate: plannerState.endDate,
+          isFlexibleDates: plannerState.isFlexibleDates,
+          budgetLevel: plannerState.budgetLevel,
+          pace: plannerState.pace,
+          travelers: plannerState.travelers,
+          origin: plannerState.origin,
+          interests: plannerState.interests,
+          fieldProvenance: plannerState.fieldProvenance,
+          segments: plannerState.segments?.map((s: any) => ({
+            id: s.id,
+            city: s.city,
+            country: s.country,
+            order: s.order,
+            startDate: s.startDate,
+            endDate: s.endDate,
+            nights: s.nights,
+            contentStatus: s.contentStatus,
+            hotelPlan: s.hotelPlan ? {
+              city: s.hotelPlan.city,
+              searchStatus: s.hotelPlan.searchStatus,
+              matchStatus: s.hotelPlan.matchStatus,
+              selectedHotelId: s.hotelPlan.selectedHotelId,
+              checkinDate: s.hotelPlan.checkinDate,
+              checkoutDate: s.hotelPlan.checkoutDate,
+            } : undefined,
+            transportIn: s.transportIn ? {
+              type: s.transportIn.type,
+              searchStatus: s.transportIn.searchStatus,
+              origin: s.transportIn.origin,
+              destination: s.transportIn.destination,
+              date: s.transportIn.date,
             } : null,
+            transportOut: s.transportOut ? {
+              type: s.transportOut.type,
+              searchStatus: s.transportOut.searchStatus,
+            } : null,
+          })),
+        } : null;
+
+        const PLANNER_AGENT_TIMEOUT_MS = 50_000;
+
+        let agentResult: any;
+        let agentError: any;
+
+        try {
+          const invokePromise = supabase.functions.invoke('planner-agent', {
+            body: {
+              message: currentMessage,
+              conversationId: finalConversationId,
+              conversationHistory: conversationHistoryForAgent,
+              previousContext: persistentState?.lastSearch || null,
+              userContext: plannerState?.origin ? {
+                currentCity: plannerState.origin,
+                country: plannerState.originCountry || '',
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              } : null,
+              plannerState: slimState,
+              userPreferences: {
+                budgetLevel: plannerState?.budgetLevel ?? 'mid',
+                pace: plannerState?.pace ?? 'balanced',
+                travelers: plannerState?.travelers ?? { adults: 2, children: 0, infants: 0 },
+              },
+            }
+          });
+
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('PLANNER_AGENT_TIMEOUT')), PLANNER_AGENT_TIMEOUT_MS)
+          );
+
+          const result = await Promise.race([invokePromise, timeoutPromise]);
+          agentResult = result.data;
+          agentError = result.error;
+        } catch (err: any) {
+          if (err?.message === 'PLANNER_AGENT_TIMEOUT') {
+            console.warn('[PLANNER AGENT] Timeout after', PLANNER_AGENT_TIMEOUT_MS, 'ms — falling back to skeleton');
+            setTypingMessage('La búsqueda está tardando. Generando esquema rápido...', conversationIdForThisSearch);
+
+            try {
+              const { data: fallbackData } = await supabase.functions.invoke('travel-itinerary', {
+                body: {
+                  destinations: plannerState.destinations,
+                  days: plannerState.days,
+                  startDate: plannerState.startDate,
+                  endDate: plannerState.endDate,
+                  travelers: plannerState.travelers,
+                  pace: plannerState.pace,
+                  budgetLevel: plannerState.budgetLevel,
+                  generationMode: 'skeleton',
+                }
+              });
+
+              await addMessageViaSupabase({
+                conversation_id: finalConversationId,
+                role: 'assistant' as const,
+                content: { text: 'La búsqueda tardó más de lo esperado. Generé un esquema básico del viaje que podés refinar desde acá.' },
+                meta: {
+                  source: 'planner-agent-fallback',
+                  ...(fallbackData?.data && { plannerData: fallbackData.data }),
+                }
+              });
+            } catch (fallbackErr) {
+              console.error('[PLANNER AGENT] Fallback also failed:', fallbackErr);
+              await addMessageViaSupabase({
+                conversation_id: finalConversationId,
+                role: 'assistant' as const,
+                content: { text: 'La búsqueda tardó más de lo esperado. Por favor, intentá de nuevo con una solicitud más específica.' },
+                meta: { source: 'planner-agent-fallback' }
+              });
+            }
+
+            clearTypingTimers();
+            setIsTyping(false, conversationIdForThisSearch);
+            setIsLoading(false);
+            flowTimer.end('planner-agent timeout-fallback');
+            return;
           }
-        });
+          throw err;
+        }
 
         if (agentError) throw new Error('Planner agent: ' + agentError.message);
 
@@ -705,8 +826,11 @@ const useMessageHandler = (
               source: 'planner-agent',
               messageType: 'missing_info_request',
               missingFields: agentResult.missingFields || [],
+              pendingAction: agentResult.pendingAction ?? null,
+              proposedData: agentResult.proposedData ?? null,
             }
           });
+          clearTypingTimers();
           setIsTyping(false, conversationIdForThisSearch);
           setIsLoading(false);
           flowTimer.end('planner-agent needs-input');
@@ -761,6 +885,7 @@ const useMessageHandler = (
             source: 'planner-agent',
             ...(combinedData && { combinedData }),
             ...(recommendedPlaces && { recommendedPlaces }),
+            ...(agentResult.actionChips?.length > 0 && { actionChips: agentResult.actionChips }),
           }
         });
 
@@ -813,6 +938,117 @@ const useMessageHandler = (
           );
         }
 
+        // === DIRECT INJECT: Agent results → plannerState (suppress auto-refetch hooks) ===
+        if (updatePlannerState && plannerState && (plannerHotels.length > 0 || plannerFlights.length > 0)) {
+          const travelers = plannerState.travelers ?? { adults: 2, children: 0, infants: 0 };
+
+          await updatePlannerState((current) => {
+            const next = { ...current, segments: [...current.segments] };
+
+            // Inject hotels into matching segment
+            if (plannerHotels.length > 0 && rawStructuredData?.hotels?.searchParams) {
+              const sp = rawStructuredData.hotels.searchParams;
+              const targetCity = sp.city || '';
+              const segIdx = next.segments.findIndex(
+                (s: any) => normalizeLocationLabel(s.city) === normalizeLocationLabel(targetCity)
+              );
+              if (segIdx >= 0) {
+                const seg = { ...next.segments[segIdx] };
+                seg.hotelPlan = {
+                  ...seg.hotelPlan,
+                  hotelRecommendations: plannerHotels,
+                  searchStatus: 'ready' as const,
+                  matchStatus: plannerHotels.length === 1 ? 'matched' as const : 'needs_confirmation' as const,
+                  lastSearchSignature: buildPlannerHotelSearchSignature({
+                    city: seg.hotelPlan.city || seg.city,
+                    checkinDate: seg.hotelPlan.checkinDate || seg.startDate || '',
+                    checkoutDate: seg.hotelPlan.checkoutDate || seg.endDate || '',
+                    adults: travelers.adults,
+                    children: travelers.children,
+                    infants: travelers.infants,
+                  }),
+                };
+                next.segments[segIdx] = seg;
+                console.log(`[PLANNER INJECT] Hotels injected for ${seg.city}: ${plannerHotels.length} results`);
+              }
+            }
+
+            // Inject flights into matching segment's transportIn
+            if (plannerFlights.length > 0 && rawStructuredData?.flights?.searchParams) {
+              const sp = rawStructuredData.flights.searchParams;
+              const destCity = sp.destination || '';
+              const originCity = sp.origin || '';
+
+              // Check if this is a return flight (destination = user's origin)
+              const isReturn = current.origin && normalizeLocationLabel(destCity) === normalizeLocationLabel(current.origin);
+
+              if (isReturn) {
+                // Return flight → last segment's transportOut
+                const lastIdx = next.segments.length - 1;
+                if (lastIdx >= 0) {
+                  const seg = { ...next.segments[lastIdx] };
+                  seg.transportOut = {
+                    ...(seg.transportOut || { type: 'flight' as const, summary: '' }),
+                    type: 'flight' as const,
+                    options: plannerFlights,
+                    searchStatus: 'ready' as const,
+                    origin: originCity,
+                    destination: destCity,
+                    lastSearchSignature: buildPlannerTransportSearchSignature({
+                      origin: originCity,
+                      destination: destCity,
+                      departureDate: sp.departureDate || seg.endDate || '',
+                      adults: travelers.adults,
+                      children: travelers.children,
+                      infants: travelers.infants,
+                    }),
+                  };
+                  next.segments[lastIdx] = seg;
+                  console.log(`[PLANNER INJECT] Return flights injected for ${seg.city}: ${plannerFlights.length} options`);
+                }
+              } else {
+                // Inbound/inter-city flight → matching segment's transportIn
+                const segIdx = next.segments.findIndex(
+                  (s: any) => normalizeLocationLabel(s.city) === normalizeLocationLabel(destCity)
+                );
+                if (segIdx >= 0) {
+                  const seg = { ...next.segments[segIdx] };
+                  seg.transportIn = {
+                    ...(seg.transportIn || { type: 'flight' as const, summary: '' }),
+                    type: 'flight' as const,
+                    options: plannerFlights,
+                    searchStatus: 'ready' as const,
+                    origin: originCity,
+                    destination: destCity,
+                    lastSearchSignature: buildPlannerTransportSearchSignature({
+                      origin: originCity,
+                      destination: destCity,
+                      departureDate: sp.departureDate || seg.startDate || '',
+                      adults: travelers.adults,
+                      children: travelers.children,
+                      infants: travelers.infants,
+                    }),
+                  };
+                  next.segments[segIdx] = seg;
+                  console.log(`[PLANNER INJECT] Flights injected for ${seg.city}: ${plannerFlights.length} options`);
+                }
+              }
+            }
+
+            return next;
+          }, 'system');
+        }
+
+        // === STRUCTURAL MODIFICATIONS: reorder, extend, shrink segments ===
+        if (updatePlannerState && plannerState && rawStructuredData?.action) {
+          const mod = rawStructuredData as StructuralModification;
+          if (['reorder_segments', 'extend_segment', 'shrink_segment'].includes(mod.action)) {
+            console.log(`[PLANNER INJECT] Applying structural modification: ${mod.action}`);
+            await updatePlannerState((current) => applyStructuralModification(current, mod), 'system');
+          }
+        }
+
+        clearTypingTimers();
         setIsTyping(false, conversationIdForThisSearch);
         setIsLoading(false);
         flowTimer.end('planner-agent complete', { hasStructuredData: Boolean(combinedData) });

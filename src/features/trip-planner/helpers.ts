@@ -191,6 +191,8 @@ export function mergeEnrichedSegmentState(
       return {
         ...segment,
         ...enrichedSegment,
+        startDate: segment.startDate || enrichedSegment.startDate,
+        endDate: segment.endDate || enrichedSegment.endDate,
         contentStatus: 'ready',
         contentError: undefined,
         location: segment.location || enrichedSegment.location,
@@ -292,7 +294,7 @@ export function mergePlannerFieldUpdate(
 
 // --- Partial state update helpers ---
 
-const HOTEL_TRIGGER_FIELDS = new Set(['startDate', 'endDate', 'days', 'travelers']);
+const HOTEL_TRIGGER_FIELDS = new Set(['startDate', 'endDate', 'days', 'travelers', 'budgetLevel', 'pace']);
 const TRANSPORT_TRIGGER_FIELDS = new Set(['startDate', 'endDate', 'days', 'travelers']);
 
 export function shouldRefetch(
@@ -378,18 +380,61 @@ export function redistributeDaysAcrossSegments(
   segments: PlannerSegment[],
   newTotalDays: number,
   dateSelection?: { startDate?: string; endDate?: string },
+  weights?: Map<string, { weight: number; minDays: number }>,
 ): PlannerSegment[] {
   if (segments.length === 0) return segments;
 
-  // Floor division, remainder to first segments
-  const baseDays = Math.floor(newTotalDays / segments.length);
-  let remainder = newTotalDays - baseDays * segments.length;
+  let dayAllocation: number[];
 
-  const dayAllocation = segments.map(() => {
-    const extra = remainder > 0 ? 1 : 0;
-    remainder -= extra;
-    return baseDays + extra;
-  });
+  if (weights && weights.size > 0) {
+    // Weighted distribution
+    dayAllocation = segments.map(seg => {
+      const w = weights.get(seg.city.toLowerCase());
+      return w ? Math.max(w.minDays, Math.round(newTotalDays * w.weight)) : Math.max(1, Math.round(newTotalDays / segments.length));
+    });
+
+    let sum = dayAllocation.reduce((a, b) => a + b, 0);
+    while (sum > newTotalDays) {
+      // Trim from lowest weight
+      let trimIdx = -1;
+      let minWeight = Infinity;
+      for (let i = 0; i < segments.length; i++) {
+        const w = weights.get(segments[i].city.toLowerCase());
+        const minD = w?.minDays ?? 1;
+        if (dayAllocation[i] > minD && (w?.weight ?? 1) < minWeight) {
+          minWeight = w?.weight ?? 1;
+          trimIdx = i;
+        }
+      }
+      if (trimIdx === -1) break;
+      dayAllocation[trimIdx]--;
+      sum--;
+    }
+    while (sum < newTotalDays) {
+      // Add to highest weight
+      let addIdx = 0;
+      let maxWeight = -1;
+      for (let i = 0; i < segments.length; i++) {
+        const w = weights.get(segments[i].city.toLowerCase());
+        if ((w?.weight ?? 0) > maxWeight) {
+          maxWeight = w?.weight ?? 0;
+          addIdx = i;
+        }
+      }
+      dayAllocation[addIdx]++;
+      sum++;
+    }
+  } else {
+    // Floor division, remainder to first segments
+    const baseDays = Math.floor(newTotalDays / segments.length);
+    let remainder = newTotalDays - baseDays * segments.length;
+
+    dayAllocation = segments.map(() => {
+      const extra = remainder > 0 ? 1 : 0;
+      remainder -= extra;
+      return baseDays + extra;
+    });
+  }
 
   let runningDate = dateSelection?.startDate;
 
@@ -420,4 +465,103 @@ export function redistributeDaysAcrossSegments(
       },
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency limiter
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Structural modifications from planner agent
+// ---------------------------------------------------------------------------
+
+export interface StructuralModification {
+  action: 'reorder_segments' | 'extend_segment' | 'shrink_segment';
+  newSegmentOrder?: string[];      // segment IDs in new order
+  targetSegmentId?: string;
+  deltaNights?: number;            // +1, -1, etc.
+}
+
+export function applyStructuralModification(
+  state: TripPlannerState,
+  mod: StructuralModification,
+): TripPlannerState {
+  const next = { ...state, segments: [...state.segments] };
+
+  if (mod.action === 'reorder_segments' && mod.newSegmentOrder?.length) {
+    const ordered: PlannerSegment[] = [];
+    for (const id of mod.newSegmentOrder) {
+      const seg = next.segments.find(s => s.id === id);
+      if (seg) ordered.push({ ...seg, order: ordered.length });
+    }
+    // Add any segments not in the new order at the end
+    for (const seg of next.segments) {
+      if (!mod.newSegmentOrder.includes(seg.id)) {
+        ordered.push({ ...seg, order: ordered.length });
+      }
+    }
+    next.segments = ordered;
+    next.destinations = ordered.map(s => s.city);
+
+    // Recalculate dates via redistribution
+    if (next.days && next.startDate) {
+      next.segments = redistributeDaysAcrossSegments(
+        next.segments,
+        next.days,
+        { startDate: next.startDate, endDate: next.endDate },
+      );
+    }
+    return next;
+  }
+
+  if ((mod.action === 'extend_segment' || mod.action === 'shrink_segment') && mod.targetSegmentId) {
+    const delta = mod.deltaNights ?? (mod.action === 'extend_segment' ? 1 : -1);
+    const segIdx = next.segments.findIndex(s => s.id === mod.targetSegmentId);
+    if (segIdx < 0) return next;
+
+    const seg = { ...next.segments[segIdx] };
+    const currentNights = seg.nights ?? seg.days.length ?? 1;
+    const newNights = Math.max(1, currentNights + delta);
+
+    // Reindex days for this segment
+    const { days, bufferedDays } = reindexSegmentDays(seg, newNights, seg.startDate);
+    seg.nights = newNights;
+    seg.days = days;
+    seg.bufferedDays = bufferedDays;
+    next.segments[segIdx] = seg;
+
+    // Update total days
+    const totalDays = next.segments.reduce((sum, s) => sum + (s.nights ?? s.days.length ?? 1), 0);
+    next.days = totalDays;
+
+    // Recalculate dates in cascade
+    if (next.startDate) {
+      next.segments = redistributeDaysAcrossSegments(
+        next.segments,
+        totalDays,
+        { startDate: next.startDate },
+      );
+    }
+
+    return next;
+  }
+
+  return next;
+}
+
+export function createConcurrencyLimiter(maxConcurrent: number) {
+  let active = 0;
+  const queue: Array<() => void> = [];
+  return async function limit<T>(fn: () => Promise<T>): Promise<T> {
+    if (active >= maxConcurrent) {
+      await new Promise<void>(resolve => queue.push(resolve));
+    }
+    active++;
+    try {
+      return await fn();
+    } finally {
+      active--;
+      queue.shift()?.();
+    }
+  };
 }

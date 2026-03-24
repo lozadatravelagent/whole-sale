@@ -316,7 +316,7 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
 
       void (async () => {
         const safetyTimeout = setTimeout(() => {
-          console.error('[usePlannerTransport] Safety timeout (45s) — forcing error state');
+          console.error('[usePlannerTransport] Safety timeout (15s) — forcing error state');
           updatePlannerState((current) => ({
             ...current,
             segments: current.segments.map((seg) =>
@@ -332,7 +332,7 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
               }
             ),
           }));
-        }, 45_000);
+        }, 15_000);
 
         try {
           const tasks = pendingSegments.map(

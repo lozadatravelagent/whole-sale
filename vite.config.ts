@@ -141,4 +141,13 @@ export default defineConfig(({ mode }) => ({
     // Aumentar límite de advertencia de chunk size
     chunkSizeWarningLimit: 600,
   },
+  test: {
+    include: ['src/features/trip-planner/__tests__/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text'],
+      include: ['src/features/trip-planner/**/*.ts'],
+      exclude: ['**/*.test.ts', '**/components/**', '**/index.ts'],
+    },
+  },
 }));

@@ -21,7 +21,7 @@ serve(async (req) => {
     { action: 'message', resource: 'planner-agent' },
     async () => {
       try {
-        const { message, conversationId, conversationHistory = [], previousContext = null, userContext = null } = await req.json();
+        const { message, conversationId, conversationHistory = [], previousContext = null, userContext = null, plannerState = null, userPreferences = null } = await req.json();
 
         if (!message) {
           throw new Error('Message is required');
@@ -51,13 +51,18 @@ serve(async (req) => {
           resolvedUserContext = { currentCity: detectedCity, country: detectedCountry };
         }
 
-        const tools = buildToolRegistry(supabase);
+        const tools = buildToolRegistry(supabase, {
+          userMessage: message,
+          budgetLevel: userPreferences?.budgetLevel,
+        });
 
         const context: AgentContext = {
           userMessage: message,
           conversationHistory,
           previousContext,
           userContext: resolvedUserContext,
+          plannerState,
+          userPreferences,
           tools,
         };
 

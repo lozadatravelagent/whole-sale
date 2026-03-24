@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import MessageInput from '@/features/chat/components/MessageInput';
@@ -11,6 +12,7 @@ import MessageItem from '@/features/chat/components/MessageItem';
 import type { LocalHotelData, MessageRow } from '@/features/chat/types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import {
+  AlertTriangle,
   Bot,
   Check,
   ChevronRight,
@@ -21,13 +23,17 @@ import {
   PanelRightClose,
   Plus,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useAssistantResize } from '@/features/trip-planner/hooks/useAssistantResize';
 import { useDragReorder } from '@/features/trip-planner/hooks/useDragReorder';
 import { useSegmentVisibility } from '@/features/trip-planner/hooks/useSegmentVisibility';
 import type {
+  DiscoveryCard,
   PlannerActivity,
+  PlannerBudgetLevel,
   PlannerFieldProvenance,
+  PlannerPace,
   PlannerPlaceCandidate,
   PlannerPlaceCategory,
   PlannerPlaceHotelCandidate,
@@ -35,12 +41,10 @@ import type {
   TripPlannerState,
 } from '../types';
 import {
-  formatBudgetLevel,
   formatDateRange,
   formatDayBlockLabel,
   formatDestinationLabel,
   formatFlexibleMonth,
-  formatPaceLabel,
   getPlannerHotelDisplayId,
   isEurovipsInventoryHotel,
   formatShortDate,
@@ -54,6 +58,10 @@ import TripPlannerMap from './TripPlannerMap';
 import PlannerDateSelectionModal from './PlannerDateSelectionModal';
 import PlannerMapPlaceAssignModal from './PlannerMapPlaceAssignModal';
 import PlannerChatDestinationCards from './PlannerChatDestinationCards';
+import TripListPanel from './TripListPanel';
+import LeadSelector from './LeadSelector';
+import { useAuth } from '@/contexts/AuthContext';
+import { updateTripLeadId } from '../services/tripService';
 import SuggestionChips from '@/features/chat/components/SuggestionChips';
 import usePlannerSuggestions from '../hooks/usePlannerSuggestions';
 import useSuggestionActions from '../hooks/useSuggestionActions';
@@ -79,6 +87,19 @@ const PLANNER_MAP_FILTER_LABELS: Record<PlannerPlaceCategory, string> = {
   museum: 'Museos',
   activity: 'Que hacer',
 };
+
+const BUDGET_OPTIONS: { value: PlannerBudgetLevel; label: string; icon: string }[] = [
+  { value: 'low', label: 'Bajo', icon: '$' },
+  { value: 'mid', label: 'Medio', icon: '$$' },
+  { value: 'high', label: 'Alto', icon: '$$$' },
+  { value: 'luxury', label: 'Lujo', icon: '$$$$' },
+];
+
+const PACE_OPTIONS: { value: PlannerPace; label: string; icon: string }[] = [
+  { value: 'relaxed', label: 'Relajado', icon: '\u{1F9D8}' },
+  { value: 'balanced', label: 'Equilibrado', icon: '\u{2696}\u{FE0F}' },
+  { value: 'fast', label: 'Intenso', icon: '\u{26A1}' },
+];
 
 type PlannerRailTab = 'hotels' | 'transport';
 
@@ -219,7 +240,9 @@ export default function TripPlannerWorkspace({
   } = useSegmentVisibility(plannerState);
 
   const [newDestination, setNewDestination] = useState('');
-  const [activeHeaderPanel, setActiveHeaderPanel] = useState<'destinations' | null>(null);
+  const [activeHeaderPanel, setActiveHeaderPanel] = useState<'destinations' | 'trips' | null>(null);
+  const [linkedLead, setLinkedLead] = useState<{ id: string; name: string } | null>(null);
+  const { user } = useAuth();
   const [mobileTab, setMobileTab] = useState('plan');
   const [pendingPlannerDateRequest, setPendingPlannerDateRequest] = useState<ParsedTravelRequest | null>(null);
   const [pendingMapPlaceAssignment, setPendingMapPlaceAssignment] = useState<{
@@ -281,6 +304,14 @@ export default function TripPlannerWorkspace({
 
   const isAssumed = useCallback((field: keyof PlannerFieldProvenance) => plannerState?.fieldProvenance?.[field] === 'assumed', [plannerState?.fieldProvenance]);
   const fieldIsSyncing = useCallback((field: keyof PlannerSyncingFields) => Boolean(plannerState?.syncingFields?.[field]), [plannerState?.syncingFields]);
+  const hasAssumedFields = useMemo(() => {
+    const fp = plannerState?.fieldProvenance;
+    if (!fp) return false;
+    return Object.values(fp).some(v => v === 'assumed');
+  }, [plannerState?.fieldProvenance]);
+  const [dismissedBannerId, setDismissedBannerId] = useState<string | null>(null);
+  const currentBannerId = plannerState?.id || null;
+  const showAssumedBanner = hasAssumedFields && !isDraftPlanner && dismissedBannerId !== currentBannerId;
   const plannerDateSummary = plannerState?.isFlexibleDates
     ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
     : formatDateRange(plannerState?.startDate, plannerState?.endDate);
@@ -459,6 +490,37 @@ export default function TripPlannerWorkspace({
     segmentCity: string;
   }) => {
     onAddPlaceToFirstAvailableSlot(rp);
+  }, [onAddPlaceToFirstAvailableSlot]);
+
+  const agentDiscoveryCards = useMemo((): DiscoveryCard[] => {
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+    if (!lastAssistant) return [];
+    const meta = (lastAssistant as Record<string, unknown>).meta as Record<string, unknown> | undefined;
+    const places = meta?.recommendedPlaces as Array<Record<string, unknown>> | undefined;
+    if (!places || places.length === 0) return [];
+    return places.slice(0, 6).map(rp => {
+      const cat = ((rp.category as string) || '').toLowerCase();
+      let type: DiscoveryCard['type'] = 'activity';
+      if (cat.includes('restaurant') || cat.includes('food') || cat.includes('cafe')) type = 'restaurant';
+      else if (cat.includes('experience') || cat.includes('tour')) type = 'experience';
+      return {
+        label: (rp.name as string) || '',
+        type,
+        city: (rp.segmentCity as string) || '',
+        slot: ((rp.suggestedSlot as string) || 'afternoon') as DiscoveryCard['slot'],
+        description: rp.description as string | undefined,
+      };
+    });
+  }, [messages]);
+
+  const handleDiscoveryAdd = useCallback((card: DiscoveryCard) => {
+    onAddPlaceToFirstAvailableSlot({
+      name: card.label,
+      category: card.type,
+      suggestedSlot: card.slot,
+      segmentCity: card.city,
+      description: card.description,
+    });
   }, [onAddPlaceToFirstAvailableSlot]);
 
   const handlePlaceDetailsLoaded = useCallback((details: import('../services/placesService').PlaceDetails) => {
@@ -876,6 +938,33 @@ export default function TripPlannerWorkspace({
 		                        <ChevronRight className={`h-4 w-4 transition ${activeHeaderPanel === 'destinations' ? 'rotate-90' : ''}`} />
 		                      </button>
 
+		                      <button
+		                        type="button"
+		                        onClick={() => setActiveHeaderPanel(activeHeaderPanel === 'trips' ? null : 'trips')}
+		                        className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium transition whitespace-nowrap ${activeHeaderPanel === 'trips' ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-muted'}`}
+		                      >
+		                        🗺️ Trips
+		                      </button>
+
+		                      <div className="shrink-0">
+		                        <LeadSelector
+		                          value={linkedLead?.id ?? null}
+		                          leadName={linkedLead?.name}
+		                          onSelect={async (leadId, leadName) => {
+		                            setLinkedLead({ id: leadId, name: leadName });
+		                            if (selectedConversation && user?.id) {
+		                              await updateTripLeadId(selectedConversation, leadId, user.id);
+		                            }
+		                          }}
+		                          onClear={async () => {
+		                            setLinkedLead(null);
+		                            if (selectedConversation && user?.id) {
+		                              await updateTripLeadId(selectedConversation, null, user.id);
+		                            }
+		                          }}
+		                        />
+		                      </div>
+
 		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
 
 		                      <TooltipProvider delayDuration={300}>
@@ -932,23 +1021,24 @@ export default function TripPlannerWorkspace({
 		                      <TooltipProvider delayDuration={300}>
 		                        <Tooltip>
 		                          <TooltipTrigger asChild>
-		                            <div className={`relative shrink-0 ${isAssumed('budgetLevel') ? 'rounded-full ring-1 ring-amber-300/60' : ''}`}>
+		                            <div className={`relative flex shrink-0 items-center gap-1 rounded-full p-0.5 ${isAssumed('budgetLevel') ? 'ring-1 ring-amber-300/60' : ''}`}>
 		                              {fieldIsSyncing('budgetLevel') ? <Loader2 className="absolute -top-1 -right-1 z-10 h-3 w-3 animate-spin text-muted-foreground" /> : isAssumed('budgetLevel') && <span className="absolute -top-0.5 -right-0.5 z-10 h-2 w-2 animate-pulse rounded-full bg-amber-400" />}
-		                              <Select
-		                                value={plannerState.budgetLevel || 'mid'}
-		                                disabled={isDraftPlanner}
-		                                onValueChange={(value) => void onUpdateTripField('budgetLevel', value as TripPlannerState['budgetLevel'])}
-		                              >
-		                                <SelectTrigger className="h-auto w-[6.75rem] rounded-full border-0 bg-transparent px-4 py-2 text-center text-sm font-medium text-foreground shadow-none focus:ring-0">
-		                                  <SelectValue placeholder="Presupuesto" />
-		                                </SelectTrigger>
-		                                <SelectContent>
-		                                  <SelectItem value="low">{formatBudgetLevel('low')}</SelectItem>
-		                                  <SelectItem value="mid">{formatBudgetLevel('mid')}</SelectItem>
-		                                  <SelectItem value="high">{formatBudgetLevel('high')}</SelectItem>
-		                                  <SelectItem value="luxury">{formatBudgetLevel('luxury')}</SelectItem>
-		                                </SelectContent>
-		                              </Select>
+		                              {BUDGET_OPTIONS.map((opt) => (
+		                                <button
+		                                  key={opt.value}
+		                                  type="button"
+		                                  disabled={isDraftPlanner}
+		                                  onClick={() => void onUpdateTripField('budgetLevel', opt.value)}
+		                                  className={`rounded-full px-2.5 py-1.5 text-xs font-medium transition whitespace-nowrap ${
+		                                    (plannerState.budgetLevel || 'mid') === opt.value
+		                                      ? 'bg-foreground text-background shadow-sm'
+		                                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+		                                  } ${isDraftPlanner ? 'cursor-default opacity-80' : ''}`}
+		                                >
+		                                  <span className="mr-0.5">{opt.icon}</span>
+		                                  <span className="hidden @lg:inline">{opt.label}</span>
+		                                </button>
+		                              ))}
 		                            </div>
 		                          </TooltipTrigger>
 		                          {isAssumed('budgetLevel') && <TooltipContent>Valor sugerido — hacé clic para modificar</TooltipContent>}
@@ -960,27 +1050,60 @@ export default function TripPlannerWorkspace({
 		                      <TooltipProvider delayDuration={300}>
 		                        <Tooltip>
 		                          <TooltipTrigger asChild>
-		                            <div className={`relative shrink-0 ${isAssumed('pace') ? 'rounded-full ring-1 ring-amber-300/60' : ''}`}>
+		                            <div className={`relative flex shrink-0 items-center gap-1 rounded-full p-0.5 ${isAssumed('pace') ? 'ring-1 ring-amber-300/60' : ''}`}>
 		                              {fieldIsSyncing('pace') ? <Loader2 className="absolute -top-1 -right-1 z-10 h-3 w-3 animate-spin text-muted-foreground" /> : isAssumed('pace') && <span className="absolute -top-0.5 -right-0.5 z-10 h-2 w-2 animate-pulse rounded-full bg-amber-400" />}
-		                              <Select
-		                                value={plannerState.pace || 'balanced'}
-		                          disabled={isDraftPlanner}
-		                          onValueChange={(value) => void onUpdateTripField('pace', value as TripPlannerState['pace'])}
-		                        >
-		                          <SelectTrigger className="h-auto w-[8rem] rounded-full border-0 bg-transparent px-4 py-2 text-center text-sm font-medium text-foreground shadow-none focus:ring-0">
-		                            <SelectValue placeholder="Ritmo" />
-		                          </SelectTrigger>
-		                          <SelectContent>
-		                            <SelectItem value="relaxed">{formatPaceLabel('relaxed')}</SelectItem>
-		                            <SelectItem value="balanced">{formatPaceLabel('balanced')}</SelectItem>
-		                            <SelectItem value="fast">{formatPaceLabel('fast')}</SelectItem>
-		                          </SelectContent>
-		                        </Select>
+		                              {PACE_OPTIONS.map((opt) => (
+		                                <button
+		                                  key={opt.value}
+		                                  type="button"
+		                                  disabled={isDraftPlanner}
+		                                  onClick={() => void onUpdateTripField('pace', opt.value)}
+		                                  className={`rounded-full px-2.5 py-1.5 text-xs font-medium transition whitespace-nowrap ${
+		                                    (plannerState.pace || 'balanced') === opt.value
+		                                      ? 'bg-foreground text-background shadow-sm'
+		                                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+		                                  } ${isDraftPlanner ? 'cursor-default opacity-80' : ''}`}
+		                                >
+		                                  <span className="mr-0.5">{opt.icon}</span>
+		                                  <span className="hidden @lg:inline">{opt.label}</span>
+		                                </button>
+		                              ))}
 		                            </div>
 		                          </TooltipTrigger>
 		                          {isAssumed('pace') && <TooltipContent>Valor sugerido — hacé clic para modificar</TooltipContent>}
 		                        </Tooltip>
 		                      </TooltipProvider>
+		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
+
+		                      <TooltipProvider delayDuration={300}>
+		                        <Tooltip>
+		                          <TooltipTrigger asChild>
+		                            <div className={`relative shrink-0 rounded-full px-4 py-2 text-sm font-medium text-foreground whitespace-nowrap ${isAssumed('travelers') ? 'ring-1 ring-amber-300/60' : ''}`}>
+		                              {fieldIsSyncing('travelers') ? <Loader2 className="absolute -top-1 -right-1 z-10 h-3 w-3 animate-spin text-muted-foreground" /> : isAssumed('travelers') && <span className="absolute -top-0.5 -right-0.5 z-10 h-2 w-2 animate-pulse rounded-full bg-amber-400" />}
+		                              <span>{plannerState.travelers.adults} adulto{plannerState.travelers.adults !== 1 ? 's' : ''}{plannerState.travelers.children > 0 ? `, ${plannerState.travelers.children} niño${plannerState.travelers.children !== 1 ? 's' : ''}` : ''}{plannerState.travelers.infants > 0 ? `, ${plannerState.travelers.infants} bebé${plannerState.travelers.infants !== 1 ? 's' : ''}` : ''}</span>
+		                            </div>
+		                          </TooltipTrigger>
+		                          {isAssumed('travelers') && <TooltipContent>Valor sugerido — hacé clic para modificar</TooltipContent>}
+		                        </Tooltip>
+		                      </TooltipProvider>
+
+		                      {plannerState.origin && (
+		                        <>
+		                          <div className="mx-1 hidden h-6 w-px bg-border/80 xl:block" />
+		                          <TooltipProvider delayDuration={300}>
+		                            <Tooltip>
+		                              <TooltipTrigger asChild>
+		                                <div className={`relative shrink-0 rounded-full px-4 py-2 text-sm font-medium text-foreground whitespace-nowrap ${isAssumed('origin') ? 'ring-1 ring-amber-300/60' : ''}`}>
+		                                  {isAssumed('origin') && <span className="absolute -top-0.5 -right-0.5 z-10 h-2 w-2 animate-pulse rounded-full bg-amber-400" />}
+		                                  <span>Desde {plannerState.origin}</span>
+		                                </div>
+		                              </TooltipTrigger>
+		                              {isAssumed('origin') && <TooltipContent>Valor sugerido — hacé clic para modificar</TooltipContent>}
+		                            </Tooltip>
+		                          </TooltipProvider>
+		                        </>
+		                      )}
+
 		                      <div className="mx-1 hidden h-6 w-px bg-border/80 xl:ml-auto xl:block" />
 		                      <button
 		                        type="button"
@@ -994,6 +1117,38 @@ export default function TripPlannerWorkspace({
 		                      </button>
 		                    </div>
 	                </div>
+
+	                {showAssumedBanner && (
+	                  <Alert className="border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20">
+	                    <AlertDescription className="flex items-center justify-between gap-2 text-xs text-amber-800 dark:text-amber-200">
+	                      <span>Algunos valores fueron estimados. Los campos con borde naranja son sugeridos — hacé clic para confirmarlos.</span>
+	                      <button type="button" onClick={() => setDismissedBannerId(currentBannerId)} className="shrink-0 text-amber-600 hover:text-amber-800 dark:text-amber-400">
+	                        <X className="h-3.5 w-3.5" />
+	                      </button>
+	                    </AlertDescription>
+	                  </Alert>
+	                )}
+
+	                {plannerState?.seasonalityAlert && !isDraftPlanner && (
+	                  <Alert className="border-orange-300/60 bg-orange-50/50 dark:bg-orange-950/20">
+	                    <AlertDescription className="flex items-center gap-2 text-xs text-orange-800 dark:text-orange-200">
+	                      <AlertTriangle className="h-4 w-4 shrink-0" />
+	                      <span>{plannerState.seasonalityAlert}</span>
+	                    </AlertDescription>
+	                  </Alert>
+	                )}
+
+	                {activeHeaderPanel === 'trips' && (
+	                  <div className="planner-panel-fade-in rounded-2xl border bg-muted/20 max-h-[400px] overflow-hidden">
+	                    <TripListPanel
+	                      onOpenTrip={(tripId) => {
+	                        console.log('[PLANNER] Open trip:', tripId);
+	                        setActiveHeaderPanel(null);
+	                      }}
+	                      onClose={() => setActiveHeaderPanel(null)}
+	                    />
+	                  </div>
+	                )}
 
 	                {activeHeaderPanel === 'destinations' && (
 	                  <div className="planner-panel-fade-in rounded-2xl border bg-muted/20 p-4 md:p-5">
@@ -1577,6 +1732,8 @@ export default function TripPlannerWorkspace({
         && placeDetailSegmentId
         && plannerState?.segments.find((s) => s.id === placeDetailSegmentId)?.days.length
       )}
+      isLastSegment={activeRailSegmentIndex >= 0 && activeRailSegmentIndex === (plannerState?.segments.length ?? 0) - 1}
+      origin={plannerState?.origin}
     />
   ) : null;
 
@@ -1666,11 +1823,13 @@ export default function TripPlannerWorkspace({
               </div>
             );
           })}
-          {!isTyping && plannerState && !isDraftPlanner && suggestions.length > 0 && (
+          {!isTyping && plannerState && !isDraftPlanner && (suggestions.length > 0 || agentDiscoveryCards.length > 0) && (
             <SuggestionChips
               suggestions={suggestions}
               onSuggestionClick={handleSuggestionClick}
               loadingAction={loadingActionId}
+              discoveryCards={agentDiscoveryCards}
+              onDiscoveryAdd={handleDiscoveryAdd}
             />
           )}
           {!isTyping && plannerState && !isDraftPlanner && (

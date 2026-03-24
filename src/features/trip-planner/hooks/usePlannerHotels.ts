@@ -349,7 +349,7 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
 
       void (async () => {
         const safetyTimeout = setTimeout(() => {
-          console.error('[usePlannerHotels] Safety timeout (45s) — forcing error state');
+          console.error('[usePlannerHotels] Safety timeout (15s) — forcing error state');
           updatePlannerState((current) => ({
             ...current,
             segments: current.segments.map((seg) =>
@@ -365,7 +365,7 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
               }
             ),
           }));
-        }, 45_000);
+        }, 15_000);
 
         try {
           const tasks = pendingSegments.map(

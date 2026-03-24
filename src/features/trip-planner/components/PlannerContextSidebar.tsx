@@ -55,6 +55,8 @@ interface PlannerContextSidebarProps {
   onBackFromPlaceDetail?: () => void;
   onAddPlaceToItinerary?: () => void;
   canAddPlace?: boolean;
+  isLastSegment?: boolean;
+  origin?: string;
 }
 
 function getSegmentHeroImage(segment: PlannerSegment, headerImageUrl?: string): string | undefined {
@@ -104,6 +106,8 @@ function PlannerContextSidebarContent({
   onBackFromPlaceDetail,
   onAddPlaceToItinerary,
   canAddPlace,
+  isLastSegment,
+  origin,
 }: Omit<PlannerContextSidebarProps, 'open' | 'onOpenChange'>) {
   if (!segment) {
     return (
@@ -275,6 +279,8 @@ function PlannerContextSidebarContent({
               disabled={disabled}
               statusText={transportStatusText}
               onSelectTransportOption={onSelectTransportOption}
+              isLastSegment={isLastSegment}
+              origin={origin}
             />
           </TabsContent>
         </div>

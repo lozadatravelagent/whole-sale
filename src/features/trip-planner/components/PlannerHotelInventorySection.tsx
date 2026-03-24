@@ -15,6 +15,7 @@ import {
   isEurovipsInventoryHotel,
 } from '../utils';
 import PlannerCircularLoadingState from './PlannerCircularLoadingState';
+import PlannerHotelLoadingState from './PlannerHotelLoadingState';
 import PlannerHotelMatchPanel from './PlannerHotelMatchPanel';
 
 const DISTANCE_TAG_CLASSES = {
@@ -116,10 +117,7 @@ export default function PlannerHotelInventorySection({
 
           {segment.hotelPlan.searchStatus === 'loading' ? (
             <div className="planner-panel-fade-in">
-              <PlannerCircularLoadingState
-                label={`Buscando hoteles en ${segment.city}`}
-                sublabel="Estamos consultando opciones reales para este destino."
-              />
+              <PlannerHotelLoadingState />
             </div>
           ) : (
             <div className="planner-panel-fade-in space-y-2">

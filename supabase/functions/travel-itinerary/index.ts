@@ -1249,7 +1249,7 @@ async function repairPlannerJsonWithOpenAi(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1',
       messages: [
         {
           role: 'system',
@@ -1296,7 +1296,7 @@ async function requestPlannerCompletion(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1',
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -1469,7 +1469,7 @@ serve(async (req) => {
         let openaiUsage = openaiData?.usage || {};
         let openaiFinishReason = openaiData?.choices?.[0]?.finish_reason ?? null;
         const callOpenAiMs = timer.step('call OpenAI', openaiFetchStart, {
-          model: 'gpt-4o-mini',
+          model: 'gpt-4.1',
           maxCompletionTokens,
           finishReason: openaiFinishReason,
           promptTokens: openaiUsage.prompt_tokens ?? null,
@@ -1506,7 +1506,7 @@ serve(async (req) => {
 
         const openaiPayloadStart = nowMs();
         const parseOpenAiPayloadMs = timer.step('parse OpenAI payload', openaiPayloadStart, {
-          model: openaiData?.model ?? 'gpt-4o-mini',
+          model: openaiData?.model ?? 'gpt-4.1',
           promptTokens: openaiUsage.prompt_tokens ?? null,
           completionTokens: openaiUsage.completion_tokens ?? null,
           totalTokens: openaiUsage.total_tokens ?? null,
@@ -1627,7 +1627,7 @@ serve(async (req) => {
             normalizePlannerMs,
           },
           openai: {
-            model: openaiData?.model ?? 'gpt-4o-mini',
+            model: openaiData?.model ?? 'gpt-4.1',
             promptTokens: openaiUsage.prompt_tokens ?? null,
             completionTokens: openaiUsage.completion_tokens ?? null,
             totalTokens: openaiUsage.total_tokens ?? null,

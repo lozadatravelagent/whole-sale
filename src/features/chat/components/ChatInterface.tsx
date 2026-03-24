@@ -3,7 +3,10 @@ import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageItem from './MessageItem';
 import TypingIndicator from './TypingIndicator';
-import type { MessageRow } from '../types/chat';
+import PlannerAgentInputPrompt from '@/features/trip-planner/components/PlannerAgentInputPrompt';
+import PlannerChatHotelCard from '@/features/trip-planner/components/PlannerChatHotelCard';
+import PlannerChatFlightCard from '@/features/trip-planner/components/PlannerChatFlightCard';
+import type { MessageRow, LocalHotelData, FlightData } from '../types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import { ArrowUpFromLine } from 'lucide-react';
 
@@ -288,7 +291,134 @@ const ChatInterface = React.memo(({
                   onPdfGenerated={onPdfGenerated}
                   onGoToPlanner={onGoToPlanner}
                 />
-              ))}</>
+              ))}
+              {/* Guided input for planner-agent missing info requests */}
+              {(() => {
+                const lastMsg = visibleMessages[visibleMessages.length - 1];
+                const meta = lastMsg?.meta as any;
+                if (meta?.messageType === 'missing_info_request' && meta?.missingFields?.length > 0 && !isLoading) {
+                  return (
+                    <div className="px-4 py-2">
+                      <PlannerAgentInputPrompt
+                        missingFields={meta.missingFields}
+                        pendingAction={meta.pendingAction}
+                        onSubmit={(text) => {
+                          onMessageChange(text);
+                          setTimeout(() => onSendMessage(), 50);
+                        }}
+                      />
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {/* Inline hotel/flight cards from planner-agent */}
+              {(() => {
+                const lastMsg = visibleMessages[visibleMessages.length - 1];
+                const meta = lastMsg?.meta as any;
+                if (meta?.source === 'planner-agent' && meta?.combinedData && lastMsg?.role === 'assistant' && !isLoading) {
+                  const hotels = (meta.combinedData.hotels as LocalHotelData[] | undefined)?.slice(0, 3);
+                  const flights = (meta.combinedData.flights as FlightData[] | undefined)?.slice(0, 3);
+                  const city = meta.combinedData.searchCity || '';
+                  const travelers = meta.combinedData.travelers?.adults ?? 2;
+                  const hasCards = (hotels?.length ?? 0) > 0 || (flights?.length ?? 0) > 0;
+
+                  if (!hasCards) return null;
+
+                  return (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      {hotels && hotels.length > 0 && (
+                        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory" style={{ scrollbarWidth: 'none' }}>
+                          {hotels.map((hotel, i) => (
+                            <PlannerChatHotelCard
+                              key={hotel.hotel_id || hotel.name || i}
+                              hotel={hotel}
+                              segmentCity={city || hotel.city}
+                              onAdd={(h) => {
+                                onMessageChange(`Agregá el hotel ${h.name} al itinerario`);
+                                setTimeout(() => onSendMessage(), 50);
+                              }}
+                              onViewDetails={(h) => {
+                                onMessageChange(`Contame más sobre el hotel ${h.name}`);
+                                setTimeout(() => onSendMessage(), 50);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {flights && flights.length > 0 && (
+                        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory" style={{ scrollbarWidth: 'none' }}>
+                          {flights.map((flight, i) => (
+                            <PlannerChatFlightCard
+                              key={flight.id || i}
+                              flight={flight}
+                              travelers={travelers}
+                              onSelect={(f) => {
+                                onMessageChange(`Seleccioná el vuelo de ${f.airline?.name || 'la aerolínea'}`);
+                                setTimeout(() => onSendMessage(), 50);
+                              }}
+                              onViewAlternatives={() => {
+                                onMessageChange('Mostrá más opciones de vuelo');
+                                setTimeout(() => onSendMessage(), 50);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {/* Gaps indicator after planner-agent itinerary */}
+              {(() => {
+                const lastMsg = visibleMessages[visibleMessages.length - 1];
+                const meta = lastMsg?.meta as any;
+                if (
+                  meta?.source === 'planner-agent' &&
+                  !meta?.messageType &&
+                  meta?.recommendedPlaces &&
+                  !meta?.combinedData &&
+                  lastMsg?.role === 'assistant' &&
+                  !isLoading
+                ) {
+                  return (
+                    <div className="mx-4 mb-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 animate-in fade-in duration-300">
+                      <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Para completar este viaje:</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                        <span>✈️ Vuelos sin buscar</span>
+                        <span>🏨 Hoteles sin buscar</span>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {/* Action chips from planner-agent */}
+              {(() => {
+                const lastMsg = visibleMessages[visibleMessages.length - 1];
+                const meta = lastMsg?.meta as any;
+                if (meta?.actionChips?.length > 0 && lastMsg?.role === 'assistant' && !isLoading && !isTyping) {
+                  return (
+                    <div className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      {(meta.actionChips as Array<{ label: string; message: string }>).map((chip: { label: string; message: string }, i: number) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            onMessageChange(chip.message);
+                            setTimeout(() => onSendMessage(), 50);
+                          }}
+                          className="text-sm px-3 py-1.5 rounded-full border border-border bg-background hover:bg-muted transition-colors"
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </>
           )}
 
           {isTyping && (

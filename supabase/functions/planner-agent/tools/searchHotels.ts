@@ -1,8 +1,10 @@
 import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { resolveHotelCode } from "../../_shared/cityCodeResolver.ts";
+import { detectBudgetFromText, getBudgetConstraints, type BudgetLevel } from "../../_shared/budgetHotelMap.ts";
 import type { ToolDefinition, ToolResult } from "../types.ts";
+import type { AgentBudgetContext } from "./registry.ts";
 
-export function createSearchHotelsTool(supabase: SupabaseClient): ToolDefinition {
+export function createSearchHotelsTool(supabase: SupabaseClient, budgetContext?: AgentBudgetContext): ToolDefinition {
   return {
     name: 'search_hotels',
     description: 'Busca hoteles disponibles en una ciudad. Requiere ciudad, fecha de check-in, fecha de check-out y número de adultos. Opcionalmente acepta niños, edades de niños, nombre de hotel, cadenas hoteleras y régimen de comidas.',
@@ -36,6 +38,18 @@ export function createSearchHotelsTool(supabase: SupabaseClient): ToolDefinition
         const hotelName = params.hotelName as string | undefined;
         const hotelChains = params.hotelChains as string[] | undefined;
         const mealPlan = params.mealPlan as string | undefined;
+
+        // Resolve budget: user message NLP > userPreferences > 'mid'
+        const detected = budgetContext?.userMessage
+          ? detectBudgetFromText(budgetContext.userMessage)
+          : { level: null, maxPricePerNight: null };
+        const effectiveBudgetLevel: BudgetLevel = (detected.level
+          ?? budgetContext?.budgetLevel
+          ?? 'mid') as BudgetLevel;
+        const constraints = getBudgetConstraints(effectiveBudgetLevel);
+        const effectiveMaxPrice = detected.maxPricePerNight ?? constraints.maxPricePerNight;
+
+        console.log(`[PLANNER AGENT] Budget: ${effectiveBudgetLevel} (${constraints.label}), maxPrice: $${effectiveMaxPrice}/night, maxStars: ${constraints.maxStars}`);
 
         // Resolve hotel city code
         const cityCode = resolveHotelCode(city);
@@ -74,11 +88,11 @@ export function createSearchHotelsTool(supabase: SupabaseClient): ToolDefinition
         const rawHotels = data?.results || data?.data || data || [];
         const hotels = Array.isArray(rawHotels) ? rawHotels : [];
 
-        // Extract top 5 hotels summary
+        // Extract hotel summaries with budget filtering
         interface RawHotelRoom { total_price?: number; TotalPrice?: number; currency?: string; Currency?: string; meal_plan?: string; MealPlan?: string; room_type?: string; RoomType?: string }
         interface RawHotel { hotel_name?: string; HotelName?: string; name?: string; category?: number; Category?: number; stars?: number; city?: string; City?: string; rooms?: RawHotelRoom[]; Rooms?: RawHotelRoom[] }
 
-        const topHotels = (hotels as RawHotel[]).slice(0, 5).map((h, i) => {
+        const allMapped = (hotels as RawHotel[]).map((h, i) => {
           const rooms = h.rooms || h.Rooms || [];
           const cheapestRoom = rooms.reduce<RawHotelRoom | undefined>((min, r) => {
             const price = r.total_price || r.TotalPrice || Infinity;
@@ -86,27 +100,77 @@ export function createSearchHotelsTool(supabase: SupabaseClient): ToolDefinition
             return price < minPrice ? r : min;
           }, rooms[0]);
 
+          const totalPrice = cheapestRoom?.total_price || cheapestRoom?.TotalPrice || 0;
+          const checkin = new Date(checkinDate);
+          const checkout = new Date(checkoutDate);
+          const nights = Math.max(1, Math.round((checkout.getTime() - checkin.getTime()) / 86400000));
+          const pricePerNight = totalPrice > 0 ? Math.round(totalPrice / nights) : 0;
+          const stars = h.category || h.Category || h.stars || 0;
+
           return {
             index: i + 1,
             name: h.hotel_name || h.HotelName || h.name || 'N/A',
-            category: h.category || h.Category || h.stars || 0,
+            category: stars,
             city: h.city || h.City || city,
-            price: cheapestRoom?.total_price || cheapestRoom?.TotalPrice || 0,
+            price: totalPrice,
+            pricePerNight,
             currency: cheapestRoom?.currency || cheapestRoom?.Currency || 'USD',
             mealPlan: cheapestRoom?.meal_plan || cheapestRoom?.MealPlan || 'N/A',
             roomType: cheapestRoom?.room_type || cheapestRoom?.RoomType || 'N/A',
+            _raw: h,
           };
         });
 
-        console.log(`[PLANNER AGENT] Found ${hotels.length} hotels, returning top ${topHotels.length}`);
+        // Filter by budget constraints
+        let filtered = allMapped.filter(h => {
+          if (h.pricePerNight > 0 && h.pricePerNight > effectiveMaxPrice) return false;
+          if (h.category > 0 && h.category > constraints.maxStars) return false;
+          return true;
+        });
+
+        // If filtering left no results, fall back to all results
+        const budgetFiltered = filtered.length > 0;
+        if (!budgetFiltered) {
+          console.warn(`[PLANNER AGENT] Budget filter (${effectiveBudgetLevel}) returned 0 results, using unfiltered`);
+          filtered = allMapped;
+        }
+
+        // Rank: best value (stars/price ratio), then by price ascending
+        const ranked = filtered
+          .sort((a, b) => {
+            if (a.pricePerNight > 0 && b.pricePerNight > 0) {
+              const valueA = (a.category || 3) / a.pricePerNight;
+              const valueB = (b.category || 3) / b.pricePerNight;
+              return valueB - valueA;
+            }
+            return (a.pricePerNight || 999) - (b.pricePerNight || 999);
+          })
+          .slice(0, 5);
+
+        // Build clean summaries (strip _raw for LLM)
+        const topHotels = ranked.map(({ _raw: _, ...rest }, i) => ({ ...rest, index: i + 1 }));
+        const rawSlice = ranked.map(h => h._raw);
+
+        console.log(`[PLANNER AGENT] Found ${hotels.length} hotels, budget-filtered: ${budgetFiltered}, returning top ${topHotels.length}`);
 
         return {
           success: true,
           data: {
             totalFound: hotels.length,
             hotels: topHotels,
-            searchParams: { city, cityCode, checkinDate, checkoutDate, adults, children, infants },
-            rawHotels: hotels.slice(0, 5),
+            searchParams: {
+              city,
+              cityCode,
+              checkinDate,
+              checkoutDate,
+              adults,
+              children,
+              infants,
+              budgetLevel: effectiveBudgetLevel,
+              budgetLabel: constraints.label,
+              maxPricePerNight: effectiveMaxPrice,
+            },
+            rawHotels: rawSlice,
           }
         };
       } catch (err: unknown) {

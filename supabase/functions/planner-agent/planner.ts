@@ -9,6 +9,8 @@ interface PlannerInput {
   previousSteps: AgentStep[];
   tools: ToolDefinition[];
   userContext?: { currentCity: string; country?: string; timezone?: string } | null;
+  plannerState?: Record<string, unknown> | null;
+  userPreferences?: { budgetLevel?: string; pace?: string; travelers?: { adults: number; children: number; infants: number } } | null;
 }
 
 function buildPreviousStepsMessages(steps: AgentStep[]): Array<Record<string, unknown>> {
@@ -50,15 +52,20 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
   if (!openaiApiKey) throw new Error('OPENAI_API_KEY not configured');
 
   const currentDate = new Date().toISOString().split('T')[0];
-  const systemPrompt = buildSystemPrompt(currentDate);
+  const systemPrompt = buildSystemPrompt(
+    currentDate,
+    input.plannerState as any,
+    input.userPreferences,
+    input.previousContext,
+  );
 
   // Build messages array
   const messages: Array<Record<string, unknown>> = [
     { role: 'system', content: systemPrompt }
   ];
 
-  // Add conversation history (last 10 messages for context)
-  const recentHistory = input.conversationHistory.slice(-10);
+  // Add conversation history (last 20 messages for richer context)
+  const recentHistory = input.conversationHistory.slice(-20);
   for (const msg of recentHistory) {
     messages.push({ role: msg.role, content: msg.content });
   }
@@ -66,14 +73,10 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
   // Add previous steps as tool_calls + tool results
   messages.push(...buildPreviousStepsMessages(input.previousSteps));
 
-  // Add previous context hint if available
+  // User context hints are now in the system prompt via plannerState/previousContext
   let userContent = input.userMessage;
-  if (input.previousContext && Object.keys(input.previousContext).length > 0) {
-    userContent = `[Contexto previo de búsquedas anteriores: ${JSON.stringify(input.previousContext)}]\n\n${input.userMessage}`;
-  }
-
   if (input.userContext?.currentCity) {
-    userContent = `[Ubicación del usuario: ${input.userContext.currentCity}, ${input.userContext.country || ''}. Si no se especifica un origen, usá ${input.userContext.currentCity} como punto de partida para vuelos.]\n\n${userContent}`;
+    userContent = `[Ubicación del usuario: ${input.userContext.currentCity}, ${input.userContext.country || ''}]\n\n${userContent}`;
   }
 
   // Only add user message if there are no previous steps (to avoid duplication)
@@ -92,12 +95,12 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4.1-mini',
+      model: 'gpt-4.1',
       messages,
       tools: toolDefinitions,
       tool_choice: 'auto',
       temperature: 0.1,
-      max_tokens: 1500,
+      max_tokens: 2500,
     })
   });
 
@@ -134,6 +137,8 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
         action: 'ask_user',
         response: askUserCall.arguments.question,
         missingFields: askUserCall.arguments.missingFields || [],
+        pendingAction: (askUserCall.arguments.pendingAction as string) ?? null,
+        proposedData: (askUserCall.arguments.proposedData as Record<string, unknown>) ?? null,
       };
     }
 

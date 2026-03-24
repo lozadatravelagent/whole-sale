@@ -30,6 +30,8 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
       previousSteps: steps,
       tools: context.tools,
       userContext: context.userContext,
+      plannerState: context.plannerState,
+      userPreferences: context.userPreferences,
     });
 
     console.log('[PLANNER AGENT] Plan action:', plan.action);
@@ -54,6 +56,8 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
         steps,
         needsInput: true,
         missingFields: plan.missingFields,
+        pendingAction: plan.pendingAction,
+        proposedData: plan.proposedData,
       };
     }
 
@@ -116,6 +120,14 @@ function extractResultsFromSteps(steps: AgentStep[]) {
   };
 }
 
+function mapRecommendedPlaceCategory(category?: string): 'activity' | 'restaurant' | 'experience' {
+  if (!category) return 'activity';
+  const lower = category.toLowerCase();
+  if (lower.includes('restaurant') || lower.includes('food') || lower.includes('cafe') || lower.includes('comida')) return 'restaurant';
+  if (lower.includes('experience') || lower.includes('experiencia') || lower.includes('tour')) return 'experience';
+  return 'activity';
+}
+
 function buildResponseFromResults(
   steps: AgentStep[],
   flightResult?: { tool: string; result: ToolResult },
@@ -154,6 +166,45 @@ function buildResponseFromResults(
     parts.push(`un itinerario de ${totalDays} día(s)`);
   }
 
+  const suggestions = itineraryResult?.result?.data
+    ? ((itineraryResult.result.data as Record<string, unknown>).recommendedPlaces as Array<Record<string, unknown>> || [])
+        .slice(0, 6)
+        .map(rp => ({
+          label: (rp.name as string) || '',
+          type: mapRecommendedPlaceCategory(rp.category as string),
+          city: (rp.segmentCity as string) || '',
+          slot: ((rp.suggestedSlot as string) || 'afternoon') as 'morning' | 'afternoon' | 'evening',
+          description: rp.description as string | undefined,
+        }))
+    : undefined;
+
+  // Generate context-aware action chips
+  const actionChips: Array<{ label: string; message: string }> = [];
+  if (itineraryResult && !hotelResult && !flightResult) {
+    actionChips.push(
+      { label: '🏨 Agregar hoteles', message: 'Buscame hoteles para todas las ciudades' },
+      { label: '✈️ Buscar vuelos', message: 'Buscame vuelos desde mi ciudad' },
+      { label: '🐢 Más tranquilo', message: 'Hacé el ritmo más relajado' },
+    );
+  } else if (hotelResult && !flightResult) {
+    actionChips.push(
+      { label: '💰 Más económico', message: 'Mostrá opciones más baratas' },
+      { label: '⭐ Mejor categoría', message: 'Quiero algo de mayor categoría' },
+      { label: '🍳 Con desayuno', message: 'Solo hoteles con desayuno incluido' },
+    );
+  } else if (flightResult && !hotelResult) {
+    actionChips.push(
+      { label: '🛫 Solo directos', message: 'Buscame solo vuelos directos' },
+      { label: '💸 Más barato', message: 'Hay algo más económico?' },
+      { label: '📅 Otra fecha', message: 'Mostrá vuelos para otra fecha' },
+    );
+  } else if (flightResult && hotelResult) {
+    actionChips.push(
+      { label: '📄 Armar cotización', message: 'Armá la cotización en PDF' },
+      { label: '➕ Más destinos', message: 'Agregá un destino más al viaje' },
+    );
+  }
+
   const response = parts.length > 0
     ? parts.join(' y ') + '. Aquí tienes las mejores opciones:'
     : 'No se encontraron resultados para tu búsqueda.';
@@ -162,5 +213,7 @@ function buildResponseFromResults(
     response,
     structuredData: Object.keys(structuredData).length > 0 ? structuredData : undefined,
     steps,
+    ...(suggestions && suggestions.length > 0 ? { suggestions } : {}),
+    ...(actionChips.length > 0 ? { actionChips } : {}),
   };
 }

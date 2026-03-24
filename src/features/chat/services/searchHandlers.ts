@@ -23,7 +23,7 @@ import { generateSearchId, saveFlightsToStorage } from './flightStorageService';
 import { generateHotelSearchId, saveHotelsToStorage } from './hotelStorageService';
 import { timeStringToNumber } from '@/features/chat/utils/timeSlotMapper';
 import type { TripPlannerState } from '@/features/trip-planner/types';
-import { getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '@/features/trip-planner';
+import { expandDestinationsIfRegional, getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '@/features/trip-planner';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 
 // =====================================================================
@@ -1916,14 +1916,29 @@ export const handleItineraryRequest = async (
       };
     }
 
-    console.log(`🔄 [ITINERARY] Generating itinerary for ${destinations.join(', ')} - ${derivedDays} days`);
+    // Expand regional destinations (e.g. "Europa" → Madrid, París, Londres, etc.)
+    const targetMonth = flexibleMonth
+      ? new Date(`${flexibleMonth} 1, 2000`).getMonth() + 1
+      : effectiveStartDate
+        ? new Date(effectiveStartDate).getMonth() + 1
+        : undefined;
+
+    const {
+      expandedDestinations,
+      suggestedDays,
+    } = expandDestinationsIfRegional(destinations, derivedDays, targetMonth);
+
+    const finalDestinations = expandedDestinations;
+    const finalDays = suggestedDays;
+
+    console.log(`🔄 [ITINERARY] Generating itinerary for ${finalDestinations.join(', ')} - ${finalDays} days`);
 
     // Call the travel-itinerary Edge Function
     const invokeStart = nowMs();
     const response = await supabase.functions.invoke('travel-itinerary', {
       body: {
-        destinations,
-        days: derivedDays,
+        destinations: finalDestinations,
+        days: finalDays,
         startDate: hasExactDates ? effectiveStartDate : undefined,
         endDate: hasExactDates ? effectiveEndDate : undefined,
         isFlexibleDates,

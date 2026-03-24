@@ -1,5 +1,6 @@
 // Refactored Lead Dialog with enhanced form validation and UX
 import React from 'react';
+import LeadTripsList from '@/features/trip-planner/components/LeadTripsList';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -452,6 +453,15 @@ export function LeadDialog({
                     Transferir Owner
                   </Button>
                 )}
+
+                {/* Itinerarios cotizados */}
+                {lead?.id && (
+                  <div className="col-span-full pt-2 border-t">
+                    <p className="text-sm font-medium mb-2">Itinerarios cotizados</p>
+                    <LeadTripsList leadId={lead.id} />
+                  </div>
+                )}
+
                 <Button
                   type="submit"
                   className="w-full"

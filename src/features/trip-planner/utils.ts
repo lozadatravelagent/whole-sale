@@ -16,7 +16,10 @@ import type {
   PlannerSegment,
   PlannerSuggestion,
   TripPlannerState,
+  RegionalRoute,
+  RegionalExpansionResult,
 } from './types';
+import regionalRoutesData from '@/data/regional_routes.json';
 import { classifyPlannerActivityType, normalizePlannerSegmentsScheduling } from './scheduling';
 import { FALLBACK_CITY_COORDINATES_FLAT } from './services/plannerGeocoding';
 
@@ -448,19 +451,57 @@ export function createDraftPlannerFromRequest(
   }
 
   const itinerary = request.itinerary;
-  const destinations = uniqueStringList(safeArray(itinerary.destinations));
-  if (destinations.length === 0) {
+  const rawDestinations = uniqueStringList(safeArray(itinerary.destinations));
+  if (rawDestinations.length === 0) {
     return null;
   }
 
   const exactDays = !itinerary.isFlexibleDates
     ? getInclusiveDateRangeDays(itinerary.startDate, itinerary.endDate)
     : undefined;
-  const days = exactDays || itinerary.days || destinations.length || 1;
+  let days = exactDays || itinerary.days || rawDestinations.length || 1;
+
+  // Regional expansion
+  const targetMonth = itinerary.flexibleMonth
+    ? new Date(`${itinerary.flexibleMonth} 1, 2000`).getMonth() + 1
+    : itinerary.startDate
+      ? new Date(itinerary.startDate).getMonth() + 1
+      : undefined;
+  const { expandedDestinations, regionalMeta, seasonalityAlert, suggestedDays, cityWeights } =
+    expandDestinationsIfRegional(rawDestinations, days, targetMonth);
+  const destinations = expandedDestinations;
+  if (regionalMeta && !exactDays) {
+    days = suggestedDays;
+  }
+
   const interests = uniqueStringList([
     ...safeArray(itinerary.interests),
     ...safeArray(itinerary.travelStyle),
   ]);
+
+  const notes: string[] = [];
+  if (!itinerary.startDate && !itinerary.endDate && !itinerary.isFlexibleDates) {
+    notes.push('Definí fechas para habilitar cotización real de hoteles y transporte.');
+  }
+  if (seasonalityAlert) {
+    notes.push(seasonalityAlert);
+  }
+
+  // Build segments with weighted day distribution if regional
+  let segments: PlannerSegment[];
+  if (cityWeights && cityWeights.size > 0) {
+    segments = destinations.map((city, index) => {
+      const w = cityWeights.get(city.toLowerCase());
+      const seg = buildDraftSegment(city, index, destinations);
+      if (w) {
+        // Weighted days will be applied after full generation
+        seg.nights = Math.max(0, w.minDays - 1);
+      }
+      return seg;
+    });
+  } else {
+    segments = destinations.map((city, index) => buildDraftSegment(city, index, destinations));
+  }
 
   return {
     id: `planner-draft-${slugify(destinations.join('-') || 'trip')}`,
@@ -484,14 +525,14 @@ export function createDraftPlannerFromRequest(
     interests,
     constraints: safeArray(itinerary.constraints),
     destinations,
-    segments: destinations.map((city, index) => buildDraftSegment(city, index, destinations)),
-    notes: itinerary.startDate || itinerary.endDate || itinerary.isFlexibleDates
-      ? []
-      : ['Definí fechas para habilitar cotización real de hoteles y transporte.'],
+    segments,
+    notes,
     generalTips: [
       'Tomamos tu prompt para preparar una primera versión del recorrido.',
       'Los hoteles y transportes reales se habilitan cuando el plan final queda generado.',
     ],
+    seasonalityAlert: seasonalityAlert || undefined,
+    regionalExpansion: regionalMeta || undefined,
     generationMeta: buildPlannerMeta('draft', {
       uiPhase: 'draft_parsing',
       isDraft: true,
@@ -575,12 +616,17 @@ export function applySmartDefaults(
 
   const allDomestic = destinations.length > 0 && destinations.every(isDomesticDestination);
 
+  // --- regional detection for smart defaults ---
+  const firstRegional = destinations.length > 0 ? detectRegionalTerm(destinations[0]) : null;
+
   // --- days ---
   let days = base.days;
   if (days && days > 0) {
     provenance.days = 'user';
   } else {
-    if (destinations.length > 1) {
+    if (firstRegional) {
+      days = firstRegional.route.suggested_duration_range[0];
+    } else if (destinations.length > 1) {
       days = 3 * destinations.length;
     } else {
       days = allDomestic ? 5 : 7;
@@ -602,7 +648,7 @@ export function applySmartDefaults(
   if (pace) {
     provenance.pace = 'user';
   } else {
-    pace = 'balanced';
+    pace = firstRegional?.route.default_pace || 'balanced';
     provenance.pace = 'assumed';
   }
 
@@ -673,6 +719,184 @@ export function applySmartDefaults(
       flexibleYear,
     },
     fieldProvenance: provenance,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Regional expansion engine
+// ---------------------------------------------------------------------------
+
+const REGIONAL_ROUTES = regionalRoutesData as Record<string, RegionalRoute>;
+
+const REGION_ALIASES: Record<string, string> = {
+  europa: 'europe_classic',
+  europe: 'europe_classic',
+  'europa clasica': 'europe_classic',
+  'europa clásica': 'europe_classic',
+  'sudeste asiatico': 'southeast_asia',
+  'sudeste asiático': 'southeast_asia',
+  asia: 'southeast_asia',
+  'southeast asia': 'southeast_asia',
+  'costa oeste': 'us_west_coast',
+  'usa west': 'us_west_coast',
+  'west coast': 'us_west_coast',
+  patagonia: 'patagonia_ar',
+  'patagonia argentina': 'patagonia_ar',
+  caribe: 'caribbean_mix',
+  caribbean: 'caribbean_mix',
+};
+
+function normalizeRegionString(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+export function detectRegionalTerm(destination: string): { regionKey: string; route: RegionalRoute } | null {
+  const normalized = normalizeRegionString(destination);
+
+  // Check aliases first
+  const aliasKey = REGION_ALIASES[normalized];
+  if (aliasKey && REGIONAL_ROUTES[aliasKey]) {
+    return { regionKey: aliasKey, route: REGIONAL_ROUTES[aliasKey] };
+  }
+
+  // Check by region_name
+  for (const [key, route] of Object.entries(REGIONAL_ROUTES)) {
+    if (normalizeRegionString(route.region_name) === normalized) {
+      return { regionKey: key, route };
+    }
+  }
+
+  // Partial match on aliases
+  for (const [alias, key] of Object.entries(REGION_ALIASES)) {
+    if (normalized.includes(alias) || alias.includes(normalized)) {
+      const route = REGIONAL_ROUTES[key];
+      if (route) return { regionKey: key, route };
+    }
+  }
+
+  return null;
+}
+
+export function getSeasonalityScore(route: RegionalRoute, month: number): number {
+  return route.seasonality[String(month)] ?? 7;
+}
+
+export function expandRegionalDestination(
+  regionKey: string,
+  totalDays: number,
+  targetMonth?: number,
+): RegionalExpansionResult {
+  const route = REGIONAL_ROUTES[regionKey];
+  if (!route) {
+    return { expanded: false, regionKey: null, regionName: null, cities: [], seasonalityScore: null, seasonalityAlert: null, suggestedDays: totalDays, suggestedPace: null };
+  }
+
+  const [minDays, maxDays] = route.suggested_duration_range;
+  const clampedDays = Math.max(minDays, Math.min(maxDays, totalDays));
+
+  // Distribute days weighted
+  const cities = route.cities.map(city => ({
+    name: city.name,
+    days: Math.max(city.min_days, Math.round(clampedDays * city.weight)),
+    weight: city.weight,
+  }));
+
+  // Adjust sum to match clampedDays
+  let sum = cities.reduce((acc, c) => acc + c.days, 0);
+  while (sum > clampedDays) {
+    // Recortar from lowest weight (without going below min_days)
+    const sortedAsc = [...cities].sort((a, b) => a.weight - b.weight);
+    let trimmed = false;
+    for (const city of sortedAsc) {
+      const routeCity = route.cities.find(rc => rc.name === city.name);
+      if (city.days > (routeCity?.min_days ?? 1)) {
+        city.days--;
+        sum--;
+        trimmed = true;
+        break;
+      }
+    }
+    if (!trimmed) break;
+  }
+  while (sum < clampedDays) {
+    // Add to highest weight
+    const sortedDesc = [...cities].sort((a, b) => b.weight - a.weight);
+    sortedDesc[0].days++;
+    sum++;
+  }
+
+  let seasonalityScore: number | null = null;
+  let seasonalityAlert: string | null = null;
+  if (targetMonth != null) {
+    seasonalityScore = getSeasonalityScore(route, targetMonth);
+    if (seasonalityScore < 6) {
+      seasonalityAlert = route.alert;
+    }
+  }
+
+  return {
+    expanded: true,
+    regionKey,
+    regionName: route.region_name,
+    cities,
+    seasonalityScore,
+    seasonalityAlert,
+    suggestedDays: clampedDays,
+    suggestedPace: route.default_pace,
+  };
+}
+
+export function expandDestinationsIfRegional(
+  destinations: string[],
+  days: number,
+  targetMonth?: number,
+): {
+  expandedDestinations: string[];
+  regionalMeta: { regionKey: string; regionName: string; expandedFrom: string } | null;
+  seasonalityAlert: string | null;
+  suggestedDays: number;
+  suggestedPace: PlannerPace | null;
+  cityWeights: Map<string, { weight: number; minDays: number }> | null;
+} {
+  for (const dest of destinations) {
+    const detected = detectRegionalTerm(dest);
+    if (detected) {
+      const result = expandRegionalDestination(detected.regionKey, days, targetMonth);
+      if (result.expanded) {
+        const otherDests = destinations.filter(d => d !== dest);
+        const expandedNames = result.cities.map(c => c.name);
+        const weights = new Map<string, { weight: number; minDays: number }>();
+        for (const city of result.cities) {
+          const routeCity = detected.route.cities.find(rc => rc.name === city.name);
+          weights.set(city.name.toLowerCase(), { weight: city.weight, minDays: routeCity?.min_days ?? 1 });
+        }
+        return {
+          expandedDestinations: [...expandedNames, ...otherDests],
+          regionalMeta: {
+            regionKey: detected.regionKey,
+            regionName: result.regionName!,
+            expandedFrom: dest,
+          },
+          seasonalityAlert: result.seasonalityAlert,
+          suggestedDays: result.suggestedDays,
+          suggestedPace: result.suggestedPace,
+          cityWeights: weights,
+        };
+      }
+    }
+  }
+
+  return {
+    expandedDestinations: destinations,
+    regionalMeta: null,
+    seasonalityAlert: null,
+    suggestedDays: days,
+    suggestedPace: null,
+    cityWeights: null,
   };
 }
 

@@ -23,6 +23,8 @@ export function createGenerateItineraryTool(supabase: SupabaseClient): ToolDefin
         },
         pace: { type: 'string', description: 'Ritmo del viaje: "relaxed", "moderate", "active"' },
         budgetLevel: { type: 'string', description: 'Nivel de presupuesto: "budget", "moderate", "luxury"' },
+        hasExistingPlan: { type: 'boolean', description: 'Si es true, genera un esquema simplificado (skeleton). Usalo si el viaje ya tiene segmentos definidos.' },
+        segmentCity: { type: 'string', description: 'Si se especifica, regenera solo el segmento de esta ciudad (modo segment).' },
       },
       required: ['destinations'],
     },
@@ -43,7 +45,8 @@ export function createGenerateItineraryTool(supabase: SupabaseClient): ToolDefin
             interests: params.interests,
             pace: params.pace || 'moderate',
             budgetLevel: params.budgetLevel,
-            generationMode: 'full',
+            generationMode: params.segmentCity ? 'segment' : params.hasExistingPlan ? 'skeleton' : 'full',
+            ...(params.segmentCity && { targetSegmentCity: params.segmentCity }),
           },
         });
 

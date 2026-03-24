@@ -35,11 +35,9 @@ export default function usePlannerDestinations(
         ? { ...current.fieldProvenance, [provenanceField]: 'confirmed' as const }
         : current.fieldProvenance;
 
-      const updatedSyncing = needsRefetch && syncingKey in ({} as PlannerSyncingFields)
+      const updatedSyncing = needsRefetch
         ? { ...current.syncingFields, [syncingKey]: true }
-        : needsRefetch
-          ? { ...current.syncingFields, [syncingKey]: true }
-          : current.syncingFields;
+        : current.syncingFields;
 
       return {
         ...current,
@@ -104,6 +102,12 @@ export default function usePlannerDestinations(
         days: computedDays,
         segments: reindexedSegments,
         syncingFields: { ...plannerState.syncingFields, dates: true },
+        fieldProvenance: {
+          ...plannerState.fieldProvenance,
+          startDate: 'confirmed',
+          endDate: 'confirmed',
+          isFlexibleDates: 'confirmed',
+        },
       };
 
       setPlannerState(nextState);

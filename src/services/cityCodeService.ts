@@ -1,6 +1,12 @@
 /**
  * City Code Service - Converts city names to IATA airport codes
  * Centralizes all city-to-code mapping for flights and hotels
+ *
+ * FUENTE DE VERDAD: Este archivo contiene el mapeo completo (~61 ciudades).
+ * Copia sincronizada en: supabase/functions/_shared/cityCodeResolver.ts (63 ciudades).
+ * Si agregás ciudades al CITY_MAPPINGS, actualizá AMBOS archivos.
+ * TODO: Migrar a shared package para eliminar duplicación.
+ * Última sincronización: 2026-03-23 (Sprint 2)
  */
 
 interface CityCodeMapping {
@@ -309,6 +315,18 @@ const CITY_MAPPINGS: Record<string, CityCodeMapping> = {
     hotelCode: 'CUN',
     country: 'MX',
     aliases: ['cancún']
+  },
+  'playa del carmen': {
+    iata: 'CUN',           // Aeropuerto más cercano es Cancún
+    hotelCode: 'PCM',      // Código EUROVIPS para Playa del Carmen
+    country: 'MX',
+    aliases: ['playa carmen', 'playacar', 'riviera maya playa']
+  },
+  'riviera maya': {
+    iata: 'CUN',           // Aeropuerto más cercano es Cancún
+    hotelCode: 'PCM',      // Usa mismo código que Playa del Carmen
+    country: 'MX',
+    aliases: ['rivera maya', 'maya riviera']
   },
   'mexico city': {
     iata: 'MEX',

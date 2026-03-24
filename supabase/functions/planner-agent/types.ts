@@ -3,6 +3,8 @@ export interface AgentContext {
   conversationHistory: Array<{ role: string; content: string }>;
   previousContext: Record<string, unknown> | null;
   userContext?: { currentCity: string; country?: string; timezone?: string } | null;
+  plannerState?: Record<string, unknown> | null;
+  userPreferences?: { budgetLevel?: string; pace?: string; travelers?: { adults: number; children: number; infants: number } } | null;
   tools: ToolDefinition[];
 }
 
@@ -32,11 +34,26 @@ export interface AgentResponse {
   steps: AgentStep[];
   needsInput?: boolean;
   missingFields?: string[];
+  pendingAction?: string | null;
+  proposedData?: Record<string, unknown> | null;
+  suggestions?: Array<{
+    label: string;
+    type: 'activity' | 'restaurant' | 'experience';
+    city: string;
+    slot: 'morning' | 'afternoon' | 'evening';
+    description?: string;
+  }>;
+  actionChips?: Array<{
+    label: string;
+    message: string;
+  }>;
 }
 
 export interface PlanResult {
   action: 'respond' | 'ask_user' | 'use_tools';
   response?: string;
   missingFields?: string[];
+  pendingAction?: string | null;
+  proposedData?: Record<string, unknown> | null;
   toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
 }
