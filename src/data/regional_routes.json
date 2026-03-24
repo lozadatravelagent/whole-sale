@@ -1,0 +1,235 @@
+{
+    "europe_classic": {
+        "region_name": "Europa Clásica",
+        "suggested_duration_range": [
+            15,
+            21
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "MAD",
+                "name": "Madrid",
+                "weight": 0.20,
+                "min_days": 3
+            },
+            {
+                "id": "PAR",
+                "name": "París",
+                "weight": 0.25,
+                "min_days": 4
+            },
+            {
+                "id": "LON",
+                "name": "Londres",
+                "weight": 0.25,
+                "min_days": 4
+            },
+            {
+                "id": "AMS",
+                "name": "Ámsterdam",
+                "weight": 0.15,
+                "min_days": 2
+            },
+            {
+                "id": "ROM",
+                "name": "Roma",
+                "weight": 0.15,
+                "min_days": 3
+            }
+        ],
+        "seasonality": {
+            "1": 4,
+            "2": 5,
+            "3": 7,
+            "4": 9,
+            "5": 10,
+            "6": 9,
+            "7": 7,
+            "8": 6,
+            "9": 10,
+            "10": 9,
+            "11": 5,
+            "12": 6
+        },
+        "alert": "Julio y Agosto: Calor extremo y multitudes. Mayo, Junio y Septiembre son óptimos."
+    },
+    "southeast_asia": {
+        "region_name": "Sudeste Asiático",
+        "suggested_duration_range": [
+            15,
+            25
+        ],
+        "default_pace": "fast",
+        "cities": [
+            {
+                "id": "BKK",
+                "name": "Bangkok",
+                "weight": 0.25,
+                "min_days": 3
+            },
+            {
+                "id": "HAN",
+                "name": "Hanói",
+                "weight": 0.25,
+                "min_days": 4
+            },
+            {
+                "id": "DPS",
+                "name": "Bali",
+                "weight": 0.30,
+                "min_days": 5
+            },
+            {
+                "id": "SIN",
+                "name": "Singapur",
+                "weight": 0.20,
+                "min_days": 3
+            }
+        ],
+        "seasonality": {
+            "1": 10,
+            "2": 10,
+            "3": 8,
+            "4": 6,
+            "5": 4,
+            "6": 5,
+            "7": 5,
+            "8": 5,
+            "9": 4,
+            "10": 6,
+            "11": 9,
+            "12": 10
+        },
+        "alert": "Mayo a Octubre: Temporada de monzones (lluvias fuertes)."
+    },
+    "us_west_coast": {
+        "region_name": "Costa Oeste USA",
+        "suggested_duration_range": [
+            10,
+            15
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "SFO",
+                "name": "San Francisco",
+                "weight": 0.35,
+                "min_days": 3
+            },
+            {
+                "id": "LAX",
+                "name": "Los Ángeles",
+                "weight": 0.35,
+                "min_days": 4
+            },
+            {
+                "id": "LAS",
+                "name": "Las Vegas",
+                "weight": 0.30,
+                "min_days": 3
+            }
+        ],
+        "seasonality": {
+            "1": 6,
+            "2": 6,
+            "3": 7,
+            "4": 8,
+            "5": 9,
+            "6": 10,
+            "7": 10,
+            "8": 10,
+            "9": 9,
+            "10": 8,
+            "11": 7,
+            "12": 6
+        },
+        "alert": "Ideal para Roadtrips. Verano es pico de demanda."
+    },
+    "patagonia_ar": {
+        "region_name": "Patagonia Argentina",
+        "suggested_duration_range": [
+            9,
+            14
+        ],
+        "default_pace": "relaxed",
+        "cities": [
+            {
+                "id": "BRC",
+                "name": "Bariloche",
+                "weight": 0.40,
+                "min_days": 4
+            },
+            {
+                "id": "FTE",
+                "name": "El Calafate",
+                "weight": 0.30,
+                "min_days": 3
+            },
+            {
+                "id": "USH",
+                "name": "Ushuaia",
+                "weight": 0.30,
+                "min_days": 3
+            }
+        ],
+        "seasonality": {
+            "1": 10,
+            "2": 10,
+            "3": 9,
+            "4": 6,
+            "5": 4,
+            "6": 7,
+            "7": 9,
+            "8": 9,
+            "9": 7,
+            "10": 8,
+            "11": 9,
+            "12": 10
+        },
+        "alert": "Julio/Agosto es temporada de esquí. Noviembre a Marzo ideal para trekking."
+    },
+    "caribbean_mix": {
+        "region_name": "Caribe",
+        "suggested_duration_range": [
+            7,
+            12
+        ],
+        "default_pace": "relaxed",
+        "cities": [
+            {
+                "id": "PUJ",
+                "name": "Punta Cana",
+                "weight": 0.35,
+                "min_days": 4
+            },
+            {
+                "id": "CUN",
+                "name": "Playa del Carmen",
+                "weight": 0.35,
+                "min_days": 4
+            },
+            {
+                "id": "CTG",
+                "name": "Cartagena",
+                "weight": 0.30,
+                "min_days": 3
+            }
+        ],
+        "seasonality": {
+            "1": 10,
+            "2": 10,
+            "3": 10,
+            "4": 9,
+            "5": 8,
+            "6": 7,
+            "7": 7,
+            "8": 5,
+            "9": 4,
+            "10": 5,
+            "11": 8,
+            "12": 10
+        },
+        "alert": "Agosto a Octubre: Temporada de huracanes. Enero a Marzo es el 'sweet spot'."
+    }
+}
