@@ -17,9 +17,52 @@ export interface DiscoveryDestination {
 
 export interface DiscoveryContext {
   destination: DiscoveryDestination;
-  queryType: 'broad' | 'museums' | 'food' | 'nightlife' | 'neighborhoods';
+  queryType: 'broad_city_discovery' | 'museum_discovery' | 'food_discovery' | 'nightlife_discovery' | 'neighborhood_discovery';
   places: ChatRecommendedPlace[];
+  debug?: DiscoveryDebugPayload;
 }
+
+interface DiscoveryDebugPlaceSample {
+  id?: string;
+  name: string;
+  rawCategory?: string;
+  reason: string;
+}
+
+export interface DiscoveryDebugPayload {
+  discoverySubtype: DiscoveryContext['queryType'];
+  providerCategories: Record<string, number>;
+  fallbackProviderCategories?: Record<string, number>;
+  selectedBuckets: Array<NonNullable<ChatRecommendedPlace['bucket']>>;
+  selectedPlaceIds: string[];
+  candidateCountBeforeFiltering: number;
+  candidateCountAfterFiltering: number;
+  candidateCountAfterCuration: number;
+  fallbackCandidateCountBeforeFiltering?: number;
+  fallbackCandidateCountAfterFiltering?: number;
+  usedFallbackSelection: boolean;
+  destinationResolutionSource: DiscoveryDestination['source'];
+  destinationResolutionConfidence: number;
+  rejectedByQualityGate: DiscoveryDebugPlaceSample[];
+  rejectedByNoiseFilter: DiscoveryDebugPlaceSample[];
+  rejectedByDedup: DiscoveryDebugPlaceSample[];
+  rejectedBySelectionRules: DiscoveryDebugPlaceSample[];
+}
+
+interface DiscoveryDebugCollector {
+  payload: DiscoveryDebugPayload;
+}
+
+const CURATED_BUCKET_DESCRIPTIONS: Record<NonNullable<ChatRecommendedPlace['bucket']>, string> = {
+  imperdibles: 'de los puntos más representativos para una primera visita',
+  historia: 'muy buen punto para entender la historia de la ciudad',
+  museos: 'de las visitas culturales más fuertes del destino',
+  barrios: 'ideal para caminar y absorber el ambiente local',
+  miradores: 'gran lugar para tener una buena vista general',
+  parques: 'muy buen respiro para pasear y bajar el ritmo',
+  gastronomia: 'vale la pena si querés sumar una parada gastronómica',
+  noche: 'sirve si querés explorar la ciudad de noche',
+};
 
 function normalizeText(value?: string | null): string {
   return (value || '')
@@ -49,14 +92,22 @@ function scoreBasePlace(place: PlannerPlaceCandidate): number {
   return popularityScore + categoryBonus;
 }
 
-function dedupePlaces(candidates: PlannerPlaceCandidate[]): PlannerPlaceCandidate[] {
+function dedupePlaces(candidates: PlannerPlaceCandidate[], debug?: DiscoveryDebugCollector): PlannerPlaceCandidate[] {
   const unique = new Map<string, PlannerPlaceCandidate>();
 
   candidates.forEach((candidate) => {
     const key = `${candidate.placeId || ''}::${normalizeText(candidate.name)}`;
     const current = unique.get(key);
     if (!current || scoreBasePlace(candidate) > scoreBasePlace(current)) {
+      if (current && debug) {
+        pushDebugSample(debug.payload.rejectedByDedup, toDebugSample(current, 'provider_duplicate'));
+      }
       unique.set(key, candidate);
+      return;
+    }
+
+    if (debug) {
+      pushDebugSample(debug.payload.rejectedByDedup, toDebugSample(candidate, 'provider_duplicate'));
     }
   });
 
@@ -72,6 +123,57 @@ function titleCase(value?: string | null): string {
     .join(' ');
 }
 
+function summarizeProviderCategories(candidates: PlannerPlaceCandidate[]): Record<string, number> {
+  return candidates.reduce<Record<string, number>>((accumulator, candidate) => {
+    const key = candidate.category || 'unknown';
+    accumulator[key] = (accumulator[key] || 0) + 1;
+    return accumulator;
+  }, {});
+}
+
+function createDiscoveryDebugPayload(options: {
+  queryType: DiscoveryContext['queryType'];
+  destination: DiscoveryDestination;
+  providerCategories: Record<string, number>;
+}): DiscoveryDebugCollector {
+  return {
+    payload: {
+      discoverySubtype: options.queryType,
+      providerCategories: options.providerCategories,
+      selectedBuckets: [],
+      selectedPlaceIds: [],
+      candidateCountBeforeFiltering: 0,
+      candidateCountAfterFiltering: 0,
+      candidateCountAfterCuration: 0,
+      usedFallbackSelection: false,
+      destinationResolutionSource: options.destination.source,
+      destinationResolutionConfidence: options.destination.confidence,
+      rejectedByQualityGate: [],
+      rejectedByNoiseFilter: [],
+      rejectedByDedup: [],
+      rejectedBySelectionRules: [],
+    },
+  };
+}
+
+function pushDebugSample(target: DiscoveryDebugPlaceSample[], sample: DiscoveryDebugPlaceSample, limit = 8) {
+  if (target.length >= limit) return;
+  target.push(sample);
+}
+
+function mergeDebugSamples(target: DiscoveryDebugPlaceSample[], samples: DiscoveryDebugPlaceSample[], limit = 8) {
+  samples.forEach((sample) => pushDebugSample(target, sample, limit));
+}
+
+function toDebugSample(place: PlannerPlaceCandidate, reason: string): DiscoveryDebugPlaceSample {
+  return {
+    id: place.placeId,
+    name: place.name,
+    rawCategory: place.category,
+    reason,
+  };
+}
+
 const DISCOVERY_PATTERN = /\b(cosas\s+para\s+hacer|que\s+ver|qué\s+ver|que\s+hacer|qué\s+hacer|imperdibles?|museos?|barrios?|restaurantes?|actividades?)\b/i;
 const MUSEUM_PATTERN = /\b(museos?|arte|galerias?|galerías|impresionismo|cultura|historia)\b/i;
 const FOOD_PATTERN = /\b(restaurantes?|gastronomia|gastronomía|comida|cena|tapas|cafes?|cafés)\b/i;
@@ -80,28 +182,35 @@ const NEIGHBORHOOD_PATTERN = /\b(barrios?|zonas?|donde caminar|dónde caminar|pa
 const NOISE_RE = /\b(cinema|cine|movie theater|movie_theater|parking|mall|shopping mall|shopping_mall|supermarket|convenience store|convenience_store|train station|train_station|bus station|bus_station|airport|hostel|hotel)\b/i;
 const CHAIN_RE = /\b(mcdonald'?s|burger king|kfc|subway|starbucks|pizza hut|domino'?s|hard rock|taco bell)\b/i;
 const ARTWORK_RE = /\b(guernica|mona lisa|las meninas|by pablo picasso|obra|collection room|sala )\b/i;
+const BROAD_QUERY_RE = /\b(cosas\s+para\s+hacer|que\s+ver|qué\s+ver|que\s+hacer|qué\s+hacer|imperdibles?)\b/i;
+const ATTRACTION_TYPE_RE = /\b(tourist_attraction|museum|art_gallery|church|place_of_worship|historical_landmark|landmark|monument|park|garden|neighborhood|district|plaza|square|bridge|viewpoint|lookout|castle|palace|cathedral|canal|fort|tower|museum|memorial)\b/i;
+const ATTRACTION_NAME_RE = /\b(museum|museu|museo|gallery|galeria|canal|gracht|park|parque|garden|bridge|puente|tower|torre|church|cathedral|basilica|palace|palacio|castle|fort|gate|puerta|plaza|square|old town|historic|monastery|mosteiro|monasterio|bairro|barrio|district|quarter|promenade|boulevard|abbey|lookout|viewpoint|mirador|riverfront|waterfront|museumplein|memorial|wall)\b/i;
+const COMMERCIAL_RE = /\b(shop|store|outlet|boutique|skate|brand|bar|pub|club|cafe|coffee|restaurant|kitchen|brasserie|bistro|comedy|theater|theatre|venue|hall|casino|arena|stadium|hostel)\b/i;
+const BUSINESS_TYPE_RE = /\b(store|shop|clothing_store|shoe_store|bar|night_club|cafe|restaurant|movie_theater|comedy_club|event_venue|bakery|shopping_mall)\b/i;
+const WEAK_ADDRESS_RE = /^(sv|cv|df|mx|es|pt|de|fr|nl|uk|us|arg|br|uy)$/i;
+const GENERIC_CITY_LABEL_HEAD_RE = /^(mirador|miradouro|viewpoint|lookout|parque|park|museo|museum|museu|catedral|cathedral|church|barrio|bairro|district|plaza|square|puente|bridge|canal|palacio|palace|monumento|monument|torre|tower|centro historico|historic center|old town)\b/i;
 
-function getQueryType(requestText: string): DiscoveryContext['queryType'] {
-  if (FOOD_PATTERN.test(requestText)) return 'food';
-  if (NIGHT_PATTERN.test(requestText)) return 'nightlife';
-  if (NEIGHBORHOOD_PATTERN.test(requestText)) return 'neighborhoods';
-  if (MUSEUM_PATTERN.test(requestText)) return 'museums';
-  return 'broad';
+export function detectDiscoverySubtype(requestText: string): DiscoveryContext['queryType'] {
+  if (FOOD_PATTERN.test(requestText)) return 'food_discovery';
+  if (NIGHT_PATTERN.test(requestText)) return 'nightlife_discovery';
+  if (NEIGHBORHOOD_PATTERN.test(requestText)) return 'neighborhood_discovery';
+  if (MUSEUM_PATTERN.test(requestText) && !BROAD_QUERY_RE.test(requestText)) return 'museum_discovery';
+  return 'broad_city_discovery';
 }
 
 function getRequestedCategories(queryType: DiscoveryContext['queryType']): PlannerPlaceCategory[] {
   switch (queryType) {
-    case 'museums':
+    case 'museum_discovery':
       return ['museum', 'culture', 'sights', 'parks', 'activity'];
-    case 'food':
+    case 'food_discovery':
       return ['restaurant', 'cafe', 'sights', 'activity', 'nightlife'];
-    case 'nightlife':
+    case 'nightlife_discovery':
       return ['nightlife', 'restaurant', 'cafe', 'activity', 'sights'];
-    case 'neighborhoods':
+    case 'neighborhood_discovery':
       return ['sights', 'activity', 'parks', 'culture', 'cafe'];
-    case 'broad':
+    case 'broad_city_discovery':
     default:
-      return ['sights', 'museum', 'culture', 'activity', 'parks', 'cafe'];
+      return ['sights', 'museum', 'culture', 'parks', 'activity'];
   }
 }
 
@@ -177,13 +286,15 @@ export async function resolveDiscoveryDestination(options: {
 
 function getDiscoveryBucket(place: PlannerPlaceCandidate): ChatRecommendedPlace['bucket'] {
   const normalized = normalizeText(`${place.name} ${(place.types || []).join(' ')} ${place.category} ${place.activityType || ''}`);
-  if (place.category === 'museum') return 'museos';
-  if (place.category === 'nightlife') return 'noche';
-  if (place.category === 'restaurant' || place.category === 'cafe') return 'gastronomia';
+  if (place.category === 'museum' || /museum|museo|museu|gallery|galeria/.test(normalized)) return 'museos';
   if (place.category === 'parks') return /mirador|viewpoint|observation|lookout/.test(normalized) ? 'miradores' : 'parques';
-  if (/barrio|district|quarter|old town|centro historico|centre historique|neighborhood|neighbourhood/.test(normalized)) return 'barrios';
-  if (/cathedral|catedral|basilica|basílica|church|temple|templo|foro|roman|historic|castle|palace|palacio/.test(normalized)) return 'historia';
-  if (/tower|torre|bridge|puente|square|plaza|monument|landmark|gate|puerta/.test(normalized) || place.category === 'sights') return 'imperdibles';
+  if (/barrio|district|quarter|old town|centro historico|centre historique|neighborhood|neighbourhood|jordaan|alfama/.test(normalized)) return 'barrios';
+  if (/canal|gracht|riverfront|waterfront|promenade|boulevard|park|parque|garden/.test(normalized)) return 'parques';
+  if (/mirador|viewpoint|lookout|observatory/.test(normalized)) return 'miradores';
+  if (/cathedral|catedral|basilica|basílica|church|temple|templo|foro|roman|historic|castle|palace|palacio|monastery|mosteiro|memorial|reichstag/.test(normalized)) return 'historia';
+  if (/tower|torre|bridge|puente|square|plaza|monument|landmark|gate|puerta|museumplein|dam/.test(normalized) || place.category === 'sights' || place.category === 'culture') return 'imperdibles';
+  if (place.category === 'restaurant' || place.category === 'cafe') return 'gastronomia';
+  if (place.category === 'nightlife') return 'noche';
   return 'imperdibles';
 }
 
@@ -198,30 +309,80 @@ function getDedupKey(place: PlannerPlaceCandidate): string {
   return normalized;
 }
 
+export function isAttractionLikePlace(place: PlannerPlaceCandidate): boolean {
+  const haystack = `${place.name} ${(place.types || []).join(' ')} ${place.category}`;
+  if (NOISE_RE.test(haystack) || CHAIN_RE.test(haystack)) return false;
+  if (BUSINESS_TYPE_RE.test(haystack) || COMMERCIAL_RE.test(haystack)) return false;
+  if (place.category === 'museum' || place.category === 'sights' || place.category === 'culture' || place.category === 'parks') return true;
+  return ATTRACTION_TYPE_RE.test(haystack) || ATTRACTION_NAME_RE.test(haystack);
+}
+
+function isWeakFormattedAddress(value?: string): boolean {
+  const normalized = normalizeText(value);
+  if (!normalized) return true;
+  if (normalized.length <= 3) return true;
+  return WEAK_ADDRESS_RE.test(normalized.replace(/\s+/g, ''));
+}
+
+function isGenericCityLabel(place: PlannerPlaceCandidate, destination: DiscoveryDestination): boolean {
+  const normalizedName = normalizeText(place.name);
+  const normalizedCity = normalizeText(destination.city);
+  if (!normalizedName || !normalizedCity) return false;
+  const compactCity = normalizedCity.replace(/\s+/g, '');
+  const compactName = normalizedName.replace(/\s+/g, '');
+  if (!GENERIC_CITY_LABEL_HEAD_RE.test(normalizedName)) return false;
+  return compactName.includes(compactCity);
+}
+
+function getPlaceIdentityIssue(place: PlannerPlaceCandidate, destination: DiscoveryDestination): string | null {
+  const normalizedName = normalizeText(place.name);
+  if (!normalizedName) return 'missing_name';
+  if (normalizedName.length < 4) return 'short_name';
+  if (/^[a-z]{1,3}$/.test(normalizedName.replace(/\s+/g, ''))) return 'placeholder_name';
+  if (isGenericCityLabel(place, destination)) return 'generic_city_label';
+  if (ARTWORK_RE.test(normalizedName)) return 'artwork_only';
+
+  const tokenCount = normalizedName.split(' ').filter(Boolean).length;
+  const typeSignal = ATTRACTION_TYPE_RE.test(`${(place.types || []).join(' ')} ${place.category}`);
+  const nameSignal = ATTRACTION_NAME_RE.test(normalizedName);
+  const metadataSignal = (place.userRatingsTotal || 0) >= 50 || Boolean(place.photoUrls?.length) || Boolean(place.rating && place.rating >= 4.2);
+
+  if (tokenCount === 1 && !nameSignal && !typeSignal) return 'weak_name_identity';
+  if (!typeSignal && !nameSignal && !metadataSignal) return 'poor_metadata';
+
+  return null;
+}
+
+export function hasStrongPlaceIdentity(place: PlannerPlaceCandidate, destination: DiscoveryDestination): boolean {
+  return getPlaceIdentityIssue(place, destination) === null;
+}
+
 function scoreIntentFit(place: PlannerPlaceCandidate, queryType: DiscoveryContext['queryType']): number {
   const bucket = getDiscoveryBucket(place);
   switch (queryType) {
-    case 'museums':
+    case 'museum_discovery':
       return bucket === 'museos' ? 38 : bucket === 'historia' ? 20 : 8;
-    case 'food':
+    case 'food_discovery':
       return bucket === 'gastronomia' ? 40 : bucket === 'barrios' ? 18 : 6;
-    case 'nightlife':
+    case 'nightlife_discovery':
       return bucket === 'noche' ? 40 : bucket === 'gastronomia' ? 18 : 6;
-    case 'neighborhoods':
+    case 'neighborhood_discovery':
       return bucket === 'barrios' ? 38 : bucket === 'imperdibles' ? 18 : 8;
-    case 'broad':
+    case 'broad_city_discovery':
     default:
       return bucket === 'imperdibles'
-        ? 34
+        ? 42
         : bucket === 'historia'
-          ? 28
+          ? 36
           : bucket === 'barrios'
-            ? 24
+            ? 30
             : bucket === 'parques' || bucket === 'miradores'
-              ? 18
+              ? 28
               : bucket === 'museos'
-                ? 16
-                : 4;
+                ? 20
+                : bucket === 'gastronomia' || bucket === 'noche'
+                  ? -40
+                  : 2;
   }
 }
 
@@ -241,36 +402,67 @@ function scoreDiscoveryCandidate(place: PlannerPlaceCandidate, destination: Disc
   const visualSignalScore = place.photoUrls?.some(Boolean) ? 8 : 0;
   const centralityScore = scoreCentrality(place, destination);
   const noisePenalty = NOISE_RE.test(`${place.name} ${(place.types || []).join(' ')}`) || CHAIN_RE.test(place.name) ? 120 : 0;
-  const artworkPenalty = queryType === 'broad' && ARTWORK_RE.test(place.name) ? 90 : 0;
-  return representativenessScore + popularityScore + categoryIntentFit + visualSignalScore + centralityScore - noisePenalty - artworkPenalty;
+  const artworkPenalty = queryType === 'broad_city_discovery' && ARTWORK_RE.test(place.name) ? 90 : 0;
+  const attractionBonus = queryType === 'broad_city_discovery' && isAttractionLikePlace(place) ? 36 : 0;
+  const nightlifePenalty = queryType === 'broad_city_discovery' && getDiscoveryBucket(place) === 'noche' ? 80 : 0;
+  const identityPenalty = queryType === 'broad_city_discovery' && !hasStrongPlaceIdentity(place, destination) ? 140 : 0;
+  return representativenessScore + popularityScore + categoryIntentFit + visualSignalScore + centralityScore + attractionBonus - noisePenalty - artworkPenalty - nightlifePenalty - identityPenalty;
 }
 
-function shouldKeepPlace(place: PlannerPlaceCandidate, queryType: DiscoveryContext['queryType']): boolean {
+function getNoiseFilterReason(place: PlannerPlaceCandidate): string | null {
   const haystack = `${place.name} ${(place.types || []).join(' ')}`;
-  if (NOISE_RE.test(haystack) || CHAIN_RE.test(haystack)) return false;
-  if (queryType === 'broad' && ARTWORK_RE.test(haystack)) return false;
-  return true;
+  if (CHAIN_RE.test(haystack)) return 'chain_brand';
+  if (NOISE_RE.test(haystack)) return 'noise_filter';
+  if (BUSINESS_TYPE_RE.test(haystack) || COMMERCIAL_RE.test(haystack)) return 'commercial_venue';
+  return null;
+}
+
+function getQualityGateReason(place: PlannerPlaceCandidate, queryType: DiscoveryContext['queryType'], destination: DiscoveryDestination): string | null {
+  const haystack = `${place.name} ${(place.types || []).join(' ')}`;
+
+  if (queryType === 'broad_city_discovery' && ARTWORK_RE.test(haystack)) return 'artwork_only';
+  if (queryType === 'broad_city_discovery' && !isAttractionLikePlace(place)) return 'not_attraction_like';
+
+  const bucket = getDiscoveryBucket(place);
+  if (queryType === 'broad_city_discovery' && (bucket === 'noche' || bucket === 'gastronomia')) {
+    return 'excluded_bucket';
+  }
+
+  if (queryType === 'broad_city_discovery') {
+    return getPlaceIdentityIssue(place, destination);
+  }
+
+  return null;
 }
 
 function categoryLimitForBucket(bucket: NonNullable<ChatRecommendedPlace['bucket']>, queryType: DiscoveryContext['queryType']): number {
-  if (queryType === 'broad') {
+  if (queryType === 'broad_city_discovery') {
     if (bucket === 'museos') return 1;
-    if (bucket === 'imperdibles') return 2;
+    if (bucket === 'imperdibles' || bucket === 'historia') return 2;
+    if (bucket === 'barrios' || bucket === 'parques' || bucket === 'miradores') return 1;
+    if (bucket === 'gastronomia' || bucket === 'noche') return 0;
     return 1;
   }
-  if (queryType === 'museums') {
+  if (queryType === 'museum_discovery') {
     return bucket === 'museos' ? 3 : 1;
   }
-  if (queryType === 'food') {
+  if (queryType === 'food_discovery') {
     return bucket === 'gastronomia' ? 3 : 1;
   }
-  if (queryType === 'nightlife') {
+  if (queryType === 'nightlife_discovery') {
     return bucket === 'noche' ? 3 : 1;
   }
-  if (queryType === 'neighborhoods') {
+  if (queryType === 'neighborhood_discovery') {
     return bucket === 'barrios' ? 3 : 1;
   }
   return 2;
+}
+
+function buildCuratedDescription(place: PlannerPlaceCandidate, bucket: NonNullable<ChatRecommendedPlace['bucket']>): string {
+  if (!isWeakFormattedAddress(place.formattedAddress)) {
+    return place.formattedAddress as string;
+  }
+  return CURATED_BUCKET_DESCRIPTIONS[bucket];
 }
 
 function toRecommendedPlace(place: PlannerPlaceCandidate, destination: DiscoveryDestination): ChatRecommendedPlace {
@@ -278,7 +470,7 @@ function toRecommendedPlace(place: PlannerPlaceCandidate, destination: Discovery
   return {
     placeId: place.placeId,
     name: place.name,
-    description: place.formattedAddress || titleCase(bucket),
+    description: buildCuratedDescription(place, bucket || 'imperdibles'),
     category: titleCase(bucket),
     bucket,
     city: destination.city,
@@ -294,28 +486,141 @@ export function curateDiscoveryPlaces(options: {
   candidates: PlannerPlaceCandidate[];
   destination: DiscoveryDestination;
   queryType: DiscoveryContext['queryType'];
+  debug?: DiscoveryDebugCollector;
 }): ChatRecommendedPlace[] {
-  const ranked = dedupePlaces(options.candidates)
-    .filter((place) => shouldKeepPlace(place, options.queryType))
+  const debug = options.debug;
+  if (debug) {
+    debug.payload.candidateCountBeforeFiltering = options.candidates.length;
+  }
+
+  const deduped = dedupePlaces(options.candidates, debug);
+  const filtered = deduped.filter((place) => {
+    const noiseReason = getNoiseFilterReason(place);
+    if (noiseReason) {
+      if (debug) pushDebugSample(debug.payload.rejectedByNoiseFilter, toDebugSample(place, noiseReason));
+      return false;
+    }
+
+    const qualityReason = getQualityGateReason(place, options.queryType, options.destination);
+    if (qualityReason) {
+      if (debug) pushDebugSample(debug.payload.rejectedByQualityGate, toDebugSample(place, qualityReason));
+      return false;
+    }
+
+    return true;
+  });
+
+  if (debug) {
+    debug.payload.candidateCountAfterFiltering = filtered.length;
+  }
+
+  const ranked = filtered
     .sort((left, right) => scoreDiscoveryCandidate(right, options.destination, options.queryType) - scoreDiscoveryCandidate(left, options.destination, options.queryType));
+
+  const conservativeRanked = options.queryType === 'broad_city_discovery'
+    ? ranked.filter((candidate) => {
+        const bucket = getDiscoveryBucket(candidate);
+        return hasStrongPlaceIdentity(candidate, options.destination)
+          && ['imperdibles', 'historia', 'museos', 'barrios', 'parques', 'miradores'].includes(bucket || 'imperdibles')
+          && isAttractionLikePlace(candidate);
+      })
+    : ranked;
 
   const selected: ChatRecommendedPlace[] = [];
   const seenKeys = new Set<string>();
   const bucketCounts = new Map<string, number>();
 
-  for (const candidate of ranked) {
+  const tryAddCandidate = (candidate: PlannerPlaceCandidate) => {
     const dedupKey = getDedupKey(candidate);
-    if (!dedupKey || seenKeys.has(dedupKey)) continue;
+    if (!dedupKey) {
+      if (debug) pushDebugSample(debug.payload.rejectedByQualityGate, toDebugSample(candidate, 'invalid_identity_key'));
+      return false;
+    }
+    if (seenKeys.has(dedupKey)) {
+      if (debug) pushDebugSample(debug.payload.rejectedByDedup, toDebugSample(candidate, 'semantic_duplicate'));
+      return false;
+    }
 
     const mapped = toRecommendedPlace(candidate, options.destination);
     const bucket = mapped.bucket || 'imperdibles';
     const bucketCount = bucketCounts.get(bucket) || 0;
-    if (bucketCount >= categoryLimitForBucket(bucket, options.queryType)) continue;
+    if (bucketCount >= categoryLimitForBucket(bucket, options.queryType)) {
+      if (debug) pushDebugSample(debug.payload.rejectedBySelectionRules, toDebugSample(candidate, `bucket_limit:${bucket}`));
+      return false;
+    }
 
     selected.push(mapped);
     seenKeys.add(dedupKey);
     bucketCounts.set(bucket, bucketCount + 1);
+    return true;
+  };
+
+  if (options.queryType === 'broad_city_discovery') {
+    const broadRequirements: Array<Array<NonNullable<ChatRecommendedPlace['bucket']>>> = [
+      ['imperdibles', 'historia'],
+      ['imperdibles', 'historia'],
+      ['barrios'],
+      ['parques', 'miradores'],
+      ['museos'],
+    ];
+
+    broadRequirements.forEach((acceptedBuckets) => {
+      const match = conservativeRanked.find((candidate) => {
+        const bucket = getDiscoveryBucket(candidate) || 'imperdibles';
+        const dedupKey = getDedupKey(candidate);
+        return acceptedBuckets.includes(bucket)
+          && Boolean(dedupKey)
+          && !seenKeys.has(dedupKey)
+          && (bucketCounts.get(bucket) || 0) < categoryLimitForBucket(bucket, options.queryType);
+      });
+      if (match) tryAddCandidate(match);
+    });
+  }
+
+  for (const candidate of ranked) {
+    tryAddCandidate(candidate);
     if (selected.length >= 6) break;
+  }
+
+  if (options.queryType === 'broad_city_discovery' && selected.length < 4) {
+    if (debug) {
+      debug.payload.usedFallbackSelection = true;
+      debug.payload.rejectedBySelectionRules = [];
+    }
+    selected.length = 0;
+    seenKeys.clear();
+    bucketCounts.clear();
+
+    const conservativeRequirements: Array<Array<NonNullable<ChatRecommendedPlace['bucket']>>> = [
+      ['imperdibles', 'historia'],
+      ['imperdibles', 'historia'],
+      ['barrios'],
+      ['parques', 'miradores'],
+      ['museos'],
+    ];
+
+    conservativeRequirements.forEach((acceptedBuckets) => {
+      const match = conservativeRanked.find((candidate) => {
+        const bucket = getDiscoveryBucket(candidate) || 'imperdibles';
+        const dedupKey = getDedupKey(candidate);
+        return acceptedBuckets.includes(bucket)
+          && Boolean(dedupKey)
+          && !seenKeys.has(dedupKey)
+          && (bucketCounts.get(bucket) || 0) < categoryLimitForBucket(bucket, options.queryType);
+      });
+      if (match) tryAddCandidate(match);
+    });
+
+    for (const candidate of conservativeRanked) {
+      tryAddCandidate(candidate);
+      if (selected.length >= 6) break;
+    }
+  }
+
+  if (debug) {
+    debug.payload.candidateCountAfterCuration = selected.length;
+    debug.payload.selectedBuckets = selected.map((place) => place.bucket || 'imperdibles');
+    debug.payload.selectedPlaceIds = selected.map((place) => place.placeId || place.name).slice(0, 6);
   }
 
   return selected;
@@ -330,6 +635,22 @@ async function fetchDiscoveryCandidates(destination: DiscoveryDestination, query
   ]);
 
   const nearbyPlaces = categories.flatMap((category) => nearbyBundle[category] || []);
+  const recommendationPlaces = recommendedGroups
+    .filter((group) => normalizeText(group.city) === normalizeText(destination.city))
+    .flatMap((group) => group.places || []);
+
+  return [...nearbyPlaces, ...recommendationPlaces];
+}
+
+async function fetchConservativeBroadCandidates(destination: DiscoveryDestination): Promise<PlannerPlaceCandidate[]> {
+  const { fetchNearbyPlacesBundle, fetchPlaceRecommendations } = await import('@/features/trip-planner/services/placesService');
+  const strictCategories: PlannerPlaceCategory[] = ['sights', 'museum', 'culture', 'parks'];
+  const [nearbyBundle, recommendedGroups] = await Promise.all([
+    fetchNearbyPlacesBundle(null, destination.city, { lat: destination.lat, lng: destination.lng }, strictCategories),
+    fetchPlaceRecommendations([destination.city], 12),
+  ]);
+
+  const nearbyPlaces = strictCategories.flatMap((category) => nearbyBundle[category] || []);
   const recommendationPlaces = recommendedGroups
     .filter((group) => normalizeText(group.city) === normalizeText(destination.city))
     .flatMap((group) => group.places || []);
@@ -362,18 +683,53 @@ export async function buildDiscoveryResponsePayload(options: {
     };
   }
 
-  const queryType = getQueryType(options.message);
+  const queryType = detectDiscoverySubtype(options.message);
   const candidates = await fetchDiscoveryCandidates(destination, queryType);
-  const recommendedPlaces = curateDiscoveryPlaces({
+  const debug = createDiscoveryDebugPayload({
+    queryType,
+    destination,
+    providerCategories: summarizeProviderCategories(candidates),
+  });
+
+  let recommendedPlaces = curateDiscoveryPlaces({
     candidates,
     destination,
     queryType,
+    debug,
   });
+
+  if (queryType === 'broad_city_discovery' && recommendedPlaces.length < 4) {
+    const conservativeCandidates = await fetchConservativeBroadCandidates(destination);
+    const fallbackDebug = createDiscoveryDebugPayload({
+      queryType,
+      destination,
+      providerCategories: summarizeProviderCategories(conservativeCandidates),
+    });
+    recommendedPlaces = curateDiscoveryPlaces({
+      candidates: conservativeCandidates,
+      destination,
+      queryType,
+      debug: fallbackDebug,
+    });
+
+    debug.payload.usedFallbackSelection = true;
+    debug.payload.fallbackProviderCategories = fallbackDebug.payload.providerCategories;
+    debug.payload.fallbackCandidateCountBeforeFiltering = fallbackDebug.payload.candidateCountBeforeFiltering;
+    debug.payload.fallbackCandidateCountAfterFiltering = fallbackDebug.payload.candidateCountAfterFiltering;
+    debug.payload.candidateCountAfterCuration = fallbackDebug.payload.candidateCountAfterCuration;
+    debug.payload.selectedBuckets = fallbackDebug.payload.selectedBuckets;
+    debug.payload.selectedPlaceIds = fallbackDebug.payload.selectedPlaceIds;
+    mergeDebugSamples(debug.payload.rejectedByQualityGate, fallbackDebug.payload.rejectedByQualityGate);
+    mergeDebugSamples(debug.payload.rejectedByNoiseFilter, fallbackDebug.payload.rejectedByNoiseFilter);
+    mergeDebugSamples(debug.payload.rejectedByDedup, fallbackDebug.payload.rejectedByDedup);
+    mergeDebugSamples(debug.payload.rejectedBySelectionRules, fallbackDebug.payload.rejectedBySelectionRules);
+  }
 
   const discoveryContext: DiscoveryContext = {
     destination,
     queryType,
     places: recommendedPlaces,
+    debug: debug.payload,
   };
 
   return {

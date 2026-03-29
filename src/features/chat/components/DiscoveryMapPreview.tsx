@@ -49,13 +49,26 @@ export default function DiscoveryMapPreview({ discoveryContext }: DiscoveryMapPr
           </p>
         </div>
         <span className="text-[11px] rounded-full bg-muted px-2 py-1 text-muted-foreground">
-          {discoveryContext.queryType === 'broad' ? 'Discovery' : titleCase(discoveryContext.queryType)}
+          {getDiscoveryQueryLabel(discoveryContext.queryType)}
         </span>
       </div>
     </div>
   );
 }
 
-function titleCase(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+function getDiscoveryQueryLabel(queryType: DiscoveryContext['queryType']): string {
+  switch (queryType) {
+    case 'broad_city_discovery':
+      return 'Discovery';
+    case 'museum_discovery':
+      return 'Museos';
+    case 'food_discovery':
+      return 'Gastronomia';
+    case 'nightlife_discovery':
+      return 'Noche';
+    case 'neighborhood_discovery':
+      return 'Barrios';
+    default:
+      return 'Discovery';
+  }
 }

@@ -18,6 +18,29 @@ function formatSlotLabel(slot?: 'morning' | 'afternoon' | 'evening') {
   return 'Sugerido';
 }
 
+function formatPlaceBadge(place: ChatRecommendedPlace) {
+  switch (place.bucket) {
+    case 'imperdibles':
+      return 'Imperdible';
+    case 'historia':
+      return 'Historia';
+    case 'museos':
+      return 'Museo';
+    case 'barrios':
+      return 'Barrio';
+    case 'miradores':
+      return 'Mirador';
+    case 'parques':
+      return 'Paseo';
+    case 'gastronomia':
+      return 'Gastronomia';
+    case 'noche':
+      return 'Noche';
+    default:
+      return place.category;
+  }
+}
+
 export default function RecommendedPlacesList({ places, onExplore, onAdd, title = 'Lugares recomendados', subtitle, addLabel = 'Sumarlo', exploreLabel = 'Ver más' }: RecommendedPlacesListProps) {
   if (places.length === 0) return null;
 
@@ -52,7 +75,7 @@ export default function RecommendedPlacesList({ places, onExplore, onAdd, title 
                   </p>
                 </div>
                 <span className="text-[11px] shrink-0 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                  {place.category}
+                  {formatPlaceBadge(place)}
                 </span>
               </div>
 

@@ -6,7 +6,7 @@ import {
   formatDiscoveryResponse,
   resolveConversationTurn,
 } from '@/features/chat/services/conversationOrchestrator';
-import { curateDiscoveryPlaces } from '@/features/chat/services/discoveryService';
+import { curateDiscoveryPlaces, detectDiscoverySubtype, hasStrongPlaceIdentity, isAttractionLikePlace } from '@/features/chat/services/discoveryService';
 
 describe('conversationOrchestrator', () => {
   it('builds a shorter conversational missing-info message', () => {
@@ -312,7 +312,7 @@ describe('conversationOrchestrator', () => {
         confidence: 1,
         source: 'parsed_request',
       },
-      queryType: 'broad',
+      queryType: 'broad_city_discovery',
       candidates: [
         { placeId: '1', name: 'MK2 Bibliothèque', category: 'activity', formattedAddress: 'Paris', photoUrls: [], rating: 3.8, userRatingsTotal: 10, types: ['movie_theater'] },
         { placeId: '2', name: 'Le Louvre', category: 'museum', formattedAddress: 'Paris', photoUrls: ['photo'], rating: 4.8, userRatingsTotal: 10000, types: ['museum'] },
@@ -339,7 +339,7 @@ describe('conversationOrchestrator', () => {
         confidence: 1,
         source: 'parsed_request',
       },
-      queryType: 'broad',
+      queryType: 'broad_city_discovery',
       candidates: [
         { placeId: '1', name: 'Torre de Belem', category: 'sights', formattedAddress: 'Lisboa', photoUrls: ['a'], rating: 4.7, userRatingsTotal: 9000, types: ['tourist_attraction'] },
         { placeId: '2', name: 'Mosteiro dos Jeronimos', category: 'culture', formattedAddress: 'Lisboa', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 8500, types: ['church'] },
@@ -354,5 +354,131 @@ describe('conversationOrchestrator', () => {
     expect(selected.some((place) => place.name.includes('Alfama'))).toBe(true);
     expect(selected.some((place) => place.name.includes('Azulejo'))).toBe(true);
     expect(selected.some((place) => place.name.includes('Cinema'))).toBe(false);
+  });
+
+  it('detects broad city discovery by default for que ver / que hacer queries', () => {
+    expect(detectDiscoverySubtype('Qué hacer en Ámsterdam')).toBe('broad_city_discovery');
+    expect(detectDiscoverySubtype('Imperdibles de Berlín')).toBe('broad_city_discovery');
+    expect(detectDiscoverySubtype('Museos en Madrid')).toBe('museum_discovery');
+  });
+
+  it('recognizes attraction-like places and excludes commercial venues', () => {
+    expect(isAttractionLikePlace({
+      placeId: 'a1',
+      name: 'Rijksmuseum',
+      category: 'museum',
+      photoUrls: ['x'],
+      types: ['museum'],
+    })).toBe(true);
+
+    expect(isAttractionLikePlace({
+      placeId: 'a2',
+      name: 'Independent Outlet Skateboards Amsterdam',
+      category: 'activity',
+      photoUrls: [],
+      types: ['store'],
+    })).toBe(false);
+  });
+
+  it('rejects weak generic labels and keeps strong identities', () => {
+    const destination = {
+      city: 'Berlin',
+      lat: 52.52,
+      lng: 13.405,
+      confidence: 1,
+      source: 'parsed_request' as const,
+    };
+
+    expect(hasStrongPlaceIdentity({
+      placeId: 'b1',
+      name: 'Mirador de Berlin',
+      category: 'parks',
+      photoUrls: ['x'],
+      types: ['viewpoint'],
+      userRatingsTotal: 500,
+    }, destination)).toBe(false);
+
+    expect(hasStrongPlaceIdentity({
+      placeId: 'b2',
+      name: 'Berlin Cathedral (Berliner Dom)',
+      category: 'nightlife',
+      photoUrls: ['x'],
+      types: ['church'],
+      userRatingsTotal: 12000,
+    }, destination)).toBe(true);
+  });
+
+  it('derives broad badges from curated buckets instead of raw nightlife category', () => {
+    const selected = curateDiscoveryPlaces({
+      destination: {
+        city: 'Berlin',
+        lat: 52.52,
+        lng: 13.405,
+        confidence: 1,
+        source: 'parsed_request',
+      },
+      queryType: 'broad_city_discovery',
+      candidates: [
+        { placeId: '1', name: 'Berlin Cathedral (Berliner Dom)', category: 'nightlife', formattedAddress: 'Am Lustgarten 1', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 12000, types: ['church'] },
+        { placeId: '2', name: 'Mirador de Berlin', category: 'parks', formattedAddress: 'SV', photoUrls: ['a'], rating: 4.1, userRatingsTotal: 150, types: ['viewpoint'] },
+        { placeId: '3', name: 'Brandenburg Gate', category: 'sights', formattedAddress: 'Pariser Platz', photoUrls: ['a'], rating: 4.7, userRatingsTotal: 15000, types: ['tourist_attraction'] },
+        { placeId: '4', name: 'Tiergarten', category: 'parks', formattedAddress: 'Berlin', photoUrls: ['a'], rating: 4.7, userRatingsTotal: 9000, types: ['park'] },
+        { placeId: '5', name: 'Museumsinsel', category: 'culture', formattedAddress: 'Berlin', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 10000, types: ['historical_landmark'] },
+        { placeId: '6', name: 'Unter den Linden', category: 'activity', formattedAddress: 'Berlin', photoUrls: ['a'], rating: 4.6, userRatingsTotal: 6000, types: ['route'] },
+      ],
+    });
+
+    const cathedral = selected.find((place) => place.name.includes('Cathedral'));
+    expect(selected.some((place) => place.name.includes('Mirador de Berlin'))).toBe(false);
+    expect(cathedral?.bucket).toBe('historia');
+    expect(cathedral?.category).toBe('Historia');
+    expect(cathedral?.description).not.toBe('SV');
+  });
+
+  it('captures compact debug reasons for broad discovery curation', () => {
+    const debug = {
+      payload: {
+        discoverySubtype: 'broad_city_discovery' as const,
+        providerCategories: { activity: 2, parks: 1, nightlife: 1, sights: 1 },
+        selectedBuckets: [],
+        selectedPlaceIds: [],
+        candidateCountBeforeFiltering: 0,
+        candidateCountAfterFiltering: 0,
+        candidateCountAfterCuration: 0,
+        usedFallbackSelection: false,
+        destinationResolutionSource: 'parsed_request' as const,
+        destinationResolutionConfidence: 1,
+        rejectedByQualityGate: [],
+        rejectedByNoiseFilter: [],
+        rejectedByDedup: [],
+        rejectedBySelectionRules: [],
+      },
+    };
+
+    const selected = curateDiscoveryPlaces({
+      destination: {
+        city: 'Berlin',
+        lat: 52.52,
+        lng: 13.405,
+        confidence: 1,
+        source: 'parsed_request',
+      },
+      queryType: 'broad_city_discovery',
+      debug,
+      candidates: [
+        { placeId: '1', name: 'Mirador de Berlin', category: 'parks', formattedAddress: 'SV', photoUrls: ['a'], rating: 4.1, userRatingsTotal: 150, types: ['viewpoint'] },
+        { placeId: '2', name: 'Berlin Cathedral (Berliner Dom)', category: 'nightlife', formattedAddress: 'Am Lustgarten 1', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 12000, types: ['church'] },
+        { placeId: '3', name: 'Independent Outlet Berlin', category: 'activity', formattedAddress: 'Berlin', photoUrls: ['a'], rating: 4.0, userRatingsTotal: 90, types: ['store'] },
+        { placeId: '4', name: 'Brandenburg Gate', category: 'sights', formattedAddress: 'Pariser Platz', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 15000, types: ['tourist_attraction'] },
+        { placeId: '4', name: 'Brandenburg Gate', category: 'sights', formattedAddress: 'Pariser Platz', photoUrls: ['a'], rating: 4.4, userRatingsTotal: 3000, types: ['tourist_attraction'] },
+      ],
+    });
+
+    expect(selected.some((place) => place.name.includes('Brandenburg Gate'))).toBe(true);
+    expect(debug.payload.candidateCountBeforeFiltering).toBe(5);
+    expect(debug.payload.rejectedByQualityGate.some((entry) => entry.reason === 'generic_city_label')).toBe(true);
+    expect(debug.payload.rejectedByNoiseFilter.some((entry) => ['noise_filter', 'chain_brand', 'commercial_venue'].includes(entry.reason))).toBe(true);
+    expect(debug.payload.rejectedByDedup.some((entry) => entry.reason === 'provider_duplicate')).toBe(true);
+    expect(debug.payload.selectedBuckets.length).toBeGreaterThan(0);
   });
 });
