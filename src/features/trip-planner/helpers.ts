@@ -149,6 +149,96 @@ function stripProtectedFields(
   return filtered as Partial<TripPlannerState>;
 }
 
+// ---------------------------------------------------------------------------
+// User-activity preservation during segment enrichment
+// ---------------------------------------------------------------------------
+
+type SlotName = 'morning' | 'afternoon' | 'evening';
+const ACTIVITY_SLOTS: SlotName[] = ['morning', 'afternoon', 'evening'];
+
+interface SavedUserActivity {
+  activity: PlannerDay['morning'][number];
+  dayNumber: number;
+  slot: SlotName;
+}
+
+interface SavedUserRestaurant {
+  restaurant: PlannerDay['restaurants'][number];
+  dayNumber: number;
+}
+
+function isUserSourceActivity(a: { source?: string }): boolean {
+  return a.source === 'user' || a.source === 'google_maps' || a.source === 'foursquare';
+}
+
+function collectUserActivities(days: PlannerDay[]): { activities: SavedUserActivity[]; restaurants: SavedUserRestaurant[] } {
+  const activities: SavedUserActivity[] = [];
+  const restaurants: SavedUserRestaurant[] = [];
+
+  for (const day of days) {
+    for (const slot of ACTIVITY_SLOTS) {
+      for (const activity of day[slot] || []) {
+        if (isUserSourceActivity(activity)) {
+          activities.push({ activity, dayNumber: day.dayNumber, slot });
+        }
+      }
+    }
+    for (const restaurant of day.restaurants || []) {
+      if (isUserSourceActivity(restaurant)) {
+        restaurants.push({ restaurant, dayNumber: day.dayNumber });
+      }
+    }
+  }
+
+  return { activities, restaurants };
+}
+
+function reinsertUserActivities(
+  enrichedDays: PlannerDay[],
+  saved: { activities: SavedUserActivity[]; restaurants: SavedUserRestaurant[] },
+): PlannerDay[] {
+  if (saved.activities.length === 0 && saved.restaurants.length === 0) return enrichedDays;
+  if (enrichedDays.length === 0) return enrichedDays;
+
+  const result = enrichedDays.map((day) => ({
+    ...day,
+    morning: [...day.morning],
+    afternoon: [...day.afternoon],
+    evening: [...day.evening],
+    restaurants: [...day.restaurants],
+  }));
+
+  const lastDayNumber = result[result.length - 1].dayNumber;
+
+  for (const { activity, dayNumber, slot } of saved.activities) {
+    const targetDayNum = dayNumber <= lastDayNumber ? dayNumber : lastDayNumber;
+    const targetDay = result.find((d) => d.dayNumber === targetDayNum) || result[result.length - 1];
+
+    const alreadyExists = targetDay[slot].some((a) =>
+      (activity.placeId && a.placeId === activity.placeId)
+      || a.id === activity.id,
+    );
+    if (alreadyExists) continue;
+
+    targetDay[slot].push(activity);
+  }
+
+  for (const { restaurant, dayNumber } of saved.restaurants) {
+    const targetDayNum = dayNumber <= lastDayNumber ? dayNumber : lastDayNumber;
+    const targetDay = result.find((d) => d.dayNumber === targetDayNum) || result[result.length - 1];
+
+    const alreadyExists = targetDay.restaurants.some((r) =>
+      (restaurant.placeId && r.placeId === restaurant.placeId)
+      || r.id === restaurant.id,
+    );
+    if (alreadyExists) continue;
+
+    targetDay.restaurants.push(restaurant);
+  }
+
+  return result;
+}
+
 export function mergeEnrichedSegmentState(
   current: TripPlannerState,
   next: TripPlannerState,
@@ -188,9 +278,14 @@ export function mergeEnrichedSegmentState(
         return segment;
       }
 
+      // Collect user-added activities from the CURRENT segment before overwriting
+      const saved = collectUserActivities(segment.days || []);
+      const enrichedDays = reinsertUserActivities(enrichedSegment.days || [], saved);
+
       return {
         ...segment,
         ...enrichedSegment,
+        days: enrichedDays,
         startDate: segment.startDate || enrichedSegment.startDate,
         endDate: segment.endDate || enrichedSegment.endDate,
         contentStatus: 'ready',

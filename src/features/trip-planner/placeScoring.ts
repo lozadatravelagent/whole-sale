@@ -36,15 +36,16 @@ export function hasGoogleMapsContent(day: TripPlannerState['segments'][number]['
 
 export function scoreRealPlaceCandidate(place: PlannerPlaceCandidate): number {
   const popularityScore = (place.rating || 0) * 18 + Math.log10((place.userRatingsTotal || 0) + 1) * 22;
-  const categoryBonus = place.category === 'museum'
-    ? 18
-    : place.category === 'activity'
-      ? 14
-      : place.category === 'restaurant'
-        ? 12
-        : place.category === 'cafe'
-          ? 10
-          : 4;
+  const categoryBonus = place.category === 'museum' ? 18
+    : place.category === 'sights' ? 16
+    : place.category === 'activity' ? 14
+    : place.category === 'culture' ? 14
+    : place.category === 'parks' ? 12
+    : place.category === 'restaurant' ? 12
+    : place.category === 'nightlife' ? 10
+    : place.category === 'cafe' ? 10
+    : place.category === 'shopping' ? 8
+    : 4;
   const iconicBonus = ICONIC_PLACE_KEYWORD_RE.test(place.name) ? 18 : 0;
   const genericPenalty = GENERIC_PLACE_KEYWORD_RE.test(place.name) ? 24 : 0;
 

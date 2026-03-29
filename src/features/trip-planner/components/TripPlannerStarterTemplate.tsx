@@ -1,14 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  APIProvider,
-  Map as GoogleMap,
-  RenderingType,
-  useMapsLibrary,
-} from '@vis.gl/react-google-maps';
+import MapGL from 'react-map-gl/mapbox';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import { CalendarDays, MapPinned, Route, Send, Sparkles } from 'lucide-react';
-import { HAS_PLANNER_GOOGLE_MAPS, PLANNER_GOOGLE_MAPS_API_KEY, PLANNER_GOOGLE_MAPS_MAP_ID } from '../map';
+import { HAS_MAP, MAPBOX_TOKEN } from '../map';
 
 const STARTER_CARDS = [
   {
@@ -44,68 +39,9 @@ const STARTER_CARDS = [
 // Photo fetcher — runs inside an APIProvider to access the Places library
 // ---------------------------------------------------------------------------
 
-const cityPhotoCache = new Map<string, string>();
-
-function StarterCityPhotoFetcher({
-  onPhotosLoaded,
-}: {
-  onPhotosLoaded: (photos: Record<string, string>) => void;
-}) {
-  const placesLib = useMapsLibrary('places');
-  const fetchedRef = useRef(false);
-  const onPhotosLoadedRef = useRef(onPhotosLoaded);
-  onPhotosLoadedRef.current = onPhotosLoaded;
-
-  useEffect(() => {
-    if (!placesLib || fetchedRef.current) return;
-    fetchedRef.current = true;
-
-    // Check cache first
-    const cached: Record<string, string> = {};
-    let allCached = true;
-    for (const card of STARTER_CARDS) {
-      const url = cityPhotoCache.get(card.id);
-      if (url) {
-        cached[card.id] = url;
-      } else {
-        allCached = false;
-      }
-    }
-
-    if (allCached) {
-      onPhotosLoadedRef.current(cached);
-      return;
-    }
-
-    const container = document.createElement('div');
-    const service = new placesLib.PlacesService(container);
-    const photos: Record<string, string> = { ...cached };
-    let remaining = STARTER_CARDS.filter((c) => !cached[c.id]).length;
-
-    STARTER_CARDS.forEach((card) => {
-      if (cached[card.id]) return;
-
-      service.findPlaceFromQuery(
-        { query: card.photoQuery, fields: ['photos'] },
-        (results, status) => {
-          if (
-            status === google.maps.places.PlacesServiceStatus.OK &&
-            results?.[0]?.photos?.[0]
-          ) {
-            const url = results[0].photos[0].getUrl({ maxWidth: 800 });
-            photos[card.id] = url;
-            cityPhotoCache.set(card.id, url);
-          }
-          remaining--;
-          if (remaining <= 0) {
-            onPhotosLoadedRef.current(photos);
-          }
-        },
-      );
-    });
-  }, [placesLib]);
-
-  return null;
+// Static photo URLs for starter cards (no API call needed)
+function getStarterCardPhoto(photoQuery: string): string {
+  return `https://source.unsplash.com/800x600/?${encodeURIComponent(photoQuery)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,11 +94,12 @@ export default function TripPlannerStarterTemplate({
   onSendPrompt,
 }: TripPlannerStarterTemplateProps) {
   const isProcessing = mode === 'processing';
-  const [cityPhotos, setCityPhotos] = useState<Record<string, string>>({});
 
-  const handlePhotosLoaded = useCallback((photos: Record<string, string>) => {
-    setCityPhotos(photos);
-  }, []);
+  // Pre-compute photo URLs (no API call)
+  const cityPhotos = STARTER_CARDS.reduce<Record<string, string>>((acc, card) => {
+    acc[card.id] = getStarterCardPhoto(card.photoQuery);
+    return acc;
+  }, {});
 
   return (
     <div className="space-y-4">
@@ -208,19 +145,14 @@ export default function TripPlannerStarterTemplate({
           <div className="w-full">
             <div className="overflow-hidden rounded-[28px] border border-primary/15 shadow-sm">
               <div className="relative h-[320px] sm:h-[380px]">
-                {HAS_PLANNER_GOOGLE_MAPS ? (
-                  <APIProvider apiKey={PLANNER_GOOGLE_MAPS_API_KEY} language="es" region="ES">
-                    <GoogleMap
-                      defaultCenter={{ lat: 42, lng: 9 }}
-                      defaultZoom={3}
-                      mapId={PLANNER_GOOGLE_MAPS_MAP_ID || undefined}
-                      disableDefaultUI
-                      gestureHandling="none"
-                      colorScheme="LIGHT"
-                      renderingType={RenderingType.VECTOR}
-                      style={{ width: '100%', height: '100%' }}
-                    />
-                  </APIProvider>
+                {HAS_MAP ? (
+                  <MapGL
+                    mapboxAccessToken={MAPBOX_TOKEN}
+                    initialViewState={{ longitude: 9, latitude: 42, zoom: 3 }}
+                    style={{ width: '100%', height: '100%' }}
+                    mapStyle="mapbox://styles/mapbox/streets-v12"
+                    interactive={false}
+                  />
                 ) : (
                   <div className="flex h-full bg-[linear-gradient(180deg,rgba(248,250,252,1),rgba(226,232,240,0.92))] p-4">
                     <StarterMapPlaceholder isProcessing={isProcessing} />
@@ -247,11 +179,6 @@ export default function TripPlannerStarterTemplate({
 
           {!isProcessing && onSendPrompt && (
             <>
-              {HAS_PLANNER_GOOGLE_MAPS && (
-                <APIProvider apiKey={PLANNER_GOOGLE_MAPS_API_KEY} language="es" region="ES">
-                  <StarterCityPhotoFetcher onPhotosLoaded={handlePhotosLoaded} />
-                </APIProvider>
-              )}
               <div className="grid gap-3 sm:grid-cols-3">
                 {STARTER_CARDS.map((card) => {
                   const photoUrl = cityPhotos[card.id];

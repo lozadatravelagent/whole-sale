@@ -1,7 +1,8 @@
 import type { PlannerLocation, TripPlannerState } from '../types';
-import { PLANNER_GOOGLE_MAPS_API_KEY } from '../map';
+import { MAPBOX_TOKEN } from '../map';
 import { formatDestinationLabel } from '../utils';
 import { geocodeCacheGet, geocodeCacheSet, geocodeCacheGetAll } from './geocodingCache';
+import { fetchPlaceSummary } from './placesService';
 
 type SegmentLike = TripPlannerState['segments'][number];
 
@@ -14,6 +15,15 @@ type EnrichedPlannerLocations = {
 const GEOCODER_URL = 'https://nominatim.openstreetmap.org/search';
 const IDB_CITY_PREFIX = 'city:';
 const IDB_ACTIVITY_PREFIX = 'activity:';
+
+// Nominatim rate limit: 1 req/sec. Serial queue to guarantee ordering.
+let nominatimQueue: Promise<void> = Promise.resolve();
+function throttleNominatim(): Promise<void> {
+  nominatimQueue = nominatimQueue.then(
+    () => new Promise((r) => setTimeout(r, 1500)),
+  );
+  return nominatimQueue;
+}
 
 const FALLBACK_CITY_COORDINATES: Record<string, Omit<PlannerLocation, 'city'>> = {
   madrid: { lat: 40.4168, lng: -3.7038, country: 'España', placeLabel: 'Madrid, España', source: 'fallback' },
@@ -69,6 +79,46 @@ function normalizeLocationKey(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
+function sanitizeGeocodeFragment(value?: string | null): string {
+  return (value || '')
+    .replace(/[|/\\]+/g, ' ')
+    .replace(/[[\](){}]+/g, ' ')
+    .replace(/[,:;]+/g, ', ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+,/g, ',')
+    .trim()
+    .replace(/^,+|,+$/g, '');
+}
+
+function buildGeocodeQuery(parts: Array<string | undefined | null>, maxLength = 120): string {
+  const query = parts
+    .map((part) => sanitizeGeocodeFragment(part))
+    .filter(Boolean)
+    .join(', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (query.length <= maxLength) {
+    return query;
+  }
+
+  return query.slice(0, maxLength).replace(/[\s,]+[^\s,]*$/, '').trim();
+}
+
+function uniqQueries(queries: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const query of queries) {
+    const normalized = query?.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+}
+
 function buildCacheKey(city: string, country?: string): string {
   return `${normalizeLocationKey(city)}::${normalizeLocationKey(country || '')}`;
 }
@@ -104,76 +154,78 @@ function needsLocationResolution(segment: SegmentLike): boolean {
   return normalizeLocationKey(segment.location.city) !== normalizeLocationKey(segment.city);
 }
 
-async function fetchProviderLocation(city: string, country?: string): Promise<PlannerLocation | null> {
-  if (PLANNER_GOOGLE_MAPS_API_KEY) {
-    const googleLocation = await fetchGoogleLocation(city, country);
-    if (googleLocation) {
-      return googleLocation;
-    }
+async function fetchMapboxLocation(city: string, country?: string): Promise<PlannerLocation | null> {
+  if (!MAPBOX_TOKEN) return null;
+  const query = buildGeocodeQuery([city, country]);
+  if (!query) return null;
+  const params = new URLSearchParams({
+    q: query,
+    limit: '1',
+    language: 'es',
+    access_token: MAPBOX_TOKEN,
+  });
+  try {
+    const response = await fetch(`https://api.mapbox.com/search/geocode/v6/forward?${params.toString()}`);
+    if (!response.ok) return null;
+    const payload = await response.json() as {
+      features?: Array<{
+        properties?: { full_address?: string; name?: string };
+        geometry?: { coordinates?: [number, number] };
+      }>;
+    };
+    const feature = payload.features?.[0];
+    if (!feature?.geometry?.coordinates) return null;
+    const [lng, lat] = feature.geometry.coordinates;
+    return {
+      city: formatDestinationLabel(city),
+      country,
+      lat,
+      lng,
+      placeLabel: feature.properties?.full_address || feature.properties?.name,
+      source: 'provider',
+    };
+  } catch {
+    return null;
   }
+}
 
+async function fetchProviderLocation(city: string, country?: string): Promise<PlannerLocation | null> {
+  // Mapbox first (fast, no rate limit), Nominatim as fallback
+  const mapboxResult = await fetchMapboxLocation(city, country);
+  if (mapboxResult) return mapboxResult;
   return fetchNominatimLocation(city, country);
 }
 
-async function fetchGoogleLocation(city: string, country?: string): Promise<PlannerLocation | null> {
-  const address = [city, country].filter(Boolean).join(', ');
-  const params = new URLSearchParams({
-    address,
-    key: PLANNER_GOOGLE_MAPS_API_KEY,
-    language: 'es',
-  });
-
-  const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`);
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const payload = await response.json() as {
-    status?: string;
-    results?: Array<{
-      formatted_address?: string;
-      geometry?: {
-        location?: {
-          lat?: number;
-          lng?: number;
-        };
-      };
-    }>;
-  };
-
-  if (payload.status !== 'OK' || !payload.results?.[0]?.geometry?.location) {
-    return null;
-  }
-
-  const firstResult = payload.results[0];
-
-  return {
-    city: formatDestinationLabel(city),
-    country,
-    lat: Number(firstResult.geometry?.location?.lat),
-    lng: Number(firstResult.geometry?.location?.lng),
-    placeLabel: firstResult.formatted_address,
-    source: 'provider',
-  };
-}
-
 async function fetchNominatimLocation(city: string, country?: string): Promise<PlannerLocation | null> {
-  const query = [city, country].filter(Boolean).join(', ');
+  const query = buildGeocodeQuery([city, country], 160);
+  if (!query) return null;
   const params = new URLSearchParams({
     q: query,
     format: 'jsonv2',
     limit: '1',
   });
 
-  const response = await fetch(`${GEOCODER_URL}?${params.toString()}`, {
-    headers: {
-      Accept: 'application/json',
-      'Accept-Language': 'es',
-    },
-  });
+  const url = `${GEOCODER_URL}?${params.toString()}`;
+  const headers = { Accept: 'application/json', 'Accept-Language': 'es' };
 
-  if (!response.ok) {
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await throttleNominatim();
+    try {
+      response = await fetch(url, { headers });
+    } catch {
+      return null;
+    }
+    if (response.status === 429) {
+      // Rate limited — wait extra and retry
+      await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+      response = null;
+      continue;
+    }
+    break;
+  }
+
+  if (!response || !response.ok) {
     return null;
   }
 
@@ -221,8 +273,11 @@ export async function resolvePlannerSegmentLocation(input: {
 
 const activityMemoryCache = new Map<string, { lat: number; lng: number } | null>();
 
-function buildActivityCacheKey(title: string, neighborhood?: string, city?: string): string {
-  return [title, neighborhood, city].filter(Boolean).map((v) => normalizeLocationKey(v!)).join('::');
+function buildActivityCacheKey(title: string, neighborhood?: string, city?: string, placeId?: string, formattedAddress?: string): string {
+  return [placeId, title, formattedAddress, neighborhood, city]
+    .filter(Boolean)
+    .map((value) => normalizeLocationKey(value!))
+    .join('::');
 }
 
 function readCachedActivityLocation(cacheKey: string): { lat: number; lng: number } | null | undefined {
@@ -238,15 +293,59 @@ function writeCachedActivityLocation(cacheKey: string, location: { lat: number; 
 export async function resolveActivityLocation(input: {
   title: string;
   neighborhood?: string;
+  formattedAddress?: string;
+  placeId?: string;
   city: string;
   country?: string;
 }): Promise<{ lat: number; lng: number } | null> {
-  const cacheKey = buildActivityCacheKey(input.title, input.neighborhood, input.city);
+  const cacheKey = buildActivityCacheKey(
+    input.title,
+    input.neighborhood,
+    input.city,
+    input.placeId,
+    input.formattedAddress,
+  );
   const cached = readCachedActivityLocation(cacheKey);
   if (cached !== undefined) return cached;
 
-  const query = [input.title, input.neighborhood, input.city, input.country].filter(Boolean).join(', ');
-  const providerLocation = await fetchProviderLocation(query);
+  const summary = await fetchPlaceSummary({
+    placeId: input.placeId,
+    title: input.title,
+    city: input.city,
+  }).catch(() => null);
+
+  if (summary?.lat != null && summary?.lng != null) {
+    const result = { lat: summary.lat, lng: summary.lng };
+    writeCachedActivityLocation(cacheKey, result);
+    return result;
+  }
+
+  const addressQueries = uniqQueries([
+    buildGeocodeQuery([input.formattedAddress, input.city, input.country], 140),
+    buildGeocodeQuery([input.neighborhood, input.city, input.country], 120),
+  ]);
+
+  for (const query of addressQueries) {
+    const providerLocation = await fetchProviderLocation(query);
+    if (providerLocation) {
+      const result = { lat: providerLocation.lat, lng: providerLocation.lng };
+      writeCachedActivityLocation(cacheKey, result);
+      return result;
+    }
+  }
+
+  const poiQueries = uniqQueries([
+    buildGeocodeQuery([input.title, input.city, input.country], 96),
+    buildGeocodeQuery([input.title, input.neighborhood, input.city], 96),
+    buildGeocodeQuery([input.city, input.country], 80),
+  ]);
+
+  let providerLocation: PlannerLocation | null = null;
+  for (const query of poiQueries) {
+    providerLocation = await fetchNominatimLocation(query);
+    if (providerLocation) break;
+  }
+
   const result = providerLocation ? { lat: providerLocation.lat, lng: providerLocation.lng } : null;
   writeCachedActivityLocation(cacheKey, result);
   return result;
@@ -293,6 +392,7 @@ async function reverseGeocodeNominatim(lat: number, lng: number): Promise<{ city
       format: 'jsonv2',
       'accept-language': 'es',
     });
+    await throttleNominatim();
     const response = await fetch(`${REVERSE_GEOCODER_URL}?${params.toString()}`, {
       headers: { Accept: 'application/json' },
     });

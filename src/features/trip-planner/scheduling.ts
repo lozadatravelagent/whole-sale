@@ -414,7 +414,13 @@ export function normalizePlannerDayScheduling<TActivity extends SchedulableActiv
     (day[slot] || []).forEach((activity) => {
       const type = classifyPlannerActivityType(activity);
       const preferredSlot = getPlannerPreferredSlot(activity, context);
-      const finalSlot = !shouldForceMove(type, slot, preferredSlot, context)
+
+      // User-placed activities stay in their slot — never force-move them
+      const pinned = activity.locked === true
+        || activity.source === 'user'
+        || activity.source === 'google_maps';
+
+      const finalSlot = pinned || !shouldForceMove(type, slot, preferredSlot, context)
         ? slot
         : preferredSlot;
 
@@ -422,17 +428,19 @@ export function normalizePlannerDayScheduling<TActivity extends SchedulableActiv
         ...activity,
         category: activity.category || toCategoryLabel(type),
         activityType: type,
-        recommendedSlot: preferredSlot,
+        recommendedSlot: pinned ? slot : preferredSlot,
         durationMinutes: typeof activity.durationMinutes === 'number'
           ? activity.durationMinutes
           : DURATION_BY_TYPE[type],
-        schedulingConfidence: buildSchedulingConfidence({
-          preferredSlot,
-          finalSlot,
-          moved: finalSlot !== slot,
-          timeRepaired: false,
-          familyNightlife: isFamilyTrip(context.travelers) && type === 'nightlife',
-        }),
+        schedulingConfidence: pinned
+          ? 'high'
+          : buildSchedulingConfidence({
+              preferredSlot,
+              finalSlot,
+              moved: finalSlot !== slot,
+              timeRepaired: false,
+              familyNightlife: isFamilyTrip(context.travelers) && type === 'nightlife',
+            }),
       });
     });
   });

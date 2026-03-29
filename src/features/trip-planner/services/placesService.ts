@@ -1,56 +1,10 @@
-import { logTimingStep, nowMs } from '@/utils/debugTiming';
-import { runWithConcurrency } from '@/utils/concurrencyPool';
-import type { PlannerPlaceCandidate, PlannerPlaceCategory } from '../types';
-import {
-  buildPlannerPlaceCandidate,
-  inferPlannerPlaceCategory,
-  pickCanonicalPlannerPlaceCategory,
-} from './plannerPlaceMapper';
-import type { LocalHotelData } from '@/features/chat/types/chat';
-import type { PlannerPlaceHotelCandidate } from '../types';
-import { isEurovipsInventoryHotel } from '../utils';
-
-// ---------------------------------------------------------------------------
-// TTL Cache helper — wraps Map with expiration and max size
-// ---------------------------------------------------------------------------
-
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const CACHE_MAX_ENTRIES = 500;
-
-interface TTLEntry<T> { value: T; expiresAt: number }
-
-class TTLCache<T> {
-  private map = new Map<string, TTLEntry<T>>();
-
-  has(key: string): boolean {
-    const entry = this.map.get(key);
-    if (!entry) return false;
-    if (Date.now() > entry.expiresAt) {
-      this.map.delete(key);
-      return false;
-    }
-    return true;
-  }
-
-  get(key: string): T | undefined {
-    const entry = this.map.get(key);
-    if (!entry) return undefined;
-    if (Date.now() > entry.expiresAt) {
-      this.map.delete(key);
-      return undefined;
-    }
-    return entry.value;
-  }
-
-  set(key: string, value: T): void {
-    if (this.map.size >= CACHE_MAX_ENTRIES) {
-      // Delete the oldest entry (first inserted)
-      const firstKey = this.map.keys().next().value;
-      if (firstKey !== undefined) this.map.delete(firstKey);
-    }
-    this.map.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
-  }
-}
+import { supabase } from '@/integrations/supabase/client';
+import { placesCache, cacheKeys } from './placesCache';
+import type {
+  PlannerPlaceCandidate,
+  PlannerPlaceCategory,
+  PlannerPlaceHotelCandidate,
+} from '../types';
 
 export interface PlaceReview {
   authorName: string;
@@ -59,8 +13,9 @@ export interface PlaceReview {
   relativeTime: string;
 }
 
-export type PlaceDetails = {
+export interface PlaceDetails {
   placeId: string;
+  source?: 'foursquare' | 'wikipedia' | 'inventory';
   name: string;
   formattedAddress?: string;
   rating?: number;
@@ -73,484 +28,273 @@ export type PlaceDetails = {
   reviewSnippet?: string;
   reviews?: PlaceReview[];
   types?: string[];
-};
-
-type NearbyCategory = PlannerPlaceCategory;
-
-const detailsCache = new TTLCache<PlaceDetails | null>();
-const nearbyPlacesCache = new TTLCache<PlannerPlaceCandidate[]>();
-const inventoryHotelCache = new TTLCache<PlannerPlaceHotelCandidate | null>();
-
-function normalizeKey(title: string, city: string): string {
-  return `${title}::${city}`
-    .toLowerCase()
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+  freshness?: string;
 }
 
-function normalizeNearbyKey(category: NearbyCategory, city: string, lat: number, lng: number): string {
-  return `${category}::${normalizeKey(city, city)}::${lat.toFixed(2)}::${lng.toFixed(2)}`;
+export interface PlaceRecommendationGroup {
+  city: string;
+  places: PlannerPlaceCandidate[];
 }
 
-function normalizeInventoryHotelKey(hotel: LocalHotelData): string {
-  return [
-    hotel.hotel_id || hotel.name,
-    hotel.city,
-    hotel.address || '',
-  ]
-    .join('::')
-    .toLowerCase()
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
+interface PlaceDetailsLookup {
+  placeId?: string;
+  title: string;
+  city: string;
+  locationBias?: { lat: number; lng: number };
 }
 
-function mapPlaceResultToCandidate(
-  result: google.maps.places.PlaceResult,
-  requestedCategory: NearbyCategory,
-): PlannerPlaceCandidate | null {
-  if (!result.place_id || !result.name) {
-    return null;
+interface FunctionResponse<T> {
+  data?: T;
+  error?: string;
+}
+
+const FAILED_REQUEST_TTL_MS = 2 * 60 * 1000;
+const failedRequestCooldown = new Map<string, number>();
+const inFlightRequests = new Map<string, Promise<unknown>>();
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
   }
 
-  return buildPlannerPlaceCandidate({
-    placeId: result.place_id,
-    name: result.name,
-    formattedAddress: result.vicinity,
-    rating: result.rating,
-    userRatingsTotal: result.user_ratings_total,
-    photoUrls: (result.photos ?? []).slice(0, 3).map((photo) => photo.getUrl({ maxWidth: 1600 })),
-    types: result.types,
-    lat: result.geometry?.location?.lat(),
-    lng: result.geometry?.location?.lng(),
-    category: requestedCategory,
-  });
-}
-
-function shouldKeepPlaceForCategory(
-  category: NearbyCategory,
-  place: PlannerPlaceCandidate,
-): boolean {
-  const inferredCategory = inferPlannerPlaceCategory(place.types, place.name);
-
-  if (category === 'activity') {
-    return inferredCategory === 'activity';
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${key}:${stableStringify(nested)}`)
+      .join(',')}}`;
   }
 
-  if (!place.types || place.types.length === 0) {
+  return JSON.stringify(value);
+}
+
+function requestKey(functionName: string, params: unknown): string {
+  return `${functionName}::${stableStringify(params)}`;
+}
+
+function requestRecentlyFailed(key: string): boolean {
+  const timestamp = failedRequestCooldown.get(key);
+  if (!timestamp) return false;
+
+  if (Date.now() - timestamp < FAILED_REQUEST_TTL_MS) {
     return true;
   }
 
-  return inferredCategory === category;
+  failedRequestCooldown.delete(key);
+  return false;
 }
 
-function dedupePlaces(places: PlannerPlaceCandidate[]): PlannerPlaceCandidate[] {
-  const merged = new Map<string, PlannerPlaceCandidate>();
+async function invokePlacesFunction<T>(
+  functionName: string,
+  payload: unknown,
+): Promise<T | null> {
+  const key = requestKey(functionName, payload);
 
-  places.forEach((place) => {
-    const existing = merged.get(place.placeId);
-    if (!existing) {
-      merged.set(place.placeId, place);
+  if (requestRecentlyFailed(key)) {
+    return null;
+  }
+
+  const existing = inFlightRequests.get(key);
+  if (existing) {
+    return existing as Promise<T | null>;
+  }
+
+  const request = (async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: payload,
+      });
+
+      const response = (data || {}) as FunctionResponse<T>;
+
+      if (error || response.error) {
+        failedRequestCooldown.set(key, Date.now());
+        return null;
+      }
+
+      failedRequestCooldown.delete(key);
+      return (response.data ?? null) as T | null;
+    } catch {
+      failedRequestCooldown.set(key, Date.now());
+      return null;
+    } finally {
+      inFlightRequests.delete(key);
+    }
+  })();
+
+  inFlightRequests.set(key, request as Promise<unknown>);
+  return request;
+}
+
+function buildHotelsCacheKey(city: string, hotels: Array<{ name: string; hotel_id?: string }>, limit: number): string {
+  return cacheKeys.geocoding(
+    `hotels::${city}::${limit}::${hotels
+      .map((hotel) => hotel.hotel_id || hotel.name)
+      .join('::')}`,
+  );
+}
+
+function isLikelyFoursquareVenueId(value?: string): boolean {
+  return /^[0-9a-f]{24}$/i.test((value || '').trim());
+}
+
+type NearbyCategory = PlannerPlaceCategory;
+
+export async function fetchNearbyPlacesBundle(
+  _service: unknown,
+  city: string,
+  location: { lat: number; lng: number },
+  categories: NearbyCategory[] = ['restaurant', 'cafe', 'museum', 'activity'],
+): Promise<Record<string, PlannerPlaceCandidate[]>> {
+  const requestedCategories = Array.from(new Set(categories));
+  const results: Record<string, PlannerPlaceCandidate[]> = {};
+  const missingCategories: NearbyCategory[] = [];
+
+  await Promise.all(requestedCategories.map(async (category) => {
+    const key = cacheKeys.nearby(city, category, 2500);
+    const cached = await placesCache.get<PlannerPlaceCandidate[]>('nearby', key);
+
+    if (cached) {
+      results[category] = cached;
       return;
     }
 
-    const category = pickCanonicalPlannerPlaceCategory([existing.category, place.category]);
-    const preferred = category === existing.category ? existing : place;
-    const secondary = preferred === existing ? place : existing;
+    missingCategories.push(category);
+  }));
 
-    merged.set(place.placeId, {
-      ...secondary,
-      ...preferred,
-      category,
-      activityType: preferred.activityType || secondary.activityType,
-      photoUrls: preferred.photoUrls?.length ? preferred.photoUrls : secondary.photoUrls,
+  if (missingCategories.length > 0) {
+    const response = await invokePlacesFunction<{ placesByCategory?: Record<string, PlannerPlaceCandidate[]> }>('places-viewport', {
+      city,
+      location,
+      categories: missingCategories,
+      radius: 2500,
+      limit: 20,
     });
-  });
 
-  return Array.from(merged.values()).sort((left, right) => {
-    const leftScore = (left.rating || 0) * Math.max(1, left.userRatingsTotal || 1);
-    const rightScore = (right.rating || 0) * Math.max(1, right.userRatingsTotal || 1);
-    return rightScore - leftScore;
-  });
-}
+    const placesByCategory = response?.placesByCategory || {};
 
-function runNearbySearch(
-  placesService: google.maps.places.PlacesService,
-  request: google.maps.places.PlaceSearchRequest,
-): Promise<google.maps.places.PlaceResult[]> {
-  return new Promise((resolve) => {
-    const collected: google.maps.places.PlaceResult[] = [];
-    let resolved = false;
-
-    const finish = () => {
-      if (resolved) return;
-      resolved = true;
-      resolve(collected);
-    };
-
-    let pageCount = 0;
-    const handleResults = (
-      results: google.maps.places.PlaceResult[] | null,
-      status: google.maps.places.PlacesServiceStatus,
-      pagination: google.maps.places.PlaceSearchPagination | null,
-    ) => {
-      if (status !== google.maps.places.PlacesServiceStatus.OK || !results) {
-        finish();
-        return;
-      }
-
-      collected.push(...results);
-      pageCount += 1;
-
-      if (pagination?.hasNextPage && pageCount < 3) {
-        pagination.nextPage();
-        return;
-      }
-
-      finish();
-    };
-
-    placesService.nearbySearch(request, (results, status, pagination) => {
-      if (!results) {
-        resolve([]);
-        return;
-      }
-
-      handleResults(results, status, pagination || null);
-    });
-  });
-}
-
-function buildNearbyRequests(
-  category: NearbyCategory,
-  city: string,
-  location: { lat: number; lng: number },
-): google.maps.places.PlaceSearchRequest[] {
-  const latLng = new google.maps.LatLng(location.lat, location.lng);
-  const base = {
-    location: latLng,
-    radius: 12000,
-  };
-
-  // Google Maps types don't include all valid place type strings, so we cast via `string`
-  type PlaceType = google.maps.places.PlaceSearchRequest['type'];
-  const asPlaceType = (value: string) => value as PlaceType;
-
-  switch (category) {
-    case 'hotel':
-      return [
-        { ...base, type: asPlaceType('lodging') },
-        { ...base, keyword: city, type: asPlaceType('lodging') },
-      ];
-    case 'restaurant':
-      return [{ ...base, type: asPlaceType('restaurant') }];
-    case 'cafe':
-      return [{ ...base, type: asPlaceType('cafe') }];
-    case 'museum':
-      return [{ ...base, type: asPlaceType('museum') }];
-    case 'activity':
-    default:
-      return [
-        { ...base, type: asPlaceType('tourist_attraction') },
-        { ...base, type: asPlaceType('point_of_interest') },
-        { ...base, type: asPlaceType('park') },
-        { ...base, type: asPlaceType('art_gallery') },
-      ];
+    await Promise.all(missingCategories.map(async (category) => {
+      const candidates = placesByCategory[category] || [];
+      results[category] = candidates;
+      await placesCache.set('nearby', cacheKeys.nearby(city, category, 2500), candidates);
+    }));
   }
-}
 
-export async function fetchPlaceDetails(
-  placesService: google.maps.places.PlacesService,
-  title: string,
-  city: string,
-  locationBias?: { lat: number; lng: number }
-): Promise<PlaceDetails | null> {
-  const key = normalizeKey(title, city);
-  if (detailsCache.has(key)) return detailsCache.get(key)!;
-
-  return new Promise((resolve) => {
-    const query = `${title}, ${city}`;
-    const request: google.maps.places.FindPlaceFromQueryRequest = {
-      query,
-      fields: ['place_id', 'name'],
-      ...(locationBias
-        ? { locationBias: new google.maps.LatLng(locationBias.lat, locationBias.lng) }
-        : {}),
-    };
-
-    placesService.findPlaceFromQuery(request, (results, status) => {
-      if (
-        status !== google.maps.places.PlacesServiceStatus.OK ||
-        !results ||
-        results.length === 0 ||
-        !results[0].place_id
-      ) {
-        detailsCache.set(key, null);
-        resolve(null);
-        return;
-      }
-
-      const placeId = results[0].place_id;
-
-      placesService.getDetails(
-        {
-          placeId,
-          fields: [
-            'place_id',
-            'name',
-            'formatted_address',
-            'rating',
-            'user_ratings_total',
-            'website',
-            'formatted_phone_number',
-            'opening_hours',
-            'photos',
-            'reviews',
-            'types',
-          ],
-        },
-        (place, detailStatus) => {
-          if (detailStatus !== google.maps.places.PlacesServiceStatus.OK || !place) {
-            detailsCache.set(key, null);
-            resolve(null);
-            return;
-          }
-
-          const photoUrls = (place.photos ?? [])
-            .slice(0, 3)
-            .map((photo) => photo.getUrl({ maxWidth: 1600 }));
-
-          const reviews: PlaceReview[] = (place.reviews ?? []).slice(0, 5).map((r) => ({
-            authorName: r.author_name || 'Anónimo',
-            rating: r.rating ?? 0,
-            text: r.text || '',
-            relativeTime: r.relative_time_description || '',
-          }));
-
-          const details: PlaceDetails = {
-            placeId: place.place_id || placeId,
-            name: place.name || title,
-            formattedAddress: place.formatted_address,
-            rating: place.rating,
-            userRatingsTotal: place.user_ratings_total,
-            website: place.website,
-            phoneNumber: place.formatted_phone_number,
-            openingHours: place.opening_hours?.weekday_text,
-            isOpenNow: place.opening_hours?.isOpen?.(),
-            photoUrls,
-            reviewSnippet: place.reviews?.[0]?.text,
-            reviews: reviews.length > 0 ? reviews : undefined,
-            types: place.types,
-          };
-
-          detailsCache.set(key, details);
-          resolve(details);
-        }
-      );
-    });
+  requestedCategories.forEach((category) => {
+    if (!results[category]) {
+      results[category] = [];
+    }
   });
+
+  return results;
 }
 
 export async function fetchNearbyPlacesByCategory(
-  placesService: google.maps.places.PlacesService,
+  _service: unknown,
   city: string,
   location: { lat: number; lng: number },
-  category: NearbyCategory
+  category: NearbyCategory,
 ): Promise<PlannerPlaceCandidate[]> {
-  const key = normalizeNearbyKey(category, city, location.lat, location.lng);
-  if (nearbyPlacesCache.has(key)) {
-    return nearbyPlacesCache.get(key)!;
-  }
-
-  const t0 = nowMs();
-  const requests = buildNearbyRequests(category, city, location);
-  const results = await Promise.all(requests.map((request) => runNearbySearch(placesService, request)));
-  const places = dedupePlaces(
-    results
-      .flat()
-      .map((result) => mapPlaceResultToCandidate(result, category))
-      .filter((place): place is PlannerPlaceCandidate => Boolean(place))
-      .filter((place) => shouldKeepPlaceForCategory(category, place))
-  ).slice(0, 48);
-
-  logTimingStep('places-service', `fetchNearby:${category}`, t0, { city, results: places.length });
-  nearbyPlacesCache.set(key, places);
-  return places;
-}
-
-export async function fetchNearbyPlacesBundle(
-  placesService: google.maps.places.PlacesService,
-  city: string,
-  location: { lat: number; lng: number },
-  categories: NearbyCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity']
-): Promise<Record<NearbyCategory, PlannerPlaceCandidate[]>> {
-  const t0 = nowMs();
-  const entries = await Promise.all(
-    categories.map(async (category) => [category, await fetchNearbyPlacesByCategory(placesService, city, location, category)] as const)
-  );
-
-  const bundle = {
-    hotel: entries.find(([category]) => category === 'hotel')?.[1] || [],
-    restaurant: entries.find(([category]) => category === 'restaurant')?.[1] || [],
-    cafe: entries.find(([category]) => category === 'cafe')?.[1] || [],
-    museum: entries.find(([category]) => category === 'museum')?.[1] || [],
-    activity: entries.find(([category]) => category === 'activity')?.[1] || [],
-  };
-
-  const totalPlaces = Object.values(bundle).reduce((sum, arr) => sum + arr.length, 0);
-  logTimingStep('places-service', 'fetchBundle', t0, { city, categories: categories.length, totalPlaces });
-  return bundle;
+  const bundle = await fetchNearbyPlacesBundle(_service, city, location, [category]);
+  return bundle[category] ?? [];
 }
 
 export async function fetchNearbyHotels(
-  placesService: google.maps.places.PlacesService,
+  _service: unknown,
   city: string,
-  location: { lat: number; lng: number }
+  location: { lat: number; lng: number },
 ): Promise<PlannerPlaceCandidate[]> {
-  return fetchNearbyPlacesByCategory(placesService, city, location, 'hotel');
+  return await fetchNearbyPlacesByCategory(_service, city, location, 'hotel');
 }
 
-async function geocodeInventoryHotel(
-  placesService: google.maps.places.PlacesService,
-  hotel: LocalHotelData,
-  city: string,
-  locationBias?: { lat: number; lng: number }
-): Promise<PlannerPlaceHotelCandidate | null> {
-  const cacheKey = normalizeInventoryHotelKey(hotel);
-  if (inventoryHotelCache.has(cacheKey)) {
-    return inventoryHotelCache.get(cacheKey)!;
+export async function fetchPlaceDetails(
+  _service: unknown,
+  lookupOrTitle: string | PlaceDetailsLookup,
+  city?: string,
+  locationBias?: { lat: number; lng: number },
+): Promise<PlaceDetails | null> {
+  const lookup = typeof lookupOrTitle === 'string'
+    ? {
+        title: lookupOrTitle,
+        city: city || '',
+        locationBias,
+      }
+    : lookupOrTitle;
+
+  const idKey = lookup.placeId && isLikelyFoursquareVenueId(lookup.placeId)
+    ? cacheKeys.details(`id::${lookup.placeId}`)
+    : null;
+  const queryKey = cacheKeys.details(`${lookup.title}::${lookup.city}`);
+
+  if (idKey) {
+    const cachedById = await placesCache.get<PlaceDetails>('details', idKey);
+    if (cachedById) return cachedById;
   }
 
-  const queries = [
-    [hotel.name, hotel.address, city].filter(Boolean).join(', '),
-    [hotel.name, city].filter(Boolean).join(', '),
-  ].filter(Boolean);
+  const cachedByQuery = await placesCache.get<PlaceDetails>('details', queryKey);
+  if (cachedByQuery) return cachedByQuery;
 
-  const buildInventoryCandidate = (
-    lat: number,
-    lng: number,
-    placeId?: string,
-    formattedAddress?: string,
-  ): PlannerPlaceHotelCandidate => ({
-    placeId: placeId || `inventory:${cacheKey}`,
-    name: hotel.name,
-    formattedAddress: hotel.address || formattedAddress,
-    photoUrls: [],
-    types: ['lodging'],
-    lat,
-    lng,
-    category: 'hotel',
-    activityType: 'hotel',
-    source: 'inventory',
-    hotelId: hotel.hotel_id || `${hotel.name}-${hotel.city}`,
-    hotel,
-      provider: hotel.provider,
-    });
+  const result = await invokePlacesFunction<PlaceDetails | null>('place-details', lookup);
+  if (!result) return null;
 
-  const candidate = await (async () => {
-    for (const query of queries) {
-      const result = await new Promise<PlannerPlaceHotelCandidate | null>((resolve) => {
-        const request: google.maps.places.FindPlaceFromQueryRequest = {
-          query,
-          fields: ['place_id', 'name', 'formatted_address', 'geometry'],
-          ...(locationBias
-            ? { locationBias: new google.maps.LatLng(locationBias.lat, locationBias.lng) }
-            : {}),
-        };
+  await Promise.all([
+    placesCache.set('details', queryKey, result),
+    ...(idKey ? [placesCache.set('details', idKey, result)] : []),
+  ]);
 
-        placesService.findPlaceFromQuery(request, (results, status) => {
-          const first = results?.[0];
-          const lat = first?.geometry?.location?.lat();
-          const lng = first?.geometry?.location?.lng();
+  return result;
+}
 
-          if (
-            status === google.maps.places.PlacesServiceStatus.OK &&
-            typeof lat === 'number' &&
-            typeof lng === 'number'
-          ) {
-            resolve(buildInventoryCandidate(lat, lng, first?.place_id, first?.formatted_address));
-            return;
-          }
+export async function fetchPlaceSummary(
+  lookup: PlaceDetailsLookup,
+): Promise<PlannerPlaceCandidate | null> {
+  return await invokePlacesFunction<PlannerPlaceCandidate | null>('place-summary', lookup);
+}
 
-          resolve(null);
-        });
-      });
+export async function fetchPlacePhotos(
+  placeId: string,
+  limit = 3,
+  size: 'thumb' | 'hero' | 'gallery' = 'hero',
+): Promise<string[]> {
+  const result = await invokePlacesFunction<{ placeId: string; photoUrls: string[] }>('place-photos', {
+    placeId,
+    limit,
+    size,
+  });
 
-      if (result) {
-        return result;
-      }
-    }
+  return result?.photoUrls || [];
+}
 
-    if (!hotel.address) {
-      return null;
-    }
+export async function fetchPlaceRecommendations(
+  destinations: string[],
+  limitPerCity = 4,
+): Promise<PlaceRecommendationGroup[]> {
+  const result = await invokePlacesFunction<{ destinations: PlaceRecommendationGroup[] }>('place-recommendations', {
+    destinations,
+    limitPerCity,
+  });
 
-    return new Promise<PlannerPlaceHotelCandidate | null>((resolve) => {
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode(
-        {
-          address: [hotel.address, city].filter(Boolean).join(', '),
-          ...(locationBias
-            ? { location: new google.maps.LatLng(locationBias.lat, locationBias.lng) }
-            : {}),
-        },
-        (results, status) => {
-          const first = results?.[0];
-          const lat = first?.geometry?.location?.lat();
-          const lng = first?.geometry?.location?.lng();
-
-          if (
-            status === google.maps.GeocoderStatus.OK &&
-            typeof lat === 'number' &&
-            typeof lng === 'number'
-          ) {
-            resolve(buildInventoryCandidate(lat, lng, first?.place_id, first?.formatted_address));
-            return;
-          }
-
-          resolve(null);
-        }
-      );
-    });
-  })();
-
-  inventoryHotelCache.set(cacheKey, candidate);
-  return candidate;
+  return result?.destinations || [];
 }
 
 export async function fetchInventoryHotelPlaces(
-  placesService: google.maps.places.PlacesService,
+  _service: unknown,
   city: string,
-  hotels: LocalHotelData[],
+  hotels: Array<{ name: string; address?: string; hotel_id?: string; city?: string }>,
   locationBias?: { lat: number; lng: number },
-  limit = 12
+  limit = 12,
 ): Promise<PlannerPlaceHotelCandidate[]> {
-  const eurovipsHotels = hotels
-    .filter(isEurovipsInventoryHotel)
-    .slice(0, limit);
+  const cacheKey = buildHotelsCacheKey(city, hotels.slice(0, limit), limit);
+  const cached = await placesCache.get<PlannerPlaceHotelCandidate[]>('geocoding', cacheKey);
+  if (cached) return cached;
 
-  const results = await runWithConcurrency(
-    eurovipsHotels.map((hotel) => () => geocodeInventoryHotel(placesService, hotel, city, locationBias)),
-    4
-  );
-
-  const successfulResults = results.filter((hotel): hotel is PlannerPlaceHotelCandidate => Boolean(hotel));
-
-  console.log('🗺️ [PLANNER MAP HOTELS] Inventory hotel geocoding completed', {
+  const result = await invokePlacesFunction<PlannerPlaceHotelCandidate[]>('place-hotel-candidates', {
     city,
-    requested: eurovipsHotels.length,
-    geocoded: successfulResults.length,
-    failed: eurovipsHotels.length - successfulResults.length,
-    failedHotels: eurovipsHotels
-      .filter((hotel, index) => !results[index])
-      .slice(0, 5)
-      .map((hotel) => ({
-        name: hotel.name,
-        address: hotel.address,
-        city: hotel.city,
-      })),
+    hotels: hotels.slice(0, limit),
+    locationBias,
+    limit,
   });
 
-  return successfulResults;
+  const places = result || [];
+  await placesCache.set('geocoding', cacheKey, places);
+  return places;
 }

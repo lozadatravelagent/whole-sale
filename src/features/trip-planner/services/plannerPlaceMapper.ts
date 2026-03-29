@@ -67,6 +67,11 @@ export function inferPlannerActivityTypeForPlace(
   if (category === 'hotel') return 'hotel';
   if (category === 'museum') return 'museum';
   if (category === 'restaurant' || category === 'cafe') return 'food';
+  if (category === 'sights') return 'landmark';
+  if (category === 'nightlife') return 'nightlife';
+  if (category === 'parks') return 'nature';
+  if (category === 'shopping') return 'shopping';
+  if (category === 'culture') return 'culture';
 
   return classifyPlannerActivityType({
     name,
@@ -84,6 +89,16 @@ export function getPlannerPlaceCategoryLabel(category: PlannerPlaceCategory): st
       return 'Cafes';
     case 'museum':
       return 'Museos';
+    case 'sights':
+      return 'Puntos de interés';
+    case 'nightlife':
+      return 'Bares y noche';
+    case 'parks':
+      return 'Parques';
+    case 'shopping':
+      return 'Compras';
+    case 'culture':
+      return 'Cultura';
     case 'activity':
     default:
       return 'Que hacer';
@@ -100,6 +115,16 @@ export function getPlannerPlaceEmoji(category: PlannerPlaceCategory, activityTyp
       return '☕';
     case 'museum':
       return '🏛️';
+    case 'sights':
+      return '📍';
+    case 'nightlife':
+      return '🍸';
+    case 'parks':
+      return '🌿';
+    case 'shopping':
+      return '🛍️';
+    case 'culture':
+      return '🎭';
     case 'activity':
     default:
       if (activityType === 'shopping') return '🛍️';

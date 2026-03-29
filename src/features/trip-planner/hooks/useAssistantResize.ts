@@ -1,57 +1,74 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const ASSISTANT_WIDTH_DEFAULT = 640;
-const ASSISTANT_WIDTH_MIN = 560;
-const ASSISTANT_WIDTH_MAX = 920;
-const ASSISTANT_WIDTH_STORAGE_KEY = 'tripPlannerAssistantWidth';
-const ASSISTANT_COLLAPSED_STORAGE_KEY = 'tripPlannerAssistantCollapsed';
+const CHAT_PANEL_STORAGE_KEY = 'plannerChatPanelWidth';
+const CHAT_PANEL_MIN = 380;
+const MAP_PANEL_MIN = 400;
+const GUTTER_WIDTH = 12;
 
-export function useAssistantResize() {
-  const [assistantWidth, setAssistantWidth] = useState(ASSISTANT_WIDTH_DEFAULT);
-  const [isAssistantCollapsed, setIsAssistantCollapsed] = useState(false);
-  const [isResizingAssistant, setIsResizingAssistant] = useState(false);
+export function useChatPanelResize() {
+  const [chatPanelWidth, setChatPanelWidth] = useState<number | null>(null);
+  const [isResizing, setIsResizing] = useState(false);
 
+  const containerRef = useRef<HTMLDivElement>(null);
   const resizeStartXRef = useRef<number | null>(null);
   const resizeStartWidthRef = useRef<number | null>(null);
+  const didRestoreStoredWidthRef = useRef(false);
 
-  const clampAssistantWidth = useCallback((value: number) => {
-    return Math.min(ASSISTANT_WIDTH_MAX, Math.max(ASSISTANT_WIDTH_MIN, value));
+  const clampChatWidth = useCallback((value: number) => {
+    const containerWidth = containerRef.current?.clientWidth ?? window.innerWidth;
+    const maxChat = containerWidth - MAP_PANEL_MIN - GUTTER_WIDTH;
+    return Math.min(maxChat, Math.max(CHAT_PANEL_MIN, value));
   }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(CHAT_PANEL_STORAGE_KEY);
+    const parsed = stored ? Number(stored) : NaN;
+    if (!Number.isNaN(parsed) && parsed >= CHAT_PANEL_MIN) {
+      didRestoreStoredWidthRef.current = true;
+      setChatPanelWidth(clampChatWidth(parsed));
+    }
+  }, [clampChatWidth]);
 
-    const storedWidth = window.localStorage.getItem(ASSISTANT_WIDTH_STORAGE_KEY);
-    const parsedWidth = storedWidth ? Number(storedWidth) : NaN;
-    if (!Number.isNaN(parsedWidth)) {
-      setAssistantWidth(clampAssistantWidth(Math.max(parsedWidth, ASSISTANT_WIDTH_DEFAULT)));
+  useEffect(() => {
+    if (typeof window === 'undefined' || chatPanelWidth === null || !didRestoreStoredWidthRef.current) {
+      return;
     }
 
-    const storedCollapsed = window.localStorage.getItem(ASSISTANT_COLLAPSED_STORAGE_KEY);
-    setIsAssistantCollapsed(storedCollapsed === 'true');
-  }, [clampAssistantWidth]);
+    const frameId = window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event('resize'));
+    });
+    const timeoutId = window.setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 220);
+
+    didRestoreStoredWidthRef.current = false;
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [chatPanelWidth]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(ASSISTANT_WIDTH_STORAGE_KEY, String(clampAssistantWidth(assistantWidth)));
-  }, [assistantWidth, clampAssistantWidth]);
+    if (typeof window === 'undefined' || chatPanelWidth === null) return;
+    window.localStorage.setItem(CHAT_PANEL_STORAGE_KEY, String(chatPanelWidth));
+  }, [chatPanelWidth]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(ASSISTANT_COLLAPSED_STORAGE_KEY, String(isAssistantCollapsed));
-  }, [isAssistantCollapsed]);
-
-  useEffect(() => {
-    if (!isResizingAssistant) return;
+    if (!isResizing) return;
 
     const handlePointerMove = (event: PointerEvent) => {
       if (resizeStartXRef.current === null || resizeStartWidthRef.current === null) return;
-      const delta = resizeStartXRef.current - event.clientX;
-      setAssistantWidth(clampAssistantWidth(resizeStartWidthRef.current + delta));
+      const delta = event.clientX - resizeStartXRef.current;
+      // Delta positive = gutter moved RIGHT = chat GROWS (chat is on the left)
+      setChatPanelWidth(clampChatWidth(resizeStartWidthRef.current + delta));
+      // Notify Mapbox GL (listens to window resize natively) that layout changed
+      window.dispatchEvent(new Event('resize'));
     };
 
     const handlePointerUp = () => {
-      setIsResizingAssistant(false);
+      setIsResizing(false);
       resizeStartXRef.current = null;
       resizeStartWidthRef.current = null;
       document.body.style.cursor = '';
@@ -69,31 +86,22 @@ export function useAssistantResize() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [clampAssistantWidth, isResizingAssistant]);
+  }, [clampChatWidth, isResizing]);
 
-  const handleAssistantResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (isAssistantCollapsed) return;
+  const handleResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     resizeStartXRef.current = event.clientX;
-    resizeStartWidthRef.current = assistantWidth;
-    setIsResizingAssistant(true);
-  }, [assistantWidth, isAssistantCollapsed]);
-
-  const handleCollapseAssistant = useCallback(() => {
-    setIsAssistantCollapsed(true);
-    setIsResizingAssistant(false);
-  }, []);
-
-  const handleExpandAssistant = useCallback(() => {
-    setAssistantWidth((current) => clampAssistantWidth(current || ASSISTANT_WIDTH_DEFAULT));
-    setIsAssistantCollapsed(false);
-  }, [clampAssistantWidth]);
+    const currentWidth = chatPanelWidth
+      ?? (containerRef.current
+        ? Math.floor((containerRef.current.clientWidth - GUTTER_WIDTH) / 2)
+        : 480);
+    resizeStartWidthRef.current = currentWidth;
+    setIsResizing(true);
+  }, [chatPanelWidth]);
 
   return {
-    assistantWidth,
-    isAssistantCollapsed,
-    isResizingAssistant,
-    handleAssistantResizeStart,
-    handleCollapseAssistant,
-    handleExpandAssistant,
+    chatPanelWidth,
+    isResizing,
+    containerRef,
+    handleResizeStart,
   };
 }

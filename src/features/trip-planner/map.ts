@@ -1,4 +1,10 @@
-export const PLANNER_GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() || '';
-export const PLANNER_GOOGLE_MAPS_MAP_ID = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID?.trim() || '';
+import mapboxgl from 'mapbox-gl';
 
-export const HAS_PLANNER_GOOGLE_MAPS = Boolean(PLANNER_GOOGLE_MAPS_API_KEY);
+export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN?.trim() || '';
+export const HAS_MAP = Boolean(MAPBOX_TOKEN);
+
+const mapboxWithTelemetryToggle = mapboxgl as typeof mapboxgl & {
+  setTelemetryEnabled?: (enabled: boolean) => void;
+};
+
+mapboxWithTelemetryToggle.setTelemetryEnabled?.(false);

@@ -13,7 +13,7 @@ export type PlannerGenerationSource =
   | 'template'
   | 'draft';
 export type PlannerUiPhase = 'template' | 'draft_parsing' | 'draft_generating' | 'ready';
-export type PlannerPlaceCategory = 'hotel' | 'restaurant' | 'cafe' | 'museum' | 'activity';
+export type PlannerPlaceCategory = 'hotel' | 'restaurant' | 'cafe' | 'museum' | 'activity' | 'sights' | 'nightlife' | 'parks' | 'shopping' | 'culture';
 export type PlannerActivityType =
   | 'museum'
   | 'landmark'
@@ -72,7 +72,7 @@ export interface PlannerActivity {
   rating?: number;
   userRatingsTotal?: number;
   photoUrls?: string[];
-  source?: 'generated' | 'user' | 'google_maps';
+  source?: 'generated' | 'user' | 'google_maps' | 'foursquare';
 }
 
 export interface PlannerRestaurant {
@@ -85,7 +85,7 @@ export interface PlannerRestaurant {
   rating?: number;
   userRatingsTotal?: number;
   photoUrls?: string[];
-  source?: 'generated' | 'user' | 'google_maps';
+  source?: 'generated' | 'user' | 'google_maps' | 'foursquare';
 }
 
 export interface PlannerLocation {
@@ -124,7 +124,7 @@ export interface PlannerPlaceCandidate {
   isOpenNow?: boolean;
   category: PlannerPlaceCategory;
   activityType?: PlannerActivityType;
-  source?: 'google_maps' | 'inventory';
+  source?: 'google_maps' | 'inventory' | 'foursquare' | 'wikipedia';
 }
 
 export interface PlannerPlaceHotelCandidate extends PlannerPlaceCandidate {

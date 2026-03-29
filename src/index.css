@@ -329,11 +329,6 @@
   position: relative;
 }
 
-.emilia-message h2:before {
-  content: "✈️";
-  margin-right: 0.5rem;
-  font-size: 1rem;
-}
 
 .emilia-message h3 {
   font-size: 1rem;
@@ -344,11 +339,6 @@
   line-height: 1.4;
 }
 
-.emilia-message h3:before {
-  content: "📍";
-  margin-right: 0.5rem;
-  font-size: 0.875rem;
-}
 
 .emilia-message h1:first-child,
 .emilia-message h2:first-child,
@@ -358,7 +348,7 @@
 
 .emilia-message p {
   margin-bottom: 1rem;
-  line-height: 1.7;
+  line-height: 1.5;
   color: hsl(var(--foreground));
 }
 
@@ -373,15 +363,15 @@
 
 .emilia-message li {
   margin-bottom: 0.5rem;
-  line-height: 1.6;
+  line-height: 1.5;
   position: relative;
 }
 
-.emilia-message ul li:before {
-  content: "🌟";
-  position: absolute;
-  left: -1.5rem;
-  font-size: 0.75rem;
+.emilia-message ul {
+  list-style-type: disc;
+}
+.emilia-message ul li::before {
+  content: none;
 }
 
 .emilia-message strong {
@@ -406,15 +396,6 @@
   position: relative;
 }
 
-.emilia-message blockquote:before {
-  content: "💡";
-  position: absolute;
-  top: 1rem;
-  left: -0.75rem;
-  background: hsl(var(--background));
-  padding: 0.25rem;
-  border-radius: 50%;
-}
 
 .emilia-message code {
   background-color: hsl(var(--muted));
@@ -440,11 +421,6 @@
   color: hsl(var(--foreground));
 }
 
-/* Special formatting for travel recommendations */
-.emilia-message p:has(+ ul) {
-  font-weight: 500;
-  color: hsl(var(--primary));
-}
 
 /* Add breathing space between sections */
 .emilia-message > *:not(:last-child) {
@@ -587,11 +563,6 @@
   transform-origin: top center;
 }
 
-.planner-assistant-rail {
-  min-width: 0;
-  background: hsl(var(--background));
-}
-
 .planner-assistant-resize-gutter {
   position: relative;
   width: 12px;
@@ -619,10 +590,12 @@
   box-shadow: 0 0 0 4px hsl(var(--primary) / 0.08);
 }
 
-.planner-assistant-reopen {
-  box-shadow: 0 10px 30px -16px rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(10px);
+@keyframes markerDrop {
+  0%   { transform: translateY(-20px) scale(0.8); opacity: 0; }
+  60%  { transform: translateY(4px) scale(1.05); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
 }
+.marker-drop { animation: markerDrop 0.3s ease-out forwards; }
 
 .planner-global-progress {
   overflow: hidden;

@@ -37,8 +37,9 @@ export function PlannerPlaceDetailBody({ data, onAddToItinerary, canAdd = true }
   const hours = details?.openingHours ?? place.openingHours;
   const isOpen = details?.isOpenNow ?? place.isOpenNow;
   const reviews = details?.reviews;
+  const mapsQuery = [place.name, address].filter(Boolean).join(' ');
 
-  const hasContactInfo = address || phone || website || place.placeId;
+  const hasContactInfo = address || phone || website || mapsQuery;
 
   return (
     <>
@@ -163,13 +164,13 @@ export function PlannerPlaceDetailBody({ data, onAddToItinerary, canAdd = true }
                     </a>
                   </div>
                 )}
-                {place.placeId && (
+                {mapsQuery && (
                   <div className="flex items-center gap-3 px-4 py-3">
                     <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-muted/60">
                       <ExternalLink className="h-4 w-4 text-muted-foreground" />
                     </div>
                     <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&query_place_id=${place.placeId}`}
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery || place.name)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-primary hover:underline"

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,12 +20,11 @@ import {
   GripVertical,
   Hotel,
   Loader2,
-  PanelRightClose,
   Plus,
   Trash2,
   X,
 } from 'lucide-react';
-import { useAssistantResize } from '@/features/trip-planner/hooks/useAssistantResize';
+import { useChatPanelResize } from '@/features/trip-planner/hooks/useAssistantResize';
 import { useDragReorder } from '@/features/trip-planner/hooks/useDragReorder';
 import { useSegmentVisibility } from '@/features/trip-planner/hooks/useSegmentVisibility';
 import type {
@@ -52,12 +51,13 @@ import {
   haversineDistanceKm,
 } from '../utils';
 import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
+import { fetchNearbyPlacesByCategory, type PlaceDetails } from '../services/placesService';
 import PlannerContextSidebar from './PlannerContextSidebar';
 import type { PlaceDetailData } from './PlannerPlaceDetailPanel';
 import TripPlannerMap from './TripPlannerMap';
 import PlannerDateSelectionModal from './PlannerDateSelectionModal';
 import PlannerMapPlaceAssignModal from './PlannerMapPlaceAssignModal';
-import PlannerChatDestinationCards from './PlannerChatDestinationCards';
+import PlannerChatDestinationCards, { DiscoveryPlaceCard } from './PlannerChatDestinationCards';
 import TripListPanel from './TripListPanel';
 import LeadSelector from './LeadSelector';
 import { useAuth } from '@/contexts/AuthContext';
@@ -66,18 +66,27 @@ import SuggestionChips from '@/features/chat/components/SuggestionChips';
 import usePlannerSuggestions from '../hooks/usePlannerSuggestions';
 import useSuggestionActions from '../hooks/useSuggestionActions';
 import TripPlannerStarterTemplate from './TripPlannerStarterTemplate';
+import PlannerDiscoveryPanel from './PlannerDiscoveryPanel';
+import TripSpecsBar from './TripSpecsBar';
 import TripPlannerWorkspaceSkeleton from './TripPlannerWorkspaceSkeleton';
 import DayCarousel, { type DayCardItem } from './DayCarousel';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 
-const PLANNER_MAP_FILTERS: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity'];
-type PlannerPlacesByCategory = Record<PlannerPlaceCategory, PlannerPlaceCandidate[]>;
+const PLANNER_MAP_FILTERS: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity', 'sights', 'nightlife', 'parks', 'shopping', 'culture'];
+type PlannerPlacesByCategory = Record<string, PlannerPlaceCandidate[]>;
+const EAGER_FETCH_CATEGORIES: PlannerPlaceCategory[] = ['restaurant', 'cafe', 'museum', 'activity'];
+const CHAT_PUSH_CATEGORIES: Set<PlannerPlaceCategory> = new Set(['activity', 'sights']);
 const DEFAULT_MAP_ACTIVE_CATEGORIES: Record<PlannerPlaceCategory, boolean> = {
   hotel: true,
   restaurant: true,
   cafe: true,
   museum: true,
   activity: true,
+  sights: false,
+  nightlife: false,
+  parks: false,
+  shopping: false,
+  culture: false,
 };
 
 const PLANNER_MAP_FILTER_LABELS: Record<PlannerPlaceCategory, string> = {
@@ -86,6 +95,11 @@ const PLANNER_MAP_FILTER_LABELS: Record<PlannerPlaceCategory, string> = {
   cafe: 'Cafes',
   museum: 'Museos',
   activity: 'Que hacer',
+  sights: 'Puntos de interés',
+  nightlife: 'Bares y noche',
+  parks: 'Parques',
+  shopping: 'Compras',
+  culture: 'Cultura',
 };
 
 const BUDGET_OPTIONS: { value: PlannerBudgetLevel; label: string; icon: string }[] = [
@@ -216,13 +230,11 @@ export default function TripPlannerWorkspace({
   onCompletePlannerDateSelection,
 }: TripPlannerWorkspaceProps) {
   const {
-    assistantWidth,
-    isAssistantCollapsed,
-    isResizingAssistant,
-    handleAssistantResizeStart,
-    handleCollapseAssistant,
-    handleExpandAssistant,
-  } = useAssistantResize();
+    chatPanelWidth,
+    isResizing,
+    containerRef,
+    handleResizeStart,
+  } = useChatPanelResize();
 
   const {
     draggedSegmentId,
@@ -231,17 +243,12 @@ export default function TripPlannerWorkspace({
     dragHandlers,
   } = useDragReorder(onReorderDestinations);
 
-  const {
-    segmentRefs,
-    activeMapSegmentId,
-    setActiveMapSegmentId,
-    handleSelectSegmentFromMap,
-    handleViewportSegmentSelection,
-  } = useSegmentVisibility(plannerState);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [newDestination, setNewDestination] = useState('');
   const [activeHeaderPanel, setActiveHeaderPanel] = useState<'destinations' | 'trips' | null>(null);
   const [linkedLead, setLinkedLead] = useState<{ id: string; name: string } | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
   const { user } = useAuth();
   const [mobileTab, setMobileTab] = useState('plan');
   const [pendingPlannerDateRequest, setPendingPlannerDateRequest] = useState<ParsedTravelRequest | null>(null);
@@ -258,6 +265,128 @@ export default function TripPlannerWorkspace({
   const [placeDetailSegmentId, setPlaceDetailSegmentId] = useState<string | null>(null);
   const [discoveryPlacesBySegment, setDiscoveryPlacesBySegment] = useState<Record<string, PlannerPlaceCandidate[]>>({});
   const [inventoryHotelPlacesMap, setInventoryHotelPlacesMap] = useState<Record<string, PlannerPlaceHotelCandidate[]>>({});
+  const [fetchedCats, setFetchedCats] = useState<Set<string>>(new Set());
+  const [mapPlacesByCategory, setMapPlacesByCategory] = useState<Record<string, PlannerPlaceCandidate[]>>({});
+  const [mapPlacesLoading, setMapPlacesLoading] = useState(false);
+  const [chatPlaceBlocks, setChatPlaceBlocks] = useState<
+    Array<{ id: string; category: PlannerPlaceCategory; city: string; segmentId: string; places: PlannerPlaceCandidate[] }>
+  >([]);
+  const [persistedMapPlannerState, setPersistedMapPlannerState] = useState<TripPlannerState | null>(null);
+
+  const visibleMapPlannerState = plannerState ?? persistedMapPlannerState;
+
+  const {
+    segmentRefs,
+    activeMapSegmentId,
+    setActiveMapSegmentId,
+    handleSelectSegmentFromMap,
+    handleViewportSegmentSelection,
+  } = useSegmentVisibility(visibleMapPlannerState);
+
+  // Fetch places for a single category and merge into state.
+  // pushToChat controls whether results inject a block into the chat rail —
+  // true only for explicit user actions (category toggle), false for eager/hydration fetches.
+  const fetchAndMergeCategory = useCallback((
+    segmentId: string,
+    city: string,
+    location: { lat: number; lng: number },
+    category: PlannerPlaceCategory,
+    pushToChat = false,
+  ) => {
+    const catKey = `${segmentId}::${category}`;
+    setFetchedCats((prev) => {
+      if (prev.has(catKey)) return prev;
+      const next = new Set(prev);
+      next.add(catKey);
+      return next;
+    });
+    return fetchNearbyPlacesByCategory(null, city, location, category)
+      .then((places) => {
+        setMapPlacesByCategory((prev) => ({
+          ...prev,
+          [category]: [
+            ...(prev[category] || []),
+            ...places.filter((p) => !(prev[category] || []).some((e) => e.placeId === p.placeId)),
+          ],
+        }));
+        setDiscoveryPlacesBySegment((prev) => ({
+          ...prev,
+          [segmentId]: [
+            ...(prev[segmentId] || []),
+            ...places.filter((p) => !(prev[segmentId] || []).some((e) => e.placeId === p.placeId)),
+          ],
+        }));
+        // Push to chat only when explicitly requested (user-triggered category toggle)
+        if (pushToChat && CHAT_PUSH_CATEGORIES.has(category) && places.length > 0) {
+          const blockId = `${segmentId}::${category}`;
+          setChatPlaceBlocks((prev) => {
+            if (prev.some((b) => b.id === blockId)) return prev;
+            return [...prev, {
+              id: blockId,
+              category,
+              city,
+              segmentId,
+              places: places
+                .filter((p) => (p.photoUrls?.length ?? 0) > 0 || p.rating != null)
+                .sort((a, b) => (b.rating || 0) * (b.userRatingsTotal || 0) - (a.rating || 0) * (a.userRatingsTotal || 0))
+                .slice(0, 6),
+            }];
+          });
+        }
+        return places;
+      })
+      .catch(() => [] as PlannerPlaceCandidate[]);
+  }, []);
+
+  // Toggle a map category filter — fetch on activate for any non-hotel category
+  const handleMapCategoryToggle = useCallback((category: PlannerPlaceCategory) => {
+    setMapActiveCategories((current) => {
+      const next = { ...current, [category]: !current[category] };
+      const activating = !current[category];
+
+      if (activating && category !== 'hotel') {
+        const activeSegment = plannerState?.segments.find((s) => s.id === activeMapSegmentId);
+        const loc = activeSegment?.location;
+        if (activeSegment && loc) {
+          const catKey = `${activeSegment.id}::${category}`;
+          if (!fetchedCats.has(catKey)) {
+            void fetchAndMergeCategory(activeSegment.id, activeSegment.city, { lat: loc.lat, lng: loc.lng }, category, true);
+          }
+        }
+      }
+
+      return next;
+    });
+  }, [plannerState, activeMapSegmentId, fetchedCats, fetchAndMergeCategory]);
+
+  // Eagerly fetch default-active categories when active segment changes
+  useEffect(() => {
+    if (!plannerState || !activeMapSegmentId) return;
+    const seg = plannerState.segments.find((s) => s.id === activeMapSegmentId);
+    if (!seg?.location) return;
+
+    setFetchedCats(new Set());
+    setMapPlacesByCategory({});
+    setMapPlacesLoading(true);
+
+    const loc = { lat: seg.location.lat, lng: seg.location.lng };
+    Promise.all(
+      EAGER_FETCH_CATEGORIES.map((cat) => fetchAndMergeCategory(seg.id, seg.city, loc, cat)),
+    ).finally(() => setMapPlacesLoading(false));
+  }, [activeMapSegmentId, plannerState, fetchAndMergeCategory]);
+
+  // Auto-fill segments with real places when places are loaded and segment is ready
+  useEffect(() => {
+    if (!plannerState || mapPlacesLoading) return;
+    const hasPlaces = Object.values(mapPlacesByCategory).some((items) => items.length > 0);
+    if (!hasPlaces) return;
+    for (const seg of plannerState.segments) {
+      if (seg.contentStatus !== 'ready') continue;
+      if (seg.realPlacesStatus === 'ready' || seg.realPlacesStatus === 'loading') continue;
+      void onAutoFillSegmentWithRealPlaces(seg.id, mapPlacesByCategory);
+      break; // one at a time
+    }
+  }, [plannerState, mapPlacesByCategory, mapPlacesLoading, onAutoFillSegmentWithRealPlaces]);
 
   const toggleHeaderDestinationsPanel = useCallback(() => {
     setActiveHeaderPanel((current) => current === 'destinations' ? null : 'destinations');
@@ -273,13 +402,32 @@ export default function TripPlannerWorkspace({
   }, [onMessageChange, onSendMessage]);
 
   useEffect(() => {
-    setMapActiveCategories(DEFAULT_MAP_ACTIVE_CATEGORIES);
-  }, [selectedConversation]);
+    if (plannerState) {
+      setPersistedMapPlannerState(plannerState);
+    }
+  }, [plannerState]);
 
   useEffect(() => {
+    // Reset all transient UI state when conversation changes
+    setPersistedMapPlannerState(null);
+    setMapActiveCategories(DEFAULT_MAP_ACTIVE_CATEGORIES);
     setActiveRailTab('hotels');
     setIsContextSidebarOpen(false);
     setHotelDetailState(null);
+    setPlaceDetailState(null);
+    setPlaceDetailSegmentId(null);
+    setDiscoveryPlacesBySegment({});
+    setInventoryHotelPlacesMap({});
+    setFetchedCats(new Set());
+    setMapPlacesByCategory({});
+    setChatPlaceBlocks([]);
+    setPendingMapPlaceAssignment(null);
+    setLinkedLead(null);
+    setNewDestination('');
+    setIsEditingTitle(false);
+    setActiveHeaderPanel(null);
+    setIsDateSelectionModalOpen(false);
+    setPendingPlannerDateRequest(null);
   }, [selectedConversation]);
 
   const destinationLabels = useMemo(
@@ -471,6 +619,12 @@ export default function TripPlannerWorkspace({
     setActiveMapSegmentId(payload.segmentId);
     setHotelDetailState(null);
     setIsContextSidebarOpen(true);
+
+    // Ensure the place's category is active so the map won't immediately deselect it
+    setMapActiveCategories((prev) => {
+      if (prev[payload.place.category]) return prev;
+      return { ...prev, [payload.place.category]: true };
+    });
   }, [openHotelDetail]);
 
   const handleAutoSlotPlace = useCallback((payload: { segmentId: string; place: PlannerPlaceCandidate }) => {
@@ -523,7 +677,7 @@ export default function TripPlannerWorkspace({
     });
   }, [onAddPlaceToFirstAvailableSlot]);
 
-  const handlePlaceDetailsLoaded = useCallback((details: import('../services/placesService').PlaceDetails) => {
+  const handlePlaceDetailsLoaded = useCallback((details: PlaceDetails | null) => {
     setPlaceDetailState((prev) => prev ? { ...prev, details, loading: false } : null);
   }, []);
 
@@ -825,7 +979,7 @@ export default function TripPlannerWorkspace({
   };
 
   const visibleMessages = useMemo(() => messages.filter((m) => {
-    const meta = (m as any).meta;
+    const meta = (m as MessageRow & { meta?: Record<string, unknown> }).meta;
     if (m.role === 'system' && meta && (
       meta.messageType === 'contextual_memory' ||
       meta.messageType === 'context_state' ||
@@ -850,6 +1004,11 @@ export default function TripPlannerWorkspace({
 
     return content?.text;
   }, [visibleMessages]);
+
+  // Auto-scroll chat to bottom on new messages or conversation switch
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [visibleMessages.length, isTyping, selectedConversation]);
 
   const DRAFT_GENERATING_PHRASES = useMemo(() => [
     'Estoy ordenando destinos y noches por ciudad...',
@@ -906,22 +1065,9 @@ export default function TripPlannerWorkspace({
 
 
   const shouldShowInitialPlannerSkeleton = !plannerState && isLoadingPlanner;
+  const shouldShowMapSkeleton = !visibleMapPlannerState && shouldShowInitialPlannerSkeleton;
 
-  const plannerShell = (
-    shouldShowInitialPlannerSkeleton ? (
-      <TripPlannerWorkspaceSkeleton />
-    ) : (
-    <div className="trip-planner-surface @container flex flex-col gap-4 p-4 lg:p-6">
-      {!plannerState ? (
-        <TripPlannerStarterTemplate
-          mode={isLoading || isTyping ? 'processing' : 'idle'}
-          promptPreview={latestUserPrompt}
-          typingMessage={typingMessage}
-          plannerError={plannerError}
-          onSendPrompt={handleStarterPrompt}
-        />
-      ) : (
-        <>
+  const plannerHeader = plannerState ? (
 	          <Card className="overflow-hidden border-primary/15 shadow-sm">
 	            <CardContent className="space-y-6 p-4 md:p-6">
 	              <div className="space-y-4">
@@ -1262,7 +1408,7 @@ export default function TripPlannerWorkspace({
                             ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
                             : 'border-slate-200 bg-slate-100 text-slate-600'
                         }`}
-                        onClick={() => setMapActiveCategories((current) => ({ ...current, [category]: !current[category] }))}
+                        onClick={() => handleMapCategoryToggle(category)}
                       >
                         <span className="mr-1">{getPlannerPlaceEmoji(category)}</span>
                         {PLANNER_MAP_FILTER_LABELS[category]}
@@ -1317,49 +1463,138 @@ export default function TripPlannerWorkspace({
                 </div>
               )}
 
-              <div className="w-full">
-                <TripPlannerMap
-                  segments={plannerState.segments}
-                  days={plannerState.days}
-                  selectedSegmentId={activeMapSegmentId}
-                  activeCategories={mapActiveCategories}
-                  isResolvingLocations={isResolvingLocations}
-                  locationWarning={plannerLocationWarning}
-                  draftPhrase={isDraftGenerating ? DRAFT_GENERATING_PHRASES[draftPhraseIndex] : null}
-                  onSelectSegment={handleSelectSegmentFromMap}
-                  onViewportSelectSegment={handleViewportSegmentSelection}
-                  onAddHotelToSegment={isDraftPlanner
-                    ? undefined
-                    : ((segmentId, placeCandidate) => {
-                        void (async () => {
-                          await onSelectHotelPlaceFromMap(segmentId, placeCandidate);
-                          if (placeCandidate.source === 'inventory' && placeCandidate.hotelId) {
-                            openHotelDetail(segmentId, placeCandidate.hotelId);
-                          } else {
-                            openRailForSegment(segmentId, 'hotels');
-                          }
-                        })();
-                      })}
-                  onRequestAddPlaceToPlanner={isDraftPlanner
-                    ? undefined
-                    : ((payload) => setPendingMapPlaceAssignment(payload))}
-                  onAutoFillRealPlaces={isDraftPlanner
-                    ? undefined
-                    : ((payload) => {
-                        void onAutoFillSegmentWithRealPlaces(payload.segmentId, payload.placesByCategory);
-                        const allPlaces = Object.values(payload.placesByCategory).flat().filter((p) => p.category !== 'hotel');
-                        setDiscoveryPlacesBySegment((prev) => ({ ...prev, [payload.segmentId]: allPlaces }));
-                      })}
-                  onOpenPlaceDetail={isDraftPlanner ? undefined : handleOpenPlaceDetail}
-                  onPlaceDetailsLoaded={handlePlaceDetailsLoaded}
-                  fetchPlaceDetailFor={placeDetailState?.loading ? placeDetailState.place : null}
-                  onInventoryHotelPlacesReady={handleInventoryHotelPlacesReady}
-                />
-              </div>
-
             </CardContent>
           </Card>
+  ) : null;
 
+  // Overlay panels — extracted from plannerHeader for desktop overlay rendering
+  const destinationsPanel = plannerState ? (
+    <div className="planner-panel-fade-in">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2">
+          <p className="trip-planner-label text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Destinos
+          </p>
+          <p className="trip-planner-body text-xs text-muted-foreground">
+            {isReorderingRoute
+              ? 'Reordenando y recalculando la ruta...'
+              : isDraftPlanner
+                ? 'Cuando termine el borrador vas a poder editar la ruta y sumar destinos manualmente.'
+                : 'Arrastrá los destinos para cambiar el orden.'}
+          </p>
+        </div>
+        <Badge variant="outline" className="w-fit rounded-full px-2.5 py-0.5 text-[11px]">
+          {plannerState.segments.length}
+        </Badge>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        {plannerState.segments.map((segment, index) => (
+          <div
+            key={segment.id}
+            draggable={!isDraftPlanner && !isReorderingRoute && !isLoadingPlanner}
+            {...dragHandlers(segment.id)}
+            className={`flex items-center justify-between gap-3 rounded-2xl border bg-background/85 px-3 py-2.5 transition ${
+              draggedSegmentId === segment.id
+                ? 'opacity-45'
+                : dropTargetSegmentId === segment.id
+                  ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                  : ''
+            } ${isReorderingRoute || isLoadingPlanner ? 'cursor-wait' : 'cursor-grab'}`}
+          >
+            <div className="flex items-center gap-3">
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                {index + 1}
+              </span>
+              <span className="trip-planner-label text-sm text-foreground">
+                {formatDestinationLabel(segment.city)}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="text-muted-foreground transition hover:text-foreground"
+              disabled={isDraftPlanner}
+              onClick={() => void onRemoveDestination(segment.id)}
+              aria-label={`Eliminar ${formatDestinationLabel(segment.city)}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+        <Input
+          value={newDestination}
+          placeholder="Agregar destino"
+          onChange={(event) => setNewDestination(event.target.value)}
+          className="h-10 bg-background/80"
+          disabled={isDraftPlanner}
+        />
+        <Button
+          onClick={() => {
+            void onAddDestination(newDestination);
+            setNewDestination('');
+          }}
+          disabled={isDraftPlanner || !newDestination.trim() || isReorderingRoute || isLoadingPlanner}
+          className="h-10 sm:min-w-[120px]"
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Agregar
+        </Button>
+      </div>
+    </div>
+  ) : null;
+
+  const tripsPanel = (
+    <div className="planner-panel-fade-in max-h-[400px] overflow-hidden">
+      <TripListPanel
+        onOpenTrip={(tripId) => {
+          console.log('[PLANNER] Open trip:', tripId);
+          setActiveHeaderPanel(null);
+        }}
+        onClose={() => setActiveHeaderPanel(null)}
+      />
+    </div>
+  );
+
+  const plannerMap = visibleMapPlannerState ? (
+    <TripPlannerMap
+      segments={visibleMapPlannerState.segments}
+      days={visibleMapPlannerState.days}
+      selectedSegmentId={activeMapSegmentId}
+      activeCategories={mapActiveCategories}
+      placesByCategory={mapPlacesByCategory}
+      placesLoading={mapPlacesLoading}
+      isResolvingLocations={isResolvingLocations}
+      locationWarning={plannerLocationWarning}
+      draftPhrase={isDraftGenerating ? DRAFT_GENERATING_PHRASES[draftPhraseIndex] : null}
+      onSelectSegment={handleSelectSegmentFromMap}
+      onViewportSelectSegment={handleViewportSegmentSelection}
+      onAddHotelToSegment={isDraftPlanner
+        ? undefined
+        : ((segmentId, placeCandidate) => {
+            void (async () => {
+              await onSelectHotelPlaceFromMap(segmentId, placeCandidate);
+              if (placeCandidate.source === 'inventory' && placeCandidate.hotelId) {
+                openHotelDetail(segmentId, placeCandidate.hotelId);
+              } else {
+                openRailForSegment(segmentId, 'hotels');
+              }
+            })();
+          })}
+      onRequestAddPlaceToPlanner={isDraftPlanner
+        ? undefined
+        : ((payload) => setPendingMapPlaceAssignment(payload))}
+      onOpenPlaceDetail={isDraftPlanner ? undefined : handleOpenPlaceDetail}
+      onPlaceDetailsLoaded={handlePlaceDetailsLoaded}
+      fetchPlaceDetailFor={placeDetailState?.loading ? placeDetailState.place : null}
+      onInventoryHotelPlacesReady={handleInventoryHotelPlacesReady}
+    />
+  ) : null;
+
+  const plannerSegments = plannerState ? (
           <div className="grid gap-4">
             {plannerState.segments.map((segment, segmentIndex) => {
               const previousSegment = segmentIndex > 0 ? plannerState.segments[segmentIndex - 1] : undefined;
@@ -1367,28 +1602,7 @@ export default function TripPlannerWorkspace({
               const segmentHeaderImage = getSegmentHeaderImage(segment);
 
               if (!segmentHeaderImage) {
-                return (
-                  <Card
-                    key={segment.id}
-                    id={`planner-segment-${segment.id}`}
-                    className="relative overflow-hidden"
-                    ref={(node) => { segmentRefs.current[segment.id] = node; }}
-                    data-segment-id={segment.id}
-                  >
-                    <CardContent className="flex items-center gap-4 p-5">
-                      <div className="h-10 w-10 animate-pulse rounded-full bg-muted" />
-                      <div className="flex-1 space-y-2">
-                        <p className="text-sm font-medium">
-                          {segmentIndex + 1}. {formatDestinationLabel(segment.city)}
-                        </p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          Preparando destino…
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
+                return null;
               }
 
               return (
@@ -1660,6 +1874,26 @@ export default function TripPlannerWorkspace({
               );
             })}
           </div>
+  ) : null;
+
+  const plannerShell = (
+    shouldShowInitialPlannerSkeleton ? (
+      <TripPlannerWorkspaceSkeleton />
+    ) : (
+    <div className="trip-planner-surface @container flex flex-col gap-4 p-4 lg:p-6">
+      {!plannerState && !visibleMapPlannerState ? (
+        <TripPlannerStarterTemplate
+          mode={isLoading || isTyping ? 'processing' : 'idle'}
+          promptPreview={latestUserPrompt}
+          typingMessage={typingMessage}
+          plannerError={plannerError}
+          onSendPrompt={handleStarterPrompt}
+        />
+      ) : (
+        <>
+          {plannerState ? plannerHeader : null}
+          <div className="w-full">{plannerMap}</div>
+          {plannerState ? plannerSegments : null}
         </>
       )}
     </div>
@@ -1738,43 +1972,23 @@ export default function TripPlannerWorkspace({
   ) : null;
 
   const assistantRail = (
-    <div className="trip-planner-surface flex h-full flex-col border-l bg-background">
-      <div className="border-b p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="hidden h-8 w-8 lg:inline-flex"
-              onClick={handleCollapseAssistant}
-              aria-label="Ocultar asistente"
-            >
-              <PanelRightClose className="h-4 w-4" />
-            </Button>
-            <Bot className="h-5 w-5 text-primary" />
-            <div>
-              <p className="trip-planner-title text-base font-semibold">Emilia Planificadora</p>
-              <p className="trip-planner-body text-xs text-muted-foreground">
-                Pedime ajustes en días, hoteles, ritmo, presupuesto o tramos.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs lg:hidden"
-              onClick={() => setMobileTab('plan')}
-            >
-              Ocultar chat
-            </Button>
-          </div>
+    <div className="trip-planner-surface flex h-full flex-col md:border-r bg-background">
+      <div className="flex items-center justify-between border-b px-4 py-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Bot className="h-4 w-4 shrink-0 text-primary" />
+          <span className="text-sm font-medium">Emilia</span>
+          {isTyping && (
+            <span className="text-xs text-muted-foreground truncate">
+              {typingMessage || 'Procesando...'}
+            </span>
+          )}
         </div>
+        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs md:hidden" onClick={() => setMobileTab('plan')}>
+          Ocultar
+        </Button>
       </div>
       <div className="relative flex-1 overflow-y-auto p-4">
-        <div className="space-y-4">
+        <div className="space-y-2.5">
           {visibleMessages.map((msg) => {
             const msgMeta = (msg as Record<string, unknown>).meta as Record<string, unknown> | undefined;
             const recommendedPlaces = msgMeta?.recommendedPlaces as Array<{
@@ -1832,6 +2046,23 @@ export default function TripPlannerWorkspace({
               onDiscoveryAdd={handleDiscoveryAdd}
             />
           )}
+          {!isTyping && chatPlaceBlocks.length > 0 && chatPlaceBlocks.map((block) => (
+            <div key={block.id} className="animate-in fade-in duration-300">
+              <p className="mb-2 text-sm font-semibold text-foreground">
+                {block.category === 'sights' ? 'Puntos de interés en' : 'Qué hacer en'} {formatDestinationLabel(block.city)}
+              </p>
+              <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                {block.places.map((place) => (
+                  <DiscoveryPlaceCard
+                    key={place.placeId}
+                    place={place}
+                    onClick={() => handleOpenPlaceDetail({ segmentId: block.segmentId, place })}
+                    onAddClick={() => handleAutoSlotPlace({ segmentId: block.segmentId, place })}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
           {!isTyping && plannerState && !isDraftPlanner && (
             <PlannerChatDestinationCards
               destinations={plannerState.destinations}
@@ -1842,10 +2073,23 @@ export default function TripPlannerWorkspace({
             />
           )}
           {isTyping && (
-            <div className="trip-planner-body rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">
-              {typingMessage || 'Estoy trabajando en tu pedido...'}
+            <div className="flex items-start gap-2 animate-in fade-in duration-200">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                <Loader2 className="h-3 w-3 animate-spin text-primary" />
+              </div>
+              <div className="rounded-lg bg-muted/40 px-3 py-2">
+                <p className="text-xs font-medium text-foreground">
+                  {activePlannerMutation?.type === 'regen_plan' ? 'Regenerando itinerario...' :
+                   activePlannerMutation?.type === 'regen_segment' ? 'Actualizando tramo...' :
+                   activePlannerMutation?.type === 'regen_day' ? 'Recalculando el día...' :
+                   plannerState?.syncingFields?.hotels ? 'Buscando hoteles...' :
+                   plannerState?.syncingFields?.transport ? 'Buscando vuelos...' :
+                   typingMessage || 'Procesando...'}
+                </p>
+              </div>
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
       </div>
       <MessageInput
@@ -1862,44 +2106,129 @@ export default function TripPlannerWorkspace({
 
   return (
     <div className="h-full min-h-0 bg-background relative overflow-hidden">
-      {plannerLoadingPhase?.busy && (
-        <div className="planner-global-progress absolute inset-x-0 top-0 z-50 h-[3px]" aria-hidden="true">
-          <div className="planner-global-progress__bar h-full w-full bg-primary/80" />
-        </div>
-      )}
-      <div className="hidden h-full lg:flex">
-        <div className="relative min-h-0 min-w-0 flex-1">
-          {isAssistantCollapsed && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleExpandAssistant}
-              className="planner-assistant-reopen absolute top-4 right-4 z-20 gap-2 rounded-full"
-            >
-              <ChevronRight className="h-4 w-4" />
-              Mostrar asistente
-            </Button>
-          )}
-          <div className="min-h-0 h-full overflow-y-auto">{plannerShell}</div>
-        </div>
-        {!isAssistantCollapsed && (
-          <>
-            <div
-              className={`planner-assistant-resize-gutter ${isResizingAssistant ? 'planner-assistant-resize-gutter--active' : ''}`}
-              onPointerDown={handleAssistantResizeStart}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Redimensionar asistente"
-            />
-            <div className="min-h-0 shrink-0 planner-assistant-rail" style={{ width: `${assistantWidth}px` }}>
-              {assistantRail}
+      <div ref={containerRef} className="hidden h-full md:flex md:flex-col">
+
+        {/* ── SPECS BAR (full-width, persistent) ── */}
+        {plannerState && !shouldShowInitialPlannerSkeleton && (
+          <div className="relative shrink-0">
+            <div className="border-b bg-background px-4 py-2">
+              <TripSpecsBar
+                plannerState={plannerState}
+                isDraft={isDraftPlanner}
+                dateSummary={plannerDateSummary}
+                hasExactDates={hasExactPlannerDates}
+                isAssumed={isAssumed}
+                fieldIsSyncing={fieldIsSyncing}
+                showAssumedBanner={showAssumedBanner}
+                onDismissAssumedBanner={() => setDismissedBannerId(currentBannerId)}
+                activePanel={activeHeaderPanel}
+                onToggleDestinations={toggleHeaderDestinationsPanel}
+                onToggleTrips={() => setActiveHeaderPanel(activeHeaderPanel === 'trips' ? null : 'trips')}
+                onUpdateBudget={(v) => void onUpdateTripField('budgetLevel', v)}
+                onUpdatePace={(v) => void onUpdateTripField('pace', v)}
+                onOpenDateSelector={() => { setPendingPlannerDateRequest(null); setIsDateSelectionModalOpen(true); }}
+                onUpdateDays={(d) => void onUpdateTripField('days', d as TripPlannerState['days'])}
+                onExportPdf={handleExportPdf}
+                linkedLead={linkedLead}
+                onSelectLead={async (id, name) => { setLinkedLead({ id, name }); if (selectedConversation && user?.id) await updateTripLeadId(selectedConversation, id, user.id); }}
+                onClearLead={async () => { setLinkedLead(null); if (selectedConversation && user?.id) await updateTripLeadId(selectedConversation, null, user.id); }}
+                draftProgress={null}
+                loadingPhase={null}
+              />
             </div>
-          </>
+
+            {/* Overlay panels */}
+            {activeHeaderPanel && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setActiveHeaderPanel(null)} />
+                <div className={`absolute left-4 top-full z-40 mt-1 overflow-y-auto rounded-xl border bg-background p-4 shadow-xl ${
+                  activeHeaderPanel === 'destinations' ? 'max-w-lg max-h-[50vh]' : 'max-w-md max-h-[400px]'
+                }`}>
+                  {activeHeaderPanel === 'destinations' && destinationsPanel}
+                  {activeHeaderPanel === 'trips' && tripsPanel}
+                </div>
+              </>
+            )}
+          </div>
         )}
+
+        {/* ── CHAT + MAP ROW ── */}
+        <div className="flex-1 min-h-0 flex">
+
+          {/* LEFT: chat — width controlled by resize */}
+          <div
+            className="min-h-0 flex flex-col"
+            style={chatPanelWidth !== null
+              ? { width: `${chatPanelWidth}px`, flexShrink: 0 }
+              : { flex: 1, minWidth: '380px' }
+            }
+          >
+            {assistantRail}
+          </div>
+
+          {/* RESIZE GUTTER */}
+          <div
+            className={`planner-assistant-resize-gutter ${isResizing ? 'planner-assistant-resize-gutter--active' : ''}`}
+            onPointerDown={handleResizeStart}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Redimensionar paneles"
+          />
+
+          {/* RIGHT: map — always flex-1 */}
+          <div
+            className="relative"
+            style={{ flex: 1, minWidth: '400px', minHeight: 0 }}
+          >
+            {shouldShowMapSkeleton ? (
+              <TripPlannerWorkspaceSkeleton />
+            ) : !visibleMapPlannerState ? (
+              <PlannerDiscoveryPanel onSendPrompt={handleStarterPrompt} />
+            ) : (
+              <div className="h-full relative">
+                {plannerMap}
+
+                {/* Title overlay — editable on double-click */}
+                {plannerState?.title && (
+                  <div className="absolute left-3 top-3 z-10 max-w-[60%] rounded-lg bg-background/85 px-3 py-1.5 shadow-sm backdrop-blur-sm">
+                    {isEditingTitle ? (
+                      <Input
+                        autoFocus
+                        value={plannerState.title}
+                        onChange={(e) => void onUpdateTripField('title', e.target.value)}
+                        onBlur={() => setIsEditingTitle(false)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') setIsEditingTitle(false); }}
+                        className="h-auto border-0 bg-transparent p-0 text-sm font-semibold shadow-none focus-visible:ring-0"
+                      />
+                    ) : (
+                      <p className="text-sm font-semibold line-clamp-1 cursor-text"
+                        onDoubleClick={() => { if (!isDraftPlanner) setIsEditingTitle(true); }}>
+                        {plannerState.title}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Map filters overlay — bottom center */}
+                <div className="absolute bottom-3 left-3 right-3 z-30 flex justify-center gap-1 overflow-x-auto rounded-full border bg-background/90 px-1.5 py-1 shadow-md backdrop-blur-sm" style={{ scrollbarWidth: 'none' }}>
+                  {PLANNER_MAP_FILTERS.map((category) => (
+                    <button key={category} type="button"
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        mapActiveCategories[category] ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-muted'
+                      }`}
+                      onClick={() => handleMapCategoryToggle(category)}>
+                      <span className="mr-0.5">{getPlannerPlaceEmoji(category)}</span>
+                      {PLANNER_MAP_FILTER_LABELS[category]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="flex h-full flex-col lg:hidden">
+      <div className="flex h-full flex-col md:hidden">
         <Tabs value={mobileTab} onValueChange={setMobileTab} className="flex h-full flex-col">
           <div className="border-b px-4 pt-4">
             <TabsList className="grid w-full grid-cols-2">

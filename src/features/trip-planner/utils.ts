@@ -139,6 +139,7 @@ function restaurantToPlannerRestaurant(restaurant: Record<string, unknown>, inde
     formattedAddress: restaurant?.formattedAddress,
     rating: typeof restaurant?.rating === 'number' ? restaurant.rating : undefined,
     userRatingsTotal: typeof restaurant?.userRatingsTotal === 'number' ? restaurant.userRatingsTotal : undefined,
+    photoUrls: safeArray<string>(restaurant?.photoUrls),
     source: restaurant?.source || 'generated',
   };
 }

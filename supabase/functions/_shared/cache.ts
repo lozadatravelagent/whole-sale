@@ -28,6 +28,30 @@ export const CACHE_CONFIG = {
     soft_ttl_minutes: 60,
     hard_ttl_minutes: 480,
   },
+  'placesViewport': {
+    soft_ttl_minutes: 15,
+    hard_ttl_minutes: 180,
+  },
+  'placeSummary': {
+    soft_ttl_minutes: 240,
+    hard_ttl_minutes: 1440,
+  },
+  'placeDetails': {
+    soft_ttl_minutes: 720,
+    hard_ttl_minutes: 10080,
+  },
+  'placePhotos': {
+    soft_ttl_minutes: 720,
+    hard_ttl_minutes: 10080,
+  },
+  'placeRecommendations': {
+    soft_ttl_minutes: 60,
+    hard_ttl_minutes: 720,
+  },
+  'placeHotelCandidates': {
+    soft_ttl_minutes: 240,
+    hard_ttl_minutes: 1440,
+  },
   'default': {
     soft_ttl_minutes: 10,
     hard_ttl_minutes: 60,
