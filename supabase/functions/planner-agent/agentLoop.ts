@@ -112,11 +112,19 @@ export async function runAgentLoop(context: AgentContext): Promise<AgentResponse
 
 function extractResultsFromSteps(steps: AgentStep[]) {
   const allResults = steps.flatMap(s => s.results);
+  const getLastSuccessful = (toolName: string) => {
+    for (let index = allResults.length - 1; index >= 0; index -= 1) {
+      const result = allResults[index];
+      if (result.tool === toolName && result.result.success) return result;
+    }
+    return undefined;
+  };
+
   return {
-    flightResult: allResults.find(r => r.tool === 'search_flights' && r.result.success),
-    hotelResult: allResults.find(r => r.tool === 'search_hotels' && r.result.success),
-    packageResult: allResults.find(r => r.tool === 'search_packages' && r.result.success),
-    itineraryResult: allResults.find(r => r.tool === 'generate_itinerary' && r.result.success),
+    flightResult: getLastSuccessful('search_flights'),
+    hotelResult: getLastSuccessful('search_hotels'),
+    packageResult: getLastSuccessful('search_packages'),
+    itineraryResult: getLastSuccessful('generate_itinerary'),
   };
 }
 
@@ -138,17 +146,41 @@ function buildResponseFromResults(
   const structuredData: Record<string, unknown> = {};
   const parts: string[] = [];
 
+  const responseBlocks: string[] = [];
+
   if (flightResult?.result?.data) {
     const data = flightResult.result.data as Record<string, unknown>;
     structuredData.flights = data;
     const count = (data.totalFound as number) || 0;
     parts.push(`Encontré ${count} vuelo(s)`);
+
+    const bestFlight = ((data.flights as Array<Record<string, unknown>> | undefined) || [])[0];
+    if (bestFlight) {
+      const airline = (bestFlight.airline as string) || 'una opción conveniente';
+      const price = bestFlight.price as number | undefined;
+      const currency = (bestFlight.currency as string) || 'USD';
+      const stops = ((bestFlight.stops as number) || 0) === 0 ? 'directo' : `${bestFlight.stops as number} escala(s)`;
+      responseBlocks.push(
+        `✈️ Como mejor base te recomiendo ${airline}${price ? ` por ${price} ${currency} por persona` : ''}, ${stops}.`
+      );
+    }
   }
   if (hotelResult?.result?.data) {
     const data = hotelResult.result.data as Record<string, unknown>;
     structuredData.hotels = data;
     const count = (data.totalFound as number) || 0;
     parts.push(`${count} hotel(es)`);
+
+    const bestHotel = ((data.hotels as Array<Record<string, unknown>> | undefined) || [])[0];
+    if (bestHotel) {
+      const name = (bestHotel.name as string) || 'una opción bien ubicada';
+      const nightly = bestHotel.pricePerNight as number | undefined;
+      const currency = (bestHotel.currency as string) || 'USD';
+      const city = (bestHotel.city as string) || (data.searchParams as Record<string, unknown> | undefined)?.city || '';
+      responseBlocks.push(
+        `🏨 En ${city || 'destino'} la opción más equilibrada es ${name}${nightly ? ` desde ${nightly} ${currency}/noche` : ''}.`
+      );
+    }
   }
   if (packageResult?.result?.data) {
     const data = packageResult.result.data as Record<string, unknown>;
@@ -164,6 +196,10 @@ function buildResponseFromResults(
     }
     const totalDays = (data.totalDays as number) || 0;
     parts.push(`un itinerario de ${totalDays} día(s)`);
+
+    const title = (data.title as string) || 'ruta sugerida';
+    const summary = (data.summary as string) || '';
+    responseBlocks.push(`🗺️ Te propongo ${title}${summary ? `: ${summary}` : ''}.`);
   }
 
   const suggestions = itineraryResult?.result?.data
@@ -205,9 +241,9 @@ function buildResponseFromResults(
     );
   }
 
-  const response = parts.length > 0
-    ? parts.join(' y ') + '. Aquí tienes las mejores opciones:'
-    : 'No se encontraron resultados para tu búsqueda.';
+  const response = responseBlocks.length > 0
+    ? `${responseBlocks.join('\n')}${parts.length > 0 ? `\n\nYa tengo una base útil con ${parts.join(' y ')}. Si querés, te dejo la opción más económica o la más equilibrada.` : ''}`
+    : 'No encontré una opción convincente todavía. Si querés, ajusto presupuesto, fechas o tipo de viaje y te acerco algo mejor.';
 
   return {
     response,

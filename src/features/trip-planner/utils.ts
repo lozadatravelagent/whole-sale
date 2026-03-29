@@ -1553,14 +1553,54 @@ export function summarizePlannerForChat(plannerState: TripPlannerState): string 
       })()
     : '';
 
-  return `¡Tu viaje a **${destList}** ya está tomando forma!\n\n` +
+  const routeProposal = plannerState.segments
+    .map((segment) => `${formatDestinationLabel(segment.city)} (${segment.nights || segment.days.length || '?'})`)
+    .join(' → ');
+
+  const hotelGaps = plannerState.segments
+    .filter((segment) => {
+      const hotelPlan = segment.hotelPlan;
+      return !(
+        hotelPlan.confirmedInventoryHotel
+        || hotelPlan.selectedPlaceCandidate
+        || hotelPlan.hotelRecommendations.length > 0
+        || ['matched', 'quoted', 'needs_confirmation'].includes(hotelPlan.matchStatus || '')
+      );
+    })
+    .map((segment) => formatDestinationLabel(segment.city));
+
+  const transportGaps = plannerState.segments
+    .filter((segment, index) => {
+      const needsInbound = index > 0 || Boolean(plannerState.origin);
+      if (!needsInbound) return false;
+      return !(
+        segment.transportIn?.selectedOptionId
+        || (segment.transportIn?.options?.length ?? 0) > 0
+        || segment.transportIn?.searchStatus === 'ready'
+      );
+    })
+    .map((segment) => formatDestinationLabel(segment.city));
+
+  const nextSteps: string[] = [];
+  if (hotelGaps.length > 0) nextSteps.push(`sumar hoteles en ${hotelGaps.join(', ')}`);
+  if (transportGaps.length > 0) nextSteps.push(`cerrar vuelos o traslados para ${transportGaps.join(', ')}`);
+  if (!plannerState.isFlexibleDates && (!plannerState.startDate || !plannerState.endDate)) {
+    nextSteps.push('definir las fechas exactas');
+  }
+
+  const nextStepLine = nextSteps.length > 0
+    ? `Ya te dejo encaminada la ruta. El siguiente paso más útil es ${nextSteps[0]}.`
+    : 'Si querés, ahora sigo con hoteles, vuelos o una versión más afinada del recorrido.';
+
+  return `Ya te armé una base de viaje para **${destList}**.\n\n` +
+    `Como propuesta, te sugiero: ${routeProposal}.\n\n` +
     `${plannerState.summary}\n\n` +
     `${detailParts.join(' · ')}\n` +
     `\n${segmentLines}\n` +
     `${assumedSuffix}` +
     `${tips ? `\n💡 ${plannerState.generalTips.slice(0, 3).join(' | ')}\n` : ''}` +
     `${hasSkeletonSegments ? '\nEstoy completando cada tramo, podés ir revisándolos en el planificador.\n' : ''}` +
-    `\nTodo listo para que lo ajustes desde el Planificador.`;
+    `\n${nextStepLine}`;
 }
 
 export function buildPlannerPdfHtml(plannerState: TripPlannerState): string {

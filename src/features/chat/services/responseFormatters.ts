@@ -520,20 +520,31 @@ export const formatTransferResponse = (transfers: Array<{
 };
 
 export const formatCombinedResponse = (combinedData: LocalCombinedTravelResults) => {
-  let response = '🌟 **Búsqueda Combinada Completada**\n\n';
+  const bestFlight = combinedData.flights[0];
+  const bestHotel = combinedData.hotels[0];
+  const parts: string[] = ['Ya te dejé una base bastante concreta para este viaje:'];
 
-  if (combinedData.flights.length > 0) {
-    const flightCount = Math.min(combinedData.flights.length, 5);
-    response += `✈️ **${flightCount} vuelos disponibles** (ordenados por precio más bajo)\n`;
+  if (bestFlight) {
+    const firstLeg = bestFlight.legs?.[0];
+    const firstOption = firstLeg?.options?.[0];
+    const firstSegment = firstOption?.segments?.[0];
+    const lastSegment = firstOption?.segments?.[firstOption.segments.length - 1];
+    const route = firstSegment && lastSegment
+      ? `${firstSegment.departure?.airportCode || '?'} → ${lastSegment.arrival?.airportCode || '?'}`
+      : 'tramo aéreo listo';
+    const flightReason = bestFlight.stops?.count === 0 ? 'por comodidad' : 'por equilibrio entre precio y horario';
+    parts.push(`- vuelo recomendado: ${route} con ${bestFlight.airline?.name || 'la aerolínea principal'} desde ${bestFlight.price?.amount || 0} ${bestFlight.price?.currency || 'USD'} (${flightReason})`);
   }
 
-  if (combinedData.hotels.length > 0) {
-    const hotelCount = Math.min(combinedData.hotels.length, 5);
-    response += `🏨 **${hotelCount} hoteles disponibles** (ordenados por precio más bajo)\n`;
+  if (bestHotel) {
+    const room = bestHotel.rooms?.[0];
+    const nightly = room?.price_per_night || (room?.total_price && bestHotel.nights > 0 ? Math.round(room.total_price / bestHotel.nights) : null);
+    const hotelReason = bestHotel.category ? `${bestHotel.category}★ bien ubicado` : 'bien ubicado';
+    parts.push(`- hotel recomendado: ${bestHotel.name} ${nightly ? `desde ${nightly} ${room?.currency || 'USD'}/noche` : 'con tarifa para revisar'} (${hotelReason})`);
   }
 
-  response += '\n📋 Usa los selectores interactivos para crear tu cotización personalizada.';
-  return response;
+  parts.push('Si querés, ahora comparo una opción más económica contra una más equilibrada y te digo cuál conviene más.');
+  return parts.join('\n');
 };
 
 // =====================================================================

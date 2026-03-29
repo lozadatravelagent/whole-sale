@@ -9,6 +9,8 @@ import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
 import { routeRequest, buildSearchSummary, getInferredFieldDetails, detectDestructiveChanges } from '../services/routeRequest';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
+import { buildConversationalMissingInfoMessage, resolveConversationTurn } from '../services/conversationOrchestrator';
+import { buildDiscoveryResponsePayload } from '../services/discoveryService';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
@@ -690,8 +692,30 @@ const useMessageHandler = (
         reason: routeResult.reason,
       });
 
-      // === PLANNER AGENT BRANCH (routed by Emilia scorer, not workspace_mode) ===
-      if (routeResult.route === 'PLAN' && plannerState && !plannerState?.generationMeta?.isDraft) {
+      const MAX_COLLECT_TURNS = 3;
+      const recentCollectCount = (messages || [])
+        .filter(m =>
+          m.conversation_id === finalConversationId &&
+          m.role === 'assistant' &&
+          (m.meta as Record<string, unknown>)?.messageType === 'collect_question'
+        )
+        .slice(-MAX_COLLECT_TURNS)
+        .length;
+
+      const conversationTurn = resolveConversationTurn({
+        parsedRequest,
+        routeResult,
+        plannerState,
+        hasPersistentContext: Boolean(contextToUse),
+        hasPreviousParsedRequest: Boolean(previousParsedRequest),
+        recentCollectCount,
+        maxCollectTurns: MAX_COLLECT_TURNS,
+      });
+
+      console.log('🧠 [CONVERSATION] Turn resolution:', conversationTurn);
+
+      // === PLANNER AGENT BRANCH (routed by conversation resolution) ===
+      if (conversationTurn.shouldUsePlannerAgent) {
         console.log('🤖 [PLANNER AGENT] PLAN route with active planner — using planner agent');
 
         // === DESTRUCTIVE CHANGE CHECK ===
@@ -880,16 +904,25 @@ const useMessageHandler = (
 
         // Handle needsInput case — return early with missing info
         if (agentResult.needsInput) {
+          const normalizedNeedsInputMessage = buildConversationalMissingInfoMessage({
+            parsedRequest,
+            missingFields: agentResult.missingFields || [],
+            fallbackMessage: assistantResponse,
+          });
+
           await saveAndDisplayMessage({
             conversation_id: finalConversationId,
             role: 'assistant' as const,
-            content: { text: assistantResponse },
+            content: { text: normalizedNeedsInputMessage },
             meta: {
               source: 'planner-agent',
               messageType: 'missing_info_request',
               missingFields: agentResult.missingFields || [],
+              normalizedMissingFields: conversationTurn.normalizedMissingFields,
+              responseMode: conversationTurn.responseMode,
               pendingAction: agentResult.pendingAction ?? null,
               proposedData: agentResult.proposedData ?? null,
+              conversationTurn,
             }
           });
           clearTypingTimers();
@@ -945,9 +978,13 @@ const useMessageHandler = (
           content: { text: assistantResponse },
           meta: {
             source: 'planner-agent',
+            messageType: conversationTurn.messageType,
+            responseMode: conversationTurn.responseMode,
+            normalizedMissingFields: conversationTurn.normalizedMissingFields,
             ...(combinedData && { combinedData }),
             ...(recommendedPlaces && { recommendedPlaces }),
             ...(agentResult.actionChips?.length > 0 && { actionChips: agentResult.actionChips }),
+            conversationTurn,
           }
         });
 
@@ -1123,47 +1160,38 @@ const useMessageHandler = (
       //   1. Passenger ambiguity ("familia" without count) — validation doesn't catch this
       //   2. Quote intent but incomplete, AND no previous context to fill gaps
       // Max 3 consecutive COLLECT turns — after that, fall through to PLAN or existing validation
-      const MAX_COLLECT_TURNS = 3;
-      const recentCollectCount = (messages || [])
-        .filter(m =>
-          m.conversation_id === finalConversationId &&
-          m.role === 'assistant' &&
-          (m.meta as Record<string, unknown>)?.messageType === 'collect_question'
-        )
-        .slice(-MAX_COLLECT_TURNS)
-        .length;
-
       const collectExhausted = recentCollectCount >= MAX_COLLECT_TURNS;
-
-      const shouldCollectIntercept =
-        routeResult.route === 'COLLECT' &&
-        routeResult.collectQuestion &&
-        !collectExhausted &&
-        (
-          routeResult.missingFields.includes('passengers') ||
-          (routeResult.reason === 'quote_intent_incomplete' && !previousParsedRequest && !contextToUse)
-        );
 
       if (collectExhausted && routeResult.route === 'COLLECT') {
         console.log(`🔄 [COLLECT] ${MAX_COLLECT_TURNS} turns exhausted — falling through to standard flow`);
       }
 
-      if (shouldCollectIntercept) {
+      if (conversationTurn.shouldAskMinimalQuestion && routeResult.collectQuestion) {
         console.log('🔄 [COLLECT] Router intercepting with focused question:', routeResult.reason, `(turn ${recentCollectCount + 1}/${MAX_COLLECT_TURNS})`);
         setPreviousParsedRequest(parsedRequest);
         await saveContextualMemory(finalConversationId, parsedRequest);
 
+        const collectMessage = buildConversationalMissingInfoMessage({
+          parsedRequest,
+          missingFields: routeResult.missingFields,
+          fallbackMessage: routeResult.collectQuestion,
+        });
+
         await saveAndDisplayMessage({
           conversation_id: finalConversationId,
           role: 'assistant' as const,
-          content: { text: routeResult.collectQuestion },
+          content: { text: collectMessage },
           meta: {
             status: 'sent',
-            messageType: 'collect_question',
+            messageType: conversationTurn.messageType,
+            responseMode: conversationTurn.responseMode,
             routeScore: routeResult.score,
             collectTurn: recentCollectCount + 1,
-            missingFields: routeResult.missingFields,
+            missingFields: conversationTurn.normalizedMissingFields,
+            normalizedMissingFields: conversationTurn.normalizedMissingFields,
             originalRequest: parsedRequest,
+            requestText: parsedRequest.originalMessage || currentMessage,
+            conversationTurn,
           }
         });
 
@@ -1386,19 +1414,20 @@ const useMessageHandler = (
           setPreviousParsedRequest(parsedRequest);
           await saveContextualMemory(finalConversationId, parsedRequest);
 
-          // Build aggregated message
-          const parts: string[] = [];
-          if (!flightVal.isValid) {
-            parts.push(
-              generateMissingInfoMessage(flightVal.missingFieldsSpanish, 'flights')
-            );
-          }
-          if (!hotelVal.isValid) {
-            parts.push(
-              generateMissingInfoMessage(hotelVal.missingFieldsSpanish, 'hotels')
-            );
-          }
-          const missingInfoMessage = parts.join('\n\n');
+          const missingInfoMessage = buildConversationalMissingInfoMessage({
+            parsedRequest,
+            missingFields: [
+              ...flightVal.missingFields,
+              ...hotelVal.missingFields,
+            ],
+            fallbackMessage: generateMissingInfoMessage(
+              [
+                ...flightVal.missingFieldsSpanish,
+                ...hotelVal.missingFieldsSpanish,
+              ],
+              'combined'
+            ),
+          });
 
           await saveAndDisplayMessage({
             conversation_id: finalConversationId,
@@ -1474,10 +1503,14 @@ const useMessageHandler = (
           console.log('💾 [CONTEXT] Saving context state for failed validation (fire-and-forget)');
 
           // ✨ Use custom errorMessage if available (e.g., "only minors" case), otherwise generate standard message
-          const missingInfoMessage = validation.errorMessage || generateMissingInfoMessage(
-            validation.missingFieldsSpanish,
-            parsedRequest.requestType
-          );
+          const missingInfoMessage = validation.errorMessage || buildConversationalMissingInfoMessage({
+            parsedRequest,
+            missingFields: validation.missingFields,
+            fallbackMessage: generateMissingInfoMessage(
+              validation.missingFieldsSpanish,
+              parsedRequest.requestType
+            ),
+          });
 
           console.log('💬 [VALIDATION] Generated missing info message');
 
@@ -1614,10 +1647,14 @@ const useMessageHandler = (
               await saveContextualMemory(finalConversationId, parsedRequest);
 
               // ✨ Use custom errorMessage if available
-              const missingInfoMessage = reval.errorMessage || generateMissingInfoMessage(
-                reval.missingFieldsSpanish,
-                parsedRequest.requestType
-              );
+              const missingInfoMessage = reval.errorMessage || buildConversationalMissingInfoMessage({
+                parsedRequest,
+                missingFields: reval.missingFields,
+                fallbackMessage: generateMissingInfoMessage(
+                  reval.missingFieldsSpanish,
+                  parsedRequest.requestType
+                ),
+              });
 
               await saveAndDisplayMessage({
                 conversation_id: finalConversationId,
@@ -1646,10 +1683,14 @@ const useMessageHandler = (
             await saveContextualMemory(finalConversationId, parsedRequest);
 
             // ✨ Use custom errorMessage if available
-            const missingInfoMessage = validation.errorMessage || generateMissingInfoMessage(
-              validation.missingFieldsSpanish,
-              parsedRequest.requestType
-            );
+            const missingInfoMessage = validation.errorMessage || buildConversationalMissingInfoMessage({
+              parsedRequest,
+              missingFields: validation.missingFields,
+              fallbackMessage: generateMissingInfoMessage(
+                validation.missingFieldsSpanish,
+                parsedRequest.requestType
+              ),
+            });
 
             await saveAndDisplayMessage({
               conversation_id: finalConversationId,
@@ -1686,14 +1727,18 @@ const useMessageHandler = (
           setPreviousParsedRequest(parsedRequest);
           await saveContextualMemory(finalConversationId, parsedRequest);
 
-          const missingInfoMessage = generateMissingInfoMessage(
-            ['destino(s)'],
-            'itinerary',
-            {
-              itinerary: parsedRequest.itinerary,
-              originalMessage: parsedRequest.originalMessage,
-            }
-          );
+          const missingInfoMessage = buildConversationalMissingInfoMessage({
+            parsedRequest,
+            missingFields: ['destinations'],
+            fallbackMessage: generateMissingInfoMessage(
+              ['destino(s)'],
+              'itinerary',
+              {
+                itinerary: parsedRequest.itinerary,
+                originalMessage: parsedRequest.originalMessage,
+              }
+            ),
+          });
 
           await saveAndDisplayMessage({
             conversation_id: finalConversationId,
@@ -1870,11 +1915,27 @@ const useMessageHandler = (
         }
         case 'itinerary': {
           console.log('🗺️ [MESSAGE FLOW] Step 12g: Processing itinerary request');
-          setPlannerDraftPhase?.('draft_generating');
-          setTypingMessage('Generando tu itinerario de viaje...', conversationIdForThisSearch);
-          const itineraryResult = await handleItineraryRequest(parsedRequest, plannerState || null);
-          assistantResponse = itineraryResult.response;
-          structuredData = itineraryResult.data;
+          if (conversationTurn.responseMode === 'show_places') {
+            setTypingMessage('Buscando los lugares más representativos...', conversationIdForThisSearch);
+            const discoveryResult = await buildDiscoveryResponsePayload({
+              message: parsedRequest.originalMessage || currentMessage,
+              parsedRequest,
+              plannerState: plannerState || null,
+              conversationHistory: messages,
+            });
+            assistantResponse = discoveryResult.text;
+            structuredData = {
+              messageType: 'discovery_results',
+              discoveryContext: discoveryResult.discoveryContext,
+              recommendedPlaces: discoveryResult.recommendedPlaces,
+            };
+          } else {
+            setPlannerDraftPhase?.('draft_generating');
+            setTypingMessage('Generando tu itinerario de viaje...', conversationIdForThisSearch);
+            const itineraryResult = await handleItineraryRequest(parsedRequest, plannerState || null);
+            assistantResponse = itineraryResult.response;
+            structuredData = itineraryResult.data;
+          }
           console.log('✅ [MESSAGE FLOW] Itinerary generation completed');
           break;
         }
@@ -1889,7 +1950,7 @@ const useMessageHandler = (
       });
 
       // === EMILIA: Prepend inferred-field summary when defaults were applied ===
-      if (routeResult.inferredFields.length > 0 && assistantResponse) {
+      if (routeResult.inferredFields.length > 0 && assistantResponse && conversationTurn.responseMode !== 'show_places') {
         const inferredDetails = getInferredFieldDetails(parsedRequest);
         if (inferredDetails.length > 0) {
           const summary = buildSearchSummary(parsedRequest, inferredDetails);
@@ -1910,14 +1971,15 @@ const useMessageHandler = (
         const flightsCount = (structuredData as any)?.combinedData?.flights?.length ?? 0;
         const hotelsCount = (structuredData as any)?.combinedData?.hotels?.length ?? 0;
         const hasPlannerData = Boolean((structuredData as any)?.plannerData);
-        const hasResults = flightsCount > 0 || hotelsCount > 0 || hasPlannerData;
+        const hasDiscoveryContext = Boolean((structuredData as any)?.discoveryContext);
+        const hasResults = flightsCount > 0 || hotelsCount > 0 || hasPlannerData || hasDiscoveryContext;
         
         if (hasResults) {
           // We have usable results, clear old contextual memory
           setPreviousParsedRequest(null);
           await clearContextualMemory(finalConversationId);
 
-          if (hasPlannerData && persistPlannerState) {
+          if (hasPlannerData && persistPlannerState && conversationTurn.responseMode !== 'show_places') {
             await persistPlannerState((structuredData as any).plannerData, 'chat');
           }
 
@@ -2026,6 +2088,10 @@ const useMessageHandler = (
         role: 'assistant' as const,
         content: { text: assistantResponse },
         meta: {
+          messageType: conversationTurn.messageType,
+          responseMode: conversationTurn.responseMode,
+          ...(conversationTurn.normalizedMissingFields.length > 0 ? { normalizedMissingFields: conversationTurn.normalizedMissingFields } : {}),
+          requestText: parsedRequest.originalMessage || currentMessage,
           ...(structuredData ? { source: 'AI_PARSER + EUROVIPS', ...structuredData } : {}),
           emiliaRoute: {
             route: routeResult.route,
@@ -2033,6 +2099,7 @@ const useMessageHandler = (
             reason: routeResult.reason,
             inferredFields: routeResult.inferredFields,
           },
+          conversationTurn,
         }
       });
       logTimingStep('MESSAGE FLOW', 'save assistant message', saveAssistantStart, {
@@ -2150,14 +2217,18 @@ const useMessageHandler = (
       setDraftPlannerFromRequest?.(mergedRequest);
       const validation = validateItineraryRequiredFields(mergedRequest.itinerary);
       if (!validation.isValid) {
-        const missingInfoMessage = generateMissingInfoMessage(
-          validation.missingFieldsSpanish,
-          'itinerary',
-          {
-            itinerary: mergedRequest.itinerary,
-            originalMessage: mergedRequest.originalMessage,
-          }
-        );
+        const missingInfoMessage = buildConversationalMissingInfoMessage({
+          parsedRequest: mergedRequest,
+          missingFields: validation.missingFields,
+          fallbackMessage: generateMissingInfoMessage(
+            validation.missingFieldsSpanish,
+            'itinerary',
+            {
+              itinerary: mergedRequest.itinerary,
+              originalMessage: mergedRequest.originalMessage,
+            }
+          ),
+        });
 
         await saveAndDisplayMessage({
           conversation_id: currentConversationId,

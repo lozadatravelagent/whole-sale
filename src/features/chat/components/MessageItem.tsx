@@ -103,6 +103,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
   const plannerData = typeof msg.meta === 'object' && msg.meta && 'plannerData' in msg.meta
     ? ((msg.meta as any).plannerData as TripPlannerState)
     : null;
+  const responseMode = typeof msg.meta === 'object' && msg.meta ? (msg.meta as any).responseMode : undefined;
+  const isShowPlacesTurn = responseMode === 'show_places' || (msg.meta as any)?.conversationTurn?.responseMode === 'show_places';
   const plannerSegments = Array.isArray(plannerData?.segments) ? plannerData.segments : [];
   const plannerDateSelectorRequest = typeof msg.meta === 'object' && msg.meta && (msg.meta as any).plannerPromptAction === 'open_date_selector'
     ? ((msg.meta as any).originalRequest as ParsedTravelRequest | undefined)
@@ -391,7 +393,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                   )}
                 </Suspense>
 
-                {plannerData && onGoToPlanner && (() => {
+                {!isShowPlacesTurn && plannerData && onGoToPlanner && (() => {
                   const destLabel = plannerData.destinations.map(formatDestinationLabel).join(', ');
                   const dateLabel = plannerData.isFlexibleDates
                     ? formatFlexibleMonth(plannerData.flexibleMonth, plannerData.flexibleYear)
@@ -434,7 +436,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                   );
                 })()}
 
-                {plannerDateSelectorRequest && onOpenPlannerDateSelector && (
+                {!isShowPlacesTurn && plannerDateSelectorRequest && onOpenPlannerDateSelector && (
                   <div className="mt-3 rounded-lg border border-primary/20 bg-background/70 p-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>

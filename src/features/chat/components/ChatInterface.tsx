@@ -6,9 +6,13 @@ import TypingIndicator from './TypingIndicator';
 import PlannerAgentInputPrompt from '@/features/trip-planner/components/PlannerAgentInputPrompt';
 import PlannerChatHotelCard from '@/features/trip-planner/components/PlannerChatHotelCard';
 import PlannerChatFlightCard from '@/features/trip-planner/components/PlannerChatFlightCard';
+import DiscoveryMapPreview from './DiscoveryMapPreview';
+import RecommendedPlacesList from './RecommendedPlacesList';
 import type { MessageRow, LocalHotelData, FlightData } from '../types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import { ArrowUpFromLine } from 'lucide-react';
+import { deriveConversationGaps, extractRecommendedPlacesFromMeta, getDiscoveryVisualConfig } from '../services/conversationOrchestrator';
+import type { DiscoveryContext } from '../services/discoveryService';
 
 interface ChatInterfaceProps {
   selectedConversation: string | null;
@@ -231,6 +235,20 @@ const ChatInterface = React.memo(({
     };
   }, [isDraggingOver, resetDragState]);
 
+  const lastVisibleMessage = visibleMessages[visibleMessages.length - 1];
+  const lastMeta = (lastVisibleMessage?.meta as Record<string, unknown> | undefined) || undefined;
+  const lastConversationTurn = (lastMeta?.conversationTurn as { responseMode?: string } | undefined) || undefined;
+  const isShowPlacesTurn = lastConversationTurn?.responseMode === 'show_places' || lastMeta?.responseMode === 'show_places';
+  const discoveryContext = (lastMeta?.discoveryContext as DiscoveryContext | undefined) || undefined;
+  const lastRecommendedPlaces = extractRecommendedPlacesFromMeta(lastMeta);
+  const lastConversationGaps = deriveConversationGaps(lastMeta);
+  const lastMessageText = typeof lastVisibleMessage?.content === 'string'
+    ? lastVisibleMessage.content
+    : (lastVisibleMessage?.content as { text?: string } | undefined)?.text || '';
+  const discoveryVisual = isShowPlacesTurn
+    ? getDiscoveryVisualConfig(((lastMeta as any)?.requestText as string | undefined) || lastMessageText, lastRecommendedPlaces[0]?.city)
+    : null;
+
   return (
     <div
       className="flex-1 flex flex-col h-full relative"
@@ -294,13 +312,17 @@ const ChatInterface = React.memo(({
               ))}
               {/* Guided input for planner-agent missing info requests */}
               {(() => {
-                const lastMsg = visibleMessages[visibleMessages.length - 1];
-                const meta = lastMsg?.meta as any;
-                if (meta?.messageType === 'missing_info_request' && meta?.missingFields?.length > 0 && !isLoading) {
+                const meta = lastMeta as any;
+                const conversationTurn = meta?.conversationTurn;
+                const resolvedMessageType = conversationTurn?.messageType || meta?.messageType;
+                const resolvedMissingFields = meta?.normalizedMissingFields || meta?.missingFields || conversationTurn?.normalizedMissingFields || [];
+                const needsGuidedInput = !isShowPlacesTurn && (resolvedMessageType === 'missing_info_request' || resolvedMessageType === 'collect_question')
+                  && resolvedMissingFields.length > 0;
+                if (needsGuidedInput && !isLoading) {
                   return (
                     <div className="px-4 py-2">
                       <PlannerAgentInputPrompt
-                        missingFields={meta.missingFields}
+                        missingFields={resolvedMissingFields}
                         pendingAction={meta.pendingAction}
                         onSubmit={(text) => {
                           onMessageChange(text);
@@ -314,8 +336,8 @@ const ChatInterface = React.memo(({
               })()}
               {/* Inline hotel/flight cards from planner-agent */}
               {(() => {
-                const lastMsg = visibleMessages[visibleMessages.length - 1];
-                const meta = lastMsg?.meta as any;
+                const lastMsg = lastVisibleMessage;
+                const meta = lastMeta as any;
                 if (meta?.source === 'planner-agent' && meta?.combinedData && lastMsg?.role === 'assistant' && !isLoading) {
                   const hotels = (meta.combinedData.hotels as LocalHotelData[] | undefined)?.slice(0, 3);
                   const flights = (meta.combinedData.flights as FlightData[] | undefined)?.slice(0, 3);
@@ -370,35 +392,45 @@ const ChatInterface = React.memo(({
                 }
                 return null;
               })()}
-              {/* Gaps indicator after planner-agent itinerary */}
-              {(() => {
-                const lastMsg = visibleMessages[visibleMessages.length - 1];
-                const meta = lastMsg?.meta as any;
-                if (
-                  meta?.source === 'planner-agent' &&
-                  !meta?.messageType &&
-                  meta?.recommendedPlaces &&
-                  !meta?.combinedData &&
-                  lastMsg?.role === 'assistant' &&
-                  !isLoading
-                ) {
-                  return (
-                    <div className="mx-4 mb-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 animate-in fade-in duration-300">
-                      <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Para completar este viaje:</p>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                        <span>✈️ Vuelos sin buscar</span>
-                        <span>🏨 Hoteles sin buscar</span>
-                      </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
+              {lastVisibleMessage?.role === 'assistant' && lastRecommendedPlaces.length > 0 && !isLoading && (
+                <RecommendedPlacesList
+                  places={lastRecommendedPlaces}
+                  title={discoveryVisual?.title}
+                  subtitle={discoveryVisual?.subtitle}
+                  addLabel={discoveryVisual?.primaryCtaLabel}
+                  exploreLabel={discoveryVisual?.secondaryCtaLabel}
+                  onAdd={(place) => {
+                    onMessageChange(isShowPlacesTurn
+                      ? `Guardá ${place.name} como imperdible en ${place.city}`
+                      : `Sumá ${place.name} en ${place.city} al itinerario`);
+                    setTimeout(() => onSendMessage(), 50);
+                  }}
+                  onExplore={(place) => {
+                    onMessageChange(isShowPlacesTurn
+                      ? `Mostrame más lugares como ${place.name} en ${place.city}`
+                      : `Contame más sobre ${place.name} en ${place.city}`);
+                    setTimeout(() => onSendMessage(), 50);
+                  }}
+                />
+              )}
+              {lastVisibleMessage?.role === 'assistant' && isShowPlacesTurn && discoveryContext && !isLoading && (
+                <DiscoveryMapPreview discoveryContext={discoveryContext} />
+              )}
+              {lastVisibleMessage?.role === 'assistant' && lastConversationGaps.length > 0 && !isLoading && (
+                <div className="mx-4 mb-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 animate-in fade-in duration-300">
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Para seguir avanzando:</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                    {lastConversationGaps.map((gap) => (
+                      <span key={gap.key}>{gap.label}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* Action chips from planner-agent */}
               {(() => {
-                const lastMsg = visibleMessages[visibleMessages.length - 1];
-                const meta = lastMsg?.meta as any;
-                if (meta?.actionChips?.length > 0 && lastMsg?.role === 'assistant' && !isLoading && !isTyping) {
+                const lastMsg = lastVisibleMessage;
+                const meta = lastMeta as any;
+                if (!isShowPlacesTurn && meta?.actionChips?.length > 0 && lastMsg?.role === 'assistant' && !isLoading && !isTyping) {
                   return (
                     <div className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       {(meta.actionChips as Array<{ label: string; message: string }>).map((chip: { label: string; message: string }, i: number) => (
