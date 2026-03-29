@@ -391,7 +391,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                   )}
                 </Suspense>
 
-                {plannerData && (() => {
+                {plannerData && onGoToPlanner && (() => {
                   const destLabel = plannerData.destinations.map(formatDestinationLabel).join(', ');
                   const dateLabel = plannerData.isFlexibleDates
                     ? formatFlexibleMonth(plannerData.flexibleMonth, plannerData.flexibleYear)

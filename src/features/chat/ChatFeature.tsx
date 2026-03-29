@@ -111,6 +111,15 @@ const ChatFeature = () => {
     return () => { cancelled = true; };
   }, [selectedConversation, loadContextualMemory, loadContextState]);
 
+  // Save message to DB and immediately add assistant messages to local state (no Realtime dependency)
+  const saveAndDisplayMessage = useCallback(async (messageData: Parameters<typeof addMessageViaSupabase>[0]) => {
+    const saved = await addMessageViaSupabase(messageData);
+    if (saved && messageData.role === 'assistant') {
+      addOptimisticMessage(saved);
+    }
+    return saved;
+  }, [addOptimisticMessage]);
+
   const conversationScopedMessages = useMemo(() => {
     if (!selectedConversation) {
       return [];
@@ -635,7 +644,7 @@ const ChatFeature = () => {
 
     try {
       // Add PDF message from Emilia (assistant)
-      await addMessageViaSupabase({
+      await saveAndDisplayMessage({
         conversation_id: selectedConversation,
         role: 'assistant' as const,
         content: {
@@ -695,7 +704,7 @@ const ChatFeature = () => {
         description: "Tu cotización se ha generado exitosamente.",
       });
     }
-  }, [selectedConversation, toast]);
+  }, [selectedConversation, toast, saveAndDisplayMessage]);
 
   // Handle new message from empty state
   const handleSendNewMessage = useCallback(async (messageToSend: string) => {

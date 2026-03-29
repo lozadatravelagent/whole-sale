@@ -7,6 +7,7 @@ import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePack
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
+import { routeRequest, buildSearchSummary, getInferredFieldDetails, detectDestructiveChanges } from '../services/routeRequest';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
@@ -82,6 +83,15 @@ const useMessageHandler = (
   workspaceMode?: 'standard' | 'planner',
 ) => {
   // ✅ Messages are now passed as parameter - no need for second useMessages call
+
+  // Save message to DB and immediately add assistant messages to local state (no Realtime dependency)
+  const saveAndDisplayMessage = useCallback(async (messageData: Parameters<typeof addMessageViaSupabase>[0]) => {
+    const saved = await addMessageViaSupabase(messageData);
+    if (saved && messageData.role === 'assistant') {
+      addOptimisticMessage(saved);
+    }
+    return saved;
+  }, [addOptimisticMessage]);
 
   // Track active domain for this conversation to avoid cross responses
   let activeDomain: 'flights' | 'hotels' | null = null;
@@ -162,7 +172,7 @@ const useMessageHandler = (
           addOptimisticMessage(optimisticUserMessage as any);
 
           // Add user message to database (in background)
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: currentConversationId,
             role: 'user' as const,
             content: { text: currentMessage.trim() },
@@ -173,7 +183,7 @@ const useMessageHandler = (
 
           if (responseMessage) {
             // Send response message
-            await addMessageViaSupabase({
+            await saveAndDisplayMessage({
               conversation_id: currentConversationId,
               role: 'assistant' as const,
               content: {
@@ -195,7 +205,7 @@ const useMessageHandler = (
         } catch (error) {
           console.error('❌ Error searching for cheaper flights:', error);
 
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: currentConversationId,
             role: 'assistant' as const,
             content: {
@@ -256,7 +266,7 @@ const useMessageHandler = (
           addOptimisticMessage(optimisticUserMessage as any);
 
           // Save user's intent message into conversation (in background)
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: currentConversationId,
             role: 'user' as const,
             content: { text: currentMessage.trim() },
@@ -295,7 +305,7 @@ const useMessageHandler = (
           // Run HOTELS search only
           const hotelResult = await handleHotelSearch(hotelsParsed);
 
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: currentConversationId,
             role: 'assistant' as const,
             content: { text: hotelResult.response },
@@ -353,7 +363,7 @@ const useMessageHandler = (
           setTypingMessage('Cambiando el precio...', currentConversationId);
 
           // Add user message to database (in background)
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: currentConversationId,
             role: 'user' as const,
             content: { text: currentMessage.trim() },
@@ -370,7 +380,7 @@ const useMessageHandler = (
             console.log('❌ [PRICE CHANGE] No PDF analysis found for this conversation');
 
             // Inform user they need to upload a PDF first
-            await addMessageViaSupabase({
+            await saveAndDisplayMessage({
               conversation_id: currentConversationId,
               role: 'assistant' as const,
               content: {
@@ -392,7 +402,7 @@ const useMessageHandler = (
           // PDF exists and price change was processed
           if (result) {
             // Add assistant response
-            await addMessageViaSupabase({
+            await saveAndDisplayMessage({
               conversation_id: currentConversationId,
               role: 'assistant' as const,
               content: {
@@ -420,7 +430,7 @@ const useMessageHandler = (
           console.error('❌ Error processing price change request:', error);
 
           // Send error message to user
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: currentConversationId,
             role: 'assistant' as const,
             content: {
@@ -663,10 +673,62 @@ const useMessageHandler = (
         previousContext: contextToUse ? 'Yes' : 'No'
       });
 
-      // === PLANNER AGENT BRANCH ===
-      // Must run BEFORE parseMessageWithAI to avoid unnecessary AI parser cost/latency
-      if (workspaceMode === 'planner' && plannerState && !plannerState?.generationMeta?.isDraft) {
-        console.log('🤖 [PLANNER AGENT] Planner mode detected, skipping standard parser');
+      // === EMILIA 5.0: PARSE + ROUTE ===
+      // Always parse first, then route based on content (not workspace_mode)
+      const parseStart = nowMs();
+      let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory);
+      logTimingStep('MESSAGE FLOW', 'parseMessageWithAI', parseStart, {
+        requestType: parsedRequest.requestType,
+      });
+
+      const routeResult = routeRequest(parsedRequest, plannerState);
+      console.log('🧭 [ROUTER] Emilia route decision:', {
+        route: routeResult.route,
+        score: routeResult.score.toFixed(2),
+        dimensions: routeResult.dimensions,
+        missingFields: routeResult.missingFields,
+        reason: routeResult.reason,
+      });
+
+      // === PLANNER AGENT BRANCH (routed by Emilia scorer, not workspace_mode) ===
+      if (routeResult.route === 'PLAN' && plannerState && !plannerState?.generationMeta?.isDraft) {
+        console.log('🤖 [PLANNER AGENT] PLAN route with active planner — using planner agent');
+
+        // === DESTRUCTIVE CHANGE CHECK ===
+        // If the plan has quoted hotels or selected flights, warn before modifying
+        if (routeResult.reason === 'edit_existing_plan' && plannerState?.segments) {
+          const destructiveWarning = detectDestructiveChanges(plannerState.segments);
+          if (destructiveWarning) {
+            // Check if user already confirmed (previous message was a destructive warning)
+            const lastAssistant = [...(messages || [])]
+              .filter(m => m.conversation_id === finalConversationId && m.role === 'assistant')
+              .pop();
+            const lastWasWarning = (lastAssistant?.meta as Record<string, unknown>)?.messageType === 'destructive_warning';
+
+            if (!lastWasWarning) {
+              console.log('⚠️ [PLANNER] Destructive change detected:', destructiveWarning.affectedCities);
+              await saveAndDisplayMessage({
+                conversation_id: finalConversationId,
+                role: 'assistant' as const,
+                content: { text: destructiveWarning.message },
+                meta: {
+                  status: 'sent',
+                  messageType: 'destructive_warning',
+                  affectedCities: destructiveWarning.affectedCities,
+                  hasQuotedHotels: destructiveWarning.hasQuotedHotels,
+                  hasSelectedFlights: destructiveWarning.hasSelectedFlights,
+                }
+              });
+
+              setIsTyping(false, conversationIdForThisSearch);
+              setIsLoading(false);
+              flowTimer.end('planner - destructive warning sent');
+              return;
+            }
+            console.log('✅ [PLANNER] User confirmed destructive change — proceeding');
+          }
+        }
+
         setTypingMessage('Emilia está analizando tu solicitud...', conversationIdForThisSearch);
 
         // Progressive typing labels
@@ -784,7 +846,7 @@ const useMessageHandler = (
                 }
               });
 
-              await addMessageViaSupabase({
+              await saveAndDisplayMessage({
                 conversation_id: finalConversationId,
                 role: 'assistant' as const,
                 content: { text: 'La búsqueda tardó más de lo esperado. Generé un esquema básico del viaje que podés refinar desde acá.' },
@@ -795,7 +857,7 @@ const useMessageHandler = (
               });
             } catch (fallbackErr) {
               console.error('[PLANNER AGENT] Fallback also failed:', fallbackErr);
-              await addMessageViaSupabase({
+              await saveAndDisplayMessage({
                 conversation_id: finalConversationId,
                 role: 'assistant' as const,
                 content: { text: 'La búsqueda tardó más de lo esperado. Por favor, intentá de nuevo con una solicitud más específica.' },
@@ -818,7 +880,7 @@ const useMessageHandler = (
 
         // Handle needsInput case — return early with missing info
         if (agentResult.needsInput) {
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: finalConversationId,
             role: 'assistant' as const,
             content: { text: assistantResponse },
@@ -877,7 +939,7 @@ const useMessageHandler = (
         const recommendedPlaces = rawStructuredData?.recommendedPlaces || null;
 
         // Save assistant message with combinedData (same shape as standard flow)
-        await addMessageViaSupabase({
+        await saveAndDisplayMessage({
           conversation_id: finalConversationId,
           role: 'assistant' as const,
           content: { text: assistantResponse },
@@ -1056,11 +1118,64 @@ const useMessageHandler = (
       }
       // === END PLANNER AGENT BRANCH ===
 
-      const parseStart = nowMs();
-      let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory);
-      logTimingStep('MESSAGE FLOW', 'parseMessageWithAI', parseStart, {
-        requestType: parsedRequest.requestType,
-      });
+      // === EMILIA COLLECT: router-detected gaps that benefit from a clean single question ===
+      // Intercepts when:
+      //   1. Passenger ambiguity ("familia" without count) — validation doesn't catch this
+      //   2. Quote intent but incomplete, AND no previous context to fill gaps
+      // Max 3 consecutive COLLECT turns — after that, fall through to PLAN or existing validation
+      const MAX_COLLECT_TURNS = 3;
+      const recentCollectCount = (messages || [])
+        .filter(m =>
+          m.conversation_id === finalConversationId &&
+          m.role === 'assistant' &&
+          (m.meta as Record<string, unknown>)?.messageType === 'collect_question'
+        )
+        .slice(-MAX_COLLECT_TURNS)
+        .length;
+
+      const collectExhausted = recentCollectCount >= MAX_COLLECT_TURNS;
+
+      const shouldCollectIntercept =
+        routeResult.route === 'COLLECT' &&
+        routeResult.collectQuestion &&
+        !collectExhausted &&
+        (
+          routeResult.missingFields.includes('passengers') ||
+          (routeResult.reason === 'quote_intent_incomplete' && !previousParsedRequest && !contextToUse)
+        );
+
+      if (collectExhausted && routeResult.route === 'COLLECT') {
+        console.log(`🔄 [COLLECT] ${MAX_COLLECT_TURNS} turns exhausted — falling through to standard flow`);
+      }
+
+      if (shouldCollectIntercept) {
+        console.log('🔄 [COLLECT] Router intercepting with focused question:', routeResult.reason, `(turn ${recentCollectCount + 1}/${MAX_COLLECT_TURNS})`);
+        setPreviousParsedRequest(parsedRequest);
+        await saveContextualMemory(finalConversationId, parsedRequest);
+
+        await saveAndDisplayMessage({
+          conversation_id: finalConversationId,
+          role: 'assistant' as const,
+          content: { text: routeResult.collectQuestion },
+          meta: {
+            status: 'sent',
+            messageType: 'collect_question',
+            routeScore: routeResult.score,
+            collectTurn: recentCollectCount + 1,
+            missingFields: routeResult.missingFields,
+            originalRequest: parsedRequest,
+          }
+        });
+
+        setIsTyping(false, conversationIdForThisSearch);
+        setIsLoading(false);
+        flowTimer.end('collect - router template question', {
+          route: routeResult.route,
+          collectTurn: recentCollectCount + 1,
+          missingFields: routeResult.missingFields,
+        });
+        return;
+      }
 
       // Merge persistent state into parsed request where fields are missing (user intent wins over stored)
       const mergeFlights = (a: any, b: any) => ({
@@ -1285,7 +1400,7 @@ const useMessageHandler = (
           }
           const missingInfoMessage = parts.join('\n\n');
 
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: finalConversationId,
             role: 'assistant' as const,
             content: { text: missingInfoMessage },
@@ -1367,7 +1482,7 @@ const useMessageHandler = (
           console.log('💬 [VALIDATION] Generated missing info message');
 
           // Add assistant message with missing info request
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: finalConversationId,
             role: 'assistant' as const,
             content: { text: missingInfoMessage },
@@ -1431,7 +1546,7 @@ const useMessageHandler = (
             saveContextState(finalConversationId, contextStateForFailedSearch).catch((e) => console.warn('⚠️ [CONTEXT] Failed to save context state:', e));
             console.log('💾 [CONTEXT] Saving context state for failed hotel validation (fire-and-forget)');
 
-            await addMessageViaSupabase({
+            await saveAndDisplayMessage({
               conversation_id: finalConversationId,
               role: 'assistant' as const,
               content: { text: validation.errorMessage },
@@ -1504,7 +1619,7 @@ const useMessageHandler = (
                 parsedRequest.requestType
               );
 
-              await addMessageViaSupabase({
+              await saveAndDisplayMessage({
                 conversation_id: finalConversationId,
                 role: 'assistant' as const,
                 content: { text: missingInfoMessage },
@@ -1536,7 +1651,7 @@ const useMessageHandler = (
               parsedRequest.requestType
             );
 
-            await addMessageViaSupabase({
+            await saveAndDisplayMessage({
               conversation_id: finalConversationId,
               role: 'assistant' as const,
               content: { text: missingInfoMessage },
@@ -1580,7 +1695,7 @@ const useMessageHandler = (
             }
           );
 
-          await addMessageViaSupabase({
+          await saveAndDisplayMessage({
             conversation_id: finalConversationId,
             role: 'assistant' as const,
             content: { text: missingInfoMessage },
@@ -1625,7 +1740,7 @@ const useMessageHandler = (
                 ? `Actualicé ${confirmedFields.join(', ')} en tu planificador.`
                 : 'Tu planificador fue actualizado.';
 
-              await addMessageViaSupabase({
+              await saveAndDisplayMessage({
                 conversation_id: finalConversationId,
                 role: 'assistant' as const,
                 content: { text: confirmMsg },
@@ -1773,6 +1888,18 @@ const useMessageHandler = (
         hasStructuredData: Boolean(structuredData),
       });
 
+      // === EMILIA: Prepend inferred-field summary when defaults were applied ===
+      if (routeResult.inferredFields.length > 0 && assistantResponse) {
+        const inferredDetails = getInferredFieldDetails(parsedRequest);
+        if (inferredDetails.length > 0) {
+          const summary = buildSearchSummary(parsedRequest, inferredDetails);
+          if (summary) {
+            assistantResponse = `${summary}\n\n${assistantResponse}`;
+            console.log('📋 [ROUTER] Prepended inferred-field summary:', summary);
+          }
+        }
+      }
+
       console.log('📝 [MESSAGE FLOW] Step 12: Generated assistant response');
       console.log('💬 Response preview:', assistantResponse.substring(0, 100) + '...');
       console.log('📊 Structured data:', structuredData);
@@ -1894,14 +2021,19 @@ const useMessageHandler = (
 
       // Save assistant message to database
       const saveAssistantStart = nowMs();
-      await addMessageViaSupabase({
+      await saveAndDisplayMessage({
         conversation_id: finalConversationId,
         role: 'assistant' as const,
         content: { text: assistantResponse },
-        meta: structuredData ? {
-          source: 'AI_PARSER + EUROVIPS',
-          ...structuredData
-        } : {}
+        meta: {
+          ...(structuredData ? { source: 'AI_PARSER + EUROVIPS', ...structuredData } : {}),
+          emiliaRoute: {
+            route: routeResult.route,
+            score: routeResult.score,
+            reason: routeResult.reason,
+            inferredFields: routeResult.inferredFields,
+          },
+        }
       });
       logTimingStep('MESSAGE FLOW', 'save assistant message', saveAssistantStart, {
         hasStructuredData: Boolean(structuredData),
@@ -1966,7 +2098,7 @@ const useMessageHandler = (
     addOptimisticMessage,
     updateOptimisticMessage,
     removeOptimisticMessage,
-    workspaceMode
+    saveAndDisplayMessage,
   ]);
 
   const handlePlannerDateSelection = useCallback(async (
@@ -2027,7 +2159,7 @@ const useMessageHandler = (
           }
         );
 
-        await addMessageViaSupabase({
+        await saveAndDisplayMessage({
           conversation_id: currentConversationId,
           role: 'assistant',
           content: { text: missingInfoMessage },
@@ -2054,7 +2186,7 @@ const useMessageHandler = (
       }
 
       setPlannerDraftPhase?.('draft_generating');
-      await addMessageViaSupabase({
+      await saveAndDisplayMessage({
         conversation_id: currentConversationId,
         role: 'user',
         content: { text: formatPlannerDateSelectionMessage(selection) },
@@ -2081,7 +2213,7 @@ const useMessageHandler = (
         await saveContextualMemory(currentConversationId, mergedRequest);
       }
 
-      await addMessageViaSupabase({
+      await saveAndDisplayMessage({
         conversation_id: currentConversationId,
         role: 'assistant',
         content: { text: assistantResponse },
@@ -2122,7 +2254,8 @@ const useMessageHandler = (
     setPreviousParsedRequest,
     setTypingMessage,
     toast,
-    validateItineraryRequiredFields
+    validateItineraryRequiredFields,
+    saveAndDisplayMessage,
   ]);
 
   return {

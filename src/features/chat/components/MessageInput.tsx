@@ -47,8 +47,16 @@ const MessageInput = React.memo(({
     previousConversationRef.current = selectedConversation;
   }, [selectedConversation, disabled]);
 
+  // Auto-resize textarea based on content
+  React.useEffect(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [value]);
+
   return (
-    <div className="border-t bg-background p-2 md:p-4 shadow-lg">
+    <div className="border-t bg-background p-2 md:p-3 shadow-sm">
       <div className="flex space-x-1.5 md:space-x-2">
         <Textarea
           ref={messageInputRef}
@@ -71,7 +79,7 @@ const MessageInput = React.memo(({
           onBlur={(e) => {
             // ✅ Removed auto-refocus on blur - was causing focus loops
           }}
-          className="flex-1 min-h-[80px] md:min-h-[100px] resize-y text-sm md:text-base"
+          className="flex-1 min-h-[44px] max-h-[120px] resize-none text-sm"
           autoComplete="off"
         />
 

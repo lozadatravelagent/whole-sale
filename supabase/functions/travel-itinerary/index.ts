@@ -1004,11 +1004,37 @@ OUTPUT LIMITS:
 - day title: max 8 words.
 - day summary: max 16 words.
 - morning, afternoon, evening: 0 to 1 activity each.
-- Activity objects should usually include only "title" and optional "category".
+- Activity objects should usually include "title", "category" and a short "description".
+- Activity descriptions should be 10 to 22 words, concrete, visual, and useful.
 - Omit times unless absolutely necessary; the server adds times.
 - restaurants: 0 to 1 item per day.
 - travelTip: optional, max 12 words.
 - No prices, ticket costs, exact opening hours, or stale details.
+
+REAL PLACE REQUIREMENTS:
+- Every activity, restaurant, cafe, museum, park, viewpoint, market, bar, or landmark must be a real place.
+- Never invent places, venues, attractions, or restaurant names.
+- Never use vague placeholders like "walking tour", "local dinner", "historic center stroll", "tapas in a traditional district", "museum circuit", or "sunset in a nice spot" unless they refer to a real named place.
+- Prefer specific POIs with exact names that are easy to recognize in maps and places APIs.
+- Prefer places that are well known, highly reviewed, or visually distinctive enough to likely have public photos.
+- If a place name is ambiguous, use the most recognizable official or commonly used version.
+- If you are not confident a place is real, replace it with a more recognizable real place.
+- Fewer real places are better than many generic or invented suggestions.
+
+MAP AND PHOTO FRIENDLY OUTPUT:
+- Choose places that are likely resolvable by exact name plus city.
+- Prefer attractions, restaurants, cafes, museums, parks, and landmarks with strong visual identity.
+- Descriptions should help the UI show a useful card or map detail panel.
+- Descriptions must explain why the place is interesting, not just repeat the title.
+
+RESTAURANTS AND CAFES:
+- Restaurants and cafes must use their real commercial names.
+- Prefer iconic, popular, or consistently reviewed places.
+- Do not output generic entries like "traditional dinner", "local cafe", or "restaurant in the old town".
+
+QUALITY BAR:
+- Good: "Museo del Prado", "Parque del Retiro", "Villa Borghese", "Basilica de San Pedro", "Casa Dani"
+- Bad: "Cultural walk in Madrid", "Tapas in La Latina", "Dinner in a local neighborhood", "Visit to famous museums"
 
 REQUEST_CONTEXT:
 ${requestContextJson}
@@ -1026,10 +1052,28 @@ OUTPUT_TEMPLATE:
       "days": [
         {
           "title": "Prado y Retiro",
-          "summary": "Arte y paseo clásico",
-          "morning": [{ "title": "Museo del Prado", "category": "Museo" }],
-          "afternoon": [{ "title": "Parque del Retiro", "category": "Paseo" }],
-          "evening": [{ "title": "Tapas en La Latina", "category": "Gastronomia" }],
+          "summary": "Arte y paseo clasico",
+          "morning": [
+            {
+              "title": "Museo del Prado",
+              "category": "Museo",
+              "description": "Pinacoteca iconica con obras maestras de Velazquez, Goya y Rubens."
+            }
+          ],
+          "afternoon": [
+            {
+              "title": "Parque del Retiro",
+              "category": "Parque",
+              "description": "Gran pulmon verde ideal para caminar, remar y descansar entre jardines historicos."
+            }
+          ],
+          "evening": [
+            {
+              "title": "Casa Dani",
+              "category": "Gastronomia",
+              "description": "Bar muy popular por su tortilla espanola y ambiente madrileno clasico."
+            }
+          ],
           "restaurants": [{ "name": "Casa Dani", "type": "Tapas", "priceRange": "$$" }],
           "travelTip": "Conviene moverse en metro."
         }
@@ -1145,6 +1189,13 @@ MUST FOLLOW:
 - Restaurants: 0 to 1 item per day.
 - travelTip: optional, max 12 words.
 - No prices, opening hours, or stale details.
+- All activities and restaurant suggestions must be real named places.
+- Prefer exact POIs that are easy to resolve on maps by name plus city.
+- Avoid generic placeholders like "local walk", "traditional dinner", "historic district stroll", or "museum area".
+- Activity objects should usually include "title", "category" and a short "description".
+- Activity descriptions should be concrete, visual, and useful for cards and map detail views.
+- Restaurants and cafes must use real commercial names.
+- If unsure whether a place is real, replace it with a more famous and verifiable one.
 
 REQUEST_CONTEXT:
 ${requestContextJson}
@@ -1162,10 +1213,28 @@ OUTPUT_TEMPLATE:
       "days": [
         {
           "title": "Prado y Retiro",
-          "summary": "Arte y paseo clásico",
-          "morning": [{ "title": "Museo del Prado", "category": "Museo" }],
-          "afternoon": [{ "title": "Parque del Retiro", "category": "Paseo" }],
-          "evening": [{ "title": "Tapas en La Latina", "category": "Gastronomia" }],
+          "summary": "Arte y paseo clasico",
+          "morning": [
+            {
+              "title": "Museo del Prado",
+              "category": "Museo",
+              "description": "Pinacoteca iconica con obras maestras de Velazquez, Goya y Rubens."
+            }
+          ],
+          "afternoon": [
+            {
+              "title": "Parque del Retiro",
+              "category": "Parque",
+              "description": "Gran pulmon verde ideal para caminar, remar y descansar entre jardines historicos."
+            }
+          ],
+          "evening": [
+            {
+              "title": "Casa Dani",
+              "category": "Gastronomia",
+              "description": "Bar muy popular por su tortilla espanola y ambiente madrileno clasico."
+            }
+          ],
           "restaurants": [{ "name": "Casa Dani", "type": "Tapas", "priceRange": "$$" }],
           "travelTip": "Conviene moverse en metro."
         }

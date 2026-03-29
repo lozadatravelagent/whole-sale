@@ -13,6 +13,15 @@ const usePdfAnalysis = (
   addOptimisticMessage: (message: any) => void,
   toast: (args: { title: string; description?: string; variant?: 'default' | 'destructive' }) => void
 ) => {
+  // Save message to DB and immediately add assistant messages to local state (no Realtime dependency)
+  const saveAndDisplayMessage = useCallback(async (messageData: Parameters<typeof addMessageViaSupabase>[0]) => {
+    const saved = await addMessageViaSupabase(messageData);
+    if (saved && messageData.role === 'assistant') {
+      addOptimisticMessage(saved);
+    }
+    return saved;
+  }, [addOptimisticMessage]);
+
   const [lastPdfAnalysis, setLastPdfAnalysis] = useState<any>(null);
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
 
@@ -63,7 +72,7 @@ const usePdfAnalysis = (
         const analysisResponse = generatePriceChangeSuggestions(analysis);
 
         // Add AI response with analysis
-        await addMessageViaSupabase({
+        await saveAndDisplayMessage({
           conversation_id: conversationId,
           role: 'assistant' as const,
           content: {
@@ -118,7 +127,7 @@ const usePdfAnalysis = (
       console.error('❌ Error processing PDF content:', error);
 
       // Add error response
-      await addMessageViaSupabase({
+      await saveAndDisplayMessage({
         conversation_id: conversationId,
         role: 'assistant' as const,
         content: {
@@ -131,7 +140,7 @@ const usePdfAnalysis = (
         }
       });
     }
-  }, [updateConversationTitle, setTypingMessage, setIsTyping]);
+  }, [updateConversationTitle, setTypingMessage, setIsTyping, saveAndDisplayMessage]);
 
   // Handle PDF upload
   const handlePdfUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,7 +218,7 @@ const usePdfAnalysis = (
       setTypingMessage('Estoy leyendo el PDF...', selectedConversation);
 
       // Add user message with PDF attachment info (DB save - realtime will replace optimistic)
-      await addMessageViaSupabase({
+      await saveAndDisplayMessage({
         conversation_id: selectedConversation,
         role: 'user' as const,
         content: {
@@ -249,7 +258,7 @@ const usePdfAnalysis = (
       setIsTyping(false, selectedConversation);
       setIsUploadingPdf(false);
     }
-  }, [selectedConversation, messages, processPdfContent, toast, setIsTyping, addOptimisticMessage, setTypingMessage]);
+  }, [selectedConversation, messages, processPdfContent, toast, setIsTyping, addOptimisticMessage, setTypingMessage, saveAndDisplayMessage]);
 
   // Handle cheaper flights search
   const handleCheaperFlightsSearch = useCallback(async (message: string) => {

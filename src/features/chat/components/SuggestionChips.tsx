@@ -29,19 +29,19 @@ function SuggestionChips({ suggestions, onSuggestionClick, loadingAction, discov
   return (
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
       {hasChips && (
-        <div className="flex flex-wrap gap-2">
-          {suggestions.map((suggestion) => {
+        <div className="flex flex-wrap gap-1.5">
+          {[...suggestions].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99)).map((suggestion) => {
             const Icon = ICON_BY_TYPE[suggestion.type];
             const isLoading = loadingAction === suggestion.id;
 
             return (
               <Button
                 key={suggestion.id}
-                variant="outline"
+                variant={(suggestion.priority ?? 99) <= 2 ? 'default' : 'outline'}
                 size="sm"
                 disabled={isLoading}
                 onClick={() => onSuggestionClick(suggestion)}
-                className="gap-1.5"
+                className="gap-1.5 text-xs"
               >
                 {isLoading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
