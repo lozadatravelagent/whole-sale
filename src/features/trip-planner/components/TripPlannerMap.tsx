@@ -99,8 +99,7 @@ interface TripPlannerMapProps {
     place: PlannerPlaceCandidate;
   }) => void;
   onOpenPlaceDetail?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
-  onPlaceDetailsLoaded?: (details: PlaceDetails | null) => void;
-  fetchPlaceDetailFor?: PlannerPlaceCandidate | null;
+  highlightedPlaceId?: string | null;
   onInventoryHotelPlacesReady?: (segmentId: string, places: PlannerPlaceHotelCandidate[]) => void;
 }
 
@@ -258,8 +257,7 @@ function PlannerMapScene({
   onAddHotelToSegment,
   onRequestAddPlaceToPlanner,
   onOpenPlaceDetail,
-  onPlaceDetailsLoaded,
-  fetchPlaceDetailFor,
+  highlightedPlaceId,
   onInventoryHotelPlacesReady,
 }: {
   segments: SegmentWithLocation[];
@@ -272,8 +270,7 @@ function PlannerMapScene({
   onAddHotelToSegment?: (segmentId: string, placeCandidate: PlannerPlaceHotelCandidate) => void;
   onRequestAddPlaceToPlanner?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
   onOpenPlaceDetail?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
-  onPlaceDetailsLoaded?: (details: PlaceDetails | null) => void;
-  fetchPlaceDetailFor?: PlannerPlaceCandidate | null;
+  highlightedPlaceId?: string | null;
   onInventoryHotelPlacesReady?: (segmentId: string, places: PlannerPlaceHotelCandidate[]) => void;
 }) {
   const maps = useMap();
@@ -291,9 +288,6 @@ function PlannerMapScene({
 
   const [activityMarkers, setActivityMarkers] = useState<ActivityMarkerEntry[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<ActivityMarkerEntry | null>(null);
-  const [selectedPlace, setSelectedPlace] = useState<PlannerPlaceCandidate | null>(null);
-  const [placeDetails, setPlaceDetails] = useState<PlaceDetails | null>(null);
-  const [placeLoading, setPlaceLoading] = useState(false);
   const [cityPlaceDetails, setCityPlaceDetails] = useState<PlaceDetails | null>(null);
   const [cityPlaceLoading, setCityPlaceLoading] = useState(false);
   const [inventoryHotelPlaces, setInventoryHotelPlaces] = useState<PlannerPlaceHotelCandidate[]>([]);
@@ -307,13 +301,9 @@ function PlannerMapScene({
   const animatedMarkerIdsRef = useRef<Set<string>>(new Set());
   const animatedCityIdsRef = useRef<Set<string>>(new Set());
   const selectedSegmentRef = useRef(selectedSegment);
-  const onPlaceDetailsLoadedRef = useRef(onPlaceDetailsLoaded);
-  const fetchPlaceDetailForRef = useRef(fetchPlaceDetailFor);
   const onInventoryHotelPlacesReadyRef = useRef(onInventoryHotelPlacesReady);
   const moveEndTimerRef = useRef<ReturnType<typeof setTimeout>>();
   selectedSegmentRef.current = selectedSegment;
-  onPlaceDetailsLoadedRef.current = onPlaceDetailsLoaded;
-  fetchPlaceDetailForRef.current = fetchPlaceDetailFor;
   onInventoryHotelPlacesReadyRef.current = onInventoryHotelPlacesReady;
 
   useEffect(() => {
@@ -408,45 +398,6 @@ function PlannerMapScene({
     }, 800);
   }, [map, onViewportSelectSegment, segments, selectedSegmentId]);
 
-  // Fetch place details on place select
-  useEffect(() => {
-    const segment = selectedSegmentRef.current;
-    if (!selectedPlace || !segment || selectedPlace.source === 'inventory') {
-      setPlaceDetails(null);
-      setPlaceLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setPlaceDetails(null);
-    setPlaceLoading(true);
-
-    fetchPlaceDetails(null, {
-      placeId: selectedPlace.placeId,
-      title: selectedPlace.name,
-      city: segment.city,
-      locationBias: {
-        lat: selectedPlace.lat || segment.location.lat,
-        lng: selectedPlace.lng || segment.location.lng,
-      },
-    }).then((details) => {
-      if (cancelled) return;
-      setPlaceDetails(details);
-      setPlaceLoading(false);
-      onPlaceDetailsLoadedRef.current?.(details ?? null);
-    });
-
-    return () => { cancelled = true; };
-  }, [selectedPlace, selectedSegment?.id]);
-
-  // External place detail request
-  useEffect(() => {
-    const target = fetchPlaceDetailForRef.current;
-    if (!target || !selectedSegment) return;
-    setSelectedPlace((prev) => prev?.placeId === target.placeId ? prev : target);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchPlaceDetailFor?.placeId, selectedSegment?.id]);
-
   // Fetch city details for city panel
   useEffect(() => {
     if (!showCityPanel || !selectedSegment) {
@@ -462,7 +413,7 @@ function PlannerMapScene({
     const seg = selectedSegmentRef.current;
     if (!seg) return;
 
-    fetchPlaceDetails(null, {
+    fetchPlaceDetails({
       title: seg.city,
       city: seg.country || seg.city,
       locationBias: {
@@ -514,7 +465,6 @@ function PlannerMapScene({
         }
 
         const results = await fetchInventoryHotelPlaces(
-          null,
           seg.city,
           inventoryHotels,
           { lat: seg.location.lat, lng: seg.location.lng },
@@ -628,9 +578,7 @@ function PlannerMapScene({
   const hotelInventorySearchLoading = selectedSegment?.hotelPlan.searchStatus === 'loading';
   const discoveryLoading = placesLoading || inventoryHotelsLoading || hotelInventorySearchLoading;
 
-  useEffect(() => {
-    if (selectedPlace && !activeCategories[selectedPlace.category]) setSelectedPlace(null);
-  }, [activeCategories, selectedPlace]);
+  // Note: highlighted place deselection on category hide is now handled by the parent hook
 
   useEffect(() => {
     if (selectedActivity && !activeCategories[selectedActivity.placeCategory]) setSelectedActivity(null);
@@ -638,7 +586,6 @@ function PlannerMapScene({
 
   // Click handlers
   const handleActivityClick = useCallback((marker: ActivityMarkerEntry) => {
-    setSelectedPlace(null);
     setShowCityPanel(false);
     if (onOpenPlaceDetail) {
       setSelectedActivity(null);
@@ -653,7 +600,6 @@ function PlannerMapScene({
 
   const handleCityMarkerClick = useCallback((segmentId: string) => {
     setSelectedActivity(null);
-    setSelectedPlace(null);
     onSelectSegment(segmentId);
     setShowCityPanel(true);
   }, [onSelectSegment]);
@@ -662,7 +608,6 @@ function PlannerMapScene({
     setSelectedActivity(null);
     setShowCityPanel(false);
     if (onOpenPlaceDetail && selectedSegment) {
-      setSelectedPlace(place);
       onOpenPlaceDetail({ segmentId: selectedSegment.id, place });
     }
   }, [onOpenPlaceDetail, selectedSegment]);
@@ -739,7 +684,7 @@ function PlannerMapScene({
           .filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng))
           .map((place) => {
             const labelText = getDiscoveryMarkerLabel(place);
-            const isSelectedPlace = selectedPlace?.placeId === place.placeId;
+            const isSelectedPlace = highlightedPlaceId === place.placeId;
             const style = CATEGORY_STYLES[place.category];
 
             return (
@@ -906,7 +851,14 @@ function PlannerMapScene({
               ) : (
                 <div className="mt-3 space-y-2">
                   {DISCOVERY_CATEGORIES.filter((cat) => activeCategories[cat]).map((cat) => {
-                    const topPlaces = (cat === 'hotel' ? inventoryHotelPlaces : (placesByCategory?.[cat] || [])).slice(0, 2);
+                    const catPlaces = cat === 'hotel'
+                      ? inventoryHotelPlaces
+                      : [...(placesByCategory?.[cat] || [])].sort((a, b) => {
+                          const sa = (a.rating || 0) * Math.max(1, a.userRatingsTotal || 1);
+                          const sb = (b.rating || 0) * Math.max(1, b.userRatingsTotal || 1);
+                          return sb - sa;
+                        });
+                    const topPlaces = catPlaces.slice(0, 2);
                     if (topPlaces.length === 0) return null;
                     return (
                       <div key={cat}>
@@ -962,8 +914,7 @@ export default function TripPlannerMap({
   onAddHotelToSegment,
   onRequestAddPlaceToPlanner,
   onOpenPlaceDetail,
-  onPlaceDetailsLoaded,
-  fetchPlaceDetailFor,
+  highlightedPlaceId,
   onInventoryHotelPlacesReady,
 }: TripPlannerMapProps) {
   const [uncontrolledSelectedSegmentId, setUncontrolledSelectedSegmentId] = useState<string | null>(null);
@@ -1031,8 +982,7 @@ export default function TripPlannerMap({
               onAddHotelToSegment={onAddHotelToSegment}
               onRequestAddPlaceToPlanner={onRequestAddPlaceToPlanner}
               onOpenPlaceDetail={onOpenPlaceDetail}
-              onPlaceDetailsLoaded={onPlaceDetailsLoaded}
-              fetchPlaceDetailFor={fetchPlaceDetailFor}
+              highlightedPlaceId={highlightedPlaceId}
               onInventoryHotelPlacesReady={onInventoryHotelPlacesReady}
             />
             <div className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[linear-gradient(180deg,rgba(248,250,252,0.9),rgba(226,232,240,0.72))] px-6 text-center transition-opacity duration-500 ${mappedSegments.length > 0 ? 'opacity-0' : 'opacity-100'}`}>

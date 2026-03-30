@@ -51,7 +51,8 @@ import {
   haversineDistanceKm,
 } from '../utils';
 import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
-import { fetchNearbyPlacesByCategory, type PlaceDetails } from '../services/placesService';
+import { usePlaceDetail } from '../hooks/usePlaceDetail';
+import { usePlacesOrchestrator, type PlaceBlock } from '../hooks/usePlacesOrchestrator';
 import PlannerContextSidebar from './PlannerContextSidebar';
 import type { PlaceDetailData } from './PlannerPlaceDetailPanel';
 import TripPlannerMap from './TripPlannerMap';
@@ -74,20 +75,6 @@ import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 
 const PLANNER_MAP_FILTERS: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity', 'sights', 'nightlife', 'parks', 'shopping', 'culture'];
 type PlannerPlacesByCategory = Record<string, PlannerPlaceCandidate[]>;
-const EAGER_FETCH_CATEGORIES: PlannerPlaceCategory[] = ['restaurant', 'cafe', 'museum', 'activity'];
-const CHAT_PUSH_CATEGORIES: Set<PlannerPlaceCategory> = new Set(['activity', 'sights']);
-const DEFAULT_MAP_ACTIVE_CATEGORIES: Record<PlannerPlaceCategory, boolean> = {
-  hotel: true,
-  restaurant: true,
-  cafe: true,
-  museum: true,
-  activity: true,
-  sights: false,
-  nightlife: false,
-  parks: false,
-  shopping: false,
-  culture: false,
-};
 
 const PLANNER_MAP_FILTER_LABELS: Record<PlannerPlaceCategory, string> = {
   hotel: 'Hoteles',
@@ -256,21 +243,18 @@ export default function TripPlannerWorkspace({
     segmentId: string;
     place: PlannerPlaceCandidate;
   } | null>(null);
-  const [mapActiveCategories, setMapActiveCategories] = useState<Record<PlannerPlaceCategory, boolean>>(DEFAULT_MAP_ACTIVE_CATEGORIES);
   const [isDateSelectionModalOpen, setIsDateSelectionModalOpen] = useState(false);
   const [activeRailTab, setActiveRailTab] = useState<PlannerRailTab>('hotels');
   const [isContextSidebarOpen, setIsContextSidebarOpen] = useState(false);
   const [hotelDetailState, setHotelDetailState] = useState<PlannerHotelDetailState | null>(null);
-  const [placeDetailState, setPlaceDetailState] = useState<PlaceDetailData | null>(null);
-  const [placeDetailSegmentId, setPlaceDetailSegmentId] = useState<string | null>(null);
-  const [discoveryPlacesBySegment, setDiscoveryPlacesBySegment] = useState<Record<string, PlannerPlaceCandidate[]>>({});
+  const {
+    placeDetail: placeDetailState,
+    placeDetailSegmentId,
+    openPlaceDetail: openPlaceDetailHook,
+    closePlaceDetail,
+    highlightedPlaceId,
+  } = usePlaceDetail({ plannerState });
   const [inventoryHotelPlacesMap, setInventoryHotelPlacesMap] = useState<Record<string, PlannerPlaceHotelCandidate[]>>({});
-  const [fetchedCats, setFetchedCats] = useState<Set<string>>(new Set());
-  const [mapPlacesByCategory, setMapPlacesByCategory] = useState<Record<string, PlannerPlaceCandidate[]>>({});
-  const [mapPlacesLoading, setMapPlacesLoading] = useState(false);
-  const [chatPlaceBlocks, setChatPlaceBlocks] = useState<
-    Array<{ id: string; category: PlannerPlaceCategory; city: string; segmentId: string; places: PlannerPlaceCandidate[] }>
-  >([]);
   const [persistedMapPlannerState, setPersistedMapPlannerState] = useState<TripPlannerState | null>(null);
 
   const visibleMapPlannerState = plannerState ?? persistedMapPlannerState;
@@ -283,97 +267,17 @@ export default function TripPlannerWorkspace({
     handleViewportSegmentSelection,
   } = useSegmentVisibility(visibleMapPlannerState);
 
-  // Fetch places for a single category and merge into state.
-  // pushToChat controls whether results inject a block into the chat rail —
-  // true only for explicit user actions (category toggle), false for eager/hydration fetches.
-  const fetchAndMergeCategory = useCallback((
-    segmentId: string,
-    city: string,
-    location: { lat: number; lng: number },
-    category: PlannerPlaceCategory,
-    pushToChat = false,
-  ) => {
-    const catKey = `${segmentId}::${category}`;
-    setFetchedCats((prev) => {
-      if (prev.has(catKey)) return prev;
-      const next = new Set(prev);
-      next.add(catKey);
-      return next;
-    });
-    return fetchNearbyPlacesByCategory(null, city, location, category)
-      .then((places) => {
-        setMapPlacesByCategory((prev) => ({
-          ...prev,
-          [category]: [
-            ...(prev[category] || []),
-            ...places.filter((p) => !(prev[category] || []).some((e) => e.placeId === p.placeId)),
-          ],
-        }));
-        setDiscoveryPlacesBySegment((prev) => ({
-          ...prev,
-          [segmentId]: [
-            ...(prev[segmentId] || []),
-            ...places.filter((p) => !(prev[segmentId] || []).some((e) => e.placeId === p.placeId)),
-          ],
-        }));
-        // Push to chat only when explicitly requested (user-triggered category toggle)
-        if (pushToChat && CHAT_PUSH_CATEGORIES.has(category) && places.length > 0) {
-          const blockId = `${segmentId}::${category}`;
-          setChatPlaceBlocks((prev) => {
-            if (prev.some((b) => b.id === blockId)) return prev;
-            return [...prev, {
-              id: blockId,
-              category,
-              city,
-              segmentId,
-              places: places
-                .filter((p) => (p.photoUrls?.length ?? 0) > 0 || p.rating != null)
-                .sort((a, b) => (b.rating || 0) * (b.userRatingsTotal || 0) - (a.rating || 0) * (a.userRatingsTotal || 0))
-                .slice(0, 6),
-            }];
-          });
-        }
-        return places;
-      })
-      .catch(() => [] as PlannerPlaceCandidate[]);
-  }, []);
-
-  // Toggle a map category filter — fetch on activate for any non-hotel category
-  const handleMapCategoryToggle = useCallback((category: PlannerPlaceCategory) => {
-    setMapActiveCategories((current) => {
-      const next = { ...current, [category]: !current[category] };
-      const activating = !current[category];
-
-      if (activating && category !== 'hotel') {
-        const activeSegment = plannerState?.segments.find((s) => s.id === activeMapSegmentId);
-        const loc = activeSegment?.location;
-        if (activeSegment && loc) {
-          const catKey = `${activeSegment.id}::${category}`;
-          if (!fetchedCats.has(catKey)) {
-            void fetchAndMergeCategory(activeSegment.id, activeSegment.city, { lat: loc.lat, lng: loc.lng }, category, true);
-          }
-        }
-      }
-
-      return next;
-    });
-  }, [plannerState, activeMapSegmentId, fetchedCats, fetchAndMergeCategory]);
-
-  // Eagerly fetch default-active categories when active segment changes
-  useEffect(() => {
-    if (!plannerState || !activeMapSegmentId) return;
-    const seg = plannerState.segments.find((s) => s.id === activeMapSegmentId);
-    if (!seg?.location) return;
-
-    setFetchedCats(new Set());
-    setMapPlacesByCategory({});
-    setMapPlacesLoading(true);
-
-    const loc = { lat: seg.location.lat, lng: seg.location.lng };
-    Promise.all(
-      EAGER_FETCH_CATEGORIES.map((cat) => fetchAndMergeCategory(seg.id, seg.city, loc, cat)),
-    ).finally(() => setMapPlacesLoading(false));
-  }, [activeMapSegmentId, plannerState, fetchAndMergeCategory]);
+  const {
+    activeCategories: mapActiveCategories,
+    placesForActiveSegment: mapPlacesByCategory,
+    isLoading: mapPlacesLoading,
+    chatPlaceBlocks,
+    discoveryPlacesBySegment,
+    toggleCategory: handleMapCategoryToggle,
+    ensureCategoryActive,
+    resetForConversation: resetPlaces,
+    allPlacesBySegment: placesBySegment,
+  } = usePlacesOrchestrator(plannerState, activeMapSegmentId);
 
   // Auto-fill segments with real places when places are loaded and segment is ready
   useEffect(() => {
@@ -410,17 +314,12 @@ export default function TripPlannerWorkspace({
   useEffect(() => {
     // Reset all transient UI state when conversation changes
     setPersistedMapPlannerState(null);
-    setMapActiveCategories(DEFAULT_MAP_ACTIVE_CATEGORIES);
+    resetPlaces();
     setActiveRailTab('hotels');
     setIsContextSidebarOpen(false);
     setHotelDetailState(null);
-    setPlaceDetailState(null);
-    setPlaceDetailSegmentId(null);
-    setDiscoveryPlacesBySegment({});
+    closePlaceDetail();
     setInventoryHotelPlacesMap({});
-    setFetchedCats(new Set());
-    setMapPlacesByCategory({});
-    setChatPlaceBlocks([]);
     setPendingMapPlaceAssignment(null);
     setLinkedLead(null);
     setNewDestination('');
@@ -428,6 +327,7 @@ export default function TripPlannerWorkspace({
     setActiveHeaderPanel(null);
     setIsDateSelectionModalOpen(false);
     setPendingPlannerDateRequest(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversation]);
 
   const destinationLabels = useMemo(
@@ -586,46 +486,43 @@ export default function TripPlannerWorkspace({
     setActiveMapSegmentId(segmentId);
     setActiveRailTab(tab);
     setHotelDetailState(null);
-    setPlaceDetailState(null);
+    closePlaceDetail();
     setIsContextSidebarOpen(true);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setActiveMapSegmentId is stable (from useState)
+  }, [closePlaceDetail]);
 
   const openHotelDetail = useCallback((segmentId: string, hotelId: string) => {
     setActiveMapSegmentId(segmentId);
     setActiveRailTab('hotels');
     setHotelDetailState({ segmentId, hotelId });
-    setPlaceDetailState(null);
+    closePlaceDetail();
     setIsContextSidebarOpen(true);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setActiveMapSegmentId is stable (from useState)
+  }, [closePlaceDetail]);
 
   const openHotelListForSegment = useCallback((segmentId: string) => {
     openRailForSegment(segmentId, 'hotels');
   }, [openRailForSegment]);
 
   const handleOpenPlaceDetail = useCallback((payload: { segmentId: string; place: PlannerPlaceCandidate }) => {
-    // Inventory hotels have fake placeIds (inventory:*) that can't be resolved via
-    // Google Places API.  Instead of opening the place-detail flow (which would stay
-    // stuck in "loading"), open the hotel inventory detail directly.
-    if (payload.place.source === 'inventory' && payload.place.category === 'hotel') {
+    const opened = openPlaceDetailHook(payload);
+    if (!opened) {
+      // Inventory hotel — route to hotel detail instead
       const hotelPlace = payload.place as PlannerPlaceHotelCandidate;
       if (hotelPlace.hotelId) {
         openHotelDetail(payload.segmentId, hotelPlace.hotelId);
-        return;
       }
+      return;
     }
 
-    setPlaceDetailState({ place: payload.place, details: null, loading: true });
-    setPlaceDetailSegmentId(payload.segmentId);
     setActiveMapSegmentId(payload.segmentId);
     setHotelDetailState(null);
     setIsContextSidebarOpen(true);
 
     // Ensure the place's category is active so the map won't immediately deselect it
-    setMapActiveCategories((prev) => {
-      if (prev[payload.place.category]) return prev;
-      return { ...prev, [payload.place.category]: true };
-    });
-  }, [openHotelDetail]);
+    ensureCategoryActive(payload.place.category);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setActiveMapSegmentId is stable (from useState)
+  }, [openPlaceDetailHook, openHotelDetail, ensureCategoryActive]);
 
   const handleAutoSlotPlace = useCallback((payload: { segmentId: string; place: PlannerPlaceCandidate }) => {
     onAddPlaceToFirstAvailableSlot({
@@ -677,10 +574,6 @@ export default function TripPlannerWorkspace({
     });
   }, [onAddPlaceToFirstAvailableSlot]);
 
-  const handlePlaceDetailsLoaded = useCallback((details: PlaceDetails | null) => {
-    setPlaceDetailState((prev) => prev ? { ...prev, details, loading: false } : null);
-  }, []);
-
   const handleCardClick = useCallback((activity: PlannerActivity, segmentId: string) => {
     const place: PlannerPlaceCandidate = {
       placeId: activity.placeId || activity.id,
@@ -693,12 +586,12 @@ export default function TripPlannerWorkspace({
       activityType: activity.activityType,
       source: activity.source === 'google_maps' ? 'google_maps' : undefined,
     };
-    setPlaceDetailState({ place, details: null, loading: Boolean(activity.placeId) });
-    setPlaceDetailSegmentId(segmentId);
+    openPlaceDetailHook({ segmentId, place, fetchDetails: Boolean(activity.placeId) });
     setActiveMapSegmentId(segmentId);
     setHotelDetailState(null);
     setIsContextSidebarOpen(true);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setActiveMapSegmentId is stable (from useState)
+  }, [openPlaceDetailHook]);
 
   const handleCardAddToDay = useCallback((activity: PlannerActivity, segmentId: string) => {
     if (!activity.placeId) return;
@@ -1588,8 +1481,7 @@ export default function TripPlannerWorkspace({
         ? undefined
         : ((payload) => setPendingMapPlaceAssignment(payload))}
       onOpenPlaceDetail={isDraftPlanner ? undefined : handleOpenPlaceDetail}
-      onPlaceDetailsLoaded={handlePlaceDetailsLoaded}
-      fetchPlaceDetailFor={placeDetailState?.loading ? placeDetailState.place : null}
+      highlightedPlaceId={highlightedPlaceId}
       onInventoryHotelPlacesReady={handleInventoryHotelPlacesReady}
     />
   ) : null;
@@ -1600,10 +1492,6 @@ export default function TripPlannerWorkspace({
               const previousSegment = segmentIndex > 0 ? plannerState.segments[segmentIndex - 1] : undefined;
               const hotelCtaState = getHotelCtaState(segment);
               const segmentHeaderImage = getSegmentHeaderImage(segment);
-
-              if (!segmentHeaderImage) {
-                return null;
-              }
 
               return (
               <Card
@@ -1617,13 +1505,19 @@ export default function TripPlannerWorkspace({
               >
                 <CardHeader className="relative overflow-hidden border-b p-0">
                   <div className="relative min-h-[248px]">
-                    <img
-                      src={segmentHeaderImage}
-                      alt=""
-                      aria-hidden="true"
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.18)_0%,rgba(15,23,42,0.48)_38%,rgba(15,23,42,0.86)_100%)]" />
+                    {segmentHeaderImage ? (
+                      <>
+                        <img
+                          src={segmentHeaderImage}
+                          alt=""
+                          aria-hidden="true"
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.18)_0%,rgba(15,23,42,0.48)_38%,rgba(15,23,42,0.86)_100%)]" />
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 bg-gradient-to-b from-slate-600 to-slate-800" />
+                    )}
 
                     <div className="relative z-10 flex h-full min-h-[248px] flex-col justify-end p-6">
                       {segment.contentStatus === 'error' && (
@@ -1924,13 +1818,13 @@ export default function TripPlannerWorkspace({
         setIsContextSidebarOpen(open);
         if (!open) {
           setHotelDetailState(null);
-          setPlaceDetailState(null);
+          closePlaceDetail();
         }
       }}
       onHideSidebar={() => {
         setIsContextSidebarOpen(false);
         setHotelDetailState(null);
-        setPlaceDetailState(null);
+        closePlaceDetail();
       }}
       segment={activeRailSegment}
       previousSegment={activeRailPreviousSegment}
@@ -1953,13 +1847,13 @@ export default function TripPlannerWorkspace({
       hotelPlaces={activeSegmentHotelPlaces}
       activeHotelDistanceKm={activeHotelDistanceKm}
       activePlace={placeDetailState}
-      onBackFromPlaceDetail={() => setPlaceDetailState(null)}
+      onBackFromPlaceDetail={closePlaceDetail}
       onAddPlaceToItinerary={placeDetailState && placeDetailSegmentId ? () => {
         setPendingMapPlaceAssignment({
           segmentId: placeDetailSegmentId,
           place: placeDetailState.place,
         });
-        setPlaceDetailState(null);
+        closePlaceDetail();
       } : undefined}
       canAddPlace={Boolean(
         placeDetailState
@@ -1991,15 +1885,16 @@ export default function TripPlannerWorkspace({
         <div className="space-y-2.5">
           {visibleMessages.map((msg) => {
             const msgMeta = (msg as Record<string, unknown>).meta as Record<string, unknown> | undefined;
-            const recommendedPlaces = msgMeta?.recommendedPlaces as Array<{
+            const recommendedPlaces = (msgMeta?.recommendedPlaces as Array<{
               name: string;
               description?: string;
               category: string;
-              suggestedSlot: 'morning' | 'afternoon' | 'evening';
-              segmentCity: string;
-            }> | undefined;
-            const slotLabel = (slot: string) =>
-              slot === 'morning' ? 'Mañana' : slot === 'afternoon' ? 'Tarde' : 'Noche';
+              suggestedSlot?: 'morning' | 'afternoon' | 'evening';
+              segmentCity?: string;
+              city?: string;
+            }> | undefined)?.filter(rp => rp.segmentCity || rp.city);
+            const slotLabel = (slot?: string) =>
+              slot === 'morning' ? 'Mañana' : slot === 'afternoon' ? 'Tarde' : slot === 'evening' ? 'Noche' : 'Sugerido';
 
             return (
               <div key={msg.id}>
@@ -2026,7 +1921,7 @@ export default function TripPlannerWorkspace({
                         >
                           <div>
                             <p className="font-semibold text-foreground">{rp.name}</p>
-                            <p className="text-muted-foreground">{rp.segmentCity} · {slotLabel(rp.suggestedSlot)}</p>
+                            <p className="text-muted-foreground">{rp.segmentCity || rp.city} · {slotLabel(rp.suggestedSlot)}</p>
                           </div>
                           <Plus className="h-4 w-4 shrink-0 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                         </button>

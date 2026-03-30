@@ -140,7 +140,6 @@ function isLikelyFoursquareVenueId(value?: string): boolean {
 type NearbyCategory = PlannerPlaceCategory;
 
 export async function fetchNearbyPlacesBundle(
-  _service: unknown,
   city: string,
   location: { lat: number; lng: number },
   categories: NearbyCategory[] = ['restaurant', 'cafe', 'museum', 'activity'],
@@ -189,25 +188,22 @@ export async function fetchNearbyPlacesBundle(
 }
 
 export async function fetchNearbyPlacesByCategory(
-  _service: unknown,
   city: string,
   location: { lat: number; lng: number },
   category: NearbyCategory,
 ): Promise<PlannerPlaceCandidate[]> {
-  const bundle = await fetchNearbyPlacesBundle(_service, city, location, [category]);
+  const bundle = await fetchNearbyPlacesBundle(city, location, [category]);
   return bundle[category] ?? [];
 }
 
 export async function fetchNearbyHotels(
-  _service: unknown,
   city: string,
   location: { lat: number; lng: number },
 ): Promise<PlannerPlaceCandidate[]> {
-  return await fetchNearbyPlacesByCategory(_service, city, location, 'hotel');
+  return await fetchNearbyPlacesByCategory(city, location, 'hotel');
 }
 
 export async function fetchPlaceDetails(
-  _service: unknown,
   lookupOrTitle: string | PlaceDetailsLookup,
   city?: string,
   locationBias?: { lat: number; lng: number },
@@ -277,7 +273,6 @@ export async function fetchPlaceRecommendations(
 }
 
 export async function fetchInventoryHotelPlaces(
-  _service: unknown,
   city: string,
   hotels: Array<{ name: string; address?: string; hotel_id?: string; city?: string }>,
   locationBias?: { lat: number; lng: number },

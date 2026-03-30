@@ -536,7 +536,7 @@ export default function PlannerChatDestinationCards({
     let cancelled = false;
 
     void Promise.all(candidatesToHydrate.map(async ({ city, place }) => {
-      const details = await fetchPlaceDetails(null, {
+      const details = await fetchPlaceDetails({
         placeId: place.placeId,
         title: place.name,
         city,
