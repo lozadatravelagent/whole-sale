@@ -9,6 +9,7 @@ import {
 import {
     normalizeDestinationListToCapitals,
     normalizeDestinationToCapitalIfCountry,
+    findCountryInMessageForCapital,
 } from '@/services/countryCapitalResolver';
 
 export interface HotelStaySegment {
@@ -165,14 +166,10 @@ export interface RequiredHotelFields {
 function normalizeLocationsToCountryCapitals(parsed: ParsedTravelRequest): ParsedTravelRequest {
     const nextParsed: ParsedTravelRequest = { ...parsed };
 
-    if (nextParsed.itinerary) {
-        nextParsed.itinerary = {
-            ...nextParsed.itinerary,
-            ...(Array.isArray(nextParsed.itinerary.destinations)
-                ? { destinations: normalizeDestinationListToCapitals(nextParsed.itinerary.destinations) }
-                : {}),
-        };
-    }
+    // Itinerary destinations are NOT normalized to capitals.
+    // The planner has its own regional expansion (expandDestinationsIfRegional)
+    // that handles "Italia" → multi-city routes. Normalizing here would
+    // collapse "Italia" to "Rome" before expansion can run.
 
     if (nextParsed.hotels) {
         nextParsed.hotels = {
@@ -233,6 +230,45 @@ function normalizeLocationsToCountryCapitals(parsed: ParsedTravelRequest): Parse
     }
 
     return nextParsed;
+}
+
+/**
+ * Deterministic guardrail: if the parser returned a capital as an itinerary
+ * destination but the user's message mentions the country, restore the
+ * country name so planner country-route expansion can run.
+ * Only applies to itinerary — flights/hotels correctly use capitals.
+ */
+function restoreCountryDestinationsForItinerary(
+    parsed: ParsedTravelRequest,
+    originalMessage: string,
+): ParsedTravelRequest {
+    if (parsed.requestType !== 'itinerary' || !parsed.itinerary?.destinations?.length) {
+        return parsed;
+    }
+
+    const normalizedMsg = originalMessage
+        .toLowerCase()
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[.,()]/g, ' ')
+        .replace(/\s+/g, ' ');
+
+    let changed = false;
+    const corrected = parsed.itinerary.destinations.map(dest => {
+        const country = findCountryInMessageForCapital(dest, normalizedMsg);
+        if (country) {
+            changed = true;
+            return country;
+        }
+        return dest;
+    });
+
+    if (!changed) return parsed;
+    return {
+        ...parsed,
+        itinerary: { ...parsed.itinerary, destinations: corrected },
+    };
 }
 
 const HOTEL_MONTHS: Record<string, string> = {
@@ -1761,6 +1797,7 @@ export async function parseMessageWithAI(
         }
 
         console.log('🔍 [DEBUG] parsedResult from Edge Function:', parsedResult);
+        console.log('🌍 [GEO-TRACE-1] Raw Edge Function destinations:', parsedResult.requestType, parsedResult.itinerary?.destinations);
         console.log('🔍 [DEBUG] parsedResult.hotels:', parsedResult.hotels);
         console.log('🔍 [DEBUG] parsedResult.hotels?.roomType:', parsedResult.hotels?.roomType);
         console.log('🔍 [DEBUG] parsedResult.hotels?.mealPlan:', parsedResult.hotels?.mealPlan);
@@ -1814,7 +1851,7 @@ export async function parseMessageWithAI(
                     ? 'hotels'
                     : parsedResult.requestType;
 
-        const mergedResult = normalizeLocationsToCountryCapitals(normalizeParsedFlightRequest({
+        const normalizedResult = normalizeLocationsToCountryCapitals(normalizeParsedFlightRequest({
             ...parsedResult,
             flights: Object.keys(mergedFlights).length ? mergedFlights : parsedResult.flights,
             // Only include hotels if there's actual data (not empty object)
@@ -1823,6 +1860,10 @@ export async function parseMessageWithAI(
             originalMessage: message
         }));
 
+        // Guardrail: restore country names if parser collapsed them to capitals
+        const mergedResult = restoreCountryDestinationsForItinerary(normalizedResult, message);
+
+        console.log('🌍 [GEO-TRACE-2] After merge/post-processing destinations:', mergedResult.itinerary?.destinations);
         console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
         logTimingStep('AI PARSER', 'post-processing', postProcessStart, {
             requestType: mergedResult.requestType,

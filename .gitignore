@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+.env
 
 node_modules
 dist
@@ -29,7 +30,7 @@ supabase/.temp/
 
 # Playwright
 playwright-report/
-playwright.config.ts
+test-results/
 *.suo
 *.ntvs*
 *.njsproj

@@ -364,6 +364,7 @@ If the user wants to plan activities/things to do in a destination WITHOUT booki
 - Multiple destinations: "Italia y Francia", "Madrid, Barcelona y Valencia"
 - Regions: "Europa", "Patagonia", "Caribe"
 - IMPORTANT: When the user mentions BOTH a country AND specific cities within it (e.g., "Italia visitando Roma y Florencia"), use ONLY the cities — do NOT also include the country. The country is just context, not a separate destination.
+- CRITICAL FOR ITINERARY: When the user mentions a COUNTRY name without specific cities (e.g., "España", "Italia", "Japón", "Francia"), keep the COUNTRY NAME exactly as-is in the destinations array. Do NOT resolve it to the capital city. "15 días por España" → destinations: ["España"], NOT ["Madrid"]. "10 días por Italia" → destinations: ["Italia"], NOT ["Roma"]. The planner handles country-level routing internally.
 
 **CRITICAL: Itinerary vs Flights/Hotels Distinction:**
 - If user mentions "vuelo", "hotel", "reservar", "cotizar" → NOT itinerary, use flights/hotels/combined

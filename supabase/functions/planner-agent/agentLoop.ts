@@ -191,6 +191,9 @@ function buildResponseFromResults(
   if (itineraryResult?.result?.data) {
     const data = itineraryResult.result.data as Record<string, unknown>;
     structuredData.itinerary = data;
+    if (data.rawItinerary) {
+      structuredData.rawItinerary = data.rawItinerary;
+    }
     if (Array.isArray(data.recommendedPlaces)) {
       structuredData.recommendedPlaces = data.recommendedPlaces;
     }

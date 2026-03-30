@@ -1,6 +1,25 @@
 import { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import type { ToolDefinition, ToolResult } from "../types.ts";
 
+const GENERIC_PREFIXES = [
+  'paseo por', 'recorrido por', 'caminata por', 'visita por',
+  'cena en zona', 'cena tranquila', 'almuerzo en zona', 'desayuno en el hotel',
+  'comida en zona', 'tarde libre', 'mañana libre', 'día libre', 'tiempo libre',
+  'traslado a', 'traslado al', 'traslado desde',
+  'check-in', 'check-out', 'llegada a', 'salida de',
+  'descanso en', 'relax en', 'noche en el hotel', 'noche libre',
+  'walking tour of', 'stroll through', 'walk around',
+  'local dinner', 'dinner at a', 'lunch at a', 'breakfast at the',
+  'cultural visit', 'free time', 'free afternoon', 'free morning',
+  'transfer to', 'arrival at', 'departure from', 'rest at hotel',
+];
+
+function isGenericPlaceholder(title: string): boolean {
+  const normalized = title.trim().toLowerCase();
+  if (normalized.length < 4) return true;
+  return GENERIC_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+}
+
 export function createGenerateItineraryTool(supabase: SupabaseClient): ToolDefinition {
   return {
     name: 'generate_itinerary',
@@ -93,6 +112,7 @@ export function createGenerateItineraryTool(supabase: SupabaseClient): ToolDefin
               if (!Array.isArray(activities)) continue;
               for (const activity of activities) {
                 if (!activity.title) continue;
+                if (isGenericPlaceholder(activity.title)) continue;
                 const normalizedName = activity.title.trim().toLowerCase();
                 if (seenNames.has(normalizedName)) continue;
                 seenNames.add(normalizedName);

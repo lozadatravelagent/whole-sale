@@ -20,6 +20,8 @@ import type {
   RegionalExpansionResult,
 } from './types';
 import regionalRoutesData from '@/data/regional_routes.json';
+import countryRoutesData from '@/data/country_routes.json';
+import { resolveCountryToCapital } from '@/services/countryCapitalResolver';
 import { classifyPlannerActivityType, normalizePlannerSegmentsScheduling } from './scheduling';
 import { FALLBACK_CITY_COORDINATES_FLAT } from './services/plannerGeocoding';
 
@@ -453,6 +455,7 @@ export function createDraftPlannerFromRequest(
 
   const itinerary = request.itinerary;
   const rawDestinations = uniqueStringList(safeArray(itinerary.destinations));
+  console.log('🌍 [GEO-TRACE-3] createDraftPlannerFromRequest input destinations:', rawDestinations);
   if (rawDestinations.length === 0) {
     return null;
   }
@@ -460,7 +463,7 @@ export function createDraftPlannerFromRequest(
   const exactDays = !itinerary.isFlexibleDates
     ? getInclusiveDateRangeDays(itinerary.startDate, itinerary.endDate)
     : undefined;
-  let days = exactDays || itinerary.days || rawDestinations.length || 1;
+  const days = exactDays || itinerary.days || rawDestinations.length || 1;
 
   // Regional expansion
   const targetMonth = itinerary.flexibleMonth
@@ -468,12 +471,10 @@ export function createDraftPlannerFromRequest(
     : itinerary.startDate
       ? new Date(itinerary.startDate).getMonth() + 1
       : undefined;
-  const { expandedDestinations, regionalMeta, seasonalityAlert, suggestedDays, cityWeights } =
+  const { expandedDestinations, regionalMeta, seasonalityAlert, cityWeights } =
     expandDestinationsIfRegional(rawDestinations, days, targetMonth);
   const destinations = expandedDestinations;
-  if (regionalMeta && !exactDays) {
-    days = suggestedDays;
-  }
+  // User's explicit days are preserved — never overridden by regional suggestedDays
 
   const interests = uniqueStringList([
     ...safeArray(itinerary.interests),
@@ -728,6 +729,34 @@ export function applySmartDefaults(
 // ---------------------------------------------------------------------------
 
 const REGIONAL_ROUTES = regionalRoutesData as Record<string, RegionalRoute>;
+const COUNTRY_ROUTES = countryRoutesData as Record<string, RegionalRoute>;
+
+const COUNTRY_ROUTE_ALIASES: Record<string, string> = {
+  espana: 'spain',
+  spain: 'spain',
+  italia: 'italy',
+  italy: 'italy',
+  japon: 'japan',
+  japan: 'japan',
+  francia: 'france',
+  france: 'france',
+  grecia: 'greece',
+  greece: 'greece',
+  china: 'china',
+  tailandia: 'thailand',
+  thailand: 'thailand',
+  turquia: 'turkey',
+  turkey: 'turkey',
+  mexico: 'mexico',
+  'reino unido': 'uk',
+  uk: 'uk',
+  'united kingdom': 'uk',
+  alemania: 'germany',
+  germany: 'germany',
+  portugal: 'portugal',
+  india: 'india',
+  vietnam: 'vietnam',
+};
 
 const REGION_ALIASES: Record<string, string> = {
   europa: 'europe_classic',
@@ -782,39 +811,60 @@ export function detectRegionalTerm(destination: string): { regionKey: string; ro
   return null;
 }
 
+export function detectCountryRoute(destination: string): { countryKey: string; route: RegionalRoute } | null {
+  const normalized = normalizeRegionString(destination);
+
+  const aliasKey = COUNTRY_ROUTE_ALIASES[normalized];
+  if (aliasKey && COUNTRY_ROUTES[aliasKey]) {
+    return { countryKey: aliasKey, route: COUNTRY_ROUTES[aliasKey] };
+  }
+
+  for (const [key, route] of Object.entries(COUNTRY_ROUTES)) {
+    if (normalizeRegionString(route.region_name) === normalized) {
+      return { countryKey: key, route };
+    }
+  }
+
+  return null;
+}
+
 export function getSeasonalityScore(route: RegionalRoute, month: number): number {
   return route.seasonality[String(month)] ?? 7;
 }
 
-export function expandRegionalDestination(
-  regionKey: string,
-  totalDays: number,
-  targetMonth?: number,
-): RegionalExpansionResult {
-  const route = REGIONAL_ROUTES[regionKey];
-  if (!route) {
-    return { expanded: false, regionKey: null, regionName: null, cities: [], seasonalityScore: null, seasonalityAlert: null, suggestedDays: totalDays, suggestedPace: null };
-  }
+/**
+ * Select a compatible subroute when the user's requested days are below
+ * the route's minimum suggested duration. Picks the top cities by weight
+ * and distributes exactly `requestedDays` among them.
+ */
+export function selectRegionalSubroute(
+  route: RegionalRoute,
+  requestedDays: number,
+): { name: string; days: number; weight: number }[] {
+  const maxCities =
+    requestedDays <= 5 ? 1 :
+    requestedDays <= 8 ? 2 :
+    requestedDays <= 12 ? 3 :
+    requestedDays <= 16 ? 4 : 5;
 
-  const [minDays, maxDays] = route.suggested_duration_range;
-  const clampedDays = Math.max(minDays, Math.min(maxDays, totalDays));
+  const ranked = [...route.cities].sort((a, b) => b.weight - a.weight);
+  const chosen = ranked.slice(0, Math.min(maxCities, ranked.length));
 
-  // Distribute days weighted
-  const cities = route.cities.map(city => ({
-    name: city.name,
-    days: Math.max(city.min_days, Math.round(clampedDays * city.weight)),
-    weight: city.weight,
+  // Proportional distribution with min 1 per city
+  const totalWeight = chosen.reduce((s, c) => s + c.weight, 0);
+  const cities = chosen.map(c => ({
+    name: c.name,
+    days: Math.max(1, Math.round(requestedDays * (c.weight / totalWeight))),
+    weight: c.weight,
   }));
 
-  // Adjust sum to match clampedDays
-  let sum = cities.reduce((acc, c) => acc + c.days, 0);
-  while (sum > clampedDays) {
-    // Recortar from lowest weight (without going below min_days)
-    const sortedAsc = [...cities].sort((a, b) => a.weight - b.weight);
+  // Adjust sum to match exactly requestedDays
+  let sum = cities.reduce((s, c) => s + c.days, 0);
+  while (sum > requestedDays) {
+    const sortedAsc = [...cities].sort((a, b) => a.days - b.days || a.weight - b.weight);
     let trimmed = false;
     for (const city of sortedAsc) {
-      const routeCity = route.cities.find(rc => rc.name === city.name);
-      if (city.days > (routeCity?.min_days ?? 1)) {
+      if (city.days > 1) {
         city.days--;
         sum--;
         trimmed = true;
@@ -823,11 +873,65 @@ export function expandRegionalDestination(
     }
     if (!trimmed) break;
   }
-  while (sum < clampedDays) {
-    // Add to highest weight
+  while (sum < requestedDays) {
     const sortedDesc = [...cities].sort((a, b) => b.weight - a.weight);
     sortedDesc[0].days++;
     sum++;
+  }
+
+  return cities;
+}
+
+export function expandRegionalDestination(
+  regionKey: string,
+  totalDays: number,
+  targetMonth?: number,
+  routesMap: Record<string, RegionalRoute> = REGIONAL_ROUTES,
+): RegionalExpansionResult {
+  const route = routesMap[regionKey];
+  if (!route) {
+    return { expanded: false, regionKey: null, regionName: null, cities: [], seasonalityScore: null, seasonalityAlert: null, suggestedDays: totalDays, suggestedPace: null };
+  }
+
+  const [minDays, maxDays] = route.suggested_duration_range;
+  const cityMinDaysSum = route.cities.reduce((s, c) => s + c.min_days, 0);
+
+  let cities: { name: string; days: number; weight: number }[];
+
+  if (totalDays < minDays || totalDays < cityMinDaysSum) {
+    // User requested fewer days than the full route needs — pick a compatible subroute
+    cities = selectRegionalSubroute(route, totalDays);
+  } else {
+    // Full route fits within user's duration — distribute across all cities
+    const effectiveDays = Math.min(maxDays, totalDays);
+
+    cities = route.cities.map(city => ({
+      name: city.name,
+      days: Math.max(city.min_days, Math.round(effectiveDays * city.weight)),
+      weight: city.weight,
+    }));
+
+    // Adjust sum to match effectiveDays
+    let sum = cities.reduce((acc, c) => acc + c.days, 0);
+    while (sum > effectiveDays) {
+      const sortedAsc = [...cities].sort((a, b) => a.weight - b.weight);
+      let trimmed = false;
+      for (const city of sortedAsc) {
+        const routeCity = route.cities.find(rc => rc.name === city.name);
+        if (city.days > (routeCity?.min_days ?? 1)) {
+          city.days--;
+          sum--;
+          trimmed = true;
+          break;
+        }
+      }
+      if (!trimmed) break;
+    }
+    while (sum < effectiveDays) {
+      const sortedDesc = [...cities].sort((a, b) => b.weight - a.weight);
+      sortedDesc[0].days++;
+      sum++;
+    }
   }
 
   let seasonalityScore: number | null = null;
@@ -846,7 +950,7 @@ export function expandRegionalDestination(
     cities,
     seasonalityScore,
     seasonalityAlert,
-    suggestedDays: clampedDays,
+    suggestedDays: totalDays,
     suggestedPace: route.default_pace,
   };
 }
@@ -863,8 +967,10 @@ export function expandDestinationsIfRegional(
   suggestedPace: PlannerPace | null;
   cityWeights: Map<string, { weight: number; minDays: number }> | null;
 } {
+  console.log('🌍 [GEO-TRACE-4] expandDestinationsIfRegional INPUT:', destinations, 'days:', days);
   for (const dest of destinations) {
     const detected = detectRegionalTerm(dest);
+    console.log('🌍 [GEO-TRACE-4] Pass 1 (region):', dest, '→', detected ? detected.regionKey : 'null');
     if (detected) {
       const result = expandRegionalDestination(detected.regionKey, days, targetMonth);
       if (result.expanded) {
@@ -875,6 +981,7 @@ export function expandDestinationsIfRegional(
           const routeCity = detected.route.cities.find(rc => rc.name === city.name);
           weights.set(city.name.toLowerCase(), { weight: city.weight, minDays: routeCity?.min_days ?? 1 });
         }
+        console.log('🌍 [GEO-TRACE-4] Pass 1 EXPANDED:', expandedNames);
         return {
           expandedDestinations: [...expandedNames, ...otherDests],
           regionalMeta: {
@@ -891,8 +998,51 @@ export function expandDestinationsIfRegional(
     }
   }
 
+  // --- Pass 2: Country route expansion ---
+  for (const dest of destinations) {
+    const detected = detectCountryRoute(dest);
+    console.log('🌍 [GEO-TRACE-4] Pass 2 (country):', dest, '→', detected ? detected.countryKey : 'null');
+    if (detected) {
+      const result = expandRegionalDestination(detected.countryKey, days, targetMonth, COUNTRY_ROUTES);
+      if (result.expanded) {
+        const otherDests = destinations.filter(d => d !== dest);
+        const expandedNames = result.cities.map(c => c.name);
+        const weights = new Map<string, { weight: number; minDays: number }>();
+        for (const city of result.cities) {
+          const routeCity = detected.route.cities.find(rc => rc.name === city.name);
+          weights.set(city.name.toLowerCase(), { weight: city.weight, minDays: routeCity?.min_days ?? 1 });
+        }
+        return {
+          expandedDestinations: [...expandedNames, ...otherDests],
+          regionalMeta: {
+            regionKey: detected.countryKey,
+            regionName: result.regionName!,
+            expandedFrom: dest,
+          },
+          seasonalityAlert: result.seasonalityAlert,
+          suggestedDays: result.suggestedDays,
+          suggestedPace: result.suggestedPace,
+          cityWeights: weights,
+        };
+      }
+    }
+  }
+
+  // --- Pass 3: Capital fallback for countries without route data ---
+  let hasCountryFallback = false;
+  const fallbackDestinations = destinations.map(dest => {
+    const capital = resolveCountryToCapital(dest);
+    if (capital) {
+      hasCountryFallback = true;
+      return capital;
+    }
+    return dest;
+  });
+
+  const finalResult = hasCountryFallback ? fallbackDestinations : destinations;
+  console.log('🌍 [GEO-TRACE-4] Pass 3 (capital fallback):', hasCountryFallback, 'result:', finalResult);
   return {
-    expandedDestinations: destinations,
+    expandedDestinations: finalResult,
     regionalMeta: null,
     seasonalityAlert: null,
     suggestedDays: days,
@@ -1507,28 +1657,12 @@ export function summarizePlannerForChat(plannerState: TripPlannerState): string 
   const effectiveDays = !plannerState.isFlexibleDates
     ? getInclusiveDateRangeDays(plannerState.startDate, plannerState.endDate) || plannerState.days
     : plannerState.days;
-  const hasSkeletonSegments = plannerState.segments.some((segment) => segment.contentStatus === 'skeleton' || segment.contentStatus === 'loading');
-  const segmentLines = plannerState.segments
-    .map((segment) => `- ${formatDestinationLabel(segment.city)}: ${formatDateRange(segment.startDate, segment.endDate)}`)
-    .join('\n');
-
-  const tips = plannerState.generalTips.slice(0, 3).map((tip) => `- ${tip}`).join('\n');
-  const paceLabel = formatPaceLabel(plannerState.pace);
-  const budgetLabel = formatBudgetLevel(plannerState.budgetLevel);
 
   const destList = plannerState.destinations.map(formatDestinationLabel).join(', ');
-  const dateStr = plannerState.isFlexibleDates
-    ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
-    : plannerState.startDate || plannerState.endDate
-      ? formatDateRange(plannerState.startDate, plannerState.endDate)
-      : '';
 
-  const detailParts = [
-    `**${effectiveDays} días** por ${destList}`,
-    dateStr ? `📅 ${dateStr}` : '',
-    paceLabel ? `Ritmo ${paceLabel.toLowerCase()}` : '',
-    budgetLabel ? `Presupuesto ${budgetLabel.toLowerCase()}` : '',
-  ].filter(Boolean);
+  const routeProposal = plannerState.segments
+    .map((segment) => `${formatDestinationLabel(segment.city)} (${segment.nights || segment.days.length || '?'})`)
+    .join(' → ');
 
   const assumedFields = plannerState.fieldProvenance
     ? Object.entries(plannerState.fieldProvenance)
@@ -1548,59 +1682,16 @@ export function summarizePlannerForChat(plannerState: TripPlannerState): string 
         };
         const lines = [...new Set(assumedFields.map(f => fieldMap[f]).filter(Boolean))];
         return lines.length > 0
-          ? `\n> ⚠️ Datos supuestos (podés confirmarlos o cambiarlos):\n${lines.map(l => `> - ${l}`).join('\n')}\n> Decime si están bien o modificalos desde el planificador.\n`
+          ? `\n> ⚠️ Datos supuestos (podés confirmarlos o cambiarlos):\n${lines.map(l => `> - ${l}`).join('\n')}\n`
           : '';
       })()
     : '';
 
-  const routeProposal = plannerState.segments
-    .map((segment) => `${formatDestinationLabel(segment.city)} (${segment.nights || segment.days.length || '?'})`)
-    .join(' → ');
+  const ctaLine = 'Si querés, te lo ajusto con otro enfoque, cambiamos ciudades o sumamos detalles.';
 
-  const hotelGaps = plannerState.segments
-    .filter((segment) => {
-      const hotelPlan = segment.hotelPlan;
-      return !(
-        hotelPlan.confirmedInventoryHotel
-        || hotelPlan.selectedPlaceCandidate
-        || hotelPlan.hotelRecommendations.length > 0
-        || ['matched', 'quoted', 'needs_confirmation'].includes(hotelPlan.matchStatus || '')
-      );
-    })
-    .map((segment) => formatDestinationLabel(segment.city));
-
-  const transportGaps = plannerState.segments
-    .filter((segment, index) => {
-      const needsInbound = index > 0 || Boolean(plannerState.origin);
-      if (!needsInbound) return false;
-      return !(
-        segment.transportIn?.selectedOptionId
-        || (segment.transportIn?.options?.length ?? 0) > 0
-        || segment.transportIn?.searchStatus === 'ready'
-      );
-    })
-    .map((segment) => formatDestinationLabel(segment.city));
-
-  const nextSteps: string[] = [];
-  if (hotelGaps.length > 0) nextSteps.push(`sumar hoteles en ${hotelGaps.join(', ')}`);
-  if (transportGaps.length > 0) nextSteps.push(`cerrar vuelos o traslados para ${transportGaps.join(', ')}`);
-  if (!plannerState.isFlexibleDates && (!plannerState.startDate || !plannerState.endDate)) {
-    nextSteps.push('definir las fechas exactas');
-  }
-
-  const nextStepLine = nextSteps.length > 0
-    ? `Ya te dejo encaminada la ruta. El siguiente paso más útil es ${nextSteps[0]}.`
-    : 'Si querés, ahora sigo con hoteles, vuelos o una versión más afinada del recorrido.';
-
-  return `Ya te armé una base de viaje para **${destList}**.\n\n` +
-    `Como propuesta, te sugiero: ${routeProposal}.\n\n` +
-    `${plannerState.summary}\n\n` +
-    `${detailParts.join(' · ')}\n` +
-    `\n${segmentLines}\n` +
+  return `Como primera idea para **${effectiveDays} días** por ${destList}, te propongo: ${routeProposal}.\n` +
     `${assumedSuffix}` +
-    `${tips ? `\n💡 ${plannerState.generalTips.slice(0, 3).join(' | ')}\n` : ''}` +
-    `${hasSkeletonSegments ? '\nEstoy completando cada tramo, podés ir revisándolos en el planificador.\n' : ''}` +
-    `\n${nextStepLine}`;
+    `\n${ctaLine}`;
 }
 
 export function buildPlannerPdfHtml(plannerState: TripPlannerState): string {

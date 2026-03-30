@@ -1,0 +1,403 @@
+{
+    "spain": {
+        "region_name": "España",
+        "suggested_duration_range": [
+            7,
+            15
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "MAD",
+                "name": "Madrid",
+                "weight": 0.22,
+                "min_days": 2
+            },
+            {
+                "id": "BCN",
+                "name": "Barcelona",
+                "weight": 0.25,
+                "min_days": 3
+            },
+            {
+                "id": "SVQ",
+                "name": "Sevilla",
+                "weight": 0.20,
+                "min_days": 2
+            },
+            {
+                "id": "GRX",
+                "name": "Granada",
+                "weight": 0.15,
+                "min_days": 2
+            },
+            {
+                "id": "VLC",
+                "name": "Valencia",
+                "weight": 0.18,
+                "min_days": 2
+            }
+        ],
+        "seasonality": {
+            "1": 5,
+            "2": 6,
+            "3": 7,
+            "4": 9,
+            "5": 10,
+            "6": 9,
+            "7": 6,
+            "8": 5,
+            "9": 10,
+            "10": 9,
+            "11": 6,
+            "12": 5
+        },
+        "alert": "Julio y Agosto: Calor extremo en el sur. Primavera y Septiembre son ideales."
+    },
+    "italy": {
+        "region_name": "Italia",
+        "suggested_duration_range": [
+            7,
+            15
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "FCO",
+                "name": "Roma",
+                "weight": 0.25,
+                "min_days": 3
+            },
+            {
+                "id": "FLR",
+                "name": "Florencia",
+                "weight": 0.20,
+                "min_days": 2
+            },
+            {
+                "id": "VCE",
+                "name": "Venecia",
+                "weight": 0.18,
+                "min_days": 2
+            },
+            {
+                "id": "MXP",
+                "name": "Milán",
+                "weight": 0.17,
+                "min_days": 2
+            },
+            {
+                "id": "NAP",
+                "name": "Nápoles",
+                "weight": 0.20,
+                "min_days": 2
+            }
+        ],
+        "seasonality": {
+            "1": 4,
+            "2": 5,
+            "3": 7,
+            "4": 9,
+            "5": 10,
+            "6": 9,
+            "7": 7,
+            "8": 6,
+            "9": 10,
+            "10": 9,
+            "11": 5,
+            "12": 5
+        },
+        "alert": "Julio y Agosto: Temperaturas altas y multitudes. Abril-Junio y Septiembre-Octubre son óptimos."
+    },
+    "japan": {
+        "region_name": "Japón",
+        "suggested_duration_range": [
+            7,
+            18
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "TYO",
+                "name": "Tokio",
+                "weight": 0.30,
+                "min_days": 3
+            },
+            {
+                "id": "KYO",
+                "name": "Kioto",
+                "weight": 0.25,
+                "min_days": 3
+            },
+            {
+                "id": "OSA",
+                "name": "Osaka",
+                "weight": 0.20,
+                "min_days": 2
+            },
+            {
+                "id": "HIJ",
+                "name": "Hiroshima",
+                "weight": 0.15,
+                "min_days": 2
+            },
+            {
+                "id": "HKN",
+                "name": "Hakone",
+                "weight": 0.10,
+                "min_days": 1
+            }
+        ],
+        "seasonality": {
+            "1": 5,
+            "2": 5,
+            "3": 8,
+            "4": 10,
+            "5": 9,
+            "6": 5,
+            "7": 6,
+            "8": 6,
+            "9": 7,
+            "10": 9,
+            "11": 10,
+            "12": 6
+        },
+        "alert": "Junio: Temporada de lluvias (tsuyu). Abril (sakura) y Noviembre (momiji) son las mejores épocas."
+    },
+    "france": {
+        "region_name": "Francia",
+        "suggested_duration_range": [
+            7,
+            15
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "CDG",
+                "name": "París",
+                "weight": 0.30,
+                "min_days": 3
+            },
+            {
+                "id": "NCE",
+                "name": "Niza",
+                "weight": 0.20,
+                "min_days": 2
+            },
+            {
+                "id": "LYS",
+                "name": "Lyon",
+                "weight": 0.18,
+                "min_days": 2
+            },
+            {
+                "id": "MRS",
+                "name": "Marsella",
+                "weight": 0.17,
+                "min_days": 2
+            },
+            {
+                "id": "BOD",
+                "name": "Burdeos",
+                "weight": 0.15,
+                "min_days": 2
+            }
+        ],
+        "seasonality": {
+            "1": 4,
+            "2": 5,
+            "3": 7,
+            "4": 8,
+            "5": 10,
+            "6": 10,
+            "7": 8,
+            "8": 7,
+            "9": 10,
+            "10": 8,
+            "11": 5,
+            "12": 5
+        },
+        "alert": "Agosto: Muchos locales de vacaciones y precios altos. Mayo, Junio y Septiembre son ideales."
+    },
+    "greece": {
+        "region_name": "Grecia",
+        "suggested_duration_range": [
+            7,
+            14
+        ],
+        "default_pace": "relaxed",
+        "cities": [
+            {
+                "id": "ATH",
+                "name": "Atenas",
+                "weight": 0.25,
+                "min_days": 2
+            },
+            {
+                "id": "JTR",
+                "name": "Santorini",
+                "weight": 0.25,
+                "min_days": 3
+            },
+            {
+                "id": "JMK",
+                "name": "Mykonos",
+                "weight": 0.20,
+                "min_days": 2
+            },
+            {
+                "id": "HER",
+                "name": "Creta",
+                "weight": 0.15,
+                "min_days": 2
+            },
+            {
+                "id": "SKG",
+                "name": "Tesalónica",
+                "weight": 0.15,
+                "min_days": 2
+            }
+        ],
+        "seasonality": {
+            "1": 3,
+            "2": 4,
+            "3": 6,
+            "4": 8,
+            "5": 10,
+            "6": 10,
+            "7": 9,
+            "8": 8,
+            "9": 10,
+            "10": 8,
+            "11": 5,
+            "12": 3
+        },
+        "alert": "Julio y Agosto: Calor intenso en islas. Mayo-Junio y Septiembre son óptimos."
+    },
+    "china": {
+        "region_name": "China",
+        "suggested_duration_range": [10, 21],
+        "default_pace": "balanced",
+        "cities": [
+            { "id": "PEK", "name": "Beijing", "weight": 0.25, "min_days": 3 },
+            { "id": "SHA", "name": "Shanghái", "weight": 0.22, "min_days": 3 },
+            { "id": "XIY", "name": "Xi'an", "weight": 0.20, "min_days": 2 },
+            { "id": "KWL", "name": "Guilin", "weight": 0.18, "min_days": 2 },
+            { "id": "CTU", "name": "Chengdu", "weight": 0.15, "min_days": 2 }
+        ],
+        "seasonality": { "1": 4, "2": 5, "3": 7, "4": 9, "5": 9, "6": 7, "7": 6, "8": 6, "9": 9, "10": 10, "11": 7, "12": 4 },
+        "alert": "Evitar Golden Week (1-7 Oct) y Año Nuevo Chino (Feb): multitudes extremas. Abril-Mayo y Sep-Oct son ideales."
+    },
+    "thailand": {
+        "region_name": "Tailandia",
+        "suggested_duration_range": [7, 18],
+        "default_pace": "relaxed",
+        "cities": [
+            { "id": "BKK", "name": "Bangkok", "weight": 0.25, "min_days": 3 },
+            { "id": "CNX", "name": "Chiang Mai", "weight": 0.22, "min_days": 2 },
+            { "id": "HKT", "name": "Phuket", "weight": 0.20, "min_days": 3 },
+            { "id": "USM", "name": "Koh Samui", "weight": 0.18, "min_days": 2 },
+            { "id": "KBV", "name": "Krabi", "weight": 0.15, "min_days": 2 }
+        ],
+        "seasonality": { "1": 9, "2": 9, "3": 8, "4": 7, "5": 5, "6": 5, "7": 5, "8": 5, "9": 5, "10": 6, "11": 9, "12": 10 },
+        "alert": "Abril-Mayo: Calor extremo. Jun-Oct: Monzón. Nov-Feb es temporada alta y seca."
+    },
+    "turkey": {
+        "region_name": "Turquía",
+        "suggested_duration_range": [7, 15],
+        "default_pace": "balanced",
+        "cities": [
+            { "id": "IST", "name": "Estambul", "weight": 0.30, "min_days": 3 },
+            { "id": "NAV", "name": "Capadocia", "weight": 0.25, "min_days": 2 },
+            { "id": "AYT", "name": "Antalya", "weight": 0.18, "min_days": 2 },
+            { "id": "DLM", "name": "Éfeso", "weight": 0.15, "min_days": 1 },
+            { "id": "BJV", "name": "Bodrum", "weight": 0.12, "min_days": 2 }
+        ],
+        "seasonality": { "1": 4, "2": 5, "3": 7, "4": 9, "5": 10, "6": 9, "7": 7, "8": 7, "9": 10, "10": 9, "11": 6, "12": 4 },
+        "alert": "Julio-Agosto: Calor fuerte en el sur. Abril-Junio y Septiembre-Octubre son óptimos."
+    },
+    "mexico": {
+        "region_name": "México",
+        "suggested_duration_range": [7, 18],
+        "default_pace": "balanced",
+        "cities": [
+            { "id": "MEX", "name": "Ciudad de México", "weight": 0.25, "min_days": 3 },
+            { "id": "CUN", "name": "Cancún", "weight": 0.22, "min_days": 3 },
+            { "id": "OAX", "name": "Oaxaca", "weight": 0.20, "min_days": 2 },
+            { "id": "SJD", "name": "San Miguel de Allende", "weight": 0.18, "min_days": 2 },
+            { "id": "PVR", "name": "Puerto Vallarta", "weight": 0.15, "min_days": 2 }
+        ],
+        "seasonality": { "1": 8, "2": 9, "3": 9, "4": 8, "5": 7, "6": 5, "7": 6, "8": 6, "9": 5, "10": 7, "11": 9, "12": 9 },
+        "alert": "Jun-Oct: Temporada de lluvias y huracanes en costas. Nov-Abr es la mejor época general."
+    },
+    "uk": {
+        "region_name": "Reino Unido",
+        "suggested_duration_range": [7, 14],
+        "default_pace": "balanced",
+        "cities": [
+            { "id": "LHR", "name": "Londres", "weight": 0.30, "min_days": 3 },
+            { "id": "EDI", "name": "Edimburgo", "weight": 0.25, "min_days": 2 },
+            { "id": "MAN", "name": "Bath", "weight": 0.18, "min_days": 1 },
+            { "id": "LPL", "name": "Liverpool", "weight": 0.15, "min_days": 1 },
+            { "id": "OXF", "name": "Oxford", "weight": 0.12, "min_days": 1 }
+        ],
+        "seasonality": { "1": 4, "2": 4, "3": 6, "4": 7, "5": 9, "6": 10, "7": 9, "8": 8, "9": 8, "10": 6, "11": 4, "12": 5 },
+        "alert": "Noviembre-Febrero: Frío y días cortos. Mayo-Septiembre es la mejor época."
+    },
+    "germany": {
+        "region_name": "Alemania",
+        "suggested_duration_range": [7, 14],
+        "default_pace": "balanced",
+        "cities": [
+            { "id": "TXL", "name": "Berlín", "weight": 0.28, "min_days": 3 },
+            { "id": "MUC", "name": "Múnich", "weight": 0.25, "min_days": 2 },
+            { "id": "HAM", "name": "Hamburgo", "weight": 0.17, "min_days": 2 },
+            { "id": "CGN", "name": "Colonia", "weight": 0.15, "min_days": 1 },
+            { "id": "DRS", "name": "Dresde", "weight": 0.15, "min_days": 1 }
+        ],
+        "seasonality": { "1": 4, "2": 4, "3": 6, "4": 8, "5": 9, "6": 10, "7": 9, "8": 9, "9": 9, "10": 7, "11": 5, "12": 7 },
+        "alert": "Diciembre: Mercados navideños. Mayo-Sep es la mejor época general. Octubre: Oktoberfest en Múnich."
+    },
+    "portugal": {
+        "region_name": "Portugal",
+        "suggested_duration_range": [7, 12],
+        "default_pace": "relaxed",
+        "cities": [
+            { "id": "LIS", "name": "Lisboa", "weight": 0.30, "min_days": 3 },
+            { "id": "OPO", "name": "Oporto", "weight": 0.25, "min_days": 2 },
+            { "id": "FAO", "name": "Algarve", "weight": 0.20, "min_days": 2 },
+            { "id": "SIN", "name": "Sintra", "weight": 0.15, "min_days": 1 },
+            { "id": "EVR", "name": "Évora", "weight": 0.10, "min_days": 1 }
+        ],
+        "seasonality": { "1": 5, "2": 6, "3": 7, "4": 9, "5": 10, "6": 9, "7": 8, "8": 8, "9": 10, "10": 9, "11": 6, "12": 5 },
+        "alert": "Julio-Agosto: Calor en el sur, multitudes en Algarve. Abril-Junio y Septiembre-Octubre son ideales."
+    },
+    "india": {
+        "region_name": "India",
+        "suggested_duration_range": [10, 21],
+        "default_pace": "balanced",
+        "cities": [
+            { "id": "DEL", "name": "Delhi", "weight": 0.22, "min_days": 2 },
+            { "id": "JAI", "name": "Jaipur", "weight": 0.22, "min_days": 2 },
+            { "id": "AGR", "name": "Agra", "weight": 0.18, "min_days": 1 },
+            { "id": "BOM", "name": "Bombay", "weight": 0.20, "min_days": 2 },
+            { "id": "UDR", "name": "Udaipur", "weight": 0.18, "min_days": 2 }
+        ],
+        "seasonality": { "1": 8, "2": 9, "3": 8, "4": 5, "5": 3, "6": 2, "7": 2, "8": 2, "9": 4, "10": 8, "11": 10, "12": 9 },
+        "alert": "Jun-Sep: Monzón. Oct-Mar es la mejor época. Abril-Mayo: Calor extremo."
+    },
+    "vietnam": {
+        "region_name": "Vietnam",
+        "suggested_duration_range": [10, 18],
+        "default_pace": "balanced",
+        "cities": [
+            { "id": "HAN", "name": "Hanói", "weight": 0.25, "min_days": 2 },
+            { "id": "SGN", "name": "Ho Chi Minh", "weight": 0.22, "min_days": 2 },
+            { "id": "DAD", "name": "Hoi An", "weight": 0.20, "min_days": 2 },
+            { "id": "HPH", "name": "Ha Long Bay", "weight": 0.18, "min_days": 2 },
+            { "id": "HUI", "name": "Hue", "weight": 0.15, "min_days": 1 }
+        ],
+        "seasonality": { "1": 7, "2": 8, "3": 8, "4": 7, "5": 6, "6": 5, "7": 5, "8": 4, "9": 5, "10": 7, "11": 8, "12": 8 },
+        "alert": "Norte: Oct-Abr seco. Sur: Nov-Abr seco. Centro: Feb-Jul es mejor. Varia mucho por zona."
+    }
+}

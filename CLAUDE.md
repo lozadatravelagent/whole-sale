@@ -55,6 +55,20 @@ supabase/functions/       # Edge Functions (starling-search, eurovips-soap, ai-m
 - **Dual-Mode**: Production (Edge Functions), Development (CORS proxy), detect via `import.meta.env.DEV`
 - **Deduplication**: Use client_id field, 5-layer pattern from `useChat.ts`
 
+## Testing & Verification
+- `npm run build` — verifica TypeScript y build completo
+- `npm run lint` — verifica ESLint (ejecutar despues de cambios)
+
+## Reglas de Seguridad Multi-tenant
+- SIEMPRE respetar RLS (Row Level Security) — nunca bypass con service_role
+- Cada query debe filtrar por agency_id via helpers (is_owner, get_user_agency_id)
+- NUNCA exponer datos de un tenant a otro
+
+## Supabase Edge Functions
+- Deploy: `supabase functions deploy <nombre>`
+- Test local: `supabase functions serve`
+- Secrets: `supabase secrets set KEY=value`
+
 ## Deployment
 - **Frontend**: Railway (`npm run start`)
 - **Public API**: Railway (Docker, health check on `/v1/health`)

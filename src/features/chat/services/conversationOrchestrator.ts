@@ -1,6 +1,7 @@
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { TripPlannerState, PlannerActivity, PlannerRestaurant } from '@/features/trip-planner/types';
 import type { RouteResult } from './routeRequest';
+import { isGenericPlaceholder } from './itineraryPipeline';
 
 export interface ChatRecommendedPlace {
   placeId?: string;
@@ -203,6 +204,7 @@ function pushPlace(
 
 function activityToPlace(city: string, activity: PlannerActivity, slot: 'morning' | 'afternoon' | 'evening'): ChatRecommendedPlace | null {
   if (!activity?.title) return null;
+  if (isGenericPlaceholder(activity.title)) return null;
   return {
     name: activity.title,
     description: activity.description || activity.tip,
@@ -215,6 +217,7 @@ function activityToPlace(city: string, activity: PlannerActivity, slot: 'morning
 
 function restaurantToPlace(city: string, restaurant: PlannerRestaurant): ChatRecommendedPlace | null {
   if (!restaurant?.name) return null;
+  if (isGenericPlaceholder(restaurant.name)) return null;
   return {
     name: restaurant.name,
     description: restaurant.type ? `${restaurant.type}${restaurant.priceRange ? ` · ${restaurant.priceRange}` : ''}` : restaurant.priceRange,

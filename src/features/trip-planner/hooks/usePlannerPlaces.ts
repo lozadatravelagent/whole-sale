@@ -165,6 +165,7 @@ export default function usePlannerPlaces(state: PlannerStateAPI) {
     const placeCandidate: PlannerPlaceCandidate = {
       placeId: `recommended-${place.name.toLowerCase().replace(/\s+/g, '-')}`,
       name: place.name,
+      description: place.description,
       photoUrls: [],
       category: mapCategory(place.category),
     };
@@ -176,13 +177,11 @@ export default function usePlannerPlaces(state: PlannerStateAPI) {
     const targetCity = normalize(place.segmentCity);
 
     // Find matching segment by city
-    let segment = plannerState.segments.find(
+    const segment = plannerState.segments.find(
       (s) => normalize(s.city) === targetCity || normalize(s.city).includes(targetCity) || targetCity.includes(normalize(s.city))
     );
-    // Fallback to first segment
-    if (!segment) segment = plannerState.segments[0];
     if (!segment) {
-      toast({ title: 'No hay espacio disponible', variant: 'destructive' });
+      toast({ title: 'Ciudad no encontrada en el itinerario', description: `No hay un tramo para "${place.segmentCity}".`, variant: 'destructive' });
       return;
     }
 

@@ -24,6 +24,7 @@ import { generateHotelSearchId, saveHotelsToStorage } from './hotelStorageServic
 import { timeStringToNumber } from '@/features/chat/utils/timeSlotMapper';
 import type { TripPlannerState } from '@/features/trip-planner/types';
 import { expandDestinationsIfRegional, getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '@/features/trip-planner';
+import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 
 // =====================================================================
@@ -1923,14 +1924,25 @@ export const handleItineraryRequest = async (
         ? new Date(effectiveStartDate).getMonth() + 1
         : undefined;
 
+    console.log('🌍 [GEO-TRACE-5] searchHandlers destinations BEFORE expansion:', destinations);
+
     const {
       expandedDestinations,
-      suggestedDays,
+      cityWeights,
     } = expandDestinationsIfRegional(destinations, derivedDays, targetMonth);
 
     const finalDestinations = expandedDestinations;
-    const finalDays = suggestedDays;
+    const finalDays = derivedDays;
 
+    // Build segmentHints from regional expansion weights when available
+    const segmentHints = cityWeights && cityWeights.size > 0
+      ? finalDestinations.map(city => {
+          const w = cityWeights.get(city.toLowerCase());
+          return { city, dayCount: w?.minDays ?? Math.max(1, Math.floor(finalDays / finalDestinations.length)) };
+        })
+      : undefined;
+
+    console.log('🌍 [GEO-TRACE-5] searchHandlers destinations AFTER expansion:', finalDestinations, 'segmentHints:', segmentHints);
     console.log(`🔄 [ITINERARY] Generating itinerary for ${finalDestinations.join(', ')} - ${finalDays} days`);
 
     // Call the travel-itinerary Edge Function
@@ -1951,9 +1963,10 @@ export const handleItineraryRequest = async (
         travelers,
         constraints,
         hotelCategory,
-        generationMode: editIntent ? 'full' : 'skeleton',
+        generationMode: editIntent ? 'full' : existingPlannerState ? 'skeleton' : 'full',
         editIntent,
-        existingPlannerState
+        existingPlannerState,
+        ...(segmentHints && { segmentHints }),
       }
     });
     logTimingStep('ITINERARY', 'invoke travel-itinerary', invokeStart, {
@@ -2019,12 +2032,30 @@ export const handleItineraryRequest = async (
       segments: plannerData.segments.length,
     });
 
+    // Build editorial data for rich chat rendering
+    const editorialStart = nowMs();
+    const wasExpanded = finalDestinations.length !== destinations.length;
+    const editorial = buildEditorialData(plannerData, {
+      regionalExpansion: wasExpanded
+        ? { originalInput: destinations.join(', '), expandedTo: finalDestinations }
+        : undefined,
+      requestText: parsed.originalMessage,
+    });
+    logTimingStep('ITINERARY', 'buildEditorialData', editorialStart, {
+      mode: editorial.mode,
+      segments: editorial.segments.length,
+      highlights: editorial.segments.reduce((s, seg) => s + seg.highlights.length, 0),
+      dayPreviews: editorial.segments.reduce((s, seg) => s + seg.dayPreviews.length, 0),
+      wasExpanded,
+    });
+
     const result = {
       response: formattedResponse,
       data: {
         itineraryData,
         plannerData,
-        messageType: 'trip_planner'
+        messageType: 'trip_planner',
+        editorial,
       }
     };
 

@@ -14,8 +14,10 @@ import { buildDiscoveryResponsePayload } from '../services/discoveryService';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
-import { applySmartDefaults } from '@/features/trip-planner/utils';
+import { applySmartDefaults, normalizePlannerState } from '@/features/trip-planner/utils';
 import { mergePlannerFieldUpdate, normalizeLocationLabel, buildPlannerHotelSearchSignature, buildPlannerTransportSearchSignature, applyStructuralModification, type StructuralModification } from '@/features/trip-planner/helpers';
+import { buildCanonicalResultFromStandard, buildCanonicalResultFromAgent, buildCanonicalMeta, persistCanonicalResult, buildTurnContextState, type CanonicalItineraryResult } from '../services/itineraryPipeline';
+import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { translateBaggage } from '../utils/translations';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { supabase } from '@/integrations/supabase/client';
@@ -968,67 +970,79 @@ const useMessageHandler = (
           }
         }
 
-        // Extract recommendedPlaces from planner-agent structured data
-        const recommendedPlaces = rawStructuredData?.recommendedPlaces || null;
+        // Build canonical result from agent output
+        let agentPlannerData: TripPlannerState | null = null;
+        if (rawStructuredData?.rawItinerary) {
+          try {
+            agentPlannerData = normalizePlannerState({
+              ...(rawStructuredData.rawItinerary as Record<string, unknown>),
+              generationMeta: {
+                source: 'chat',
+                updatedAt: new Date().toISOString(),
+                version: (plannerState?.generationMeta?.version || 0) + 1,
+              },
+            });
+          } catch (e) {
+            console.warn('[PIPELINE] Failed to normalize agent rawItinerary:', e);
+          }
+        }
 
-        // Save assistant message with combinedData (same shape as standard flow)
+        const agentEditorial = agentPlannerData
+          ? buildEditorialData(agentPlannerData)
+          : null;
+
+        const canonicalAgentResult = buildCanonicalResultFromAgent({
+          response: assistantResponse,
+          rawStructuredData: rawStructuredData as Record<string, unknown> | null,
+          plannerData: agentPlannerData,
+          flights: plannerFlights,
+          hotels: plannerHotels,
+          conversationTurn,
+          actionChips: agentResult.actionChips,
+          editorial: agentEditorial,
+        });
+
+        // Save assistant message with canonical meta
         await saveAndDisplayMessage({
           conversation_id: finalConversationId,
           role: 'assistant' as const,
           content: { text: assistantResponse },
-          meta: {
-            source: 'planner-agent',
-            messageType: conversationTurn.messageType,
-            responseMode: conversationTurn.responseMode,
-            normalizedMissingFields: conversationTurn.normalizedMissingFields,
-            ...(combinedData && { combinedData }),
-            ...(recommendedPlaces && { recommendedPlaces }),
-            ...(agentResult.actionChips?.length > 0 && { actionChips: agentResult.actionChips }),
-            conversationTurn,
-          }
+          meta: buildCanonicalMeta(canonicalAgentResult),
         });
 
-        // Save ContextState for iterative refinement (same pattern as standard flow)
+        // Persist plannerData via canonical pipeline
+        await persistCanonicalResult(canonicalAgentResult, { persistPlannerState });
+
+        // Save ContextState for iterative refinement via shared builder
         if (combinedData) {
           const flightSearchParams = rawStructuredData?.flights?.searchParams;
           const hotelSearchParams = rawStructuredData?.hotels?.searchParams;
 
-          const newContextState: ContextState = {
-            lastSearch: {
-              requestType: (plannerFlights.length > 0 && plannerHotels.length > 0
-                ? 'combined'
-                : plannerFlights.length > 0 ? 'flights' : 'hotels') as 'flights' | 'hotels' | 'combined',
-              timestamp: new Date().toISOString(),
-              ...(flightSearchParams && {
-                flightsParams: {
-                  origin: flightSearchParams.origin || '',
-                  destination: flightSearchParams.destination || '',
-                  departureDate: flightSearchParams.departureDate || '',
-                  returnDate: flightSearchParams.returnDate,
-                  adults: flightSearchParams.adults || 1,
-                  children: flightSearchParams.children || 0,
-                  infants: flightSearchParams.infants || 0,
-                }
-              }),
-              ...(hotelSearchParams && {
-                hotelsParams: {
-                  city: hotelSearchParams.city || '',
-                  checkinDate: hotelSearchParams.checkinDate || '',
-                  checkoutDate: hotelSearchParams.checkoutDate || '',
-                  adults: hotelSearchParams.adults || 1,
-                  children: hotelSearchParams.children || 0,
-                  infants: hotelSearchParams.infants || 0,
-                }
-              }),
-              resultsSummary: {
-                flightsCount: plannerFlights.length,
-                hotelsCount: plannerHotels.length,
-              }
-            },
-            constraintsHistory: persistentState?.constraintsHistory || [],
-            turnNumber: (persistentState?.turnNumber || 0) + 1,
-            schemaVersion: 1,
-          };
+          const newContextState = buildTurnContextState({
+            requestType: (plannerFlights.length > 0 && plannerHotels.length > 0
+              ? 'combined'
+              : plannerFlights.length > 0 ? 'flights' : 'hotels') as 'flights' | 'hotels' | 'combined',
+            flightsParams: flightSearchParams ? {
+              origin: flightSearchParams.origin || '',
+              destination: flightSearchParams.destination || '',
+              departureDate: flightSearchParams.departureDate || '',
+              returnDate: flightSearchParams.returnDate,
+              adults: flightSearchParams.adults || 1,
+              children: flightSearchParams.children || 0,
+              infants: flightSearchParams.infants || 0,
+            } : null,
+            hotelsParams: hotelSearchParams ? {
+              city: hotelSearchParams.city || '',
+              checkinDate: hotelSearchParams.checkinDate || '',
+              checkoutDate: hotelSearchParams.checkoutDate || '',
+              adults: hotelSearchParams.adults || 1,
+              children: hotelSearchParams.children || 0,
+              infants: hotelSearchParams.infants || 0,
+            } : null,
+            flightsCount: plannerFlights.length,
+            hotelsCount: plannerHotels.length,
+            previousState: persistentState,
+          });
 
           setPreviousParsedRequest(null);
           await clearContextualMemory(finalConversationId);
@@ -1933,8 +1947,17 @@ const useMessageHandler = (
             setPlannerDraftPhase?.('draft_generating');
             setTypingMessage('Generando tu itinerario de viaje...', conversationIdForThisSearch);
             const itineraryResult = await handleItineraryRequest(parsedRequest, plannerState || null);
-            assistantResponse = itineraryResult.response;
-            structuredData = itineraryResult.data;
+            // Wrap in canonical pipeline
+            const canonicalStdResult = buildCanonicalResultFromStandard({
+              response: itineraryResult.response,
+              structuredData: itineraryResult.data,
+              conversationTurn,
+              routeResult,
+              requestText: parsedRequest.originalMessage || currentMessage,
+              editorial: itineraryResult.data?.editorial ?? null,
+            });
+            assistantResponse = canonicalStdResult.response;
+            structuredData = canonicalStdResult;
           }
           console.log('✅ [MESSAGE FLOW] Itinerary generation completed');
           break;
@@ -1979,7 +2002,11 @@ const useMessageHandler = (
           setPreviousParsedRequest(null);
           await clearContextualMemory(finalConversationId);
 
-          if (hasPlannerData && persistPlannerState && conversationTurn.responseMode !== 'show_places') {
+          if (hasPlannerData && (structuredData as any)?.source) {
+            // Canonical itinerary result — use unified persistence pipeline
+            await persistCanonicalResult(structuredData as CanonicalItineraryResult, { persistPlannerState });
+          } else if (hasPlannerData && persistPlannerState && conversationTurn.responseMode !== 'show_places') {
+            // Non-canonical (other request types) — legacy persistence
             await persistPlannerState((structuredData as any).plannerData, 'chat');
           }
 
@@ -1989,83 +2016,51 @@ const useMessageHandler = (
           const actualReturnDate = firstFlight?.return_date || parsedRequest.flights?.returnDate;
 
           if (parsedRequest.requestType !== 'itinerary') {
-            // Build complete ContextState with ALL search parameters
-            const newContextState: ContextState = {
-              lastSearch: {
-                requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
-                timestamp: new Date().toISOString(),
-                // Flight params (if present)
-                ...(parsedRequest.flights && {
-                  flightsParams: (() => {
-                    const normalizedFlight = normalizeFlightRequest(parsedRequest.flights);
-                    return {
-                      origin: normalizedFlight?.origin || '',
-                      destination: normalizedFlight?.destination || '',
-                      departureDate: actualDepartureDate || normalizedFlight?.departureDate || '',
-                      returnDate: actualReturnDate || normalizedFlight?.returnDate,
-                      tripType: normalizedFlight?.tripType,
-                      segments: normalizedFlight?.segments,
-                      adults: normalizedFlight?.adults || 1,
-                      children: normalizedFlight?.children || 0,
-                      infants: normalizedFlight?.infants || 0,
-                      stops: normalizedFlight?.stops,
-                      preferredAirline: normalizedFlight?.preferredAirline,
-                      luggage: normalizedFlight?.luggage,
-                      maxLayoverHours: normalizedFlight?.maxLayoverHours
-                    };
-                  })()
-                }),
-                // Hotel params (if present)
-                ...(parsedRequest.hotels && {
-                  hotelsParams: {
-                    city: parsedRequest.hotels.city,
-                    checkinDate: parsedRequest.hotels.checkinDate,
-                    checkoutDate: parsedRequest.hotels.checkoutDate,
-                    adults: parsedRequest.hotels.adults || 1,
-                    children: parsedRequest.hotels.children || 0,
-                    infants: parsedRequest.hotels.infants || 0,
-                    roomType: parsedRequest.hotels.roomType,
-                    mealPlan: parsedRequest.hotels.mealPlan,
-                    hotelChains: parsedRequest.hotels.hotelChains,
-                    hotelName: parsedRequest.hotels.hotelName
-                  }
-                }),
-                // Results summary
-                resultsSummary: {
-                  flightsCount,
-                  hotelsCount
-                }
-              },
-              // Track constraints history for iterations
-              constraintsHistory: [
-                ...(persistentState?.constraintsHistory || []),
-                ...(iterationContext.isIteration && parsedRequest.hotels?.hotelChains ? [{
-                  turn: (persistentState?.turnNumber || 0) + 1,
-                  component: 'hotels' as const,
-                  constraint: 'hotelChains',
-                  value: parsedRequest.hotels.hotelChains,
-                  timestamp: new Date().toISOString()
-                }] : []),
-                ...(iterationContext.isIteration && parsedRequest.hotels?.hotelName ? [{
-                  turn: (persistentState?.turnNumber || 0) + 1,
-                  component: 'hotels' as const,
-                  constraint: 'hotelName',
-                  value: parsedRequest.hotels.hotelName,
-                  timestamp: new Date().toISOString()
-                }] : [])
-              ],
-              turnNumber: (persistentState?.turnNumber || 0) + 1,
-              schemaVersion: 1
-            };
+            // Build ContextState via shared builder
+            const normalizedFlight = parsedRequest.flights ? normalizeFlightRequest(parsedRequest.flights) : null;
+            const newConstraints: Array<{ component: string; constraint: string; value: unknown }> = [];
+            if (iterationContext.isIteration && parsedRequest.hotels?.hotelChains) {
+              newConstraints.push({ component: 'hotels', constraint: 'hotelChains', value: parsedRequest.hotels.hotelChains });
+            }
+            if (iterationContext.isIteration && parsedRequest.hotels?.hotelName) {
+              newConstraints.push({ component: 'hotels', constraint: 'hotelName', value: parsedRequest.hotels.hotelName });
+            }
 
-            console.log('💾 [STATE] Saving complete context state:', {
-              requestType: newContextState.lastSearch.requestType,
-              hasFlights: !!newContextState.lastSearch.flightsParams,
-              hasHotels: !!newContextState.lastSearch.hotelsParams,
-              turnNumber: newContextState.turnNumber,
-              constraintsCount: newContextState.constraintsHistory.length
+            const newContextState = buildTurnContextState({
+              requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
+              flightsParams: normalizedFlight ? {
+                origin: normalizedFlight.origin || '',
+                destination: normalizedFlight.destination || '',
+                departureDate: actualDepartureDate || normalizedFlight.departureDate || '',
+                returnDate: actualReturnDate || normalizedFlight.returnDate,
+                tripType: normalizedFlight.tripType,
+                segments: normalizedFlight.segments,
+                adults: normalizedFlight.adults || 1,
+                children: normalizedFlight.children || 0,
+                infants: normalizedFlight.infants || 0,
+                stops: normalizedFlight.stops,
+                preferredAirline: normalizedFlight.preferredAirline,
+                luggage: normalizedFlight.luggage,
+                maxLayoverHours: normalizedFlight.maxLayoverHours,
+              } : null,
+              hotelsParams: parsedRequest.hotels ? {
+                city: parsedRequest.hotels.city,
+                checkinDate: parsedRequest.hotels.checkinDate,
+                checkoutDate: parsedRequest.hotels.checkoutDate,
+                adults: parsedRequest.hotels.adults || 1,
+                children: parsedRequest.hotels.children || 0,
+                infants: parsedRequest.hotels.infants || 0,
+                roomType: parsedRequest.hotels.roomType,
+                mealPlan: parsedRequest.hotels.mealPlan,
+                hotelChains: parsedRequest.hotels.hotelChains,
+                hotelName: parsedRequest.hotels.hotelName,
+              } : null,
+              flightsCount,
+              hotelsCount,
+              previousState: persistentState,
+              newConstraints,
             });
-            
+
             saveContextState(finalConversationId, newContextState).catch((e) => console.warn('⚠️ [CONTEXT] Failed to save context state:', e));
           }
         } else {
@@ -2087,20 +2082,22 @@ const useMessageHandler = (
         conversation_id: finalConversationId,
         role: 'assistant' as const,
         content: { text: assistantResponse },
-        meta: {
-          messageType: conversationTurn.messageType,
-          responseMode: conversationTurn.responseMode,
-          ...(conversationTurn.normalizedMissingFields.length > 0 ? { normalizedMissingFields: conversationTurn.normalizedMissingFields } : {}),
-          requestText: parsedRequest.originalMessage || currentMessage,
-          ...(structuredData ? { source: 'AI_PARSER + EUROVIPS', ...structuredData } : {}),
-          emiliaRoute: {
-            route: routeResult.route,
-            score: routeResult.score,
-            reason: routeResult.reason,
-            inferredFields: routeResult.inferredFields,
-          },
-          conversationTurn,
-        }
+        meta: (structuredData as any)?.source
+          ? buildCanonicalMeta(structuredData as CanonicalItineraryResult)
+          : {
+              messageType: conversationTurn.messageType,
+              responseMode: conversationTurn.responseMode,
+              ...(conversationTurn.normalizedMissingFields.length > 0 ? { normalizedMissingFields: conversationTurn.normalizedMissingFields } : {}),
+              requestText: parsedRequest.originalMessage || currentMessage,
+              ...(structuredData ? { source: 'AI_PARSER + EUROVIPS', ...structuredData } : {}),
+              emiliaRoute: {
+                route: routeResult.route,
+                score: routeResult.score,
+                reason: routeResult.reason,
+                inferredFields: routeResult.inferredFields,
+              },
+              conversationTurn,
+            },
       });
       logTimingStep('MESSAGE FLOW', 'save assistant message', saveAssistantStart, {
         hasStructuredData: Boolean(structuredData),

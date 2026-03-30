@@ -31,6 +31,7 @@ interface PlannerRequest {
     targetDayId?: string;
     targetCity?: string;
   };
+  segmentHints?: Array<{ city: string; dayCount: number }>;
 }
 
 type PlannerGenerationMode = 'skeleton' | 'segment' | 'full';
@@ -485,13 +486,42 @@ function distributeDaysByWeights(totalDays: number, weights: number[]): number[]
   return counts;
 }
 
+function validateSegmentHints(hints: Array<{ city: string; dayCount: number }>, totalDays: number, destinations: string[]): string | null {
+  if (hints.length !== destinations.length) {
+    return `segmentHints count (${hints.length}) does not match destinations count (${destinations.length})`;
+  }
+  const hintsSum = hints.reduce((sum, h) => sum + h.dayCount, 0);
+  if (hintsSum !== totalDays) {
+    return `segmentHints dayCount sum (${hintsSum}) does not match totalDays (${totalDays})`;
+  }
+  if (hints.some((h) => h.dayCount < 1)) {
+    return 'segmentHints contains a segment with 0 or negative days';
+  }
+  return null;
+}
+
 function buildSegmentBlueprints(input: PlannerRequest): SegmentBlueprint[] {
   const destinations = safeArray<string>(input.destinations);
   const totalDays = calculateDays(input.startDate, input.endDate, input.days);
+  const hints = safeArray(input.segmentHints);
+
+  let dayCounts: number[];
+
+  if (hints.length > 0) {
+    const validationError = validateSegmentHints(hints, totalDays, destinations);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+    dayCounts = hints.map((h) => h.dayCount);
+  } else {
+    const existingSegments = getExistingSegments(input.existingPlannerState);
+    const mappedExistingSegments = mapExistingSegmentsByDestination(destinations, existingSegments);
+    const existingWeights = mappedExistingSegments.map(getExistingSegmentDayWeight);
+    dayCounts = distributeDaysByWeights(totalDays, existingWeights.length > 0 ? existingWeights : destinations.map(() => 1));
+  }
+
   const existingSegments = getExistingSegments(input.existingPlannerState);
   const mappedExistingSegments = mapExistingSegmentsByDestination(destinations, existingSegments);
-  const existingWeights = mappedExistingSegments.map(getExistingSegmentDayWeight);
-  const dayCounts = distributeDaysByWeights(totalDays, existingWeights.length > 0 ? existingWeights : destinations.map(() => 1));
 
   let currentOffset = 0;
 
@@ -749,14 +779,25 @@ function matchRawSegmentsToBlueprints(rawSegments: RawPlannerRecord[], blueprint
     );
 
     if (matchIndex < 0 && index < rawSegments.length && !used.has(index)) {
-      matchIndex = index;
+      const actualCity = normalizeLabel(rawSegments[index]?.city);
+      if (!actualCity) {
+        // Raw segment has no city label — accept positional (GPT omitted city name)
+        matchIndex = index;
+        console.warn(
+          `[MATCH] Blueprint "${blueprint.city}" used positional index ${index} (raw segment has no city)`,
+        );
+      } else {
+        // Raw segment has a different city — reject positional to avoid wrong-city content
+        console.warn(
+          `[MATCH] Blueprint "${blueprint.city}" rejected positional index ${index} — city mismatch (raw: "${actualCity}")`,
+        );
+      }
     }
 
+    // No grab-any fallback: if neither city match nor positional works,
+    // return null and let fallback day generation handle it cleanly.
     if (matchIndex < 0) {
-      matchIndex = rawSegments.findIndex((_, rawIndex) => !used.has(rawIndex));
-    }
-
-    if (matchIndex < 0) {
+      console.warn(`[MATCH] Blueprint "${blueprint.city}" found NO matching raw segment — will use fallback days`);
       return null;
     }
 

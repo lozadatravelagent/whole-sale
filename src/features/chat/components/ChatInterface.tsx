@@ -12,6 +12,7 @@ import type { MessageRow, LocalHotelData, FlightData } from '../types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import { ArrowUpFromLine } from 'lucide-react';
 import { deriveConversationGaps, extractRecommendedPlacesFromMeta, getDiscoveryVisualConfig } from '../services/conversationOrchestrator';
+import { resolveRenderPolicy } from '../services/itineraryPipeline';
 import type { DiscoveryContext } from '../services/discoveryService';
 
 interface ChatInterfaceProps {
@@ -238,7 +239,10 @@ const ChatInterface = React.memo(({
   const lastVisibleMessage = visibleMessages[visibleMessages.length - 1];
   const lastMeta = (lastVisibleMessage?.meta as Record<string, unknown> | undefined) || undefined;
   const lastConversationTurn = (lastMeta?.conversationTurn as { responseMode?: string } | undefined) || undefined;
-  const isShowPlacesTurn = lastConversationTurn?.responseMode === 'show_places' || lastMeta?.responseMode === 'show_places';
+  const lastResponseMode = (lastConversationTurn?.responseMode || lastMeta?.responseMode || 'standard') as string;
+  const renderPolicy = resolveRenderPolicy(lastResponseMode);
+  const isShowPlacesTurn = lastResponseMode === 'show_places';
+  const isFirstPlanProposal = renderPolicy.showPlannerCta && !renderPolicy.showCombinedCards;
   const discoveryContext = (lastMeta?.discoveryContext as DiscoveryContext | undefined) || undefined;
   const lastRecommendedPlaces = extractRecommendedPlacesFromMeta(lastMeta);
   const lastConversationGaps = deriveConversationGaps(lastMeta);
@@ -338,7 +342,7 @@ const ChatInterface = React.memo(({
               {(() => {
                 const lastMsg = lastVisibleMessage;
                 const meta = lastMeta as any;
-                if (meta?.source === 'planner-agent' && meta?.combinedData && lastMsg?.role === 'assistant' && !isLoading) {
+                if (meta?.source === 'planner-agent' && meta?.combinedData && lastMsg?.role === 'assistant' && !isLoading && !isFirstPlanProposal) {
                   const hotels = (meta.combinedData.hotels as LocalHotelData[] | undefined)?.slice(0, 3);
                   const flights = (meta.combinedData.flights as FlightData[] | undefined)?.slice(0, 3);
                   const city = meta.combinedData.searchCity || '';
@@ -392,7 +396,7 @@ const ChatInterface = React.memo(({
                 }
                 return null;
               })()}
-              {lastVisibleMessage?.role === 'assistant' && lastRecommendedPlaces.length > 0 && !isLoading && (
+              {lastVisibleMessage?.role === 'assistant' && lastRecommendedPlaces.length > 0 && !isLoading && !isFirstPlanProposal && (
                 <RecommendedPlacesList
                   places={lastRecommendedPlaces}
                   title={discoveryVisual?.title}
@@ -413,7 +417,7 @@ const ChatInterface = React.memo(({
                   }}
                 />
               )}
-              {lastVisibleMessage?.role === 'assistant' && isShowPlacesTurn && discoveryContext && !isLoading && (
+              {lastVisibleMessage?.role === 'assistant' && isShowPlacesTurn && !isFirstPlanProposal && discoveryContext && !isLoading && (
                 <DiscoveryMapPreview discoveryContext={discoveryContext} />
               )}
               {lastVisibleMessage?.role === 'assistant' && lastConversationGaps.length > 0 && !isLoading && (

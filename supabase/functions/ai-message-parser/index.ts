@@ -92,16 +92,10 @@ function normalizeLocationsToCountryCapitals(parsed: any): any {
 
   const nextParsed = { ...parsed };
 
-  if (nextParsed.itinerary) {
-    nextParsed.itinerary = {
-      ...nextParsed.itinerary,
-      ...(Array.isArray(nextParsed.itinerary.destinations)
-        ? {
-            destinations: normalizeDestinationListToCapitals(nextParsed.itinerary.destinations),
-          }
-        : {}),
-    };
-  }
+  // Itinerary destinations are NOT normalized to capitals.
+  // The planner has its own country/regional expansion that handles
+  // "España" → multi-city routes. Normalizing here would collapse
+  // "España" to "Madrid" before expansion can run.
 
   if (nextParsed.hotels) {
     nextParsed.hotels = {

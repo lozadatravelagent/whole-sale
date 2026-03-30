@@ -12,7 +12,10 @@ import { getMessageContent, getMessageStatusIconType, formatTime } from '../util
 import { getCityNameFromCode } from '../utils/flightHelpers';
 import { translateRoomDescription } from '../utils/translations';
 import type { TripPlannerState } from '@/features/trip-planner/types';
+import type { PlannerEditorialData } from '@/features/trip-planner/editorial';
 import { formatBudgetLevel, formatDateRange, formatDestinationLabel, formatFlexibleMonth, formatPaceLabel } from '@/features/trip-planner/utils';
+import { resolveRenderPolicy } from '../services/itineraryPipeline';
+import { PlannerEditorialBlock } from './PlannerEditorialBlock';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 
 interface MessageItemProps {
@@ -103,8 +106,13 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
   const plannerData = typeof msg.meta === 'object' && msg.meta && 'plannerData' in msg.meta
     ? ((msg.meta as any).plannerData as TripPlannerState)
     : null;
-  const responseMode = typeof msg.meta === 'object' && msg.meta ? (msg.meta as any).responseMode : undefined;
-  const isShowPlacesTurn = responseMode === 'show_places' || (msg.meta as any)?.conversationTurn?.responseMode === 'show_places';
+  const editorialData = typeof msg.meta === 'object' && msg.meta && 'editorial' in msg.meta
+    ? ((msg.meta as any).editorial as PlannerEditorialData | null)
+    : null;
+  const responseMode = typeof msg.meta === 'object' && msg.meta
+    ? ((msg.meta as any)?.conversationTurn?.responseMode || (msg.meta as any).responseMode)
+    : undefined;
+  const msgRenderPolicy = resolveRenderPolicy(responseMode);
   const plannerSegments = Array.isArray(plannerData?.segments) ? plannerData.segments : [];
   const plannerDateSelectorRequest = typeof msg.meta === 'object' && msg.meta && (msg.meta as any).plannerPromptAction === 'open_date_selector'
     ? ((msg.meta as any).originalRequest as ParsedTravelRequest | undefined)
@@ -393,7 +401,11 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                   )}
                 </Suspense>
 
-                {!isShowPlacesTurn && plannerData && onGoToPlanner && (() => {
+                {msgRenderPolicy.showPlannerCta && editorialData && (
+                  <PlannerEditorialBlock editorial={editorialData} />
+                )}
+
+                {msgRenderPolicy.showPlannerCta && plannerData && onGoToPlanner && (() => {
                   const destLabel = plannerData.destinations.map(formatDestinationLabel).join(', ');
                   const dateLabel = plannerData.isFlexibleDates
                     ? formatFlexibleMonth(plannerData.flexibleMonth, plannerData.flexibleYear)
@@ -436,7 +448,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                   );
                 })()}
 
-                {!isShowPlacesTurn && plannerDateSelectorRequest && onOpenPlannerDateSelector && (
+                {msgRenderPolicy.showPlannerCta && plannerDateSelectorRequest && onOpenPlannerDateSelector && (
                   <div className="mt-3 rounded-lg border border-primary/20 bg-background/70 p-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>

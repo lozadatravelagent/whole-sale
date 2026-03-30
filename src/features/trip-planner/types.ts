@@ -111,6 +111,7 @@ export type PlannerHotelMatchStatus =
 export interface PlannerPlaceCandidate {
   placeId: string;
   name: string;
+  description?: string;
   formattedAddress?: string;
   rating?: number;
   userRatingsTotal?: number;

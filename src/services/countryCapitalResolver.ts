@@ -121,6 +121,57 @@ const COUNTRY_TO_CAPITAL: Record<string, string> = {
   'new zealand': 'Wellington',
 };
 
+// Reverse map: capital (normalized) → country display names that map to it
+const CAPITAL_TO_COUNTRIES: Record<string, string[]> = (() => {
+  const map: Record<string, string[]> = {};
+  for (const [country, capital] of Object.entries(COUNTRY_TO_CAPITAL)) {
+    const normCapital = normalizeText(capital);
+    if (!map[normCapital]) map[normCapital] = [];
+    map[normCapital].push(country);
+  }
+  return map;
+})();
+
+// Display names for accented countries (guardrail restoration)
+const COUNTRY_DISPLAY: Record<string, string> = {
+  espana: 'España', spain: 'España',
+  italia: 'Italia', italy: 'Italia',
+  japon: 'Japón', japan: 'Japón',
+  francia: 'Francia', france: 'Francia',
+  grecia: 'Grecia', greece: 'Grecia',
+  alemania: 'Alemania', germany: 'Alemania',
+  portugal: 'Portugal', brasil: 'Brasil', brazil: 'Brasil',
+  peru: 'Perú', belgica: 'Bélgica', panama: 'Panamá',
+  turquia: 'Turquía', turkey: 'Turquía',
+  'republica dominicana': 'República Dominicana',
+  'costa rica': 'Costa Rica',
+  'nueva zelanda': 'Nueva Zelanda',
+  'estados unidos': 'Estados Unidos',
+  'reino unido': 'Reino Unido',
+};
+
+/**
+ * Given a capital city and a normalized message, check if the user
+ * mentioned a country that maps to this capital. Returns the country
+ * display name if found, null otherwise.
+ */
+export function findCountryInMessageForCapital(
+  capital: string,
+  normalizedMessage: string,
+): string | null {
+  const normCapital = normalizeText(capital);
+  const countries = CAPITAL_TO_COUNTRIES[normCapital];
+  if (!countries) return null;
+
+  for (const countryKey of countries) {
+    if (normalizedMessage.includes(countryKey)) {
+      return COUNTRY_DISPLAY[countryKey]
+        || countryKey.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    }
+  }
+  return null;
+}
+
 export function resolveCountryToCapital(value: string | undefined | null): string | null {
   if (!value) return null;
   return COUNTRY_TO_CAPITAL[normalizeText(value)] ?? null;
