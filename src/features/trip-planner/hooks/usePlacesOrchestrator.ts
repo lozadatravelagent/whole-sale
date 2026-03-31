@@ -3,26 +3,45 @@ import { fetchNearbyPlacesByCategory, fetchViewportNearbyPlaces } from '../servi
 import { clearNearbyPlacesCooldown } from '../services/placesService';
 import type { PlannerPlaceCandidate, PlannerPlaceCategory, TripPlannerState } from '../types';
 
-const EAGER_FETCH_CATEGORIES: PlannerPlaceCategory[] = ['restaurant', 'cafe', 'museum', 'activity'];
-const CHAT_PUSH_CATEGORIES = new Set<PlannerPlaceCategory>(['activity', 'sights']);
+// ── Category policy — single source of truth ──────────────────────────────
+// To change category behavior (e.g. swap cafe→lazy / sights→eager), edit
+// the flags below. All derived constants update automatically.
 
-const ALL_CATEGORIES: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity', 'sights', 'nightlife', 'parks', 'shopping', 'culture'];
+interface CategoryPolicy {
+  eager: boolean;         // Auto-fetch on segment load
+  defaultActive: boolean; // Chip starts ON
+  chatPush: boolean;      // Push to chat discovery cards
+  viewportFetch: boolean; // Include in viewport dynamic loading
+}
+
+const CATEGORY_POLICY: Record<PlannerPlaceCategory, CategoryPolicy> = {
+  hotel:      { eager: false, defaultActive: true,  chatPush: false, viewportFetch: false },
+  restaurant: { eager: true,  defaultActive: true,  chatPush: false, viewportFetch: true },
+  cafe:       { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
+  museum:     { eager: true,  defaultActive: true,  chatPush: false, viewportFetch: true },
+  activity:   { eager: true,  defaultActive: true,  chatPush: true,  viewportFetch: true },
+  sights:     { eager: true,  defaultActive: true,  chatPush: true,  viewportFetch: true },
+  nightlife:  { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
+  parks:      { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
+  shopping:   { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
+  culture:    { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
+};
+
+// Derived constants — do not edit directly
+const ALL_CATEGORIES = Object.keys(CATEGORY_POLICY) as PlannerPlaceCategory[];
+
+const EAGER_FETCH_CATEGORIES = ALL_CATEGORIES.filter(cat => CATEGORY_POLICY[cat].eager);
+
+const CHAT_PUSH_CATEGORIES = new Set(ALL_CATEGORIES.filter(cat => CATEGORY_POLICY[cat].chatPush));
+
+export const VIEWPORT_FETCH_CATEGORIES = ALL_CATEGORIES.filter(cat => CATEGORY_POLICY[cat].viewportFetch);
+
+const DEFAULT_ACTIVE = Object.fromEntries(
+  ALL_CATEGORIES.map(cat => [cat, CATEGORY_POLICY[cat].defaultActive]),
+) as Record<PlannerPlaceCategory, boolean>;
 
 const VIEWPORT_WINDOW_MS = 5 * 60 * 1000;
-const VIEWPORT_PROVIDER_CALLS_CAP = 60; // max real FSQ API calls per 5-min window
-
-const DEFAULT_ACTIVE: Record<PlannerPlaceCategory, boolean> = {
-  hotel: true,
-  restaurant: true,
-  cafe: true,
-  museum: true,
-  activity: true,
-  sights: false,
-  nightlife: false,
-  parks: false,
-  shopping: false,
-  culture: false,
-};
+const VIEWPORT_PROVIDER_CALLS_CAP = 60;
 
 export type CategoryFetchState = 'idle' | 'loading' | 'failed';
 

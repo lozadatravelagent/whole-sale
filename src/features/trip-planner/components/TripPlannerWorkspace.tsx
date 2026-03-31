@@ -53,7 +53,7 @@ import {
 import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
 import { computeViewportSearchPoints, viewportRefetchThreshold, buildViewportSignature, viewportRadiusFromBounds } from '../services/placesService';
 import { usePlaceDetail } from '../hooks/usePlaceDetail';
-import { usePlacesOrchestrator, type PlaceBlock } from '../hooks/usePlacesOrchestrator';
+import { usePlacesOrchestrator, VIEWPORT_FETCH_CATEGORIES, type PlaceBlock } from '../hooks/usePlacesOrchestrator';
 import PlannerContextSidebar from './PlannerContextSidebar';
 import type { PlaceDetailData } from './PlannerPlaceDetailPanel';
 import TripPlannerMap from './TripPlannerMap';
@@ -317,7 +317,7 @@ export default function TripPlannerWorkspace({
     const distFromSegment = Math.abs(center.lat - seg.location.lat) + Math.abs(center.lng - seg.location.lng);
     if (distFromSegment < threshold) return;
 
-    const cats = PLANNER_MAP_FILTERS.filter(c => mapActiveCategories[c] && c !== 'hotel') as PlannerPlaceCategory[];
+    const cats = VIEWPORT_FETCH_CATEGORIES.filter(c => mapActiveCategories[c]);
     if (cats.length === 0) return;
 
     // Cover the viewport rectangle with 1-3 circle searches
