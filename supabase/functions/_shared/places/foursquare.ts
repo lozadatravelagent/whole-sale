@@ -57,7 +57,46 @@ function authParams(): URLSearchParams {
   });
 }
 
+// ── Per-invocation provider call tracking + 429 cooldown ───────────────────
+let invocationCallCount = 0;
+const PROVIDER_CALL_CAP = 18; // 3 searchPoints × 6 categories (worst case legit)
+
+// Module-level cooldown: persists across tasks AND across invocations in the
+// same isolate. A 429 from Foursquare blocks all subsequent calls until the
+// cooldown expires. This is intentional — we respect the provider's rate limit.
+let providerCooldownUntil = 0;
+const DEFAULT_BACKOFF_S = 30;
+
+export function resetProviderCallCount(): void { invocationCallCount = 0; }
+export function getProviderCallCount(): number { return invocationCallCount; }
+export function getProviderCooldownRemaining(): number {
+  return Math.max(0, Math.ceil((providerCooldownUntil - Date.now()) / 1000));
+}
+
+function parseRetryAfter(header: string | null): number {
+  if (!header) return DEFAULT_BACKOFF_S;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds, 300);
+  const date = new Date(header);
+  if (!isNaN(date.getTime())) {
+    return Math.max(1, Math.min(Math.ceil((date.getTime() - Date.now()) / 1000), 300));
+  }
+  return DEFAULT_BACKOFF_S;
+}
+
 async function fsqFetchJson(url: string, init?: RequestInit): Promise<unknown> {
+  // Check provider cooldown (from a previous 429)
+  const cooldownRemaining = providerCooldownUntil - Date.now();
+  if (cooldownRemaining > 0) {
+    throw new Error(`provider_rate_limited (cooldown ${Math.ceil(cooldownRemaining / 1000)}s remaining)`);
+  }
+
+  // Check per-invocation cap
+  if (invocationCallCount >= PROVIDER_CALL_CAP) {
+    throw new Error(`provider_call_cap_exceeded (${invocationCallCount}/${PROVIDER_CALL_CAP})`);
+  }
+  invocationCallCount++;
+
   const response = await fetch(url, {
     ...init,
     headers: {
@@ -65,6 +104,13 @@ async function fsqFetchJson(url: string, init?: RequestInit): Promise<unknown> {
       ...(init?.headers || {}),
     },
   });
+
+  // Explicit 429 handling with Retry-After
+  if (response.status === 429) {
+    const retryAfterSec = parseRetryAfter(response.headers.get('Retry-After'));
+    providerCooldownUntil = Date.now() + retryAfterSec * 1000;
+    throw new Error(`provider_rate_limited (retry_after=${retryAfterSec}s)`);
+  }
 
   if (!response.ok) {
     const text = await response.text();

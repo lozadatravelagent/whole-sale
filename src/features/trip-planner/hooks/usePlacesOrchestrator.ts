@@ -8,6 +8,9 @@ const CHAT_PUSH_CATEGORIES = new Set<PlannerPlaceCategory>(['activity', 'sights'
 
 const ALL_CATEGORIES: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity', 'sights', 'nightlife', 'parks', 'shopping', 'culture'];
 
+const VIEWPORT_WINDOW_MS = 5 * 60 * 1000;
+const VIEWPORT_PROVIDER_CALLS_CAP = 60; // max real FSQ API calls per 5-min window
+
 const DEFAULT_ACTIVE: Record<PlannerPlaceCategory, boolean> = {
   hotel: true,
   restaurant: true,
@@ -240,6 +243,12 @@ export function usePlacesOrchestrator(
 
   const viewportCacheRef = useRef<Map<string, ViewportCacheEntry>>(new Map());
   const inFlightViewportRef = useRef(false);
+
+  // Rolling window rate limit based on real provider calls
+  const viewportCallLogRef = useRef<Array<{ ts: number; calls: number }>>([]);
+
+  // Provider cooldown propagated from backend 429 handling
+  const providerCooldownUntilRef = useRef(0);
   const pendingViewportRef = useRef<{
     segmentId: string;
     city: string;
@@ -293,6 +302,23 @@ export function usePlacesOrchestrator(
         console.log(`🗺️ [Viewport] pending-saved`, { sig: viewportSig });
         return;
       }
+
+      // Provider cooldown — skip if Foursquare is rate-limiting us
+      const now = Date.now();
+      const cooldownRemaining = providerCooldownUntilRef.current - now;
+      if (cooldownRemaining > 0) {
+        console.log(`🗺️ [Viewport] provider-cooldown`, { sig: viewportSig, remainingS: Math.ceil(cooldownRemaining / 1000) });
+        return;
+      }
+
+      // Rolling window rate limit based on accumulated provider calls
+      viewportCallLogRef.current = viewportCallLogRef.current.filter(e => now - e.ts < VIEWPORT_WINDOW_MS);
+      const totalProviderCalls = viewportCallLogRef.current.reduce((s, e) => s + e.calls, 0);
+      if (totalProviderCalls >= VIEWPORT_PROVIDER_CALLS_CAP) {
+        console.log(`🗺️ [Viewport] rate-limited`, { sig: viewportSig, providerCallsInWindow: totalProviderCalls, cap: VIEWPORT_PROVIDER_CALLS_CAP });
+        return;
+      }
+
       inFlightViewportRef.current = true;
 
       const fetchStartMs = Date.now();
@@ -300,8 +326,19 @@ export function usePlacesOrchestrator(
       console.log(`🗺️ [Viewport] fetch-start`, { sig: viewportSig, segmentId, points: searchPoints.length, categories: categories.length, retry: isRetry });
 
       fetchViewportNearbyPlaces(city, searchPoints, categories)
-        .then(({ placesByCategory, partial }) => {
+        .then(({ placesByCategory, partial, providerCalls, cooldownRemainingS }) => {
           const durationMs = Date.now() - fetchStartMs;
+
+          // Record real provider calls for rate limit window
+          if (providerCalls) {
+            viewportCallLogRef.current.push({ ts: Date.now(), calls: providerCalls });
+          }
+
+          // Propagate provider cooldown to prevent useless fetches
+          if (cooldownRemainingS && cooldownRemainingS > 0) {
+            providerCooldownUntilRef.current = Date.now() + cooldownRemainingS * 1000;
+            console.log(`🗺️ [Viewport] provider-cooldown-set`, { cooldownS: cooldownRemainingS });
+          }
 
           // Merge with existing cached data (if retrying a partial)
           const existing = viewportCacheRef.current.get(cacheKey);
@@ -326,7 +363,7 @@ export function usePlacesOrchestrator(
           }
 
           const totalPlaces = Object.values(merged).reduce((s, p) => s + p.length, 0);
-          console.log(`🗺️ [Viewport] fetch-complete`, { sig: viewportSig, segmentId, durationMs, places: totalPlaces, partial, retry: isRetry, cached: !partial });
+          console.log(`🗺️ [Viewport] fetch-complete`, { sig: viewportSig, segmentId, durationMs, places: totalPlaces, partial, providerCalls, retry: isRetry });
         })
         .catch((err) => {
           console.log(`🗺️ [Viewport] fetch-error`, { sig: viewportSig, segmentId, error: err instanceof Error ? err.message : 'unknown' });
@@ -401,6 +438,8 @@ export function usePlacesOrchestrator(
     viewportCacheRef.current.clear();
     inFlightViewportRef.current = false;
     pendingViewportRef.current = null;
+    viewportCallLogRef.current = [];
+    providerCooldownUntilRef.current = 0;
   }, []);
 
   return {

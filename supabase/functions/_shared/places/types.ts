@@ -139,6 +139,8 @@ export interface PlacesResponseMeta {
   cacheStatus: 'hit' | 'miss' | 'stale';
   requestId: string;
   fallbackUsed?: boolean;
+  /** Actual Foursquare API calls made in this invocation. */
+  providerCalls?: number;
 }
 
 export interface PlacesViewportResponse {

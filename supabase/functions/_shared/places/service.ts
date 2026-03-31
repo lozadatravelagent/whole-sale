@@ -426,7 +426,13 @@ export async function fetchViewportPlaces(
   let fallbackUsed = false;
 
   // Fan-out with concurrency limit and per-task timeout
-  type SearchResult = { category: PlannerPlaceCategory; data: PlannerPlaceCandidate[]; cacheStatus: CacheState; pointIndex: number };
+  type SearchResult = {
+    category: PlannerPlaceCategory;
+    data: PlannerPlaceCandidate[];
+    cacheStatus: CacheState;
+    pointIndex: number;
+    failReason: string | null; // null = success, string = reason
+  };
 
   const startMs = Date.now();
 
@@ -442,21 +448,26 @@ export async function fetchViewportPlaces(
           limit,
         };
 
-        const result = await withCache<PlannerPlaceCandidate[]>('placesViewport', cacheParams, async () => {
-          const venues = await searchNearby({
-            lat: point.lat,
-            lng: point.lng,
-            categoryId: FSQ_CATEGORIES[category]?.join(','),
-            radius: point.radius,
-            limit,
+        try {
+          const result = await withCache<PlannerPlaceCandidate[]>('placesViewport', cacheParams, async () => {
+            const venues = await searchNearby({
+              lat: point.lat,
+              lng: point.lng,
+              categoryId: FSQ_CATEGORIES[category]?.join(','),
+              radius: point.radius,
+              limit,
+            });
+
+            const mapped = dedupeCandidates(venues.map((venue) => mapVenueToCandidate(venue, category))).slice(0, limit);
+            await hydrateCandidatesWithWikipedia(mapped, city);
+            return mapped;
           });
 
-          const mapped = dedupeCandidates(venues.map((venue) => mapVenueToCandidate(venue, category))).slice(0, limit);
-          await hydrateCandidatesWithWikipedia(mapped, city);
-          return mapped;
-        });
-
-        return { category, data: result.data, cacheStatus: result.cacheStatus, pointIndex: pointIdx };
+          return { category, data: result.data, cacheStatus: result.cacheStatus, pointIndex: pointIdx, failReason: null };
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : 'unknown';
+          return { category, data: [] as PlannerPlaceCandidate[], cacheStatus: 'miss' as CacheState, pointIndex: pointIdx, failReason: reason };
+        }
       };
     }),
   );
@@ -464,14 +475,69 @@ export async function fetchViewportPlaces(
   const rawResults = await runWithConcurrencyLimit(tasks, VIEWPORT_CONCURRENCY, VIEWPORT_TASK_TIMEOUT_MS);
   const durationMs = Date.now() - startMs;
 
-  // Task-level stats
-  const succeeded = rawResults.filter((r): r is SearchResult => r !== null);
+  // Task-level stats — null = pool timeout, non-null = task completed (success or caught error)
+  const completed = rawResults.filter((r): r is SearchResult => r !== null);
+  const succeeded = completed.filter((r) => r.failReason === null);
+  const taskErrors = completed.filter((r) => r.failReason !== null);
+  const capExceeded = taskErrors.filter((r) => r.failReason?.includes('provider_call_cap_exceeded')).length;
+  const rateLimited = taskErrors.filter((r) => r.failReason?.includes('provider_rate_limited')).length;
   const timedOut = rawResults.filter((r) => r === null).length;
   const cacheHits = succeeded.filter((r) => r.cacheStatus === 'hit').length;
   const cacheMisses = succeeded.filter((r) => r.cacheStatus === 'miss').length;
   const cacheStale = succeeded.filter((r) => r.cacheStatus === 'stale').length;
 
-  // Merge results by category, then dedup across points (skip null = timed out/failed)
+  // ── Per-category and per-point breakdown ────────────────────────────────
+
+  const catStats = new Map<string, { hits: number; misses: number; stale: number; timeouts: number; errors: number; rateLimited: number; places: number }>();
+  for (const cat of categories) catStats.set(cat, { hits: 0, misses: 0, stale: 0, timeouts: 0, errors: 0, rateLimited: 0, places: 0 });
+
+  const ptStats = new Map<number, { succeeded: number; failed: number; places: number }>();
+  for (let i = 0; i < points.length; i++) ptStats.set(i, { succeeded: 0, failed: 0, places: 0 });
+
+  rawResults.forEach((result, index) => {
+    const ptIdx = Math.floor(index / categories.length);
+    const cat = categories[index % categories.length];
+    const cs = catStats.get(cat)!;
+    const ps = ptStats.get(ptIdx)!;
+
+    if (result === null) {
+      cs.timeouts++;
+      ps.failed++;
+    } else if (result.failReason) {
+      if (result.failReason.includes('provider_rate_limited')) cs.rateLimited++;
+      else cs.errors++;
+      ps.failed++;
+    } else {
+      if (result.cacheStatus === 'hit') cs.hits++;
+      else if (result.cacheStatus === 'stale') cs.stale++;
+      else cs.misses++;
+      cs.places += result.data.length;
+      ps.succeeded++;
+      ps.places += result.data.length;
+    }
+  });
+
+  // Compact: only include non-zero stats per category
+  const categoryBreakdown: Record<string, Record<string, number>> = {};
+  for (const [cat, s] of catStats) {
+    const c: Record<string, number> = { places: s.places };
+    if (s.hits) c.hits = s.hits;
+    if (s.misses) c.misses = s.misses;
+    if (s.stale) c.stale = s.stale;
+    if (s.timeouts) c.timeouts = s.timeouts;
+    if (s.errors) c.errors = s.errors;
+    if (s.rateLimited) c.rate_limited = s.rateLimited;
+    categoryBreakdown[cat] = c;
+  }
+
+  const pointBreakdown = Array.from(ptStats.entries()).map(([idx, s]) => {
+    const entry: Record<string, number> = { point: idx, succeeded: s.succeeded, places: s.places };
+    if (s.failed) entry.failed = s.failed;
+    return entry;
+  });
+
+  // ── Merge results by category, then dedup across points ─────────────────
+
   for (const result of succeeded) {
     const { category, data, cacheStatus } = result;
     placesByCategory[category] = [...(placesByCategory[category] || []), ...data];
@@ -479,7 +545,6 @@ export async function fetchViewportPlaces(
     if (cacheStatus === 'stale' && aggregateCacheStatus !== 'miss') aggregateCacheStatus = 'stale';
   }
 
-  // Cross-point dedup per category
   for (const category of categories) {
     if (placesByCategory[category]?.length) {
       placesByCategory[category] = dedupeCandidates(placesByCategory[category]!);
@@ -487,22 +552,27 @@ export async function fetchViewportPlaces(
   }
 
   const totalPlaces = Object.values(placesByCategory).reduce((sum, places) => sum + (places?.length ?? 0), 0);
-  const hasPartialFailures = timedOut > 0;
+  const hasPartialFailures = timedOut > 0 || taskErrors.length > 0;
   fallbackUsed = Object.values(placesByCategory).some((places) => places?.some((place) => place.source === 'wikipedia'));
 
   logger.info('places.viewport', 'Fetched places viewport', {
     city,
     points: points.length,
-    categories,
     total_tasks: rawResults.length,
+    succeeded: succeeded.length,
     cache_hits: cacheHits,
     cache_misses: cacheMisses,
     cache_stale: cacheStale,
     timeouts: timedOut,
+    errors: taskErrors.length - capExceeded - rateLimited,
+    cap_exceeded: capExceeded,
+    rate_limited: rateLimited,
     total_places: totalPlaces,
     duration_ms: durationMs,
     partial: hasPartialFailures,
     limit,
+    category_breakdown: categoryBreakdown,
+    point_breakdown: pointBreakdown,
   });
 
   return {

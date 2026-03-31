@@ -317,6 +317,8 @@ export function buildViewportSignature(
 export interface ViewportNearbyResult {
   placesByCategory: Record<string, PlannerPlaceCandidate[]>;
   partial?: boolean;
+  providerCalls?: number;
+  cooldownRemainingS?: number;
 }
 
 export async function fetchViewportNearbyPlaces(
@@ -327,7 +329,7 @@ export async function fetchViewportNearbyPlaces(
   const requestedCategories = Array.from(new Set(categories));
   const primary = searchPoints[0];
 
-  const response = await invokePlacesFunction<{ placesByCategory?: Record<string, PlannerPlaceCandidate[]>; partial?: boolean }>('places-viewport', {
+  const response = await invokePlacesFunction<{ placesByCategory?: Record<string, PlannerPlaceCandidate[]>; partial?: boolean; providerCalls?: number; cooldownRemainingS?: number }>('places-viewport', {
     city,
     location: primary.center,
     categories: requestedCategories,
@@ -343,7 +345,7 @@ export async function fetchViewportNearbyPlaces(
   for (const cat of requestedCategories) {
     placesByCategory[cat] = responsePlaces[cat] || [];
   }
-  return { placesByCategory, partial: response.partial };
+  return { placesByCategory, partial: response.partial, providerCalls: response.providerCalls, cooldownRemainingS: response.cooldownRemainingS };
 }
 
 export async function fetchNearbyHotels(
