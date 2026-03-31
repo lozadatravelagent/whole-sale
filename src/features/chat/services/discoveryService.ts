@@ -630,7 +630,8 @@ async function fetchDiscoveryCandidates(destination: DiscoveryDestination, query
   const { fetchNearbyPlacesBundle, fetchPlaceRecommendations } = await import('@/features/trip-planner/services/placesService');
   const categories = getRequestedCategories(queryType);
   const [nearbyBundle, recommendedGroups] = await Promise.all([
-    fetchNearbyPlacesBundle(destination.city, { lat: destination.lat, lng: destination.lng }, categories),
+    fetchNearbyPlacesBundle(destination.city, { lat: destination.lat, lng: destination.lng }, categories)
+      .catch(() => ({}) as Record<string, PlannerPlaceCandidate[]>),
     fetchPlaceRecommendations([destination.city], 8),
   ]);
 
@@ -646,7 +647,8 @@ async function fetchConservativeBroadCandidates(destination: DiscoveryDestinatio
   const { fetchNearbyPlacesBundle, fetchPlaceRecommendations } = await import('@/features/trip-planner/services/placesService');
   const strictCategories: PlannerPlaceCategory[] = ['sights', 'museum', 'culture', 'parks'];
   const [nearbyBundle, recommendedGroups] = await Promise.all([
-    fetchNearbyPlacesBundle(destination.city, { lat: destination.lat, lng: destination.lng }, strictCategories),
+    fetchNearbyPlacesBundle(destination.city, { lat: destination.lat, lng: destination.lng }, strictCategories)
+      .catch(() => ({}) as Record<string, PlannerPlaceCandidate[]>),
     fetchPlaceRecommendations([destination.city], 12),
   ]);
 

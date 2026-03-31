@@ -92,6 +92,8 @@ export interface PlacesViewportRequest {
   categories?: PlannerPlaceCategory[];
   radius?: number;
   limit?: number;
+  /** Multi-point mode: search multiple locations in a single invocation. */
+  searchPoints?: Array<{ location: PlacesLocation; radius?: number }>;
 }
 
 export interface PlaceSummaryRequest {
@@ -141,6 +143,8 @@ export interface PlacesResponseMeta {
 
 export interface PlacesViewportResponse {
   placesByCategory: Partial<Record<PlannerPlaceCategory, PlannerPlaceCandidate[]>>;
+  /** True when some point×category tasks failed or timed out. */
+  partial?: boolean;
 }
 
 export interface PlaceRecommendationsResponse {

@@ -51,6 +51,7 @@ import {
   haversineDistanceKm,
 } from '../utils';
 import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
+import { computeViewportSearchPoints, viewportRefetchThreshold, buildViewportSignature, viewportRadiusFromBounds } from '../services/placesService';
 import { usePlaceDetail } from '../hooks/usePlaceDetail';
 import { usePlacesOrchestrator, type PlaceBlock } from '../hooks/usePlacesOrchestrator';
 import PlannerContextSidebar from './PlannerContextSidebar';
@@ -273,11 +274,56 @@ export default function TripPlannerWorkspace({
     isLoading: mapPlacesLoading,
     chatPlaceBlocks,
     discoveryPlacesBySegment,
+    categoryStates: mapCategoryStates,
     toggleCategory: handleMapCategoryToggle,
     ensureCategoryActive,
     resetForConversation: resetPlaces,
     allPlacesBySegment: placesBySegment,
+    fetchForViewport,
   } = usePlacesOrchestrator(plannerState, activeMapSegmentId);
+
+  // ── Viewport-triggered loading ──────────────────────────────────────────
+  const lastViewportSigRef = useRef<string | null>(null);
+
+  // Reset on segment change so the new segment can trigger viewport fetch
+  useEffect(() => {
+    lastViewportSigRef.current = null;
+  }, [activeMapSegmentId]);
+
+  const handleViewportChanged = useCallback(({ center, zoom, bounds }: {
+    center: { lat: number; lng: number };
+    zoom: number;
+    bounds: { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } };
+  }) => {
+    if (!activeMapSegmentId || !visibleMapPlannerState) return;
+    const seg = visibleMapPlannerState.segments.find(s => s.id === activeMapSegmentId);
+    if (!seg?.location) return;
+
+    // Skip if zoom too far out or too close in
+    if (zoom < 11 || zoom > 16) return;
+
+    // Build signature from bounds + zoom bucket — catches pan AND zoom changes
+    const sig = buildViewportSignature(zoom, bounds.sw, bounds.ne);
+
+    // Skip if same viewport as last moveEnd (prevents re-fire without real change)
+    if (sig === lastViewportSigRef.current) return;
+    lastViewportSigRef.current = sig;
+
+    // Derive threshold from real viewport bounds
+    const vpRadius = viewportRadiusFromBounds(center, bounds.sw, bounds.ne);
+    const threshold = viewportRefetchThreshold(vpRadius);
+
+    // Skip if viewport center is close to segment center (segment fetch already covers)
+    const distFromSegment = Math.abs(center.lat - seg.location.lat) + Math.abs(center.lng - seg.location.lng);
+    if (distFromSegment < threshold) return;
+
+    const cats = PLANNER_MAP_FILTERS.filter(c => mapActiveCategories[c] && c !== 'hotel') as PlannerPlaceCategory[];
+    if (cats.length === 0) return;
+
+    // Cover the viewport rectangle with 1-3 circle searches
+    const searchPoints = computeViewportSearchPoints(center, bounds.sw, bounds.ne);
+    fetchForViewport(activeMapSegmentId, seg.city, searchPoints, cats, sig);
+  }, [activeMapSegmentId, visibleMapPlannerState, mapActiveCategories, fetchForViewport]);
 
   // Auto-fill segments with real places when places are loaded and segment is ready
   useEffect(() => {
@@ -1292,21 +1338,32 @@ export default function TripPlannerWorkspace({
                     </Button>
                   </div>
                   <div className="flex flex-wrap justify-center gap-2 pt-1">
-                    {PLANNER_MAP_FILTERS.map((category) => (
-                      <button
-                        key={category}
-                        type="button"
-                        className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${
-                          mapActiveCategories[category]
-                            ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                            : 'border-slate-200 bg-slate-100 text-slate-600'
-                        }`}
-                        onClick={() => handleMapCategoryToggle(category)}
-                      >
-                        <span className="mr-1">{getPlannerPlaceEmoji(category)}</span>
-                        {PLANNER_MAP_FILTER_LABELS[category]}
-                      </button>
-                    ))}
+                    {PLANNER_MAP_FILTERS.map((category) => {
+                      const catState = mapCategoryStates[category];
+                      return (
+                        <button
+                          key={category}
+                          type="button"
+                          className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${
+                            mapActiveCategories[category]
+                              ? catState === 'failed'
+                                ? 'border-red-300 bg-red-50 text-red-700'
+                                : 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                              : 'border-slate-200 bg-slate-100 text-slate-600'
+                          }`}
+                          onClick={() => handleMapCategoryToggle(category)}
+                        >
+                          {catState === 'loading' ? (
+                            <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
+                          ) : catState === 'failed' ? (
+                            <AlertTriangle className="mr-1 inline h-3 w-3" />
+                          ) : (
+                            <span className="mr-1">{getPlannerPlaceEmoji(category)}</span>
+                          )}
+                          {PLANNER_MAP_FILTER_LABELS[category]}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -1483,6 +1540,7 @@ export default function TripPlannerWorkspace({
       onOpenPlaceDetail={isDraftPlanner ? undefined : handleOpenPlaceDetail}
       highlightedPlaceId={highlightedPlaceId}
       onInventoryHotelPlacesReady={handleInventoryHotelPlacesReady}
+      onViewportChanged={handleViewportChanged}
     />
   ) : null;
 
@@ -2106,16 +2164,29 @@ export default function TripPlannerWorkspace({
 
                 {/* Map filters overlay — bottom center */}
                 <div className="absolute bottom-3 left-3 right-3 z-30 flex justify-center gap-1 overflow-x-auto rounded-full border bg-background/90 px-1.5 py-1 shadow-md backdrop-blur-sm" style={{ scrollbarWidth: 'none' }}>
-                  {PLANNER_MAP_FILTERS.map((category) => (
-                    <button key={category} type="button"
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                        mapActiveCategories[category] ? 'bg-foreground text-background shadow-sm' : 'text-muted-foreground hover:bg-muted'
-                      }`}
-                      onClick={() => handleMapCategoryToggle(category)}>
-                      <span className="mr-0.5">{getPlannerPlaceEmoji(category)}</span>
-                      {PLANNER_MAP_FILTER_LABELS[category]}
-                    </button>
-                  ))}
+                  {PLANNER_MAP_FILTERS.map((category) => {
+                    const catState = mapCategoryStates[category];
+                    return (
+                      <button key={category} type="button"
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                          mapActiveCategories[category]
+                            ? catState === 'failed'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-foreground text-background shadow-sm'
+                            : 'text-muted-foreground hover:bg-muted'
+                        }`}
+                        onClick={() => handleMapCategoryToggle(category)}>
+                        {catState === 'loading' ? (
+                          <Loader2 className="mr-0.5 inline h-3 w-3 animate-spin" />
+                        ) : catState === 'failed' ? (
+                          <AlertTriangle className="mr-0.5 inline h-3 w-3" />
+                        ) : (
+                          <span className="mr-0.5">{getPlannerPlaceEmoji(category)}</span>
+                        )}
+                        {PLANNER_MAP_FILTER_LABELS[category]}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

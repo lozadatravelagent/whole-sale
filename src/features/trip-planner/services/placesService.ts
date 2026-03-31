@@ -166,10 +166,15 @@ export async function fetchNearbyPlacesBundle(
       location,
       categories: missingCategories,
       radius: 2500,
-      limit: 20,
+      limit: 30,
     });
 
-    const placesByCategory = response?.placesByCategory || {};
+    if (!response) {
+      // Edge function failed or was blocked by cooldown — do NOT cache empty results
+      throw new Error('places-viewport invocation failed');
+    }
+
+    const placesByCategory = response.placesByCategory || {};
 
     await Promise.all(missingCategories.map(async (category) => {
       const candidates = placesByCategory[category] || [];
@@ -194,6 +199,151 @@ export async function fetchNearbyPlacesByCategory(
 ): Promise<PlannerPlaceCandidate[]> {
   const bundle = await fetchNearbyPlacesBundle(city, location, [category]);
   return bundle[category] ?? [];
+}
+
+/**
+ * Maps zoom level to search radius in meters.
+ * Higher zoom = smaller area visible = smaller radius.
+ * Formula: 250 * 1.6^(16 - zoom), clamped to [250, 5000].
+ *
+ * Produces:  z16→250m  z15→400m  z14→640m  z13→1024m  z12→1638m  z11→2621m  z≤10→5000m
+ * Backend accepts 250-5000m (enforced by sanitizeRadius in service.ts).
+ */
+export function zoomToRadius(zoom: number): number {
+  const raw = 250 * Math.pow(1.6, 16 - zoom);
+  return Math.max(250, Math.min(5000, Math.round(raw)));
+}
+
+/**
+ * Distance threshold for viewport refetch (in degrees).
+ * Scales with radius so low zoom = large threshold, high zoom = small threshold.
+ * Roughly half the radius converted to degrees (1° ≈ 111km).
+ */
+export function viewportRefetchThreshold(radius: number): number {
+  return (radius * 0.5) / 111_000;
+}
+
+/**
+ * Derives a search radius from the actual visible map bounds.
+ * Uses half of the longer span (lat vs lng) so the circle covers the majority
+ * of the viewport rectangle. Adjusts longitude span by cos(lat) for accuracy.
+ * Clamped to [250, 5000] to match backend limits.
+ */
+export function viewportRadiusFromBounds(
+  center: { lat: number; lng: number },
+  sw: { lat: number; lng: number },
+  ne: { lat: number; lng: number },
+): number {
+  const dLat = Math.abs(ne.lat - sw.lat) * 111_000;
+  const dLng = Math.abs(ne.lng - sw.lng) * 111_000 * Math.cos(center.lat * Math.PI / 180);
+  const raw = Math.max(dLat, dLng) / 2;
+  return Math.max(250, Math.min(5000, Math.round(raw)));
+}
+
+/**
+ * Computes 1-3 search points to approximate the visible viewport rectangle
+ * with circles, since the backend API searches point+radius.
+ *
+ * - maxSpan ≤ 8km  → 1 search at center (z13+)
+ * - maxSpan 8-14km → 2 searches offset along longer axis (z12 area)
+ * - maxSpan > 14km → 3 searches offset along longer axis (z11 area)
+ *
+ * Each search point has its own center and radius clamped to [250, 5000].
+ */
+export function computeViewportSearchPoints(
+  center: { lat: number; lng: number },
+  sw: { lat: number; lng: number },
+  ne: { lat: number; lng: number },
+): Array<{ center: { lat: number; lng: number }; radius: number }> {
+  const cosLat = Math.cos(center.lat * Math.PI / 180);
+  const dLat = Math.abs(ne.lat - sw.lat) * 111_000;
+  const dLng = Math.abs(ne.lng - sw.lng) * 111_000 * cosLat;
+  const maxSpan = Math.max(dLat, dLng);
+
+  // 1 search: viewport fits within a single circle
+  if (maxSpan <= 8000) {
+    return [{ center, radius: Math.max(250, Math.min(5000, Math.round(maxSpan / 2))) }];
+  }
+
+  const isWider = dLng > dLat;
+  const offsetDeg = isWider
+    ? (ne.lng - sw.lng) / 4
+    : (ne.lat - sw.lat) / 4;
+
+  const shift = (sign: number) => isWider
+    ? { lat: center.lat, lng: center.lng + sign * offsetDeg }
+    : { lat: center.lat + sign * offsetDeg, lng: center.lng };
+
+  // 2 searches: centers at 25% and 75% of the longer axis
+  if (maxSpan <= 14000) {
+    const r = Math.max(250, Math.min(5000, Math.round(maxSpan / 3)));
+    return [
+      { center: shift(-1), radius: r },
+      { center: shift(1), radius: r },
+    ];
+  }
+
+  // 3 searches: center + offset sides
+  return [
+    { center: shift(-1), radius: 5000 },
+    { center, radius: 5000 },
+    { center: shift(1), radius: 5000 },
+  ];
+}
+
+/**
+ * Builds a stable, deterministic viewport signature from bounds + zoom.
+ * Bounds are bucketized to a grid proportional to the search radius at that
+ * zoom level, so micro-movements within the same bucket produce the same key.
+ *
+ * Grid size: ~250m at z16, ~640m at z14, ~1.6km at z12, ~2.6km at z11.
+ */
+export function buildViewportSignature(
+  zoom: number,
+  sw: { lat: number; lng: number },
+  ne: { lat: number; lng: number },
+): string {
+  const zoomBucket = Math.round(zoom);
+  const bucketSize = zoomToRadius(zoomBucket) / 111_000;
+  const r = (v: number) => (Math.round(v / bucketSize) * bucketSize).toFixed(4);
+  return `${zoomBucket}:${r(sw.lat)}:${r(sw.lng)}:${r(ne.lat)}:${r(ne.lng)}`;
+}
+
+/**
+ * Viewport-triggered nearby places fetch. Bypasses IndexedDB cache because
+ * the cache key doesn't include location — different viewport centers in the
+ * same city must not share cached results. The backend handles its own cache.
+ */
+export interface ViewportNearbyResult {
+  placesByCategory: Record<string, PlannerPlaceCandidate[]>;
+  partial?: boolean;
+}
+
+export async function fetchViewportNearbyPlaces(
+  city: string,
+  searchPoints: Array<{ center: { lat: number; lng: number }; radius: number }>,
+  categories: PlannerPlaceCategory[],
+): Promise<ViewportNearbyResult> {
+  const requestedCategories = Array.from(new Set(categories));
+  const primary = searchPoints[0];
+
+  const response = await invokePlacesFunction<{ placesByCategory?: Record<string, PlannerPlaceCandidate[]>; partial?: boolean }>('places-viewport', {
+    city,
+    location: primary.center,
+    categories: requestedCategories,
+    radius: primary.radius,
+    limit: 30,
+    searchPoints: searchPoints.map(sp => ({ location: sp.center, radius: sp.radius })),
+  });
+
+  if (!response) return { placesByCategory: {}, partial: true };
+
+  const placesByCategory: Record<string, PlannerPlaceCandidate[]> = {};
+  const responsePlaces = response.placesByCategory || {};
+  for (const cat of requestedCategories) {
+    placesByCategory[cat] = responsePlaces[cat] || [];
+  }
+  return { placesByCategory, partial: response.partial };
 }
 
 export async function fetchNearbyHotels(
@@ -292,4 +442,19 @@ export async function fetchInventoryHotelPlaces(
   const places = result || [];
   await placesCache.set('geocoding', cacheKey, places);
   return places;
+}
+
+export function clearNearbyPlacesCooldown(
+  city: string,
+  location: { lat: number; lng: number },
+  categories: PlannerPlaceCategory[],
+): void {
+  const payload = {
+    city,
+    location,
+    categories: Array.from(new Set(categories)),
+    radius: 2500,
+    limit: 30,
+  };
+  failedRequestCooldown.delete(requestKey('places-viewport', payload));
 }

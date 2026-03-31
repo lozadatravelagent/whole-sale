@@ -32,7 +32,7 @@ interface HighlightGroup {
 // Module-level cache so we never re-fetch the same city
 const cityHighlightsCache = new Map<string, PlaceHighlight[]>();
 const PRIMARY_HIGHLIGHT_CATEGORIES = new Set<PlannerPlaceCandidate['category']>(['museum', 'sights', 'culture', 'activity', 'parks']);
-const TRUSTED_PHOTO_CATEGORIES = new Set<PlannerPlaceCandidate['category']>(['museum', 'sights', 'culture', 'activity', 'parks']);
+const TRUSTED_PHOTO_CATEGORIES = new Set<PlannerPlaceCandidate['category']>(['museum', 'sights', 'culture', 'activity', 'parks', 'restaurant', 'cafe']);
 const CHAIN_NAME_PATTERN = /\b(wendy'?s|mcdonald'?s|burger king|kfc|subway|starbucks|pizza hut|domino'?s|hard rock|taco bell)\b/i;
 
 function normalizeKey(value: string): string {
@@ -390,8 +390,11 @@ export function DiscoveryPlaceCard({ place, onClick, onAddClick }: { place: Plan
         <p className="line-clamp-1 text-[13px] font-semibold leading-tight text-foreground">
           {place.name}
         </p>
+        {place.formattedAddress && (
+          <p className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">{place.formattedAddress}</p>
+        )}
         {place.rating != null && (
-          <div className="mt-1 flex items-center gap-1">
+          <div className="mt-0.5 flex items-center gap-1">
             <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
             <span className="text-xs font-medium text-foreground">
               {place.rating.toFixed(1)}

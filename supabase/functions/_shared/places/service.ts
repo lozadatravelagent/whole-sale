@@ -44,16 +44,16 @@ interface ServiceResult<T> {
 const DEFAULT_VIEWPORT_CATEGORIES: PlannerPlaceCategory[] = ['restaurant', 'cafe', 'museum', 'activity'];
 
 const FSQ_CATEGORIES: Record<PlannerPlaceCategory, string[]> = {
-  hotel: ['19014'],
-  restaurant: ['13065', '13064'],
-  cafe: ['13032', '13034'],
-  museum: ['10027', '10024', '10058'],
-  activity: ['16000', '10000', '10056', '10059', '16011'],
-  sights: ['16026', '12104', '16020'],
-  nightlife: ['13003', '10032'],
-  parks: ['16032', '16019', '16046'],
-  shopping: ['17000', '17114'],
-  culture: ['10025', '10028'],
+  hotel: ['19014', '19013', '19012'],
+  restaurant: ['13065', '13064', '13338', '13145', '13236', '13263', '13303'],
+  cafe: ['13032', '13034', '13035', '13063'],
+  museum: ['10027', '10024', '10058', '10025'],
+  activity: ['16000', '10000', '10056', '10059', '16011', '16015', '16039'],
+  sights: ['16026', '12104', '16020', '16009', '16008', '16004'],
+  nightlife: ['13003', '10032', '10039', '10043'],
+  parks: ['16032', '16019', '16046', '16034'],
+  shopping: ['17000', '17114', '17069', '17018'],
+  culture: ['10025', '10028', '10022', '10023'],
 };
 
 function createAdminClient() {
@@ -112,9 +112,9 @@ function inferCategoryFromFSQ(
   if (/(museum|museo|gallery|galeria)/.test(normalizedName)) return 'museum';
   if (/(hotel|resort|suite)/.test(normalizedName)) return 'hotel';
   if (/(cafe|coffee|cafeteria|brunch)/.test(normalizedName)) return 'cafe';
-  if (/(restaurant|restaurante|bistro|bar|rooftop|tapas|steakhouse|pizzeria)/.test(normalizedName)) return 'restaurant';
+  if (/(club|night|cocktail|pub|\bbar\b)/.test(normalizedName)) return 'nightlife';
+  if (/(restaurant|restaurante|bistro|rooftop|tapas|steakhouse|pizzeria)/.test(normalizedName)) return 'restaurant';
   if (/(park|parque|garden|jardin|nature)/.test(normalizedName)) return 'parks';
-  if (/(club|night|cocktail|pub)/.test(normalizedName)) return 'nightlife';
   if (/(shopping|mall|market|mercado|boutique)/.test(normalizedName)) return 'shopping';
   if (/(monument|landmark|cathedral|palace|tower|castle|plaza|temple|church)/.test(normalizedName)) return 'sights';
 
@@ -182,8 +182,18 @@ function dedupeCandidates(candidates: PlannerPlaceCandidate[]): PlannerPlaceCand
 
 function mapVenueToCandidate(venue: CanonicalVenue, forcedCategory?: PlannerPlaceCategory): PlannerPlaceCandidate {
   const category = forcedCategory || inferCategoryFromFSQ(venue.categories, venue.name);
-  const photoUrl = getVenuePhotoUrl(venue);
   const types = venue.categories?.map((categoryItem) => categoryItem.name).filter(Boolean);
+
+  // Extract up to 3 photos (hero + 2 extras from photo groups)
+  const photoUrls: string[] = [];
+  const hero = getVenuePhotoUrl(venue);
+  if (hero) photoUrls.push(hero);
+  const extras = venue.photos?.groups?.[0]?.items?.slice(1, 3) ?? [];
+  for (const photo of extras) {
+    if (photo.prefix && photo.suffix) {
+      photoUrls.push(`${photo.prefix}400x300${photo.suffix}`);
+    }
+  }
 
   return {
     placeId: venue.id,
@@ -193,7 +203,7 @@ function mapVenueToCandidate(venue: CanonicalVenue, forcedCategory?: PlannerPlac
     lng: venue.location?.lng,
     rating: venue.rating != null ? venue.rating / 2 : undefined,
     userRatingsTotal: venue.ratingSignals,
-    photoUrls: photoUrl ? [photoUrl] : [],
+    photoUrls,
     category,
     activityType: inferPlannerActivityType(types, venue.name, category),
     types,
@@ -293,6 +303,43 @@ async function withCache<T>(
   };
 }
 
+const VIEWPORT_CONCURRENCY = 6;
+const VIEWPORT_TASK_TIMEOUT_MS = 8000;
+
+/**
+ * Runs async task factories with a concurrency limit and per-task logical timeout.
+ * Timeout stops WAITING (Promise.race), not the underlying operation — the task
+ * may continue running until the edge function exits. Timer is cleaned up on
+ * normal completion to avoid leaks.
+ * Tasks that timeout or throw return null.
+ */
+async function runWithConcurrencyLimit<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number,
+  taskTimeoutMs: number,
+): Promise<Array<T | null>> {
+  const results: Array<T | null> = new Array(tasks.length).fill(null);
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (cursor < tasks.length) {
+      const index = cursor++;
+      results[index] = await new Promise<T | null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), taskTimeoutMs);
+        tasks[index]()
+          .then((value) => { clearTimeout(timer); resolve(value); })
+          .catch(() => { clearTimeout(timer); resolve(null); });
+      });
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, tasks.length) }, () => worker()),
+  );
+
+  return results;
+}
+
 function assertViewportRequest(input: PlacesViewportRequest) {
   if (!input?.city?.trim()) {
     throw new Error('city is required');
@@ -361,60 +408,105 @@ export async function fetchViewportPlaces(
   assertViewportRequest(input);
 
   const categories = sanitizeCategoryList(input.categories);
-  const radius = sanitizeRadius(input.radius);
+  const defaultRadius = sanitizeRadius(input.radius);
   const limit = sanitizeLimit(input.limit, 20, 30);
   const city = input.city.trim();
-  const roundedLocation = {
-    lat: roundCoordinate(input.location.lat),
-    lng: roundCoordinate(input.location.lng),
-  };
+
+  // Build search points: use searchPoints[] if provided, else single location
+  const points = (input.searchPoints?.length ? input.searchPoints : [{ location: input.location, radius: input.radius }])
+    .slice(0, 3) // Hard cap at 3 points
+    .map((sp) => ({
+      lat: roundCoordinate(sp.location.lat),
+      lng: roundCoordinate(sp.location.lng),
+      radius: sanitizeRadius(sp.radius ?? defaultRadius),
+    }));
 
   const placesByCategory: Partial<Record<PlannerPlaceCategory, PlannerPlaceCandidate[]>> = {};
   let aggregateCacheStatus: CacheState = 'hit';
   let fallbackUsed = false;
 
-  for (const category of categories) {
-    const cacheParams = {
-      city: normalizeText(city),
-      category,
-      lat: roundedLocation.lat,
-      lng: roundedLocation.lng,
-      radius,
-      limit,
-    };
+  // Fan-out with concurrency limit and per-task timeout
+  type SearchResult = { category: PlannerPlaceCategory; data: PlannerPlaceCandidate[]; cacheStatus: CacheState; pointIndex: number };
 
-    const result = await withCache<PlannerPlaceCandidate[]>('placesViewport', cacheParams, async () => {
-      const venues = await searchNearby({
-        lat: roundedLocation.lat,
-        lng: roundedLocation.lng,
-        categoryId: FSQ_CATEGORIES[category]?.join(','),
-        radius,
-        limit,
-      });
+  const startMs = Date.now();
 
-      const mapped = dedupeCandidates(venues.map((venue) => mapVenueToCandidate(venue, category))).slice(0, limit);
-      await hydrateCandidatesWithWikipedia(mapped, city);
-      return mapped;
-    });
+  const tasks = points.flatMap((point, pointIdx) =>
+    categories.map((category): (() => Promise<SearchResult>) => {
+      return async () => {
+        const cacheParams = {
+          city: normalizeText(city),
+          category,
+          lat: point.lat,
+          lng: point.lng,
+          radius: point.radius,
+          limit,
+        };
 
-    placesByCategory[category] = result.data;
+        const result = await withCache<PlannerPlaceCandidate[]>('placesViewport', cacheParams, async () => {
+          const venues = await searchNearby({
+            lat: point.lat,
+            lng: point.lng,
+            categoryId: FSQ_CATEGORIES[category]?.join(','),
+            radius: point.radius,
+            limit,
+          });
 
-    if (result.cacheStatus === 'miss') aggregateCacheStatus = 'miss';
-    if (result.cacheStatus === 'stale' && aggregateCacheStatus !== 'miss') aggregateCacheStatus = 'stale';
+          const mapped = dedupeCandidates(venues.map((venue) => mapVenueToCandidate(venue, category))).slice(0, limit);
+          await hydrateCandidatesWithWikipedia(mapped, city);
+          return mapped;
+        });
+
+        return { category, data: result.data, cacheStatus: result.cacheStatus, pointIndex: pointIdx };
+      };
+    }),
+  );
+
+  const rawResults = await runWithConcurrencyLimit(tasks, VIEWPORT_CONCURRENCY, VIEWPORT_TASK_TIMEOUT_MS);
+  const durationMs = Date.now() - startMs;
+
+  // Task-level stats
+  const succeeded = rawResults.filter((r): r is SearchResult => r !== null);
+  const timedOut = rawResults.filter((r) => r === null).length;
+  const cacheHits = succeeded.filter((r) => r.cacheStatus === 'hit').length;
+  const cacheMisses = succeeded.filter((r) => r.cacheStatus === 'miss').length;
+  const cacheStale = succeeded.filter((r) => r.cacheStatus === 'stale').length;
+
+  // Merge results by category, then dedup across points (skip null = timed out/failed)
+  for (const result of succeeded) {
+    const { category, data, cacheStatus } = result;
+    placesByCategory[category] = [...(placesByCategory[category] || []), ...data];
+    if (cacheStatus === 'miss') aggregateCacheStatus = 'miss';
+    if (cacheStatus === 'stale' && aggregateCacheStatus !== 'miss') aggregateCacheStatus = 'stale';
   }
 
+  // Cross-point dedup per category
+  for (const category of categories) {
+    if (placesByCategory[category]?.length) {
+      placesByCategory[category] = dedupeCandidates(placesByCategory[category]!);
+    }
+  }
+
+  const totalPlaces = Object.values(placesByCategory).reduce((sum, places) => sum + (places?.length ?? 0), 0);
+  const hasPartialFailures = timedOut > 0;
   fallbackUsed = Object.values(placesByCategory).some((places) => places?.some((place) => place.source === 'wikipedia'));
 
   logger.info('places.viewport', 'Fetched places viewport', {
     city,
+    points: points.length,
     categories,
-    radius,
+    total_tasks: rawResults.length,
+    cache_hits: cacheHits,
+    cache_misses: cacheMisses,
+    cache_stale: cacheStale,
+    timeouts: timedOut,
+    total_places: totalPlaces,
+    duration_ms: durationMs,
+    partial: hasPartialFailures,
     limit,
-    cache_status: aggregateCacheStatus,
   });
 
   return {
-    data: { placesByCategory },
+    data: { placesByCategory, partial: hasPartialFailures || undefined },
     cacheStatus: aggregateCacheStatus,
     fallbackUsed,
   };
@@ -557,7 +649,7 @@ export async function fetchPlaceRecommendations(
   const response: PlaceRecommendationsResponse = { destinations: [] };
   let aggregateCacheStatus: CacheState = 'hit';
 
-  for (const city of destinations) {
+  const cityResults = await Promise.all(destinations.map(async (city) => {
     const cacheParams = {
       city: normalizeText(city),
       limitPerCity,
@@ -583,10 +675,13 @@ export async function fetchPlaceRecommendations(
       return candidates;
     });
 
-    response.destinations.push({ city, places: result.data });
+    return { city, ...result };
+  }));
 
-    if (result.cacheStatus === 'miss') aggregateCacheStatus = 'miss';
-    if (result.cacheStatus === 'stale' && aggregateCacheStatus !== 'miss') aggregateCacheStatus = 'stale';
+  for (const { city, data, cacheStatus } of cityResults) {
+    response.destinations.push({ city, places: data });
+    if (cacheStatus === 'miss') aggregateCacheStatus = 'miss';
+    if (cacheStatus === 'stale' && aggregateCacheStatus !== 'miss') aggregateCacheStatus = 'stale';
   }
 
   logger.info('places.recommendations', 'Fetched place recommendations', {

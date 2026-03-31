@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchNearbyPlacesByCategory } from '../services/placesService';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { fetchNearbyPlacesByCategory, fetchViewportNearbyPlaces } from '../services/placesService';
+import { clearNearbyPlacesCooldown } from '../services/placesService';
 import type { PlannerPlaceCandidate, PlannerPlaceCategory, TripPlannerState } from '../types';
 
 const EAGER_FETCH_CATEGORIES: PlannerPlaceCategory[] = ['restaurant', 'cafe', 'museum', 'activity'];
 const CHAT_PUSH_CATEGORIES = new Set<PlannerPlaceCategory>(['activity', 'sights']);
+
+const ALL_CATEGORIES: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity', 'sights', 'nightlife', 'parks', 'shopping', 'culture'];
 
 const DEFAULT_ACTIVE: Record<PlannerPlaceCategory, boolean> = {
   hotel: true,
@@ -18,6 +21,8 @@ const DEFAULT_ACTIVE: Record<PlannerPlaceCategory, boolean> = {
   culture: false,
 };
 
+export type CategoryFetchState = 'idle' | 'loading' | 'failed';
+
 export interface PlaceBlock {
   id: string;
   category: PlannerPlaceCategory;
@@ -31,9 +36,13 @@ export interface PlaceBlock {
  * - Active category filters
  * - Fetched places indexed by segment + category (survives segment changes)
  * - Chat place blocks for discovery cards
+ * - Per-category loading/error state
  *
- * Key improvement: places are indexed by `segmentId::category` so switching
- * back to a previously visited segment shows results instantly (0 re-fetches).
+ * Places are indexed by `segmentId::category` so switching back to a
+ * previously visited segment shows results instantly (0 re-fetches).
+ *
+ * Eager fetch fires individual per-category calls so markers render
+ * progressively as each category completes.
  */
 export function usePlacesOrchestrator(
   plannerState: TripPlannerState | null,
@@ -44,93 +53,320 @@ export function usePlacesOrchestrator(
     Record<string, Record<string, PlannerPlaceCandidate[]>>
   >({});
   const [fetchedKeys, setFetchedKeys] = useState<Set<string>>(new Set());
-  const [isLoading, setIsLoading] = useState(false);
+  const [loadingKeys, setLoadingKeys] = useState<Set<string>>(new Set());
+  const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set());
   const [chatPlaceBlocks, setChatPlaceBlocks] = useState<PlaceBlock[]>([]);
 
-  const fetchAndMerge = useCallback((
-    segmentId: string,
-    city: string,
-    location: { lat: number; lng: number },
-    category: PlannerPlaceCategory,
-    pushToChat = false,
-  ) => {
-    const key = `${segmentId}::${category}`;
-    setFetchedKeys(prev => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
+  // Ref for synchronous in-flight dedup (avoids stale-closure issues)
+  const inFlightRef = useRef<Set<string>>(new Set());
 
-    return fetchNearbyPlacesByCategory(city, location, category)
-      .then(places => {
-        setPlacesBySegment(prev => {
-          const segData = prev[segmentId] || {};
-          const existing = segData[category] || [];
-          const merged = [
-            ...existing,
-            ...places.filter(p => !existing.some(e => e.placeId === p.placeId)),
-          ];
-          return { ...prev, [segmentId]: { ...segData, [category]: merged } };
-        });
+  // ── Helpers ──────────────────────────────────────────────────────────────
 
-        if (pushToChat && CHAT_PUSH_CATEGORIES.has(category) && places.length > 0) {
-          const blockId = `${segmentId}::${category}`;
-          setChatPlaceBlocks(prev => {
-            if (prev.some(b => b.id === blockId)) return prev;
-            return [...prev, {
-              id: blockId,
-              category,
-              city,
-              segmentId,
-              places: places
-                .filter(p => (p.photoUrls?.length ?? 0) > 0 || p.rating != null)
-                .sort((a, b) =>
+  const mergePlacesIntoSegment = useCallback(
+    (segmentId: string, category: PlannerPlaceCategory, places: PlannerPlaceCandidate[]) => {
+      setPlacesBySegment(prev => {
+        const segData = prev[segmentId] || {};
+        const existing = segData[category] || [];
+        const merged = [
+          ...existing,
+          ...places.filter(p => !existing.some(e => e.placeId === p.placeId)),
+        ];
+        return { ...prev, [segmentId]: { ...segData, [category]: merged } };
+      });
+    },
+    [],
+  );
+
+  const pushChatBlock = useCallback(
+    (segmentId: string, city: string, category: PlannerPlaceCategory, places: PlannerPlaceCandidate[]) => {
+      if (!CHAT_PUSH_CATEGORIES.has(category) || places.length === 0) return;
+      const blockId = `${segmentId}::${category}`;
+      setChatPlaceBlocks(prev => {
+        if (prev.some(b => b.id === blockId)) return prev;
+        return [
+          ...prev,
+          {
+            id: blockId,
+            category,
+            city,
+            segmentId,
+            places: places
+              .filter(p => (p.photoUrls?.length ?? 0) > 0 || p.rating != null)
+              .sort(
+                (a, b) =>
                   (b.rating || 0) * (b.userRatingsTotal || 0) -
                   (a.rating || 0) * (a.userRatingsTotal || 0),
-                )
-                .slice(0, 6),
-            }];
+              )
+              .slice(0, 6),
+          },
+        ];
+      });
+    },
+    [],
+  );
+
+  // ── Single-category fetch ───────────────────────────────────────────────
+
+  const fetchAndMerge = useCallback(
+    (
+      segmentId: string,
+      city: string,
+      location: { lat: number; lng: number },
+      category: PlannerPlaceCategory,
+      pushToChat = false,
+    ) => {
+      const key = `${segmentId}::${category}`;
+
+      // Prevent duplicate in-flight requests
+      if (inFlightRef.current.has(key)) return Promise.resolve([] as PlannerPlaceCandidate[]);
+      inFlightRef.current.add(key);
+
+      // Clear backend cooldown for this exact request so retries hit the API
+      clearNearbyPlacesCooldown(city, location, [category]);
+
+      // Mark loading, clear any previous failure
+      setLoadingKeys(prev => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
+      setFailedKeys(prev => {
+        if (!prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+
+      return fetchNearbyPlacesByCategory(city, location, category)
+        .then(places => {
+          // Mark as successfully fetched
+          setFetchedKeys(prev => {
+            const next = new Set(prev);
+            next.add(key);
+            return next;
           });
-        }
 
-        return places;
-      })
-      .catch(() => [] as PlannerPlaceCandidate[]);
-  }, []);
+          mergePlacesIntoSegment(segmentId, category, places);
+          if (pushToChat) pushChatBlock(segmentId, city, category, places);
 
-  // Eager fetch — only fetches missing categories for active segment.
-  // Does NOT reset data from other segments.
+          return places;
+        })
+        .catch(() => {
+          // Mark failed — do NOT mark as fetched so retry is possible
+          setFailedKeys(prev => {
+            const next = new Set(prev);
+            next.add(key);
+            return next;
+          });
+          return [] as PlannerPlaceCandidate[];
+        })
+        .finally(() => {
+          inFlightRef.current.delete(key);
+          setLoadingKeys(prev => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
+        });
+    },
+    [mergePlacesIntoSegment, pushChatBlock],
+  );
+
+  // ── Eager fetch — progressive per-category ──────────────────────────────
+
   useEffect(() => {
     if (!plannerState || !activeSegmentId) return;
     const seg = plannerState.segments.find(s => s.id === activeSegmentId);
     if (!seg?.location) return;
 
     const loc = { lat: seg.location.lat, lng: seg.location.lng };
-    const missing = EAGER_FETCH_CATEGORIES.filter(
-      cat => !fetchedKeys.has(`${activeSegmentId}::${cat}`),
-    );
+    const missing = EAGER_FETCH_CATEGORIES.filter(cat => {
+      const key = `${activeSegmentId}::${cat}`;
+      return !fetchedKeys.has(key) && !inFlightRef.current.has(key);
+    });
 
     if (missing.length === 0) return;
 
-    setIsLoading(true);
-    Promise.all(missing.map(cat => fetchAndMerge(activeSegmentId, seg.city, loc, cat)))
-      .finally(() => setIsLoading(false));
+    // Fire individual calls — each category renders as soon as it resolves
+    const segId = activeSegmentId;
+    missing.forEach(cat => {
+      fetchAndMerge(segId, seg.city, loc, cat, true);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSegmentId, plannerState]);
 
-  const toggleCategory = useCallback((category: PlannerPlaceCategory) => {
-    setActiveCategories(current => ({ ...current, [category]: !current[category] }));
+  // ── Toggle category (with retry for failed categories) ──────────────────
 
-    // Fetch on activate — kept outside the state updater to avoid async side effects in setters
-    if (category !== 'hotel' && activeSegmentId) {
-      const seg = plannerState?.segments.find(s => s.id === activeSegmentId);
-      const loc = seg?.location;
-      if (seg && loc && !fetchedKeys.has(`${activeSegmentId}::${category}`)) {
-        fetchAndMerge(activeSegmentId, seg.city, { lat: loc.lat, lng: loc.lng }, category, true);
+  const toggleCategory = useCallback(
+    (category: PlannerPlaceCategory) => {
+      if (!activeSegmentId) {
+        setActiveCategories(current => ({ ...current, [category]: !current[category] }));
+        return;
       }
+
+      const key = `${activeSegmentId}::${category}`;
+
+      // If active and failed → retry instead of toggling off
+      if (activeCategories[category] && failedKeys.has(key)) {
+        const seg = plannerState?.segments.find(s => s.id === activeSegmentId);
+        const loc = seg?.location;
+        if (seg && loc) {
+          fetchAndMerge(activeSegmentId, seg.city, { lat: loc.lat, lng: loc.lng }, category, true);
+        }
+        return;
+      }
+
+      setActiveCategories(current => ({ ...current, [category]: !current[category] }));
+
+      // Fetch on activate if not yet fetched
+      if (category !== 'hotel' && !activeCategories[category]) {
+        const seg = plannerState?.segments.find(s => s.id === activeSegmentId);
+        const loc = seg?.location;
+        if (seg && loc && !fetchedKeys.has(key)) {
+          fetchAndMerge(activeSegmentId, seg.city, { lat: loc.lat, lng: loc.lng }, category, true);
+        }
+      }
+    },
+    [plannerState, activeSegmentId, activeCategories, fetchedKeys, failedKeys, fetchAndMerge],
+  );
+
+  // ── Viewport-triggered fetch with client-side cache ──────────────────────
+
+  interface ViewportCacheEntry {
+    placesByCategory: Record<string, PlannerPlaceCandidate[]>;
+    partial: boolean;
+    retriedOnce: boolean;
+  }
+
+  const viewportCacheRef = useRef<Map<string, ViewportCacheEntry>>(new Map());
+  const inFlightViewportRef = useRef(false);
+  const pendingViewportRef = useRef<{
+    segmentId: string;
+    city: string;
+    searchPoints: Array<{ center: { lat: number; lng: number }; radius: number }>;
+    categories: PlannerPlaceCategory[];
+    viewportSig: string;
+  } | null>(null);
+
+  // Ref to latest fetchForViewport so .finally() can call it for pending viewport
+  const fetchForViewportRef = useRef<(
+    segmentId: string,
+    city: string,
+    searchPoints: Array<{ center: { lat: number; lng: number }; radius: number }>,
+    categories: PlannerPlaceCategory[],
+    viewportSig: string,
+  ) => void>(() => {});
+
+  const fetchForViewport = useCallback(
+    (
+      segmentId: string,
+      city: string,
+      searchPoints: Array<{ center: { lat: number; lng: number }; radius: number }>,
+      categories: PlannerPlaceCategory[],
+      viewportSig: string,
+    ) => {
+      const cacheKey = `${segmentId}::${viewportSig}`;
+
+      const cached = viewportCacheRef.current.get(cacheKey);
+      if (cached) {
+        // Always merge cached data into segment
+        for (const [cat, places] of Object.entries(cached.placesByCategory)) {
+          if (places.length > 0) {
+            mergePlacesIntoSegment(segmentId, cat as PlannerPlaceCategory, places);
+          }
+        }
+
+        // Complete → done. Partial + already retried → done (no infinite retries).
+        if (!cached.partial || cached.retriedOnce) {
+          const totalPlaces = Object.values(cached.placesByCategory).reduce((s, p) => s + p.length, 0);
+          console.log(`🗺️ [Viewport] cache-hit`, { sig: viewportSig, segmentId, places: totalPlaces, partial: cached.partial, retriedOnce: cached.retriedOnce });
+          return;
+        }
+
+        // Partial + not yet retried → fall through to re-fetch
+        console.log(`🗺️ [Viewport] partial-retry`, { sig: viewportSig, segmentId });
+      }
+
+      // If another viewport fetch is in flight, save as pending (latest wins)
+      if (inFlightViewportRef.current) {
+        pendingViewportRef.current = { segmentId, city, searchPoints, categories, viewportSig };
+        console.log(`🗺️ [Viewport] pending-saved`, { sig: viewportSig });
+        return;
+      }
+      inFlightViewportRef.current = true;
+
+      const fetchStartMs = Date.now();
+      const isRetry = Boolean(cached?.partial);
+      console.log(`🗺️ [Viewport] fetch-start`, { sig: viewportSig, segmentId, points: searchPoints.length, categories: categories.length, retry: isRetry });
+
+      fetchViewportNearbyPlaces(city, searchPoints, categories)
+        .then(({ placesByCategory, partial }) => {
+          const durationMs = Date.now() - fetchStartMs;
+
+          // Merge with existing cached data (if retrying a partial)
+          const existing = viewportCacheRef.current.get(cacheKey);
+          const merged: Record<string, PlannerPlaceCandidate[]> = { ...(existing?.placesByCategory || {}) };
+          for (const [cat, places] of Object.entries(placesByCategory)) {
+            const prev = merged[cat] || [];
+            const fresh = places.filter(p => !prev.some(e => e.placeId === p.placeId));
+            merged[cat] = [...prev, ...fresh];
+          }
+
+          const wasRetry = existing?.partial && !existing.retriedOnce;
+          viewportCacheRef.current.set(cacheKey, {
+            placesByCategory: merged,
+            partial: partial ?? false,
+            retriedOnce: wasRetry || (existing?.retriedOnce ?? false),
+          });
+
+          for (const [cat, places] of Object.entries(merged)) {
+            if (places.length > 0) {
+              mergePlacesIntoSegment(segmentId, cat as PlannerPlaceCategory, places);
+            }
+          }
+
+          const totalPlaces = Object.values(merged).reduce((s, p) => s + p.length, 0);
+          console.log(`🗺️ [Viewport] fetch-complete`, { sig: viewportSig, segmentId, durationMs, places: totalPlaces, partial, retry: isRetry, cached: !partial });
+        })
+        .catch((err) => {
+          console.log(`🗺️ [Viewport] fetch-error`, { sig: viewportSig, segmentId, error: err instanceof Error ? err.message : 'unknown' });
+        })
+        .finally(() => {
+          inFlightViewportRef.current = false;
+          // Process pending viewport (latest wins)
+          const pending = pendingViewportRef.current;
+          if (pending) {
+            pendingViewportRef.current = null;
+            console.log(`🗺️ [Viewport] pending-execute`, { sig: pending.viewportSig });
+            fetchForViewportRef.current(pending.segmentId, pending.city, pending.searchPoints, pending.categories, pending.viewportSig);
+          }
+        });
+    },
+    [mergePlacesIntoSegment],
+  );
+
+  // Keep ref in sync so .finally() always calls the latest version
+  fetchForViewportRef.current = fetchForViewport;
+
+  // ── Derived state ───────────────────────────────────────────────────────
+
+  // True while any eager category is loading for active segment
+  const isLoading = useMemo(() => {
+    if (!activeSegmentId) return false;
+    return EAGER_FETCH_CATEGORIES.some(cat => loadingKeys.has(`${activeSegmentId}::${cat}`));
+  }, [activeSegmentId, loadingKeys]);
+
+  // Per-category fetch state for the active segment (used by chip UI)
+  const categoryStates = useMemo((): Record<PlannerPlaceCategory, CategoryFetchState> => {
+    const result = {} as Record<PlannerPlaceCategory, CategoryFetchState>;
+    for (const cat of ALL_CATEGORIES) {
+      const key = activeSegmentId ? `${activeSegmentId}::${cat}` : '';
+      if (loadingKeys.has(key)) result[cat] = 'loading';
+      else if (failedKeys.has(key)) result[cat] = 'failed';
+      else result[cat] = 'idle';
     }
-  }, [plannerState, activeSegmentId, fetchedKeys, fetchAndMerge]);
+    return result;
+  }, [activeSegmentId, loadingKeys, failedKeys]);
 
   // Flat by-category view for the active segment (same shape the map expects)
   const placesForActiveSegment = useMemo((): Record<string, PlannerPlaceCandidate[]> => {
@@ -158,8 +394,13 @@ export function usePlacesOrchestrator(
     setActiveCategories(DEFAULT_ACTIVE);
     setPlacesBySegment({});
     setFetchedKeys(new Set());
-    setIsLoading(false);
+    setLoadingKeys(new Set());
+    setFailedKeys(new Set());
     setChatPlaceBlocks([]);
+    inFlightRef.current.clear();
+    viewportCacheRef.current.clear();
+    inFlightViewportRef.current = false;
+    pendingViewportRef.current = null;
   }, []);
 
   return {
@@ -169,8 +410,10 @@ export function usePlacesOrchestrator(
     isLoading,
     chatPlaceBlocks,
     discoveryPlacesBySegment,
+    categoryStates,
     toggleCategory,
     ensureCategoryActive,
     resetForConversation,
+    fetchForViewport,
   };
 }

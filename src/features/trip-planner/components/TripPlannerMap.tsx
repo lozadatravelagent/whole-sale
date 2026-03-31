@@ -101,6 +101,11 @@ interface TripPlannerMapProps {
   onOpenPlaceDetail?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
   highlightedPlaceId?: string | null;
   onInventoryHotelPlacesReady?: (segmentId: string, places: PlannerPlaceHotelCandidate[]) => void;
+  onViewportChanged?: (payload: {
+    center: { lat: number; lng: number };
+    zoom: number;
+    bounds: { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } };
+  }) => void;
 }
 
 // ── Helper functions ────────────────────────────────────────────────────────
@@ -259,6 +264,7 @@ function PlannerMapScene({
   onOpenPlaceDetail,
   highlightedPlaceId,
   onInventoryHotelPlacesReady,
+  onViewportChanged,
 }: {
   segments: SegmentWithLocation[];
   selectedSegmentId: string | null;
@@ -272,6 +278,11 @@ function PlannerMapScene({
   onOpenPlaceDetail?: (payload: { segmentId: string; place: PlannerPlaceCandidate }) => void;
   highlightedPlaceId?: string | null;
   onInventoryHotelPlacesReady?: (segmentId: string, places: PlannerPlaceHotelCandidate[]) => void;
+  onViewportChanged?: (payload: {
+    center: { lat: number; lng: number };
+    zoom: number;
+    bounds: { sw: { lat: number; lng: number }; ne: { lat: number; lng: number } };
+  }) => void;
 }) {
   const maps = useMap();
   const map = maps[MAPBOX_MAP_ID];
@@ -395,8 +406,20 @@ function PlannerMapScene({
       if (nearestSegment && nearestSegment.id !== selectedSegmentId) {
         onViewportSelectSegment?.(nearestSegment.id);
       }
+
+      // Emit viewport info for dynamic loading
+      const zoom = map.getZoom();
+      const mapBounds = map.getBounds();
+      onViewportChanged?.({
+        center: { lat, lng },
+        zoom,
+        bounds: {
+          sw: { lat: mapBounds.getSouthWest().lat, lng: mapBounds.getSouthWest().lng },
+          ne: { lat: mapBounds.getNorthEast().lat, lng: mapBounds.getNorthEast().lng },
+        },
+      });
     }, 800);
-  }, [map, onViewportSelectSegment, segments, selectedSegmentId]);
+  }, [map, onViewportSelectSegment, onViewportChanged, segments, selectedSegmentId]);
 
   // Fetch city details for city panel
   useEffect(() => {
@@ -844,45 +867,44 @@ function PlannerMapScene({
                 Hoteles cotizan inventario real. Restaurantes, cafes, museos y actividades se agregan al planner eligiendo dia y bloque.
               </div>
 
-              {placesLoading ? (
-                <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-400">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Cargando lugares de la ciudad...
-                </div>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  {DISCOVERY_CATEGORIES.filter((cat) => activeCategories[cat]).map((cat) => {
-                    const catPlaces = cat === 'hotel'
-                      ? inventoryHotelPlaces
-                      : [...(placesByCategory?.[cat] || [])].sort((a, b) => {
-                          const sa = (a.rating || 0) * Math.max(1, a.userRatingsTotal || 1);
-                          const sb = (b.rating || 0) * Math.max(1, b.userRatingsTotal || 1);
-                          return sb - sa;
-                        });
-                    const topPlaces = catPlaces.slice(0, 2);
-                    if (topPlaces.length === 0) return null;
-                    return (
-                      <div key={cat}>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                          {CATEGORY_STYLES[cat].label}
-                        </p>
-                        <div className="space-y-1">
-                          {topPlaces.map((place) => (
-                            <button
-                              key={place.placeId}
-                              type="button"
-                              className="block w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-left text-[11px] text-slate-700 transition hover:border-primary/50 hover:bg-primary/5"
-                              onClick={() => handleDiscoveryPlaceClick(place)}
-                            >
-                              <span className="font-medium text-slate-900">{place.name}</span>
-                              {place.rating ? ` • ${place.rating.toFixed(1)}` : ''}
-                            </button>
-                          ))}
-                        </div>
+              <div className="mt-3 space-y-2">
+                {DISCOVERY_CATEGORIES.filter((cat) => activeCategories[cat]).map((cat) => {
+                  const catPlaces = cat === 'hotel'
+                    ? inventoryHotelPlaces
+                    : [...(placesByCategory?.[cat] || [])].sort((a, b) => {
+                        const sa = (a.rating || 0) * Math.max(1, a.userRatingsTotal || 1);
+                        const sb = (b.rating || 0) * Math.max(1, b.userRatingsTotal || 1);
+                        return sb - sa;
+                      });
+                  const topPlaces = catPlaces.slice(0, 2);
+                  if (topPlaces.length === 0) return null;
+                  return (
+                    <div key={cat}>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        {CATEGORY_STYLES[cat].label}
+                      </p>
+                      <div className="space-y-1">
+                        {topPlaces.map((place) => (
+                          <button
+                            key={place.placeId}
+                            type="button"
+                            className="block w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-left text-[11px] text-slate-700 transition hover:border-primary/50 hover:bg-primary/5"
+                            onClick={() => handleDiscoveryPlaceClick(place)}
+                          >
+                            <span className="font-medium text-slate-900">{place.name}</span>
+                            {place.rating ? ` • ${place.rating.toFixed(1)}` : ''}
+                          </button>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+                  );
+                })}
+                {placesLoading && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Cargando más lugares...
+                  </div>
+                )}
+              </div>
 
               {cityPlaceLoading && (
                 <div className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
@@ -916,6 +938,7 @@ export default function TripPlannerMap({
   onOpenPlaceDetail,
   highlightedPlaceId,
   onInventoryHotelPlacesReady,
+  onViewportChanged,
 }: TripPlannerMapProps) {
   const [uncontrolledSelectedSegmentId, setUncontrolledSelectedSegmentId] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -984,6 +1007,7 @@ export default function TripPlannerMap({
               onOpenPlaceDetail={onOpenPlaceDetail}
               highlightedPlaceId={highlightedPlaceId}
               onInventoryHotelPlacesReady={onInventoryHotelPlacesReady}
+              onViewportChanged={onViewportChanged}
             />
             <div className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[linear-gradient(180deg,rgba(248,250,252,0.9),rgba(226,232,240,0.72))] px-6 text-center transition-opacity duration-500 ${mappedSegments.length > 0 ? 'opacity-0' : 'opacity-100'}`}>
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
