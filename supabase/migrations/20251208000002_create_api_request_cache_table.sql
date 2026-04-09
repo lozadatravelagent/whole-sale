@@ -54,7 +54,7 @@ BEGIN
     PERFORM cron.schedule(
       'cleanup-api-request-cache',  -- Job name
       '0 * * * *',                   -- Cron schedule: every hour at minute 0
-      $$SELECT cleanup_expired_request_cache()$$
+      'SELECT cleanup_expired_request_cache()'
     );
 
     RAISE NOTICE 'Scheduled cleanup job for api_request_cache';

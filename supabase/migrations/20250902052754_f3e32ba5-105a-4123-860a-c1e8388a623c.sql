@@ -24,7 +24,48 @@ begin
 end;
 $$;
 
+-- Tables
+create table if not exists public.tenants (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  status text not null default 'active',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create trigger trg_tenants_updated_at
+before update on public.tenants
+for each row execute function public.update_updated_at_column();
+
+create table if not exists public.agencies (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  name text not null,
+  status text not null default 'active',
+  branding jsonb not null default jsonb_build_object(),
+  phones text[] not null default array[]::text[],
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists idx_agencies_tenant on public.agencies(tenant_id);
+create trigger trg_agencies_updated_at
+before update on public.agencies
+for each row execute function public.update_updated_at_column();
+
+-- App users mapped to Supabase auth users
+create table if not exists public.users (
+  id uuid primary key references auth.users(id) on delete cascade,
+  tenant_id uuid references public.tenants(id) on delete set null,
+  agency_id uuid references public.agencies(id) on delete set null,
+  email text not null,
+  role public.user_role not null default 'ADMIN',
+  provider public.auth_provider not null default 'email',
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_users_tenant_agency on public.users(tenant_id, agency_id);
+
 -- Membership helper functions for RLS
+-- (placed after CREATE TABLE public.users because LANGUAGE sql
+--  functions validate referenced relations at creation time)
 create or replace function public.is_superadmin()
 returns boolean
 language sql
@@ -64,45 +105,6 @@ as $$
   );
 $$;
 
--- Tables
-create table if not exists public.tenants (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  status text not null default 'active',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create trigger if not exists trg_tenants_updated_at
-before update on public.tenants
-for each row execute function public.update_updated_at_column();
-
-create table if not exists public.agencies (
-  id uuid primary key default gen_random_uuid(),
-  tenant_id uuid not null references public.tenants(id) on delete cascade,
-  name text not null,
-  status text not null default 'active',
-  branding jsonb not null default jsonb_build_object(),
-  phones text[] not null default array[]::text[],
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create index if not exists idx_agencies_tenant on public.agencies(tenant_id);
-create trigger if not exists trg_agencies_updated_at
-before update on public.agencies
-for each row execute function public.update_updated_at_column();
-
--- App users mapped to Supabase auth users
-create table if not exists public.users (
-  id uuid primary key references auth.users(id) on delete cascade,
-  tenant_id uuid references public.tenants(id) on delete set null,
-  agency_id uuid references public.agencies(id) on delete set null,
-  email text not null,
-  role public.user_role not null default 'ADMIN',
-  provider public.auth_provider not null default 'email',
-  created_at timestamptz not null default now()
-);
-create index if not exists idx_users_tenant_agency on public.users(tenant_id, agency_id);
-
 create table if not exists public.whatsapp_numbers (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete cascade,
@@ -125,7 +127,7 @@ create table if not exists public.integrations (
   updated_at timestamptz not null default now()
 );
 create index if not exists idx_integrations_agency on public.integrations(agency_id);
-create trigger if not exists trg_integrations_updated_at
+create trigger trg_integrations_updated_at
 before update on public.integrations
 for each row execute function public.update_updated_at_column();
 
@@ -167,7 +169,7 @@ create table if not exists public.leads (
   updated_at timestamptz not null default now()
 );
 create index if not exists idx_leads_tenant_agency_status on public.leads(tenant_id, agency_id, status);
-create trigger if not exists trg_leads_updated_at
+create trigger trg_leads_updated_at
 before update on public.leads
 for each row execute function public.update_updated_at_column();
 
@@ -205,104 +207,104 @@ alter table public.audit_logs enable row level security;
 
 -- RLS Policies
 -- tenants: only SUPERADMINs of the tenant can read/update/delete; inserts limited to SUPERADMINs
-create policy if not exists "superadmins can select tenants in their tenant"
+create policy "superadmins can select tenants in their tenant"
   on public.tenants for select to authenticated
   using (public.is_superadmin() and public.is_same_tenant(id));
-create policy if not exists "superadmins can insert tenants"
+create policy "superadmins can insert tenants"
   on public.tenants for insert to authenticated
   with check (public.is_superadmin());
-create policy if not exists "superadmins can update tenants"
+create policy "superadmins can update tenants"
   on public.tenants for update to authenticated
   using (public.is_superadmin() and public.is_same_tenant(id))
   with check (public.is_superadmin() and public.is_same_tenant(id));
-create policy if not exists "superadmins can delete tenants"
+create policy "superadmins can delete tenants"
   on public.tenants for delete to authenticated
   using (public.is_superadmin() and public.is_same_tenant(id));
 
 -- agencies: SUPERADMINs in tenant, or ADMINs only their own agency
-create policy if not exists "superadmins can select agencies in tenant"
+create policy "superadmins can select agencies in tenant"
   on public.agencies for select to authenticated
   using (public.is_superadmin() and public.is_same_tenant(tenant_id));
-create policy if not exists "admins can select their agency"
+create policy "admins can select their agency"
   on public.agencies for select to authenticated
   using (public.is_same_agency(id));
-create policy if not exists "superadmins can manage agencies"
+create policy "superadmins can manage agencies"
   on public.agencies for all to authenticated
   using (public.is_superadmin() and public.is_same_tenant(tenant_id))
   with check (public.is_superadmin() and public.is_same_tenant(tenant_id));
-create policy if not exists "admins can update their agency"
+create policy "admins can update their agency"
   on public.agencies for update to authenticated
   using (public.is_same_agency(id))
   with check (public.is_same_agency(id));
 
 -- users: user can see own row; SUPERADMIN can manage users in tenant
-create policy if not exists "user can select self"
+create policy "user can select self"
   on public.users for select to authenticated
   using (id = auth.uid());
-create policy if not exists "superadmins can select users in tenant"
+create policy "superadmins can select users in tenant"
   on public.users for select to authenticated
   using (public.is_superadmin() and public.is_same_tenant(tenant_id));
-create policy if not exists "superadmins can insert users"
+create policy "superadmins can insert users"
   on public.users for insert to authenticated
   with check (public.is_superadmin() and public.is_same_tenant(tenant_id));
-create policy if not exists "user can update self"
+create policy "user can update self"
   on public.users for update to authenticated
   using (id = auth.uid())
   with check (id = auth.uid());
-create policy if not exists "superadmins can update users in tenant"
+create policy "superadmins can update users in tenant"
   on public.users for update to authenticated
   using (public.is_superadmin() and public.is_same_tenant(tenant_id))
   with check (public.is_superadmin() and public.is_same_tenant(tenant_id));
-create policy if not exists "superadmins can delete users in tenant"
+create policy "superadmins can delete users in tenant"
   on public.users for delete to authenticated
   using (public.is_superadmin() and public.is_same_tenant(tenant_id));
 
 -- whatsapp_numbers: SUPERADMINs in tenant
-create policy if not exists "superadmins can manage whatsapp_numbers"
+create policy "superadmins can manage whatsapp_numbers"
   on public.whatsapp_numbers for all to authenticated
   using (public.is_superadmin() and public.is_same_tenant(tenant_id))
   with check (public.is_superadmin() and public.is_same_tenant(tenant_id));
 
 -- integrations: admins of agency or superadmins of tenant
-create policy if not exists "admins can manage their integrations"
+create policy "admins can manage their integrations"
   on public.integrations for all to authenticated
   using (public.is_same_agency(agency_id))
   with check (public.is_same_agency(agency_id));
-create policy if not exists "superadmins can manage integrations in tenant"
+create policy "superadmins can manage integrations in tenant"
   on public.integrations for all to authenticated
   using (public.is_superadmin())
   with check (public.is_superadmin());
 
 -- conversations: admins for their agency; superadmins for tenant
-create policy if not exists "admins can read conversations of their agency"
+create policy "admins can read conversations of their agency"
   on public.conversations for select to authenticated
   using (public.is_same_agency(agency_id));
-create policy if not exists "admins can write conversations of their agency"
+create policy "admins can write conversations of their agency"
   on public.conversations for insert to authenticated
   with check (public.is_same_agency(agency_id));
-create policy if not exists "admins can update conversations of their agency"
+create policy "admins can update conversations of their agency"
   on public.conversations for update to authenticated
   using (public.is_same_agency(agency_id))
   with check (public.is_same_agency(agency_id));
-create policy if not exists "superadmins can manage conversations in tenant"
+create policy "superadmins can manage conversations in tenant"
   on public.conversations for all to authenticated
   using (public.is_superadmin() and public.is_same_tenant(tenant_id))
   with check (public.is_superadmin() and public.is_same_tenant(tenant_id));
 
 -- messages: by conversation scope
-create policy if not exists "admins can read messages of their agency"
+create policy "admins can read messages of their agency"
   on public.messages for select to authenticated
   using (exists (
     select 1 from public.conversations c
     where c.id = conversation_id and public.is_same_agency(c.agency_id)
   ));
-create policy if not exists "admins can write messages of their agency"
+create policy "admins can write messages of their agency"
   on public.messages for insert to authenticated
   with check (exists (
     select 1 from public.conversations c
     where c.id = conversation_id and public.is_same_agency(c.agency_id)
   ));
-create policy if not exists "superadmins can manage messages in tenant"
+create policy "superadmins can manage messages in tenant"
   on public.messages for all to authenticated
   using (exists (
     select 1 from public.conversations c
@@ -314,37 +316,37 @@ create policy if not exists "superadmins can manage messages in tenant"
   ));
 
 -- leads: admins for agency; superadmins for tenant
-create policy if not exists "admins can read leads of their agency"
+create policy "admins can read leads of their agency"
   on public.leads for select to authenticated
   using (public.is_same_agency(agency_id));
-create policy if not exists "admins can write leads of their agency"
+create policy "admins can write leads of their agency"
   on public.leads for insert to authenticated
   with check (public.is_same_agency(agency_id));
-create policy if not exists "admins can update leads of their agency"
+create policy "admins can update leads of their agency"
   on public.leads for update to authenticated
   using (public.is_same_agency(agency_id))
   with check (public.is_same_agency(agency_id));
-create policy if not exists "superadmins can manage leads in tenant"
+create policy "superadmins can manage leads in tenant"
   on public.leads for all to authenticated
   using (public.is_superadmin() and public.is_same_tenant(tenant_id))
   with check (public.is_superadmin() and public.is_same_tenant(tenant_id));
 
 -- reports_daily: tenant-level visibility
-create policy if not exists "admins can read reports of their agency"
+create policy "admins can read reports of their agency"
   on public.reports_daily for select to authenticated
   using (public.is_same_agency(agency_id));
-create policy if not exists "superadmins can manage reports in tenant"
+create policy "superadmins can manage reports in tenant"
   on public.reports_daily for all to authenticated
   using (public.is_superadmin() and public.is_same_tenant(tenant_id))
   with check (public.is_superadmin() and public.is_same_tenant(tenant_id));
 
 -- audit_logs: readable within tenant; inserts allowed for tenant members
-create policy if not exists "tenant members can read audit logs"
+create policy "tenant members can read audit logs"
   on public.audit_logs for select to authenticated
   using (exists (
     select 1 from public.users u where u.id = auth.uid()
   ));
-create policy if not exists "tenant members can insert audit logs"
+create policy "tenant members can insert audit logs"
   on public.audit_logs for insert to authenticated
   with check (exists (
     select 1 from public.users u where u.id = auth.uid()

@@ -75,6 +75,8 @@ END $$;
 
 -- Verify the migration results
 DO $$
+DECLARE
+  rec RECORD;
 BEGIN
   RAISE NOTICE '=== MIGRATION VERIFICATION ===';
   RAISE NOTICE 'Total conversations: %', (SELECT COUNT(*) FROM public.conversations);

@@ -10,16 +10,9 @@ CREATE TABLE IF NOT EXISTS public.superadmin_agency_assignments (
   assigned_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
 
   -- Ensure unique assignments
-  UNIQUE(superadmin_id, agency_id),
-
-  -- Ensure only SUPERADMIN users can be assigned
-  CHECK (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = superadmin_id
-      AND role = 'SUPERADMIN'::public.user_role
-    )
-  )
+  UNIQUE(superadmin_id, agency_id)
+  -- NOTE: SUPERADMIN role enforcement is handled at application level
+  -- (CHECK constraints cannot contain subqueries in PostgreSQL)
 );
 
 -- Create index for performance

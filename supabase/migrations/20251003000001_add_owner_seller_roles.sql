@@ -22,7 +22,7 @@ SET search_path = public
 AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.users u
-    WHERE u.id = auth.uid() AND u.role = 'OWNER'::public.user_role
+    WHERE u.id = auth.uid() AND u.role::text = 'OWNER'
   );
 $$;
 
@@ -41,52 +41,52 @@ AS $$
 $$;
 
 -- 6. OWNER can see ALL tenants
-CREATE POLICY IF NOT EXISTS "owner can select all tenants"
+CREATE POLICY "owner can select all tenants"
   ON public.tenants FOR SELECT TO authenticated
   USING (public.is_owner());
 
-CREATE POLICY IF NOT EXISTS "owner can manage all tenants"
+CREATE POLICY "owner can manage all tenants"
   ON public.tenants FOR ALL TO authenticated
   USING (public.is_owner())
   WITH CHECK (public.is_owner());
 
 -- 7. OWNER can see ALL agencies
-CREATE POLICY IF NOT EXISTS "owner can select all agencies"
+CREATE POLICY "owner can select all agencies"
   ON public.agencies FOR SELECT TO authenticated
   USING (public.is_owner());
 
-CREATE POLICY IF NOT EXISTS "owner can manage all agencies"
+CREATE POLICY "owner can manage all agencies"
   ON public.agencies FOR ALL TO authenticated
   USING (public.is_owner())
   WITH CHECK (public.is_owner());
 
 -- 8. OWNER can see ALL users
-CREATE POLICY IF NOT EXISTS "owner can select all users"
+CREATE POLICY "owner can select all users"
   ON public.users FOR SELECT TO authenticated
   USING (public.is_owner());
 
-CREATE POLICY IF NOT EXISTS "owner can manage all users"
+CREATE POLICY "owner can manage all users"
   ON public.users FOR ALL TO authenticated
   USING (public.is_owner())
   WITH CHECK (public.is_owner());
 
 -- 9. OWNER can see ALL conversations
-CREATE POLICY IF NOT EXISTS "owner can select all conversations"
+CREATE POLICY "owner can select all conversations"
   ON public.conversations FOR SELECT TO authenticated
   USING (public.is_owner());
 
 -- 10. OWNER can see ALL messages
-CREATE POLICY IF NOT EXISTS "owner can select all messages"
+CREATE POLICY "owner can select all messages"
   ON public.messages FOR SELECT TO authenticated
   USING (public.is_owner());
 
 -- 11. OWNER can see ALL leads
-CREATE POLICY IF NOT EXISTS "owner can select all leads"
+CREATE POLICY "owner can select all leads"
   ON public.leads FOR SELECT TO authenticated
   USING (public.is_owner());
 
 -- 12. SELLERS can only see their assigned leads
-CREATE POLICY IF NOT EXISTS "sellers can select their assigned leads"
+CREATE POLICY "sellers can select their assigned leads"
   ON public.leads FOR SELECT TO authenticated
   USING (
     assigned_user_id = auth.uid()
@@ -96,7 +96,7 @@ CREATE POLICY IF NOT EXISTS "sellers can select their assigned leads"
   );
 
 -- 13. SELLERS can only update their assigned leads
-CREATE POLICY IF NOT EXISTS "sellers can update their assigned leads"
+CREATE POLICY "sellers can update their assigned leads"
   ON public.leads FOR UPDATE TO authenticated
   USING (
     assigned_user_id = auth.uid()
@@ -112,7 +112,7 @@ CREATE POLICY IF NOT EXISTS "sellers can update their assigned leads"
   );
 
 -- 14. SELLERS can only see conversations linked to their leads
-CREATE POLICY IF NOT EXISTS "sellers can select conversations of their leads"
+CREATE POLICY "sellers can select conversations of their leads"
   ON public.conversations FOR SELECT TO authenticated
   USING (
     EXISTS (
@@ -126,7 +126,7 @@ CREATE POLICY IF NOT EXISTS "sellers can select conversations of their leads"
   );
 
 -- 15. SELLERS can only see messages from conversations of their leads
-CREATE POLICY IF NOT EXISTS "sellers can select messages of their leads"
+CREATE POLICY "sellers can select messages of their leads"
   ON public.messages FOR SELECT TO authenticated
   USING (
     EXISTS (
@@ -145,7 +145,7 @@ CREATE POLICY IF NOT EXISTS "sellers can select messages of their leads"
   );
 
 -- 16. SELLERS can insert messages in their conversations
-CREATE POLICY IF NOT EXISTS "sellers can insert messages in their conversations"
+CREATE POLICY "sellers can insert messages in their conversations"
   ON public.messages FOR INSERT TO authenticated
   WITH CHECK (
     EXISTS (

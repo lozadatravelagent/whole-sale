@@ -18,7 +18,8 @@ BEGIN
   WHERE email = 'seller@seller.com';
 
   IF seller_user_id IS NULL THEN
-    RAISE EXCEPTION '❌ Seller user (seller@seller.com) not found';
+    RAISE NOTICE 'Seller user (seller@seller.com) not found — skipping migration (clean DB)';
+    RETURN;
   END IF;
 
   RAISE NOTICE '✅ Found ADMIN user (agency@agency.com): %', agency_user_id;

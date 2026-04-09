@@ -1,12 +1,12 @@
 -- FIX: Helper functions must NOT query users table to avoid infinite recursion
 -- Solution: Read from JWT claims instead
 
--- Drop existing helper functions
-DROP FUNCTION IF EXISTS public.get_user_role();
-DROP FUNCTION IF EXISTS public.get_user_agency_id();
-DROP FUNCTION IF EXISTS public.get_user_tenant_id();
-
--- Create helper functions that read from JWT app_metadata (no recursion)
+-- Recreate helper functions that read from JWT app_metadata (no recursion)
+-- CASCADE needed because return type changes from user_role to text,
+-- which requires dropping dependent policies (they are recreated in later migrations)
+DROP FUNCTION IF EXISTS public.get_user_role() CASCADE;
+DROP FUNCTION IF EXISTS public.get_user_agency_id() CASCADE;
+DROP FUNCTION IF EXISTS public.get_user_tenant_id() CASCADE;
 CREATE OR REPLACE FUNCTION public.get_user_role()
 RETURNS text
 LANGUAGE sql
