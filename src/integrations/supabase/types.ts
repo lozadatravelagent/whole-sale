@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.4"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -60,6 +80,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "activities_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
+          },
+          {
             foreignKeyName: "activities_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -72,6 +99,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
           },
           {
             foreignKeyName: "activities_user_id_fkey"
@@ -139,6 +173,147 @@ export type Database = {
           },
         ]
       }
+      api_keys: {
+        Row: {
+          agency_id: string | null
+          created_at: string | null
+          created_by: string | null
+          environment: string | null
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          metadata: Json | null
+          name: string | null
+          rate_limit_per_day: number | null
+          rate_limit_per_hour: number | null
+          rate_limit_per_minute: number | null
+          scopes: string[]
+          tenant_id: string | null
+          usage_count: number | null
+        }
+        Insert: {
+          agency_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          environment?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          metadata?: Json | null
+          name?: string | null
+          rate_limit_per_day?: number | null
+          rate_limit_per_hour?: number | null
+          rate_limit_per_minute?: number | null
+          scopes?: string[]
+          tenant_id?: string | null
+          usage_count?: number | null
+        }
+        Update: {
+          agency_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          environment?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          metadata?: Json | null
+          name?: string | null
+          rate_limit_per_day?: number | null
+          rate_limit_per_hour?: number | null
+          rate_limit_per_minute?: number | null
+          scopes?: string[]
+          tenant_id?: string | null
+          usage_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_keys_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
+          },
+          {
+            foreignKeyName: "api_keys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
+          },
+          {
+            foreignKeyName: "api_keys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_keys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_request_cache: {
+        Row: {
+          api_key_id: string | null
+          created_at: string | null
+          expires_at: string | null
+          request_id: string
+          response_data: Json
+          search_id: string
+        }
+        Insert: {
+          api_key_id?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          request_id: string
+          response_data: Json
+          search_id: string
+        }
+        Update: {
+          api_key_id?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          request_id?: string
+          response_data?: Json
+          search_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_request_cache_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -171,42 +346,42 @@ export type Database = {
       }
       conversations: {
         Row: {
-          agency_id: string | null
+          agency_id: string
           channel: Database["public"]["Enums"]["conversation_channel"]
           created_at: string
-          created_by: string
+          created_by: string | null
           external_key: string
           id: string
           last_message_at: string
           phone_number_id: string | null
           state: Database["public"]["Enums"]["conversation_state"]
-          tenant_id: string | null
+          tenant_id: string
           workspace_mode: Database["public"]["Enums"]["conversation_workspace_mode"]
         }
         Insert: {
-          agency_id?: string | null
+          agency_id: string
           channel: Database["public"]["Enums"]["conversation_channel"]
           created_at?: string
-          created_by: string
+          created_by?: string | null
           external_key: string
           id?: string
           last_message_at?: string
           phone_number_id?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
-          tenant_id?: string | null
+          tenant_id: string
           workspace_mode?: Database["public"]["Enums"]["conversation_workspace_mode"]
         }
         Update: {
-          agency_id?: string | null
+          agency_id?: string
           channel?: Database["public"]["Enums"]["conversation_channel"]
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           external_key?: string
           id?: string
           last_message_at?: string
           phone_number_id?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
-          tenant_id?: string | null
+          tenant_id?: string
           workspace_mode?: Database["public"]["Enums"]["conversation_workspace_mode"]
         }
         Relationships: [
@@ -216,6 +391,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "agencies"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
+          },
+          {
+            foreignKeyName: "conversations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
           },
           {
             foreignKeyName: "conversations_created_by_fkey"
@@ -239,6 +428,108 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      hotelbeds_cache: {
+        Row: {
+          check_in: string
+          check_out: string
+          currency: string
+          hotel_code: string
+          max_rate: number | null
+          min_rate: number | null
+          room_count: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          check_in: string
+          check_out: string
+          currency?: string
+          hotel_code: string
+          max_rate?: number | null
+          min_rate?: number | null
+          room_count?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          check_in?: string
+          check_out?: string
+          currency?: string
+          hotel_code?: string
+          max_rate?: number | null
+          min_rate?: number | null
+          room_count?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      hotelbeds_destinations: {
+        Row: {
+          code: string
+          country_code: string | null
+          name: string | null
+        }
+        Insert: {
+          code: string
+          country_code?: string | null
+          name?: string | null
+        }
+        Update: {
+          code?: string
+          country_code?: string | null
+          name?: string | null
+        }
+        Relationships: []
+      }
+      hotelbeds_hotels: {
+        Row: {
+          address: string | null
+          category_code: string | null
+          city: string | null
+          code: string
+          country: string | null
+          description: string | null
+          destination_code: string | null
+          facilities: Json | null
+          images: Json | null
+          latitude: number | null
+          longitude: number | null
+          name: string | null
+          updated_at: string | null
+          web: string | null
+        }
+        Insert: {
+          address?: string | null
+          category_code?: string | null
+          city?: string | null
+          code: string
+          country?: string | null
+          description?: string | null
+          destination_code?: string | null
+          facilities?: Json | null
+          images?: Json | null
+          latitude?: number | null
+          longitude?: number | null
+          name?: string | null
+          updated_at?: string | null
+          web?: string | null
+        }
+        Update: {
+          address?: string | null
+          category_code?: string | null
+          city?: string | null
+          code?: string
+          country?: string | null
+          description?: string | null
+          destination_code?: string | null
+          facilities?: Json | null
+          images?: Json | null
+          latitude?: number | null
+          longitude?: number | null
+          name?: string | null
+          updated_at?: string | null
+          web?: string | null
+        }
+        Relationships: []
       }
       integrations: {
         Row: {
@@ -278,6 +569,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "agencies"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrations_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
           },
         ]
       }
@@ -351,6 +649,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "leads_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
+          },
+          {
             foreignKeyName: "leads_assigned_user_id_fkey"
             columns: ["assigned_user_id"]
             isOneToOne: false
@@ -395,7 +707,7 @@ export type Database = {
           created_at: string
           id: string
           meta: Json
-          role: string
+          role: Database["public"]["Enums"]["message_role"]
         }
         Insert: {
           client_id?: string | null
@@ -404,7 +716,7 @@ export type Database = {
           created_at?: string
           id?: string
           meta?: Json
-          role: string
+          role: Database["public"]["Enums"]["message_role"]
         }
         Update: {
           client_id?: string | null
@@ -413,7 +725,7 @@ export type Database = {
           created_at?: string
           id?: string
           meta?: Json
-          role?: string
+          role?: Database["public"]["Enums"]["message_role"]
         }
         Relationships: [
           {
@@ -544,6 +856,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "reports_daily_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
+          },
+          {
             foreignKeyName: "reports_daily_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -557,42 +876,44 @@ export type Database = {
           cache_key: string
           created_at: string | null
           expires_at: string | null
-          hard_expires_at: string
           hit_count: number | null
           id: string
           params: Json
           results: Json
           search_type: string
-          soft_expires_at: string
           tenant_id: string | null
         }
         Insert: {
           cache_key: string
           created_at?: string | null
           expires_at?: string | null
-          hard_expires_at: string
           hit_count?: number | null
           id?: string
           params: Json
           results: Json
           search_type: string
-          soft_expires_at: string
           tenant_id?: string | null
         }
         Update: {
           cache_key?: string
           created_at?: string | null
           expires_at?: string | null
-          hard_expires_at?: string
           hit_count?: number | null
           id?: string
           params?: Json
           results?: Json
           search_type?: string
-          soft_expires_at?: string
           tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "search_cache_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       search_jobs: {
         Row: {
@@ -698,6 +1019,87 @@ export type Database = {
         }
         Relationships: []
       }
+      superadmin_agency_assignments: {
+        Row: {
+          agency_id: string
+          assigned_at: string | null
+          assigned_by: string | null
+          id: string
+          superadmin_id: string
+        }
+        Insert: {
+          agency_id: string
+          assigned_at?: string | null
+          assigned_by?: string | null
+          id?: string
+          superadmin_id: string
+        }
+        Update: {
+          agency_id?: string
+          assigned_at?: string | null
+          assigned_by?: string | null
+          id?: string
+          superadmin_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "superadmin_agency_assignments_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "superadmin_agency_assignments_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
+          },
+          {
+            foreignKeyName: "superadmin_agency_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
+          },
+          {
+            foreignKeyName: "superadmin_agency_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "superadmin_agency_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "superadmin_agency_assignments_superadmin_id_fkey"
+            columns: ["superadmin_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
+          },
+          {
+            foreignKeyName: "superadmin_agency_assignments_superadmin_id_fkey"
+            columns: ["superadmin_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "superadmin_agency_assignments_superadmin_id_fkey"
+            columns: ["superadmin_id"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           created_at: string
@@ -722,8 +1124,264 @@ export type Database = {
         }
         Relationships: []
       }
+      trip_segments: {
+        Row: {
+          city: string
+          country: string | null
+          created_at: string | null
+          end_date: string | null
+          flight_price_per_person: number | null
+          hotel_name: string | null
+          hotel_price_per_night: number | null
+          hotel_status: string | null
+          id: string
+          nights: number | null
+          segment_index: number
+          start_date: string | null
+          transport_in_status: string | null
+          transport_out_status: string | null
+          trip_id: string
+        }
+        Insert: {
+          city: string
+          country?: string | null
+          created_at?: string | null
+          end_date?: string | null
+          flight_price_per_person?: number | null
+          hotel_name?: string | null
+          hotel_price_per_night?: number | null
+          hotel_status?: string | null
+          id?: string
+          nights?: number | null
+          segment_index: number
+          start_date?: string | null
+          transport_in_status?: string | null
+          transport_out_status?: string | null
+          trip_id: string
+        }
+        Update: {
+          city?: string
+          country?: string | null
+          created_at?: string | null
+          end_date?: string | null
+          flight_price_per_person?: number | null
+          hotel_name?: string | null
+          hotel_price_per_night?: number | null
+          hotel_status?: string | null
+          id?: string
+          nights?: number | null
+          segment_index?: number
+          start_date?: string | null
+          transport_in_status?: string | null
+          transport_out_status?: string | null
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_segments_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "lead_trips"
+            referencedColumns: ["trip_id"]
+          },
+          {
+            foreignKeyName: "trip_segments_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trips: {
+        Row: {
+          account_type: string
+          agency_id: string | null
+          budget_level: string | null
+          conversation_id: string | null
+          created_at: string | null
+          created_by: string | null
+          destination_cities: string[] | null
+          destination_countries: string[] | null
+          end_date: string | null
+          id: string
+          last_edited_at: string | null
+          last_edited_by: string | null
+          last_state_hash: string | null
+          lead_id: string | null
+          owner_user_id: string
+          pace: string | null
+          planner_state: Json
+          start_date: string | null
+          status: string | null
+          summary: string | null
+          tenant_id: string | null
+          title: string | null
+          total_nights: number | null
+          travelers: Json | null
+          updated_at: string | null
+          version: number | null
+        }
+        Insert: {
+          account_type?: string
+          agency_id?: string | null
+          budget_level?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          destination_cities?: string[] | null
+          destination_countries?: string[] | null
+          end_date?: string | null
+          id?: string
+          last_edited_at?: string | null
+          last_edited_by?: string | null
+          last_state_hash?: string | null
+          lead_id?: string | null
+          owner_user_id: string
+          pace?: string | null
+          planner_state?: Json
+          start_date?: string | null
+          status?: string | null
+          summary?: string | null
+          tenant_id?: string | null
+          title?: string | null
+          total_nights?: number | null
+          travelers?: Json | null
+          updated_at?: string | null
+          version?: number | null
+        }
+        Update: {
+          account_type?: string
+          agency_id?: string | null
+          budget_level?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          destination_cities?: string[] | null
+          destination_countries?: string[] | null
+          end_date?: string | null
+          id?: string
+          last_edited_at?: string | null
+          last_edited_by?: string | null
+          last_state_hash?: string | null
+          lead_id?: string | null
+          owner_user_id?: string
+          pace?: string | null
+          planner_state?: Json
+          start_date?: string | null
+          status?: string | null
+          summary?: string | null
+          tenant_id?: string | null
+          title?: string | null
+          total_nights?: number | null
+          travelers?: Json | null
+          updated_at?: string | null
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trips_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
+          },
+          {
+            foreignKeyName: "trips_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
+          },
+          {
+            foreignKeyName: "trips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_last_edited_by_fkey"
+            columns: ["last_edited_by"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
+          },
+          {
+            foreignKeyName: "trips_last_edited_by_fkey"
+            columns: ["last_edited_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_last_edited_by_fkey"
+            columns: ["last_edited_by"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
+          },
+          {
+            foreignKeyName: "trips_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
+          account_type: string
           agency_id: string | null
           created_at: string
           email: string
@@ -734,6 +1392,7 @@ export type Database = {
           tenant_id: string | null
         }
         Insert: {
+          account_type?: string
           agency_id?: string | null
           created_at?: string
           email: string
@@ -744,6 +1403,7 @@ export type Database = {
           tenant_id?: string | null
         }
         Update: {
+          account_type?: string
           agency_id?: string | null
           created_at?: string
           email?: string
@@ -760,6 +1420,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "agencies"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "users_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
           },
           {
             foreignKeyName: "users_tenant_id_fkey"
@@ -810,6 +1477,105 @@ export type Database = {
       }
     }
     Views: {
+      lead_trips: {
+        Row: {
+          budget_level: string | null
+          created_at: string | null
+          created_by: string | null
+          destination_cities: string[] | null
+          end_date: string | null
+          estimated_price: number | null
+          lead_id: string | null
+          start_date: string | null
+          status: string | null
+          title: string | null
+          travelers: Json | null
+          trip_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          budget_level?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          destination_cities?: string[] | null
+          end_date?: string | null
+          estimated_price?: never
+          lead_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          title?: string | null
+          travelers?: Json | null
+          trip_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          budget_level?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          destination_cities?: string[] | null
+          end_date?: string | null
+          estimated_price?: never
+          lead_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          title?: string | null
+          travelers?: Json | null
+          trip_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["superadmin_id"]
+          },
+          {
+            foreignKeyName: "trips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trips_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      superadmin_agencies_view: {
+        Row: {
+          agency_id: string | null
+          agency_name: string | null
+          assigned_at: string | null
+          assignment_id: string | null
+          superadmin_email: string | null
+          superadmin_id: string | null
+          superadmin_name: string | null
+          tenant_id: string | null
+          tenant_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agencies_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users_with_details: {
         Row: {
           agency_id: string | null
@@ -831,6 +1597,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "agencies"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "users_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "superadmin_agencies_view"
+            referencedColumns: ["agency_id"]
           },
           {
             foreignKeyName: "users_tenant_id_fkey"
@@ -863,8 +1636,32 @@ export type Database = {
         Returns: Json
       }
       clean_expired_cache: { Args: never; Returns: undefined }
+      cleanup_expired_request_cache: { Args: never; Returns: undefined }
       cleanup_old_rate_limit_usage: { Args: never; Returns: undefined }
       cleanup_old_search_jobs: { Args: never; Returns: undefined }
+      generate_api_key: {
+        Args: {
+          p_agency_id?: string
+          p_created_by?: string
+          p_environment?: string
+          p_expires_at?: string
+          p_name?: string
+          p_rate_limit_per_day?: number
+          p_rate_limit_per_hour?: number
+          p_rate_limit_per_minute?: number
+          p_scopes?: string[]
+          p_tenant_id: string
+        }
+        Returns: {
+          api_key: string
+          created_at: string
+          environment: string
+          id: string
+          key_prefix: string
+          scopes: string[]
+        }[]
+      }
+      generate_random_string: { Args: { length: number }; Returns: string }
       get_allowed_roles_for_creation: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"][]
@@ -889,17 +1686,34 @@ export type Database = {
           workspace_mode: Database["public"]["Enums"]["conversation_workspace_mode"]
         }[]
       }
+      get_superadmin_agency_ids: { Args: never; Returns: string[] }
+      get_user_account_type: { Args: never; Returns: string }
       get_user_agency_id: { Args: never; Returns: string }
       get_user_role: { Args: never; Returns: string }
       get_user_tenant_id: { Args: never; Returns: string }
+      hash_api_key: { Args: { api_key: string }; Returns: string }
       is_assigned_to_lead: { Args: { _lead_id: string }; Returns: boolean }
       is_owner: { Args: never; Returns: boolean }
       is_same_agency: { Args: { _agency_id: string }; Returns: boolean }
       is_same_tenant: { Args: { _tenant_id: string }; Returns: boolean }
       is_superadmin: { Args: never; Returns: boolean }
-      search_conversations_by_content: {
-        Args: { p_query: string }
-        Returns: { conversation_id: string; snippet: string; matched_at: string }[]
+      list_api_keys: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          created_at: string
+          environment: string
+          expires_at: string
+          id: string
+          is_active: boolean
+          key_prefix: string
+          last_used_at: string
+          name: string
+          rate_limit_per_day: number
+          rate_limit_per_hour: number
+          rate_limit_per_minute: number
+          scopes: string[]
+          usage_count: number
+        }[]
       }
       record_rate_limit_usage: {
         Args: {
@@ -910,18 +1724,40 @@ export type Database = {
         }
         Returns: undefined
       }
+      revoke_api_key: { Args: { p_key_id: string }; Returns: boolean }
+      rotate_api_key: {
+        Args: { p_old_key_id: string }
+        Returns: {
+          api_key: string
+          created_at: string
+          environment: string
+          id: string
+          key_prefix: string
+          scopes: string[]
+        }[]
+      }
+      search_conversations_by_content: {
+        Args: { p_query: string }
+        Returns: {
+          conversation_id: string
+          matched_at: string
+          snippet: string
+        }[]
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       auth_provider: "email" | "google"
       conversation_channel: "wa" | "web"
       conversation_state: "active" | "closed" | "pending"
-      conversation_workspace_mode: "standard" | "planner"
+      conversation_workspace_mode: "standard" | "planner" | "companion"
       integration_status: "active" | "pending" | "disabled"
       lead_status: "new" | "quoted" | "negotiating" | "won" | "lost"
       message_role: "user" | "assistant" | "system"
       provider_code: "EUROVIPS" | "LOZADA" | "DELFOS" | "ICARO" | "STARLING"
       quality_state: "GREEN" | "YELLOW" | "RED"
-      user_role: "SUPERADMIN" | "ADMIN" | "OWNER" | "SELLER"
+      user_role: "SUPERADMIN" | "ADMIN" | "OWNER" | "SELLER" | "CONSUMER"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1047,18 +1883,22 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       auth_provider: ["email", "google"],
       conversation_channel: ["wa", "web"],
       conversation_state: ["active", "closed", "pending"],
-      conversation_workspace_mode: ["standard", "planner"],
+      conversation_workspace_mode: ["standard", "planner", "companion"],
       integration_status: ["active", "pending", "disabled"],
       lead_status: ["new", "quoted", "negotiating", "won", "lost"],
       message_role: ["user", "assistant", "system"],
       provider_code: ["EUROVIPS", "LOZADA", "DELFOS", "ICARO", "STARLING"],
       quality_state: ["GREEN", "YELLOW", "RED"],
-      user_role: ["SUPERADMIN", "ADMIN", "OWNER", "SELLER"],
+      user_role: ["SUPERADMIN", "ADMIN", "OWNER", "SELLER", "CONSUMER"],
     },
   },
 } as const
+
