@@ -64,3 +64,32 @@ de un stash. types.ts ya reflejaba el cambio porque alguien lo regenero post-pus
 
 **Status**: politica nueva, requiere comunicacion al equipo. Cerrado el
 incidente puntual con el commit 1c91cfb2.
+
+## D14 — Companion routing en resolveConversationTurn 🟡 SPEC PENDIENTE
+
+**Origen**: Durante recuperacion de archivos untracked en cierre de
+prerrequisitos de 1.1.b se encontraron 3 tests TDD spec-first en
+`conversationOrchestrator.test.ts` que asumen que `resolveConversationTurn`
+acepta un parametro `workspaceMode` y devuelve un branch `companion_fallback`.
+
+**Estado actual**: Companion routing NO existe en ningun layer del chat:
+- `useMessageHandler.ts` acepta `workspaceMode` pero lo ignora para routing
+  (linea 681: "route based on content, not workspace_mode").
+- `resolveConversationTurn` no acepta `workspaceMode` ni devuelve branches
+  companion.
+- `routeRequest.ts` no menciona companion.
+
+Los 3 tests estan marcados como `.skip` con TODO en
+`conversationOrchestrator.test.ts`.
+
+**Contradiccion a resolver**: El contexto de Fase 1.0/1.0.5 indicaba routing
+companion implementado. La investigacion confirma posibilidad (b): Fase
+1.0/1.0.5 cerraron parcial y companion routing quedo pendiente.
+
+**Accion**: revisar antes de cualquier sub-fase que toque el orchestrator o
+useMessageHandler. Decidir si:
+  (a) los tests se reescriben para el layer correcto, o
+  (b) se implementa la funcionalidad en resolveConversationTurn.
+
+**Bloquea**: nada hoy. Pero bloquea que digamos "companion routing esta
+cubierto por tests" hasta resolverlo.
