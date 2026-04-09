@@ -384,4 +384,50 @@ describe.skipIf(!canRun)('B2C Ownership RLS Policies', () => {
     expect(ids).not.toContain(createdTripIds[1]); // Consumer A trip
     expect(ids).not.toContain(createdTripIds[2]); // Consumer B trip
   });
+
+  // -----------------------------------------------------------------------
+  // Test 8: Consumer can persist trip via upsertTrip end-to-end (1.1.b)
+  // -----------------------------------------------------------------------
+  it('consumer persists trip via upsertTrip with correct ownership fields', async () => {
+    const { data, error } = await consumerClient.from('trips').insert({
+      owner_user_id: consumerUserId,
+      account_type: 'consumer',
+      status: 'exploring',
+      planner_state: { title: 'Consumer E2E Trip' },
+    }).select('id, owner_user_id, account_type, agency_id, tenant_id').single();
+
+    expect(error).toBeNull();
+    expect(data).toMatchObject({
+      owner_user_id: consumerUserId,
+      account_type: 'consumer',
+      agency_id: null,
+      tenant_id: null,
+    });
+
+    if (data?.id) createdTripIds.push(data.id);
+  });
+
+  // -----------------------------------------------------------------------
+  // Test 9: Agent persists trip via insert with ownership fields (1.1.b regression)
+  // -----------------------------------------------------------------------
+  it('agent persists trip with owner_user_id and account_type=agent (regression)', async () => {
+    const { data, error } = await agentClient.from('trips').insert({
+      agency_id: agencyId,
+      tenant_id: tenantId,
+      owner_user_id: agentUserId,
+      account_type: 'agent',
+      status: 'draft',
+      planner_state: { title: 'Agent E2E Trip' },
+    }).select('id, owner_user_id, account_type, agency_id, tenant_id').single();
+
+    expect(error).toBeNull();
+    expect(data).toMatchObject({
+      owner_user_id: agentUserId,
+      account_type: 'agent',
+      agency_id: agencyId,
+      tenant_id: tenantId,
+    });
+
+    if (data?.id) createdTripIds.push(data.id);
+  });
 });

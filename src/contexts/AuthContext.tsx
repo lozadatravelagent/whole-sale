@@ -10,6 +10,7 @@ export interface AuthUser {
   role: Role;
   tenant_id: string | null;
   agency_id: string | null;
+  accountType: 'agent' | 'consumer';
 }
 
 interface AuthContextType {
@@ -71,7 +72,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // Fetch user data from public.users table (with role info)
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('id, email, role, tenant_id, agency_id')
+          .select('id, email, role, tenant_id, agency_id, account_type')
           .eq('id', session.user.id)
           .single();
 
@@ -87,7 +88,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
             email: userData.email,
             role: userData.role as Role,
             tenant_id: userData.tenant_id,
-            agency_id: userData.agency_id
+            agency_id: userData.agency_id,
+            accountType: (userData.account_type as 'agent' | 'consumer') || 'agent',
           });
           hasInitiallyLoadedRef.current = true; // Mark as loaded
           setLoading(false);

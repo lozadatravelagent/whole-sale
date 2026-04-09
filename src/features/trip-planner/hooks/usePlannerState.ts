@@ -149,9 +149,14 @@ export default function usePlannerState(
 
     // Fire-and-forget: sync to trips table (throttled: max 1 per 5s)
     const now = Date.now();
-    if (user?.id && user?.agency_id && user?.tenant_id && now - lastTripUpsertRef.current > 5000) {
+    const isConsumer = user?.accountType === 'consumer';
+    const canPersist = isConsumer
+      ? Boolean(user?.id)
+      : Boolean(user?.id && user?.agency_id && user?.tenant_id);
+    if (canPersist && now - lastTripUpsertRef.current > 5000) {
       lastTripUpsertRef.current = now;
-      upsertTrip(normalizedState, conversationId, user.id, user.agency_id, user.tenant_id).catch(() => {});
+      const at = isConsumer ? 'consumer' as const : 'agent' as const;
+      upsertTrip(normalizedState, conversationId, user!.id, user!.agency_id ?? null, user!.tenant_id ?? null, at).catch(() => {});
     }
   }, [conversationId, isCurrentPlannerConversation, user]);
 

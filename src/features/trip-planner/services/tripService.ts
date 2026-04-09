@@ -44,15 +44,23 @@ export async function upsertTrip(
   plannerState: TripPlannerState,
   conversationId: string,
   userId: string,
-  agencyId: string,
-  tenantId: string,
+  agencyId: string | null,
+  tenantId: string | null,
+  accountType: 'agent' | 'consumer' = 'agent',
 ): Promise<string | null> {
   try {
+    if (accountType === 'agent' && (!agencyId || !tenantId)) {
+      console.warn('[TRIP SERVICE] upsertTrip: agent requires agencyId and tenantId');
+      return null;
+    }
+
     const tripData = {
       conversation_id: conversationId,
-      agency_id: agencyId,
-      tenant_id: tenantId,
+      agency_id: accountType === 'consumer' ? null : agencyId,
+      tenant_id: accountType === 'consumer' ? null : tenantId,
       created_by: userId,
+      owner_user_id: userId,
+      account_type: accountType,
       title: plannerState.title || null,
       summary: plannerState.summary || null,
       status: deriveTripStatus(plannerState),
