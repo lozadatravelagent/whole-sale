@@ -142,7 +142,10 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 600,
   },
   test: {
-    include: ['src/features/trip-planner/__tests__/*.test.ts'],
+    include: [
+      'src/features/trip-planner/__tests__/*.test.ts',
+      'src/features/chat/__tests__/*.test.ts',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text'],

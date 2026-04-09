@@ -481,4 +481,138 @@ describe('conversationOrchestrator', () => {
     expect(debug.payload.rejectedByDedup.some((entry) => entry.reason === 'provider_duplicate')).toBe(true);
     expect(debug.payload.selectedBuckets.length).toBeGreaterThan(0);
   });
+
+  // TODO(1.1.x): These 3 tests are spec-first for companion routing in
+  // resolveConversationTurn. Companion routing currently does NOT exist in
+  // any layer: useMessageHandler accepts workspaceMode but explicitly ignores
+  // it for routing (line 681: "route based on content, not workspace_mode").
+  // resolveConversationTurn does not accept workspaceMode at all.
+  // Fase 1.0/1.0.5 closed partial — companion routing was not implemented.
+  // Recovered from stash during 1.1.b prerequisites verification.
+  // See D14 in TECH_DEBT.md.
+  describe.skip('companion mode routing', () => {
+    it('companion mode: fallback routes to planner_agent with active planner', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: {
+          requestType: 'combined',
+          flights: {
+            origin: 'BUE',
+            destination: 'BCN',
+            departureDate: '2026-09-10',
+            adults: 2,
+            children: 0,
+          },
+          hotels: {
+            city: 'Barcelona',
+            checkinDate: '2026-09-10',
+            checkoutDate: '2026-09-20',
+            adults: 2,
+            children: 0,
+          },
+          confidence: 0.95,
+          originalMessage: 'Buscame vuelo y hotel a Barcelona',
+        },
+        routeResult: {
+          route: 'QUOTE',
+          score: 0.9,
+          dimensions: { destination: 1, dates: 1, passengers: 1, origin: 1, complexity: 0.5 },
+          missingFields: [],
+          inferredFields: [],
+          reason: 'high_definition',
+        },
+        plannerState: { generationMeta: { isDraft: false } },
+        hasPersistentContext: false,
+        hasPreviousParsedRequest: false,
+        recentCollectCount: 0,
+        maxCollectTurns: 3,
+        workspaceMode: 'companion',
+      } as any);
+
+      expect(resolution.executionBranch).toBe('planner_agent');
+      expect(resolution.uiMeta.reason).toBe('companion_fallback');
+    });
+
+    it('companion mode: fallback routes to ask_minimal without planner', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: {
+          requestType: 'combined',
+          flights: {
+            origin: 'BUE',
+            destination: 'BCN',
+            departureDate: '2026-09-10',
+            adults: 2,
+            children: 0,
+          },
+          hotels: {
+            city: 'Barcelona',
+            checkinDate: '2026-09-10',
+            checkoutDate: '2026-09-20',
+            adults: 2,
+            children: 0,
+          },
+          confidence: 0.95,
+          originalMessage: 'Buscame vuelo y hotel a Barcelona',
+        },
+        routeResult: {
+          route: 'QUOTE',
+          score: 0.9,
+          dimensions: { destination: 1, dates: 1, passengers: 1, origin: 1, complexity: 0.5 },
+          missingFields: [],
+          inferredFields: [],
+          reason: 'high_definition',
+        },
+        plannerState: null,
+        hasPersistentContext: false,
+        hasPreviousParsedRequest: false,
+        recentCollectCount: 0,
+        maxCollectTurns: 3,
+        workspaceMode: 'companion',
+      } as any);
+
+      expect(resolution.executionBranch).toBe('ask_minimal');
+      expect(resolution.responseMode).toBe('needs_input');
+      expect(resolution.uiMeta.reason).toBe('companion_fallback');
+    });
+
+    it('standard mode: fallback unchanged when same input as companion test', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: {
+          requestType: 'combined',
+          flights: {
+            origin: 'BUE',
+            destination: 'BCN',
+            departureDate: '2026-09-10',
+            adults: 2,
+            children: 0,
+          },
+          hotels: {
+            city: 'Barcelona',
+            checkinDate: '2026-09-10',
+            checkoutDate: '2026-09-20',
+            adults: 2,
+            children: 0,
+          },
+          confidence: 0.95,
+          originalMessage: 'Buscame vuelo y hotel a Barcelona',
+        },
+        routeResult: {
+          route: 'QUOTE',
+          score: 0.9,
+          dimensions: { destination: 1, dates: 1, passengers: 1, origin: 1, complexity: 0.5 },
+          missingFields: [],
+          inferredFields: [],
+          reason: 'high_definition',
+        },
+        plannerState: { generationMeta: { isDraft: false } },
+        hasPersistentContext: false,
+        hasPreviousParsedRequest: false,
+        recentCollectCount: 0,
+        maxCollectTurns: 3,
+        workspaceMode: 'standard',
+      } as any);
+
+      expect(resolution.executionBranch).toBe('standard_search');
+      expect(resolution.responseMode).toBe('quote_or_search');
+    });
+  });
 });
