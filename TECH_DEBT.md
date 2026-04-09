@@ -93,3 +93,21 @@ useMessageHandler. Decidir si:
 
 **Bloquea**: nada hoy. Pero bloquea que digamos "companion routing esta
 cubierto por tests" hasta resolverlo.
+
+## D15 — duplicateTrip no setea owner_user_id 🟡 BAJA
+
+**Origen**: Detectado durante auditoria de 1.1.b.
+
+`tripService.duplicateTrip` (linea 219) hace un `.insert()` sin incluir
+`owner_user_id` ni `account_type`. Post-1.1.a, `owner_user_id` es NOT NULL
+sin default, por lo que el INSERT falla contra cualquier DB con la migration
+aplicada.
+
+**Impacto actual**: Ninguno. `duplicateTrip` no tiene call sites en el
+codebase (no se importa en ningun archivo fuera de tripService.ts).
+
+**Fix**: Agregar `owner_user_id: userId` y opcionalmente `account_type: 'agent'`
+al objeto de insert. Es un cambio de 2 lineas.
+
+**Bloquea**: Cualquier feature futura que use `duplicateTrip` (ej. "duplicar
+itinerario" en UI). Debe resolverse antes de conectar un call site.
