@@ -8,7 +8,7 @@ import {
   normalizePlannerState,
 } from '../utils';
 import { getPlannerStateFromCache, setPlannerStateInCache } from '../services/plannerStateCache';
-import { upsertTrip } from '../services/tripService';
+import { getTripByConversation, upsertTrip } from '../services/tripService';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getLatestPlannerMessage,
@@ -188,38 +188,56 @@ export default function usePlannerState(
       const cachedState = await getPlannerStateFromCache(conversationId);
       if (plannerConversationIdRef.current !== conversationId) return;
       if (cachedState) {
+        console.debug('[planner][1.1.c] loaded from indexeddb cache');
         const normalizedCached = normalizePlannerState(cachedState, conversationId);
         if (normalizedCached) {
           setPlannerState((current) => shouldReplacePlannerState(current, normalizedCached) ? normalizedCached : current);
         }
       }
 
-      // 2. Then fetch from Supabase (source of truth)
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .eq('role', 'system')
-        .contains('meta', { messageType: 'trip_planner_state' })
-        .order('created_at', { ascending: false })
-        .limit(1);
+      // 2. Try trips table first (source of truth post-1.1.b)
+      let tripState: TripPlannerState | null = null;
+      try {
+        tripState = await getTripByConversation(conversationId);
+      } catch (tripError) {
+        console.error('[planner][1.1.c] getTripByConversation failed, falling back to messages:', tripError);
+      }
 
       if (plannerConversationIdRef.current !== conversationId) return;
 
-      if (error) {
-        throw error;
-      }
-
-      const snapshot = data?.[0];
-      const meta = snapshot?.meta as PlannerMessageMeta | null;
-      const nextState = meta?.plannerState ? normalizePlannerState(meta.plannerState, conversationId) : null;
-
-      if (nextState) {
+      if (tripState) {
+        console.debug('[planner][1.1.c] loaded from trips');
+        const nextState = normalizePlannerState(tripState as unknown as Record<string, unknown>, conversationId);
         setPlannerState((current) => shouldReplacePlannerState(current, nextState) ? nextState : current);
-        // Update IndexedDB cache with latest from Supabase
         setPlannerStateInCache(conversationId, nextState).catch(() => {});
       } else {
-        setPlannerState(null);
+        // 3. Fallback to messages (conversations pre-1.1.b without trip row)
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', conversationId)
+          .eq('role', 'system')
+          .contains('meta', { messageType: 'trip_planner_state' })
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (plannerConversationIdRef.current !== conversationId) return;
+
+        if (error) {
+          throw error;
+        }
+
+        const snapshot = data?.[0];
+        const meta = snapshot?.meta as PlannerMessageMeta | null;
+        const nextState = meta?.plannerState ? normalizePlannerState(meta.plannerState, conversationId) : null;
+
+        if (nextState) {
+          console.debug('[planner][1.1.c] loaded from messages (fallback, no trip row)');
+          setPlannerState((current) => shouldReplacePlannerState(current, nextState) ? nextState : current);
+          setPlannerStateInCache(conversationId, nextState).catch(() => {});
+        } else {
+          setPlannerState(null);
+        }
       }
     } catch (error) {
       if (plannerConversationIdRef.current !== conversationId) return;

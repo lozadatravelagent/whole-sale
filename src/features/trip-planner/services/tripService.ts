@@ -155,12 +155,13 @@ async function syncTripSegments(tripId: string, state: TripPlannerState): Promis
 }
 
 export async function getTripByConversation(conversationId: string): Promise<TripPlannerState | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('trips')
     .select('planner_state')
     .eq('conversation_id', conversationId)
-    .single();
+    .maybeSingle();
 
+  if (error) throw error;
   return (data?.planner_state as TripPlannerState) || null;
 }
 
