@@ -185,6 +185,26 @@ export async function listTripsByAgency(
   return (data as TripRow[]) || [];
 }
 
+export async function listTripsByUser(
+  userId: string,
+  accountType: 'agent' | 'consumer',
+  filters?: { status?: string; limit?: number },
+): Promise<TripRow[]> {
+  let query = supabase
+    .from('trips')
+    .select('id, title, summary, status, start_date, end_date, destination_cities, budget_level, travelers, created_by, created_at, updated_at')
+    .eq('owner_user_id', userId)
+    .eq('account_type', accountType)
+    .neq('status', 'archived')
+    .order('updated_at', { ascending: false });
+
+  if (filters?.status) query = query.eq('status', filters.status);
+  if (filters?.limit) query = query.limit(filters.limit);
+
+  const { data } = await query;
+  return (data as TripRow[]) || [];
+}
+
 export async function getTripById(tripId: string): Promise<(TripRow & { planner_state: TripPlannerState; conversation_id: string | null }) | null> {
   const { data, error } = await supabase
     .from('trips')
