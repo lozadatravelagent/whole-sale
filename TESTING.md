@@ -11,8 +11,16 @@ Usar `npx supabase@latest` o actualizar el CLI global. CLI v2.40.x falla con ver
 ### Como correrlos
 
 1. `supabase start` — levanta la instancia local.
-2. Copia el `service_role key` del output.
-3. `SUPABASE_SERVICE_ROLE_KEY=<key> npm test`
+2. Seteá las tres variables de entorno. Los tests defaultean a la URL y anon key del
+   remoto, así que para correr contra local hay que setear las tres:
+
+   ```bash
+   export SUPABASE_URL=$(supabase status -o env 2>/dev/null | grep API_URL | cut -d= -f2 | tr -d '"')
+   export SUPABASE_ANON_KEY=$(supabase status -o env 2>/dev/null | grep ANON_KEY | cut -d= -f2 | tr -d '"')
+   export SUPABASE_SERVICE_ROLE_KEY=$(supabase status -o env 2>/dev/null | grep SERVICE_ROLE_KEY | cut -d= -f2 | tr -d '"')
+   ```
+
+3. `npm test`
 
 **Cuando correrlos obligatoriamente**: antes de cualquier PR que toque `supabase/migrations/`,
 `auth policies`, o archivos de `src/features/*/services/*Service.ts` que ejecuten queries con RLS.
