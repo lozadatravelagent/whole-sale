@@ -21,23 +21,44 @@ Causa raiz: importan modulos que transitivamente cargan `src/integrations/supaba
 el cual referencia `localStorage` en su config de auth. En entorno Node/Vitest no hay `localStorage`.
 Fix: mock de `localStorage` en vitest setup o lazy-init del cliente Supabase.
 
-## D12 — Push de migrations 1.1.a a produccion 🔴 PENDIENTE BLOQUEANTE
+## D12 — Push de migrations 1.1.a a produccion ✅ CERRADA
 
-**Bloquea**: cualquier deploy a produccion de codigo que use `owner_user_id`,
-`account_type`, `'CONSUMER'`, o las RLS policies `consumer_*`.
+**Checklist ejecutado**:
+- [x] Backup de la DB de produccion tomado.
+- [x] Drift de migrations resuelto previamente (cerrado por commit 1c91cfb2).
+- [x] Ventana de mantenimiento coordinada (aunque la migration sea aditiva).
+- [x] Script de verificacion post-push (12 queries) corrido contra prod.
+- [x] Plan de rollback documentado (3 niveles: pg_dump restore, SQL manual, dashboard backup).
+- [x] Tests RLS de 1.1.a corridos contra prod post-push (9/9 verdes, cleanup verificado).
 
-**Accion**: ejecutar `supabase db push` con checklist propio:
-- [ ] Backup de la DB de produccion tomado.
-- [ ] Drift de migrations resuelto previamente (cerrado por commit 1c91cfb2).
-- [ ] Ventana de mantenimiento coordinada (aunque la migration sea aditiva).
-- [ ] Script de verificacion post-push (las 12 queries de la seccion f del
-      plan de 1.1.a) corrido contra prod.
-- [ ] Plan de rollback documentado.
-- [ ] Tests RLS de 1.1.a corridos contra prod post-push (con datos de prueba
-      aislados, cleanup garantizado).
+### Resolucion
 
-**Deadline**: antes del primer deploy a produccion de codigo que dependa de
-1.1.a o posterior.
+- **Fecha**: 2026-04-09
+- **Tier de Supabase**: Pro (verificado en dashboard)
+- **Backup automatico verificado**: fisico del 9 Apr 2026 04:34 UTC
+- **Backup manual pre-push**: pg_dump completo de schema public, 2.38 GB,
+  archivado offline por el usuario
+- **Migration A** (20260409000001): aplicada via `supabase db push --linked`
+  sin incidentes
+- **Migration B** (20260409000002): el push CLI murio por statement_timeout
+  default de 2min en el rol postgres del session pooler. Aplicada
+  manualmente via psql --single-transaction con SET LOCAL
+  statement_timeout='10min'. Tiempo real de ejecucion: 6.9 segundos.
+  Registrada manualmente en supabase_migrations.schema_migrations.
+- **Verificacion post-push**: 12/12 queries verdes (enum CONSUMER, columnas
+  trips/users con CHECKs y FKs correctas, 3 RLS policies consumer_*,
+  INSERT policy B2B reforzada, sentinel user, invariantes en 0).
+- **Tests RLS contra prod**: 9/9 verdes. Cleanup verificado limpio antes y
+  despues del run.
+- **Aprendizaje para futuras migrations grandes**: usar psql
+  --single-transaction con SET LOCAL statement_timeout cuando la migration
+  tenga muchas secciones DDL. El default de 2min del CLI no alcanza aunque
+  cada statement individual sea trivial.
+
+D13 (politica: prohibido aplicar migrations fuera de git) reforzada.
+Migration B fue aplicada via psql pero el contenido SQL provino del archivo
+commiteado en PR #60 sin modificaciones. La politica se cumple: el SQL
+aplicado es exactamente el de git.
 
 ## D13 — Politica: prohibido aplicar migrations a prod fuera de git 🟡 PROCESO
 
