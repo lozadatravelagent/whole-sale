@@ -16,9 +16,13 @@ export interface TripRow {
   updated_at: string;
 }
 
-function deriveTripStatus(state: TripPlannerState): string {
+function deriveTripStatus(
+  state: TripPlannerState,
+  accountType: 'agent' | 'consumer' = 'agent',
+): string {
   const segments = state.segments || [];
-  if (segments.length === 0) return 'draft';
+  const initial = accountType === 'consumer' ? 'exploring' : 'draft';
+  if (segments.length === 0) return initial;
 
   const allHotelsConfirmed = segments.every(
     s => s.hotelPlan?.matchStatus === 'confirmed' || s.hotelPlan?.matchStatus === 'quoted'
@@ -29,7 +33,7 @@ function deriveTripStatus(state: TripPlannerState): string {
 
   if (allHotelsConfirmed && allTransportReady) return 'quoted';
   if (segments.some(s => s.contentStatus === 'ready')) return 'ready';
-  return 'draft';
+  return initial;
 }
 
 function hashState(state: TripPlannerState): string {
@@ -63,7 +67,7 @@ export async function upsertTrip(
       account_type: accountType,
       title: plannerState.title || null,
       summary: plannerState.summary || null,
-      status: deriveTripStatus(plannerState),
+      status: deriveTripStatus(plannerState, accountType),
       start_date: plannerState.startDate || null,
       end_date: plannerState.endDate || null,
       total_nights: plannerState.days || null,
