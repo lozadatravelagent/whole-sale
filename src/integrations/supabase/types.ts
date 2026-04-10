@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.4"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -80,13 +85,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "activities_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
-          },
-          {
             foreignKeyName: "activities_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -99,13 +97,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "activities_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
           },
           {
             foreignKeyName: "activities_user_id_fkey"
@@ -243,20 +234,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "api_keys_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
-          },
-          {
-            foreignKeyName: "api_keys_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
-          },
-          {
             foreignKeyName: "api_keys_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
@@ -346,7 +323,7 @@ export type Database = {
       }
       conversations: {
         Row: {
-          agency_id: string
+          agency_id: string | null
           channel: Database["public"]["Enums"]["conversation_channel"]
           created_at: string
           created_by: string | null
@@ -355,11 +332,11 @@ export type Database = {
           last_message_at: string
           phone_number_id: string | null
           state: Database["public"]["Enums"]["conversation_state"]
-          tenant_id: string
+          tenant_id: string | null
           workspace_mode: Database["public"]["Enums"]["conversation_workspace_mode"]
         }
         Insert: {
-          agency_id: string
+          agency_id?: string | null
           channel: Database["public"]["Enums"]["conversation_channel"]
           created_at?: string
           created_by?: string | null
@@ -368,11 +345,11 @@ export type Database = {
           last_message_at?: string
           phone_number_id?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
-          tenant_id: string
+          tenant_id?: string | null
           workspace_mode?: Database["public"]["Enums"]["conversation_workspace_mode"]
         }
         Update: {
-          agency_id?: string
+          agency_id?: string | null
           channel?: Database["public"]["Enums"]["conversation_channel"]
           created_at?: string
           created_by?: string | null
@@ -381,7 +358,7 @@ export type Database = {
           last_message_at?: string
           phone_number_id?: string | null
           state?: Database["public"]["Enums"]["conversation_state"]
-          tenant_id?: string
+          tenant_id?: string | null
           workspace_mode?: Database["public"]["Enums"]["conversation_workspace_mode"]
         }
         Relationships: [
@@ -391,20 +368,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "agencies"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "conversations_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
-          },
-          {
-            foreignKeyName: "conversations_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
           },
           {
             foreignKeyName: "conversations_created_by_fkey"
@@ -570,13 +533,6 @@ export type Database = {
             referencedRelation: "agencies"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "integrations_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
-          },
         ]
       }
       leads: {
@@ -649,20 +605,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "leads_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
-          },
-          {
-            foreignKeyName: "leads_assigned_user_id_fkey"
-            columns: ["assigned_user_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
-          },
-          {
             foreignKeyName: "leads_assigned_user_id_fkey"
             columns: ["assigned_user_id"]
             isOneToOne: false
@@ -707,7 +649,7 @@ export type Database = {
           created_at: string
           id: string
           meta: Json
-          role: Database["public"]["Enums"]["message_role"]
+          role: string
         }
         Insert: {
           client_id?: string | null
@@ -716,7 +658,7 @@ export type Database = {
           created_at?: string
           id?: string
           meta?: Json
-          role: Database["public"]["Enums"]["message_role"]
+          role: string
         }
         Update: {
           client_id?: string | null
@@ -725,7 +667,7 @@ export type Database = {
           created_at?: string
           id?: string
           meta?: Json
-          role?: Database["public"]["Enums"]["message_role"]
+          role?: string
         }
         Relationships: [
           {
@@ -856,13 +798,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "reports_daily_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
-          },
-          {
             foreignKeyName: "reports_daily_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -876,44 +811,42 @@ export type Database = {
           cache_key: string
           created_at: string | null
           expires_at: string | null
+          hard_expires_at: string
           hit_count: number | null
           id: string
           params: Json
           results: Json
           search_type: string
+          soft_expires_at: string
           tenant_id: string | null
         }
         Insert: {
           cache_key: string
           created_at?: string | null
           expires_at?: string | null
+          hard_expires_at: string
           hit_count?: number | null
           id?: string
           params: Json
           results: Json
           search_type: string
+          soft_expires_at: string
           tenant_id?: string | null
         }
         Update: {
           cache_key?: string
           created_at?: string | null
           expires_at?: string | null
+          hard_expires_at?: string
           hit_count?: number | null
           id?: string
           params?: Json
           results?: Json
           search_type?: string
+          soft_expires_at?: string
           tenant_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "search_cache_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       search_jobs: {
         Row: {
@@ -1018,87 +951,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
-      }
-      superadmin_agency_assignments: {
-        Row: {
-          agency_id: string
-          assigned_at: string | null
-          assigned_by: string | null
-          id: string
-          superadmin_id: string
-        }
-        Insert: {
-          agency_id: string
-          assigned_at?: string | null
-          assigned_by?: string | null
-          id?: string
-          superadmin_id: string
-        }
-        Update: {
-          agency_id?: string
-          assigned_at?: string | null
-          assigned_by?: string | null
-          id?: string
-          superadmin_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "superadmin_agency_assignments_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "superadmin_agency_assignments_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
-          },
-          {
-            foreignKeyName: "superadmin_agency_assignments_assigned_by_fkey"
-            columns: ["assigned_by"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
-          },
-          {
-            foreignKeyName: "superadmin_agency_assignments_assigned_by_fkey"
-            columns: ["assigned_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "superadmin_agency_assignments_assigned_by_fkey"
-            columns: ["assigned_by"]
-            isOneToOne: false
-            referencedRelation: "users_with_details"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "superadmin_agency_assignments_superadmin_id_fkey"
-            columns: ["superadmin_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
-          },
-          {
-            foreignKeyName: "superadmin_agency_assignments_superadmin_id_fkey"
-            columns: ["superadmin_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "superadmin_agency_assignments_superadmin_id_fkey"
-            columns: ["superadmin_id"]
-            isOneToOne: false
-            referencedRelation: "users_with_details"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       tenants: {
         Row: {
@@ -1287,25 +1139,11 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "trips_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
-          },
-          {
             foreignKeyName: "trips_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: true
             referencedRelation: "conversations"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trips_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
           },
           {
             foreignKeyName: "trips_created_by_fkey"
@@ -1320,13 +1158,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "users_with_details"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trips_last_edited_by_fkey"
-            columns: ["last_edited_by"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
           },
           {
             foreignKeyName: "trips_last_edited_by_fkey"
@@ -1348,13 +1179,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "trips_owner_user_id_fkey"
-            columns: ["owner_user_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
           },
           {
             foreignKeyName: "trips_owner_user_id_fkey"
@@ -1420,13 +1244,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "agencies"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "users_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
           },
           {
             foreignKeyName: "users_tenant_id_fkey"
@@ -1528,13 +1345,6 @@ export type Database = {
             foreignKeyName: "trips_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["superadmin_id"]
-          },
-          {
-            foreignKeyName: "trips_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
@@ -1550,28 +1360,6 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      superadmin_agencies_view: {
-        Row: {
-          agency_id: string | null
-          agency_name: string | null
-          assigned_at: string | null
-          assignment_id: string | null
-          superadmin_email: string | null
-          superadmin_id: string | null
-          superadmin_name: string | null
-          tenant_id: string | null
-          tenant_name: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agencies_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1597,13 +1385,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "agencies"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "users_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "superadmin_agencies_view"
-            referencedColumns: ["agency_id"]
           },
           {
             foreignKeyName: "users_tenant_id_fkey"
@@ -1901,4 +1682,5 @@ export const Constants = {
     },
   },
 } as const
-
+A new version of Supabase CLI is available: v2.84.2 (currently installed v2.40.7)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

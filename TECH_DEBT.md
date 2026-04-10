@@ -1,16 +1,22 @@
 # Technical Debt Registry
 
-## D10 — Regeneracion de types.ts post-1.1.a ⚠️ CERRADA PARCIAL
+## D10 — Regeneracion de types.ts post-1.1.a ✅ CERRADA
 
-**Cerrada parcial el**: 2026-04-09
-**Commit**: d071411c
+**Cerrada parcial el**: 2026-04-09 (desde local, commit d071411c)
+**Cerrada definitiva el**: 2026-04-09
 
-types.ts regenerado desde la instancia local de Supabase. Local tiene las
-migrations de 1.1.a aplicadas, remoto no. Esto desbloquea desarrollo de 1.1.b
-sin tocar produccion.
+types.ts regenerado desde produccion via `supabase gen types typescript --linked`
+y comparado con la version local. Diff de 311 lineas en 3 categorias:
 
-**Estado real**: types.ts esta temporalmente desincronizado del schema de
-produccion.
+1. **conversations.agency_id/tenant_id nullable** (`string` → `string | null`):
+   correccion esperada de 1.1.a. Aceptada.
+2. **superadmin_agencies_view FK refs removidas**: la vista no aparece en el
+   types regenerado desde prod. Investigacion pendiente (ver D16). Aceptada
+   porque no afecta runtime (solo metadata de relaciones de una vista).
+3. **Cosmetic**: header `__InternalSupabase` metadata block del CLI. Irrelevante.
+
+types.ts reemplazado con la version de prod. Build y tests verificados sin
+regresiones (132/12/2).
 
 ## D11 — Vitest localStorage failures
 
@@ -132,3 +138,25 @@ al objeto de insert. Es un cambio de 2 lineas.
 
 **Bloquea**: Cualquier feature futura que use `duplicateTrip` (ej. "duplicar
 itinerario" en UI). Debe resolverse antes de conectar un call site.
+
+## D16 — superadmin_agencies_view: FKs ausentes en types.ts regenerado 🟡 BAJA
+
+**Origen**: Detectado durante cierre de D10 (2026-04-09).
+
+El types.ts regenerado desde prod via `supabase gen types typescript --linked`
+no incluye las FK references a `superadmin_agencies_view` que si tenia la
+version local anterior. Multiples tablas (activities, api_keys, conversations,
+leads, trips, users) tenian entradas de Relationships apuntando a esta vista.
+
+**Posibles causas**:
+- La vista fue dropeada o alterada en prod en algun momento sin tracking en
+  migrations.
+- El CLI de Supabase cambio su heuristica para incluir/excluir FK refs de
+  vistas entre versiones.
+
+**Impacto**: Ninguno en runtime. Las FK refs de vistas solo son metadata para
+el type generator, no constraints reales de la DB.
+
+**Accion**: Investigar si la vista existe en prod (`SELECT * FROM
+information_schema.views WHERE table_name = 'superadmin_agencies_view'`) y si
+sus columnas coinciden con lo esperado. No bloquea features.
