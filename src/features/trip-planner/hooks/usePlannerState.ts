@@ -17,6 +17,7 @@ import {
   shouldReplacePlannerState,
   type PlannerMessageMeta,
 } from '../helpers';
+import { createDebouncedFlusher } from './createDebouncedFlusher';
 
 export default function usePlannerState(
   conversationId: string | null,
@@ -27,7 +28,7 @@ export default function usePlannerState(
   const [plannerState, setPlannerState] = useState<TripPlannerState | null>(null);
   const [isLoadingPlanner, setIsLoadingPlanner] = useState(false);
   const [plannerError, setPlannerError] = useState<string | null>(null);
-  const lastTripUpsertRef = useRef(0);
+  const tripUpsertDebounceRef = useRef(createDebouncedFlusher(3000));
   const [activePlannerMutation, setActivePlannerMutation] = useState<{
     type: 'regen_plan' | 'regen_segment' | 'regen_day';
     segmentId?: string;
@@ -60,6 +61,7 @@ export default function usePlannerState(
   const [trackedConversationId, setTrackedConversationId] = useState(conversationId);
 
   if (conversationId !== trackedConversationId) {
+    tripUpsertDebounceRef.current.flush();
     const isTempToRealPromotion = Boolean(
       trackedConversationId?.startsWith('temp-') &&
       isPersistableConversationId(conversationId)
@@ -92,6 +94,17 @@ export default function usePlannerState(
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [activePlannerMutation]);
+
+  // Flush pending trip upsert on browser close or component unmount
+  useEffect(() => {
+    const flusher = tripUpsertDebounceRef.current;
+    const handler = () => flusher.flush();
+    window.addEventListener('beforeunload', handler);
+    return () => {
+      window.removeEventListener('beforeunload', handler);
+      flusher.flush();
+    };
+  }, []);
 
   const persistPlannerState = useCallback(async (
     state: TripPlannerState,
@@ -147,16 +160,16 @@ export default function usePlannerState(
       console.error('\u274c [TRIP PLANNER] Failed to persist planner state:', error);
     }
 
-    // Fire-and-forget: sync to trips table (throttled: max 1 per 5s)
-    const now = Date.now();
+    // Fire-and-forget: sync to trips table (debounced 3s, flushed on unmount/beforeunload)
     const isConsumer = user?.accountType === 'consumer';
     const canPersist = isConsumer
       ? Boolean(user?.id)
       : Boolean(user?.id && user?.agency_id && user?.tenant_id);
-    if (canPersist && now - lastTripUpsertRef.current > 5000) {
-      lastTripUpsertRef.current = now;
+    if (canPersist) {
       const at = isConsumer ? 'consumer' as const : 'agent' as const;
-      upsertTrip(normalizedState, conversationId, user!.id, user!.agency_id ?? null, user!.tenant_id ?? null, at).catch(() => {});
+      tripUpsertDebounceRef.current.schedule(() => {
+        upsertTrip(normalizedState, conversationId, user!.id, user!.agency_id ?? null, user!.tenant_id ?? null, at).catch(() => {});
+      });
     }
   }, [conversationId, isCurrentPlannerConversation, user]);
 
