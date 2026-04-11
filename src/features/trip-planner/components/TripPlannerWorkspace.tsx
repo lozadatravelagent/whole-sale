@@ -53,13 +53,13 @@ import {
 import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji } from '../services/plannerPlaceMapper';
 import { computeViewportSearchPoints, viewportRefetchThreshold, buildViewportSignature, viewportRadiusFromBounds } from '../services/placesService';
 import { usePlaceDetail } from '../hooks/usePlaceDetail';
-import { usePlacesOrchestrator, VIEWPORT_FETCH_CATEGORIES, type PlaceBlock } from '../hooks/usePlacesOrchestrator';
+import { usePlacesOrchestrator, VIEWPORT_FETCH_CATEGORIES } from '../hooks/usePlacesOrchestrator';
 import PlannerContextSidebar from './PlannerContextSidebar';
 import type { PlaceDetailData } from './PlannerPlaceDetailPanel';
 import TripPlannerMap from './TripPlannerMap';
 import PlannerDateSelectionModal from './PlannerDateSelectionModal';
 import PlannerMapPlaceAssignModal from './PlannerMapPlaceAssignModal';
-import PlannerChatDestinationCards, { DiscoveryPlaceCard } from './PlannerChatDestinationCards';
+import { DiscoveryPlaceCard } from './PlannerChatDestinationCards';
 import TripListPanel from './TripListPanel';
 import LeadSelector from './LeadSelector';
 import { useAuth } from '@/contexts/AuthContext';
@@ -272,7 +272,6 @@ export default function TripPlannerWorkspace({
     activeCategories: mapActiveCategories,
     placesForActiveSegment: mapPlacesByCategory,
     isLoading: mapPlacesLoading,
-    chatPlaceBlocks,
     discoveryPlacesBySegment,
     categoryStates: mapCategoryStates,
     toggleCategory: handleMapCategoryToggle,
@@ -1997,32 +1996,6 @@ export default function TripPlannerWorkspace({
               loadingAction={loadingActionId}
               discoveryCards={agentDiscoveryCards}
               onDiscoveryAdd={handleDiscoveryAdd}
-            />
-          )}
-          {!isTyping && chatPlaceBlocks.length > 0 && chatPlaceBlocks.map((block) => (
-            <div key={block.id} className="animate-in fade-in duration-300">
-              <p className="mb-2 text-sm font-semibold text-foreground">
-                {block.category === 'sights' ? 'Puntos de interés en' : 'Qué hacer en'} {formatDestinationLabel(block.city)}
-              </p>
-              <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                {block.places.map((place) => (
-                  <DiscoveryPlaceCard
-                    key={place.placeId}
-                    place={place}
-                    onClick={() => handleOpenPlaceDetail({ segmentId: block.segmentId, place })}
-                    onAddClick={() => handleAutoSlotPlace({ segmentId: block.segmentId, place })}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-          {!isTyping && plannerState && !isDraftPlanner && (
-            <PlannerChatDestinationCards
-              destinations={plannerState.destinations}
-              segments={plannerState.segments}
-              discoveryPlacesBySegment={discoveryPlacesBySegment}
-              onPlaceClick={handleOpenPlaceDetail}
-              onAutoSlotPlace={handleAutoSlotPlace}
             />
           )}
           {isTyping && (
