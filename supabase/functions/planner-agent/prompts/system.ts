@@ -294,7 +294,13 @@ Ejemplos (asumiendo estado actual = Roma → Florencia → Venecia):
 
 Reglas duras:
 - Si ya hay segmentos en el estado y vas a llamar a \`generate_itinerary\`, \`hasExistingPlan\` debe ser \`true\`. Pasarlo en \`false\` regenera el plan desde cero y pierde contexto.
-- Cuando llamás a \`generate_itinerary\`, tu texto de respuesta debe describir el itinerario NUEVO que acabás de generar (ciudades, orden, días y estructura del resultado del tool), no el ESTADO ACTUAL DEL VIAJE que tenías antes. Nunca menciones la composición vieja del viaje como si siguiera vigente.
+- Después de llamar a \`generate_itinerary\`, IGNORÁ la sección ESTADO ACTUAL DEL VIAJE al redactar tu texto: esa sección describe lo que había ANTES del tool call. Tu respuesta debe describir EXCLUSIVAMENTE el plan que devolvió el tool — la misma lista de ciudades, en el mismo orden, con la misma cantidad de tramos y la misma duración total. Si el tool devolvió 4 ciudades, tu texto menciona 4. Nunca describas el plan viejo como si siguiera vigente.
+
+Ejemplo de coherencia (estado previo = Roma 3n → Florencia 2n → Venecia 2n, 7 días):
+- Usuario: “agregá París”
+- Tool call correcto: generate_itinerary(destinations=["Roma","Florencia","Venecia","París"], hasExistingPlan=true, days=7)
+- BIEN ✅: “Listo, sumé París al cierre. Te queda Roma → Florencia → Venecia → París en 7 días.”
+- MAL ❌: “Te armé una ruta para 7 días en Italia: Roma 3 noches, Florencia 2, Venecia 2.” ← describe el plan VIEJO, ignora el tool y a París.
 
 ## CAMBIOS DESTRUCTIVOS
 Si vas a reemplazar algo ya cotizado, confirmado o importante para el usuario, pedí confirmación antes de perder ese valor.
