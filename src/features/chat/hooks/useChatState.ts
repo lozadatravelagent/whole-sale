@@ -6,7 +6,12 @@ import { useAuth, useConversations } from '@/hooks/useChat';
 import { useAuth as useAuthContext } from '@/contexts/AuthContext'; // ⚡ OPTIMIZATION: Use cached user data
 import { useToast } from '@/hooks/use-toast';
 
-const useChatState = () => {
+interface UseChatStateOptions {
+  defaultWorkspaceMode?: ConversationWorkspaceMode;
+}
+
+const useChatState = (options: UseChatStateOptions = {}) => {
+  const { defaultWorkspaceMode = 'standard' } = options;
   const [chatState, setChatState] = useState<ChatState>({
     selectedConversation: null,
     message: '',
@@ -15,8 +20,8 @@ const useChatState = () => {
     lastPdfAnalysis: null,
     showInspirationText: false,
     activeTab: 'active',
-    workspaceMode: 'standard',
-    historyMode: 'standard',
+    workspaceMode: defaultWorkspaceMode,
+    historyMode: defaultWorkspaceMode,
     // ✅ Typing state per conversation (not global)
     typingByConversation: {},
     sidebarLimit: 50,
@@ -110,11 +115,11 @@ const useChatState = () => {
     updateChatState({ activeTab });
   }, [updateChatState]);
 
-  const setWorkspaceMode = useCallback((workspaceMode: 'standard' | 'planner') => {
+  const setWorkspaceMode = useCallback((workspaceMode: ConversationWorkspaceMode) => {
     updateChatState({ workspaceMode });
   }, [updateChatState]);
 
-  const setHistoryMode = useCallback((historyMode: 'standard' | 'planner') => {
+  const setHistoryMode = useCallback((historyMode: ConversationWorkspaceMode) => {
     updateChatState({ historyMode });
   }, [updateChatState]);
 
@@ -238,9 +243,9 @@ const useChatState = () => {
     if (shouldCreateNew && conversations.length >= 0) {
       searchParams.delete('new');
       setSearchParams(searchParams, { replace: true });
-      createNewChat();
+      createNewChat(undefined, defaultWorkspaceMode);
     }
-  }, [searchParams, conversations.length, setSearchParams, createNewChat]);
+  }, [searchParams, conversations.length, setSearchParams, createNewChat, defaultWorkspaceMode]);
 
   // Typing indicator is now controlled manually in useMessageHandler
   // No automatic timeout needed
