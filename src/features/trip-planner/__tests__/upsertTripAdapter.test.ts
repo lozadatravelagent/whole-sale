@@ -169,4 +169,24 @@ describe('upsertTrip adapter', () => {
     expect(payload.account_type).toBe('consumer');
     expect(payload.owner_user_id).toBe(USER_ID);
   });
+
+  // -------------------------------------------------------------------------
+  // Case 7: Consumer with empty segments → status='exploring' (1.1.f)
+  // -------------------------------------------------------------------------
+  it('consumer with empty segments sets status=exploring', async () => {
+    await upsertTrip(basePlannerState, CONV_ID, USER_ID, null, null, 'consumer');
+
+    const payload = getUpsertPayload();
+    expect(payload.status).toBe('exploring');
+  });
+
+  // -------------------------------------------------------------------------
+  // Case 8: Agent with empty segments → status='draft' (B2B regression)
+  // -------------------------------------------------------------------------
+  it('agent with empty segments sets status=draft (B2B regression)', async () => {
+    await upsertTrip(basePlannerState, CONV_ID, USER_ID, AGENCY_ID, TENANT_ID, 'agent');
+
+    const payload = getUpsertPayload();
+    expect(payload.status).toBe('draft');
+  });
 });

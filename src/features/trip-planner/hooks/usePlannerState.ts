@@ -132,34 +132,6 @@ export default function usePlannerState(
     // Fire-and-forget: cache in IndexedDB for instant reload
     setPlannerStateInCache(conversationId, normalizedState).catch(() => {});
 
-    const { error: deleteError } = await supabase
-      .from('messages')
-      .delete()
-      .eq('conversation_id', conversationId)
-      .eq('role', 'system')
-      .contains('meta', { messageType: 'trip_planner_state' });
-
-    if (deleteError) {
-      console.warn('\u26a0\ufe0f [TRIP PLANNER] Could not delete old planner snapshots:', deleteError);
-    }
-
-    const { error } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        role: 'system',
-        content: { text: '' },
-        meta: {
-          messageType: 'trip_planner_state',
-          plannerState: normalizedState,
-          timestamp: new Date().toISOString(),
-        },
-      });
-
-    if (error) {
-      console.error('\u274c [TRIP PLANNER] Failed to persist planner state:', error);
-    }
-
     // Fire-and-forget: sync to trips table (debounced 3s, flushed on unmount/beforeunload)
     const isConsumer = user?.accountType === 'consumer';
     const canPersist = isConsumer

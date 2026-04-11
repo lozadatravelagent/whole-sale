@@ -430,4 +430,55 @@ describe.skipIf(!canRun)('B2C Ownership RLS Policies', () => {
 
     if (data?.id) createdTripIds.push(data.id);
   });
+
+  // -----------------------------------------------------------------------
+  // Test 10: listTripsByUser query shape — consumer sees only own trips (1.1.e)
+  // -----------------------------------------------------------------------
+  // Replicates the exact query shape of listTripsByUser(userId, 'consumer')
+  // against Supabase with an RLS-scoped consumer client. We don't import
+  // the service function because it uses the global supabase client which
+  // hits the D11 localStorage issue in Node. Manual query against
+  // consumerClient is more honest — RLS + the explicit filters do the work.
+  // -----------------------------------------------------------------------
+  it('listTripsByUser consumer query returns only own trip (1.1.e)', async () => {
+    const { data, error } = await consumerClient
+      .from('trips')
+      .select('id, title, summary, status, start_date, end_date, destination_cities, budget_level, travelers, created_by, created_at, updated_at')
+      .eq('owner_user_id', consumerUserId)
+      .eq('account_type', 'consumer')
+      .neq('status', 'archived')
+      .order('updated_at', { ascending: false });
+
+    expect(error).toBeNull();
+    const ids = (data ?? []).map((t: { id: string }) => t.id);
+
+    expect(ids).toContain(createdTripIds[1]); // Consumer A trip
+    expect(ids).not.toContain(createdTripIds[2]); // Consumer B trip
+    expect(ids).not.toContain(createdTripIds[0]); // Agent trip
+  });
+
+  // -----------------------------------------------------------------------
+  // Test 11: listTripsByUser query shape — agent sees own agent trip (1.1.e)
+  // -----------------------------------------------------------------------
+  // Same query with agent clientfilters by owner_user_id=agentUserId.
+  // The agent trip seeded in beforeAll has owner_user_id=agentUserId so it
+  // matches. Consumer trips are filtered out by both RLS and the
+  // account_type='agent' filter (defense in depth).
+  // -----------------------------------------------------------------------
+  it('listTripsByUser agent query returns own agent trips (1.1.e)', async () => {
+    const { data, error } = await agentClient
+      .from('trips')
+      .select('id, title, summary, status, start_date, end_date, destination_cities, budget_level, travelers, created_by, created_at, updated_at')
+      .eq('owner_user_id', agentUserId)
+      .eq('account_type', 'agent')
+      .neq('status', 'archived')
+      .order('updated_at', { ascending: false });
+
+    expect(error).toBeNull();
+    const ids = (data ?? []).map((t: { id: string }) => t.id);
+
+    expect(ids).toContain(createdTripIds[0]); // Agent trip
+    expect(ids).not.toContain(createdTripIds[1]); // Consumer A trip
+    expect(ids).not.toContain(createdTripIds[2]); // Consumer B trip
+  });
 });

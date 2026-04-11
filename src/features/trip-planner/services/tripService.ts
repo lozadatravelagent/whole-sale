@@ -16,9 +16,13 @@ export interface TripRow {
   updated_at: string;
 }
 
-function deriveTripStatus(state: TripPlannerState): string {
+function deriveTripStatus(
+  state: TripPlannerState,
+  accountType: 'agent' | 'consumer' = 'agent',
+): string {
   const segments = state.segments || [];
-  if (segments.length === 0) return 'draft';
+  const initial = accountType === 'consumer' ? 'exploring' : 'draft';
+  if (segments.length === 0) return initial;
 
   const allHotelsConfirmed = segments.every(
     s => s.hotelPlan?.matchStatus === 'confirmed' || s.hotelPlan?.matchStatus === 'quoted'
@@ -29,7 +33,7 @@ function deriveTripStatus(state: TripPlannerState): string {
 
   if (allHotelsConfirmed && allTransportReady) return 'quoted';
   if (segments.some(s => s.contentStatus === 'ready')) return 'ready';
-  return 'draft';
+  return initial;
 }
 
 function hashState(state: TripPlannerState): string {
@@ -63,7 +67,7 @@ export async function upsertTrip(
       account_type: accountType,
       title: plannerState.title || null,
       summary: plannerState.summary || null,
-      status: deriveTripStatus(plannerState),
+      status: deriveTripStatus(plannerState, accountType),
       start_date: plannerState.startDate || null,
       end_date: plannerState.endDate || null,
       total_nights: plannerState.days || null,
@@ -180,6 +184,26 @@ export async function listTripsByAgency(
   if (filters?.city) query = query.contains('destination_cities', [filters.city]);
   if (filters?.from) query = query.gte('start_date', filters.from);
   if (filters?.to) query = query.lte('end_date', filters.to);
+
+  const { data } = await query;
+  return (data as TripRow[]) || [];
+}
+
+export async function listTripsByUser(
+  userId: string,
+  accountType: 'agent' | 'consumer',
+  filters?: { status?: string; limit?: number },
+): Promise<TripRow[]> {
+  let query = supabase
+    .from('trips')
+    .select('id, title, summary, status, start_date, end_date, destination_cities, budget_level, travelers, created_by, created_at, updated_at')
+    .eq('owner_user_id', userId)
+    .eq('account_type', accountType)
+    .neq('status', 'archived')
+    .order('updated_at', { ascending: false });
+
+  if (filters?.status) query = query.eq('status', filters.status);
+  if (filters?.limit) query = query.limit(filters.limit);
 
   const { data } = await query;
   return (data as TripRow[]) || [];
