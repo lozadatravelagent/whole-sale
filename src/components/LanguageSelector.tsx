@@ -23,13 +23,14 @@ export function LanguageSelector({
   const { language, changeLanguage, supportedLanguages, languageLabels } = useLanguage();
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           variant={variant}
           size="sm"
           className={cn('gap-2', className)}
           aria-label="Select language"
+          onClick={(e) => e.stopPropagation()}
         >
           <Globe className="h-4 w-4" />
           {showLabel && (
@@ -37,11 +38,18 @@ export function LanguageSelector({
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent
+        align="end"
+        className="z-[100]"
+        onCloseAutoFocus={(e) => e.preventDefault()}
+      >
         {supportedLanguages.map((lang) => (
           <DropdownMenuItem
             key={lang}
-            onClick={() => changeLanguage(lang)}
+            onClick={(e) => {
+              e.stopPropagation();
+              changeLanguage(lang);
+            }}
             className={cn(language === lang && 'bg-accent')}
           >
             {languageLabels[lang]}
