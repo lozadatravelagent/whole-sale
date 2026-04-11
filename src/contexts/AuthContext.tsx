@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useSessionExpiration } from '@/hooks/useSessionExpiration';
 import { LAST_ACTIVITY_KEY } from '@/config/sessionConfig';
 import type { Role } from '@/types';
+import i18n, { type SupportedLanguage } from '@/i18n';
 
 export interface AuthUser {
   id: string;
@@ -11,6 +12,7 @@ export interface AuthUser {
   tenant_id: string | null;
   agency_id: string | null;
   accountType: 'agent' | 'consumer';
+  preferredLanguage: SupportedLanguage;
 }
 
 interface AuthContextType {
@@ -30,6 +32,8 @@ interface AuthContextType {
   canViewAllAgencies: boolean;
   canViewAgency: (agencyId: string) => boolean;
   canViewLead: (lead: { assigned_user_id?: string; agency_id: string }) => boolean;
+  // Language preference
+  setPreferredLanguage: (lang: SupportedLanguage) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -75,7 +79,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         // Fetch user data from public.users table (with role info)
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('id, email, role, tenant_id, agency_id, account_type')
+          .select('id, email, role, tenant_id, agency_id, account_type, preferred_language')
           .eq('id', session.user.id)
           .single();
 
@@ -86,6 +90,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
 
         if (mounted) {
+          const preferredLang = (userData.preferred_language as SupportedLanguage) || 'es';
           setUser({
             id: userData.id,
             email: userData.email,
@@ -93,7 +98,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
             tenant_id: userData.tenant_id,
             agency_id: userData.agency_id,
             accountType: (userData.account_type as 'agent' | 'consumer') || 'agent',
+            preferredLanguage: preferredLang,
           });
+          // Sync i18n with user's preferred language
+          if (i18n.language !== preferredLang) {
+            i18n.changeLanguage(preferredLang);
+          }
           hasInitiallyLoadedRef.current = true; // Mark as loaded
           setLoading(false);
         }
@@ -150,6 +160,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [user?.id]); // Only run when user id changes (login/logout)
 
+  // Language preference setter
+  const setPreferredLanguage = useCallback(async (lang: SupportedLanguage) => {
+    // Always update i18n and localStorage (works for anonymous users too)
+    await i18n.changeLanguage(lang);
+    localStorage.setItem('emilia-language', lang);
+
+    // If user is logged in, persist to DB
+    if (user?.id) {
+      const { error } = await supabase
+        .from('users')
+        .update({ preferred_language: lang })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('Failed to persist language preference:', error);
+        throw error;
+      }
+
+      // Update local state
+      setUser(prev => prev ? { ...prev, preferredLanguage: lang } : null);
+    }
+  }, [user?.id]);
+
   // Helper functions for role checks
   const isOwner = user?.role === 'OWNER';
   const isSuperAdmin = user?.role === 'SUPERADMIN';
@@ -187,7 +220,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     canViewAllTenants,
     canViewAllAgencies,
     canViewAgency,
-    canViewLead
+    canViewLead,
+    setPreferredLanguage,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
