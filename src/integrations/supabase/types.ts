@@ -1,3 +1,4 @@
+Initialising login role...
 export type Json =
   | string
   | number
@@ -537,7 +538,7 @@ export type Database = {
       }
       leads: {
         Row: {
-          agency_id: string
+          agency_id: string | null
           assigned_user_id: string | null
           attachments: Json | null
           budget: number | null
@@ -552,12 +553,13 @@ export type Database = {
           pdf_urls: string[]
           section_id: string | null
           status: Database["public"]["Enums"]["lead_status"]
-          tenant_id: string
+          tenant_id: string | null
           trip: Json
+          trip_id: string | null
           updated_at: string
         }
         Insert: {
-          agency_id: string
+          agency_id?: string | null
           assigned_user_id?: string | null
           attachments?: Json | null
           budget?: number | null
@@ -572,12 +574,13 @@ export type Database = {
           pdf_urls?: string[]
           section_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
-          tenant_id: string
+          tenant_id?: string | null
           trip: Json
+          trip_id?: string | null
           updated_at?: string
         }
         Update: {
-          agency_id?: string
+          agency_id?: string | null
           assigned_user_id?: string | null
           attachments?: Json | null
           budget?: number | null
@@ -592,8 +595,9 @@ export type Database = {
           pdf_urls?: string[]
           section_id?: string | null
           status?: Database["public"]["Enums"]["lead_status"]
-          tenant_id?: string
+          tenant_id?: string | null
           trip?: Json
+          trip_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -637,6 +641,20 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "lead_trips"
+            referencedColumns: ["trip_id"]
+          },
+          {
+            foreignKeyName: "leads_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
             referencedColumns: ["id"]
           },
         ]
@@ -1682,5 +1700,3 @@ export const Constants = {
     },
   },
 } as const
-A new version of Supabase CLI is available: v2.84.2 (currently installed v2.40.7)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
