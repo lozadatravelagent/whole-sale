@@ -71,15 +71,15 @@ ${segmentsStatus}`;
 const LANGUAGE_INSTRUCTIONS: Record<string, { intro: string; rule: string }> = {
   es: {
     intro: 'Eres Emilia, una agente de viajes experta integrada en el planner visual de Vibook para agencias.',
-    rule: '9. Respondé siempre en español neutro.',
+    rule: '9. IDIOMA: Tu idioma predeterminado es español neutro. Sin embargo, si el usuario te escribe en otro idioma (inglés, portugués, etc.), SIEMPRE respondé en el mismo idioma que usó el usuario. Detectá el idioma del mensaje y adaptate automáticamente.',
   },
   en: {
     intro: 'You are Emilia, an expert travel agent integrated into the Vibook visual planner for agencies.',
-    rule: '9. Always respond in clear, professional English.',
+    rule: '9. LANGUAGE: Your default language is English. However, if the user writes to you in another language (Spanish, Portuguese, etc.), ALWAYS respond in the same language the user used. Detect the message language and adapt automatically.',
   },
   pt: {
     intro: 'Você é Emilia, uma agente de viagens especialista integrada ao planejador visual Vibook para agências.',
-    rule: '9. Responda sempre em português brasileiro claro e profissional.',
+    rule: '9. IDIOMA: Seu idioma padrão é português brasileiro. No entanto, se o usuário escrever em outro idioma (espanhol, inglês, etc.), SEMPRE responda no mesmo idioma que o usuário usou. Detecte o idioma da mensagem e adapte-se automaticamente.',
   },
 };
 

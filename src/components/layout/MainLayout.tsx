@@ -30,6 +30,7 @@ import {
   Landmark,
   Globe
 } from 'lucide-react';
+import { LanguageSelector } from '@/components/LanguageSelector';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -394,7 +395,10 @@ export default function MainLayout({
                   ))}
                 </nav>
                 <div className="my-2 h-px bg-border/70" />
-                <ThemeToggle variant="default" className="w-full justify-center rounded-xl bg-muted/50 px-3 py-2" showLabel />
+                <div className="flex items-center gap-2">
+                  <ThemeToggle variant="default" className="flex-1 justify-center rounded-xl bg-muted/50 px-3 py-2" showLabel />
+                  <LanguageSelector variant="outline" className="rounded-xl" showLabel={false} />
+                </div>
                 <div className="my-2 h-px bg-border/70" />
                 <button
                   onClick={() => { setUserMenuOpen(false); handleLogout(); }}
