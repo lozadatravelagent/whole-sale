@@ -1,4 +1,3 @@
-Initialising login role...
 export type Json =
   | string
   | number
@@ -12,31 +11,6 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.4"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
   }
   public: {
     Tables: {
@@ -1229,6 +1203,7 @@ export type Database = {
           email: string
           id: string
           name: string | null
+          preferred_language: string | null
           provider: Database["public"]["Enums"]["auth_provider"]
           role: Database["public"]["Enums"]["user_role"]
           tenant_id: string | null
@@ -1240,6 +1215,7 @@ export type Database = {
           email: string
           id: string
           name?: string | null
+          preferred_language?: string | null
           provider?: Database["public"]["Enums"]["auth_provider"]
           role?: Database["public"]["Enums"]["user_role"]
           tenant_id?: string | null
@@ -1251,6 +1227,7 @@ export type Database = {
           email?: string
           id?: string
           name?: string | null
+          preferred_language?: string | null
           provider?: Database["public"]["Enums"]["auth_provider"]
           role?: Database["public"]["Enums"]["user_role"]
           tenant_id?: string | null
@@ -1682,9 +1659,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       auth_provider: ["email", "google"],
