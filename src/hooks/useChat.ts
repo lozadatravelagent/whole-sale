@@ -220,7 +220,9 @@ export function useConversations() {
       // OWNER and SUPERADMIN can have null agency_id (they manage multiple agencies)
       // SUPERADMIN: has tenant_id but agency_id = NULL (manages all agencies in tenant)
       // OWNER: both tenant_id and agency_id = NULL (manages everything)
-      const canHaveNullAgency = userRole === 'OWNER' || userRole === 'SUPERADMIN';
+      // CONSUMER: B2C user, no agency/tenant (owner_user_id is the identity)
+      const canHaveNullAgency =
+        userRole === 'OWNER' || userRole === 'SUPERADMIN' || userRole === 'CONSUMER';
 
       // ADMIN and SELLER MUST have agency_id
       if (!canHaveNullAgency && !userData?.agency_id) {
