@@ -21,7 +21,7 @@ const RequireConsumer: React.FC<RequireConsumerProps> = ({ children }) => {
 
   useEffect(() => {
     if (action === 'redirect-login') {
-      navigate('/login', {
+      navigate('/emilia/login', {
         replace: true,
         state: { from: location },
       });
