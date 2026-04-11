@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Navigation } from "@/features/landing/components/Navigation";
 import { EmiliaAI } from "@/features/landing/components/EmiliaAI";
 import { Footer } from "@/features/landing/components/Footer";
@@ -33,13 +34,21 @@ export default function EmiliaLanding() {
             consultas de clientes en segundos, cotizar vuelos y hoteles, y cerrar ventas más rápido.
           </p>
 
-          <a
-            href="https://app.vibook.ai"
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-6 py-3 text-base font-semibold text-white transition-opacity hover:opacity-90"
-          >
-            Empezar gratis
-            <ArrowRight className="h-4 w-4" />
-          </a>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link
+              to="/emilia/signup"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-6 py-3 text-base font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              Empezar gratis
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              to="/emilia/login"
+              className="text-sm text-sky-200 hover:text-white transition-colors"
+            >
+              ¿Ya tenés cuenta? Iniciá sesión
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -60,13 +69,13 @@ export default function EmiliaLanding() {
             Sumá a Emilia a tu equipo y empezá a responder más rápido, vender mejor y automatizar
             lo operativo.
           </p>
-          <a
-            href="https://app.vibook.ai"
+          <Link
+            to="/emilia/signup"
             className="inline-flex items-center gap-2 rounded-xl bg-white text-gray-900 px-6 py-3 text-base font-semibold hover:bg-gray-100 transition-colors"
           >
             Crear cuenta gratis
             <ArrowRight className="h-4 w-4" />
-          </a>
+          </Link>
         </div>
       </section>
 
