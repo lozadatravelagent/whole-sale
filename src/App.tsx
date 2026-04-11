@@ -30,6 +30,9 @@ const Privacy = lazy(() => import("./pages/Privacy"));
 const Contact = lazy(() => import("./pages/Contact"));
 const EmiliaLanding = lazy(() => import("./pages/EmiliaLanding"));
 const CompanionChatPage = lazy(() => import("./pages/CompanionChatPage"));
+const ConsumerSignup = lazy(() => import("./pages/ConsumerSignup"));
+const ConsumerLogin = lazy(() => import("./pages/ConsumerLogin"));
+const ConsumerProfile = lazy(() => import("./pages/ConsumerProfile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const HotelbedsTest = lazy(() => import("./pages/HotelbedsTest"));
 
@@ -89,6 +92,8 @@ const App = () => (
                 <Route path="/privacidad" element={<Privacy />} />
                 <Route path="/contacto" element={<Contact />} />
                 <Route path="/emilia" element={<EmiliaLanding />} />
+                <Route path="/emilia/signup" element={<ConsumerSignup />} />
+                <Route path="/emilia/login" element={<ConsumerLogin />} />
                 <Route
                   path="/emilia/chat"
                   element={
@@ -102,6 +107,14 @@ const App = () => (
                   element={
                     <RequireConsumer>
                       <CompanionChatPage />
+                    </RequireConsumer>
+                  }
+                />
+                <Route
+                  path="/emilia/profile"
+                  element={
+                    <RequireConsumer>
+                      <ConsumerProfile />
                     </RequireConsumer>
                   }
                 />
