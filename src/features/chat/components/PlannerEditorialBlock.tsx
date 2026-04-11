@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MapPin, Sparkles, ArrowRight, Hotel, Plane, Gauge, Route } from 'lucide-react';
+import { MapPin, Sparkles, ArrowRight, Hotel, Plane, Gauge, Route, ChevronDown } from 'lucide-react';
 import type { PlannerEditorialData, EditorialSegment, EditorialNextAction } from '@/features/trip-planner/editorial';
 
 interface PlannerEditorialBlockProps {
@@ -41,9 +42,47 @@ function DayPreviews({ segment }: { segment: EditorialSegment }) {
       {segment.dayPreviews.map((day) => (
         <div key={day.dayNumber} className="text-sm">
           <span className="font-medium text-foreground">Dia {day.dayNumber}: {day.title}</span>
-          <span className="text-muted-foreground"> — {day.oneLiner}</span>
+          {day.oneLiner && (
+            <span className="text-muted-foreground"> — {day.oneLiner}</span>
+          )}
         </div>
       ))}
+    </div>
+  );
+}
+
+function SegmentCard({ segment }: { segment: EditorialSegment }) {
+  const [showDays, setShowDays] = useState(false);
+  const dayCount = segment.dayPreviews.length;
+
+  return (
+    <div className="border-l-2 border-primary/20 pl-3">
+      <div className="flex items-baseline gap-2">
+        <span className="text-sm font-semibold text-foreground">{segment.city}</span>
+        <span className="text-xs text-muted-foreground">
+          {segment.nights} {segment.nights === 1 ? 'noche' : 'noches'}
+        </span>
+      </div>
+      {segment.summary && (
+        <p className="mt-0.5 text-sm text-muted-foreground">{segment.summary}</p>
+      )}
+      <SegmentHighlights segment={segment} />
+      {dayCount > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowDays((prev) => !prev)}
+            aria-expanded={showDays}
+            className="mt-2 flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${showDays ? 'rotate-180' : ''}`}
+            />
+            {showDays ? 'Ocultar' : 'Ver'} día por día ({dayCount} {dayCount === 1 ? 'día' : 'días'})
+          </button>
+          {showDays && <DayPreviews segment={segment} />}
+        </>
+      )}
     </div>
   );
 }
@@ -127,21 +166,7 @@ export function PlannerEditorialBlock({ editorial, onActionClick }: PlannerEdito
       {/* Segments */}
       <div className="space-y-4">
         {editorial.segments.map((segment, i) => (
-          <div key={i} className="border-l-2 border-primary/20 pl-3">
-            <div className="flex items-baseline gap-2">
-              <span className="text-sm font-semibold text-foreground">
-                {segment.city}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {segment.nights} {segment.nights === 1 ? 'noche' : 'noches'}
-              </span>
-            </div>
-            {segment.summary && (
-              <p className="mt-0.5 text-sm text-muted-foreground">{segment.summary}</p>
-            )}
-            <SegmentHighlights segment={segment} />
-            <DayPreviews segment={segment} />
-          </div>
+          <SegmentCard key={i} segment={segment} />
         ))}
       </div>
 
