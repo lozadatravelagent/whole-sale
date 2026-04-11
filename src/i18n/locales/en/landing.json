@@ -1,0 +1,15 @@
+{
+  "hero": {
+    "badge": "AI assistant for travel agencies",
+    "titlePrefix": "Meet",
+    "titleHighlight": "Emilia",
+    "description": "Your AI-powered sales assistant. Emilia helps your team respond to customer inquiries in seconds, quote flights and hotels, and close sales faster.",
+    "cta": "Start for free",
+    "loginLink": "Already have an account? Log in"
+  },
+  "cta": {
+    "title": "Take your agency to the next level",
+    "description": "Add Emilia to your team and start responding faster, selling better, and automating operations.",
+    "button": "Create free account"
+  }
+}

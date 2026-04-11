@@ -1,0 +1,15 @@
+{
+  "hero": {
+    "badge": "Asistente de IA para agencias de viajes",
+    "titlePrefix": "Conocé a",
+    "titleHighlight": "Emilia",
+    "description": "Tu asistente comercial con inteligencia artificial. Emilia ayuda a tu equipo a responder consultas de clientes en segundos, cotizar vuelos y hoteles, y cerrar ventas más rápido.",
+    "cta": "Empezar gratis",
+    "loginLink": "¿Ya tenés cuenta? Iniciá sesión"
+  },
+  "cta": {
+    "title": "Llevá tu agencia al siguiente nivel",
+    "description": "Sumá a Emilia a tu equipo y empezá a responder más rápido, vender mejor y automatizar lo operativo.",
+    "button": "Crear cuenta gratis"
+  }
+}

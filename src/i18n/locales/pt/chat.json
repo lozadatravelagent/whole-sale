@@ -1,0 +1,20 @@
+{
+  "emptyState": {
+    "title": "Para onde você quer viajar hoje?",
+    "subtitle": "Me conte sua ideia de viagem e eu ajudo a planejar",
+    "placeholder": "Ex: Quero ir para a Itália por 10 dias em setembro..."
+  },
+  "input": {
+    "placeholder": "Digite sua mensagem...",
+    "send": "Enviar"
+  },
+  "typing": {
+    "thinking": "Emilia está pensando...",
+    "searching": "Buscando opções..."
+  },
+  "error": {
+    "sendFailed": "Não foi possível enviar a mensagem",
+    "connectionLost": "Conexão perdida",
+    "tryAgain": "Tente novamente"
+  }
+}

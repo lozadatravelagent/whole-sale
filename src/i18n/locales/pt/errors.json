@@ -1,0 +1,8 @@
+{
+  "generic": "Ocorreu um erro inesperado",
+  "network": "Erro de conexão. Verifique sua internet.",
+  "timeout": "A solicitação demorou muito. Tente novamente.",
+  "unauthorized": "Você não tem permissão para esta ação.",
+  "notFound": "O recurso solicitado não foi encontrado.",
+  "validation": "Por favor, verifique os dados inseridos."
+}
