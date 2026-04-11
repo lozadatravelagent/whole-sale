@@ -11,6 +11,7 @@ interface PlannerInput {
   userContext?: { currentCity: string; country?: string; timezone?: string } | null;
   plannerState?: Record<string, unknown> | null;
   userPreferences?: { budgetLevel?: string; pace?: string; travelers?: { adults: number; children: number; infants: number } } | null;
+  userLanguage?: 'es' | 'en' | 'pt';
 }
 
 function buildPreviousStepsMessages(steps: AgentStep[]): Array<Record<string, unknown>> {
@@ -57,6 +58,7 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
     input.plannerState as any,
     input.userPreferences,
     input.previousContext,
+    input.userLanguage,
   );
 
   // Build messages array

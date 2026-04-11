@@ -22,6 +22,7 @@ import { translateBaggage } from '../utils/translations';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { supabase } from '@/integrations/supabase/client';
 import { transformStarlingResults } from '../services/flightTransformer';
+import i18n from '@/i18n';
 
 function formatPlannerDateSelectionMessage(selection: {
   startDate?: string;
@@ -843,6 +844,7 @@ const useMessageHandler = (
                 pace: plannerState?.pace ?? 'balanced',
                 travelers: plannerState?.travelers ?? { adults: 2, children: 0, infants: 0 },
               },
+              userLanguage: i18n.language?.split('-')[0] || 'es',
             }
           });
 

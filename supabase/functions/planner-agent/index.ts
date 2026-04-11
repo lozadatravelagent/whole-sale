@@ -21,7 +21,7 @@ serve(async (req) => {
     { action: 'message', resource: 'planner-agent' },
     async () => {
       try {
-        const { message, conversationId, conversationHistory = [], previousContext = null, userContext = null, plannerState = null, userPreferences = null } = await req.json();
+        const { message, conversationId, conversationHistory = [], previousContext = null, userContext = null, plannerState = null, userPreferences = null, userLanguage = 'es' } = await req.json();
 
         if (!message) {
           throw new Error('Message is required');
@@ -64,6 +64,7 @@ serve(async (req) => {
           plannerState,
           userPreferences,
           tools,
+          userLanguage: userLanguage as 'es' | 'en' | 'pt',
         };
 
         const result = await runAgentLoop(context);
