@@ -16,6 +16,9 @@ import ChatSidebarCompanion from './components/ChatSidebarCompanion';
 import ChatInterface from './components/ChatInterface';
 import EmptyState from './components/EmptyState';
 import useChatState from './hooks/useChatState';
+import HandoffBanner from '@/features/companion/components/HandoffBanner';
+import HandoffModal from '@/features/companion/components/HandoffModal';
+import { isTripReadyForHandoff } from '@/features/trip-planner/handoffReadiness';
 import useContextualMemory from './hooks/useContextualMemory';
 import usePdfAnalysis from './hooks/usePdfAnalysis';
 import useMessageHandler from './hooks/useMessageHandler';
@@ -31,7 +34,11 @@ interface ChatFeatureProps {
 const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isOwner, isSuperAdmin } = useAuth();
+  const { isOwner, isSuperAdmin, user } = useAuth();
+  const [isHandoffModalOpen, setIsHandoffModalOpen] = useState(false);
+  const [handoffSubmittedConversations, setHandoffSubmittedConversations] = useState<Set<string>>(
+    () => new Set()
+  );
   const {
     // State
     selectedConversation,
@@ -778,6 +785,12 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   };
 
   if (mode === 'companion') {
+    const showHandoffBanner = Boolean(
+      selectedConversation &&
+        isTripReadyForHandoff(planner.plannerState) &&
+        !handoffSubmittedConversations.has(selectedConversation)
+    );
+
     return (
       <CompanionLayout>
         <div className="flex h-full">
@@ -795,28 +808,52 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
             className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0`}
           >
             {selectedConversation ? (
-              <ChatInterface
-                selectedConversation={selectedConversation}
-                message={message}
-                isLoading={isLoading}
-                isTyping={isTyping}
-                typingMessage={typingMessage}
-                isUploadingPdf={isUploadingPdf}
-                isAddingToCRM={isAddingToCRM}
-                messages={conversationScopedMessages}
-                refreshMessages={refreshMessages}
-                onMessageChange={setMessage}
-                onSendMessage={handleSendMessage}
-                onPdfUpload={handlePdfUpload}
-                onAddToCRM={handleAddToCRM}
-                onPdfGenerated={handlePdfGenerated}
-                onBackToList={() => setSelectedConversation(null)}
-              />
+              <>
+                <div className="flex-1 min-h-0">
+                  <ChatInterface
+                    selectedConversation={selectedConversation}
+                    message={message}
+                    isLoading={isLoading}
+                    isTyping={isTyping}
+                    typingMessage={typingMessage}
+                    isUploadingPdf={isUploadingPdf}
+                    isAddingToCRM={isAddingToCRM}
+                    messages={conversationScopedMessages}
+                    refreshMessages={refreshMessages}
+                    onMessageChange={setMessage}
+                    onSendMessage={handleSendMessage}
+                    onPdfUpload={handlePdfUpload}
+                    onAddToCRM={handleAddToCRM}
+                    onPdfGenerated={handlePdfGenerated}
+                    onBackToList={() => setSelectedConversation(null)}
+                  />
+                </div>
+                <HandoffBanner
+                  visible={showHandoffBanner}
+                  onOpenModal={() => setIsHandoffModalOpen(true)}
+                />
+              </>
             ) : (
               <EmptyState onSendNewMessage={handleSendNewMessage} />
             )}
           </div>
         </div>
+        <HandoffModal
+          open={isHandoffModalOpen}
+          onOpenChange={setIsHandoffModalOpen}
+          plannerState={planner.plannerState}
+          conversationId={selectedConversation}
+          user={user}
+          onSubmitted={() => {
+            if (selectedConversation) {
+              setHandoffSubmittedConversations((prev) => {
+                const next = new Set(prev);
+                next.add(selectedConversation);
+                return next;
+              });
+            }
+          }}
+        />
       </CompanionLayout>
     );
   }
