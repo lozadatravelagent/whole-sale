@@ -23,7 +23,7 @@ function isGenericPlaceholder(title: string): boolean {
 export function createGenerateItineraryTool(supabase: SupabaseClient): ToolDefinition {
   return {
     name: 'generate_itinerary',
-    description: 'Genera un itinerario de viaje día por día para uno o más destinos. Incluye actividades, restaurantes y tips. Útil cuando el usuario pide un plan de viaje detallado.',
+    description: 'Genera o actualiza el itinerario visible en el panel lateral del usuario. Usala (1) al armar un plan nuevo desde cero, y (2) cada vez que el usuario modifique la estructura de un plan existente (agregar/quitar/reordenar ciudades, cambiar días por tramo, cambiar fechas totales). Para cambios sobre un plan ya armado, pasá hasExistingPlan=true y la lista COMPLETA de destinations actualizada. Para regenerar un solo tramo existente, usá segmentCity.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -42,7 +42,7 @@ export function createGenerateItineraryTool(supabase: SupabaseClient): ToolDefin
         },
         pace: { type: 'string', description: 'Ritmo del viaje: "relaxed", "moderate", "active"' },
         budgetLevel: { type: 'string', description: 'Nivel de presupuesto: "budget", "moderate", "luxury"' },
-        hasExistingPlan: { type: 'boolean', description: 'Si es true, genera un esquema simplificado (skeleton). Usalo si el viaje ya tiene segmentos definidos.' },
+        hasExistingPlan: { type: 'boolean', description: 'Pasá true cuando el ESTADO ACTUAL DEL VIAJE ya tiene segmentos y estás aplicando un cambio estructural. Dispara el modo skeleton (rápido) y evita regenerar desde cero. Pasá false sólo cuando estás armando el plan por primera vez.' },
         segmentCity: { type: 'string', description: 'Si se especifica, regenera solo el segmento de esta ciudad (modo segment).' },
       },
       required: ['destinations'],
