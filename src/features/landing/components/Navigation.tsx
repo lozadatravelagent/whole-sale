@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Menu, X } from "lucide-react"
+import { LanguageSelector } from "@/components/LanguageSelector"
 
 const desktopItems = [
   { label: "Demo", id: "demo" },
@@ -72,6 +73,7 @@ export function Navigation() {
 
           {/* CTA buttons */}
           <div className="hidden lg:flex items-center justify-end gap-3 flex-1">
+            <LanguageSelector variant="ghost" className="text-gray-300 hover:text-white" />
             <a
               href="https://app.vibook.ai/login"
               className="px-5 py-2.5 text-base text-gray-300 hover:text-white transition-colors rounded-lg hover:bg-white/[0.05]"

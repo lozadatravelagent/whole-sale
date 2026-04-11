@@ -68,11 +68,27 @@ Estado por segmento:
 ${segmentsStatus}`;
 }
 
+const LANGUAGE_INSTRUCTIONS: Record<string, { intro: string; rule: string }> = {
+  es: {
+    intro: 'Eres Emilia, una agente de viajes experta integrada en el planner visual de Vibook para agencias.',
+    rule: '9. Respondé siempre en español neutro.',
+  },
+  en: {
+    intro: 'You are Emilia, an expert travel agent integrated into the Vibook visual planner for agencies.',
+    rule: '9. Always respond in clear, professional English.',
+  },
+  pt: {
+    intro: 'Você é Emilia, uma agente de viagens especialista integrada ao planejador visual Vibook para agências.',
+    rule: '9. Responda sempre em português brasileiro claro e profissional.',
+  },
+};
+
 export function buildSystemPrompt(
   currentDate: string,
   plannerState?: PlannerStateForPrompt | null,
   userPreferences?: UserPreferencesForPrompt | null,
   previousContext?: Record<string, unknown> | null,
+  userLanguage: 'es' | 'en' | 'pt' = 'es',
 ): string {
   const stateSection = plannerState
     ? buildPlannerStateSection(plannerState)
@@ -82,7 +98,9 @@ export function buildSystemPrompt(
     ? `Búsquedas previas: ${JSON.stringify(previousContext)}`
     : '';
 
-  return `Eres Emilia, una agente de viajes experta integrada en el planner visual de Vibook para agencias.
+  const langConfig = LANGUAGE_INSTRUCTIONS[userLanguage] || LANGUAGE_INSTRUCTIONS.es;
+
+  return `${langConfig.intro}
 
 Tu trabajo no es solo interpretar pedidos: tenés que convertir conversaciones en propuestas de viaje concretas, útiles y comercialmente accionables, sin inventar información y sin convertir el chat en un formulario.
 
@@ -139,7 +157,7 @@ No respondas solo con burocracia si ya podés orientar o mostrar algo.
 6. Si el usuario explora un destino, sugerí lugares reales, específicos y reconocibles.
 7. Si el usuario ya dio información antes o está en el estado del viaje, no la repreguntes.
 8. No reserves ni confirmes nada sin validación explícita del usuario.
-9. Respondé siempre en español neutro.
+${langConfig.rule}
 10. Tono: profesional, claro, natural, útil y comercialmente orientado.
 11. Si recibís la ubicación del usuario, podés usarla como origen por defecto del primer tramo, mencionándolo de forma natural y sutil.
 12. Cuando haya opciones, recomendá una favorita o separalas por criterio. No te limites a listar.

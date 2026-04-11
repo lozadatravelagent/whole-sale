@@ -1,0 +1,8 @@
+{
+  "generic": "An unexpected error occurred",
+  "network": "Connection error. Check your internet.",
+  "timeout": "Request took too long. Please try again.",
+  "unauthorized": "You don't have permission for this action.",
+  "notFound": "The requested resource was not found.",
+  "validation": "Please check the entered data."
+}

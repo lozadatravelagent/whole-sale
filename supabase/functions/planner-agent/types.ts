@@ -6,6 +6,7 @@ export interface AgentContext {
   plannerState?: Record<string, unknown> | null;
   userPreferences?: { budgetLevel?: string; pace?: string; travelers?: { adults: number; children: number; infants: number } } | null;
   tools: ToolDefinition[];
+  userLanguage?: 'es' | 'en' | 'pt';
 }
 
 export interface ToolDefinition {
