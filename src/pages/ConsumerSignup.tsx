@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2, Sparkles } from 'lucide-react';
@@ -9,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { LanguageSelector } from '@/components/LanguageSelector';
 import {
   consumerSignupSchema,
   type ConsumerSignupFormData,
@@ -21,6 +23,7 @@ import {
 
 export default function ConsumerSignup() {
   const navigate = useNavigate();
+  const { t } = useTranslation('auth');
   const { toast } = useToast();
   const { user, loading, isAgent, isConsumer } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,7 +61,7 @@ export default function ConsumerSignup() {
     if (!signupResult.ok) {
       setIsSubmitting(false);
       toast({
-        title: 'No se pudo crear la cuenta',
+        title: t('signup.toast.error'),
         description: signupResult.message,
         variant: 'destructive',
       });
@@ -70,16 +73,16 @@ export default function ConsumerSignup() {
 
     if (!signinResult.ok) {
       toast({
-        title: 'Cuenta creada',
-        description: 'Tu cuenta se creó. Iniciá sesión para continuar.',
+        title: t('signup.toast.createdNeedLogin'),
+        description: t('signup.toast.createdNeedLoginDescription'),
       });
       navigate('/emilia/login', { replace: true });
       return;
     }
 
     toast({
-      title: '¡Bienvenido a Emilia!',
-      description: 'Tu cuenta está lista.',
+      title: t('signup.toast.success'),
+      description: t('signup.toast.successDescription'),
     });
     navigate('/emilia/chat', { replace: true });
   };
@@ -94,18 +97,18 @@ export default function ConsumerSignup() {
             <Sparkles className="h-5 w-5" />
             <span className="text-sm font-semibold uppercase tracking-wide">Emilia</span>
           </div>
-          <CardTitle className="text-2xl">Crear cuenta</CardTitle>
+          <CardTitle className="text-2xl">{t('signup.title')}</CardTitle>
           <CardDescription className="text-white/70">
-            Planificá tu próximo viaje con una asistente que aprende a tu ritmo.
+            {t('signup.description')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
             <div className="flex flex-col gap-1">
-              <Label htmlFor="signup-name">Nombre</Label>
+              <Label htmlFor="signup-name">{t('signup.name.label')}</Label>
               <Input
                 id="signup-name"
-                placeholder="Tu nombre"
+                placeholder={t('signup.name.placeholder')}
                 autoComplete="name"
                 {...form.register('name')}
               />
@@ -115,11 +118,11 @@ export default function ConsumerSignup() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <Label htmlFor="signup-email">Email</Label>
+              <Label htmlFor="signup-email">{t('signup.email.label')}</Label>
               <Input
                 id="signup-email"
                 type="email"
-                placeholder="tu@email.com"
+                placeholder={t('signup.email.placeholder')}
                 autoComplete="email"
                 {...form.register('email')}
               />
@@ -129,11 +132,11 @@ export default function ConsumerSignup() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <Label htmlFor="signup-password">Contraseña</Label>
+              <Label htmlFor="signup-password">{t('signup.password.label')}</Label>
               <Input
                 id="signup-password"
                 type="password"
-                placeholder="Mínimo 8 caracteres"
+                placeholder={t('signup.password.placeholder')}
                 autoComplete="new-password"
                 {...form.register('password')}
               />
@@ -143,7 +146,7 @@ export default function ConsumerSignup() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <Label htmlFor="signup-confirm">Repetí la contraseña</Label>
+              <Label htmlFor="signup-confirm">{t('signup.confirmPassword.label')}</Label>
               <Input
                 id="signup-confirm"
                 type="password"
@@ -157,16 +160,19 @@ export default function ConsumerSignup() {
 
             <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Crear cuenta
+              {t('signup.submit')}
             </Button>
           </form>
 
-          <p className="mt-4 text-center text-sm text-white/70">
-            ¿Ya tenés cuenta?{' '}
-            <Link to="/emilia/login" className="text-primary hover:underline">
-              Iniciá sesión
-            </Link>
-          </p>
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-white/70">
+              {t('signup.loginLink')}{' '}
+              <Link to="/emilia/login" className="text-primary hover:underline">
+                {t('signup.loginLinkAction')}
+              </Link>
+            </p>
+            <LanguageSelector showLabel={false} variant="ghost" className="text-white/70" />
+          </div>
         </CardContent>
       </Card>
     </div>

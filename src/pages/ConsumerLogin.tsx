@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Loader2, Sparkles } from 'lucide-react';
@@ -9,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { LanguageSelector } from '@/components/LanguageSelector';
 import {
   consumerLoginSchema,
   type ConsumerLoginFormData,
@@ -22,6 +24,7 @@ import {
 
 export default function ConsumerLogin() {
   const navigate = useNavigate();
+  const { t } = useTranslation('auth');
   const { toast } = useToast();
   const { user, loading, isAgent, isConsumer } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,7 +56,7 @@ export default function ConsumerLogin() {
     if (!result.ok) {
       setIsSubmitting(false);
       toast({
-        title: 'No pudimos iniciar sesión',
+        title: t('login.toast.error'),
         description: result.message,
         variant: 'destructive',
       });
@@ -68,8 +71,8 @@ export default function ConsumerLogin() {
 
     if (accountType === 'agent') {
       toast({
-        title: 'Iniciaste sesión como agente',
-        description: 'Esta página es para consumers. Te llevamos a tu workspace.',
+        title: t('login.toast.agentRedirect'),
+        description: t('login.toast.agentRedirectDescription'),
       });
       navigate('/dashboard', { replace: true });
       return;
@@ -77,8 +80,8 @@ export default function ConsumerLogin() {
 
     if (accountType !== 'consumer') {
       toast({
-        title: 'Cuenta sin configurar',
-        description: 'No pudimos confirmar tu tipo de cuenta. Contactanos si el problema persiste.',
+        title: t('login.toast.accountNotConfigured'),
+        description: t('login.toast.accountNotConfiguredDescription'),
         variant: 'destructive',
       });
       await signOutConsumer();
@@ -98,19 +101,19 @@ export default function ConsumerLogin() {
             <Sparkles className="h-5 w-5" />
             <span className="text-sm font-semibold uppercase tracking-wide">Emilia</span>
           </div>
-          <CardTitle className="text-2xl">Iniciar sesión</CardTitle>
+          <CardTitle className="text-2xl">{t('login.title')}</CardTitle>
           <CardDescription className="text-white/70">
-            Volvé a tu viaje donde lo dejaste.
+            {t('login.description')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
             <div className="flex flex-col gap-1">
-              <Label htmlFor="login-email">Email</Label>
+              <Label htmlFor="login-email">{t('login.email.label')}</Label>
               <Input
                 id="login-email"
                 type="email"
-                placeholder="tu@email.com"
+                placeholder={t('login.email.placeholder')}
                 autoComplete="email"
                 {...form.register('email')}
               />
@@ -120,7 +123,7 @@ export default function ConsumerLogin() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <Label htmlFor="login-password">Contraseña</Label>
+              <Label htmlFor="login-password">{t('login.password.label')}</Label>
               <Input
                 id="login-password"
                 type="password"
@@ -134,16 +137,19 @@ export default function ConsumerLogin() {
 
             <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Iniciar sesión
+              {t('login.submit')}
             </Button>
           </form>
 
-          <p className="mt-4 text-center text-sm text-white/70">
-            ¿No tenés cuenta?{' '}
-            <Link to="/emilia/signup" className="text-primary hover:underline">
-              Crear una
-            </Link>
-          </p>
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-white/70">
+              {t('login.signupLink')}{' '}
+              <Link to="/emilia/signup" className="text-primary hover:underline">
+                {t('login.signupLinkAction')}
+              </Link>
+            </p>
+            <LanguageSelector showLabel={false} variant="ghost" className="text-white/70" />
+          </div>
         </CardContent>
       </Card>
     </div>
