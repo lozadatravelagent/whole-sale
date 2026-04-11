@@ -95,7 +95,7 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4.1',
+      model: 'gpt-5.1',
       messages,
       tools: toolDefinitions,
       tool_choice: 'auto',
