@@ -218,25 +218,30 @@ function buildDayOneLiner(day: PlannerDay): string {
   return parts.join(' + ') || day.summary || '';
 }
 
-function extractDayPreviews(segment: PlannerSegment, maxCount: number): EditorialDayPreview[] {
+function isGenericDayTitle(title: string | undefined): boolean {
+  if (!title) return true;
+  const normalized = title.trim().toLowerCase();
+  return normalized === '' || /^d[ií]a\s+\d+$/.test(normalized);
+}
+
+function extractDayPreviews(segment: PlannerSegment): EditorialDayPreview[] {
   const previews: EditorialDayPreview[] = [];
 
   for (const day of segment.days) {
     if (isTransferDay(day)) continue;
 
     const oneLiner = buildDayOneLiner(day);
-    if (!oneLiner) continue;
+    const hasRealTitle = !isGenericDayTitle(day.title);
+    if (!oneLiner && !hasRealTitle) continue;
 
     previews.push({
       dayNumber: day.dayNumber,
       title: day.title || `Dia ${day.dayNumber}`,
       oneLiner,
     });
-
-    if (previews.length >= maxCount) break;
   }
 
-  // If all days were transfer days, include first non-empty anyway
+  // If all days were transfer days or generic, include first non-empty anyway
   if (previews.length === 0 && segment.days.length > 0) {
     const day = segment.days[0];
     previews.push({
@@ -342,7 +347,6 @@ export function buildEditorialData(
   const segments = plannerState.segments;
   const fullContent = hasFullDayContent(segments);
   const highlightsPerSegment = fullContent ? 4 : 2;
-  const dayPreviewsPerSegment = fullContent ? 3 : 0;
 
   const editorialSegments: EditorialSegment[] = segments.map((segment) => ({
     city: titleCase(segment.city),
@@ -350,7 +354,7 @@ export function buildEditorialData(
     nights: segment.nights || segment.days.length,
     summary: segment.summary || `Tramo por ${titleCase(segment.city)}.`,
     highlights: extractSegmentHighlights(segment, highlightsPerSegment),
-    dayPreviews: fullContent ? extractDayPreviews(segment, dayPreviewsPerSegment) : [],
+    dayPreviews: extractDayPreviews(segment),
   }));
 
   const mode = deriveMode(segments, options?.regionalExpansion);

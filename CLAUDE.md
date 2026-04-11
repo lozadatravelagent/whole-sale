@@ -6,7 +6,7 @@ Guidance for Claude Code when working with **WholeSale Connect AI** — a multi-
 - **Frontend**: React 18 + TypeScript, Vite, shadcn/ui, Tailwind CSS
 - **State**: Custom hooks + Supabase Realtime (primary), React Context (AuthContext)
 - **Backend**: Supabase PostgreSQL, Edge Functions, Fastify API Gateway (Node.js 20 + Railway)
-- **Integrations**: Starling (flights), EUROVIPS (hotels), Foursquare (places/venues), Mapbox GL (map rendering), Wikipedia (photo hydration), PDFMonkey (quotes), OpenAI (currently gpt-4.1, NLP + planner agent)
+- **Integrations**: Starling (flights), EUROVIPS (hotels), Foursquare (places/venues), Mapbox GL (map rendering), Wikipedia (photo hydration), PDFMonkey (quotes), OpenAI (gpt-5.1 for planner-agent, gpt-4.1-mini for ai-message-parser, gpt-4.1 for travel-itinerary)
 - **Caching**: Redis (rate limits, idempotency), IndexedDB (places, planner state — 7d TTL), in-memory LRU (places, geocoding), in-memory (country codes)
 
 ## Critical Rules
@@ -89,7 +89,7 @@ supabase/functions/          # Edge Functions
 - **Editorial** (`editorial.ts`): Pure function `TripPlannerState → PlannerEditorialData`. Modes: multi_city_country, multi_city_region, multi_country, single_city, route_refinement.
 
 ## Planner Agent
-- Edge function at `supabase/functions/planner-agent/`. Uses OpenAI (currently gpt-4.1) in an agent loop.
+- Edge function at `supabase/functions/planner-agent/`. Uses OpenAI gpt-5.1 in an agent loop.
 - **Tools**: search_flights, search_hotels, generate_itinerary, resolve_city_code, search_packages, ask_user.
 - **Guardrails**: Iteration limit, execution timeout, parallel tool cap, human confirmation required for bookings/payments.
 - **User context**: IP-based city/country detection used as default origin for flight searches.

@@ -324,8 +324,11 @@ describe('buildEditorialData', () => {
     expect(result.segments.length).toBe(3);
     // Should still use segment.highlights as fallback
     expect(result.segments[0].highlights.length).toBeGreaterThanOrEqual(1);
-    // No day previews in skeleton mode
-    expect(result.segments[0].dayPreviews.length).toBe(0);
+    // Day previews extracted from non-generic day titles, even in skeleton mode
+    expect(result.segments[0].dayPreviews.length).toBeGreaterThan(0);
+    const romaPreviewTitles = result.segments[0].dayPreviews.map(p => p.title);
+    expect(romaPreviewTitles).toContain('Coliseo y Foro Romano');
+    expect(romaPreviewTitles).toContain('Vaticano y Trastevere');
     // Extraordinary highlights from segment-level highlights
     expect(result.extraordinaryHighlights.length).toBeGreaterThanOrEqual(1);
   });

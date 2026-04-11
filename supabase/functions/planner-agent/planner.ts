@@ -70,19 +70,19 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
     messages.push({ role: msg.role, content: msg.content });
   }
 
-  // Add previous steps as tool_calls + tool results
-  messages.push(...buildPreviousStepsMessages(input.previousSteps));
-
   // User context hints are now in the system prompt via plannerState/previousContext
   let userContent = input.userMessage;
   if (input.userContext?.currentCity) {
     userContent = `[Ubicación del usuario: ${input.userContext.currentCity}, ${input.userContext.country || ''}]\n\n${userContent}`;
   }
 
-  // Only add user message if there are no previous steps (to avoid duplication)
-  if (input.previousSteps.length === 0) {
-    messages.push({ role: 'user', content: userContent });
-  }
+  // Siempre agregamos el mensaje del usuario actual: conversationHistory (viene del
+  // frontend) NO lo incluye porque se captura antes de la optimistic update de React.
+  // Tiene que ir ANTES de previousSteps para que el orden sea user -> assistant(tool_call) -> tool_result.
+  messages.push({ role: 'user', content: userContent });
+
+  // Add previous steps as tool_calls + tool results (after the user message that triggered them)
+  messages.push(...buildPreviousStepsMessages(input.previousSteps));
 
   const toolDefinitions = getToolsForLLM(input.tools);
 
@@ -95,12 +95,12 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4.1',
+      model: 'gpt-5.1',
       messages,
       tools: toolDefinitions,
       tool_choice: 'auto',
       temperature: 0.1,
-      max_tokens: 2500,
+      max_completion_tokens: 2500,
     })
   });
 
