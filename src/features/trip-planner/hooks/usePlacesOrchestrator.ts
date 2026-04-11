@@ -10,29 +10,26 @@ import type { PlannerPlaceCandidate, PlannerPlaceCategory, TripPlannerState } fr
 interface CategoryPolicy {
   eager: boolean;         // Auto-fetch on segment load
   defaultActive: boolean; // Chip starts ON
-  chatPush: boolean;      // Push to chat discovery cards
   viewportFetch: boolean; // Include in viewport dynamic loading
 }
 
 const CATEGORY_POLICY: Record<PlannerPlaceCategory, CategoryPolicy> = {
-  hotel:      { eager: false, defaultActive: true,  chatPush: false, viewportFetch: false },
-  restaurant: { eager: true,  defaultActive: true,  chatPush: false, viewportFetch: true },
-  cafe:       { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
-  museum:     { eager: true,  defaultActive: true,  chatPush: false, viewportFetch: true },
-  activity:   { eager: true,  defaultActive: true,  chatPush: true,  viewportFetch: true },
-  sights:     { eager: true,  defaultActive: true,  chatPush: true,  viewportFetch: true },
-  nightlife:  { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
-  parks:      { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
-  shopping:   { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
-  culture:    { eager: false, defaultActive: false, chatPush: false, viewportFetch: true },
+  hotel:      { eager: false, defaultActive: true,  viewportFetch: false },
+  restaurant: { eager: true,  defaultActive: true,  viewportFetch: true },
+  cafe:       { eager: false, defaultActive: false, viewportFetch: true },
+  museum:     { eager: true,  defaultActive: true,  viewportFetch: true },
+  activity:   { eager: true,  defaultActive: true,  viewportFetch: true },
+  sights:     { eager: true,  defaultActive: true,  viewportFetch: true },
+  nightlife:  { eager: false, defaultActive: false, viewportFetch: true },
+  parks:      { eager: false, defaultActive: false, viewportFetch: true },
+  shopping:   { eager: false, defaultActive: false, viewportFetch: true },
+  culture:    { eager: false, defaultActive: false, viewportFetch: true },
 };
 
 // Derived constants — do not edit directly
 const ALL_CATEGORIES = Object.keys(CATEGORY_POLICY) as PlannerPlaceCategory[];
 
 const EAGER_FETCH_CATEGORIES = ALL_CATEGORIES.filter(cat => CATEGORY_POLICY[cat].eager);
-
-const CHAT_PUSH_CATEGORIES = new Set(ALL_CATEGORIES.filter(cat => CATEGORY_POLICY[cat].chatPush));
 
 export const VIEWPORT_FETCH_CATEGORIES = ALL_CATEGORIES.filter(cat => CATEGORY_POLICY[cat].viewportFetch);
 
@@ -45,19 +42,10 @@ const VIEWPORT_PROVIDER_CALLS_CAP = 60;
 
 export type CategoryFetchState = 'idle' | 'loading' | 'failed';
 
-export interface PlaceBlock {
-  id: string;
-  category: PlannerPlaceCategory;
-  city: string;
-  segmentId: string;
-  places: PlannerPlaceCandidate[];
-}
-
 /**
  * Owns all places-related state for the trip planner map:
  * - Active category filters
  * - Fetched places indexed by segment + category (survives segment changes)
- * - Chat place blocks for discovery cards
  * - Per-category loading/error state
  *
  * Places are indexed by `segmentId::category` so switching back to a
@@ -77,7 +65,6 @@ export function usePlacesOrchestrator(
   const [fetchedKeys, setFetchedKeys] = useState<Set<string>>(new Set());
   const [loadingKeys, setLoadingKeys] = useState<Set<string>>(new Set());
   const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set());
-  const [chatPlaceBlocks, setChatPlaceBlocks] = useState<PlaceBlock[]>([]);
 
   // Ref for synchronous in-flight dedup (avoids stale-closure issues)
   const inFlightRef = useRef<Set<string>>(new Set());
@@ -99,34 +86,6 @@ export function usePlacesOrchestrator(
     [],
   );
 
-  const pushChatBlock = useCallback(
-    (segmentId: string, city: string, category: PlannerPlaceCategory, places: PlannerPlaceCandidate[]) => {
-      if (!CHAT_PUSH_CATEGORIES.has(category) || places.length === 0) return;
-      const blockId = `${segmentId}::${category}`;
-      setChatPlaceBlocks(prev => {
-        if (prev.some(b => b.id === blockId)) return prev;
-        return [
-          ...prev,
-          {
-            id: blockId,
-            category,
-            city,
-            segmentId,
-            places: places
-              .filter(p => (p.photoUrls?.length ?? 0) > 0 || p.rating != null)
-              .sort(
-                (a, b) =>
-                  (b.rating || 0) * (b.userRatingsTotal || 0) -
-                  (a.rating || 0) * (a.userRatingsTotal || 0),
-              )
-              .slice(0, 6),
-          },
-        ];
-      });
-    },
-    [],
-  );
-
   // ── Single-category fetch ───────────────────────────────────────────────
 
   const fetchAndMerge = useCallback(
@@ -135,7 +94,6 @@ export function usePlacesOrchestrator(
       city: string,
       location: { lat: number; lng: number },
       category: PlannerPlaceCategory,
-      pushToChat = false,
     ) => {
       const key = `${segmentId}::${category}`;
 
@@ -169,7 +127,6 @@ export function usePlacesOrchestrator(
           });
 
           mergePlacesIntoSegment(segmentId, category, places);
-          if (pushToChat) pushChatBlock(segmentId, city, category, places);
 
           return places;
         })
@@ -191,7 +148,7 @@ export function usePlacesOrchestrator(
           });
         });
     },
-    [mergePlacesIntoSegment, pushChatBlock],
+    [mergePlacesIntoSegment],
   );
 
   // ── Eager fetch — progressive per-category ──────────────────────────────
@@ -212,7 +169,7 @@ export function usePlacesOrchestrator(
     // Fire individual calls — each category renders as soon as it resolves
     const segId = activeSegmentId;
     missing.forEach(cat => {
-      fetchAndMerge(segId, seg.city, loc, cat, true);
+      fetchAndMerge(segId, seg.city, loc, cat);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSegmentId, plannerState]);
@@ -233,7 +190,7 @@ export function usePlacesOrchestrator(
         const seg = plannerState?.segments.find(s => s.id === activeSegmentId);
         const loc = seg?.location;
         if (seg && loc) {
-          fetchAndMerge(activeSegmentId, seg.city, { lat: loc.lat, lng: loc.lng }, category, true);
+          fetchAndMerge(activeSegmentId, seg.city, { lat: loc.lat, lng: loc.lng }, category);
         }
         return;
       }
@@ -245,7 +202,7 @@ export function usePlacesOrchestrator(
         const seg = plannerState?.segments.find(s => s.id === activeSegmentId);
         const loc = seg?.location;
         if (seg && loc && !fetchedKeys.has(key)) {
-          fetchAndMerge(activeSegmentId, seg.city, { lat: loc.lat, lng: loc.lng }, category, true);
+          fetchAndMerge(activeSegmentId, seg.city, { lat: loc.lat, lng: loc.lng }, category);
         }
       }
     },
@@ -452,7 +409,6 @@ export function usePlacesOrchestrator(
     setFetchedKeys(new Set());
     setLoadingKeys(new Set());
     setFailedKeys(new Set());
-    setChatPlaceBlocks([]);
     inFlightRef.current.clear();
     viewportCacheRef.current.clear();
     inFlightViewportRef.current = false;
@@ -466,7 +422,6 @@ export function usePlacesOrchestrator(
     placesForActiveSegment,
     allPlacesBySegment: placesBySegment,
     isLoading,
-    chatPlaceBlocks,
     discoveryPlacesBySegment,
     categoryStates,
     toggleCategory,
