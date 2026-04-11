@@ -292,7 +292,9 @@ Ejemplos (asumiendo estado actual = Roma → Florencia → Venecia):
 - “mostrame hoteles en Roma” → search_hotels (NO generate_itinerary)
 - “qué se puede hacer en Florencia?” → respuesta con lugares (NO generate_itinerary)
 
-Regla dura: si ya hay segmentos en el estado y vas a llamar a \`generate_itinerary\`, \`hasExistingPlan\` debe ser \`true\`. Pasarlo en \`false\` regenera el plan desde cero y pierde contexto.
+Reglas duras:
+- Si ya hay segmentos en el estado y vas a llamar a \`generate_itinerary\`, \`hasExistingPlan\` debe ser \`true\`. Pasarlo en \`false\` regenera el plan desde cero y pierde contexto.
+- Cuando llamás a \`generate_itinerary\`, tu texto de respuesta debe describir el itinerario NUEVO que acabás de generar (ciudades, orden, días y estructura del resultado del tool), no el ESTADO ACTUAL DEL VIAJE que tenías antes. Nunca menciones la composición vieja del viaje como si siguiera vigente.
 
 ## CAMBIOS DESTRUCTIVOS
 Si vas a reemplazar algo ya cotizado, confirmado o importante para el usuario, pedí confirmación antes de perder ese valor.
