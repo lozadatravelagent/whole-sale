@@ -100,7 +100,7 @@ export async function planNextAction(input: PlannerInput): Promise<PlanResult> {
       tools: toolDefinitions,
       tool_choice: 'auto',
       temperature: 0.1,
-      max_tokens: 2500,
+      max_completion_tokens: 2500,
     })
   });
 
