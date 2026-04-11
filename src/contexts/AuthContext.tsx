@@ -22,6 +22,9 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   isAdmin: boolean;
   isSeller: boolean;
+  // Account type checks
+  isAgent: boolean;
+  isConsumer: boolean;
   // Permission checks
   canViewAllTenants: boolean;
   canViewAllAgencies: boolean;
@@ -153,6 +156,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const isAdmin = user?.role === 'ADMIN';
   const isSeller = user?.role === 'SELLER';
 
+  // Account type checks
+  const isAgent = user?.accountType === 'agent';
+  const isConsumer = user?.accountType === 'consumer';
+
   // Permission checks
   const canViewAllTenants = isOwner;
   const canViewAllAgencies = isOwner || isSuperAdmin;
@@ -175,6 +182,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isSuperAdmin,
     isAdmin,
     isSeller,
+    isAgent,
+    isConsumer,
     canViewAllTenants,
     canViewAllAgencies,
     canViewAgency,
