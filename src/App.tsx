@@ -2,11 +2,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { lazy, Suspense } from 'react';
+import RequireConsumer from "@/components/RequireConsumer";
+import { lazy, Suspense, useEffect } from 'react';
 
 // Landing pages loaded immediately (first view)
 import Index from "./pages/Index";
@@ -28,6 +29,7 @@ const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Contact = lazy(() => import("./pages/Contact"));
 const EmiliaLanding = lazy(() => import("./pages/EmiliaLanding"));
+const CompanionChatPage = lazy(() => import("./pages/CompanionChatPage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const HotelbedsTest = lazy(() => import("./pages/HotelbedsTest"));
 
@@ -49,6 +51,25 @@ const queryClient = new QueryClient({
   },
 });
 
+// Legacy redirect: ?mode=companion was a Fase 0 entrypoint spec that never
+// landed in code. This catches any hardcoded external link and routes it to
+// the canonical /emilia/chat path, preserving other query params.
+function LegacyCompanionRedirect() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('mode') !== 'companion') return;
+
+    params.delete('mode');
+    const query = params.toString();
+    navigate(`/emilia/chat${query ? `?${query}` : ''}`, { replace: true });
+  }, [location.search, navigate]);
+
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider defaultTheme="dark" storageKey="vibook-theme">
@@ -57,6 +78,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <LegacyCompanionRedirect />
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/" element={<Index />} />
@@ -67,6 +89,22 @@ const App = () => (
                 <Route path="/privacidad" element={<Privacy />} />
                 <Route path="/contacto" element={<Contact />} />
                 <Route path="/emilia" element={<EmiliaLanding />} />
+                <Route
+                  path="/emilia/chat"
+                  element={
+                    <RequireConsumer>
+                      <CompanionChatPage />
+                    </RequireConsumer>
+                  }
+                />
+                <Route
+                  path="/emilia/chat/:conversationId"
+                  element={
+                    <RequireConsumer>
+                      <CompanionChatPage />
+                    </RequireConsumer>
+                  }
+                />
               <Route
                 path="/dashboard"
                 element={
