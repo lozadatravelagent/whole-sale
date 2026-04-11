@@ -18,6 +18,7 @@ import EmptyState from './components/EmptyState';
 import useChatState from './hooks/useChatState';
 import HandoffBanner from '@/features/companion/components/HandoffBanner';
 import HandoffModal from '@/features/companion/components/HandoffModal';
+import ItineraryPanel from '@/features/companion/components/ItineraryPanel';
 import { isTripReadyForHandoff } from '@/features/trip-planner/handoffReadiness';
 import useContextualMemory from './hooks/useContextualMemory';
 import usePdfAnalysis from './hooks/usePdfAnalysis';
@@ -488,6 +489,10 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     createNewChat(undefined, 'companion');
   }, [createNewChat]);
 
+  const handleRequestItineraryChanges = useCallback(() => {
+    setMessage('Quiero ajustar mi viaje: ');
+  }, [setMessage]);
+
   // Handle Add to CRM button click
   const handleAddToCRM = useCallback(async () => {
     if (!selectedConversation || !conversationScopedMessages.length) {
@@ -836,6 +841,12 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
             ) : (
               <EmptyState onSendNewMessage={handleSendNewMessage} />
             )}
+          </div>
+          <div className="hidden lg:block w-80 flex-shrink-0">
+            <ItineraryPanel
+              plannerState={planner.plannerState}
+              onRequestChanges={handleRequestItineraryChanges}
+            />
           </div>
         </div>
         <HandoffModal
