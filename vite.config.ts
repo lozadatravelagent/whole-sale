@@ -145,6 +145,7 @@ export default defineConfig(({ mode }) => ({
     include: [
       'src/features/trip-planner/__tests__/*.test.ts',
       'src/features/chat/__tests__/*.test.ts',
+      'src/components/__tests__/*.test.ts',
     ],
     coverage: {
       provider: 'v8',

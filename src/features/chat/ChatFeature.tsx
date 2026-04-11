@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
+import CompanionLayout from '@/components/layouts/CompanionLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMessages, useConversationSearch } from '@/hooks/useChat';
 import { updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
@@ -11,6 +12,7 @@ import type { ConversationWithAgency, ConversationWorkspaceMode } from './types/
 
 // Import feature components and hooks
 import ChatSidebar from './components/ChatSidebar';
+import ChatSidebarCompanion from './components/ChatSidebarCompanion';
 import ChatInterface from './components/ChatInterface';
 import EmptyState from './components/EmptyState';
 import useChatState from './hooks/useChatState';
@@ -22,7 +24,11 @@ import TripPlannerWorkspace from '@/features/trip-planner/components/TripPlanner
 import useTripPlanner from '@/features/trip-planner/useTripPlanner';
 import { buildPlannerPromptContext } from '@/features/trip-planner/utils';
 
-const ChatFeature = () => {
+interface ChatFeatureProps {
+  mode?: 'b2b' | 'companion';
+}
+
+const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isOwner, isSuperAdmin } = useAuth();
@@ -65,7 +71,7 @@ const ChatFeature = () => {
 
     // Utils
     toast
-  } = useChatState();
+  } = useChatState({ defaultWorkspaceMode: mode === 'companion' ? 'companion' : 'standard' });
 
   const {
     messages,
@@ -471,6 +477,10 @@ const ChatFeature = () => {
     createNewChat('Planificador de Viajes', 'planner');
   }, [closeHistorySidebarForFocus, createNewChat]);
 
+  const handleCreateCompanionConversation = useCallback(() => {
+    createNewChat(undefined, 'companion');
+  }, [createNewChat]);
+
   // Handle Add to CRM button click
   const handleAddToCRM = useCallback(async () => {
     if (!selectedConversation || !conversationScopedMessages.length) {
@@ -766,6 +776,50 @@ const ChatFeature = () => {
     onSearchMessages: searchMessages,
     onClearSearch: clearSearch,
   };
+
+  if (mode === 'companion') {
+    return (
+      <CompanionLayout>
+        <div className="flex h-full">
+          <div
+            className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-72 md:flex-shrink-0`}
+          >
+            <ChatSidebarCompanion
+              conversations={conversations}
+              selectedConversation={selectedConversation}
+              onSelectConversation={handleSelectConversation}
+              onCreateNewChat={handleCreateCompanionConversation}
+            />
+          </div>
+          <div
+            className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0`}
+          >
+            {selectedConversation ? (
+              <ChatInterface
+                selectedConversation={selectedConversation}
+                message={message}
+                isLoading={isLoading}
+                isTyping={isTyping}
+                typingMessage={typingMessage}
+                isUploadingPdf={isUploadingPdf}
+                isAddingToCRM={isAddingToCRM}
+                messages={conversationScopedMessages}
+                refreshMessages={refreshMessages}
+                onMessageChange={setMessage}
+                onSendMessage={handleSendMessage}
+                onPdfUpload={handlePdfUpload}
+                onAddToCRM={handleAddToCRM}
+                onPdfGenerated={handlePdfGenerated}
+                onBackToList={() => setSelectedConversation(null)}
+              />
+            ) : (
+              <EmptyState onSendNewMessage={handleSendNewMessage} />
+            )}
+          </div>
+        </div>
+      </CompanionLayout>
+    );
+  }
 
   return (
     <MainLayout
