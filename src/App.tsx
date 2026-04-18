@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import RequireConsumer from "@/components/RequireConsumer";
+import { isEmiliaHost } from "@/lib/host";
 import { lazy, Suspense, useEffect } from 'react';
 
 // Landing pages loaded immediately (first view)
@@ -35,6 +36,7 @@ const ConsumerLogin = lazy(() => import("./pages/ConsumerLogin"));
 const ConsumerProfile = lazy(() => import("./pages/ConsumerProfile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const HotelbedsTest = lazy(() => import("./pages/HotelbedsTest"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 
 // Loading component
 const PageLoader = () => (
@@ -73,6 +75,154 @@ function LegacyCompanionRedirect() {
   return null;
 }
 
+const EmiliaHostRoutes = () => (
+  <Routes>
+    <Route
+      path="/"
+      element={
+        <ProtectedRoute>
+          <Chat />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/chat"
+      element={
+        <ProtectedRoute>
+          <Chat />
+        </ProtectedRoute>
+      }
+    />
+    <Route path="/auth/callback" element={<AuthCallback />} />
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
+
+const MainHostRoutes = () => (
+  <Routes>
+    <Route path="/" element={<Index />} />
+    <Route path="/login" element={<Login />} />
+    <Route path="/auth/callback" element={<AuthCallback />} />
+    <Route path="/documentacion" element={<Documentation />} />
+    <Route path="/soporte" element={<Support />} />
+    <Route path="/terminos" element={<Terms />} />
+    <Route path="/privacidad" element={<Privacy />} />
+    <Route path="/contacto" element={<Contact />} />
+    <Route path="/emilia" element={<EmiliaLanding />} />
+    <Route path="/emilia/signup" element={<ConsumerSignup />} />
+    <Route path="/emilia/login" element={<ConsumerLogin />} />
+    <Route
+      path="/emilia/chat"
+      element={
+        <RequireConsumer>
+          <CompanionChatPage />
+        </RequireConsumer>
+      }
+    />
+    <Route
+      path="/emilia/chat/:conversationId"
+      element={
+        <RequireConsumer>
+          <CompanionChatPage />
+        </RequireConsumer>
+      }
+    />
+    <Route
+      path="/emilia/profile"
+      element={
+        <RequireConsumer>
+          <ConsumerProfile />
+        </RequireConsumer>
+      }
+    />
+    <Route
+      path="/dashboard"
+      element={
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/chat"
+      element={
+        <ProtectedRoute>
+          <Chat />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/crm"
+      element={
+        <ProtectedRoute>
+          <CRM />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/marketplace"
+      element={
+        <ProtectedRoute>
+          <Marketplace />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/settings"
+      element={
+        <ProtectedRoute>
+          <Settings />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/reports"
+      element={
+        <ProtectedRoute>
+          <Reports />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/users"
+      element={
+        <ProtectedRoute>
+          <Users />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/agencies"
+      element={
+        <ProtectedRoute>
+          <Agencies />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/tenants"
+      element={
+        <ProtectedRoute>
+          <Tenants />
+        </ProtectedRoute>
+      }
+    />
+    {/* Hotelbeds certification test page (auth-guarded) */}
+    <Route
+      path="/hotelbeds-test"
+      element={
+        <ProtectedRoute>
+          <HotelbedsTest />
+        </ProtectedRoute>
+      }
+    />
+    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+    <Route path="*" element={<NotFound />} />
+  </Routes>
+);
+
+const AppRoutes = () => (isEmiliaHost() ? <EmiliaHostRoutes /> : <MainHostRoutes />);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider defaultTheme="dark" storageKey="vibook-theme">
@@ -83,128 +233,10 @@ const App = () => (
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <LegacyCompanionRedirect />
             <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/documentacion" element={<Documentation />} />
-                <Route path="/soporte" element={<Support />} />
-                <Route path="/terminos" element={<Terms />} />
-                <Route path="/privacidad" element={<Privacy />} />
-                <Route path="/contacto" element={<Contact />} />
-                <Route path="/emilia" element={<EmiliaLanding />} />
-                <Route path="/emilia/signup" element={<ConsumerSignup />} />
-                <Route path="/emilia/login" element={<ConsumerLogin />} />
-                <Route
-                  path="/emilia/chat"
-                  element={
-                    <RequireConsumer>
-                      <CompanionChatPage />
-                    </RequireConsumer>
-                  }
-                />
-                <Route
-                  path="/emilia/chat/:conversationId"
-                  element={
-                    <RequireConsumer>
-                      <CompanionChatPage />
-                    </RequireConsumer>
-                  }
-                />
-                <Route
-                  path="/emilia/profile"
-                  element={
-                    <RequireConsumer>
-                      <ConsumerProfile />
-                    </RequireConsumer>
-                  }
-                />
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/chat"
-                element={
-                  <ProtectedRoute>
-                    <Chat />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/crm"
-                element={
-                  <ProtectedRoute>
-                    <CRM />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/marketplace"
-                element={
-                  <ProtectedRoute>
-                    <Marketplace />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <ProtectedRoute>
-                    <Settings />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/reports"
-                element={
-                  <ProtectedRoute>
-                    <Reports />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/users"
-                element={
-                  <ProtectedRoute>
-                    <Users />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/agencies"
-                element={
-                  <ProtectedRoute>
-                    <Agencies />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/tenants"
-                element={
-                  <ProtectedRoute>
-                    <Tenants />
-                  </ProtectedRoute>
-                }
-              />
-              {/* Hotelbeds certification test page (auth-guarded) */}
-              <Route
-                path="/hotelbeds-test"
-                element={
-                  <ProtectedRoute>
-                    <HotelbedsTest />
-                  </ProtectedRoute>
-                }
-              />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-      </TooltipProvider>
+              <AppRoutes />
+            </Suspense>
+          </BrowserRouter>
+        </TooltipProvider>
       </AuthProvider>
     </ThemeProvider>
   </QueryClientProvider>

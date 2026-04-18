@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { isEmiliaHost, mainOrigin } from '@/lib/host';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -13,12 +14,20 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   const location = useLocation();
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login', { 
-        replace: true,
-        state: { from: location }
-      });
+    if (loading || user) return;
+
+    if (isEmiliaHost()) {
+      const next = `${window.location.origin}${location.pathname}${location.search}`;
+      window.location.replace(
+        `${mainOrigin()}/login?next=${encodeURIComponent(next)}`
+      );
+      return;
     }
+
+    navigate('/login', {
+      replace: true,
+      state: { from: location }
+    });
   }, [user, loading, navigate, location]);
 
   if (loading) {

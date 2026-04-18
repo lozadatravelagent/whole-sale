@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { Mail, Lock, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { isSafeReturnUrl } from '@/lib/host';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -24,13 +25,19 @@ const Login = () => {
   // Check if session expired (redirected from session expiration)
   const sessionExpired = searchParams.get('expired') === 'true';
 
+  const rawNext = searchParams.get('next');
+  const nextUrl = isSafeReturnUrl(rawNext) ? rawNext : null;
+
   // Redirect if already authenticated
   useEffect(() => {
-    if (!authLoading && user) {
-      const from = (location.state as any)?.from?.pathname || '/dashboard';
-      navigate(from, { replace: true });
+    if (authLoading || !user) return;
+    if (nextUrl) {
+      window.location.replace(nextUrl);
+      return;
     }
-  }, [user, authLoading, navigate, location]);
+    const from = (location.state as any)?.from?.pathname || '/dashboard';
+    navigate(from, { replace: true });
+  }, [user, authLoading, navigate, location, nextUrl]);
 
   // Show toast notification if session expired
   useEffect(() => {
@@ -77,10 +84,13 @@ const Login = () => {
 
   const handleGoogleLogin = async () => {
     try {
+      const callbackUrl = new URL('/auth/callback', window.location.origin);
+      if (nextUrl) callbackUrl.searchParams.set('next', nextUrl);
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: callbackUrl.toString()
         }
       });
 
