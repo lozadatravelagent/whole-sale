@@ -161,7 +161,7 @@ export default function UnifiedLayout({ children, rightPanel, className }: Unifi
       </header>
 
       <main
-        className="flex-1 overflow-hidden"
+        className={cn(rightPanel ? 'overflow-hidden' : 'overflow-y-auto')}
         style={{ height: `calc(100vh - ${HEADER_HEIGHT}px)` }}
       >
         {rightPanel ? (
