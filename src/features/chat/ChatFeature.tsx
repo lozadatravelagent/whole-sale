@@ -328,13 +328,17 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   // PR 3 (C5): bridge chip handlers. Wired only into the B2B (agent) branch of
   // ChatInterface below. Consumer branch doesn't pass them — the bridge never
   // emits for consumer (chatMode is undefined → legacy orchestrator path).
+  //
+  // C7.1.a: both handlers pass `mode` explicitly to handleSendMessageRaw so the
+  // orchestrator sees the intended mode regardless of React's async setState
+  // scheduling. Without the override, `setChatMode(new)` + immediate send runs
+  // the handler's closure with the pre-click `chatMode`, and the orchestrator
+  // receives the wrong mode (the symptom of the C7 smoke bug).
   const handleBridgeSwitch = useCallback(
     (suggestedMode: ChatMode, originalText: string) => {
       setChatMode(suggestedMode);
       if (originalText && originalText.trim().length > 0) {
-        // After setChatMode, the re-send uses the new mode so the orchestrator
-        // default-branches rather than re-emitting another bridge.
-        handleSendMessageRaw(originalText);
+        handleSendMessageRaw(originalText, { mode: suggestedMode });
       }
     },
     [handleSendMessageRaw],
@@ -343,10 +347,10 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   const handleBridgeStay = useCallback(
     (originalText: string) => {
       if (originalText && originalText.trim().length > 0) {
-        handleSendMessageRaw(originalText, { forceCurrentMode: true });
+        handleSendMessageRaw(originalText, { forceCurrentMode: true, mode: chatMode });
       }
     },
-    [handleSendMessageRaw],
+    [handleSendMessageRaw, chatMode],
   );
 
   // CTA: Retry with stops when no direct flights

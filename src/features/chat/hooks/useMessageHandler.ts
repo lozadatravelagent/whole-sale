@@ -10,6 +10,7 @@ import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from 
 import { routeRequest, buildSearchSummary, getInferredFieldDetails, detectDestructiveChanges } from '../services/routeRequest';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
 import { buildConversationalMissingInfoMessage, buildModeBridgeMessage, resolveConversationTurn } from '../services/conversationOrchestrator';
+import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponsePayload } from '../services/discoveryService';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
@@ -131,10 +132,15 @@ const useMessageHandler = (
 
   const handleSendMessage = useCallback(async (
     currentMessage: string,
-    // PR 3 (C4): optional send options. `forceCurrentMode` is threaded to the
-    // orchestrator as a bridge guardrail (G2). Populated by C5's "Seguir en
-    // este modo" chip handler; no runtime caller passes it in C4.
-    options?: { forceCurrentMode?: boolean },
+    // PR 3 (C4/C7.1): optional send options.
+    // - `forceCurrentMode`: orchestrator bridge guardrail G2 (C4). Populated by
+    //   C5's "Seguir en este modo" chip handler.
+    // - `mode`: explicit mode override that wins over the closure-captured
+    //   `chatMode` (C7.1.a). Needed because `setChatMode` is async and a chip
+    //   handler that calls `setChatMode(new) + handleSendMessageRaw(text)` runs
+    //   the send with a stale closure; the orchestrator would then receive the
+    //   pre-click mode. Callers that just flipped the mode must pass it here.
+    options?: { forceCurrentMode?: boolean; mode?: 'agency' | 'passenger' },
   ) => {
     console.log('🚀 [MESSAGE FLOW] Starting handleSendMessage process');
     console.log('📝 Message content:', currentMessage);
@@ -727,6 +733,9 @@ const useMessageHandler = (
           | string
           | undefined) || undefined;
 
+      // C7.1.a: options.mode wins over the closure-captured chatMode. Bridge
+      // chip handlers that just called setChatMode pass it explicitly.
+      const effectiveMode = resolveEffectiveMode(options?.mode, chatMode);
       const conversationTurn = resolveConversationTurn({
         parsedRequest,
         routeResult,
@@ -737,7 +746,7 @@ const useMessageHandler = (
         maxCollectTurns: MAX_COLLECT_TURNS,
         previousMessageType,
         forceCurrentMode: options?.forceCurrentMode,
-        mode: chatMode,
+        mode: effectiveMode,
       });
 
       console.log('🧠 [CONVERSATION] Turn resolution:', conversationTurn);
