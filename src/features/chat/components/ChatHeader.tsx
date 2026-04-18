@@ -11,11 +11,17 @@ interface ChatHeaderProps {
   onAddToCRM: () => void;
   onBackToList?: () => void;
   /**
-   * Surface mode. 'companion' hides agent-only chrome (CRM card button,
-   * theme toggle) since those affordances do not apply to consumer self-serve
-   * UX. Defaults to 'standard' so the existing B2B branch stays unchanged.
+   * PR 3 (C5): account type gates agent-only chrome (CRM card button, theme
+   * toggle). Replaces the previous `mode: 'companion' | 'standard'` prop.
+   * Same invariant as before: `showAgentChrome = accountType === 'agent'`,
+   * with correct semantic naming.
    */
-  mode?: 'companion' | 'standard';
+  accountType: 'consumer' | 'agent';
+  /**
+   * PR 3 (C5): strict chat mode for agents. Only meaningful when
+   * `accountType === 'agent'`. C6 adds the ModeSwitch render into this slot.
+   */
+  mode?: 'agency' | 'passenger';
 }
 
 // Chat header component - memoized to prevent re-renders
@@ -26,9 +32,9 @@ const ChatHeader = React.memo(({
   messagesCount,
   onAddToCRM,
   onBackToList,
-  mode = 'standard'
+  accountType,
 }: ChatHeaderProps) => {
-  const showAgentChrome = mode !== 'companion';
+  const showAgentChrome = accountType === 'agent';
 
   return (
     <div className="border-b bg-background p-3 md:p-4">

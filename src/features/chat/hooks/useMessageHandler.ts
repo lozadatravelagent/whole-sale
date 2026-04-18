@@ -86,6 +86,9 @@ const useMessageHandler = (
     contextState: ContextState | null;
   } | null,
   workspaceMode?: 'standard' | 'planner',
+  // PR 3 (C5): strict agency/passenger mode. When undefined, the orchestrator
+  // runs its legacy path (used by consumer / any pre-PR-3 call site).
+  chatMode?: 'agency' | 'passenger',
 ) => {
   // ✅ Messages are now passed as parameter - no need for second useMessages call
 
@@ -734,6 +737,7 @@ const useMessageHandler = (
         maxCollectTurns: MAX_COLLECT_TURNS,
         previousMessageType,
         forceCurrentMode: options?.forceCurrentMode,
+        mode: chatMode,
       });
 
       console.log('🧠 [CONVERSATION] Turn resolution:', conversationTurn);
@@ -2226,6 +2230,7 @@ const useMessageHandler = (
     updateOptimisticMessage,
     removeOptimisticMessage,
     saveAndDisplayMessage,
+    chatMode,
   ]);
 
   const handlePlannerDateSelection = useCallback(async (

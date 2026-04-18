@@ -34,15 +34,26 @@ interface ChatInterfaceProps {
   onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
   onBackToList?: () => void;
   onGoToPlanner?: () => void;
-  /** Forwarded to ChatHeader to hide agent-only chrome in companion mode. */
-  mode?: 'companion' | 'standard';
   /**
-   * PR 3 (C4): bridge chip handlers. Both optional. When undefined (C4
-   * reality pre-C5) the chips still render but no-op. C5 wires them from
-   * ChatFeature — `onBridgeSwitch` flips mode + replays; `onBridgeStay`
-   * replays with `forceCurrentMode: true`.
+   * PR 3 (C5): account type gates the agent-only chrome in ChatHeader and
+   * (post-C6) the ModeSwitch. Replaces the pre-C5 `mode: 'companion' |
+   * 'standard'` prop. `accountType === 'consumer'` is the former `companion`;
+   * `accountType === 'agent'` is the former `standard`.
    */
-  onBridgeSwitch?: (suggestedMode: BridgeChatMode) => void;
+  accountType: 'consumer' | 'agent';
+  /**
+   * PR 3 (C5): strict chat mode for agents. Propagated to ChatHeader so C6
+   * can render the ModeSwitch with the active mode. Ignored when accountType
+   * is 'consumer'.
+   */
+  mode?: 'agency' | 'passenger';
+  /**
+   * PR 3 (C4 prop shape, C5 wires it): bridge chip handlers. `onBridgeSwitch`
+   * receives the suggested mode AND the original user text so ChatFeature can
+   * flip mode + replay without reaching back into the messages array itself.
+   * Both optional; when undefined (consumer branch) the chips no-op.
+   */
+  onBridgeSwitch?: (suggestedMode: BridgeChatMode, originalText: string) => void;
   onBridgeStay?: (originalText: string) => void;
 }
 
@@ -63,7 +74,7 @@ const ChatInterface = React.memo(({
   onPdfGenerated,
   onBackToList,
   onGoToPlanner,
-  mode = 'standard',
+  accountType,
   onBridgeSwitch,
   onBridgeStay
 }: ChatInterfaceProps) => {
@@ -284,7 +295,7 @@ const ChatInterface = React.memo(({
         messagesCount={messages.length}
         onAddToCRM={onAddToCRM}
         onBackToList={onBackToList}
-        mode={mode}
+        accountType={accountType}
       />
 
       {/* Drag and Drop Overlay - pointer-events-none para no interferir con drag events */}
@@ -480,7 +491,7 @@ const ChatInterface = React.memo(({
                 return (
                   <div className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <button
-                      onClick={() => onBridgeSwitch?.(bridge.suggestedMode)}
+                      onClick={() => onBridgeSwitch?.(bridge.suggestedMode, bridge.originalUserText)}
                       className="text-sm px-3 py-1.5 rounded-full border border-primary bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                     >
                       {t('mode.bridgeSwitchTo', { otherMode: otherLabel })}

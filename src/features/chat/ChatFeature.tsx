@@ -27,6 +27,7 @@ import { addMessageViaSupabase } from './services/messageService';
 import TripPlannerWorkspace from '@/features/trip-planner/components/TripPlannerWorkspace';
 import useTripPlanner from '@/features/trip-planner/useTripPlanner';
 import { buildPlannerPromptContext } from '@/features/trip-planner/utils';
+import { deriveDefaultMode, type ChatMode } from './utils/deriveDefaultMode';
 
 interface ChatFeatureProps {
   mode?: 'b2b' | 'companion';
@@ -40,6 +41,11 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   const [handoffSubmittedConversations, setHandoffSubmittedConversations] = useState<Set<string>>(
     () => new Set()
   );
+  // PR 3 (C5): chat mode for agents. Lives in component state (not useChatState)
+  // so it persists across conversations in the same session and never resets on
+  // conversation switch / createNewChat. Consumers don't use it; `chatMode` is
+  // passed to `useMessageHandler` only when accountType === 'agent'.
+  const [chatMode, setChatMode] = useState<ChatMode>(() => deriveDefaultMode(user));
   const {
     // State
     selectedConversation,
@@ -324,7 +330,35 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     planner.setPlannerDraftPhase,
     planner.updatePlannerState,
     preloadedContext,
-    workspaceMode
+    workspaceMode,
+    // PR 3 (C5): pass strict chatMode only for agent accounts. Consumer keeps
+    // legacy orchestrator behavior (mode=undefined) — no bridges, no strict
+    // routing — preserving pre-PR-3 semantics untouched for B2C.
+    user?.accountType === 'agent' ? chatMode : undefined
+  );
+
+  // PR 3 (C5): bridge chip handlers. Wired only into the B2B (agent) branch of
+  // ChatInterface below. Consumer branch doesn't pass them — the bridge never
+  // emits for consumer (chatMode is undefined → legacy orchestrator path).
+  const handleBridgeSwitch = useCallback(
+    (suggestedMode: ChatMode, originalText: string) => {
+      setChatMode(suggestedMode);
+      if (originalText && originalText.trim().length > 0) {
+        // After setChatMode, the re-send uses the new mode so the orchestrator
+        // default-branches rather than re-emitting another bridge.
+        handleSendMessageRaw(originalText);
+      }
+    },
+    [handleSendMessageRaw],
+  );
+
+  const handleBridgeStay = useCallback(
+    (originalText: string) => {
+      if (originalText && originalText.trim().length > 0) {
+        handleSendMessageRaw(originalText, { forceCurrentMode: true });
+      }
+    },
+    [handleSendMessageRaw],
   );
 
   // CTA: Retry with stops when no direct flights
@@ -838,7 +872,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                     onAddToCRM={handleAddToCRM}
                     onPdfGenerated={handlePdfGenerated}
                     onBackToList={() => setSelectedConversation(null)}
-                    mode="companion"
+                    accountType="consumer"
                   />
                 </div>
                 <HandoffBanner
@@ -955,6 +989,10 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                   setWorkspaceMode('planner');
                   setHistoryMode('planner');
                 } : undefined}
+                accountType="agent"
+                mode={chatMode}
+                onBridgeSwitch={handleBridgeSwitch}
+                onBridgeStay={handleBridgeStay}
               />
             )
           ) : (
