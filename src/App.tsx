@@ -2,16 +2,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import RequireConsumer from "@/components/RequireConsumer";
-import { isEmiliaHost } from "@/lib/host";
 import { lazy, Suspense, useEffect } from 'react';
 
 // Landing pages loaded immediately (first view)
-import Index from "./pages/Index";
 import Login from "./pages/Login";
 
 // Lazy loaded pages (code-splitting)
@@ -75,40 +73,32 @@ function LegacyCompanionRedirect() {
   return null;
 }
 
-const EmiliaHostRoutes = () => (
-  <Routes>
-    <Route
-      path="/"
-      element={
-        <ProtectedRoute>
-          <Chat />
-        </ProtectedRoute>
-      }
-    />
-    <Route
-      path="/chat"
-      element={
-        <ProtectedRoute>
-          <Chat />
-        </ProtectedRoute>
-      }
-    />
-    <Route path="/login" element={<Login />} />
-    <Route path="/auth/callback" element={<AuthCallback />} />
-    <Route path="*" element={<NotFound />} />
-  </Routes>
-);
+// Root redirect: authenticated users land on the unified chat surface;
+// anonymous users see the public Emilia landing. Replaces the per-host root
+// behaviour from the dual-host era.
+function RootRedirect() {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  return <Navigate to={user ? '/emilia/chat' : '/emilia'} replace />;
+}
 
-const MainHostRoutes = () => (
+const AppRoutes = () => (
   <Routes>
-    <Route path="/" element={<Index />} />
+    {/* Root: redirect condicional auth */}
+    <Route path="/" element={<RootRedirect />} />
+
+    {/* Auth surfaces (raíz) */}
     <Route path="/login" element={<Login />} />
     <Route path="/auth/callback" element={<AuthCallback />} />
+
+    {/* Public/marketing pages */}
     <Route path="/documentacion" element={<Documentation />} />
     <Route path="/soporte" element={<Support />} />
     <Route path="/terminos" element={<Terms />} />
     <Route path="/privacidad" element={<Privacy />} />
     <Route path="/contacto" element={<Contact />} />
+
+    {/* Emilia consumer surfaces */}
     <Route path="/emilia" element={<EmiliaLanding />} />
     <Route path="/emilia/signup" element={<ConsumerSignup />} />
     <Route path="/emilia/login" element={<ConsumerLogin />} />
@@ -136,8 +126,10 @@ const MainHostRoutes = () => (
         </RequireConsumer>
       }
     />
+
+    {/* Emilia admin surfaces (RequireAgent se aplica en C4) */}
     <Route
-      path="/dashboard"
+      path="/emilia/dashboard"
       element={
         <ProtectedRoute>
           <Dashboard />
@@ -145,13 +137,50 @@ const MainHostRoutes = () => (
       }
     />
     <Route
-      path="/chat"
+      path="/emilia/users"
       element={
         <ProtectedRoute>
-          <Chat />
+          <Users />
         </ProtectedRoute>
       }
     />
+    <Route
+      path="/emilia/agencies"
+      element={
+        <ProtectedRoute>
+          <Agencies />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/emilia/tenants"
+      element={
+        <ProtectedRoute>
+          <Tenants />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/emilia/settings"
+      element={
+        <ProtectedRoute>
+          <Settings />
+        </ProtectedRoute>
+      }
+    />
+
+    {/* Legacy redirects: bookmarks viejos y links hardcodeados en componentes
+        que sobreviven PR 2 (MainLayout, ConsumerLogin/Signup, Dashboard,
+        UserProfileHeader, Marketplace) siguen funcionando hasta PR 4 los
+        elimine junto con el resto del cleanup. */}
+    <Route path="/chat" element={<Navigate to="/emilia/chat" replace />} />
+    <Route path="/dashboard" element={<Navigate to="/emilia/dashboard" replace />} />
+    <Route path="/users" element={<Navigate to="/emilia/users" replace />} />
+    <Route path="/agencies" element={<Navigate to="/emilia/agencies" replace />} />
+    <Route path="/tenants" element={<Navigate to="/emilia/tenants" replace />} />
+    <Route path="/settings" element={<Navigate to="/emilia/settings" replace />} />
+
+    {/* Legacy routes mantenidas tal cual; PR 4 las borra */}
     <Route
       path="/crm"
       element={
@@ -169,42 +198,10 @@ const MainHostRoutes = () => (
       }
     />
     <Route
-      path="/settings"
-      element={
-        <ProtectedRoute>
-          <Settings />
-        </ProtectedRoute>
-      }
-    />
-    <Route
       path="/reports"
       element={
         <ProtectedRoute>
           <Reports />
-        </ProtectedRoute>
-      }
-    />
-    <Route
-      path="/users"
-      element={
-        <ProtectedRoute>
-          <Users />
-        </ProtectedRoute>
-      }
-    />
-    <Route
-      path="/agencies"
-      element={
-        <ProtectedRoute>
-          <Agencies />
-        </ProtectedRoute>
-      }
-    />
-    <Route
-      path="/tenants"
-      element={
-        <ProtectedRoute>
-          <Tenants />
         </ProtectedRoute>
       }
     />
@@ -217,12 +214,11 @@ const MainHostRoutes = () => (
         </ProtectedRoute>
       }
     />
+
     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
-
-const AppRoutes = () => (isEmiliaHost() ? <EmiliaHostRoutes /> : <MainHostRoutes />);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
