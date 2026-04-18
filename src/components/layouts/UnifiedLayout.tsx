@@ -166,7 +166,7 @@ export default function UnifiedLayout({ children, rightPanel, className }: Unifi
       >
         {rightPanel ? (
           <div className="flex h-full">
-            <div className="flex-1 min-w-0 overflow-hidden">{children}</div>
+            <div className="flex-1 min-w-0 overflow-hidden h-full">{children}</div>
             <aside
               className="hidden lg:block flex-shrink-0 border-l border-border overflow-hidden"
               style={{ width: RIGHT_PANEL_WIDTH }}
