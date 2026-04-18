@@ -1,8 +1,8 @@
-import MainLayout from '@/components/layout/MainLayout';
+import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 
 export function DashboardSkeleton() {
   return (
-    <MainLayout>
+    <UnifiedLayout>
       <div className="h-full overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8" aria-busy="true" aria-label="Cargando dashboard">
         {/* Header skeleton */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -86,6 +86,6 @@ export function DashboardSkeleton() {
           </div>
         </div>
       </div>
-    </MainLayout>
+    </UnifiedLayout>
   );
 }

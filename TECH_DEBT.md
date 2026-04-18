@@ -160,3 +160,26 @@ el type generator, no constraints reales de la DB.
 **Accion**: Investigar si la vista existe en prod (`SELECT * FROM
 information_schema.views WHERE table_name = 'superadmin_agencies_view'`) y si
 sus columnas coinciden con lo esperado. No bloquea features.
+
+## D17 — UnifiedLayout sin i18n para avatar menu y logout 🟡 UX
+
+UnifiedLayout (introducido en PR 2 / C6) renderiza copy literal en español
+para los items del avatar menu, el aria-label del trigger y los toasts de
+logout. CompanionLayout — al que reemplaza — usaba useTranslation('auth') y
+exponía el copy a través de los archivos i18n.
+
+Regresión menor de Fase 1.2 (i18n para Emilia B2C, PR #72). Un consumer con
+preferredLanguage distinto a 'es' verá el menú del avatar y el botón de
+"Cerrar sesión" en español hasta que se porte UnifiedLayout a i18n.
+
+No bloqueante para el lanzamiento. Fix recomendado: commit independiente
+post-PR-2 o parte del polish pre-launch. Pasos:
+
+1. Importar useTranslation en UnifiedLayout.tsx.
+2. Mover los strings literales (Settings, Users, Agencies, Tenants, Dashboard,
+   Profile, "Cerrar sesión", "Menú de usuario", toast titles) a las claves
+   correspondientes en src/i18n/locales/{es,en,pt}/auth.json y common.json.
+3. Decidir si los labels del menu (Settings, Users, etc.) viven en common o
+   en un namespace nuevo "navigation".
+
+**Origen**: detectado durante PR 2, C6.

@@ -99,10 +99,14 @@ export async function signOutConsumer(): Promise<void> {
 }
 
 /**
- * Fetches the account_type for the given user id. Used by ConsumerLogin
- * right after signInWithPassword to detect if the newly-authenticated
- * user is an agent that should be redirected to /dashboard instead of
- * /emilia/chat.
+ * Fetches the account_type for the given user id.
+ *
+ * @deprecated Used by the now-deleted ConsumerLogin to detect agents that
+ * logged in through the consumer door. With the unified /login route
+ * introduced in C5b that branching is no longer needed — both account types
+ * land on /emilia/chat post-auth and the page-level guards (RequireConsumer,
+ * RequireAgent) sort access from there. PR 4 confirms no remaining callers
+ * and removes.
  */
 export async function fetchUserAccountType(
   userId: string

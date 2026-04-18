@@ -36,7 +36,7 @@ export default function ConsumerSignup() {
       isAgent,
     });
     if (action === 'chat') navigate('/emilia/chat', { replace: true });
-    else if (action === 'dashboard') navigate('/dashboard', { replace: true });
+    else if (action === 'dashboard') navigate('/emilia/dashboard', { replace: true });
   }, [user, loading, isAgent, isConsumer, navigate]);
 
   const form = useForm<ConsumerSignupFormData>({
@@ -76,7 +76,7 @@ export default function ConsumerSignup() {
         title: t('signup.toast.createdNeedLogin'),
         description: t('signup.toast.createdNeedLoginDescription'),
       });
-      navigate('/emilia/login', { replace: true });
+      navigate('/login', { replace: true });
       return;
     }
 
@@ -167,7 +167,7 @@ export default function ConsumerSignup() {
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-white/70">
               {t('signup.loginLink')}{' '}
-              <Link to="/emilia/login" className="text-primary hover:underline">
+              <Link to="/login" className="text-primary hover:underline">
                 {t('signup.loginLinkAction')}
               </Link>
             </p>

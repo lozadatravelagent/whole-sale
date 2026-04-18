@@ -32,6 +32,8 @@ interface ChatInterfaceProps {
   onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
   onBackToList?: () => void;
   onGoToPlanner?: () => void;
+  /** Forwarded to ChatHeader to hide agent-only chrome in companion mode. */
+  mode?: 'companion' | 'standard';
 }
 
 const ChatInterface = React.memo(({
@@ -50,7 +52,8 @@ const ChatInterface = React.memo(({
   onAddToCRM,
   onPdfGenerated,
   onBackToList,
-  onGoToPlanner
+  onGoToPlanner,
+  mode = 'standard'
 }: ChatInterfaceProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -268,6 +271,7 @@ const ChatInterface = React.memo(({
         messagesCount={messages.length}
         onAddToCRM={onAddToCRM}
         onBackToList={onBackToList}
+        mode={mode}
       />
 
       {/* Drag and Drop Overlay - pointer-events-none para no interferir con drag events */}

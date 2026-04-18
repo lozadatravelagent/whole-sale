@@ -2,21 +2,21 @@ import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
-import { decideRequireConsumerAction } from './requireConsumerLogic';
+import { decideRequireAgentAction } from './requireAgentLogic';
 
-interface RequireConsumerProps {
+interface RequireAgentProps {
   children: React.ReactNode;
 }
 
-const RequireConsumer: React.FC<RequireConsumerProps> = ({ children }) => {
-  const { user, loading, isConsumer } = useAuth();
+const RequireAgent: React.FC<RequireAgentProps> = ({ children }) => {
+  const { user, loading, isAgent } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const action = decideRequireConsumerAction({
+  const action = decideRequireAgentAction({
     loading,
     userPresent: Boolean(user),
-    isConsumer,
+    isAgent,
   });
 
   useEffect(() => {
@@ -25,8 +25,8 @@ const RequireConsumer: React.FC<RequireConsumerProps> = ({ children }) => {
         replace: true,
         state: { from: location },
       });
-    } else if (action === 'redirect-home') {
-      navigate('/', { replace: true });
+    } else if (action === 'redirect-chat') {
+      navigate('/emilia/chat', { replace: true });
     }
   }, [action, navigate, location]);
 
@@ -48,4 +48,4 @@ const RequireConsumer: React.FC<RequireConsumerProps> = ({ children }) => {
   return <>{children}</>;
 };
 
-export default RequireConsumer;
+export default RequireAgent;

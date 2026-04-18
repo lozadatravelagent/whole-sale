@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import MainLayout from '@/components/layout/MainLayout';
+import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -209,7 +209,7 @@ const Users = () => {
 
   if (!canManageUsers) {
     return (
-      <MainLayout>
+      <UnifiedLayout>
         <div className="p-8">
           <Alert>
             <AlertCircle className="h-4 w-4" />
@@ -218,12 +218,12 @@ const Users = () => {
             </AlertDescription>
           </Alert>
         </div>
-      </MainLayout>
+      </UnifiedLayout>
     );
   }
 
   return (
-    <MainLayout>
+    <UnifiedLayout>
       <div className="p-4 md:p-6 lg:p-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -590,7 +590,7 @@ const Users = () => {
           </DialogContent>
         </Dialog>
       </div>
-    </MainLayout>
+    </UnifiedLayout>
   );
 };
 

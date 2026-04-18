@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import MainLayout from '@/components/layout/MainLayout';
+import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -185,16 +185,16 @@ const Settings = () => {
 
   if (loading) {
     return (
-      <MainLayout userRole={user?.role || 'ADMIN'}>
+      <UnifiedLayout>
         <div className="flex items-center justify-center h-full">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-      </MainLayout>
+      </UnifiedLayout>
     );
   }
 
   return (
-    <MainLayout userRole={user?.role || 'ADMIN'}>
+    <UnifiedLayout>
       <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -710,7 +710,7 @@ const Settings = () => {
           </TabsContent>
         </Tabs>
       </div>
-    </MainLayout>
+    </UnifiedLayout>
   );
 };
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import MainLayout from '@/components/layout/MainLayout';
+import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -171,7 +171,7 @@ const Dashboard = () => {
         navigate('/marketplace');
         break;
       default:
-        navigate('/dashboard');
+        navigate('/emilia/dashboard');
     }
   };
 
@@ -200,16 +200,16 @@ const Dashboard = () => {
   // No user logged in
   if (!user) {
     return (
-      <MainLayout>
+      <UnifiedLayout>
         <div className="flex h-96 items-center justify-center">
           <p className="text-muted-foreground">Por favor, inicia sesión para ver el dashboard</p>
         </div>
-      </MainLayout>
+      </UnifiedLayout>
     );
   }
 
   return (
-    <MainLayout userRole="ADMIN">
+    <UnifiedLayout>
       <div className="h-full overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
@@ -559,7 +559,7 @@ const Dashboard = () => {
           </Card>
         </div>
       </div>
-    </MainLayout>
+    </UnifiedLayout>
   );
 };
 

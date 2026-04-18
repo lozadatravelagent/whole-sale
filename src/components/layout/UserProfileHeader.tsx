@@ -154,7 +154,7 @@ export function UserProfileHeader({ user, onLogout }: UserProfileHeaderProps) {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => navigate('/settings')} className="cursor-pointer">
+          <DropdownMenuItem onClick={() => navigate('/emilia/settings')} className="cursor-pointer">
             Mi Perfil
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onLogout} className="cursor-pointer text-destructive focus:text-destructive">

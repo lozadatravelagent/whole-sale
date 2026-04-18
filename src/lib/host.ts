@@ -15,18 +15,30 @@ export const COOKIE_DOMAIN =
     ? '.vibook.ai'
     : undefined;
 
+/**
+ * @deprecated After C2, only the deprecated host helpers below consume this.
+ * PR 4 removes the whole bundle.
+ */
 export function getHostname(): string {
   return typeof window === 'undefined' ? '' : window.location.hostname;
 }
 
+/**
+ * @deprecated Dual-host architecture collapsed in PR 2. The repo only serves
+ * `emilia.vibook.ai` now. This helper has no remaining consumers and PR 4
+ * removes it together with `isMainHost`, `mainOrigin`, `emiliaOrigin`,
+ * `isSafeReturnUrl`, `EMILIA_HOSTS`, `MAIN_HOSTS`, `SAFE_RETURN_HOSTS`.
+ */
 export function isEmiliaHost(host: string = getHostname()): boolean {
   return EMILIA_HOSTS.has(host);
 }
 
+/** @deprecated See `isEmiliaHost`. PR 4 removes. */
 export function isMainHost(host: string = getHostname()): boolean {
   return MAIN_HOSTS.has(host);
 }
 
+/** @deprecated No callers in src/. PR 4 confirms with dynamic analysis and removes. */
 export function mainOrigin(): string {
   const { protocol, port } = window.location;
   const host = getHostname();
@@ -39,6 +51,7 @@ export function mainOrigin(): string {
   return 'https://vibook.ai';
 }
 
+/** @deprecated No callers in src/. PR 4 confirms with dynamic analysis and removes. */
 export function emiliaOrigin(): string {
   const { protocol, port } = window.location;
   const host = getHostname();
@@ -48,6 +61,7 @@ export function emiliaOrigin(): string {
   return 'https://emilia.vibook.ai';
 }
 
+/** @deprecated No callers in src/. PR 4 confirms with dynamic analysis and removes. */
 export function isSafeReturnUrl(raw: string | null | undefined): raw is string {
   if (!raw) return false;
   try {
