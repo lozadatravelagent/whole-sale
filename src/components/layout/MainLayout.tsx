@@ -13,9 +13,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import {
   House,
   MessageCircle,
-  BookUser,
-  ShoppingBag,
-  TrendingUp,
   SlidersHorizontal,
   ArrowRightFromLine,
   ChevronLeft,
@@ -47,9 +44,6 @@ interface MainLayoutProps {
 const baseNavigation = [
   { name: 'Dashboard', href: '/dashboard', icon: House },
   { name: 'Chat', href: '/chat', icon: MessageCircle },
-  { name: 'CRM', href: '/crm', icon: BookUser },
-  { name: 'Marketplace', href: '/marketplace', icon: ShoppingBag },
-  { name: 'Reports', href: '/reports', icon: TrendingUp },
 ];
 
 const adminNavigation = [
