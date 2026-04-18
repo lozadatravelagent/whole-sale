@@ -1,8 +1,8 @@
-import MainLayout from '@/components/layout/MainLayout';
+import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 
 export function ChatSkeleton() {
   return (
-    <MainLayout>
+    <UnifiedLayout>
       <div className="flex h-full" aria-busy="true" aria-label="Cargando conversaciones">
         {/* Sidebar skeleton - matches ConversationList dimensions */}
         <div className="w-80 border-r p-4 space-y-3">
@@ -31,6 +31,6 @@ export function ChatSkeleton() {
           </div>
         </div>
       </div>
-    </MainLayout>
+    </UnifiedLayout>
   );
 }
