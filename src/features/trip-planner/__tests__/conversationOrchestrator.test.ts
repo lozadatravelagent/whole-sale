@@ -482,108 +482,162 @@ describe('conversationOrchestrator', () => {
     expect(debug.payload.selectedBuckets.length).toBeGreaterThan(0);
   });
 
-  it('PR 3 (C1): passing mode does not alter legacy routing when strict logic is not wired yet', () => {
-    const baseOptions = {
-      parsedRequest: {
-        requestType: 'itinerary' as const,
-        itinerary: { destinations: ['Asia'], days: 20 },
-        confidence: 0.9,
-        originalMessage: 'Quiero un viaje por Asia 20 días',
-      },
-      routeResult: {
-        route: 'PLAN' as const,
-        score: 0.2,
-        dimensions: { destination: 0, dates: 0.3, passengers: 0.5, origin: 0.5, complexity: 0.5 },
-        missingFields: ['dates'],
-        inferredFields: [],
-        reason: 'itinerary_request',
-      },
-      plannerState: null,
+  // ===========================================================================
+  // PR 3 / C3 — strict agency/passenger routing + mode_bridge
+  // ===========================================================================
+
+  describe('strict mode routing (PR 3)', () => {
+    const combinedQuoteRequest = {
+      requestType: 'combined' as const,
+      flights: { origin: 'BUE', destination: 'BCN', departureDate: '2026-09-10', adults: 2, children: 0 },
+      hotels: { city: 'Barcelona', checkinDate: '2026-09-10', checkoutDate: '2026-09-20', adults: 2, children: 0 },
+      confidence: 0.95,
+      originalMessage: 'Buscame vuelo y hotel a Barcelona',
+    };
+    const combinedQuoteRoute = {
+      route: 'QUOTE' as const,
+      score: 0.9,
+      dimensions: { destination: 1, dates: 1, passengers: 1, origin: 1, complexity: 0.5 },
+      missingFields: [],
+      inferredFields: [],
+      reason: 'high_definition',
+    };
+    const itineraryPlanRequest = {
+      requestType: 'itinerary' as const,
+      itinerary: { destinations: ['Italia'], days: 10 },
+      confidence: 0.9,
+      originalMessage: 'Armame Italia 10 días',
+    };
+    const itineraryPlanRoute = {
+      route: 'PLAN' as const,
+      score: 0.4,
+      dimensions: { destination: 1, dates: 0, passengers: 0.5, origin: 0.5, complexity: 0.5 },
+      missingFields: ['dates'],
+      inferredFields: [],
+      reason: 'itinerary_request',
+    };
+    const baseFlags = {
       hasPersistentContext: false,
       hasPreviousParsedRequest: false,
       recentCollectCount: 0,
       maxCollectTurns: 3,
     };
 
-    const legacy = resolveConversationTurn(baseOptions);
-    const withAgency = resolveConversationTurn({ ...baseOptions, mode: 'agency' });
-    const withPassenger = resolveConversationTurn({ ...baseOptions, mode: 'passenger' });
-
-    expect(withAgency).toEqual(legacy);
-    expect(withPassenger).toEqual(legacy);
-    expect(legacy.executionBranch).toBe('standard_itinerary');
-  });
-
-  // TODO(1.1.x): These 3 tests are spec-first for companion routing in
-  // resolveConversationTurn. Companion routing currently does NOT exist in
-  // any layer: useMessageHandler accepts workspaceMode but explicitly ignores
-  // it for routing (line 681: "route based on content, not workspace_mode").
-  // resolveConversationTurn does not accept workspaceMode at all.
-  // Fase 1.0/1.0.5 closed partial — companion routing was not implemented.
-  // Recovered from stash during 1.1.b prerequisites verification.
-  // See D14 in TECH_DEBT.md.
-  describe.skip('companion mode routing', () => {
-    it('companion mode: fallback routes to planner_agent with active planner', () => {
+    // -------------------------------------------------------------------------
+    // Legacy preservation — mode undefined must keep pre-C3 behavior,
+    // INCLUDING the standard_itinerary branch. C8 removes this path.
+    // -------------------------------------------------------------------------
+    it('legacy (mode undefined): itinerary + PLAN + no planner → standard_itinerary', () => {
       const resolution = resolveConversationTurn({
-        parsedRequest: {
-          requestType: 'combined',
-          flights: {
-            origin: 'BUE',
-            destination: 'BCN',
-            departureDate: '2026-09-10',
-            adults: 2,
-            children: 0,
-          },
-          hotels: {
-            city: 'Barcelona',
-            checkinDate: '2026-09-10',
-            checkoutDate: '2026-09-20',
-            adults: 2,
-            children: 0,
-          },
-          confidence: 0.95,
-          originalMessage: 'Buscame vuelo y hotel a Barcelona',
-        },
-        routeResult: {
-          route: 'QUOTE',
-          score: 0.9,
-          dimensions: { destination: 1, dates: 1, passengers: 1, origin: 1, complexity: 0.5 },
-          missingFields: [],
-          inferredFields: [],
-          reason: 'high_definition',
-        },
-        plannerState: { generationMeta: { isDraft: false } },
-        hasPersistentContext: false,
-        hasPreviousParsedRequest: false,
-        recentCollectCount: 0,
-        maxCollectTurns: 3,
-        workspaceMode: 'companion',
-      } as any);
-
-      expect(resolution.executionBranch).toBe('planner_agent');
-      expect(resolution.uiMeta.reason).toBe('companion_fallback');
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: null,
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('standard_itinerary');
+      expect(resolution.uiMeta.firstPlanHandledAs).toBe('standard_itinerary');
     });
 
-    it('companion mode: fallback routes to ask_minimal without planner', () => {
+    // -------------------------------------------------------------------------
+    // D14 adapted tests — spec closed. See commit body for adaptation details.
+    // -------------------------------------------------------------------------
+    it('D14 #1 (passenger + QUOTE + active planner) → planner_agent (bridge refined by !hasActivePlanner)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: combinedQuoteRequest,
+        routeResult: combinedQuoteRoute,
+        plannerState: { generationMeta: { isDraft: false } },
+        mode: 'passenger',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('planner_agent');
+      expect(resolution.responseMode).toBe('proposal_first_plan');
+      expect(resolution.uiMeta.firstPlanHandledAs).toBeNull();
+    });
+
+    it('D14 #2 (passenger + QUOTE + no planner) → mode_bridge to agency — EXPECTATION CHANGED from ask_minimal per ADR-002', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: combinedQuoteRequest,
+        routeResult: combinedQuoteRoute,
+        plannerState: null,
+        mode: 'passenger',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('mode_bridge');
+      expect(resolution.responseMode).toBe('needs_mode_switch');
+      expect(resolution.messageType).toBe('mode_bridge');
+      expect(resolution.uiMeta.suggestedMode).toBe('agency');
+    });
+
+    it('D14 #3 (legacy, mode undefined) → standard_search (pre-C3 behavior unchanged)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: combinedQuoteRequest,
+        routeResult: combinedQuoteRoute,
+        plannerState: { generationMeta: { isDraft: false } },
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('standard_search');
+      expect(resolution.responseMode).toBe('quote_or_search');
+    });
+
+    // -------------------------------------------------------------------------
+    // Agency mode matrix
+    // -------------------------------------------------------------------------
+    it('agency + itinerary intent + PLAN → mode_bridge(passenger)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: null,
+        mode: 'agency',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('mode_bridge');
+      expect(resolution.uiMeta.suggestedMode).toBe('passenger');
+    });
+
+    it('agency + combined QUOTE → standard_search (no bridge, no planner_agent)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: combinedQuoteRequest,
+        routeResult: combinedQuoteRoute,
+        plannerState: { generationMeta: { isDraft: false } },
+        mode: 'agency',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('standard_search');
+      expect(resolution.responseMode).toBe('quote_or_search');
+    });
+
+    it('agency + COLLECT + missing passengers → ask_minimal', () => {
       const resolution = resolveConversationTurn({
         parsedRequest: {
-          requestType: 'combined',
-          flights: {
-            origin: 'BUE',
-            destination: 'BCN',
-            departureDate: '2026-09-10',
-            adults: 2,
-            children: 0,
-          },
-          hotels: {
-            city: 'Barcelona',
-            checkinDate: '2026-09-10',
-            checkoutDate: '2026-09-20',
-            adults: 2,
-            children: 0,
-          },
-          confidence: 0.95,
-          originalMessage: 'Buscame vuelo y hotel a Barcelona',
+          requestType: 'flights',
+          flights: { origin: 'BUE', destination: 'MAD', departureDate: '', adults: 0, children: 0 },
+          confidence: 0.7,
+          originalMessage: 'Vuelos a Madrid',
+        },
+        routeResult: {
+          route: 'COLLECT',
+          score: 0.6,
+          dimensions: { destination: 1, dates: 0, passengers: 0, origin: 1, complexity: 0.5 },
+          missingFields: ['passengers', 'dates'],
+          inferredFields: [],
+          reason: 'quote_intent_incomplete',
+          collectQuestion: '¿Cuántos viajan y en qué fechas?',
+        },
+        plannerState: null,
+        mode: 'agency',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('ask_minimal');
+      expect(resolution.responseMode).toBe('needs_input');
+    });
+
+    it('agency + flights QUOTE without itinerary/PLAN intent → standard_search (ambiguous content, no bridge)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: {
+          requestType: 'flights',
+          flights: { origin: 'BUE', destination: 'MAD', departureDate: '2026-09-10', adults: 2, children: 0 },
+          confidence: 0.9,
+          originalMessage: 'Cotizame un vuelo BUE-MAD',
         },
         routeResult: {
           route: 'QUOTE',
@@ -594,38 +648,71 @@ describe('conversationOrchestrator', () => {
           reason: 'high_definition',
         },
         plannerState: null,
-        hasPersistentContext: false,
-        hasPreviousParsedRequest: false,
-        recentCollectCount: 0,
-        maxCollectTurns: 3,
-        workspaceMode: 'companion',
-      } as any);
-
-      expect(resolution.executionBranch).toBe('ask_minimal');
-      expect(resolution.responseMode).toBe('needs_input');
-      expect(resolution.uiMeta.reason).toBe('companion_fallback');
+        mode: 'agency',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('standard_search');
     });
 
-    it('standard mode: fallback unchanged when same input as companion test', () => {
+    // -------------------------------------------------------------------------
+    // Passenger mode matrix
+    // -------------------------------------------------------------------------
+    it('passenger + itinerary + PLAN + no planner → planner_agent with firstPlanHandledAs=planner_agent (handler bootstrap — C4/C5)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: null,
+        mode: 'passenger',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('planner_agent');
+      expect(resolution.shouldUsePlannerAgent).toBe(true);
+      expect(resolution.uiMeta.firstPlanHandledAs).toBe('planner_agent');
+    });
+
+    it('passenger + PLAN + planner active → planner_agent with firstPlanHandledAs=null', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: { generationMeta: { isDraft: false } },
+        mode: 'passenger',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('planner_agent');
+      expect(resolution.uiMeta.firstPlanHandledAs).toBeNull();
+    });
+
+    it('passenger + COLLECT + missing passengers → ask_minimal', () => {
       const resolution = resolveConversationTurn({
         parsedRequest: {
-          requestType: 'combined',
-          flights: {
-            origin: 'BUE',
-            destination: 'BCN',
-            departureDate: '2026-09-10',
-            adults: 2,
-            children: 0,
-          },
-          hotels: {
-            city: 'Barcelona',
-            checkinDate: '2026-09-10',
-            checkoutDate: '2026-09-20',
-            adults: 2,
-            children: 0,
-          },
-          confidence: 0.95,
-          originalMessage: 'Buscame vuelo y hotel a Barcelona',
+          requestType: 'itinerary',
+          itinerary: { destinations: ['Paris'] },
+          confidence: 0.7,
+          originalMessage: 'Quiero ir a Paris',
+        },
+        routeResult: {
+          route: 'COLLECT',
+          score: 0.5,
+          dimensions: { destination: 1, dates: 0, passengers: 0, origin: 0.5, complexity: 0.5 },
+          missingFields: ['passengers', 'dates'],
+          inferredFields: [],
+          reason: 'quote_intent_incomplete',
+          collectQuestion: '¿Cuántos viajan?',
+        },
+        plannerState: null,
+        mode: 'passenger',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('ask_minimal');
+    });
+
+    it('passenger + flights QUOTE + no planner → mode_bridge(agency)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: {
+          requestType: 'flights',
+          flights: { origin: 'BUE', destination: 'MAD', departureDate: '2026-09-10', adults: 2, children: 0 },
+          confidence: 0.9,
+          originalMessage: 'Cotizame un vuelo BUE-MAD',
         },
         routeResult: {
           route: 'QUOTE',
@@ -635,16 +722,128 @@ describe('conversationOrchestrator', () => {
           inferredFields: [],
           reason: 'high_definition',
         },
-        plannerState: { generationMeta: { isDraft: false } },
-        hasPersistentContext: false,
-        hasPreviousParsedRequest: false,
-        recentCollectCount: 0,
-        maxCollectTurns: 3,
-        workspaceMode: 'standard',
-      } as any);
+        plannerState: null,
+        mode: 'passenger',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('mode_bridge');
+      expect(resolution.uiMeta.suggestedMode).toBe('agency');
+    });
 
+    // -------------------------------------------------------------------------
+    // Guardrails
+    // -------------------------------------------------------------------------
+    it('G1: agency + itinerary intent + previousMessageType=mode_bridge → falls to agency default (standard_search), no bridge', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: null,
+        mode: 'agency',
+        previousMessageType: 'mode_bridge',
+        ...baseFlags,
+      });
       expect(resolution.executionBranch).toBe('standard_search');
-      expect(resolution.responseMode).toBe('quote_or_search');
+    });
+
+    it('G2: agency + itinerary intent + forceCurrentMode=true → falls to agency default (standard_search), no bridge', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: null,
+        mode: 'agency',
+        forceCurrentMode: true,
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('standard_search');
+    });
+
+    it('G1 (passenger side): passenger + QUOTE + no planner + previousMessageType=mode_bridge → falls to passenger default (planner_agent)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: combinedQuoteRequest,
+        routeResult: combinedQuoteRoute,
+        plannerState: null,
+        mode: 'passenger',
+        previousMessageType: 'mode_bridge',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('planner_agent');
+    });
+
+    it('G2 (passenger side): passenger + QUOTE + no planner + forceCurrentMode=true → falls to passenger default (planner_agent)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: combinedQuoteRequest,
+        routeResult: combinedQuoteRoute,
+        plannerState: null,
+        mode: 'passenger',
+        forceCurrentMode: true,
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('planner_agent');
+    });
+
+    it('edge: mode set, both guardrail params undefined → bridge emits normally (C3 default behavior)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: null,
+        mode: 'agency',
+        // previousMessageType and forceCurrentMode omitted on purpose
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('mode_bridge');
+    });
+
+    // -------------------------------------------------------------------------
+    // Discovery bypass — strict mode is bypassed when isDiscoveryIntent=true.
+    // Carryover for C8: discovery needs its own branch before standard_itinerary
+    // can be removed.
+    // -------------------------------------------------------------------------
+    it('discovery bypass: passenger + PLAN + planner active + "qué ver en Roma" → standard_itinerary (legacy show_places), not planner_agent, not mode_bridge', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: {
+          requestType: 'itinerary',
+          itinerary: { destinations: ['Roma'] },
+          confidence: 0.95,
+          originalMessage: 'Qué ver en Roma',
+        },
+        routeResult: {
+          route: 'PLAN',
+          score: 0.5,
+          dimensions: { destination: 1, dates: 0, passengers: 0.5, origin: 0.5, complexity: 0.5 },
+          missingFields: [],
+          inferredFields: [],
+          reason: 'itinerary_request',
+        },
+        plannerState: { generationMeta: { isDraft: false } },
+        mode: 'passenger',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('standard_itinerary');
+      expect(resolution.responseMode).toBe('show_places');
+    });
+
+    it('discovery bypass: agency + PLAN + "qué ver en Roma" → standard_itinerary, NOT mode_bridge', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: {
+          requestType: 'itinerary',
+          itinerary: { destinations: ['Roma'] },
+          confidence: 0.95,
+          originalMessage: 'Qué ver en Roma',
+        },
+        routeResult: {
+          route: 'PLAN',
+          score: 0.5,
+          dimensions: { destination: 1, dates: 0, passengers: 0.5, origin: 0.5, complexity: 0.5 },
+          missingFields: [],
+          inferredFields: [],
+          reason: 'itinerary_request',
+        },
+        plannerState: null,
+        mode: 'agency',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('standard_itinerary');
+      expect(resolution.responseMode).toBe('show_places');
     });
   });
 });
