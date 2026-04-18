@@ -22,8 +22,12 @@ function cookieAttrs(): Cookies.CookieAttributes {
   };
 }
 
+function allCookies(): Record<string, string> {
+  return (Cookies.get() ?? {}) as Record<string, string>;
+}
+
 function readChunked(key: string): string | null {
-  const all = Cookies.get();
+  const all = allCookies();
   const direct = all[key];
   if (direct !== undefined) return direct;
   const parts: string[] = [];
@@ -38,7 +42,7 @@ function readChunked(key: string): string | null {
 function removeChunked(key: string): void {
   const attrs = { domain: COOKIE_DOMAIN, path: '/' };
   Cookies.remove(key, attrs);
-  const all = Cookies.get();
+  const all = allCookies();
   let i = 0;
   while (all[`${key}.${i}`] !== undefined) {
     Cookies.remove(`${key}.${i}`, attrs);
