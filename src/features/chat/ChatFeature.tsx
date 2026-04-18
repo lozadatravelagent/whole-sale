@@ -838,6 +838,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                     onAddToCRM={handleAddToCRM}
                     onPdfGenerated={handlePdfGenerated}
                     onBackToList={() => setSelectedConversation(null)}
+                    mode="companion"
                   />
                 </div>
                 <HandoffBanner
