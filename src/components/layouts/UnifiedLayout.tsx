@@ -22,7 +22,11 @@ interface UnifiedLayoutProps {
 }
 
 const HEADER_HEIGHT = 56;
-const RIGHT_PANEL_WIDTH = 360;
+// Matches the legacy CompanionLayout right column (lg:w-80 = 320px). Avoids
+// squeezing ChatInterface in the lg viewport (1024px) where the split first
+// kicks in: with a 288px sidebar (md:w-72) the chat keeps ~416px instead of
+// shrinking to ~376px under a 360px panel.
+const RIGHT_PANEL_WIDTH = 320;
 
 export default function UnifiedLayout({ children, rightPanel, className }: UnifiedLayoutProps) {
   const location = useLocation();
