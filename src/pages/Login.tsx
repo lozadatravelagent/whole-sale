@@ -10,7 +10,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { Mail, Lock, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { isSafeReturnUrl } from '@/lib/host';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -25,19 +24,15 @@ const Login = () => {
   // Check if session expired (redirected from session expiration)
   const sessionExpired = searchParams.get('expired') === 'true';
 
-  const rawNext = searchParams.get('next');
-  const nextUrl = isSafeReturnUrl(rawNext) ? rawNext : null;
-
-  // Redirect if already authenticated
+  // Redirect if already authenticated. Default post-login target depends on host:
+  // - On emilia.* the landing is `/` (Chat is mounted there).
+  // - On the main host the landing is `/dashboard`.
   useEffect(() => {
     if (authLoading || !user) return;
-    if (nextUrl) {
-      window.location.replace(nextUrl);
-      return;
-    }
-    const from = (location.state as any)?.from?.pathname || '/dashboard';
+    const fallback = window.location.hostname.startsWith('emilia.') ? '/' : '/dashboard';
+    const from = (location.state as any)?.from?.pathname || fallback;
     navigate(from, { replace: true });
-  }, [user, authLoading, navigate, location, nextUrl]);
+  }, [user, authLoading, navigate, location]);
 
   // Show toast notification if session expired
   useEffect(() => {
@@ -84,13 +79,12 @@ const Login = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      const callbackUrl = new URL('/auth/callback', window.location.origin);
-      if (nextUrl) callbackUrl.searchParams.set('next', nextUrl);
-
+      // `window.location.origin` respeta el subdominio: OAuth vuelve al mismo host
+      // desde el que el usuario inició el flow (vibook.ai o emilia.vibook.ai).
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: callbackUrl.toString()
+          redirectTo: `${window.location.origin}/auth/callback`
         }
       });
 

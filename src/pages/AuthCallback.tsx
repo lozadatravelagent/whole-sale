@@ -1,23 +1,21 @@
 import { useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { isSafeReturnUrl } from '@/lib/host';
 
 const AuthCallback = () => {
-  const [params] = useSearchParams();
   const { user, loading } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (loading) return;
-    const raw = params.get('next');
     if (user) {
-      const next = isSafeReturnUrl(raw) ? raw : '/dashboard';
-      window.location.replace(next);
+      const target = window.location.hostname.startsWith('emilia.') ? '/' : '/dashboard';
+      navigate(target, { replace: true });
     } else {
-      window.location.replace('/login');
+      navigate('/login', { replace: true });
     }
-  }, [user, loading, params]);
+  }, [user, loading, navigate]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">

@@ -93,6 +93,7 @@ const EmiliaHostRoutes = () => (
         </ProtectedRoute>
       }
     />
+    <Route path="/login" element={<Login />} />
     <Route path="/auth/callback" element={<AuthCallback />} />
     <Route path="*" element={<NotFound />} />
   </Routes>
