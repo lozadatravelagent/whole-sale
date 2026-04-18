@@ -482,6 +482,38 @@ describe('conversationOrchestrator', () => {
     expect(debug.payload.selectedBuckets.length).toBeGreaterThan(0);
   });
 
+  it('PR 3 (C1): passing mode does not alter legacy routing when strict logic is not wired yet', () => {
+    const baseOptions = {
+      parsedRequest: {
+        requestType: 'itinerary' as const,
+        itinerary: { destinations: ['Asia'], days: 20 },
+        confidence: 0.9,
+        originalMessage: 'Quiero un viaje por Asia 20 días',
+      },
+      routeResult: {
+        route: 'PLAN' as const,
+        score: 0.2,
+        dimensions: { destination: 0, dates: 0.3, passengers: 0.5, origin: 0.5, complexity: 0.5 },
+        missingFields: ['dates'],
+        inferredFields: [],
+        reason: 'itinerary_request',
+      },
+      plannerState: null,
+      hasPersistentContext: false,
+      hasPreviousParsedRequest: false,
+      recentCollectCount: 0,
+      maxCollectTurns: 3,
+    };
+
+    const legacy = resolveConversationTurn(baseOptions);
+    const withAgency = resolveConversationTurn({ ...baseOptions, mode: 'agency' });
+    const withPassenger = resolveConversationTurn({ ...baseOptions, mode: 'passenger' });
+
+    expect(withAgency).toEqual(legacy);
+    expect(withPassenger).toEqual(legacy);
+    expect(legacy.executionBranch).toBe('standard_itinerary');
+  });
+
   // TODO(1.1.x): These 3 tests are spec-first for companion routing in
   // resolveConversationTurn. Companion routing currently does NOT exist in
   // any layer: useMessageHandler accepts workspaceMode but explicitly ignores

@@ -431,6 +431,11 @@ export function resolveConversationTurn(options: {
   hasPreviousParsedRequest: boolean;
   recentCollectCount: number;
   maxCollectTurns: number;
+  // PR 3 (C1): mode param reserved. When undefined, legacy routing runs
+  // unchanged (including the standard_itinerary branch). C3 wires strict
+  // agency/passenger routing when defined. C8 makes it required and removes
+  // the legacy branch.
+  mode?: 'agency' | 'passenger';
 }): ConversationTurnResolution {
   const {
     parsedRequest,
