@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Sparkle, Plus, Loader2, ChevronLeft } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import ModeSwitch from './ModeSwitch';
 
 interface ChatHeaderProps {
   isTyping: boolean;
@@ -12,16 +13,27 @@ interface ChatHeaderProps {
   onBackToList?: () => void;
   /**
    * PR 3 (C5): account type gates agent-only chrome (CRM card button, theme
-   * toggle). Replaces the previous `mode: 'companion' | 'standard'` prop.
-   * Same invariant as before: `showAgentChrome = accountType === 'agent'`,
-   * with correct semantic naming.
+   * toggle, ModeSwitch). Replaces the previous `mode: 'companion' | 'standard'`
+   * prop. Same invariant: `showAgentChrome = accountType === 'agent'`.
    */
   accountType: 'consumer' | 'agent';
   /**
-   * PR 3 (C5): strict chat mode for agents. Only meaningful when
-   * `accountType === 'agent'`. C6 adds the ModeSwitch render into this slot.
+   * PR 3 (C5): strict chat mode for agents. Required for rendering the
+   * ModeSwitch. When undefined (shouldn't happen in practice post-C5 because
+   * ChatFeature always passes it for agent) the switch is suppressed.
    */
   mode?: 'agency' | 'passenger';
+  /**
+   * PR 3 (C6): whether the user has an agency assigned. Drives the
+   * ModeSwitch's "agency" toggle disabled state + tooltip. Defaults to false
+   * defensively.
+   */
+  hasAgency?: boolean;
+  /**
+   * PR 3 (C6): callback wired from ChatFeature's setChatMode. Fired when the
+   * agent clicks either toggle in the ModeSwitch.
+   */
+  onModeChange?: (next: 'agency' | 'passenger') => void;
 }
 
 // Chat header component - memoized to prevent re-renders
@@ -33,8 +45,12 @@ const ChatHeader = React.memo(({
   onAddToCRM,
   onBackToList,
   accountType,
+  mode,
+  hasAgency = false,
+  onModeChange,
 }: ChatHeaderProps) => {
   const showAgentChrome = accountType === 'agent';
+  const showModeSwitch = showAgentChrome && mode !== undefined && onModeChange !== undefined;
 
   return (
     <div className="border-b bg-background p-3 md:p-4">
@@ -62,6 +78,19 @@ const ChatHeader = React.memo(({
 
         {showAgentChrome && (
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* PR 3 (C6): ModeSwitch — agency/passenger toggle. First in the
+                agent-only row so it reads left-to-right before the utility
+                buttons. Suppressed if either `mode` or `onModeChange` is
+                missing (defensive; shouldn't happen for agents post-C5). */}
+            {showModeSwitch && mode && onModeChange && (
+              <ModeSwitch
+                mode={mode}
+                hasAgency={hasAgency}
+                onModeChange={onModeChange}
+                className="hidden md:inline-flex"
+              />
+            )}
+
             {/* Theme Toggle - Hidden on mobile, shown on desktop */}
             <ThemeToggle variant="compact" className="hidden md:flex" />
 

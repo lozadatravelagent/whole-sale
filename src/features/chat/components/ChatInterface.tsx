@@ -55,6 +55,12 @@ interface ChatInterfaceProps {
    */
   onBridgeSwitch?: (suggestedMode: BridgeChatMode, originalText: string) => void;
   onBridgeStay?: (originalText: string) => void;
+  /**
+   * PR 3 (C6): forwarded to ChatHeader so the ModeSwitch can render. Both
+   * optional — when missing (consumer branch) the switch doesn't render.
+   */
+  hasAgency?: boolean;
+  onModeChange?: (next: 'agency' | 'passenger') => void;
 }
 
 const ChatInterface = React.memo(({
@@ -75,8 +81,11 @@ const ChatInterface = React.memo(({
   onBackToList,
   onGoToPlanner,
   accountType,
+  mode,
   onBridgeSwitch,
-  onBridgeStay
+  onBridgeStay,
+  hasAgency,
+  onModeChange
 }: ChatInterfaceProps) => {
   const { t } = useTranslation('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -296,6 +305,9 @@ const ChatInterface = React.memo(({
         onAddToCRM={onAddToCRM}
         onBackToList={onBackToList}
         accountType={accountType}
+        mode={mode}
+        hasAgency={hasAgency}
+        onModeChange={onModeChange}
       />
 
       {/* Drag and Drop Overlay - pointer-events-none para no interferir con drag events */}

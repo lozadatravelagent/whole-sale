@@ -46,6 +46,11 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   // conversation switch / createNewChat. Consumers don't use it; `chatMode` is
   // passed to `useMessageHandler` only when accountType === 'agent'.
   const [chatMode, setChatMode] = useState<ChatMode>(() => deriveDefaultMode(user));
+  // PR 3 (C6): reactive derivation of agency availability. Inline expression
+  // (no useMemo) — the bool is cheap and re-derives on every ChatFeature
+  // render. Reactivity comes from AuthContext re-rendering this component
+  // when `user` updates (admin assigns an agency on a live session, etc.).
+  const hasAgency = user?.agency_id != null;
   const {
     // State
     selectedConversation,
@@ -991,6 +996,8 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                 } : undefined}
                 accountType="agent"
                 mode={chatMode}
+                hasAgency={hasAgency}
+                onModeChange={setChatMode}
                 onBridgeSwitch={handleBridgeSwitch}
                 onBridgeStay={handleBridgeStay}
               />
