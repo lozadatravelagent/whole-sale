@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import MainLayout from '@/components/layout/MainLayout';
+import { useNavigate } from 'react-router-dom';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMessages, useConversationSearch } from '@/hooks/useChat';
@@ -35,7 +34,6 @@ interface ChatFeatureProps {
 
 const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { isOwner, isSuperAdmin, user } = useAuth();
   const [isHandoffModalOpen, setIsHandoffModalOpen] = useState(false);
   const [handoffSubmittedConversations, setHandoffSubmittedConversations] = useState<Set<string>>(
@@ -155,21 +153,6 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   const planner = useTripPlanner(selectedConversation, conversationScopedMessages, toast);
   const previousPlannerConversationRef = useRef<string | null>(selectedConversation);
   const [plannerWorkspaceKey, setPlannerWorkspaceKey] = useState<string | null>(selectedConversation);
-  const [isHistorySidebarVisible, setIsHistorySidebarVisible] = useState(true);
-  const [isClosingOverlaySidebar, setIsClosingOverlaySidebar] = useState(false);
-  const [overlaySidebarTargetRoute, setOverlaySidebarTargetRoute] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isClosingOverlaySidebar) {
-      setOverlaySidebarTargetRoute(null);
-    }
-  }, [isClosingOverlaySidebar]);
-
-  useEffect(() => {
-    if (!selectedConversation && !isClosingOverlaySidebar) {
-      setIsHistorySidebarVisible(true);
-    }
-  }, [isClosingOverlaySidebar, selectedConversation]);
 
   const selectedConversationRow = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversation) || null,
@@ -416,72 +399,14 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     }
   }, [selectedConversation, updateConversationState, toast, setActiveTab, setSelectedConversation]);
 
-  const handleBackToMainMenu = useCallback(() => {
-    if (isClosingOverlaySidebar) {
-      return;
-    }
-
-    const routeFromSidebar = typeof location.state === 'object' && location.state && 'from' in location.state
-      ? location.state.from
-      : null;
-
-    const targetRoute =
-      typeof routeFromSidebar === 'string' && routeFromSidebar && !routeFromSidebar.startsWith('/emilia/chat')
-        ? routeFromSidebar
-        : '/emilia/chat';
-
-    setOverlaySidebarTargetRoute(targetRoute);
-    setIsClosingOverlaySidebar(true);
-  }, [isClosingOverlaySidebar, location.state]);
-
-  const closeHistorySidebarForFocus = useCallback(() => {
-    if (isClosingOverlaySidebar || !isHistorySidebarVisible) {
-      return;
-    }
-
-    setOverlaySidebarTargetRoute(null);
-    setIsClosingOverlaySidebar(true);
-  }, [isClosingOverlaySidebar, isHistorySidebarVisible]);
-
-  const openHistorySidebar = useCallback(() => {
-    setOverlaySidebarTargetRoute(null);
-    setIsClosingOverlaySidebar(false);
-    setIsHistorySidebarVisible(true);
-  }, []);
-
-  const handleOverlaySidebarClosed = useCallback(() => {
-    if (!isClosingOverlaySidebar) {
-      return;
-    }
-
-    const targetRoute = overlaySidebarTargetRoute;
-
-    setIsClosingOverlaySidebar(false);
-    setIsHistorySidebarVisible(false);
-    setOverlaySidebarTargetRoute(null);
-
-    if (targetRoute) {
-      navigate(targetRoute);
-    }
-  }, [isClosingOverlaySidebar, navigate, overlaySidebarTargetRoute]);
-
-  const handlePrimaryChatNavigation = useCallback(() => {
-    if (isHistorySidebarVisible && !isClosingOverlaySidebar) {
-      return;
-    }
-
-    openHistorySidebar();
-  }, [isClosingOverlaySidebar, isHistorySidebarVisible, openHistorySidebar]);
-
   const handleSelectConversation = useCallback((conversationId: string) => {
     const conversation = conversations.find((item) => item.id === conversationId) || null;
     const nextWorkspaceMode = getConversationWorkspaceMode(conversation);
 
-    closeHistorySidebarForFocus();
     setSelectedConversation(conversationId);
     setWorkspaceMode(nextWorkspaceMode);
     setHistoryMode(nextWorkspaceMode);
-  }, [closeHistorySidebarForFocus, conversations, getConversationWorkspaceMode, setHistoryMode, setSelectedConversation, setWorkspaceMode]);
+  }, [conversations, getConversationWorkspaceMode, setHistoryMode, setSelectedConversation, setWorkspaceMode]);
 
   const handleHistoryModeChange = useCallback((mode: ConversationWorkspaceMode) => {
     setHistoryMode(mode);
@@ -515,14 +440,12 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   }, [selectedConversationRow, setActiveTab, setSelectedConversation]);
 
   const handleCreateStandardConversation = useCallback(() => {
-    closeHistorySidebarForFocus();
     createNewChat(undefined, 'standard');
-  }, [closeHistorySidebarForFocus, createNewChat]);
+  }, [createNewChat]);
 
   const handleCreatePlannerConversation = useCallback(() => {
-    closeHistorySidebarForFocus();
     createNewChat('Planificador de Viajes', 'planner');
-  }, [closeHistorySidebarForFocus, createNewChat]);
+  }, [createNewChat]);
 
   const handleCreateCompanionConversation = useCallback(() => {
     createNewChat(undefined, 'companion');
@@ -773,7 +696,6 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
 
     try {
       const nextWorkspaceMode: ConversationWorkspaceMode = historyMode === 'planner' ? 'planner' : 'standard';
-      closeHistorySidebarForFocus();
 
       // ✅ UNIFIED FLOW: Create new conversation (with temp ID) and let normal flow handle the rest
       // This makes "type from EmptyState" follow the SAME path as "Nuevo Chat button + type message"
@@ -808,7 +730,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       });
       throw error;
     }
-  }, [closeHistorySidebarForFocus, createNewChat, handleSendMessageRaw, historyMode, setMessage, setSelectedConversation, toast]);
+  }, [createNewChat, handleSendMessageRaw, historyMode, setMessage, setSelectedConversation, toast]);
 
   const sharedSidebarProps = {
     conversations,
@@ -910,70 +832,71 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     );
   }
 
-  return (
-    <MainLayout
-      userRole="ADMIN"
-      forceRailMode
-      onChatNavigationClick={handlePrimaryChatNavigation}
-      activeNavigationOverride={overlaySidebarTargetRoute}
-      onOverlaySidebarClosed={handleOverlaySidebarClosed}
-      overlaySidebarState={isClosingOverlaySidebar ? 'closing' : 'open'}
-      overlaySidebar={(isHistorySidebarVisible || isClosingOverlaySidebar) ? (
-        <ChatSidebar
-          {...sharedSidebarProps}
-          showBackToMainMenu
-          onBackToMainMenu={handleBackToMainMenu}
-        />
-      ) : null}
-    >
-      <div className="h-screen flex flex-col">
-        <div className={`${selectedConversation ? 'hidden' : 'flex'} md:hidden w-full`}>
-          <ChatSidebar {...sharedSidebarProps} className="border-r-0 shadow-none" />
-        </div>
+  // PR 3 (C7): agent rightPanel — parity with the consumer path when plannerState
+  // exists + passenger mode. Agency mode + workspaceMode='planner' surfaces do
+  // NOT render the panel (agency chat is pure Q&A; TripPlannerWorkspace is
+  // full-bleed and owns the whole surface).
+  const agentRightPanel =
+    workspaceMode !== 'planner' && chatMode === 'passenger' && planner.plannerState ? (
+      <ItineraryPanel
+        plannerState={planner.plannerState}
+        onRequestChanges={handleRequestItineraryChanges}
+      />
+    ) : undefined;
 
-        <div className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0`}>
-          {selectedConversation ? (
-            workspaceMode === 'planner' ? (
-              <TripPlannerWorkspace
-                key={plannerWorkspaceKey ?? selectedConversation ?? 'planner-workspace'}
-                selectedConversation={selectedConversation}
-                message={message}
-                isLoading={isLoading}
-                isTyping={isTyping}
-                typingMessage={typingMessage}
-                isUploadingPdf={isUploadingPdf}
-                messages={conversationScopedMessages}
-                onMessageChange={setMessage}
-                onSendMessage={handleSendMessage}
-                onPdfUpload={handlePdfUpload}
-                  onPdfGenerated={handlePdfGenerated}
-                  plannerState={planner.plannerState}
-                  isLoadingPlanner={planner.isLoadingPlanner}
-                  activePlannerMutation={planner.activePlannerMutation}
-                  isResolvingLocations={planner.isResolvingLocations}
-                  plannerError={planner.plannerError}
-                plannerLocationWarning={planner.plannerLocationWarning}
-                onUpdateTripField={planner.updateTripField}
-                onApplyPlannerDateSelection={planner.applyPlannerDateSelection}
-                onAddDestination={planner.addDestination}
-                onRemoveDestination={planner.removeDestination}
-                onReorderDestinations={planner.reorderDestinations}
-                onEnsureSegmentEnriched={planner.ensureSegmentEnriched}
-	                onSelectHotel={planner.selectHotel}
-	                onSelectHotelPlaceFromMap={planner.selectHotelPlaceFromMap}
-	                onAddPlaceToPlanner={planner.addPlaceToPlanner}
-	                onAddPlaceToFirstAvailableSlot={planner.addPlaceToFirstAvailableSlot}
-	                onAutoFillSegmentWithRealPlaces={planner.autoFillSegmentWithRealPlaces}
-	                onResolveInventoryMatch={planner.resolveInventoryMatchForSegment}
-	                onConfirmInventoryHotelMatch={planner.confirmInventoryHotelMatch}
-	                onRefreshQuotedHotel={planner.refreshQuotedHotel}
-                onSelectTransportOption={planner.selectTransportOption}
-                onLoadHotelsForSegment={planner.loadHotelsForSegment}
-                onLoadTransportForSegment={planner.loadTransportForSegment}
-                onSendMessageRaw={handleSendMessageRaw}
-                onCompletePlannerDateSelection={handlePlannerDateSelection}
-              />
-            ) : (
+  return (
+    <UnifiedLayout rightPanel={agentRightPanel}>
+      {selectedConversation && workspaceMode === 'planner' ? (
+        <TripPlannerWorkspace
+          key={plannerWorkspaceKey ?? selectedConversation ?? 'planner-workspace'}
+          selectedConversation={selectedConversation}
+          message={message}
+          isLoading={isLoading}
+          isTyping={isTyping}
+          typingMessage={typingMessage}
+          isUploadingPdf={isUploadingPdf}
+          messages={conversationScopedMessages}
+          onMessageChange={setMessage}
+          onSendMessage={handleSendMessage}
+          onPdfUpload={handlePdfUpload}
+          onPdfGenerated={handlePdfGenerated}
+          plannerState={planner.plannerState}
+          isLoadingPlanner={planner.isLoadingPlanner}
+          activePlannerMutation={planner.activePlannerMutation}
+          isResolvingLocations={planner.isResolvingLocations}
+          plannerError={planner.plannerError}
+          plannerLocationWarning={planner.plannerLocationWarning}
+          onUpdateTripField={planner.updateTripField}
+          onApplyPlannerDateSelection={planner.applyPlannerDateSelection}
+          onAddDestination={planner.addDestination}
+          onRemoveDestination={planner.removeDestination}
+          onReorderDestinations={planner.reorderDestinations}
+          onEnsureSegmentEnriched={planner.ensureSegmentEnriched}
+          onSelectHotel={planner.selectHotel}
+          onSelectHotelPlaceFromMap={planner.selectHotelPlaceFromMap}
+          onAddPlaceToPlanner={planner.addPlaceToPlanner}
+          onAddPlaceToFirstAvailableSlot={planner.addPlaceToFirstAvailableSlot}
+          onAutoFillSegmentWithRealPlaces={planner.autoFillSegmentWithRealPlaces}
+          onResolveInventoryMatch={planner.resolveInventoryMatchForSegment}
+          onConfirmInventoryHotelMatch={planner.confirmInventoryHotelMatch}
+          onRefreshQuotedHotel={planner.refreshQuotedHotel}
+          onSelectTransportOption={planner.selectTransportOption}
+          onLoadHotelsForSegment={planner.loadHotelsForSegment}
+          onLoadTransportForSegment={planner.loadTransportForSegment}
+          onSendMessageRaw={handleSendMessageRaw}
+          onCompletePlannerDateSelection={handlePlannerDateSelection}
+        />
+      ) : (
+        <div className="flex h-full">
+          <div
+            className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-72 md:flex-shrink-0`}
+          >
+            <ChatSidebar {...sharedSidebarProps} />
+          </div>
+          <div
+            className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0`}
+          >
+            {selectedConversation ? (
               <ChatInterface
                 selectedConversation={selectedConversation}
                 message={message}
@@ -1001,16 +924,16 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                 onBridgeSwitch={handleBridgeSwitch}
                 onBridgeStay={handleBridgeStay}
               />
-            )
-          ) : (
-            <EmptyState
-              onSendNewMessage={handleSendNewMessage}
-              onCreatePlanner={isOwner || isSuperAdmin ? handleCreatePlannerConversation : undefined}
-            />
-          )}
+            ) : (
+              <EmptyState
+                onSendNewMessage={handleSendNewMessage}
+                onCreatePlanner={isOwner || isSuperAdmin ? handleCreatePlannerConversation : undefined}
+              />
+            )}
+          </div>
         </div>
-      </div>
-    </MainLayout>
+      )}
+    </UnifiedLayout>
   );
 };
 
