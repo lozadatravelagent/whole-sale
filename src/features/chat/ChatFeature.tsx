@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layout/MainLayout';
-import CompanionLayout from '@/components/layouts/CompanionLayout';
+import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMessages, useConversationSearch } from '@/hooks/useChat';
 import { updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
@@ -797,7 +797,14 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     );
 
     return (
-      <CompanionLayout>
+      <UnifiedLayout
+        rightPanel={
+          <ItineraryPanel
+            plannerState={planner.plannerState}
+            onRequestChanges={handleRequestItineraryChanges}
+          />
+        }
+      >
         <div className="flex h-full">
           <div
             className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-72 md:flex-shrink-0`}
@@ -842,12 +849,6 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
               <EmptyState onSendNewMessage={handleSendNewMessage} />
             )}
           </div>
-          <div className="hidden lg:block w-80 flex-shrink-0">
-            <ItineraryPanel
-              plannerState={planner.plannerState}
-              onRequestChanges={handleRequestItineraryChanges}
-            />
-          </div>
         </div>
         <HandoffModal
           open={isHandoffModalOpen}
@@ -865,7 +866,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
             }
           }}
         />
-      </CompanionLayout>
+      </UnifiedLayout>
     );
   }
 

@@ -104,17 +104,17 @@ const AppRoutes = () => (
     <Route
       path="/emilia/chat"
       element={
-        <RequireConsumer>
+        <ProtectedRoute>
           <CompanionChatPage />
-        </RequireConsumer>
+        </ProtectedRoute>
       }
     />
     <Route
       path="/emilia/chat/:conversationId"
       element={
-        <RequireConsumer>
+        <ProtectedRoute>
           <CompanionChatPage />
-        </RequireConsumer>
+        </ProtectedRoute>
       }
     />
     <Route

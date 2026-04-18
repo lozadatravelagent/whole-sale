@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Loader2, LogOut, MapPin, Plane } from 'lucide-react';
-import CompanionLayout from '@/components/layouts/CompanionLayout';
+import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
@@ -96,7 +96,7 @@ export default function ConsumerProfile() {
   };
 
   return (
-    <CompanionLayout>
+    <UnifiedLayout>
       <div className="mx-auto flex h-full w-full max-w-2xl flex-col gap-4 overflow-y-auto px-4 py-6">
         <Card>
           <CardHeader>
@@ -182,6 +182,6 @@ export default function ConsumerProfile() {
           </CardContent>
         </Card>
       </div>
-    </CompanionLayout>
+    </UnifiedLayout>
   );
 }
