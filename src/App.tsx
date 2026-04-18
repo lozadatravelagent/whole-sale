@@ -31,7 +31,6 @@ const Contact = lazy(() => import("./pages/Contact"));
 const EmiliaLanding = lazy(() => import("./pages/EmiliaLanding"));
 const CompanionChatPage = lazy(() => import("./pages/CompanionChatPage"));
 const ConsumerSignup = lazy(() => import("./pages/ConsumerSignup"));
-const ConsumerLogin = lazy(() => import("./pages/ConsumerLogin"));
 const ConsumerProfile = lazy(() => import("./pages/ConsumerProfile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const HotelbedsTest = lazy(() => import("./pages/HotelbedsTest"));
@@ -102,7 +101,6 @@ const AppRoutes = () => (
     {/* Emilia consumer surfaces */}
     <Route path="/emilia" element={<EmiliaLanding />} />
     <Route path="/emilia/signup" element={<ConsumerSignup />} />
-    <Route path="/emilia/login" element={<ConsumerLogin />} />
     <Route
       path="/emilia/chat"
       element={
@@ -182,7 +180,7 @@ const AppRoutes = () => (
     />
 
     {/* Legacy redirects: bookmarks viejos y links hardcodeados en componentes
-        que sobreviven PR 2 (MainLayout, ConsumerLogin/Signup, Dashboard,
+        que sobreviven PR 2 (MainLayout, ConsumerSignup, Dashboard,
         UserProfileHeader, Marketplace) siguen funcionando hasta PR 4 los
         elimine junto con el resto del cleanup. */}
     <Route path="/chat" element={<Navigate to="/emilia/chat" replace />} />

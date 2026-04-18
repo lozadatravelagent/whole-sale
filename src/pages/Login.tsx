@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,8 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Lock, Clock } from 'lucide-react';
+import { Mail, Lock, Clock, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { LanguageSelector } from '@/components/LanguageSelector';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -61,7 +62,7 @@ const Login = () => {
       if (data.user) {
         toast({
           title: "Login exitoso",
-          description: "¡Bienvenido a VIBOOK!",
+          description: "¡Bienvenido!",
         });
         // Navigation will be handled automatically by useEffect when user state updates
       }
@@ -114,25 +115,15 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="flex items-center justify-center mb-8">
-          <img
-            src="/vibook-black.png"
-            alt="Vibook"
-            className="h-14 dark:hidden"
-          />
-          <img
-            src="/vibook-white.png"
-            alt="Vibook"
-            className="h-14 hidden dark:block"
-          />
-        </div>
-
         <Card className="shadow-card">
-          <CardHeader className="space-y-1 text-center">
-            <CardTitle className="text-2xl">Bienvenido de nuevo</CardTitle>
+          <CardHeader className="space-y-2 text-center">
+            <div className="flex items-center justify-center gap-2 text-primary">
+              <Sparkles className="h-5 w-5" />
+              <span className="text-sm font-semibold uppercase tracking-wide">Emilia</span>
+            </div>
+            <CardTitle className="text-2xl">Bienvenido</CardTitle>
             <CardDescription>
-              Ingresá a tu cuenta de gestión turística
+              Iniciá sesión en tu cuenta
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -224,15 +215,14 @@ const Login = () => {
               Continuar con Google
             </Button>
 
-            <div className="text-center text-sm text-muted-foreground">
-              ¿Necesitás acceso?{' '}
-              <Button
-                variant="link"
-                className="p-0 h-auto font-normal"
-                onClick={() => navigate('/contacto')}
-              >
-                Contactar a ventas
-              </Button>
+            <div className="flex items-center justify-between text-sm">
+              <p className="text-muted-foreground">
+                ¿No tenés cuenta?{' '}
+                <Link to="/emilia/signup" className="text-primary hover:underline">
+                  Registrate
+                </Link>
+              </p>
+              <LanguageSelector showLabel={false} variant="ghost" />
             </div>
           </CardContent>
         </Card>
