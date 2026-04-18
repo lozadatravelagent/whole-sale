@@ -21,6 +21,12 @@
     "agency": "Quote",
     "passenger": "Plan",
     "ariaGroup": "Chat mode",
-    "tooltipNoAgency": "No agency assigned"
+    "tooltipNoAgency": "No agency assigned",
+    "bridgeTitle": {
+      "toAgency": "This works better in agency mode for quoting flights and hotels. Switch?",
+      "toPassenger": "This works better in passenger mode for itinerary planning. Switch?"
+    },
+    "bridgeSwitchTo": "Switch to {{otherMode}} and continue",
+    "bridgeStay": "Stay in this mode"
   }
 }

@@ -189,6 +189,23 @@ function buildAskLine(requestType: ParsedTravelRequest['requestType'] | 'general
   return 'Decime un dato clave más y te lo sigo cerrando.';
 }
 
+// PR 3 (C4): builds the body copy for a mode_bridge turn. Direction-specific,
+// no runtime interpolation of the mode label (avoids awkward translations like
+// "in Quote mode"). Consumer resolves the translation function via
+// react-i18next; the pure-function shape here makes it testable without the
+// i18n singleton.
+export function buildModeBridgeMessage(options: {
+  suggestedMode: 'agency' | 'passenger';
+  t: (key: string) => string;
+}): string {
+  const { suggestedMode, t } = options;
+  const key =
+    suggestedMode === 'agency'
+      ? 'mode.bridgeTitle.toAgency'
+      : 'mode.bridgeTitle.toPassenger';
+  return t(key);
+}
+
 export function buildConversationalMissingInfoMessage(options: {
   parsedRequest?: ParsedTravelRequest | null;
   missingFields?: string[];

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageItem from './MessageItem';
@@ -14,6 +15,7 @@ import { ArrowUpFromLine } from 'lucide-react';
 import { deriveConversationGaps, extractRecommendedPlacesFromMeta, getDiscoveryVisualConfig } from '../services/conversationOrchestrator';
 import { resolveRenderPolicy } from '../services/itineraryPipeline';
 import type { DiscoveryContext } from '../services/discoveryService';
+import { extractBridgeTurnProps, type BridgeChatMode } from '../utils/extractBridgeTurnProps';
 
 interface ChatInterfaceProps {
   selectedConversation: string | null;
@@ -34,6 +36,14 @@ interface ChatInterfaceProps {
   onGoToPlanner?: () => void;
   /** Forwarded to ChatHeader to hide agent-only chrome in companion mode. */
   mode?: 'companion' | 'standard';
+  /**
+   * PR 3 (C4): bridge chip handlers. Both optional. When undefined (C4
+   * reality pre-C5) the chips still render but no-op. C5 wires them from
+   * ChatFeature — `onBridgeSwitch` flips mode + replays; `onBridgeStay`
+   * replays with `forceCurrentMode: true`.
+   */
+  onBridgeSwitch?: (suggestedMode: BridgeChatMode) => void;
+  onBridgeStay?: (originalText: string) => void;
 }
 
 const ChatInterface = React.memo(({
@@ -53,8 +63,11 @@ const ChatInterface = React.memo(({
   onPdfGenerated,
   onBackToList,
   onGoToPlanner,
-  mode = 'standard'
+  mode = 'standard',
+  onBridgeSwitch,
+  onBridgeStay
 }: ChatInterfaceProps) => {
+  const { t } = useTranslation('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -457,6 +470,29 @@ const ChatInterface = React.memo(({
                   );
                 }
                 return null;
+              })()}
+              {/* PR 3 (C4): mode_bridge turn chips — "switch" + "stay". Handlers are optional; C5 wires them from ChatFeature. */}
+              {(() => {
+                if (isLoading || isTyping) return null;
+                const bridge = extractBridgeTurnProps(visibleMessages);
+                if (!bridge || !bridge.canRender) return null;
+                const otherLabel = t(`mode.${bridge.suggestedMode}`);
+                return (
+                  <div className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <button
+                      onClick={() => onBridgeSwitch?.(bridge.suggestedMode)}
+                      className="text-sm px-3 py-1.5 rounded-full border border-primary bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                      {t('mode.bridgeSwitchTo', { otherMode: otherLabel })}
+                    </button>
+                    <button
+                      onClick={() => onBridgeStay?.(bridge.originalUserText)}
+                      className="text-sm px-3 py-1.5 rounded-full border border-border bg-background hover:bg-muted transition-colors"
+                    >
+                      {t('mode.bridgeStay')}
+                    </button>
+                  </div>
+                );
               })()}
             </>
           )}

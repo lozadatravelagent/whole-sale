@@ -21,6 +21,12 @@
     "agency": "Cotar",
     "passenger": "Planejar",
     "ariaGroup": "Modo de chat",
-    "tooltipNoAgency": "Sem agência atribuída"
+    "tooltipNoAgency": "Sem agência atribuída",
+    "bridgeTitle": {
+      "toAgency": "Este pedido funciona melhor cotando voos e hotéis. Mudamos de modo?",
+      "toPassenger": "Este pedido funciona melhor planejando o roteiro. Mudamos de modo?"
+    },
+    "bridgeSwitchTo": "Mudar para {{otherMode}} e retomar",
+    "bridgeStay": "Continuar neste modo"
   }
 }
