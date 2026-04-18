@@ -147,6 +147,7 @@ export default defineConfig(({ mode }) => ({
       'src/features/chat/__tests__/*.test.ts',
       'src/features/companion/__tests__/*.test.ts',
       'src/components/__tests__/*.test.ts',
+      'src/components/layouts/__tests__/*.test.ts',
     ],
     coverage: {
       provider: 'v8',
