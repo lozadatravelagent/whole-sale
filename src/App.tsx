@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import RequireConsumer from "@/components/RequireConsumer";
+import RequireAgent from "@/components/RequireAgent";
 import { lazy, Suspense, useEffect } from 'react';
 
 // Landing pages loaded immediately (first view)
@@ -127,12 +128,15 @@ const AppRoutes = () => (
       }
     />
 
-    {/* Emilia admin surfaces (RequireAgent se aplica en C4) */}
+    {/* Emilia admin surfaces (agent-only). ProtectedRoute valida sesión;
+        RequireAgent valida accountType y rebota consumers a /emilia/chat. */}
     <Route
       path="/emilia/dashboard"
       element={
         <ProtectedRoute>
-          <Dashboard />
+          <RequireAgent>
+            <Dashboard />
+          </RequireAgent>
         </ProtectedRoute>
       }
     />
@@ -140,7 +144,9 @@ const AppRoutes = () => (
       path="/emilia/users"
       element={
         <ProtectedRoute>
-          <Users />
+          <RequireAgent>
+            <Users />
+          </RequireAgent>
         </ProtectedRoute>
       }
     />
@@ -148,7 +154,9 @@ const AppRoutes = () => (
       path="/emilia/agencies"
       element={
         <ProtectedRoute>
-          <Agencies />
+          <RequireAgent>
+            <Agencies />
+          </RequireAgent>
         </ProtectedRoute>
       }
     />
@@ -156,7 +164,9 @@ const AppRoutes = () => (
       path="/emilia/tenants"
       element={
         <ProtectedRoute>
-          <Tenants />
+          <RequireAgent>
+            <Tenants />
+          </RequireAgent>
         </ProtectedRoute>
       }
     />
@@ -164,7 +174,9 @@ const AppRoutes = () => (
       path="/emilia/settings"
       element={
         <ProtectedRoute>
-          <Settings />
+          <RequireAgent>
+            <Settings />
+          </RequireAgent>
         </ProtectedRoute>
       }
     />
