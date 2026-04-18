@@ -387,9 +387,9 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       : null;
 
     const targetRoute =
-      typeof routeFromSidebar === 'string' && routeFromSidebar && !routeFromSidebar.startsWith('/chat')
+      typeof routeFromSidebar === 'string' && routeFromSidebar && !routeFromSidebar.startsWith('/emilia/chat')
         ? routeFromSidebar
-        : '/dashboard';
+        : '/emilia/chat';
 
     setOverlaySidebarTargetRoute(targetRoute);
     setIsClosingOverlaySidebar(true);

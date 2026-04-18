@@ -129,7 +129,7 @@ const Marketplace = () => {
   };
 
   const handleConfigureProvider = (provider: Provider) => {
-    navigate('/settings');
+    navigate('/emilia/settings');
     toast({
       title: 'Configurar integración',
       description: `Abrimos configuración para ajustar ${provider.name}.`,

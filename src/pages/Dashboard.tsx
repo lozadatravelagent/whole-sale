@@ -171,7 +171,7 @@ const Dashboard = () => {
         navigate('/marketplace');
         break;
       default:
-        navigate('/dashboard');
+        navigate('/emilia/dashboard');
     }
   };
 
