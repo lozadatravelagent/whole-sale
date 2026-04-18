@@ -67,13 +67,24 @@ const ChatHeader = React.memo(({
               <ChevronLeft className="h-4 w-4" />
             </Button>
           )}
-          <Sparkle className="h-6 w-6 md:h-8 md:w-8 text-accent flex-shrink-0" />
-          <div className="min-w-0">
-            <h2 className="font-semibold text-sm md:text-base truncate">Emilia</h2>
-            <p className="text-xs md:text-sm text-muted-foreground">
-              {isTyping ? 'Escribiendo...' : 'En línea'}
-            </p>
-          </div>
+          {/* PR 3 (C7.1.b): hide branding (Sparkle + "Emilia / En línea") for
+              agent accounts because UnifiedLayout already renders "Emilia"
+              branding in its own header — showing it again here produces the
+              duplicated-header effect reported in C7 smoke. Consumer keeps
+              the slim branding because it reads as a subtitle, not a second
+              toolbar. Mobile back button stays above this gate so agents on
+              mobile keep the means to return to the conversations list. */}
+          {!showAgentChrome && (
+            <>
+              <Sparkle className="h-6 w-6 md:h-8 md:w-8 text-accent flex-shrink-0" />
+              <div className="min-w-0">
+                <h2 className="font-semibold text-sm md:text-base truncate">Emilia</h2>
+                <p className="text-xs md:text-sm text-muted-foreground">
+                  {isTyping ? 'Escribiendo...' : 'En línea'}
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         {showAgentChrome && (
