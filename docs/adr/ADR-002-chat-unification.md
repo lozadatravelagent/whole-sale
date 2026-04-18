@@ -29,11 +29,13 @@ El B2C es ahora self-serve puro. Un consumer que entra a Emilia arma su viaje, l
 
 ## Consecuencias
 
-Se borran del producto: las pantallas `CRM`, `Marketplace` y `Reports` (decisión del usuario, fuera del scope de unificación pero atadas a la reorganización de rutas), el dir entero `src/features/companion/` excepto los flujos de auth consumer (`consumerAuthService`, `consumerAuthSchema`, `authRedirectDecider`) que se mueven a la capa común, todos los componentes y servicios de handoff, el componente `ItineraryPanel` (su contenido se rehace dentro del nuevo surface unificado o se descarta si el TripPlannerWorkspace cubre la necesidad), `CompanionChatPage` (se reemplaza por la página unificada), las rutas y guard `RequireConsumer` aplicado a `/emilia/chat` (se reemplaza con un guard que admite agent y consumer y bifurca por `accountType` para el switch).
+Se borran del producto: las pantallas `CRM`, `Marketplace` y `Reports` (decisión del usuario, fuera del scope de unificación pero atadas a la reorganización de rutas), el dir entero `src/features/companion/` excepto los flujos de auth consumer (`consumerAuthService`, `consumerAuthSchema`, `authRedirectDecider`) que se mueven a la capa común, todos los componentes y servicios de handoff, el componente `ItineraryPanel` (su destino — rehacer dentro del nuevo surface unificado vs descartar si TripPlannerWorkspace cubre la necesidad — queda diferido a PR 3 en base al scope visual del modo passenger unificado), `CompanionChatPage` (se reemplaza por la página unificada), las rutas y guard `RequireConsumer` aplicado a `/emilia/chat` (se reemplaza con un guard que admite agent y consumer y bifurca por `accountType` para el switch).
 
 Se mantienen y refactorizan: `ChatFeature` se vuelve agnóstico al modo y consume el switch; `useChatState` y `useMessageHandler` reciben el modo como parámetro de turno; `conversationOrchestrator.resolveConversationTurn` se rediseña para aceptar un modo estricto y solo emitir las branches válidas para ese modo (no más routing por contenido); `tripService.upsertTrip` no cambia — ya soporta `accountType` desde su firma. La rama `standard_itinerary` se borra; la lógica de continuidad de contexto entre turnos (`previousParsedRequest` en `useChatState.ts:28`) se extiende para sobrevivir el cambio de modo.
 
 Se agregan: el componente `ModeSwitch` en el header del chat (visible solo para `accountType='agent'`), el menú de avatar con los enlaces administrativos `/emilia/users|agencies|tenants|dashboard` para OWNER/SUPERADMIN, y un nuevo template + función en `customPdfGenerator` para exportar un `TripPlannerState` a PDF (no existe hoy — solo flight y combined, ver más abajo).
+
+Un nuevo guard client-side (`RequireAgent` o `RequireRole`) que bloquea el acceso de consumers a rutas administrativas y de agency. Hoy esas rutas solo están protegidas por RLS server-side; en el surface unificado — donde consumer y agent comparten el mismo flow de login — es imprescindible un redirect client-side proactivo antes del render. El guard `RequireConsumer` actual se reemplaza por este patrón genérico.
 
 ## Continuidad de contexto entre modos (Nivel 2 — MVP)
 
@@ -59,6 +61,8 @@ Páginas a borrar: `src/pages/CRM.tsx`, `src/pages/Marketplace.tsx`, `src/pages/
 
 Migrations a revertir mediante una nueva migración `20260418000001_revert_b2c_handoff.sql` (no edición de las viejas): drop columna `leads.trip_id`, restaurar `NOT NULL` en `leads.agency_id` y `leads.tenant_id`, drop política RLS `consumer_insert_handoff_leads`, drop índices `idx_leads_trip_id` e `idx_leads_b2c_inbox`. La migration `20260411000002_consumer_conversations_rls.sql` se revisa caso por caso en la PR de purga: la parte que habilita a un consumer ver/crear sus propias conversaciones se mantiene (sigue siendo necesaria para el modo passenger del consumer); cualquier política específica al handoff se dropea.
 
+Pre-requisito de PR 4: verificar antes de correr la migration de reverso si hay filas en `leads` con `agency_id IS NULL` en prod (consumers que hicieron handoff real antes de esta decisión). Si existen, decidir destino (drop o reasignación a una agency sentinel) antes de restaurar la constraint `NOT NULL`. Si no hay filas, la migration corre limpia.
+
 Componentes/utils a borrar también: `ChatSidebarCompanion`, `CompanionLayout` (su lógica de header con LanguageSelector + avatar se absorbe en el layout unificado), `RequireConsumer` (se reemplaza por un guard genérico que admite ambos `accountType` y deriva al modo correcto).
 
 ## Sistema de PDF identificado
@@ -77,7 +81,7 @@ Cubre todos los campos relevantes para Nivel 2: destino (origin/destination), fe
 
 Baseline al 2026-04-18 sobre `main` sincronizado:
 
-- `npm test`: **240 passed, 14 skipped, 0 failed** (20 archivos passed, 1 skipped por `SUPABASE_SERVICE_ROLE_KEY` no seteado — `b2cOwnershipRls.test.ts`). Mejor que el baseline 220/14/2 del B2C_STATUS doc.
+- `npm test`: **240 passed, 14 skipped, 0 failed** (20 archivos passed, 1 skipped por `SUPABASE_SERVICE_ROLE_KEY` no seteado — `b2cOwnershipRls.test.ts`). Mejor que el baseline 220/14/2 del B2C_STATUS doc. Las dos fallas históricas de D11 (`localStorage is not defined` en `signatures.test.ts` y `structuralMods.test.ts`) ya no aparecen — probablemente resueltas por side effect de refactors recientes de auth/i18n. PR 2 confirmará si la desaparición es estable. D11 queda tentativamente cerrada pending verificación.
 - `npm run build`: limpio, exit 0.
 - `npx tsc --noEmit`: sin errores, exit 0.
 - Confirmado: `resolveConversationTurn` (`src/features/chat/services/conversationOrchestrator.ts:426-529`) **no consulta `workspace_mode`** en absoluto — la grep sobre el archivo entero devuelve 0 matches. Esto valida la asunción central del ADR: el orchestrator ya es agnóstico al modo, lo único que cambia en PR 3 es restringir las branches válidas según el parámetro de modo que recibirá.
@@ -85,6 +89,8 @@ Baseline al 2026-04-18 sobre `main` sincronizado:
 
 ## PRs planeadas (split)
 
-La unificación se entrega como cinco PRs independientes en este orden: **(1)** este ADR + scaffolding mínimo (carpeta `docs/adr/`, este documento, sin cambios de código). **(2)** Unificación de routing y layouts: ruta única `/emilia/chat`, layout unificado con header agnóstico al modo, guards refactorizados, eliminación del subpath `/chat` B2B, redirección `vibook.ai` a app externa. **(3)** Chat con switch agency/passenger + Nivel 2 de continuidad: componente `ModeSwitch`, `resolveConversationTurn` rediseñado para modo estricto, UX de puente entre modos, garantía de continuidad de `previousParsedRequest`. **(4)** Purga: borrado de companion handoff, CRM/Marketplace/Reports, `standard_itinerary`, migration de reverso para `leads`. **(5)** Export de itinerario a PDF: nuevo template y función `generateCustomItineraryPdf` en el sistema custom existente, integración en el chat para que el agent dispare el export desde un mensaje.
+La unificación se entrega como cinco PRs independientes en este orden: **(1)** este ADR + scaffolding mínimo (carpeta `docs/adr/`, este documento, sin cambios de código). **(2)** Unificación de routing y layouts: ruta única `/emilia/chat`, layout unificado con header agnóstico al modo, guards refactorizados, eliminación del subpath `/chat` B2B, redirección `vibook.ai` a app externa. **(3)** Chat con switch agency/passenger + Nivel 2 de continuidad: componente `ModeSwitch`, `resolveConversationTurn` rediseñado para modo estricto, UX de puente entre modos, garantía de continuidad de `previousParsedRequest`. **(4)** Purga: borrado de companion handoff, CRM/Marketplace/Reports, `standard_itinerary`, migration de reverso para `leads`. **(5)** Export de itinerario a PDF: nuevo template y función `generateCustomItineraryPdf` en el sistema custom existente. La UX exacta del trigger (botón en el trip panel, comando slash, ítem del menú, etc.) se define en el paso de diseño de PR 5.
 
 Cada PR es mergeable de forma independiente y deja el sistema en estado funcional. La PR 4 (purga) requiere que la PR 3 esté mergeada antes para no romper imports.
+
+La relación inversa no aplica: PR 3 puede mergearse con `standard_itinerary` todavía vivo y `src/features/companion/` presente. La dirección de dependencia es PR 3 → PR 4 únicamente.
