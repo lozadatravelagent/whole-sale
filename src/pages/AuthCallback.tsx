@@ -10,8 +10,7 @@ const AuthCallback = () => {
   useEffect(() => {
     if (loading) return;
     if (user) {
-      const target = window.location.hostname.startsWith('emilia.') ? '/' : '/dashboard';
-      navigate(target, { replace: true });
+      navigate('/emilia/chat', { replace: true });
     } else {
       navigate('/login', { replace: true });
     }

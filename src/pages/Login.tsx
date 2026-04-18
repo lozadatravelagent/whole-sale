@@ -24,13 +24,12 @@ const Login = () => {
   // Check if session expired (redirected from session expiration)
   const sessionExpired = searchParams.get('expired') === 'true';
 
-  // Redirect if already authenticated. Default post-login target depends on host:
-  // - On emilia.* the landing is `/` (Chat is mounted there).
-  // - On the main host the landing is `/dashboard`.
+  // Redirect if already authenticated. Post-login lands on the unified chat
+  // surface for both account types; the deep-link in location.state.from wins
+  // when present (e.g. user was bounced from a guarded route).
   useEffect(() => {
     if (authLoading || !user) return;
-    const fallback = window.location.hostname.startsWith('emilia.') ? '/' : '/dashboard';
-    const from = (location.state as any)?.from?.pathname || fallback;
+    const from = (location.state as any)?.from?.pathname || '/emilia/chat';
     navigate(from, { replace: true });
   }, [user, authLoading, navigate, location]);
 

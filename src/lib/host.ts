@@ -15,6 +15,10 @@ export const COOKIE_DOMAIN =
     ? '.vibook.ai'
     : undefined;
 
+/**
+ * @deprecated After C2, only the deprecated host helpers below consume this.
+ * PR 4 removes the whole bundle.
+ */
 export function getHostname(): string {
   return typeof window === 'undefined' ? '' : window.location.hostname;
 }
