@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,9 +22,15 @@ export function FeatureCard({
         className,
       )}
     >
-      <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+      <motion.span
+        initial={{ scale: 1 }}
+        whileInView={{ scale: [1, 1.1, 1] }}
+        viewport={{ once: true, amount: 0.5 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+        className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary"
+      >
         <Icon className="h-5 w-5" />
-      </span>
+      </motion.span>
       <h3 className="text-lg font-semibold tracking-tight text-foreground">
         {title}
       </h3>
