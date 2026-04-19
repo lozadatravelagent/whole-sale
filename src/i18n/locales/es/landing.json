@@ -33,10 +33,11 @@
       "Quiero un viaje romántico a Japón"
     ],
     "chatPreview": {
-      "userMessage": "Quiero ir a Italia unos 10 días, pero no estoy seguro de qué ciudades tienen más sentido.",
       "assistantMessage": "Suena a un viaje hermoso. ¿Te lo imaginás más cultural, relajado, con foco en la comida, o un poco de todo? ¿Y estás pensando en una región o en un recorrido multi-ciudad?",
       "assistantLabel": "Emilia",
-      "userLabel": "Vos"
+      "status": "En línea",
+      "inputPlaceholder": "Contale a Emilia sobre tu próximo viaje...",
+      "sendLabel": "Enviar"
     }
   },
   "ecosystem": {
