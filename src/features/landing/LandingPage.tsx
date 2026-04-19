@@ -4,11 +4,11 @@ import { Ecosystem } from './sections/Ecosystem';
 import { HowItWorks } from './sections/HowItWorks';
 import { PromptDemo } from './sections/PromptDemo';
 import { HelpsWith } from './sections/HelpsWith';
+import { Inspiration } from './sections/Inspiration';
+import { Understands } from './sections/Understands';
+import { Personalized } from './sections/Personalized';
 
 const SECTION_STUBS = [
-  { id: 'inspiration', name: 'Inspiration' },
-  { id: 'understands', name: 'Understands' },
-  { id: 'personalized', name: 'Personalized' },
   { id: 'trust', name: 'Trust' },
   { id: 'final-cta', name: 'Final CTA' },
 ] as const;
@@ -21,6 +21,9 @@ export default function LandingPage() {
       <HowItWorks />
       <PromptDemo />
       <HelpsWith />
+      <Inspiration />
+      <Understands />
+      <Personalized />
       {SECTION_STUBS.map((section) => (
         <section
           key={section.id}

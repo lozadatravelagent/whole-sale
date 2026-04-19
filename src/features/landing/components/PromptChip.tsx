@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { buildPromptChatPath } from '../lib/buildPromptChatPath';
 
 interface PromptChipProps {
   label: string;
@@ -11,7 +12,7 @@ export function PromptChip({ label, prompt, className }: PromptChipProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
-    navigate(`/emilia/chat?prompt=${encodeURIComponent(prompt)}`);
+    navigate(buildPromptChatPath(prompt));
   };
 
   return (
