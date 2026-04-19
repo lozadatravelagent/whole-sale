@@ -183,3 +183,30 @@ post-PR-2 o parte del polish pre-launch. Pasos:
    en un namespace nuevo "navigation".
 
 **Origen**: detectado durante PR 2, C6.
+
+## D21 — Sidebar consumer carga con la RPC equivocada (get_conversations_with_agency) 🟡 MEDIA-ALTA
+
+**Síntoma**: consumer con conversaciones existentes (`workspace_mode='companion'`,
+`created_by` correcto) ve "Aún no hay conversaciones." en el sidebar.
+
+**Causa raíz confirmada empíricamente**: el sidebar consumer
+(`ChatSidebarCompanion` o el hook que usa) llama a la RPC
+`get_conversations_with_agency` que filtra por `agency_id`. Consumers no
+tienen agency → response = []. Detectado durante smoke de C7.1.b con
+`tester@tester.com` que tenía 14 conversaciones companion en DB.
+Confirmado en DevTools Network: 4 calls a
+`get_conversations_with_agency?order=last_message_at.desc` con response
+`[]`.
+
+**Severidad**: media-alta. Funcionalmente, ningún consumer con historial
+puede ver sus viajes en el sidebar. Solo no se notó porque la mayoría de
+consumers son nuevos sin historial.
+
+**Fix esperado**: cambiar la query del hook del sidebar consumer para
+llamar a una RPC distinta que filtre por `created_by = auth.uid()` +
+`workspace_mode = 'companion'`. O agregar branch por `accountType` en el
+hook compartido.
+
+**NO bloquea PR 3**. Detectado durante smoke C7.1.b. Bug pre-existente,
+no introducido por PR 3. Diferido a PR separado o a PR 4 (consumer
+cleanup).
