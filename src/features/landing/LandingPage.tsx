@@ -1,11 +1,11 @@
 import { LandingLayout } from './components/LandingLayout';
 import { Hero } from './sections/Hero';
 import { Ecosystem } from './sections/Ecosystem';
+import { HowItWorks } from './sections/HowItWorks';
+import { PromptDemo } from './sections/PromptDemo';
+import { HelpsWith } from './sections/HelpsWith';
 
 const SECTION_STUBS = [
-  { id: 'how-it-works', name: 'How it works' },
-  { id: 'prompt-demo', name: 'Prompt demo' },
-  { id: 'helps-with', name: 'Helps with' },
   { id: 'inspiration', name: 'Inspiration' },
   { id: 'understands', name: 'Understands' },
   { id: 'personalized', name: 'Personalized' },
@@ -18,6 +18,9 @@ export default function LandingPage() {
     <LandingLayout>
       <Hero />
       <Ecosystem />
+      <HowItWorks />
+      <PromptDemo />
+      <HelpsWith />
       {SECTION_STUBS.map((section) => (
         <section
           key={section.id}
