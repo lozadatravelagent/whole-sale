@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buildPromptChatPath } from '../lib/buildPromptChatPath';
+import { writePendingPrompt } from '../lib/pendingPrompt';
 
 interface InspirationCardProps {
   title: string;
@@ -19,6 +20,7 @@ export function InspirationCard({
   const navigate = useNavigate();
 
   const handleClick = () => {
+    writePendingPrompt(prompt);
     navigate(buildPromptChatPath(prompt));
   };
 

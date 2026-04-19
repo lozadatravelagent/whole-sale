@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { buildPromptChatPath } from '../lib/buildPromptChatPath';
+import { writePendingPrompt } from '../lib/pendingPrompt';
 
 interface PromptChipProps {
   label: string;
@@ -12,6 +13,7 @@ export function PromptChip({ label, prompt, className }: PromptChipProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
+    writePendingPrompt(prompt);
     navigate(buildPromptChatPath(prompt));
   };
 
