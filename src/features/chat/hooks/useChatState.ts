@@ -5,6 +5,7 @@ import type { ChatState, ConversationWorkspaceMode } from '../types/chat';
 import { useAuth, useConversations } from '@/hooks/useChat';
 import { useAuth as useAuthContext } from '@/contexts/AuthContext'; // ⚡ OPTIMIZATION: Use cached user data
 import { useToast } from '@/hooks/use-toast';
+import { consumePendingPrompt } from '@/features/landing/lib/pendingPrompt';
 
 interface UseChatStateOptions {
   defaultWorkspaceMode?: ConversationWorkspaceMode;
@@ -237,15 +238,29 @@ const useChatState = (options: UseChatStateOptions = {}) => {
     loadConversations();
   }, [loadConversations]);
 
-  // Handle ?new=1 URL parameter to create new chat automatically
+  // Handle ?new=1 URL parameter to create new chat automatically,
+  // and consume any pending prompt written by the landing (PromptChip /
+  // InspirationCard) so the chat input is preloaded at mount. The landing
+  // uses sessionStorage (see src/features/landing/lib/pendingPrompt.ts)
+  // because Login.tsx discards location.search during post-auth redirect;
+  // the ?prompt= query arriving here in the authenticated flow is cleaned
+  // up defensively so the URL stays canonical.
   useEffect(() => {
     const shouldCreateNew = searchParams.get('new') === '1';
-    if (shouldCreateNew && conversations.length >= 0) {
-      searchParams.delete('new');
+    const hasPromptParam = searchParams.has('prompt');
+    const pendingPrompt = consumePendingPrompt();
+
+    if (!shouldCreateNew && !hasPromptParam && !pendingPrompt) return;
+
+    if (shouldCreateNew) searchParams.delete('new');
+    if (hasPromptParam) searchParams.delete('prompt');
+    if (shouldCreateNew || hasPromptParam) {
       setSearchParams(searchParams, { replace: true });
-      createNewChat(undefined, defaultWorkspaceMode);
     }
-  }, [searchParams, conversations.length, setSearchParams, createNewChat, defaultWorkspaceMode]);
+
+    if (shouldCreateNew) createNewChat(undefined, defaultWorkspaceMode);
+    if (pendingPrompt) updateChatState({ message: pendingPrompt });
+  }, [searchParams, conversations.length, setSearchParams, createNewChat, defaultWorkspaceMode, updateChatState]);
 
   // Typing indicator is now controlled manually in useMessageHandler
   // No automatic timeout needed
