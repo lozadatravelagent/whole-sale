@@ -770,7 +770,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
           />
         }
       >
-        <div className="flex h-full">
+        <div className="flex h-full min-w-0">
           <div
             className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-72 md:flex-shrink-0`}
           >
@@ -782,7 +782,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
             />
           </div>
           <div
-            className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0`}
+            className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0 min-w-0`}
           >
             {selectedConversation ? (
               <>
@@ -891,14 +891,14 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
           onCompletePlannerDateSelection={handlePlannerDateSelection}
         />
       ) : (
-        <div className="flex h-full">
+        <div className="flex h-full min-w-0">
           <div
             className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-72 md:flex-shrink-0`}
           >
             <ChatSidebar {...sharedSidebarProps} />
           </div>
           <div
-            className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0`}
+            className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0 min-w-0`}
           >
             {selectedConversation ? (
               <ChatInterface

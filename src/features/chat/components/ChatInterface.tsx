@@ -291,7 +291,7 @@ const ChatInterface = React.memo(({
 
   return (
     <div
-      className="flex-1 flex flex-col h-full relative"
+      className="flex-1 flex flex-col h-full relative min-w-0"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -329,7 +329,7 @@ const ChatInterface = React.memo(({
       {/* Messages area - scrollable with fixed height */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0"
+        className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0 min-w-0"
       >
         <div className="space-y-3 md:space-y-4">
           {/* Inline skeleton while loading messages - only for existing conversations */}
