@@ -19,7 +19,7 @@ export function StepCard({
   return (
     <div
       className={cn(
-        'flex flex-col gap-4 rounded-2xl border border-border bg-muted/10 p-8 shadow-card',
+        'flex flex-col gap-4 rounded-2xl border border-border bg-card p-8 shadow-card',
         className,
       )}
     >

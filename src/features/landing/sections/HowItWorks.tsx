@@ -27,7 +27,7 @@ export function HowItWorks() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.3 }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
-      className="scroll-mt-20 py-24 lg:py-32"
+      className="landing-section-light scroll-mt-20 py-24 lg:py-32"
     >
       <div className="container mx-auto px-6 lg:px-8">
         <SectionHeading
