@@ -1,8 +1,8 @@
 import { LandingLayout } from './components/LandingLayout';
+import { Hero } from './sections/Hero';
+import { Ecosystem } from './sections/Ecosystem';
 
 const SECTION_STUBS = [
-  { id: 'hero', name: 'Hero' },
-  { id: 'ecosystem', name: 'Ecosystem' },
   { id: 'how-it-works', name: 'How it works' },
   { id: 'prompt-demo', name: 'Prompt demo' },
   { id: 'helps-with', name: 'Helps with' },
@@ -16,6 +16,8 @@ const SECTION_STUBS = [
 export default function LandingPage() {
   return (
     <LandingLayout>
+      <Hero />
+      <Ecosystem />
       {SECTION_STUBS.map((section) => (
         <section
           key={section.id}
