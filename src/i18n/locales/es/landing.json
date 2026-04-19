@@ -1,15 +1,214 @@
 {
-  "hero": {
-    "badge": "Asistente de IA para agencias de viajes",
-    "titlePrefix": "Conocé a",
-    "titleHighlight": "Emilia",
-    "description": "Tu asistente comercial con inteligencia artificial. Emilia ayuda a tu equipo a responder consultas de clientes en segundos, cotizar vuelos y hoteles, y cerrar ventas más rápido.",
-    "cta": "Empezar gratis",
-    "loginLink": "¿Ya tenés cuenta? Iniciá sesión"
+  "navbar": {
+    "links": {
+      "agencies": "Agencias",
+      "wholesalers": "Mayoristas"
+    },
+    "primaryCta": "Empezar a chatear",
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú",
+    "logoAlt": "Emilia"
   },
-  "cta": {
-    "title": "Llevá tu agencia al siguiente nivel",
-    "description": "Sumá a Emilia a tu equipo y empezá a responder más rápido, vender mejor y automatizar lo operativo.",
-    "button": "Crear cuenta gratis"
+  "footer": {
+    "tagline": "Hecho por Vibook",
+    "copyright": "© {{year}} Vibook. Todos los derechos reservados.",
+    "links": {
+      "privacy": "Privacidad",
+      "terms": "Términos",
+      "contact": "Contacto"
+    },
+    "vibookLogoAlt": "Vibook"
+  },
+  "hero": {
+    "eyebrow": "Emilia by Vibook",
+    "headline": "Tu próximo viaje empieza con una conversación.",
+    "subheadline": "Emilia te ayuda a darle forma a tus ideas de viaje y convertirlas en un plan claro — de forma natural, simple y hermosa.",
+    "primaryCta": "Empezar a chatear",
+    "secondaryCta": "Ver cómo funciona",
+    "promptChips": [
+      "Planeá un viaje de 10 días por Italia",
+      "Quiero unas vacaciones de playa en febrero",
+      "Ayudame a elegir entre España y Portugal",
+      "Planeá un viaje en familia con chicos",
+      "Quiero un viaje romántico a Japón"
+    ],
+    "chatPreview": {
+      "userMessage": "Quiero ir a Italia unos 10 días, pero no estoy seguro de qué ciudades tienen más sentido.",
+      "assistantMessage": "Suena a un viaje hermoso. ¿Te lo imaginás más cultural, relajado, con foco en la comida, o un poco de todo? ¿Y estás pensando en una región o en un recorrido multi-ciudad?",
+      "assistantLabel": "Emilia",
+      "userLabel": "Vos"
+    }
+  },
+  "ecosystem": {
+    "eyebrow": "Más formas de experimentar Emilia",
+    "headline": "Emilia también potencia negocios de viajes",
+    "subheadline": "Emilia nace como una conversación para viajeros, pero sus capacidades también se extienden al lado profesional del turismo.",
+    "cards": {
+      "agencies": {
+        "title": "Emilia para agencias",
+        "copy": "Potenciá tu agencia con Emilia y ayudá a tu equipo a responder más rápido, estructurar mejor los pedidos y vender con menos fricción.",
+        "ctaLabel": "Saber más",
+        "comingSoonBadge": "Próximamente"
+      },
+      "wholesalers": {
+        "title": "Emilia B2B para mayoristas",
+        "copy": "Llevá la magia de Emilia a tu experiencia de búsqueda y ofrecele a tu red de agencias una forma más inteligente y natural de explorar opciones.",
+        "ctaLabel": "Saber más",
+        "comingSoonBadge": "Próximamente"
+      }
+    }
+  },
+  "howItWorks": {
+    "eyebrow": "Cómo funciona",
+    "headline": "Planificar viajes, con forma de conversación.",
+    "subheadline": "Empezás con una idea, la vas refinando de forma natural y la convertís en un plan más claro y útil.",
+    "steps": [
+      {
+        "title": "Contale a Emilia qué tipo de viaje querés",
+        "copy": "Compartí un destino, una sensación, un estilo de viaje o apenas una idea aproximada."
+      },
+      {
+        "title": "Refinamos el plan juntos",
+        "copy": "Emilia te hace preguntas inteligentes para entender qué te cierra mejor."
+      },
+      {
+        "title": "Obtené un plan de viaje más claro",
+        "copy": "Convertimos ideas sueltas en un viaje más estructurado y personal."
+      }
+    ]
+  },
+  "promptDemo": {
+    "eyebrow": "Empezá con cualquier cosa",
+    "headline": "Emilia entiende de viajes como la gente habla realmente.",
+    "subheadline": "Desde ideas vagas hasta planes más estructurados, Emilia te ayuda a darle forma a tu viaje de manera natural.",
+    "prompts": [
+      "Quiero un viaje de playa en febrero pero no sé a dónde ir",
+      "Ayudame a planear un viaje romántico a Japón",
+      "Estoy pensando en España y Portugal unas dos semanas",
+      "Quiero un viaje familiar con chicos, clima cálido y logística simple",
+      "Planeame un primer viaje al sudeste asiático"
+    ]
+  },
+  "helpsWith": {
+    "eyebrow": "En qué te ayuda Emilia",
+    "headline": "Menos fricción. Más claridad.",
+    "subheadline": "Emilia te ayuda a pasar de \"tengo una idea\" a \"ya sé cómo se podría armar este viaje\".",
+    "features": [
+      {
+        "title": "Elegir mejores destinos",
+        "copy": "Explorá lugares que se adapten a tu tiempo, estilo y mood de viaje."
+      },
+      {
+        "title": "Darle forma al itinerario",
+        "copy": "Organizá ciudades, ritmo y recorrido de una manera que tenga sentido."
+      },
+      {
+        "title": "Comparar estilos de viaje",
+        "copy": "Pensá experiencias culturales, de playa, románticas, familiares o mixtas."
+      },
+      {
+        "title": "Hacer útiles las ideas vagas",
+        "copy": "Convertí intenciones amplias en algo más concreto y accionable."
+      },
+      {
+        "title": "Simplificar la planificación",
+        "copy": "Reducí la sobrecarga mental y llegá antes a una estructura de viaje clara."
+      },
+      {
+        "title": "Pensar la lógica de la ruta",
+        "copy": "Combiná lugares y duraciones de una forma más natural."
+      }
+    ]
+  },
+  "inspiration": {
+    "eyebrow": "Ideas de viaje",
+    "headline": "Algunas formas de empezar.",
+    "subheadline": "Elegí una dirección y dejá que Emilia te ayude a darle forma.",
+    "ctaLabel": "Empezar desde esta idea",
+    "cards": [
+      {
+        "title": "7 días en Río",
+        "prompt": "Planeá un viaje de 7 días a Río de Janeiro — primera vez, me interesa cultura, playa y comida."
+      },
+      {
+        "title": "10 días en Italia",
+        "prompt": "Planeá un viaje de 10 días por Italia — me gustaría un mix de cultura y gastronomía, abierto a un recorrido multi-ciudad."
+      },
+      {
+        "title": "España + Portugal",
+        "prompt": "Planeá un viaje de 2 semanas combinando España y Portugal — ayudame a elegir ciudades y ritmo."
+      },
+      {
+        "title": "Escape familiar de playa",
+        "prompt": "Planeá un viaje familiar de playa con chicos, clima cálido y logística simple. Cualquier continente."
+      },
+      {
+        "title": "Europa romántica",
+        "prompt": "Planeá un viaje romántico de 10 días por Europa — me gustaría incluir 2 o 3 ciudades con carácter."
+      },
+      {
+        "title": "Japón por primera vez",
+        "prompt": "Planeá un viaje a Japón por primera vez, unos 12 días, balanceado entre Tokio, Kioto y una región más."
+      }
+    ]
+  },
+  "understands": {
+    "eyebrow": "Lo que Emilia entiende",
+    "headline": "Pensada para conversaciones reales sobre viajes.",
+    "subheadline": "Emilia ayuda con distintos tipos de pensamientos sobre viajes, no solo con pedidos perfectamente estructurados.",
+    "pills": [
+      "Ideas vagas de viaje",
+      "Fechas flexibles",
+      "Viajes en familia",
+      "Viajes en pareja",
+      "Primer viaje a un destino",
+      "Viajes multi-ciudad",
+      "Combinación de cultura y playa",
+      "Escapadas cortas",
+      "Viajes más largos",
+      "Distintos moods y estilos de viaje"
+    ]
+  },
+  "personalized": {
+    "eyebrow": "Planificación personalizada",
+    "headline": "Planes de viaje que se sienten más como vos.",
+    "subheadline": "Emilia se adapta a tu ritmo, estilo, preferencias y restricciones, para que el viaje empiece a tomar forma alrededor de la manera en que querés viajar.",
+    "points": [
+      {
+        "label": "Ritmo del viaje",
+        "caption": "La velocidad que realmente encaja con cómo te gusta viajar."
+      },
+      {
+        "label": "Estilo y mood",
+        "caption": "Cultural, relajado, gastronómico, aventurero o un mix."
+      },
+      {
+        "label": "Cantidad de días",
+        "caption": "Desde escapadas cortas hasta viajes largos, a tu medida."
+      },
+      {
+        "label": "Quiénes viajan",
+        "caption": "Solo, en pareja, en familia o con amigos — con las consideraciones justas."
+      },
+      {
+        "label": "Flexibilidad y restricciones",
+        "caption": "Fechas, presupuestos, imprescindibles o cosas que preferís evitar."
+      },
+      {
+        "label": "Preferencias personales",
+        "caption": "Esos detalles chicos que hacen que un viaje se sienta tuyo."
+      }
+    ]
+  },
+  "trust": {
+    "eyebrow": "Hecho por Vibook",
+    "headline": "Diseñada por una empresa de tecnología para viajes.",
+    "subheadline": "Emilia es parte de Vibook, una compañía enfocada en construir mejores experiencias de viaje a través de interfaces inteligentes."
+  },
+  "finalCta": {
+    "headline": "Empezá a planear con Emilia.",
+    "subheadline": "Tu próximo viaje puede empezar con un solo mensaje.",
+    "primaryCta": "Empezar a chatear",
+    "secondaryCta": "Ver cómo funciona"
   }
 }
