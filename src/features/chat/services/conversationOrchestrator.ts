@@ -509,22 +509,29 @@ export function resolveConversationTurn(options: {
       (routeResult.reason === 'quote_intent_incomplete' && !hasPreviousParsedRequest && !hasPersistentContext)
     );
 
-  // === STRICT MODE (PR 3 / C3) ==============================================
-  // When `mode !== undefined`, apply the ADR-002 strict agency/passenger
-  // routing: agency emits only `standard_search` or `ask_minimal`; passenger
-  // emits only `planner_agent` or `ask_minimal`. A new `mode_bridge` branch
-  // nudges the user to switch modes when intent doesn't match the active
-  // mode.
+  // === STRICT MODE (PR 3 / C3 + C7.1.e partial revert) ======================
+  // When `mode !== undefined`, apply agency/passenger routing: agency emits
+  // only `standard_search` or `ask_minimal`; passenger emits only
+  // `standard_itinerary` or `ask_minimal`. A `mode_bridge` branch nudges the
+  // user to switch modes when intent doesn't match the active mode.
   //
-  // DISCOVERY BYPASS (carryover to C8): `isDiscoveryIntent` intentionally
-  // falls through to the legacy path below. Discovery is orthogonal to the
-  // QUOTE/PLAN/COLLECT intent axis the strict contract is about, and the
-  // existing show_places flow (`buildDiscoveryResponsePayload` in
-  // useMessageHandler's requestType='itinerary' case) is dispatched off the
-  // legacy `standard_itinerary` branch with responseMode='show_places'. When
-  // C8 removes `standard_itinerary`, discovery MUST get a dedicated branch
-  // (e.g. 'discovery') OR the show_places path must be preserved under a
-  // renamed branch. Do not ship C8 without resolving this.
+  // C7.1.e REVERSION: passenger originally emitted `planner_agent` per the
+  // ADR-002 strict contract, but empirically `planner_agent` only produced
+  // conversational prose — no structured CanonicalItineraryResult (segments,
+  // editorial, recommendedPlaces). The right-side planner panel did not
+  // hydrate for agents in planner mode. `standard_itinerary` (the branch
+  // consumer already used successfully) is the one that produces the
+  // canonical structured output, so passenger now routes there too. C8
+  // (remove `standard_itinerary`) is cancelled: it is the productive branch
+  // of planner mode. The `planner_agent` edge function and its handler
+  // remain in the codebase but have no routing call sites; removal or
+  // rewrite is deferred. See ADR-002 addendum 2026-04-18.
+  //
+  // DISCOVERY BYPASS: `isDiscoveryIntent` intentionally falls through to the
+  // legacy path below so the existing show_places flow
+  // (`buildDiscoveryResponsePayload` in useMessageHandler's
+  // requestType='itinerary' case) dispatches off `standard_itinerary` with
+  // responseMode='show_places'.
   //
   // BRIDGE RULES:
   //   - agency → passenger  when (requestType==='itinerary' || route==='PLAN').
@@ -534,8 +541,10 @@ export function resolveConversationTurn(options: {
   //   - passenger → agency  when route==='QUOTE' && requestType in
   //     {flights, hotels, combined} && !hasActivePlanner. With an active
   //     planner the QUOTE turn is contextually grounded in the plan; it
-  //     stays on planner_agent (quote-in-plan-context). This refinement
-  //     preserves the D14 #1 spec naturally.
+  //     stays on standard_itinerary (quote-in-plan-context). The
+  //     useMessageHandler switch dispatches by requestType, so flights/
+  //     hotels/combined QUOTEs with active planner run their respective
+  //     search handlers even though the label is `standard_itinerary`.
   //
   // GUARDRAILS:
   //   G1 — `previousMessageType === 'mode_bridge'`: previous turn already
@@ -543,12 +552,12 @@ export function resolveConversationTurn(options: {
   //   G2 — `forceCurrentMode === true`: the user clicked "seguir en este
   //     modo" on the bridge chip; we must respect that choice.
   //
-  // HANDLER NOTE (removed when C4/C5 lands):
-  //   Passenger emits `planner_agent` even when `!hasActivePlanner`
-  //   (e.g. "armame Italia" with no draft yet). `useMessageHandler`
-  //   currently assumes the planner_agent branch has an active planner;
-  //   C4/C5 must add the draft-bootstrap path. Until then no call site
-  //   passes `mode`, so this branch is only exercised by tests.
+  // HANDLER NOTE: the `standard_itinerary` branch dispatches through
+  // `useMessageHandler`'s `switch (parsedRequest.requestType)` — for
+  // `requestType==='itinerary'` it calls `handleItineraryRequest` wrapped by
+  // `buildCanonicalResultFromStandard`. No draft bootstrap is required; the
+  // handler tolerates `!hasActivePlanner` as the consumer flow already
+  // demonstrates.
   if (mode !== undefined && !isDiscoveryIntent) {
     const bridgeBlocked = previousMessageType === 'mode_bridge' || forceCurrentMode === true;
 
@@ -608,17 +617,17 @@ export function resolveConversationTurn(options: {
 
     if (mode === 'passenger') {
       return {
-        executionBranch: 'planner_agent',
+        executionBranch: 'standard_itinerary',
         responseMode: 'proposal_first_plan',
         normalizedMissingFields,
         messageType: 'trip_planner',
-        shouldUsePlannerAgent: true,
-        shouldUseStandardItinerary: false,
+        shouldUsePlannerAgent: false,
+        shouldUseStandardItinerary: true,
         shouldAskMinimalQuestion: false,
         uiMeta: {
           route: routeResult.route,
           reason: routeResult.reason,
-          firstPlanHandledAs: !hasActivePlanner ? 'planner_agent' : null,
+          firstPlanHandledAs: !hasActivePlanner ? 'standard_itinerary' : null,
         },
       };
     }

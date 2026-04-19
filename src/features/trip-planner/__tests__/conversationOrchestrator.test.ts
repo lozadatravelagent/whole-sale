@@ -541,7 +541,7 @@ describe('conversationOrchestrator', () => {
     // -------------------------------------------------------------------------
     // D14 adapted tests — spec closed. See commit body for adaptation details.
     // -------------------------------------------------------------------------
-    it('D14 #1 (passenger + QUOTE + active planner) → planner_agent (bridge refined by !hasActivePlanner)', () => {
+    it('D14 #1 (passenger + QUOTE + active planner) → standard_itinerary (bridge refined by !hasActivePlanner, C7.1.e revert)', () => {
       const resolution = resolveConversationTurn({
         parsedRequest: combinedQuoteRequest,
         routeResult: combinedQuoteRoute,
@@ -549,7 +549,9 @@ describe('conversationOrchestrator', () => {
         mode: 'passenger',
         ...baseFlags,
       });
-      expect(resolution.executionBranch).toBe('planner_agent');
+      expect(resolution.executionBranch).toBe('standard_itinerary');
+      expect(resolution.shouldUsePlannerAgent).toBe(false);
+      expect(resolution.shouldUseStandardItinerary).toBe(true);
       expect(resolution.responseMode).toBe('proposal_first_plan');
       expect(resolution.uiMeta.firstPlanHandledAs).toBeNull();
     });
@@ -657,7 +659,7 @@ describe('conversationOrchestrator', () => {
     // -------------------------------------------------------------------------
     // Passenger mode matrix
     // -------------------------------------------------------------------------
-    it('passenger + itinerary + PLAN + no planner → planner_agent with firstPlanHandledAs=planner_agent (handler bootstrap — C4/C5)', () => {
+    it('passenger + itinerary + PLAN + no planner → standard_itinerary with firstPlanHandledAs=standard_itinerary (C7.1.e revert)', () => {
       const resolution = resolveConversationTurn({
         parsedRequest: itineraryPlanRequest,
         routeResult: itineraryPlanRoute,
@@ -665,12 +667,13 @@ describe('conversationOrchestrator', () => {
         mode: 'passenger',
         ...baseFlags,
       });
-      expect(resolution.executionBranch).toBe('planner_agent');
-      expect(resolution.shouldUsePlannerAgent).toBe(true);
-      expect(resolution.uiMeta.firstPlanHandledAs).toBe('planner_agent');
+      expect(resolution.executionBranch).toBe('standard_itinerary');
+      expect(resolution.shouldUsePlannerAgent).toBe(false);
+      expect(resolution.shouldUseStandardItinerary).toBe(true);
+      expect(resolution.uiMeta.firstPlanHandledAs).toBe('standard_itinerary');
     });
 
-    it('passenger + PLAN + planner active → planner_agent with firstPlanHandledAs=null', () => {
+    it('passenger + PLAN + planner active → standard_itinerary with firstPlanHandledAs=null (C7.1.e revert)', () => {
       const resolution = resolveConversationTurn({
         parsedRequest: itineraryPlanRequest,
         routeResult: itineraryPlanRoute,
@@ -678,7 +681,9 @@ describe('conversationOrchestrator', () => {
         mode: 'passenger',
         ...baseFlags,
       });
-      expect(resolution.executionBranch).toBe('planner_agent');
+      expect(resolution.executionBranch).toBe('standard_itinerary');
+      expect(resolution.shouldUsePlannerAgent).toBe(false);
+      expect(resolution.shouldUseStandardItinerary).toBe(true);
       expect(resolution.uiMeta.firstPlanHandledAs).toBeNull();
     });
 
@@ -757,7 +762,7 @@ describe('conversationOrchestrator', () => {
       expect(resolution.executionBranch).toBe('standard_search');
     });
 
-    it('G1 (passenger side): passenger + QUOTE + no planner + previousMessageType=mode_bridge → falls to passenger default (planner_agent)', () => {
+    it('G1 (passenger side): passenger + QUOTE + no planner + previousMessageType=mode_bridge → falls to passenger default (standard_itinerary, C7.1.e revert)', () => {
       const resolution = resolveConversationTurn({
         parsedRequest: combinedQuoteRequest,
         routeResult: combinedQuoteRoute,
@@ -766,10 +771,12 @@ describe('conversationOrchestrator', () => {
         previousMessageType: 'mode_bridge',
         ...baseFlags,
       });
-      expect(resolution.executionBranch).toBe('planner_agent');
+      expect(resolution.executionBranch).toBe('standard_itinerary');
+      expect(resolution.shouldUsePlannerAgent).toBe(false);
+      expect(resolution.shouldUseStandardItinerary).toBe(true);
     });
 
-    it('G2 (passenger side): passenger + QUOTE + no planner + forceCurrentMode=true → falls to passenger default (planner_agent)', () => {
+    it('G2 (passenger side): passenger + QUOTE + no planner + forceCurrentMode=true → falls to passenger default (standard_itinerary, C7.1.e revert)', () => {
       const resolution = resolveConversationTurn({
         parsedRequest: combinedQuoteRequest,
         routeResult: combinedQuoteRoute,
@@ -778,7 +785,9 @@ describe('conversationOrchestrator', () => {
         forceCurrentMode: true,
         ...baseFlags,
       });
-      expect(resolution.executionBranch).toBe('planner_agent');
+      expect(resolution.executionBranch).toBe('standard_itinerary');
+      expect(resolution.shouldUsePlannerAgent).toBe(false);
+      expect(resolution.shouldUseStandardItinerary).toBe(true);
     });
 
     it('edge: mode set, both guardrail params undefined → bridge emits normally (C3 default behavior)', () => {
