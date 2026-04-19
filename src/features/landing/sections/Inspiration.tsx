@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { SectionHeading } from '../components/SectionHeading';
 import { InspirationCard } from '../components/InspirationCard';
@@ -11,6 +11,16 @@ const INSPIRATION_PHOTO_IDS = [
   'photo-1502602898657-3e91760cbb34', // Romantic Europe
   'photo-1545569341-9eb8b30979d9', // Japan for first-timers
 ] as const;
+
+const GRID_VARIANTS: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.1 } },
+};
+
+const CARD_VARIANTS: Variants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+};
 
 interface InspirationEntry {
   title: string;
@@ -44,18 +54,25 @@ export function Inspiration() {
           align="center"
           className="mb-14 lg:mb-16"
         />
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <motion.div
+          variants={GRID_VARIANTS}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
+        >
           {cards.map((card, idx) => (
-            <InspirationCard
-              key={card.title}
-              photoId={INSPIRATION_PHOTO_IDS[idx]}
-              alt={card.alt}
-              title={card.title}
-              prompt={card.prompt}
-              ctaLabel={ctaLabel}
-            />
+            <motion.div key={card.title} variants={CARD_VARIANTS}>
+              <InspirationCard
+                photoId={INSPIRATION_PHOTO_IDS[idx]}
+                alt={card.alt}
+                title={card.title}
+                prompt={card.prompt}
+                ctaLabel={ctaLabel}
+              />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </div>
     </motion.section>
   );

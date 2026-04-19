@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
   Clock,
@@ -19,6 +19,16 @@ const POINT_ICONS = [
   Settings2,
   Heart,
 ] as const;
+
+const GRID_VARIANTS: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.06 } },
+};
+
+const POINT_VARIANTS: Variants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+};
 
 interface PointEntry {
   label: string;
@@ -50,19 +60,26 @@ export function Personalized() {
           align="center"
           className="mb-14 lg:mb-16"
         />
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+        <motion.div
+          variants={GRID_VARIANTS}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3"
+        >
           {points.map((point, idx) => {
             const Icon = POINT_ICONS[idx];
             return (
-              <PersonalizationPoint
-                key={point.label}
-                icon={Icon}
-                label={point.label}
-                caption={point.caption}
-              />
+              <motion.div key={point.label} variants={POINT_VARIANTS}>
+                <PersonalizationPoint
+                  icon={Icon}
+                  label={point.label}
+                  caption={point.caption}
+                />
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       </div>
     </motion.section>
   );
