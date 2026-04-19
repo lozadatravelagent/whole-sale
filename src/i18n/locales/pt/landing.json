@@ -128,27 +128,33 @@
     "cards": [
       {
         "title": "7 dias no Rio",
-        "prompt": "Planeje uma viagem de 7 dias ao Rio de Janeiro — primeira vez, me interesso por cultura, praia e gastronomia."
+        "prompt": "Planeje uma viagem de 7 dias ao Rio de Janeiro — primeira vez, me interesso por cultura, praia e gastronomia.",
+        "alt": "Cristo Redentor contemplando o Rio de Janeiro ao entardecer"
       },
       {
         "title": "10 dias na Itália",
-        "prompt": "Planeje uma viagem de 10 dias pela Itália — gostaria de um mix de cultura e gastronomia, aberto a um roteiro por várias cidades."
+        "prompt": "Planeje uma viagem de 10 dias pela Itália — gostaria de um mix de cultura e gastronomia, aberto a um roteiro por várias cidades.",
+        "alt": "Vila italiana na encosta com vinhedos e arquitetura em pedra quente"
       },
       {
         "title": "Espanha + Portugal",
-        "prompt": "Planeje uma viagem de 2 semanas combinando Espanha e Portugal — me ajude a escolher cidades e ritmo."
+        "prompt": "Planeje uma viagem de 2 semanas combinando Espanha e Portugal — me ajude a escolher cidades e ritmo.",
+        "alt": "Praça ibérica histórica com paredes de azulejos e luz quente do entardecer"
       },
       {
         "title": "Escape de praia em família",
-        "prompt": "Planeje uma viagem de praia em família com crianças, clima quente e logística simples. Qualquer continente."
+        "prompt": "Planeje uma viagem de praia em família com crianças, clima quente e logística simples. Qualquer continente.",
+        "alt": "Família caminhando por uma praia tropical margeada por palmeiras"
       },
       {
         "title": "Europa romântica",
-        "prompt": "Planeje uma viagem romântica de 10 dias pela Europa — gostaria de incluir 2 ou 3 cidades com caráter."
+        "prompt": "Planeje uma viagem romântica de 10 dias pela Europa — gostaria de incluir 2 ou 3 cidades com caráter.",
+        "alt": "Um casal caminhando por um centro histórico europeu romântico na hora dourada"
       },
       {
         "title": "Japão pela primeira vez",
-        "prompt": "Planeje uma viagem ao Japão pela primeira vez, cerca de 12 dias, equilibrada entre Tóquio, Kyoto e mais uma região."
+        "prompt": "Planeje uma viagem ao Japão pela primeira vez, cerca de 12 dias, equilibrada entre Tóquio, Kyoto e mais uma região.",
+        "alt": "Templo japonês tradicional emoldurado por cerejeiras em flor e lanternas de papel"
       }
     ]
   },

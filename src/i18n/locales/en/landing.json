@@ -128,27 +128,33 @@
     "cards": [
       {
         "title": "7 days in Rio",
-        "prompt": "Plan a 7-day trip to Rio de Janeiro — first-time visitor, interested in culture, beach and food."
+        "prompt": "Plan a 7-day trip to Rio de Janeiro — first-time visitor, interested in culture, beach and food.",
+        "alt": "Cristo Redentor overlooking Rio de Janeiro at dusk"
       },
       {
         "title": "10 days in Italy",
-        "prompt": "Plan a 10-day trip through Italy — I'd like a mix of culture and food, open to a multi-city route."
+        "prompt": "Plan a 10-day trip through Italy — I'd like a mix of culture and food, open to a multi-city route.",
+        "alt": "Italian hillside town with vineyards and warm stone architecture"
       },
       {
         "title": "Spain + Portugal",
-        "prompt": "Plan a 2-week trip combining Spain and Portugal — help me choose cities and pacing."
+        "prompt": "Plan a 2-week trip combining Spain and Portugal — help me choose cities and pacing.",
+        "alt": "Historic Iberian plaza with tiled walls and warm evening light"
       },
       {
         "title": "Family beach escape",
-        "prompt": "Plan a family beach trip with kids, warm weather and easy logistics. Any continent."
+        "prompt": "Plan a family beach trip with kids, warm weather and easy logistics. Any continent.",
+        "alt": "Family walking along a tropical beach lined with palm trees"
       },
       {
         "title": "Romantic Europe",
-        "prompt": "Plan a romantic 10-day trip through Europe — I'd like to include 2 or 3 cities with character."
+        "prompt": "Plan a romantic 10-day trip through Europe — I'd like to include 2 or 3 cities with character.",
+        "alt": "A couple strolling through a romantic European old town at golden hour"
       },
       {
         "title": "Japan for first-timers",
-        "prompt": "Plan a first-time trip to Japan, around 12 days, balanced between Tokyo, Kyoto and one more region."
+        "prompt": "Plan a first-time trip to Japan, around 12 days, balanced between Tokyo, Kyoto and one more region.",
+        "alt": "Traditional Japanese temple framed by cherry blossoms and paper lanterns"
       }
     ]
   },

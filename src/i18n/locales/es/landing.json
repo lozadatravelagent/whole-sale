@@ -128,27 +128,33 @@
     "cards": [
       {
         "title": "7 días en Río",
-        "prompt": "Planeá un viaje de 7 días a Río de Janeiro — primera vez, me interesa cultura, playa y comida."
+        "prompt": "Planeá un viaje de 7 días a Río de Janeiro — primera vez, me interesa cultura, playa y comida.",
+        "alt": "Cristo Redentor contemplando Río de Janeiro al atardecer"
       },
       {
         "title": "10 días en Italia",
-        "prompt": "Planeá un viaje de 10 días por Italia — me gustaría un mix de cultura y gastronomía, abierto a un recorrido multi-ciudad."
+        "prompt": "Planeá un viaje de 10 días por Italia — me gustaría un mix de cultura y gastronomía, abierto a un recorrido multi-ciudad.",
+        "alt": "Pueblo italiano en la ladera con viñedos y arquitectura de piedra cálida"
       },
       {
         "title": "España + Portugal",
-        "prompt": "Planeá un viaje de 2 semanas combinando España y Portugal — ayudame a elegir ciudades y ritmo."
+        "prompt": "Planeá un viaje de 2 semanas combinando España y Portugal — ayudame a elegir ciudades y ritmo.",
+        "alt": "Plaza ibérica histórica con paredes de azulejos y luz cálida del atardecer"
       },
       {
         "title": "Escape familiar de playa",
-        "prompt": "Planeá un viaje familiar de playa con chicos, clima cálido y logística simple. Cualquier continente."
+        "prompt": "Planeá un viaje familiar de playa con chicos, clima cálido y logística simple. Cualquier continente.",
+        "alt": "Familia caminando por una playa tropical bordeada de palmeras"
       },
       {
         "title": "Europa romántica",
-        "prompt": "Planeá un viaje romántico de 10 días por Europa — me gustaría incluir 2 o 3 ciudades con carácter."
+        "prompt": "Planeá un viaje romántico de 10 días por Europa — me gustaría incluir 2 o 3 ciudades con carácter.",
+        "alt": "Una pareja paseando por un casco antiguo europeo romántico en la hora dorada"
       },
       {
         "title": "Japón por primera vez",
-        "prompt": "Planeá un viaje a Japón por primera vez, unos 12 días, balanceado entre Tokio, Kioto y una región más."
+        "prompt": "Planeá un viaje a Japón por primera vez, unos 12 días, balanceado entre Tokio, Kioto y una región más.",
+        "alt": "Templo japonés tradicional enmarcado por cerezos en flor y faroles de papel"
       }
     ]
   },
