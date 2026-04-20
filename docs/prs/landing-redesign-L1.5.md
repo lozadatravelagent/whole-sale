@@ -113,6 +113,8 @@ L1.5 does not introduce new dead code. The orphaned `hero.chatPreview.userMessag
 - No full light-mode rollout.
 
 **New from L1.5:**
+- **WCAG AA on `SectionEyebrow` in section-light** — eyebrow uses `text-primary` (coral `16 85% 58%`). Over cream backgrounds the ratio is ~2.75:1, which fails WCAG AA for normal text. Affects any light section that renders a section eyebrow (HowItWorks, HelpsWith, Personalized, Trust). Fix requires a mechanism to override primary only inside eyebrow-on-cream contexts — a separate architectural decision (class modifier, variant prop, or scoped new token). Not merge-blocking; own ticket post-L1.5.
+- **`--landing-light-*` tokens in `.dark` without consumers** — after the post-C9 contrast fix (below), `.landing-section-light` reads literal HSL values directly instead of indirecting through `var(--landing-light-*)`. The four tokens declared in `.dark` are harmless but unused. Trivial cleanup (delete the four lines) whenever someone happens to touch `.dark` again; non-blocking.
 - **Unsplash hotlink fragility** — the six Inspiration images depend on stable Unsplash URLs. If any 404s or gets replaced with unrelated content, `UnsplashImage` falls back to a muted gradient block; eventually the curated set moves to `public/landing/`. Ticket when budget exists.
 - **Landing→chat color jarring** — coral primary on landing vs sky-blue primary in chat. Accepted consciously (see "Palette scoping" above). Escalate as a brand-wide RFC if repeated feedback.
 - **HeroAurora on low-end devices** — tested conceptually at 60 FPS on modern desktop and mid-tier mobile. Low-end (pre-2019 mobile) not empirically profiled. Two pause mechanisms (tab visibility, viewport intersection) should keep idle cost near zero. Monitor.
@@ -204,6 +206,53 @@ All automatic checks pass in-commit. The following are for Francisco to run via 
 7. `6e9e7b1f` `feat(landing): stagger entrance on grids + coral hover glow on cards (L1.5-C7)`
 8. `813f8b52` `feat(landing): icon micro-animations on-scroll (L1.5-C8)`
 9. _(this commit)_ `feat(landing): footer photo credit + PR doc + L1.5 close (L1.5-C9)`
+
+## Post-C9 contrast fix
+
+An additional fix commit landed on top of C9 after a parallel human smoke
+found that StepCard body text read as "almost illegible" over the cream
+background in `HowItWorks`. Same regression applied to `FeatureCard` in
+`HelpsWith` and `PersonalizationPoint` in `Personalized`.
+
+Diagnosis (Rule 22 stop + report before editing):
+- `text-foreground` on cards → `hsl(24 20% 12%)` on `bg-card 30 30% 99%`
+  → ~18:1 ratio. Good on paper.
+- `text-muted-foreground` → `hsl(30 15% 55%)` on the same background
+  → **~4:1 ratio, borderline / below WCAG AA 4.5:1**. Lands as "muted-
+  looking" body copy.
+- Hypothesis A (most likely): bump `--muted-foreground` darker to clear
+  the AA threshold on cream.
+- Hypothesis B (defensive): the original `.landing-section-light`
+  consumed `var(--landing-light-*)` inside var declarations
+  (indirection). Spec-valid but a risk surface if any cascade context
+  (including cache) fails to resolve the chain. Desindirecting to
+  literal HSL removes that risk entirely.
+
+Fix authorized as "Option 2": apply both changes in one edit.
+
+Changes (single file, `src/index.css`, inside `.landing-section-light`):
+  --background       30 25% 97%    (was var(--landing-light-bg))
+  --foreground       24 20% 12%    (was var(--landing-light-fg))
+  --card             30 30% 99%    (unchanged)
+  --card-foreground  24 20% 12%    (was var(--landing-light-fg))
+  --muted            30 20% 94%    (unchanged)
+  --muted-foreground 30 15% 40%    (was 30 15% 55% via
+                                    var(--landing-light-muted);
+                                    bumped darker for ~7:1 ratio,
+                                    WCAG AAA on cream)
+  --border           30 15% 88%    (was var(--landing-light-border))
+  --input            30 15% 88%    (was var(--landing-light-border))
+
+Side effect: the four `--landing-light-*` tokens declared in `.dark` (C1)
+now have no consumers. Intentionally left in place as documentation of
+the palette origin. Logged above as a trivial cleanup debt.
+
+Zero components touched. No Tailwind class in the eight text primitives
+(StepCard, FeatureCard, PersonalizationPoint, Trust, SectionHeading,
+SectionEyebrow, LandingFooter, ChatPreview) changed. The cascade does
+the rest.
+
+Commit: see the final SHA appended to the commit list below.
 
 ## Previous dependency
 

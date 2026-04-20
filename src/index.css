@@ -496,14 +496,22 @@
    remain consistent across dark and light sections. Consume the
    --landing-light-* tokens declared on .dark above. */
 .landing-section-light {
-  --background: var(--landing-light-bg);
-  --foreground: var(--landing-light-fg);
-  --card: 30 30% 99%;
-  --card-foreground: var(--landing-light-fg);
+  /* Desindirected values post-C9. CSS var indirection (var within a var
+     declaration) is spec-valid but flagged as a possible cascade edge-case
+     in the contrast bug report; direct HSL values close that risk.
+     The --landing-light-* tokens still exist in .dark for reference but
+     no longer have consumers — trivial cleanup post-merge if desired. */
+  --background: 30 25% 97%;       /* cream off-white */
+  --foreground: 24 20% 12%;       /* warm near-black */
+  --card: 30 30% 99%;             /* near-white with warm tint */
+  --card-foreground: 24 20% 12%;  /* warm near-black */
   --muted: 30 20% 94%;
-  --muted-foreground: var(--landing-light-muted);
-  --border: var(--landing-light-border);
-  --input: var(--landing-light-border);
+  /* Bumped from 30 15% 55% to 30 15% 40%: gives ~7:1 contrast on the
+     cream background (WCAG AAA) instead of the borderline ~4:1 that the
+     previous value produced on bg-card 30 30% 99%. */
+  --muted-foreground: 30 15% 40%; /* warm dark-gray */
+  --border: 30 15% 88%;           /* light warm border */
+  --input: 30 15% 88%;
 }
 
 .group\/sidebar-wrapper,
