@@ -512,6 +512,18 @@
   --muted-foreground: 30 15% 40%; /* warm dark-gray */
   --border: 30 15% 88%;           /* light warm border */
   --input: 30 15% 88%;
+
+  /* Apply the overridden tokens to this element so the section paints
+     cream and descendants inherit the light color. Without these, the
+     .landing-section-light rule only declares variables and the
+     <section> stays transparent — its visible background then comes
+     from the .landing-shell ancestor in LandingLayout (warm dark
+     café), which defeats the theme switch for everything that does
+     not explicitly consume bg-card (the inner cards do, which is why
+     HowItWorks and HelpsWith cards looked right even while the
+     surrounding section and heading did not). */
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 .group\/sidebar-wrapper,

@@ -252,7 +252,52 @@ Zero components touched. No Tailwind class in the eight text primitives
 SectionEyebrow, LandingFooter, ChatPreview) changed. The cascade does
 the rest.
 
-Commit: see the final SHA appended to the commit list below.
+Commit: see the contrast-fix SHA appended to the commit list below.
+
+## Post-C9 section-light self-application fix
+
+A second post-C9 fix landed after a deeper smoke pass revealed that all
+four light sections (HowItWorks, HelpsWith, Personalized, Trust) were
+only half-themed: inner cards with `bg-card` looked cream correctly,
+but the section backgrounds themselves and any element without an
+explicit `bg-*` class (headings, body text in Personalized and Trust
+which lack card framing) kept the warm dark café background inherited
+from the `.landing-shell` ancestor in `LandingLayout`.
+
+Root cause (Rule 22 stop + report):
+  `.landing-section-light` declared only CSS variable overrides
+  (--background, --foreground, --card, --muted-foreground, ...). It
+  did not apply those tokens to itself via `background-color` or
+  `color`. Result: the section rule shifted tokens for its descendants
+  but the `<section>` element stayed transparent, so whatever ancestor
+  had `bg-*` applied (in this case LandingLayout with bg-background
+  resolving to the dark café of `.landing-shell`) provided the visible
+  background.
+
+Why HowItWorks appeared to work in the first smoke:
+  Its three large StepCards (`bg-card`, `p-8`) consumed the overridden
+  `--card` and painted cream on top of the still-dark section. The
+  three big cream cards dominated the visible area, making the dark
+  heading above feel less jarring by proximity. HelpsWith exposed the
+  mismatch because its smaller 6-card grid leaves more section visible.
+  Personalized exposed it fully because PersonalizationPoint has no
+  card frame at all, so nothing consumed `--card` and everything sat
+  on the dark section. Trust has the same issue (only an <img> and a
+  SectionHeading, no card frame) and was equally broken.
+
+Fix (src/index.css, inside `.landing-section-light`, two added lines):
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+
+The rule now both declares the light tokens AND applies them to the
+element itself, so any DOM node with `.landing-section-light` paints
+cream and hands the light color down via inheritance. Descendants
+that consume `bg-card`, `text-muted-foreground`, etc. continue to work
+through the cascade unchanged.
+
+Zero component files touched. No section className edit. The bug
+affected all four light sections; the fix covers them all at the CSS
+level in a single line pair.
 
 ## Previous dependency
 
