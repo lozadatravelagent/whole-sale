@@ -41,6 +41,9 @@ export function LandingFooter() {
         <p className="mt-6 text-xs text-muted-foreground">
           {t('footer.copyright', { year })}
         </p>
+        <p className="mt-1 text-xs text-muted-foreground/70">
+          {t('footer.photoCredit')}
+        </p>
       </div>
     </footer>
   );

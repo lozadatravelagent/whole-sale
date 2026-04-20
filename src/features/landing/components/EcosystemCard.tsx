@@ -21,7 +21,7 @@ export function EcosystemCard({
     <article
       id={id}
       className={cn(
-        'scroll-mt-20 flex h-full flex-col gap-5 rounded-2xl border border-border bg-muted/10 p-8 shadow-card transition-all hover:-translate-y-0.5 hover:border-primary/30',
+        'scroll-mt-20 flex h-full flex-col gap-5 rounded-2xl border border-border bg-muted/10 p-8 shadow-card transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-primary',
         className,
       )}
     >

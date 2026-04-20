@@ -116,6 +116,14 @@
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* L1.5 tokens — additive only. Consumed by .landing-section-light inside
+       the .landing-shell tree so dark-dominant landing can intercalate light
+       sections without touching any pre-existing .dark token. */
+    --landing-light-bg: 30 25% 97%;
+    --landing-light-fg: 24 20% 12%;
+    --landing-light-muted: 30 15% 55%;
+    --landing-light-border: 30 15% 88%;
   }
 }
 
@@ -445,6 +453,35 @@
 /* Landing typography */
 .landing-shell {
   font-family: var(--planner-font-family);
+
+  /* L1.5: warm palette scope (dark-dominant by default). These tokens only
+     resolve within the .landing-shell subtree; chat, profile and admin pages
+     keep the global .dark palette untouched. */
+  --background: 24 12% 6%;
+  --foreground: 30 10% 96%;
+  --card: 24 12% 9%;
+  --card-foreground: 30 10% 96%;
+  --popover: 24 12% 9%;
+  --popover-foreground: 30 10% 96%;
+
+  --primary: 16 85% 58%;
+  --primary-foreground: 0 0% 100%;
+  --primary-glow: 16 85% 68%;
+
+  --accent: 32 80% 55%;
+  --accent-foreground: 0 0% 100%;
+
+  --muted: 24 10% 12%;
+  --muted-foreground: 30 8% 65%;
+
+  --border: 24 8% 18%;
+  --input: 24 8% 18%;
+  --ring: 16 85% 58%;
+
+  --gradient-hero: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+  --gradient-card: linear-gradient(135deg, hsl(24 12% 8%), hsl(24 12% 11%));
+  --shadow-card: 0 8px 32px -8px hsl(24 20% 0% / 0.45);
+  --shadow-primary: 0 10px 40px -10px hsl(var(--primary) / 0.4);
 }
 
 .landing-shell button,
@@ -452,6 +489,41 @@
 .landing-shell textarea,
 .landing-shell select {
   font-family: inherit;
+}
+
+/* Sections inside .landing-shell that opt into the cream light theme (L1.5).
+   Overrides surface tokens only — primary/accent/ring stay coral so CTAs
+   remain consistent across dark and light sections. Consume the
+   --landing-light-* tokens declared on .dark above. */
+.landing-section-light {
+  /* Desindirected values post-C9. CSS var indirection (var within a var
+     declaration) is spec-valid but flagged as a possible cascade edge-case
+     in the contrast bug report; direct HSL values close that risk.
+     The --landing-light-* tokens still exist in .dark for reference but
+     no longer have consumers — trivial cleanup post-merge if desired. */
+  --background: 30 25% 97%;       /* cream off-white */
+  --foreground: 24 20% 12%;       /* warm near-black */
+  --card: 30 30% 99%;             /* near-white with warm tint */
+  --card-foreground: 24 20% 12%;  /* warm near-black */
+  --muted: 30 20% 94%;
+  /* Bumped from 30 15% 55% to 30 15% 40%: gives ~7:1 contrast on the
+     cream background (WCAG AAA) instead of the borderline ~4:1 that the
+     previous value produced on bg-card 30 30% 99%. */
+  --muted-foreground: 30 15% 40%; /* warm dark-gray */
+  --border: 30 15% 88%;           /* light warm border */
+  --input: 30 15% 88%;
+
+  /* Apply the overridden tokens to this element so the section paints
+     cream and descendants inherit the light color. Without these, the
+     .landing-section-light rule only declares variables and the
+     <section> stays transparent — its visible background then comes
+     from the .landing-shell ancestor in LandingLayout (warm dark
+     café), which defeats the theme switch for everything that does
+     not explicitly consume bg-card (the inner cards do, which is why
+     HowItWorks and HelpsWith cards looked right even while the
+     surrounding section and heading did not). */
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 .group\/sidebar-wrapper,

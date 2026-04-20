@@ -17,7 +17,8 @@
       "terms": "Terms",
       "contact": "Contact"
     },
-    "vibookLogoAlt": "Vibook"
+    "vibookLogoAlt": "Vibook",
+    "photoCredit": "Photography via Unsplash"
   },
   "hero": {
     "eyebrow": "Emilia by Vibook",
@@ -33,10 +34,11 @@
       "I want a romantic trip to Japan"
     ],
     "chatPreview": {
-      "userMessage": "I want to go to Italy for about 10 days, but I'm not sure which cities make the most sense.",
       "assistantMessage": "That sounds like a beautiful trip. Do you picture it as more cultural, relaxed, food-focused, or a bit of everything? And are you thinking of one region or a multi-city route?",
       "assistantLabel": "Emilia",
-      "userLabel": "You"
+      "status": "Online",
+      "inputPlaceholder": "Tell Emilia about your next trip...",
+      "sendLabel": "Send"
     }
   },
   "ecosystem": {
@@ -128,27 +130,33 @@
     "cards": [
       {
         "title": "7 days in Rio",
-        "prompt": "Plan a 7-day trip to Rio de Janeiro — first-time visitor, interested in culture, beach and food."
+        "prompt": "Plan a 7-day trip to Rio de Janeiro — first-time visitor, interested in culture, beach and food.",
+        "alt": "Cristo Redentor overlooking Rio de Janeiro at dusk"
       },
       {
         "title": "10 days in Italy",
-        "prompt": "Plan a 10-day trip through Italy — I'd like a mix of culture and food, open to a multi-city route."
+        "prompt": "Plan a 10-day trip through Italy — I'd like a mix of culture and food, open to a multi-city route.",
+        "alt": "Italian hillside town with vineyards and warm stone architecture"
       },
       {
         "title": "Spain + Portugal",
-        "prompt": "Plan a 2-week trip combining Spain and Portugal — help me choose cities and pacing."
+        "prompt": "Plan a 2-week trip combining Spain and Portugal — help me choose cities and pacing.",
+        "alt": "Historic Iberian plaza with tiled walls and warm evening light"
       },
       {
         "title": "Family beach escape",
-        "prompt": "Plan a family beach trip with kids, warm weather and easy logistics. Any continent."
+        "prompt": "Plan a family beach trip with kids, warm weather and easy logistics. Any continent.",
+        "alt": "Family walking along a tropical beach lined with palm trees"
       },
       {
         "title": "Romantic Europe",
-        "prompt": "Plan a romantic 10-day trip through Europe — I'd like to include 2 or 3 cities with character."
+        "prompt": "Plan a romantic 10-day trip through Europe — I'd like to include 2 or 3 cities with character.",
+        "alt": "A couple strolling through a romantic European old town at golden hour"
       },
       {
         "title": "Japan for first-timers",
-        "prompt": "Plan a first-time trip to Japan, around 12 days, balanced between Tokyo, Kyoto and one more region."
+        "prompt": "Plan a first-time trip to Japan, around 12 days, balanced between Tokyo, Kyoto and one more region.",
+        "alt": "Traditional Japanese temple framed by cherry blossoms and paper lanterns"
       }
     ]
   },

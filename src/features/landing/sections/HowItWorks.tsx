@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { Sparkles, MessagesSquare, Compass } from 'lucide-react';
 import { SectionHeading } from '../components/SectionHeading';
@@ -9,6 +9,16 @@ const STEP_META = [
   { number: '02', icon: MessagesSquare },
   { number: '03', icon: Compass },
 ] as const;
+
+const GRID_VARIANTS: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.12 } },
+};
+
+const CARD_VARIANTS: Variants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+};
 
 interface StepEntry {
   title: string;
@@ -27,7 +37,7 @@ export function HowItWorks() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.3 }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
-      className="scroll-mt-20 py-24 lg:py-32"
+      className="landing-section-light scroll-mt-20 py-24 lg:py-32"
     >
       <div className="container mx-auto px-6 lg:px-8">
         <SectionHeading
@@ -38,20 +48,27 @@ export function HowItWorks() {
           align="center"
           className="mb-14 lg:mb-16"
         />
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3 lg:gap-8">
+        <motion.div
+          variants={GRID_VARIANTS}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          className="grid grid-cols-1 gap-6 md:grid-cols-3 lg:gap-8"
+        >
           {steps.map((step, idx) => {
             const meta = STEP_META[idx];
             return (
-              <StepCard
-                key={meta.number}
-                number={meta.number}
-                icon={meta.icon}
-                title={step.title}
-                copy={step.copy}
-              />
+              <motion.div key={meta.number} variants={CARD_VARIANTS}>
+                <StepCard
+                  number={meta.number}
+                  icon={meta.icon}
+                  title={step.title}
+                  copy={step.copy}
+                />
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       </div>
     </motion.section>
   );
