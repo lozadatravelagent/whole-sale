@@ -136,75 +136,6 @@ describe('conversationOrchestrator', () => {
     expect(resolution.uiMeta.firstPlanHandledAs).toBe('standard_itinerary');
   });
 
-  it('keeps active planner PLAN turns on planner-agent branch', () => {
-    const resolution = resolveConversationTurn({
-      parsedRequest: {
-        requestType: 'itinerary',
-        itinerary: {
-          destinations: ['Barcelona'],
-          editIntent: { action: 'change_dates' },
-        },
-        confidence: 0.9,
-        originalMessage: 'Agregá una noche más en Barcelona',
-      },
-      routeResult: {
-        route: 'PLAN',
-        score: 0.8,
-        dimensions: {
-          destination: 1,
-          dates: 1,
-          passengers: 1,
-          origin: 0.5,
-          complexity: 0.5,
-        },
-        missingFields: [],
-        inferredFields: [],
-        reason: 'edit_existing_plan',
-      },
-      plannerState: { generationMeta: { isDraft: false } },
-      hasPersistentContext: true,
-      hasPreviousParsedRequest: false,
-      recentCollectCount: 0,
-      maxCollectTurns: 3,
-    });
-
-    expect(resolution.shouldUsePlannerAgent).toBe(true);
-    expect(resolution.executionBranch).toBe('planner_agent');
-  });
-
-  it('keeps discovery turns out of planner-agent even with an active planner', () => {
-    const resolution = resolveConversationTurn({
-      parsedRequest: {
-        requestType: 'itinerary',
-        itinerary: { destinations: ['Roma'] },
-        confidence: 0.95,
-        originalMessage: 'Qué ver en Roma',
-      },
-      routeResult: {
-        route: 'PLAN',
-        score: 0.5,
-        dimensions: {
-          destination: 1,
-          dates: 0,
-          passengers: 0.5,
-          origin: 0.5,
-          complexity: 0.5,
-        },
-        missingFields: [],
-        inferredFields: [],
-        reason: 'itinerary_request',
-      },
-      plannerState: { generationMeta: { isDraft: false } },
-      hasPersistentContext: true,
-      hasPreviousParsedRequest: false,
-      recentCollectCount: 0,
-      maxCollectTurns: 3,
-    });
-
-    expect(resolution.shouldUsePlannerAgent).toBe(false);
-    expect(resolution.responseMode).toBe('show_places');
-  });
-
   it('marks quote turns as search_results with quote_or_search mode', () => {
     const resolution = resolveConversationTurn({
       parsedRequest: {
@@ -550,7 +481,6 @@ describe('conversationOrchestrator', () => {
         ...baseFlags,
       });
       expect(resolution.executionBranch).toBe('standard_itinerary');
-      expect(resolution.shouldUsePlannerAgent).toBe(false);
       expect(resolution.shouldUseStandardItinerary).toBe(true);
       expect(resolution.responseMode).toBe('proposal_first_plan');
       expect(resolution.uiMeta.firstPlanHandledAs).toBeNull();
@@ -668,7 +598,6 @@ describe('conversationOrchestrator', () => {
         ...baseFlags,
       });
       expect(resolution.executionBranch).toBe('standard_itinerary');
-      expect(resolution.shouldUsePlannerAgent).toBe(false);
       expect(resolution.shouldUseStandardItinerary).toBe(true);
       expect(resolution.uiMeta.firstPlanHandledAs).toBe('standard_itinerary');
     });
@@ -682,7 +611,6 @@ describe('conversationOrchestrator', () => {
         ...baseFlags,
       });
       expect(resolution.executionBranch).toBe('standard_itinerary');
-      expect(resolution.shouldUsePlannerAgent).toBe(false);
       expect(resolution.shouldUseStandardItinerary).toBe(true);
       expect(resolution.uiMeta.firstPlanHandledAs).toBeNull();
     });
@@ -772,7 +700,6 @@ describe('conversationOrchestrator', () => {
         ...baseFlags,
       });
       expect(resolution.executionBranch).toBe('standard_itinerary');
-      expect(resolution.shouldUsePlannerAgent).toBe(false);
       expect(resolution.shouldUseStandardItinerary).toBe(true);
     });
 
@@ -786,7 +713,6 @@ describe('conversationOrchestrator', () => {
         ...baseFlags,
       });
       expect(resolution.executionBranch).toBe('standard_itinerary');
-      expect(resolution.shouldUsePlannerAgent).toBe(false);
       expect(resolution.shouldUseStandardItinerary).toBe(true);
     });
 

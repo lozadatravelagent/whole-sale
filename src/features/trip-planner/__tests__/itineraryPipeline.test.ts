@@ -3,7 +3,6 @@ import {
   isGenericPlaceholder,
   normalizeRecommendedPlaces,
   buildCanonicalResultFromStandard,
-  buildCanonicalResultFromAgent,
   buildCanonicalMeta,
   resolveRenderPolicy,
   buildTurnContextState,
@@ -19,7 +18,6 @@ const MOCK_TURN: ConversationTurnResolution = {
   responseMode: 'proposal_first_plan',
   normalizedMissingFields: [],
   messageType: 'trip_planner',
-  shouldUsePlannerAgent: false,
   shouldUseStandardItinerary: true,
   shouldAskMinimalQuestion: false,
   uiMeta: { route: 'PLAN', reason: 'test', firstPlanHandledAs: 'standard_itinerary' },
@@ -127,7 +125,7 @@ describe('normalizeRecommendedPlaces', () => {
 
 // ── Convergence: both branches produce same canonical shape ──
 
-describe('canonical result convergence', () => {
+describe('canonical result from standard branch', () => {
   it('standard branch meta contains plannerData', () => {
     const result = buildCanonicalResultFromStandard({
       response: 'Trip plan',
@@ -146,29 +144,7 @@ describe('canonical result convergence', () => {
     expect(meta.requestText).toBe('5 dias en Roma');
   });
 
-  it('agent branch meta also contains plannerData', () => {
-    const agentTurn = { ...MOCK_TURN, executionBranch: 'planner_agent' as const, shouldUsePlannerAgent: true };
-    const result = buildCanonicalResultFromAgent({
-      response: 'Trip plan',
-      rawStructuredData: {
-        rawItinerary: MOCK_PLANNER_DATA,
-        recommendedPlaces: [{ name: 'Coliseo', segmentCity: 'Roma', category: 'Historia', suggestedSlot: 'morning' }],
-      },
-      plannerData: MOCK_PLANNER_DATA,
-      flights: [],
-      hotels: [],
-      conversationTurn: agentTurn,
-    });
-    const meta = buildCanonicalMeta(result);
-
-    expect(meta.source).toBe('planner-agent');
-    expect(meta.plannerData).toBeDefined();
-    expect(meta.messageType).toBe('trip_planner');
-    expect(meta.conversationTurn).toBeDefined();
-    expect(meta.recommendedPlaces).toBeDefined();
-  });
-
-  it('both branches include same required meta keys', () => {
+  it('standard branch meta includes required keys', () => {
     const stdResult = buildCanonicalResultFromStandard({
       response: 'test',
       structuredData: { plannerData: MOCK_PLANNER_DATA, messageType: 'trip_planner' },
@@ -176,23 +152,12 @@ describe('canonical result convergence', () => {
       routeResult: MOCK_ROUTE,
       requestText: 'test',
     });
-    const agentResult = buildCanonicalResultFromAgent({
-      response: 'test',
-      rawStructuredData: { rawItinerary: MOCK_PLANNER_DATA },
-      plannerData: MOCK_PLANNER_DATA,
-      flights: [],
-      hotels: [],
-      conversationTurn: { ...MOCK_TURN, executionBranch: 'planner_agent' as const },
-    });
 
     const stdMeta = buildCanonicalMeta(stdResult);
-    const agentMeta = buildCanonicalMeta(agentResult);
 
-    // Both must have these keys
     const requiredKeys = ['source', 'messageType', 'responseMode', 'plannerData', 'conversationTurn'];
     for (const key of requiredKeys) {
       expect(stdMeta).toHaveProperty(key);
-      expect(agentMeta).toHaveProperty(key);
     }
   });
 

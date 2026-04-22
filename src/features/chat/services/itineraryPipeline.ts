@@ -1,8 +1,8 @@
 /**
- * Canonical itinerary pipeline — shared by standard_itinerary and planner_agent branches.
- *
- * Both branches must produce a CanonicalItineraryResult before persisting or rendering.
- * This eliminates divergence in meta shape, recommended places, and persistence logic.
+ * Canonical itinerary pipeline — the standard_itinerary branch produces a
+ * CanonicalItineraryResult before persisting or rendering. The planner_agent
+ * branch and its matching builder were removed in PR 4 (ADR-002 addendum
+ * C7.1.e: routing never reached that branch in production).
  */
 
 import type { TripPlannerState, PlannerSegment } from '@/features/trip-planner/types';
@@ -21,7 +21,7 @@ export interface CanonicalItineraryResult {
   recommendedPlaces: ChatRecommendedPlace[];
   responseMode: ConversationResponseMode;
   conversationTurn: ConversationTurnResolution;
-  source: 'AI_PARSER + EUROVIPS' | 'planner-agent';
+  source: 'AI_PARSER + EUROVIPS';
   emiliaRoute?: { route: string; score: number; reason: string; inferredFields: string[] };
   requestText?: string;
   actionChips?: Array<{ label: string; message: string }>;
@@ -185,39 +185,6 @@ export function buildCanonicalResultFromStandard(args: {
     requestText: args.requestText,
     itineraryData: args.structuredData?.itineraryData,
     agentInjectData: null,
-    editorial: args.editorial ?? null,
-  };
-}
-
-export function buildCanonicalResultFromAgent(args: {
-  response: string;
-  rawStructuredData: Record<string, unknown> | null;
-  plannerData: TripPlannerState | null;
-  flights: unknown[];
-  hotels: unknown[];
-  conversationTurn: ConversationTurnResolution;
-  actionChips?: Array<{ label: string; message: string }>;
-  editorial?: PlannerEditorialData | null;
-}): CanonicalItineraryResult {
-  const rawPlaces = Array.isArray(args.rawStructuredData?.recommendedPlaces)
-    ? (args.rawStructuredData!.recommendedPlaces as Array<Record<string, unknown>>)
-    : [];
-
-  return {
-    response: args.response,
-    plannerData: args.plannerData,
-    flights: args.flights,
-    hotels: args.hotels,
-    recommendedPlaces: normalizeRecommendedPlaces(rawPlaces, 8),
-    responseMode: args.conversationTurn.responseMode,
-    conversationTurn: args.conversationTurn,
-    source: 'planner-agent',
-    actionChips: args.actionChips,
-    agentInjectData: args.rawStructuredData ? {
-      flightSearchParams: (args.rawStructuredData.flights as Record<string, unknown>)?.searchParams as Record<string, unknown> | undefined,
-      hotelSearchParams: (args.rawStructuredData.hotels as Record<string, unknown>)?.searchParams as Record<string, unknown> | undefined,
-      action: args.rawStructuredData.action as string | undefined,
-    } : null,
     editorial: args.editorial ?? null,
   };
 }
