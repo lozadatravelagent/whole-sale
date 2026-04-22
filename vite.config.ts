@@ -149,6 +149,7 @@ export default defineConfig(({ mode }) => ({
       'src/features/landing/__tests__/*.test.ts',
       'src/components/__tests__/*.test.ts',
       'src/components/layouts/__tests__/*.test.ts',
+      'src/services/pdf/__tests__/*.test.ts',
     ],
     coverage: {
       provider: 'v8',
