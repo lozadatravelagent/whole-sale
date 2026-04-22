@@ -26,7 +26,7 @@ const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Contact = lazy(() => import("./pages/Contact"));
 const EmiliaLanding = lazy(() => import("./pages/EmiliaLanding"));
-const CompanionChatPage = lazy(() => import("./pages/CompanionChatPage"));
+const EmiliaChatPage = lazy(() => import("./pages/EmiliaChatPage"));
 const ConsumerSignup = lazy(() => import("./pages/ConsumerSignup"));
 const ConsumerProfile = lazy(() => import("./pages/ConsumerProfile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -101,7 +101,7 @@ const AppRoutes = () => (
       path="/emilia/chat"
       element={
         <ProtectedRoute>
-          <CompanionChatPage />
+          <EmiliaChatPage />
         </ProtectedRoute>
       }
     />
@@ -109,7 +109,7 @@ const AppRoutes = () => (
       path="/emilia/chat/:conversationId"
       element={
         <ProtectedRoute>
-          <CompanionChatPage />
+          <EmiliaChatPage />
         </ProtectedRoute>
       }
     />
