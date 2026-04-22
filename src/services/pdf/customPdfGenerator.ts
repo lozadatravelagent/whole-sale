@@ -102,7 +102,7 @@ export async function generateCustomCombinedPdf(
 
 // ─── INTERNALS ───
 
-async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
+export async function renderHtmlToPdfBlob(html: string): Promise<Blob> {
   const html2canvas = (await import('html2canvas')).default;
   const jsPDF = (await import('jspdf')).default;
 

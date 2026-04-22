@@ -142,13 +142,16 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 600,
   },
   test: {
+    setupFiles: ['src/test/setup.ts'],
     include: [
       'src/features/trip-planner/__tests__/*.test.ts',
       'src/features/chat/__tests__/*.test.ts',
+      'src/features/chat/components/__tests__/*.test.tsx',
       'src/features/auth/__tests__/*.test.ts',
       'src/features/landing/__tests__/*.test.ts',
       'src/components/__tests__/*.test.ts',
       'src/components/layouts/__tests__/*.test.ts',
+      'src/services/pdf/__tests__/*.test.ts',
     ],
     coverage: {
       provider: 'v8',

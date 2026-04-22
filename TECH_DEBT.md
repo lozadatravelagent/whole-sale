@@ -309,3 +309,68 @@ confirma persistencia. No bloquea nada hoy.
 **Relacionado**: `PlannerAgentInputPrompt` → `MissingFieldsInputPrompt`
 renombrado en PR 4 (commit 11.b) por la misma motivación.
 
+## D24 — itineraryPdfTemplate sin i18n 🟢 BAJA
+
+**Origen**: Decisión de diseño en PR 5 (2026-04-22).
+
+`renderItineraryHtml` hardcodea todos los labels estructurales en español
+("Día X", "Mañana", "Tarde", "Noche", "Ruta", "Fechas", "Viajeros", etc.).
+El `ItineraryPanel.tsx` tiene la misma deuda — ninguno usa `useTranslation`.
+
+**Impacto**: Consumer con `preferredLanguage = 'en'` o `'pt'` recibe el PDF
+con labels en español. El contenido generado por AI sí llega en el idioma
+correcto (el pipeline lo produce así). Solo los labels estructurales son el
+problema.
+
+**Fix**: Agregar namespace `itinerary` a los 6 archivos JSON de i18n
+(es/en/pt × `src/i18n/locales/`), pasar `lang` como parámetro a
+`renderItineraryHtml`, y refactorizar `formatTravelersText` para usar
+plurales de i18next. ~20-25 strings. Candidato al mismo PR que porte
+`ItineraryPanel.tsx` a i18n.
+
+**No bloquea**: nada. Consistente con el estado actual del panel.
+
+## D25 — Bucket `documents` sin tenant isolation para PDFs de consumer 🟡 MEDIA
+
+**Origen**: Auditado en PR 5 (2026-04-22). Decisión: diferir Storage.
+
+El bucket `documents` en Supabase Storage tiene RLS que solo requiere
+`authenticated` sin verificar `agency_id`. Esto hace que un usuario
+autenticado de cualquier agencia pueda leer PDFs subidos por otra agencia
+si conoce el path.
+
+**En PR 5**: se usa on-demand blob download (sin Storage) para los PDFs de
+itinerario, evitando el problema.
+
+**Fix futuro** (si se decide persistir PDFs de itinerario en Storage): crear
+un bucket dedicado `itinerary-pdfs` con políticas RLS scoped por
+`agency_id`. Requiere nueva migration. El path de subida debe incluir el
+`agency_id` como prefijo para que la política sea efectiva.
+
+**No bloquea**: PR 5 no usa Storage. Bloquea persistencia de PDFs de consumer.
+
+## D26 — ThemeToggle visible solo en agency mode del header 🟡 UX REGRESIÓN
+
+**Origen**: Detectado en smoke de PR 5 (2026-04-22). Diagnóstico preciso confirmado por grep audit post-smoke.
+
+`ThemeToggle` está montado en `src/features/chat/components/ChatHeader.tsx:106`, dentro del bloque `{showAgentChrome && (...)}` donde `showAgentChrome = accountType === 'agent'`. El toggle quedó agrupado por proximidad con el ModeSwitch (agency/passenger) y el botón "Generar card en CRM", los cuales sí son agent-only por diseño. El ThemeToggle heredó la condición de rol sin intención.
+
+**Fix**: En `ChatHeader.tsx`, mover `<ThemeToggle variant="compact" className="hidden md:flex" />` fuera del bloque `{showAgentChrome && (...)}` para que sea visible en ambos modos. ModeSwitch y botón CRM se quedan dentro del condicional — su ocultamiento en consumer mode es por diseño (ADR-002). PR dedicada chica.
+
+**No bloquea**: la app funciona en modo oscuro para consumers. Bloquea preferencia de tema del consumer.
+
+## D27 — Export PDF v1 minimalista: candidatas de v2 🟢 POLISH FUTURO
+
+**Origen**: Observación del smoke de PR 5 (2026-04-22). Scope de v1 fue deliberadamente acotado.
+
+PR 5 entregó v1 con scope explícito: texto-only, branding básico, sin mapas, sin fotos de lugares, sin email, sin i18n estructural, sin persistencia en Storage, sin export desde `/emilia/profile`. Las mejoras de v2 deben evaluarse con feedback de usuarios reales antes de priorizarse.
+
+**Candidatas individuales** (cada una con su propio trade-off — no bundle):
+- **Mapas estáticos**: Mapbox Static API (requiere API key adicional o reutilizar la existente con rate-limit separado).
+- **Fotos Foursquare**: impacto en tamaño del PDF y tiempo de generación (html2canvas captura imágenes inline).
+- **i18n del template**: ~20-25 strings, alineado con D24. Mismo PR que porte `ItineraryPanel.tsx` a i18n.
+- **Persistencia**: bucket `itinerary-pdfs` con RLS por `agency_id` (requiere resolver D25 primero).
+- **Export desde `/emilia/profile`**: requiere recuperar `TripPlannerState` desde DB para trips históricos.
+
+**No bloquea**: nada. v1 cumple el caso de uso core.
+

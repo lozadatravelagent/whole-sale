@@ -24,6 +24,7 @@ import TripPlannerWorkspace from '@/features/trip-planner/components/TripPlanner
 import useTripPlanner from '@/features/trip-planner/useTripPlanner';
 import { buildPlannerPromptContext } from '@/features/trip-planner/utils';
 import { deriveDefaultMode, type ChatMode } from './utils/deriveDefaultMode';
+import { generateItineraryPdf } from '@/services/pdf/itineraryPdfGenerator';
 
 interface ChatFeatureProps {
   mode?: 'b2b' | 'companion';
@@ -452,6 +453,11 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     setMessage('Quiero ajustar mi viaje: ');
   }, [setMessage]);
 
+  const handleExportItineraryPdf = useCallback(async () => {
+    if (!planner.plannerState) return;
+    await generateItineraryPdf(planner.plannerState, user?.agency_id ?? undefined);
+  }, [planner.plannerState, user?.agency_id]);
+
   // Handle Add to CRM button click
   const handleAddToCRM = useCallback(async () => {
     if (!selectedConversation || !conversationScopedMessages.length) {
@@ -754,6 +760,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
           <ItineraryPanel
             plannerState={planner.plannerState}
             onRequestChanges={handleRequestItineraryChanges}
+            onExportPdf={handleExportItineraryPdf}
           />
         }
       >
@@ -810,6 +817,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       <ItineraryPanel
         plannerState={planner.plannerState}
         onRequestChanges={handleRequestItineraryChanges}
+        onExportPdf={handleExportItineraryPdf}
       />
     ) : undefined;
 
