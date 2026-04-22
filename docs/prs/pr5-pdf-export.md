@@ -218,9 +218,11 @@ Cada caso hace `rerender` — si hay violación de hooks, lanza sincrónicamente
 
 ### Observaciones no bloqueantes del smoke de Path 1
 
-**D26 — Theme toggle perdido del header** (regresión pre-existente, no causada por PR 5): `ThemeProvider` operativo; el componente de toggle no está montado en `UnifiedLayout`. Regresión probable de PR 2/3/4. Anotada en `TECH_DEBT.md` como D26. PR dedicada chica en roadmap.
+**D26 — ThemeToggle visible solo en agency mode** (regresión pre-existente, no causada por PR 5): El toggle existe y está montado en `ChatHeader.tsx:106`, pero dentro del bloque `{showAgentChrome && ...}` — agrupado por accidente con ModeSwitch + botón CRM bajo el condicional `accountType === 'agent'`. Fix: mover `<ThemeToggle>` fuera del condicional (los otros dos se quedan dentro — agent-only por diseño). PR dedicada chica en roadmap. Anotada en `TECH_DEBT.md` como D26.
 
 **D27 — PDF v1 minimalista, candidatas de v2**: El scope de v1 fue deliberado (texto-only, sin mapas, sin fotos, sin i18n, sin persistencia). Observación de "mejorable" capturada en `TECH_DEBT.md` como D27 con desglose de candidatas individuales (mapas estáticos, fotos Foursquare, i18n, Storage, export desde profile). Cada mejora se evalúa con feedback de usuarios reales.
+
+**"Generar card en CRM" — verificación post-smoke:** Visible en agency mode. Auditoría confirmó clasificación **A — flujo B2B legítimo preexistente**: handler `createComprehensiveLeadFromChat` en `@/utils/chatToLead`, escribe en tabla `leads`, sin imports de `src/features/companion/` (purgado en PR 4), sin `handoffService`, sin flag `fromCompanion`. Gate `accountType === 'agent'` correcto por diseño. No tocar.
 
 ---
 

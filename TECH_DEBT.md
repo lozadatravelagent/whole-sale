@@ -349,15 +349,15 @@ un bucket dedicado `itinerary-pdfs` con políticas RLS scoped por
 
 **No bloquea**: PR 5 no usa Storage. Bloquea persistencia de PDFs de consumer.
 
-## D26 — Theme toggle (oscuro/claro) perdido del header 🟡 UX REGRESIÓN
+## D26 — ThemeToggle visible solo en agency mode del header 🟡 UX REGRESIÓN
 
-**Origen**: Detectado en smoke de PR 5 (2026-04-22). Regresión pre-existente — no causada por PR 5.
+**Origen**: Detectado en smoke de PR 5 (2026-04-22). Diagnóstico preciso confirmado por grep audit post-smoke.
 
-El `ThemeProvider` está operativo (`theme-provider.tsx` montado en el árbol de providers). El componente UI de toggle no está montado en ningún layout activo. Candidatos de remoción: PR 2 (UnifiedLayout reemplazó MainLayout), PR 3 (header con ModeSwitch + LanguageSelector), PR 4 (purga de layouts deprecated).
+`ThemeToggle` está montado en `src/features/chat/components/ChatHeader.tsx:106`, dentro del bloque `{showAgentChrome && (...)}` donde `showAgentChrome = accountType === 'agent'`. El toggle quedó agrupado por proximidad con el ModeSwitch (agency/passenger) y el botón "Generar card en CRM", los cuales sí son agent-only por diseño. El ThemeToggle heredó la condición de rol sin intención.
 
-**Fix**: Localizar `ThemeToggle` / `useTheme` / `theme-toggle` en `src/`. Montar en el header de `UnifiedLayout` al lado del `LanguageSelector`, visible para todos los roles. Candidata a PR dedicada chica.
+**Fix**: En `ChatHeader.tsx`, mover `<ThemeToggle variant="compact" className="hidden md:flex" />` fuera del bloque `{showAgentChrome && (...)}` para que sea visible en ambos modos. ModeSwitch y botón CRM se quedan dentro del condicional — su ocultamiento en consumer mode es por diseño (ADR-002). PR dedicada chica.
 
-**No bloquea**: la app funciona en modo oscuro. Bloquea accesibilidad de preferencia de tema para el usuario.
+**No bloquea**: la app funciona en modo oscuro para consumers. Bloquea preferencia de tema del consumer.
 
 ## D27 — Export PDF v1 minimalista: candidatas de v2 🟢 POLISH FUTURO
 
