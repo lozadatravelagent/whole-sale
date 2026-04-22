@@ -1,8 +1,10 @@
 # Emilia B2C — Estado del desarrollo
 
-**Última actualización:** 22 Abril 2026 (post-PR 4 cleanup)
+**Última actualización:** 22 Abril 2026 (post-PR 5)
 
 ## Estado actual
+
+**🟢 PR 5 ejecutada.** Export de itinerario a PDF implementado: `renderItineraryHtml` (template puro, 16 tests), `canExportPdf` (predicado de visibilidad del botón), `generateItineraryPdf` (pipeline html2canvas + jsPDF + blob download). Botón "Descargar itinerario" en footer de `ItineraryPanel`, wired en ambos modos (companion + passenger). Sin Supabase Storage (bucket `documents` carece de tenant isolation — diferido). Sin i18n del template (labels hardcoded en español — diferido). Baseline: 308 passed / 11 skipped / 0 failed.
 
 **🟢 PR 4 ejecutada.** Purga post-unificación completa: `src/features/companion/` borrado (handoff stack + relocaciones a `auth/` y `chat/`), pages B2B legacy eliminadas (CRM, Marketplace, Reports, HotelbedsTest), `src/features/crm/` orphan borrado, `MainLayout` + `CompanionLayout` + skeletons eliminados, deprecated exports de `host.ts` limpiados, `planner_agent` dead-path removido del stack de routing + handler + pipeline + ChatInterface + edge function dir, migration de reverso de `leads` commiteada (pendiente push a prod), `CompanionChatPage` renombrada a `EmiliaChatPage`. Dual-write a `messages` en `persistPlannerState` ya había cerrado en PR #63 (1.1.g). Tests: 330 → 292 passed. Pendiente: `supabase functions delete planner-agent --linked` + `supabase db push --linked` (checklist D13) como pasos manuales post-merge.
 
@@ -28,6 +30,7 @@
 | PR 2 | Unificación routing/layouts: dual-host colapsado, `UnifiedLayout`, `RequireAgent`, login unificado | `4ce93f67` |
 | PR 3 | Chat unification: ModeSwitch, strict mode routing, `mode_bridge`, rama B2B bajo UnifiedLayout | #75 (`d82ac244`) |
 | PR 4 | Purga post-unificación: `src/features/companion/`, pages B2B, `crm/` orphan, layouts muertos, deprecated host exports, planner_agent stack, rename CompanionChatPage → EmiliaChatPage, migration reverso leads | pendiente merge |
+| PR 5 | Export de itinerario a PDF: template day-by-day, canExportPdf, escapeHtml (XSS guard), botón en ItineraryPanel (companion + passenger), on-demand blob download | feat/pr5-pdf-export-itinerary |
 
 ## Fixes y refinamientos aplicados durante testing
 
@@ -72,7 +75,8 @@ El consumer puede:
 2. Loguearse en `/login` (login unificado post-PR-2; `/emilia/login` se eliminó junto con `ConsumerLogin.tsx`)
 3. Chatear en `/emilia/chat`
 4. Ver itinerario actualizándose en tiempo real (panel derecho `rightPanel` del `UnifiedLayout`)
-5. Ver sus viajes en `/emilia/profile`
+5. **Descargar su itinerario como PDF** (botón en footer del panel, disponible cuando hay al menos un segmento con días — v1: español, sin Storage, on-demand blob download)
+6. Ver sus viajes en `/emilia/profile`
 
 **Post-PR-4**: el handoff humano (lead en CRM) fue removido del producto. Las pages B2B (CRM, Marketplace, Reports) ya no existen.
 
@@ -85,7 +89,7 @@ El consumer puede:
 | Coherencia texto | Texto conversacional debe reflejar cambios estructurales | Alta | Planner-agent borrado en PR 4; revisar prompts de `travel-itinerary` si persiste |
 | Limpiar secciones | Quitar "Qué hacer en X" / "Puntos de interés" redundantes | Alta | Aún hardcodeados en `TripPlannerMap.tsx`, `TripPlannerWorkspace.tsx`, `plannerPlaceMapper.ts` |
 | ~~Inbox B2C~~ | ~~Vista en CRM para leads con `agency_id IS NULL`~~ | — | **Descartado por ADR-002** (handoff y CRM borrados en PR 4) |
-| Mobile drawer | Panel de itinerario en mobile | Media | `ItineraryPanel.tsx` sin branch responsive (ahora en `src/features/chat/components/`) |
+| Mobile drawer | Panel de itinerario en mobile | Media | `ItineraryPanel.tsx` sin branch responsive (ahora en `src/features/chat/components/`). Export PDF también invisible en mobile por la misma razón. |
 | D17 — UnifiedLayout sin i18n | Avatar menu + "Cerrar sesión" literal en español | Baja | Diferido fuera de PR 3 (decisión 2026-04-22). Candidato a polish pre-launch |
 | Paso 5 | Capa social (feed, perfiles públicos) | Baja | No iniciado |
 
@@ -93,7 +97,7 @@ El consumer puede:
 
 ## Baseline de tests
 
-- **292 passed / 11 skipped / 0 failed** (baseline post-PR-4). −38 vs post-PR-3 (330/11/0): 8 handoffFormSchema + 13 handoffService + 11 isTripReadyForHandoff + 3 consumerLoginSchema + 2 orchestrator legacy planner-agent + 1 pipeline agent convergence = 38 tests borrados con su código. Los test files de companion, las 3 suites handoff y los 2 legacy tests del orchestrator ya no existen.
+- **308 passed / 11 skipped / 0 failed** (baseline post-PR-5). +16 vs post-PR-4 (292): 5 tests canExportPdf + 11 tests renderItineraryHtml (incluye XSS guard y bufferedDays isolation). −38 vs post-PR-3 (330/11/0): 8 handoffFormSchema + 13 handoffService + 11 isTripReadyForHandoff + 3 consumerLoginSchema + 2 orchestrator legacy planner-agent + 1 pipeline agent convergence = 38 tests borrados con su código. Los test files de companion, las 3 suites handoff y los 2 legacy tests del orchestrator ya no existen.
 - Build: limpio (warning informativo de `ChatFeature-*.js` ~2.68 MB pre-existente).
 - TypeScript: sin errores.
 - D11 (las dos fallas históricas `localStorage is not defined`) confirmada cerrada — no reapareció en los 6 ciclos de test de PR 2 ni en el baseline post-PR-3/4. Cierre formal registrado en `TECH_DEBT.md` el 2026-04-22 (commit `877a6c66`).
@@ -135,7 +139,7 @@ PRs planeadas:
 2. Unificación de routing y layouts (✅ mergeada a main en `4ce93f67`).
 3. Chat con switch + Nivel 2 de continuidad (✅ mergeada a main en `d82ac244`, PR #75).
 4. Purga post-unificación: companion/, pages B2B, crm/ orphan, layouts, host exports, planner_agent stack, migration reverso leads, rename EmiliaChatPage. Ejecutada; pendiente push a prod de la migration + `supabase functions delete planner-agent --linked`. **NO purga `standard_itinerary`** (cancelado por C7.1.e). 1.1.g (dual-write a `messages`) ya estaba cerrado en PR #63.
-5. Export PDF de itinerario (pendiente).
+5. Export PDF de itinerario (✅ ejecutada — feat/pr5-pdf-export-itinerary).
 
 Las fases previas (0 → Paso 4 + Fase 1.2) quedan como baseline de ejecución. No se revierten; se refactorizan en las PRs siguientes.
 

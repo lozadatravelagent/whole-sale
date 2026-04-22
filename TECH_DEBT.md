@@ -309,3 +309,43 @@ confirma persistencia. No bloquea nada hoy.
 **Relacionado**: `PlannerAgentInputPrompt` → `MissingFieldsInputPrompt`
 renombrado en PR 4 (commit 11.b) por la misma motivación.
 
+## D24 — itineraryPdfTemplate sin i18n 🟢 BAJA
+
+**Origen**: Decisión de diseño en PR 5 (2026-04-22).
+
+`renderItineraryHtml` hardcodea todos los labels estructurales en español
+("Día X", "Mañana", "Tarde", "Noche", "Ruta", "Fechas", "Viajeros", etc.).
+El `ItineraryPanel.tsx` tiene la misma deuda — ninguno usa `useTranslation`.
+
+**Impacto**: Consumer con `preferredLanguage = 'en'` o `'pt'` recibe el PDF
+con labels en español. El contenido generado por AI sí llega en el idioma
+correcto (el pipeline lo produce así). Solo los labels estructurales son el
+problema.
+
+**Fix**: Agregar namespace `itinerary` a los 6 archivos JSON de i18n
+(es/en/pt × `src/i18n/locales/`), pasar `lang` como parámetro a
+`renderItineraryHtml`, y refactorizar `formatTravelersText` para usar
+plurales de i18next. ~20-25 strings. Candidato al mismo PR que porte
+`ItineraryPanel.tsx` a i18n.
+
+**No bloquea**: nada. Consistente con el estado actual del panel.
+
+## D25 — Bucket `documents` sin tenant isolation para PDFs de consumer 🟡 MEDIA
+
+**Origen**: Auditado en PR 5 (2026-04-22). Decisión: diferir Storage.
+
+El bucket `documents` en Supabase Storage tiene RLS que solo requiere
+`authenticated` sin verificar `agency_id`. Esto hace que un usuario
+autenticado de cualquier agencia pueda leer PDFs subidos por otra agencia
+si conoce el path.
+
+**En PR 5**: se usa on-demand blob download (sin Storage) para los PDFs de
+itinerario, evitando el problema.
+
+**Fix futuro** (si se decide persistir PDFs de itinerario en Storage): crear
+un bucket dedicado `itinerary-pdfs` con políticas RLS scoped por
+`agency_id`. Requiere nueva migration. El path de subida debe incluir el
+`agency_id` como prefijo para que la política sea efectiva.
+
+**No bloquea**: PR 5 no usa Storage. Bloquea persistencia de PDFs de consumer.
+
