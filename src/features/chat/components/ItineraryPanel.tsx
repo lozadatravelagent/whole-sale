@@ -80,6 +80,20 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
       setIsExporting(false);
     }
   }, [onExportPdf, isExporting]);
+
+  // Hooks must execute unconditionally — hoisted above early return.
+  // canExportPdf and both filters handle null plannerState safely.
+  const destinations = useMemo(
+    () => (plannerState?.destinations ?? []).filter((d) => typeof d === 'string' && d.trim().length > 0),
+    [plannerState?.destinations]
+  );
+
+  const segmentsWithCity = useMemo(
+    () =>
+      (plannerState?.segments ?? []).filter((s) => typeof s?.city === 'string' && s.city.trim().length > 0),
+    [plannerState?.segments]
+  );
+
   const shouldRender = hasItineraryContent(plannerState);
   if (!shouldRender || !plannerState) return null;
 
@@ -87,10 +101,6 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
   const isDraft = plannerState.generationMeta?.isDraft === true;
   const isBuilding = isDraft || (uiPhase !== undefined && uiPhase !== 'ready');
 
-  const destinations = useMemo(
-    () => (plannerState.destinations ?? []).filter((d) => typeof d === 'string' && d.trim().length > 0),
-    [plannerState.destinations]
-  );
   const primaryDestination = destinations[0];
   const extraDestinations = destinations.slice(1);
 
@@ -102,12 +112,6 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
       : null;
 
   const travelersLabel = formatTravelersText(plannerState.travelers);
-
-  const segmentsWithCity = useMemo(
-    () =>
-      (plannerState.segments ?? []).filter((s) => typeof s?.city === 'string' && s.city.trim().length > 0),
-    [plannerState.segments]
-  );
 
   const paceLabel = plannerState.pace ? formatPaceLabel(plannerState.pace) : null;
   const budgetLabelText = plannerState.budgetLevel ? formatBudgetLevel(plannerState.budgetLevel) : null;
