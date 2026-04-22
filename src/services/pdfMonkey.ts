@@ -95,7 +95,7 @@ async function getTemplateId(
 }
 
 // Fetch agency branding data for dynamic header/footer in PDF
-async function fetchAgencyBranding(agencyId?: string): Promise<{
+export async function fetchAgencyBranding(agencyId?: string): Promise<{
   agency_name: string;
   agency_logo_url: string;
   agency_primary_color: string;
