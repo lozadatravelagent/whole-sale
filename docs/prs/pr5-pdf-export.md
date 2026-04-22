@@ -156,10 +156,10 @@ Ninguna exportación rompe contratos existentes. Nota incluida en commit `4a3230
 
 | Path | Resultado | Observaciones |
 |------|-----------|---------------|
-| **Path 1** — Desktop companion: botón visible + PDF correcto | ⚠️ Pendiente verificación humana | No ejecutable por el agente (requiere browser). Ver instrucciones abajo. |
-| **Path 2** — `canExportPdf` gate: sin segmentos/isDraft → sin botón | ✅ | Verificado vía 5 unit tests + revisión del guard `onExportPdf && canExportPdf(plannerState)` en `ItineraryPanel.tsx:224`. |
+| **Path 1** — Desktop companion: botón visible + PDF correcto | ⚠️ Pendiente verificación humana | Bug bloqueante detectado y corregido (ver addendum). Path 1 debe re-correrse post-fix. |
+| **Path 2** — `canExportPdf` gate: sin segmentos/isDraft → sin botón | ✅ | Verificado vía 5 unit tests + revisión del guard `onExportPdf && canExportPdf(plannerState)` en `ItineraryPanel.tsx`. |
 | **Path 3** — Mobile: panel no visible → botón no visible | ✅ | `UnifiedLayout` renderiza `rightPanel` en `aside` con `hidden lg:block`. El panel no se monta en mobile; el botón tampoco aparece. |
-| **Path 4** — Agent passenger mode: botón también disponible | ✅ | Ambos usos de `ItineraryPanel` en `ChatFeature.tsx` (líneas 760 y 817) tienen `onExportPdf={handleExportItineraryPdf}`. |
+| **Path 4** — Agent passenger mode: botón también disponible | ✅ | Ambos usos de `ItineraryPanel` en `ChatFeature.tsx` tienen `onExportPdf={handleExportItineraryPdf}`. |
 
 **Path 1 — instrucciones para verificación manual:**
 1. `npm run dev` → `/emilia/chat`
@@ -168,6 +168,53 @@ Ninguna exportación rompe contratos existentes. Nota incluida en commit `4a3230
 4. Verificar que el botón "Descargar itinerario" aparece en el footer del panel
 5. Clic → spinner "Generando PDF…" → diálogo de descarga del browser
 6. Abrir PDF: verificar ciudades, títulos de días, actividades, branding de la agencia, sin texto "undefined" o "null"
+
+---
+
+## Addendum post-review (commits F + T)
+
+### Bug detectado en Path 1
+
+**Runtime crash:** `Uncaught Error: Rendered more hooks than during the previous render` al transicionar `plannerState` de `null` a poblado.
+
+**Causa raíz:** Dos `useMemo` (filtro de `destinations`, filtro de `segmentsWithCity`) declarados después del early return `if (!shouldRender || !plannerState) return null;` en `ItineraryPanel.tsx`. Primera render con `plannerState=null` registraba 2 hooks (useState + useCallback); siguiente render registraba 4. React pierde el tracking por posición → crash.
+
+**Por qué no fue detectado antes de Path 1:** Los tests del Paso 1 Fase B (template) son de funciones puras. Los Paths 2/3/4 verificaron via unit tests, CSS, e inspección de código — ninguno ejecutó render real del componente en un DOM. Solo el smoke manual de Path 1 iba a montarlo con una transición de estado real.
+
+### Fix — Commit F (`c852dd75`)
+
+`fix(chat): hoist useMemo above early return in ItineraryPanel`
+
+Ambos `useMemo` hoistados arriba del early return. Deps con optional chaining (`plannerState?.destinations`, `plannerState?.segments`) — producen `[]` cuando `plannerState` es null, sin errores.
+
+**Regla 26 aplicada:** barrido de `ItineraryPanel.tsx` (completo), `ChatFeature.tsx` (zonas PR 5), `itineraryPdfGenerator.ts`, `itineraryPdfTemplate.ts`. Sin hallazgos adicionales.
+
+### Infra de testing + test de regresión — Commit T (`472fa664`)
+
+`test(chat): add React Testing Library infra and ItineraryPanel hooks-order regression test`
+
+**devDependencies añadidas:** `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`.
+
+**Scope:** `// @vitest-environment jsdom` como primera línea del test file — los 308 tests previos siguen con el environment default sin cambio de comportamiento.
+
+**Setup:** `src/test/setup.ts` con `import '@testing-library/jest-dom/vitest'` — referenciado en `vite.config.ts::test.setupFiles`.
+
+**Test:** `src/features/chat/components/__tests__/ItineraryPanel.test.tsx` — 3 casos que cubren las 3 transiciones del bug:
+- `null → populated` (el caso exacto del crash)
+- `populated → null`
+- `populated → populated (shape distinto)`
+
+Cada caso hace `rerender` — si hay violación de hooks, lanza sincrónicamente con mensaje claro.
+
+### Baseline final
+
+| | Post-Paso2 | Post-commit F | Post-commit T |
+|---|---|---|---|
+| Tests passed | 308 | 308 | **311** |
+| Tests skipped | 11 | 11 | 11 |
+| Tests failed | 0 | 0 | 0 |
+| TypeScript | limpio | limpio | limpio |
+| Build | limpio | limpio | limpio |
 
 ---
 
