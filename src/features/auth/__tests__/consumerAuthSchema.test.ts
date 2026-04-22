@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { consumerSignupSchema, consumerLoginSchema } from '../utils/consumerAuthSchema';
+import { consumerSignupSchema } from '../utils/consumerAuthSchema';
 
 const validSignup = {
   name: 'Ana Pérez',
@@ -63,31 +63,5 @@ describe('consumerSignupSchema', () => {
       expect(result.data.name).toBe('Ana Pérez');
       expect(result.data.email).toBe('ana@example.com');
     }
-  });
-});
-
-describe('consumerLoginSchema', () => {
-  it('accepts a valid login payload', () => {
-    const result = consumerLoginSchema.safeParse({
-      email: 'ana@example.com',
-      password: 'supersecret1',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects empty email', () => {
-    const result = consumerLoginSchema.safeParse({
-      email: '',
-      password: 'supersecret1',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects empty password', () => {
-    const result = consumerLoginSchema.safeParse({
-      email: 'ana@example.com',
-      password: '',
-    });
-    expect(result.success).toBe(false);
   });
 });

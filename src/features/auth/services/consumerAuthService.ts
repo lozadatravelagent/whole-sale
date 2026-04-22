@@ -97,32 +97,3 @@ export async function signInConsumer(
 export async function signOutConsumer(): Promise<void> {
   await supabase.auth.signOut();
 }
-
-/**
- * Fetches the account_type for the given user id.
- *
- * @deprecated Used by the now-deleted ConsumerLogin to detect agents that
- * logged in through the consumer door. With the unified /login route
- * introduced in C5b that branching is no longer needed — both account types
- * land on /emilia/chat post-auth and the page-level guards (RequireConsumer,
- * RequireAgent) sort access from there. PR 4 confirms no remaining callers
- * and removes.
- */
-export async function fetchUserAccountType(
-  userId: string
-): Promise<'agent' | 'consumer' | null> {
-  try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('account_type')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (error || !data) return null;
-    const value = (data as { account_type?: string }).account_type;
-    if (value === 'consumer' || value === 'agent') return value;
-    return null;
-  } catch {
-    return null;
-  }
-}

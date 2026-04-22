@@ -1,10 +1,10 @@
 import { z } from 'zod';
 
 /**
- * Zod schemas for the consumer-facing auth flows (signup + login) under
- * /emilia/*. Shared by the React pages and by the unit tests. Deliberately
- * narrow — signup collects only the minimum to create a functional
- * account; profile editing is out of scope for MVP.
+ * Zod schemas for the consumer-facing auth flows (signup) under /emilia/*.
+ * Shared by the React pages and by the unit tests. Deliberately narrow —
+ * signup collects only the minimum to create a functional account; profile
+ * editing is out of scope for MVP.
  */
 
 export const consumerSignupSchema = z
@@ -31,14 +31,3 @@ export const consumerSignupSchema = z
   });
 
 export type ConsumerSignupFormData = z.infer<typeof consumerSignupSchema>;
-
-export const consumerLoginSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .min(1, 'El email es obligatorio.')
-    .email('Ingresá un email válido.'),
-  password: z.string().min(1, 'Ingresá tu contraseña.'),
-});
-
-export type ConsumerLoginFormData = z.infer<typeof consumerLoginSchema>;
