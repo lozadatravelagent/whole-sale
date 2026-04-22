@@ -107,6 +107,10 @@ post-merge con checklist D12 (backup pre-push + 12 queries de
 verificación + RLS suite con service role key). Política preservada: el
 SQL commiteado es autoridad, no se modifica entre merge y push.
 
+**Actualización 2026-04-22 (post-PR-5):**
+- **D13-a ✅ EJECUTADO:** `supabase functions delete planner-agent --project-ref ujigyazketblwlzcomve` — función eliminada del proyecto `ujigyazketblwlzcomve`. Nota: la flag documentada en handoffs anteriores (`--linked`) no es válida para `functions delete`; el flag correcto es `--project-ref <ref>` donde el ref se obtiene de `supabase/config.toml::project_id`.
+- **D13-b PENDIENTE:** `supabase db push` con `20260418000001_revert_b2c_handoff.sql`. Pre-check requerido: `SELECT count(*) FROM public.leads WHERE agency_id IS NULL`. Ventana recomendada: lunes-jueves horario laboral, con backup manual previo.
+
 ## D14 — Companion routing en resolveConversationTurn ✅ CERRADA
 
 **Origen**: Durante recuperacion de archivos untracked en cierre de
