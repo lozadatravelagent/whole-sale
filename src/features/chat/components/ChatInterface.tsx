@@ -4,7 +4,7 @@ import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageItem from './MessageItem';
 import TypingIndicator from './TypingIndicator';
-import PlannerAgentInputPrompt from '@/features/trip-planner/components/PlannerAgentInputPrompt';
+import MissingFieldsInputPrompt from '@/features/trip-planner/components/MissingFieldsInputPrompt';
 import DiscoveryMapPreview from './DiscoveryMapPreview';
 import RecommendedPlacesList from './RecommendedPlacesList';
 import type { MessageRow } from '../types/chat';
@@ -365,7 +365,7 @@ const ChatInterface = React.memo(({
                 if (needsGuidedInput && !isLoading) {
                   return (
                     <div className="px-4 py-2">
-                      <PlannerAgentInputPrompt
+                      <MissingFieldsInputPrompt
                         missingFields={resolvedMissingFields}
                         pendingAction={meta.pendingAction}
                         onSubmit={(text) => {

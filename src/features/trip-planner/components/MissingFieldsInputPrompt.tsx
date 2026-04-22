@@ -3,19 +3,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Calendar, Check, DollarSign, Minus, Plus, Send, Users, X } from 'lucide-react';
 
-interface PlannerAgentInputPromptProps {
+interface MissingFieldsInputPromptProps {
   missingFields: string[];
   pendingAction?: string | null;
   onSubmit: (text: string) => void;
   onOpenDateSelector?: () => void;
 }
 
-export default function PlannerAgentInputPrompt({
+export default function MissingFieldsInputPrompt({
   missingFields,
   pendingAction,
   onSubmit,
   onOpenDateSelector,
-}: PlannerAgentInputPromptProps) {
+}: MissingFieldsInputPromptProps) {
   const [textValue, setTextValue] = useState('');
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
