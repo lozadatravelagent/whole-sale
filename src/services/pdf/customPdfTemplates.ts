@@ -87,10 +87,10 @@ interface CombinedTemplateInput {
 // Every logical page MUST use this so the generator can find it.
 // flex layout ensures: header top, content middle, footer bottom.
 
-function pageOpen(): string {
+export function pageOpen(): string {
   return `<div data-pdf-page style="display:flex;flex-direction:column;box-sizing:border-box;padding:0 40px;background:white;">`;
 }
-function pageClose(): string {
+export function pageClose(): string {
   return `</div>`;
 }
 
@@ -514,7 +514,7 @@ function computeNights(checkin: string, checkout: string): string {
   }
 }
 
-function wrapHtmlDocument(bodyContent: string): string {
+export function wrapHtmlDocument(bodyContent: string): string {
   return `<div style="margin:0;padding:0;font-family:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;width:100%;box-sizing:border-box;">
   <style>* { box-sizing: border-box; margin: 0; }</style>
   ${bodyContent}
