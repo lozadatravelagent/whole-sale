@@ -23,14 +23,32 @@ export interface ConversationGap {
   label: string;
 }
 
-export type ConversationExecutionBranch = 'planner_agent' | 'ask_minimal' | 'standard_itinerary' | 'standard_search';
-export type ConversationResponseMode = 'proposal_first_plan' | 'show_places' | 'needs_input' | 'quote_or_search' | 'standard';
+export type ConversationExecutionBranch =
+  | 'planner_agent'
+  | 'ask_minimal'
+  | 'standard_itinerary'
+  | 'standard_search'
+  | 'mode_bridge';
+export type ConversationResponseMode =
+  | 'proposal_first_plan'
+  | 'show_places'
+  | 'needs_input'
+  | 'quote_or_search'
+  | 'standard'
+  | 'needs_mode_switch';
 
 export interface ConversationTurnResolution {
   executionBranch: ConversationExecutionBranch;
   responseMode: ConversationResponseMode;
   normalizedMissingFields: string[];
-  messageType: 'collect_question' | 'missing_info_request' | 'trip_planner' | 'search_results' | 'general_response' | 'discovery_results';
+  messageType:
+    | 'collect_question'
+    | 'missing_info_request'
+    | 'trip_planner'
+    | 'search_results'
+    | 'general_response'
+    | 'discovery_results'
+    | 'mode_bridge';
   shouldUsePlannerAgent: boolean;
   shouldUseStandardItinerary: boolean;
   shouldAskMinimalQuestion: boolean;
@@ -38,6 +56,9 @@ export interface ConversationTurnResolution {
     route: RouteResult['route'];
     reason: string;
     firstPlanHandledAs: 'planner_agent' | 'standard_itinerary' | null;
+    // PR 3 (C3): populated only for `mode_bridge` turns. Tells the UI which
+    // mode to offer switching to in the bridge action chip (C4).
+    suggestedMode?: 'agency' | 'passenger';
   };
 }
 
@@ -166,6 +187,23 @@ function buildAskLine(requestType: ParsedTravelRequest['requestType'] | 'general
   if (has('budget')) return 'Si querés, decime en qué rango de presupuesto te gustaría moverte y te curó mejor la propuesta.';
   if (has('destination')) return 'Decime qué destino o combinación de ciudades querés priorizar y te lo encamino.';
   return 'Decime un dato clave más y te lo sigo cerrando.';
+}
+
+// PR 3 (C4): builds the body copy for a mode_bridge turn. Direction-specific,
+// no runtime interpolation of the mode label (avoids awkward translations like
+// "in Quote mode"). Consumer resolves the translation function via
+// react-i18next; the pure-function shape here makes it testable without the
+// i18n singleton.
+export function buildModeBridgeMessage(options: {
+  suggestedMode: 'agency' | 'passenger';
+  t: (key: string) => string;
+}): string {
+  const { suggestedMode, t } = options;
+  const key =
+    suggestedMode === 'agency'
+      ? 'mode.bridgeTitle.toAgency'
+      : 'mode.bridgeTitle.toPassenger';
+  return t(key);
 }
 
 export function buildConversationalMissingInfoMessage(options: {
@@ -431,6 +469,18 @@ export function resolveConversationTurn(options: {
   hasPreviousParsedRequest: boolean;
   recentCollectCount: number;
   maxCollectTurns: number;
+  // PR 3 (C1): mode param reserved. When undefined, legacy routing runs
+  // unchanged (including the standard_itinerary branch). C3 wires strict
+  // agency/passenger routing when defined. C8 makes it required and removes
+  // the legacy branch.
+  mode?: 'agency' | 'passenger';
+  // PR 3 (C3): anti-loop guardrails for the mode_bridge branch. When the
+  // previous turn was itself a bridge, OR when the caller signals the user
+  // explicitly chose to stay in the current mode (via the "seguir" chip
+  // from C4), the orchestrator suppresses bridge emission and falls to the
+  // mode's default branch.
+  previousMessageType?: string;
+  forceCurrentMode?: boolean;
 }): ConversationTurnResolution {
   const {
     parsedRequest,
@@ -440,6 +490,9 @@ export function resolveConversationTurn(options: {
     hasPreviousParsedRequest,
     recentCollectCount,
     maxCollectTurns,
+    mode,
+    previousMessageType,
+    forceCurrentMode,
   } = options;
 
   const hasActivePlanner = Boolean(plannerState && !plannerState.generationMeta?.isDraft);
@@ -447,7 +500,6 @@ export function resolveConversationTurn(options: {
   const normalizedMissingFields = [...new Set(routeResult.missingFields.map(normalizeMissingField))];
   const collectExhausted = recentCollectCount >= maxCollectTurns;
 
-  const shouldUsePlannerAgent = routeResult.route === 'PLAN' && hasActivePlanner && !isDiscoveryIntent;
   const shouldAskMinimalQuestion =
     routeResult.route === 'COLLECT' &&
     Boolean(routeResult.collectQuestion) &&
@@ -456,6 +508,153 @@ export function resolveConversationTurn(options: {
       normalizedMissingFields.includes('passengers') ||
       (routeResult.reason === 'quote_intent_incomplete' && !hasPreviousParsedRequest && !hasPersistentContext)
     );
+
+  // === STRICT MODE (PR 3 / C3 + C7.1.e partial revert) ======================
+  // When `mode !== undefined`, apply agency/passenger routing: agency emits
+  // only `standard_search` or `ask_minimal`; passenger emits only
+  // `standard_itinerary` or `ask_minimal`. A `mode_bridge` branch nudges the
+  // user to switch modes when intent doesn't match the active mode.
+  //
+  // C7.1.e REVERSION: passenger originally emitted `planner_agent` per the
+  // ADR-002 strict contract, but empirically `planner_agent` only produced
+  // conversational prose — no structured CanonicalItineraryResult (segments,
+  // editorial, recommendedPlaces). The right-side planner panel did not
+  // hydrate for agents in planner mode. `standard_itinerary` (the branch
+  // consumer already used successfully) is the one that produces the
+  // canonical structured output, so passenger now routes there too. C8
+  // (remove `standard_itinerary`) is cancelled: it is the productive branch
+  // of planner mode. The `planner_agent` edge function and its handler
+  // remain in the codebase but have no routing call sites; removal or
+  // rewrite is deferred. See ADR-002 addendum 2026-04-18.
+  //
+  // DISCOVERY BYPASS: `isDiscoveryIntent` intentionally falls through to the
+  // legacy path below so the existing show_places flow
+  // (`buildDiscoveryResponsePayload` in useMessageHandler's
+  // requestType='itinerary' case) dispatches off `standard_itinerary` with
+  // responseMode='show_places'.
+  //
+  // BRIDGE RULES:
+  //   - agency → passenger  when (requestType==='itinerary' || route==='PLAN').
+  //     No active-planner refinement: an active plan is itself a
+  //     passenger-mode artifact, so bridging an itinerary-intent turn is
+  //     always appropriate in agency.
+  //   - passenger → agency  when route==='QUOTE' && requestType in
+  //     {flights, hotels, combined} && !hasActivePlanner. With an active
+  //     planner the QUOTE turn is contextually grounded in the plan; it
+  //     stays on standard_itinerary (quote-in-plan-context). The
+  //     useMessageHandler switch dispatches by requestType, so flights/
+  //     hotels/combined QUOTEs with active planner run their respective
+  //     search handlers even though the label is `standard_itinerary`.
+  //
+  // GUARDRAILS:
+  //   G1 — `previousMessageType === 'mode_bridge'`: previous turn already
+  //     nudged the user; a second consecutive bridge would loop.
+  //   G2 — `forceCurrentMode === true`: the user clicked "seguir en este
+  //     modo" on the bridge chip; we must respect that choice.
+  //
+  // HANDLER NOTE: the `standard_itinerary` branch dispatches through
+  // `useMessageHandler`'s `switch (parsedRequest.requestType)` — for
+  // `requestType==='itinerary'` it calls `handleItineraryRequest` wrapped by
+  // `buildCanonicalResultFromStandard`. No draft bootstrap is required; the
+  // handler tolerates `!hasActivePlanner` as the consumer flow already
+  // demonstrates.
+  if (mode !== undefined && !isDiscoveryIntent) {
+    const bridgeBlocked = previousMessageType === 'mode_bridge' || forceCurrentMode === true;
+
+    let bridgeTarget: 'agency' | 'passenger' | null = null;
+    if (!bridgeBlocked) {
+      if (
+        mode === 'agency' &&
+        (parsedRequest.requestType === 'itinerary' || routeResult.route === 'PLAN')
+      ) {
+        bridgeTarget = 'passenger';
+      } else if (
+        mode === 'passenger' &&
+        routeResult.route === 'QUOTE' &&
+        (parsedRequest.requestType === 'flights' ||
+          parsedRequest.requestType === 'hotels' ||
+          parsedRequest.requestType === 'combined') &&
+        !hasActivePlanner
+      ) {
+        bridgeTarget = 'agency';
+      }
+    }
+
+    if (bridgeTarget) {
+      return {
+        executionBranch: 'mode_bridge',
+        responseMode: 'needs_mode_switch',
+        normalizedMissingFields,
+        messageType: 'mode_bridge',
+        shouldUsePlannerAgent: false,
+        shouldUseStandardItinerary: false,
+        shouldAskMinimalQuestion: false,
+        uiMeta: {
+          route: routeResult.route,
+          reason: routeResult.reason,
+          firstPlanHandledAs: null,
+          suggestedMode: bridgeTarget,
+        },
+      };
+    }
+
+    if (shouldAskMinimalQuestion) {
+      return {
+        executionBranch: 'ask_minimal',
+        responseMode: 'needs_input',
+        normalizedMissingFields,
+        messageType: 'collect_question',
+        shouldUsePlannerAgent: false,
+        shouldUseStandardItinerary: false,
+        shouldAskMinimalQuestion: true,
+        uiMeta: {
+          route: routeResult.route,
+          reason: routeResult.reason,
+          firstPlanHandledAs: null,
+        },
+      };
+    }
+
+    if (mode === 'passenger') {
+      return {
+        executionBranch: 'standard_itinerary',
+        responseMode: 'proposal_first_plan',
+        normalizedMissingFields,
+        messageType: 'trip_planner',
+        shouldUsePlannerAgent: false,
+        shouldUseStandardItinerary: true,
+        shouldAskMinimalQuestion: false,
+        uiMeta: {
+          route: routeResult.route,
+          reason: routeResult.reason,
+          firstPlanHandledAs: !hasActivePlanner ? 'standard_itinerary' : null,
+        },
+      };
+    }
+
+    // mode === 'agency', default branch.
+    return {
+      executionBranch: 'standard_search',
+      responseMode: routeResult.route === 'QUOTE' ? 'quote_or_search' : 'standard',
+      normalizedMissingFields,
+      messageType: parsedRequest.requestType === 'general' ? 'general_response' : 'search_results',
+      shouldUsePlannerAgent: false,
+      shouldUseStandardItinerary: false,
+      shouldAskMinimalQuestion: false,
+      uiMeta: {
+        route: routeResult.route,
+        reason: routeResult.reason,
+        firstPlanHandledAs: null,
+      },
+    };
+  }
+
+  // === LEGACY PATH (mode === undefined OR discovery intent) =================
+  // Preserved unchanged from pre-C3. C8 removes this path along with the
+  // `standard_itinerary` branch (see DISCOVERY BYPASS note above — discovery
+  // needs its own branch before this path can go).
+
+  const shouldUsePlannerAgent = routeResult.route === 'PLAN' && hasActivePlanner && !isDiscoveryIntent;
 
   const shouldUseStandardItinerary =
     !shouldUsePlannerAgent &&

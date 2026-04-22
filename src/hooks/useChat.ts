@@ -26,13 +26,59 @@ function inferConversationWorkspaceMode(conversation: ConversationLike | null | 
     return 'planner';
   }
 
+  if (conversation?.workspace_mode === 'companion') {
+    return 'companion';
+  }
+
   return conversation?.external_key === 'Planificador de Viajes' ? 'planner' : 'standard';
 }
 
-function normalizeConversation<T extends ConversationLike>(conversation: T): T & { workspace_mode: ConversationWorkspaceMode } {
+export function normalizeConversation<T extends ConversationLike>(conversation: T): T & { workspace_mode: ConversationWorkspaceMode } {
   return {
     ...conversation,
     workspace_mode: inferConversationWorkspaceMode(conversation),
+  };
+}
+
+export type ConversationsAccountType = 'agent' | 'consumer';
+
+export type ConversationsQueryDescriptor =
+  | {
+      kind: 'rpc';
+      rpcName: 'get_conversations_with_agency';
+      orderBy: { column: 'last_message_at'; ascending: false };
+    }
+  | {
+      kind: 'table';
+      table: 'conversations';
+      select: '*';
+      eq: { column: 'created_by'; value: string } | null;
+      orderBy: { column: 'last_message_at'; ascending: false };
+    };
+
+// Builds the query descriptor used by loadConversations. Consumers have no
+// agency_id, so the B2B RPC (get_conversations_with_agency) returns 0 rows
+// for them — its WHERE has no CONSUMER branch. RLS policy
+// conversations_select_policy already filters SELECT by created_by=auth.uid(),
+// so a direct table select is safe. The .eq on created_by is defense in depth.
+export function buildConversationsQuery(
+  accountType: ConversationsAccountType | undefined,
+  userId: string | null | undefined
+): ConversationsQueryDescriptor {
+  const orderBy = { column: 'last_message_at', ascending: false } as const;
+  if (accountType === 'consumer') {
+    return {
+      kind: 'table',
+      table: 'conversations',
+      select: '*',
+      eq: userId ? { column: 'created_by', value: userId } : null,
+      orderBy,
+    };
+  }
+  return {
+    kind: 'rpc',
+    rpcName: 'get_conversations_with_agency',
+    orderBy,
   };
 }
 
@@ -88,22 +134,37 @@ export function setRefreshMessagesCallback(callback: ((conversationId: string) =
   globalRefreshMessagesCallback = callback;
 }
 
-export function useConversations() {
+export function useConversations(
+  accountType?: ConversationsAccountType,
+  userId?: string | null
+) {
   const [conversations, setConversations] = useState<ConversationWithAgency[]>([]);
   const [loading, setLoading] = useState(false);
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
     try {
-      // Use RPC function that applies RLS policies correctly
-      // This function filters conversations based on user role:
-      // OWNER: sees all conversations
-      // SUPERADMIN: sees conversations in their tenant (all agencies)
-      // ADMIN: sees conversations in their agency
-      // SELLER: sees only their conversations (created_by = user)
-      const { data, error } = await (supabase as any)
-        .rpc('get_conversations_with_agency')
-        .order('last_message_at', { ascending: false });
+      // Branching rationale: consumers hit a direct table SELECT (RLS
+      // policy conversations_select_policy filters by created_by=auth.uid);
+      // agents keep the SECURITY DEFINER RPC that expands visibility by role
+      // (OWNER sees all, SUPERADMIN tenant-wide, ADMIN agency-wide, SELLER own).
+      const descriptor = buildConversationsQuery(accountType, userId);
+
+      let pending: any;
+      if (descriptor.kind === 'rpc') {
+        pending = (supabase as any).rpc(descriptor.rpcName);
+      } else {
+        let q = supabase.from(descriptor.table).select(descriptor.select);
+        if (descriptor.eq) {
+          q = q.eq(descriptor.eq.column, descriptor.eq.value);
+        }
+        pending = q;
+      }
+
+      const { data, error } = await pending.order(
+        descriptor.orderBy.column,
+        { ascending: descriptor.orderBy.ascending }
+      );
 
       if (error) throw error;
 
@@ -117,7 +178,7 @@ export function useConversations() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [accountType, userId]);
 
   // Subscribe to real-time conversation updates
   useEffect(() => {

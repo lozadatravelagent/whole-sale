@@ -36,6 +36,7 @@
 | Supabase cookie handling | Refactor del manejo de cookies en cliente Supabase | `27880f1d` |
 | AuthCallback + routing Emilia host | Callback de auth y enrutamiento dedicado para host Emilia | `5a1e5e22` |
 | Login route + auth refactor | Ruta dedicada de login y refactor del flujo de autenticación | `d3c4124a` |
+| Consumer sidebar vacío | `get_conversations_with_agency` no retornaba data para consumers + `inferConversationWorkspaceMode` degradaba `'companion'` a `'standard'` | `339ca6de` (C7.1.f) |
 | Coherencia de texto | Texto conversacional no refleja cambios estructurales | Pendiente |
 | Secciones redundantes | "Qué hacer en X" / "Puntos de interés" repetidos | Pendiente |
 

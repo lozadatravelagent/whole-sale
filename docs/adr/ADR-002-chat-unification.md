@@ -94,3 +94,31 @@ La unificación se entrega como cinco PRs independientes en este orden: **(1)** 
 Cada PR es mergeable de forma independiente y deja el sistema en estado funcional. La PR 4 (purga) requiere que la PR 3 esté mergeada antes para no romper imports.
 
 La relación inversa no aplica: PR 3 puede mergearse con `standard_itinerary` todavía vivo y `src/features/companion/` presente. La dirección de dependencia es PR 3 → PR 4 únicamente.
+
+## Addendum 2026-04-18 — Reversión parcial: planner mode → `standard_itinerary`
+
+**Alcance**: commit C7.1.e dentro de PR 3.
+
+**Supuesto falso del ADR original**: la decisión #3 afirmaba que en passenger mode el orchestrator sólo podía emitir `planner_agent` o `ask_minimal`, asumiendo que `planner_agent` producía `CanonicalItineraryResult` con segments + editorial + recommendedPlaces estructurados. **Ese supuesto es incorrecto**: empíricamente `planner_agent` sólo emite prosa conversacional; no hidrata el panel derecho del workspace.
+
+**Diagnóstico empírico** (input idéntico "armame un viaje a Europa 14 días"):
+
+| Escenario                              | executionBranch      | hasPlannerData | segmentCount | recommendedPlacesCount |
+|----------------------------------------|----------------------|----------------|--------------|------------------------|
+| Consumer (legacy path)                 | `standard_itinerary` | **true**       | 4            | 6                      |
+| Agent planner mode (strict ADR-002)    | `planner_agent`      | **false**      | 0            | 0                      |
+
+**Decisión**: el modo planner (tanto agent como consumer) emite `standard_itinerary`. Reemplaza la regla del ADR "passenger sólo `planner_agent` o `ask_minimal`" por "passenger sólo `standard_itinerary` o `ask_minimal`". Modo agency queda intacto (`standard_search` o `ask_minimal`). `mode_bridge` y guardrails G1/G2 sin cambios.
+
+**Consecuencias sobre el plan de PRs**:
+
+- **PR 4 — eliminación de `standard_itinerary`: cancelada**. `standard_itinerary` pasa a ser la rama productiva del modo planner (produce `CanonicalItineraryResult` vía `handleItineraryRequest` + `buildCanonicalResultFromStandard`). No corresponde eliminarla.
+- **`planner_agent` (edge function + handler)**: queda como código vivo pero sin call sites de routing. La decisión sobre eliminar o reescribir se difiere a una PR futura, fuera del alcance de PR 3–5.
+- **Discovery bypass**: sigue cayendo al legacy path con `responseMode: 'show_places'`. No requiere rama dedicada (la advertencia original en el comentario de strict mode se elimina junto con C8).
+
+**Tests adaptados en el commit**: 5 casos en `conversationOrchestrator.test.ts` (D14 #1, passenger+PLAN+no planner, passenger+PLAN+active, G1 passenger, G2 passenger) — transformación mecánica de `planner_agent` → `standard_itinerary` + flags consistentes. El test de pipeline `itineraryPipeline.test.ts` (`buildCanonicalResultFromAgent`) se mantiene: testea el wrap canónico del handler planner_agent, que sigue vivo.
+
+**Invariantes nuevas a partir de este commit**:
+
+- El modo planner es soberano sobre `standard_itinerary`; quitar esa rama requeriría un nuevo ADR.
+- `planner_agent` no puede volver a tener call sites de routing sin reemisión del diagnóstico empírico que justifique su uso (debe producir `plannerData` estructurado o no se route-a).

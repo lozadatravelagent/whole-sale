@@ -9,7 +9,8 @@ import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
 import { routeRequest, buildSearchSummary, getInferredFieldDetails, detectDestructiveChanges } from '../services/routeRequest';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
-import { buildConversationalMissingInfoMessage, resolveConversationTurn } from '../services/conversationOrchestrator';
+import { buildConversationalMissingInfoMessage, buildModeBridgeMessage, resolveConversationTurn } from '../services/conversationOrchestrator';
+import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponsePayload } from '../services/discoveryService';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
@@ -86,6 +87,9 @@ const useMessageHandler = (
     contextState: ContextState | null;
   } | null,
   workspaceMode?: 'standard' | 'planner',
+  // PR 3 (C5): strict agency/passenger mode. When undefined, the orchestrator
+  // runs its legacy path (used by consumer / any pre-PR-3 call site).
+  chatMode?: 'agency' | 'passenger',
 ) => {
   // ✅ Messages are now passed as parameter - no need for second useMessages call
 
@@ -126,7 +130,18 @@ const useMessageHandler = (
     }
   }, [messages]);
 
-  const handleSendMessage = useCallback(async (currentMessage: string) => {
+  const handleSendMessage = useCallback(async (
+    currentMessage: string,
+    // PR 3 (C4/C7.1): optional send options.
+    // - `forceCurrentMode`: orchestrator bridge guardrail G2 (C4). Populated by
+    //   C5's "Seguir en este modo" chip handler.
+    // - `mode`: explicit mode override that wins over the closure-captured
+    //   `chatMode` (C7.1.a). Needed because `setChatMode` is async and a chip
+    //   handler that calls `setChatMode(new) + handleSendMessageRaw(text)` runs
+    //   the send with a stale closure; the orchestrator would then receive the
+    //   pre-click mode. Callers that just flipped the mode must pass it here.
+    options?: { forceCurrentMode?: boolean; mode?: 'agency' | 'passenger' },
+  ) => {
     console.log('🚀 [MESSAGE FLOW] Starting handleSendMessage process');
     console.log('📝 Message content:', currentMessage);
 
@@ -705,6 +720,22 @@ const useMessageHandler = (
         .slice(-MAX_COLLECT_TURNS)
         .length;
 
+      // PR 3 (C4): read the last assistant message's messageType so the
+      // orchestrator can apply guardrail G1 (anti-loop for mode_bridge).
+      // Passed regardless of whether `mode` is defined — the legacy path
+      // ignores it safely. Value becomes meaningful once C5 wires `mode`
+      // from ChatFeature.
+      const previousAssistant = [...(messages || [])]
+        .filter((m) => m.conversation_id === finalConversationId && m.role === 'assistant')
+        .pop();
+      const previousMessageType =
+        ((previousAssistant?.meta as Record<string, unknown> | undefined)?.messageType as
+          | string
+          | undefined) || undefined;
+
+      // C7.1.a: options.mode wins over the closure-captured chatMode. Bridge
+      // chip handlers that just called setChatMode pass it explicitly.
+      const effectiveMode = resolveEffectiveMode(options?.mode, chatMode);
       const conversationTurn = resolveConversationTurn({
         parsedRequest,
         routeResult,
@@ -713,6 +744,9 @@ const useMessageHandler = (
         hasPreviousParsedRequest: Boolean(previousParsedRequest),
         recentCollectCount,
         maxCollectTurns: MAX_COLLECT_TURNS,
+        previousMessageType,
+        forceCurrentMode: options?.forceCurrentMode,
+        mode: effectiveMode,
       });
 
       console.log('🧠 [CONVERSATION] Turn resolution:', conversationTurn);
@@ -1217,6 +1251,46 @@ const useMessageHandler = (
           route: routeResult.route,
           collectTurn: recentCollectCount + 1,
           missingFields: routeResult.missingFields,
+        });
+        return;
+      }
+
+      // === MODE_BRIDGE BRANCH (PR 3 / C4) ===
+      // Emitted by the orchestrator when content doesn't match the active
+      // mode. Persisted as its own assistant message with messageType=
+      // 'mode_bridge'; ChatInterface reads meta.suggestedMode and renders the
+      // 2 chips (switch / stay). Unreachable at runtime until C5 passes
+      // `mode` from ChatFeature.
+      if (conversationTurn.executionBranch === 'mode_bridge') {
+        const suggestedMode = conversationTurn.uiMeta.suggestedMode;
+        console.log('🌉 [MODE BRIDGE] Emitting mode_bridge turn, suggesting:', suggestedMode);
+        const bridgeText = suggestedMode
+          ? buildModeBridgeMessage({
+              suggestedMode,
+              t: (key: string) => i18n.t(key, { ns: 'chat', defaultValue: key }),
+            })
+          : '';
+
+        await saveAndDisplayMessage({
+          conversation_id: finalConversationId,
+          role: 'assistant' as const,
+          content: { text: bridgeText },
+          meta: {
+            status: 'sent',
+            messageType: 'mode_bridge',
+            responseMode: conversationTurn.responseMode,
+            suggestedMode,
+            originalRequest: parsedRequest,
+            requestText: parsedRequest.originalMessage || currentMessage,
+            conversationTurn,
+          },
+        });
+
+        setIsTyping(false, conversationIdForThisSearch);
+        setIsLoading(false);
+        flowTimer.end('mode_bridge emitted', {
+          suggestedMode,
+          route: routeResult.route,
         });
         return;
       }
@@ -2165,6 +2239,7 @@ const useMessageHandler = (
     updateOptimisticMessage,
     removeOptimisticMessage,
     saveAndDisplayMessage,
+    chatMode,
   ]);
 
   const handlePlannerDateSelection = useCallback(async (

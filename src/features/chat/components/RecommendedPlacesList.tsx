@@ -50,56 +50,69 @@ export default function RecommendedPlacesList({ places, onExplore, onAdd, title 
         <p className="text-xs font-medium text-muted-foreground">{title}</p>
         {subtitle && <p className="text-[11px] text-muted-foreground/80 mt-0.5">{subtitle}</p>}
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory" style={{ scrollbarWidth: 'none' }}>
-        {places.map((place) => (
-          <div key={`${place.city}-${place.name}`} className="rounded-xl border bg-card overflow-hidden w-[280px] shrink-0 snap-start">
-            {place.photoUrl ? (
-              <img
-                src={place.photoUrl}
-                alt={place.name}
-                className="w-full h-28 object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <div className="w-full h-28 bg-muted flex items-center justify-center text-3xl">
-                📍
-              </div>
-            )}
-
-            <div className="p-3 flex flex-col gap-2">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium text-sm leading-snug line-clamp-2">{place.name}</p>
-                  <p className="text-xs text-muted-foreground line-clamp-1">
-                    {place.city} · {formatSlotLabel(place.suggestedSlot)}
-                  </p>
-                </div>
-                <span className="text-[11px] shrink-0 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                  {formatPlaceBadge(place)}
-                </span>
-              </div>
-
-              {place.description && (
-                <p className="text-xs text-muted-foreground line-clamp-3">{place.description}</p>
-              )}
-
-              {(onExplore || onAdd) && (
-                <div className="flex gap-2 pt-1">
-                  {onAdd && (
-                    <Button size="sm" className="flex-1 h-8 text-xs" onClick={() => onAdd(place)}>
-                      {addLabel}
-                    </Button>
-                  )}
-                  {onExplore && (
-                    <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onExplore(place)}>
-                      {exploreLabel}
-                    </Button>
-                  )}
+      <div className="relative">
+        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory" style={{ scrollbarWidth: 'none' }}>
+          {places.map((place) => (
+            <div key={`${place.city}-${place.name}`} className="rounded-xl border bg-card overflow-hidden w-[280px] shrink-0 snap-start">
+              {place.photoUrl ? (
+                <img
+                  src={place.photoUrl}
+                  alt={place.name}
+                  className="w-full h-28 object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="w-full h-28 bg-muted flex items-center justify-center text-3xl">
+                  📍
                 </div>
               )}
+
+              <div className="p-3 flex flex-col gap-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-sm leading-snug line-clamp-2">{place.name}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-1">
+                      {place.city} · {formatSlotLabel(place.suggestedSlot)}
+                    </p>
+                  </div>
+                  <span className="text-[11px] shrink-0 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                    {formatPlaceBadge(place)}
+                  </span>
+                </div>
+
+                {place.description && (
+                  <p className="text-xs text-muted-foreground line-clamp-3">{place.description}</p>
+                )}
+
+                {(onExplore || onAdd) && (
+                  <div className="flex gap-2 pt-1">
+                    {onAdd && (
+                      <Button size="sm" className="flex-1 h-8 text-xs" onClick={() => onAdd(place)}>
+                        {addLabel}
+                      </Button>
+                    )}
+                    {onExplore && (
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onExplore(place)}>
+                        {exploreLabel}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+        {/* C7.1.d: static gradient fade as scroll affordance. Carousel has
+            overflow-x-auto + scrollbarWidth:'none' (hidden scrollbar) — without
+            this cue users with mouse-only input assume the overflowing cards
+            are clipped. Anchored to the wrapper's right edge; the 16px bleed
+            from the carousel's `-mx-4` ends inside the messages container
+            padding which is also `bg-background`, so the fade reads
+            continuous. */}
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-background to-transparent"
+          aria-hidden="true"
+        />
       </div>
     </div>
   );

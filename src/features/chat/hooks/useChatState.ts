@@ -46,7 +46,7 @@ const useChatState = (options: UseChatStateOptions = {}) => {
     createConversation,
     updateConversationState,
     updateConversationTitle
-  } = useConversations();
+  } = useConversations(authUser.user?.accountType, authUser.user?.id);
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 

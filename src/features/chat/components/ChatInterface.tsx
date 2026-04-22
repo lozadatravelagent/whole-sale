@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageItem from './MessageItem';
@@ -14,6 +15,7 @@ import { ArrowUpFromLine } from 'lucide-react';
 import { deriveConversationGaps, extractRecommendedPlacesFromMeta, getDiscoveryVisualConfig } from '../services/conversationOrchestrator';
 import { resolveRenderPolicy } from '../services/itineraryPipeline';
 import type { DiscoveryContext } from '../services/discoveryService';
+import { extractBridgeTurnProps, type BridgeChatMode } from '../utils/extractBridgeTurnProps';
 
 interface ChatInterfaceProps {
   selectedConversation: string | null;
@@ -32,8 +34,33 @@ interface ChatInterfaceProps {
   onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
   onBackToList?: () => void;
   onGoToPlanner?: () => void;
-  /** Forwarded to ChatHeader to hide agent-only chrome in companion mode. */
-  mode?: 'companion' | 'standard';
+  /**
+   * PR 3 (C5): account type gates the agent-only chrome in ChatHeader and
+   * (post-C6) the ModeSwitch. Replaces the pre-C5 `mode: 'companion' |
+   * 'standard'` prop. `accountType === 'consumer'` is the former `companion`;
+   * `accountType === 'agent'` is the former `standard`.
+   */
+  accountType: 'consumer' | 'agent';
+  /**
+   * PR 3 (C5): strict chat mode for agents. Propagated to ChatHeader so C6
+   * can render the ModeSwitch with the active mode. Ignored when accountType
+   * is 'consumer'.
+   */
+  mode?: 'agency' | 'passenger';
+  /**
+   * PR 3 (C4 prop shape, C5 wires it): bridge chip handlers. `onBridgeSwitch`
+   * receives the suggested mode AND the original user text so ChatFeature can
+   * flip mode + replay without reaching back into the messages array itself.
+   * Both optional; when undefined (consumer branch) the chips no-op.
+   */
+  onBridgeSwitch?: (suggestedMode: BridgeChatMode, originalText: string) => void;
+  onBridgeStay?: (originalText: string) => void;
+  /**
+   * PR 3 (C6): forwarded to ChatHeader so the ModeSwitch can render. Both
+   * optional — when missing (consumer branch) the switch doesn't render.
+   */
+  hasAgency?: boolean;
+  onModeChange?: (next: 'agency' | 'passenger') => void;
 }
 
 const ChatInterface = React.memo(({
@@ -53,8 +80,14 @@ const ChatInterface = React.memo(({
   onPdfGenerated,
   onBackToList,
   onGoToPlanner,
-  mode = 'standard'
+  accountType,
+  mode,
+  onBridgeSwitch,
+  onBridgeStay,
+  hasAgency,
+  onModeChange
 }: ChatInterfaceProps) => {
+  const { t } = useTranslation('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -258,7 +291,7 @@ const ChatInterface = React.memo(({
 
   return (
     <div
-      className="flex-1 flex flex-col h-full relative"
+      className="flex-1 flex flex-col h-full relative min-w-0"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -271,7 +304,10 @@ const ChatInterface = React.memo(({
         messagesCount={messages.length}
         onAddToCRM={onAddToCRM}
         onBackToList={onBackToList}
+        accountType={accountType}
         mode={mode}
+        hasAgency={hasAgency}
+        onModeChange={onModeChange}
       />
 
       {/* Drag and Drop Overlay - pointer-events-none para no interferir con drag events */}
@@ -293,7 +329,7 @@ const ChatInterface = React.memo(({
       {/* Messages area - scrollable with fixed height */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0"
+        className="flex-1 overflow-y-auto p-3 md:p-4 min-h-0 min-w-0"
       >
         <div className="space-y-3 md:space-y-4">
           {/* Inline skeleton while loading messages - only for existing conversations */}
@@ -457,6 +493,29 @@ const ChatInterface = React.memo(({
                   );
                 }
                 return null;
+              })()}
+              {/* PR 3 (C4): mode_bridge turn chips — "switch" + "stay". Handlers are optional; C5 wires them from ChatFeature. */}
+              {(() => {
+                if (isLoading || isTyping) return null;
+                const bridge = extractBridgeTurnProps(visibleMessages);
+                if (!bridge || !bridge.canRender) return null;
+                const otherLabel = t(`mode.${bridge.suggestedMode}`);
+                return (
+                  <div className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <button
+                      onClick={() => onBridgeSwitch?.(bridge.suggestedMode, bridge.originalUserText)}
+                      className="text-sm px-3 py-1.5 rounded-full border border-primary bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                      {t('mode.bridgeSwitchTo', { otherMode: otherLabel })}
+                    </button>
+                    <button
+                      onClick={() => onBridgeStay?.(bridge.originalUserText)}
+                      className="text-sm px-3 py-1.5 rounded-full border border-border bg-background hover:bg-muted transition-colors"
+                    >
+                      {t('mode.bridgeStay')}
+                    </button>
+                  </div>
+                );
               })()}
             </>
           )}
