@@ -107,9 +107,7 @@ post-merge con checklist D12 (backup pre-push + 12 queries de
 verificación + RLS suite con service role key). Política preservada: el
 SQL commiteado es autoridad, no se modifica entre merge y push.
 
-**Actualización 2026-04-22 (post-PR-5):**
-- **D13-a ✅ EJECUTADO:** `supabase functions delete planner-agent --project-ref ujigyazketblwlzcomve` — función eliminada del proyecto `ujigyazketblwlzcomve`. Nota: la flag documentada en handoffs anteriores (`--linked`) no es válida para `functions delete`; el flag correcto es `--project-ref <ref>` donde el ref se obtiene de `supabase/config.toml::project_id`.
-- **D13-b PENDIENTE:** `supabase db push` con `20260418000001_revert_b2c_handoff.sql`. Pre-check requerido: `SELECT count(*) FROM public.leads WHERE agency_id IS NULL`. Ventana recomendada: lunes-jueves horario laboral, con backup manual previo.
+**Actualización 2026-04-22 (post-PR-5):** Los dos pasos operacionales que estaban documentados aquí como D13-a y D13-b tienen sus propios IDs: D25 (edge function delete, ✅ cerrada) y D24 (migration push, pendiente). Ver D24 y D25.
 
 ## D14 — Companion routing en resolveConversationTurn ✅ CERRADA
 
@@ -313,45 +311,34 @@ confirma persistencia. No bloquea nada hoy.
 **Relacionado**: `PlannerAgentInputPrompt` → `MissingFieldsInputPrompt`
 renombrado en PR 4 (commit 11.b) por la misma motivación.
 
-## D24 — itineraryPdfTemplate sin i18n 🟢 BAJA
+## D24 — Aplicar migration revert_b2c_handoff a prod 🟡 OPERACIONAL
 
-**Origen**: Decisión de diseño en PR 5 (2026-04-22).
+**Origen**: PR 4 (2026-04-22). Paso manual post-merge con pre-check obligatorio.
 
-`renderItineraryHtml` hardcodea todos los labels estructurales en español
-("Día X", "Mañana", "Tarde", "Noche", "Ruta", "Fechas", "Viajeros", etc.).
-El `ItineraryPanel.tsx` tiene la misma deuda — ninguno usa `useTranslation`.
+La migration `supabase/migrations/20260418000001_revert_b2c_handoff.sql` (commiteada en PR 4) restaura las constraints declarativas en `leads` (NOT NULL en `agency_id` y `tenant_id`) en producción.
 
-**Impacto**: Consumer con `preferredLanguage = 'en'` o `'pt'` recibe el PDF
-con labels en español. El contenido generado por AI sí llega en el idioma
-correcto (el pipeline lo produce así). Solo los labels estructurales son el
-problema.
+**Pre-check obligatorio antes de ejecutar:**
+```sql
+SELECT count(*) FROM public.leads WHERE agency_id IS NULL;
+```
+Si `count = 0` → proceder. Si `count > 0` → investigar antes de aplicar (la constraint NOT NULL fallará sobre esas filas). Count = 0 confirmado localmente en PR 4, pero debe re-verificarse contra prod.
 
-**Fix**: Agregar namespace `itinerary` a los 6 archivos JSON de i18n
-(es/en/pt × `src/i18n/locales/`), pasar `lang` como parámetro a
-`renderItineraryHtml`, y refactorizar `formatTravelersText` para usar
-plurales de i18next. ~20-25 strings. Candidato al mismo PR que porte
-`ItineraryPanel.tsx` a i18n.
+**Ejecución (con D13-checklist completo):**
+```bash
+supabase db push --project-ref ujigyazketblwlzcomve
+```
 
-**No bloquea**: nada. Consistente con el estado actual del panel.
+Checklist D13: backup reciente de DB (< 24h), ventana lunes-jueves horario laboral, `SUPABASE_SERVICE_ROLE_KEY` seteado para verificación RLS post-push.
 
-## D25 — Bucket `documents` sin tenant isolation para PDFs de consumer 🟡 MEDIA
+**No bloquea**: nada hoy. La tabla `leads` en prod es empíricamente consistente. La migration solo restaura constraints declarativas.
 
-**Origen**: Auditado en PR 5 (2026-04-22). Decisión: diferir Storage.
+## D25 — Edge function planner-agent borrada de prod ✅ CERRADA
 
-El bucket `documents` en Supabase Storage tiene RLS que solo requiere
-`authenticated` sin verificar `agency_id`. Esto hace que un usuario
-autenticado de cualquier agencia pueda leer PDFs subidos por otra agencia
-si conoce el path.
+**Cerrada**: 22-Abr-2026.
 
-**En PR 5**: se usa on-demand blob download (sin Storage) para los PDFs de
-itinerario, evitando el problema.
+`supabase functions delete planner-agent --project-ref ujigyazketblwlzcomve` ejecutado. Confirmado: función ausente en `supabase functions list`. Último evento en Supabase Dashboard: 18-Abr-2026 (4 días de silencio post-merge de PR 4 que borró los callers en código).
 
-**Fix futuro** (si se decide persistir PDFs de itinerario en Storage): crear
-un bucket dedicado `itinerary-pdfs` con políticas RLS scoped por
-`agency_id`. Requiere nueva migration. El path de subida debe incluir el
-`agency_id` como prefijo para que la política sea efectiva.
-
-**No bloquea**: PR 5 no usa Storage. Bloquea persistencia de PDFs de consumer.
+Nota operacional: la flag `--linked` no es válida para `functions delete`. El flag correcto es `--project-ref <ref>`, obtenido de `supabase/config.toml::project_id`.
 
 ## D26 — ThemeToggle visible solo en agency mode del header 🟡 UX REGRESIÓN
 
@@ -372,9 +359,32 @@ PR 5 entregó v1 con scope explícito: texto-only, branding básico, sin mapas, 
 **Candidatas individuales** (cada una con su propio trade-off — no bundle):
 - **Mapas estáticos**: Mapbox Static API (requiere API key adicional o reutilizar la existente con rate-limit separado).
 - **Fotos Foursquare**: impacto en tamaño del PDF y tiempo de generación (html2canvas captura imágenes inline).
-- **i18n del template**: ~20-25 strings, alineado con D24. Mismo PR que porte `ItineraryPanel.tsx` a i18n.
-- **Persistencia**: bucket `itinerary-pdfs` con RLS por `agency_id` (requiere resolver D25 primero).
+- **i18n del template**: ~20-25 strings, alineado con D28. Mismo PR que porte `ItineraryPanel.tsx` a i18n.
+- **Persistencia**: bucket `itinerary-pdfs` con RLS por `agency_id` (requiere resolver D29 primero).
 - **Export desde `/emilia/profile`**: requiere recuperar `TripPlannerState` desde DB para trips históricos.
 
 **No bloquea**: nada. v1 cumple el caso de uso core.
 
+## D28 — itineraryPdfTemplate sin i18n 🟢 BAJA
+
+**Origen**: Decisión de diseño en PR 5 (2026-04-22). Anteriormente etiquetado incorrectamente como D24.
+
+`renderItineraryHtml` hardcodea todos los labels estructurales en español ("Día X", "Mañana", "Tarde", "Noche", "Ruta", "Fechas", "Viajeros", etc.). El `ItineraryPanel.tsx` tiene la misma deuda — ninguno usa `useTranslation`.
+
+**Impacto**: Consumer con `preferredLanguage = 'en'` o `'pt'` recibe el PDF con labels en español. El contenido generado por AI sí llega en el idioma correcto. Solo los labels estructurales son el problema.
+
+**Fix**: Agregar namespace `itinerary` a los 6 archivos JSON de i18n (es/en/pt × `src/i18n/locales/`), pasar `lang` como parámetro a `renderItineraryHtml`, y refactorizar `formatTravelersText` para usar plurales de i18next. ~20-25 strings. Candidato al mismo PR que porte `ItineraryPanel.tsx` a i18n.
+
+**No bloquea**: nada. Consistente con el estado actual del panel.
+
+## D29 — Bucket `documents` sin tenant isolation para PDFs de consumer 🟡 MEDIA
+
+**Origen**: Auditado en PR 5 (2026-04-22). Anteriormente etiquetado incorrectamente como D25.
+
+El bucket `documents` en Supabase Storage tiene RLS que solo requiere `authenticated` sin verificar `agency_id`. Un usuario autenticado de cualquier agencia puede leer PDFs de otra agencia si conoce el path.
+
+**En PR 5**: se usa on-demand blob download (sin Storage) para los PDFs de itinerario, evitando el problema.
+
+**Fix futuro** (si se decide persistir PDFs en Storage): crear bucket dedicado `itinerary-pdfs` con RLS scoped por `agency_id`. Requiere nueva migration. El path de subida debe incluir `agency_id` como prefijo.
+
+**No bloquea**: PR 5 no usa Storage. Bloquea persistencia de PDFs de consumer.

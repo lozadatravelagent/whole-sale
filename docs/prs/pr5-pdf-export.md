@@ -10,7 +10,7 @@
 
 Implementa la descarga del itinerario planificado como PDF directamente desde el panel lateral del chat. El export es on-demand (botón en footer del `ItineraryPanel`), produce un blob local sin pasar por servidor y usa el sistema de PDFs custom existente (html2canvas + jsPDF), no PDFMonkey.
 
-**No incluye:** Supabase Storage (diferido — D25), i18n del template (diferido — D24).
+**No incluye:** Supabase Storage (diferido — D29), i18n del template (diferido — D28).
 
 ---
 
@@ -38,7 +38,7 @@ Implementa la descarga del itinerario planificado como PDF directamente desde el
 
 ### D6 — Descarga: blob local vs Supabase Storage
 **Decisión:** On-demand blob download (`URL.createObjectURL` + `<a download>` + `revokeObjectURL`).
-**Por qué:** El bucket `documents` no tiene tenant isolation a nivel RLS (D25). Guardar en Storage sin isolation RLS expone PDFs de un consumer a otro. Diferido hasta que se cree un bucket `itineraries` con `owner_user_id`-scoped RLS.
+**Por qué:** El bucket `documents` no tiene tenant isolation a nivel RLS (D29). Guardar en Storage sin isolation RLS expone PDFs de un consumer a otro. Diferido hasta que se cree un bucket `itineraries` con `owner_user_id`-scoped RLS.
 
 ### D7 — Estado `TripPlannerState`: inmutable (Nivel 3)
 **Decisión:** El tipo no se modifica. El template consume los campos existentes read-only.
@@ -135,9 +135,9 @@ Ninguna exportación rompe contratos existentes. Nota incluida en commit `4a3230
 | Restricción | Origen | Estado |
 |---|---|---|
 | No modificar `TripPlannerState` | ADR-002, Nivel 3 — tipo compartido B2B/B2C | Se respeta — template consume read-only |
-| No usar Supabase Storage (bucket `documents`) | D25 — falta tenant isolation RLS | Se respeta — blob local on-demand |
+| No usar Supabase Storage (bucket `documents`) | D29 — falta tenant isolation RLS | Se respeta — blob local on-demand |
 | No PDFMonkey para itinerario consumer | Decisión Paso 1 | Se respeta — html2canvas + jsPDF |
-| No i18n del template en v1 | D24 — diferido | Se respeta — labels hardcoded en español |
+| No i18n del template en v1 | D28 — diferido | Se respeta — labels hardcoded en español |
 | No hardcodear listas de categorías | CATEGORY_POLICY invariant | No aplica — no toca places |
 | RLS mandatory, sin service_role bypass | Multi-tenant invariant | No aplica — no toca DB directamente |
 
@@ -147,8 +147,8 @@ Ninguna exportación rompe contratos existentes. Nota incluida en commit `4a3230
 
 | ID | Descripción | Archivo |
 |----|-------------|---------|
-| D24 | `itineraryPdfTemplate.ts` — labels hardcoded en español (Destino, Fechas, etc.). Candidato a i18n cuando se internacionalice el resto del UI consumer. | `TECH_DEBT.md` |
-| D25 | Bucket `documents` carece de tenant isolation en RLS — PDFs de itinerario no deben guardarse ahí hasta crear bucket `itineraries` con `owner_user_id`-scoped RLS. | `TECH_DEBT.md` |
+| D28 | `itineraryPdfTemplate.ts` — labels hardcoded en español (Destino, Fechas, etc.). Candidato a i18n cuando se internacionalice el resto del UI consumer. | `TECH_DEBT.md` |
+| D29 | Bucket `documents` carece de tenant isolation en RLS — PDFs de itinerario no deben guardarse ahí hasta crear bucket `itineraries` con `owner_user_id`-scoped RLS. | `TECH_DEBT.md` |
 
 ---
 
@@ -248,4 +248,4 @@ Las fases previas (0 → Paso 4 + Fase 1.2) quedan como baseline de ejecución.
 - D26 — theme toggle perdido del header (regresión pre-existente, PR dedicada)
 - D27 — PDF v2 polish (mapas, fotos, i18n, Storage, profile export) — evaluar con usuarios
 
-**Otras deudas diferidas:** D24 (i18n template PDF), D25 (bucket Storage con RLS), mobile drawer, D17 (i18n avatar menu UnifiedLayout).
+**Otras deudas diferidas:** D28 (i18n template PDF), D29 (bucket Storage con RLS), D24 (migration revert_b2c_handoff a prod), mobile drawer, D17 (i18n avatar menu UnifiedLayout).
