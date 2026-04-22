@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   MapPin,
   Calendar,
@@ -8,6 +8,7 @@ import {
   Route,
   FileText,
   Loader2,
+  Download,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,10 +23,12 @@ import {
   formatPaceLabel,
 } from '@/features/trip-planner/utils';
 import { hasItineraryContent } from '../utils/hasItineraryContent';
+import { canExportPdf } from '@/services/pdf/itineraryPdfTemplate';
 
 interface ItineraryPanelProps {
   plannerState: TripPlannerState | null;
   onRequestChanges?: () => void;
+  onExportPdf?: () => Promise<void>;
   className?: string;
 }
 
@@ -63,8 +66,20 @@ function formatTravelersText(travelers: TripPlannerState['travelers']): string |
 const ItineraryPanel = React.memo(function ItineraryPanel({
   plannerState,
   onRequestChanges,
+  onExportPdf,
   className,
 }: ItineraryPanelProps) {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    if (!onExportPdf || isExporting) return;
+    setIsExporting(true);
+    try {
+      await onExportPdf();
+    } finally {
+      setIsExporting(false);
+    }
+  }, [onExportPdf, isExporting]);
   const shouldRender = hasItineraryContent(plannerState);
   if (!shouldRender || !plannerState) return null;
 
@@ -206,18 +221,41 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
         </div>
       </div>
 
-      {onRequestChanges && (
+      {(onRequestChanges || (onExportPdf && canExportPdf(plannerState))) && (
         <>
           <Separator />
-          <div className="px-4 py-3">
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={onRequestChanges}
-            >
-              ¿Querés ajustar algo?
-            </Button>
+          <div className="flex flex-col gap-2 px-4 py-3">
+            {onExportPdf && canExportPdf(plannerState) && (
+              <Button
+                variant="default"
+                size="sm"
+                className="w-full"
+                onClick={handleExport}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                    Generando PDF…
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-3 w-3" />
+                    Descargar itinerario
+                  </>
+                )}
+              </Button>
+            )}
+            {onRequestChanges && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={onRequestChanges}
+              >
+                ¿Querés ajustar algo?
+              </Button>
+            )}
           </div>
         </>
       )}
