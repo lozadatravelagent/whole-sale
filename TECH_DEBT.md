@@ -98,6 +98,15 @@ de un stash. types.ts ya reflejaba el cambio porque alguien lo regenero post-pus
 **Status**: politica nueva, requiere comunicacion al equipo. Cerrado el
 incidente puntual con el commit 1c91cfb2.
 
+**Actualización 2026-04-22 (PR 4):** la migration
+`20260418000001_revert_b2c_handoff.sql` se commitea al repo en PR 4 y se
+aplica a local via `supabase db reset` para validación + verificación de
+schema + tests RLS (skipped localmente sin `SUPABASE_SERVICE_ROLE_KEY`).
+El push a prod (`supabase db push --linked`) queda como paso manual
+post-merge con checklist D12 (backup pre-push + 12 queries de
+verificación + RLS suite con service role key). Política preservada: el
+SQL commiteado es autoridad, no se modifica entre merge y push.
+
 ## D14 — Companion routing en resolveConversationTurn ✅ CERRADA
 
 **Origen**: Durante recuperacion de archivos untracked en cierre de
@@ -260,3 +269,43 @@ dispare fetch hasta que `accountType !== undefined && userId != null`,
 o early return en el `useEffect` cuando las deps no están resueltas.
 
 **Prioridad**: baja. No bloquea features.
+
+## D23 — Vocabulario "planner-agent" / "missing_info_request" vestigial 🟢 BAJA
+
+Detectada durante ejecución de PR 4 (2026-04-22).
+
+**Descripción**: Post-PR-4 el literal `'planner_agent'` desaparece del
+routing (orchestrator, handler, pipeline, edge function). Pero el
+messageType `'missing_info_request'` sobrevive como string literal en:
+
+- `src/features/chat/hooks/useMessageHandler.ts` (líneas 1074, 1160,
+  1301, 1337, 1385, 1487, 1491, 1859) — emisión por validation paths
+  que no tienen relación con planner-agent.
+- `src/features/chat/ChatFeature.tsx` — referencia a messageType.
+- `src/features/chat/hooks/useContextualMemory.ts` — filtro de mensajes
+  históricos por `messageType.eq.missing_info_request`.
+- `src/features/public-chat/usePublicMessageHandler.ts` — case handler.
+- `src/services/aiMessageParser.ts` — union type de `requestType`.
+- `src/features/chat/components/ChatInterface.tsx` — condición del
+  guided input.
+
+El nombre `missing_info_request` es vestigial del dominio planner-agent
+pero el contrato real es "mensaje que surface missing fields a
+completar". Rename coherente: `validation_missing_fields` o similar.
+
+**Impacto**: cero runtime. Nombre confuso para lectura del código.
+
+**Riesgos del rename**:
+- El literal probablemente está persistido en la tabla `messages` via
+  `meta.messageType` de conversaciones históricas. Revisar si
+  `useContextualMemory.ts:18` depende del valor exacto para
+  retrocompatibilidad.
+- Cruza 8+ archivos + potencialmente data en prod.
+
+**Fix**: PR futura de cleanup de vocabulario. Scope: renombrar el
+literal en todo el src/ + migration que actualice filas viejas si se
+confirma persistencia. No bloquea nada hoy.
+
+**Relacionado**: `PlannerAgentInputPrompt` → `MissingFieldsInputPrompt`
+renombrado en PR 4 (commit 11.b) por la misma motivación.
+
