@@ -156,7 +156,7 @@ Ninguna exportación rompe contratos existentes. Nota incluida en commit `4a3230
 
 | Path | Resultado | Observaciones |
 |------|-----------|---------------|
-| **Path 1** — Desktop companion: botón visible + PDF correcto | ⚠️ Pendiente verificación humana | Bug bloqueante detectado y corregido (ver addendum). Path 1 debe re-correrse post-fix. |
+| **Path 1** — Desktop companion: botón visible + PDF correcto | ✅ | Post-fix (commit F `c852dd75`): PDF descarga correctamente, ciudades/días/actividades presentes, branding operativo. Dos observaciones no bloqueantes → D26 y D27 (ver abajo). |
 | **Path 2** — `canExportPdf` gate: sin segmentos/isDraft → sin botón | ✅ | Verificado vía 5 unit tests + revisión del guard `onExportPdf && canExportPdf(plannerState)` en `ItineraryPanel.tsx`. |
 | **Path 3** — Mobile: panel no visible → botón no visible | ✅ | `UnifiedLayout` renderiza `rightPanel` en `aside` con `hidden lg:block`. El panel no se monta en mobile; el botón tampoco aparece. |
 | **Path 4** — Agent passenger mode: botón también disponible | ✅ | Ambos usos de `ItineraryPanel` en `ChatFeature.tsx` tienen `onExportPdf={handleExportItineraryPdf}`. |
@@ -216,11 +216,17 @@ Cada caso hace `rerender` — si hay violación de hooks, lanza sincrónicamente
 | TypeScript | limpio | limpio | limpio |
 | Build | limpio | limpio | limpio |
 
+### Observaciones no bloqueantes del smoke de Path 1
+
+**D26 — Theme toggle perdido del header** (regresión pre-existente, no causada por PR 5): `ThemeProvider` operativo; el componente de toggle no está montado en `UnifiedLayout`. Regresión probable de PR 2/3/4. Anotada en `TECH_DEBT.md` como D26. PR dedicada chica en roadmap.
+
+**D27 — PDF v1 minimalista, candidatas de v2**: El scope de v1 fue deliberado (texto-only, sin mapas, sin fotos, sin i18n, sin persistencia). Observación de "mejorable" capturada en `TECH_DEBT.md` como D27 con desglose de candidatas individuales (mapas estáticos, fotos Foursquare, i18n, Storage, export desde profile). Cada mejora se evalúa con feedback de usuarios reales.
+
 ---
 
 ## Roadmap Closure
 
-PR 5 cierra formalmente el roadmap ADR-002 + addendum C7.1.e:
+PR 5 cierra formalmente el roadmap ADR-002 + addendum C7.1.e (unificación B2B/B2C):
 
 | PR | Estado |
 |----|--------|
@@ -230,4 +236,14 @@ PR 5 cierra formalmente el roadmap ADR-002 + addendum C7.1.e:
 | PR 4 (purga post-unificación) | ✅ mergeada |
 | PR 5 (export PDF itinerario) | ✅ esta PR |
 
-Las fases previas (0 → Paso 4 + Fase 1.2) quedan como baseline de ejecución. Pendientes diferidos: D24 (i18n template), D25 (bucket con RLS), mobile drawer, D17 (i18n UnifiedLayout avatar menu).
+Las fases previas (0 → Paso 4 + Fase 1.2) quedan como baseline de ejecución.
+
+**Checklists operacionales pendientes post-merge (manuales):**
+- `supabase functions delete planner-agent --linked` (D13, heredado de PR 4)
+- `supabase db push --linked` para migration `20260418000001_revert_b2c_handoff.sql` (D13, heredado de PR 4)
+
+**Deudas UX anotadas en este PR:**
+- D26 — theme toggle perdido del header (regresión pre-existente, PR dedicada)
+- D27 — PDF v2 polish (mapas, fotos, i18n, Storage, profile export) — evaluar con usuarios
+
+**Otras deudas diferidas:** D24 (i18n template PDF), D25 (bucket Storage con RLS), mobile drawer, D17 (i18n avatar menu UnifiedLayout).

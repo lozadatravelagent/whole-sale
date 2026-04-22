@@ -349,3 +349,28 @@ un bucket dedicado `itinerary-pdfs` con políticas RLS scoped por
 
 **No bloquea**: PR 5 no usa Storage. Bloquea persistencia de PDFs de consumer.
 
+## D26 — Theme toggle (oscuro/claro) perdido del header 🟡 UX REGRESIÓN
+
+**Origen**: Detectado en smoke de PR 5 (2026-04-22). Regresión pre-existente — no causada por PR 5.
+
+El `ThemeProvider` está operativo (`theme-provider.tsx` montado en el árbol de providers). El componente UI de toggle no está montado en ningún layout activo. Candidatos de remoción: PR 2 (UnifiedLayout reemplazó MainLayout), PR 3 (header con ModeSwitch + LanguageSelector), PR 4 (purga de layouts deprecated).
+
+**Fix**: Localizar `ThemeToggle` / `useTheme` / `theme-toggle` en `src/`. Montar en el header de `UnifiedLayout` al lado del `LanguageSelector`, visible para todos los roles. Candidata a PR dedicada chica.
+
+**No bloquea**: la app funciona en modo oscuro. Bloquea accesibilidad de preferencia de tema para el usuario.
+
+## D27 — Export PDF v1 minimalista: candidatas de v2 🟢 POLISH FUTURO
+
+**Origen**: Observación del smoke de PR 5 (2026-04-22). Scope de v1 fue deliberadamente acotado.
+
+PR 5 entregó v1 con scope explícito: texto-only, branding básico, sin mapas, sin fotos de lugares, sin email, sin i18n estructural, sin persistencia en Storage, sin export desde `/emilia/profile`. Las mejoras de v2 deben evaluarse con feedback de usuarios reales antes de priorizarse.
+
+**Candidatas individuales** (cada una con su propio trade-off — no bundle):
+- **Mapas estáticos**: Mapbox Static API (requiere API key adicional o reutilizar la existente con rate-limit separado).
+- **Fotos Foursquare**: impacto en tamaño del PDF y tiempo de generación (html2canvas captura imágenes inline).
+- **i18n del template**: ~20-25 strings, alineado con D24. Mismo PR que porte `ItineraryPanel.tsx` a i18n.
+- **Persistencia**: bucket `itinerary-pdfs` con RLS por `agency_id` (requiere resolver D25 primero).
+- **Export desde `/emilia/profile`**: requiere recuperar `TripPlannerState` desde DB para trips históricos.
+
+**No bloquea**: nada. v1 cumple el caso de uso core.
+
