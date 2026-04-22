@@ -17,7 +17,7 @@ import EmptyState from './components/EmptyState';
 import useChatState from './hooks/useChatState';
 import HandoffBanner from '@/features/companion/components/HandoffBanner';
 import HandoffModal from '@/features/companion/components/HandoffModal';
-import ItineraryPanel from '@/features/companion/components/ItineraryPanel';
+import ItineraryPanel from '@/features/chat/components/ItineraryPanel';
 import { isTripReadyForHandoff } from '@/features/trip-planner/handoffReadiness';
 import useContextualMemory from './hooks/useContextualMemory';
 import usePdfAnalysis from './hooks/usePdfAnalysis';
