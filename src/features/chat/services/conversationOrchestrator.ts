@@ -24,7 +24,6 @@ export interface ConversationGap {
 }
 
 export type ConversationExecutionBranch =
-  | 'planner_agent'
   | 'ask_minimal'
   | 'standard_itinerary'
   | 'standard_search'
@@ -49,13 +48,12 @@ export interface ConversationTurnResolution {
     | 'general_response'
     | 'discovery_results'
     | 'mode_bridge';
-  shouldUsePlannerAgent: boolean;
   shouldUseStandardItinerary: boolean;
   shouldAskMinimalQuestion: boolean;
   uiMeta: {
     route: RouteResult['route'];
     reason: string;
-    firstPlanHandledAs: 'planner_agent' | 'standard_itinerary' | null;
+    firstPlanHandledAs: 'standard_itinerary' | null;
     // PR 3 (C3): populated only for `mode_bridge` turns. Tells the UI which
     // mode to offer switching to in the bridge action chip (C4).
     suggestedMode?: 'agency' | 'passenger';
@@ -515,17 +513,12 @@ export function resolveConversationTurn(options: {
   // `standard_itinerary` or `ask_minimal`. A `mode_bridge` branch nudges the
   // user to switch modes when intent doesn't match the active mode.
   //
-  // C7.1.e REVERSION: passenger originally emitted `planner_agent` per the
-  // ADR-002 strict contract, but empirically `planner_agent` only produced
-  // conversational prose — no structured CanonicalItineraryResult (segments,
-  // editorial, recommendedPlaces). The right-side planner panel did not
-  // hydrate for agents in planner mode. `standard_itinerary` (the branch
-  // consumer already used successfully) is the one that produces the
-  // canonical structured output, so passenger now routes there too. C8
-  // (remove `standard_itinerary`) is cancelled: it is the productive branch
-  // of planner mode. The `planner_agent` edge function and its handler
-  // remain in the codebase but have no routing call sites; removal or
-  // rewrite is deferred. See ADR-002 addendum 2026-04-18.
+  // C7.1.e history: passenger originally emitted `planner_agent` per the
+  // ADR-002 strict contract, but empirically that branch never produced a
+  // structured CanonicalItineraryResult and the right-side planner panel
+  // did not hydrate. Passenger was rerouted to `standard_itinerary`. PR 4
+  // deleted the `planner_agent` branch, handler, and edge function; see
+  // ADR-002 addendum 2026-04-18.
   //
   // DISCOVERY BYPASS: `isDiscoveryIntent` intentionally falls through to the
   // legacy path below so the existing show_places flow
@@ -586,7 +579,6 @@ export function resolveConversationTurn(options: {
         responseMode: 'needs_mode_switch',
         normalizedMissingFields,
         messageType: 'mode_bridge',
-        shouldUsePlannerAgent: false,
         shouldUseStandardItinerary: false,
         shouldAskMinimalQuestion: false,
         uiMeta: {
@@ -604,7 +596,6 @@ export function resolveConversationTurn(options: {
         responseMode: 'needs_input',
         normalizedMissingFields,
         messageType: 'collect_question',
-        shouldUsePlannerAgent: false,
         shouldUseStandardItinerary: false,
         shouldAskMinimalQuestion: true,
         uiMeta: {
@@ -621,7 +612,6 @@ export function resolveConversationTurn(options: {
         responseMode: 'proposal_first_plan',
         normalizedMissingFields,
         messageType: 'trip_planner',
-        shouldUsePlannerAgent: false,
         shouldUseStandardItinerary: true,
         shouldAskMinimalQuestion: false,
         uiMeta: {
@@ -638,7 +628,6 @@ export function resolveConversationTurn(options: {
       responseMode: routeResult.route === 'QUOTE' ? 'quote_or_search' : 'standard',
       normalizedMissingFields,
       messageType: parsedRequest.requestType === 'general' ? 'general_response' : 'search_results',
-      shouldUsePlannerAgent: false,
       shouldUseStandardItinerary: false,
       shouldAskMinimalQuestion: false,
       uiMeta: {
@@ -650,32 +639,13 @@ export function resolveConversationTurn(options: {
   }
 
   // === LEGACY PATH (mode === undefined OR discovery intent) =================
-  // Preserved unchanged from pre-C3. C8 removes this path along with the
-  // `standard_itinerary` branch (see DISCOVERY BYPASS note above — discovery
-  // needs its own branch before this path can go).
-
-  const shouldUsePlannerAgent = routeResult.route === 'PLAN' && hasActivePlanner && !isDiscoveryIntent;
+  // Preserved unchanged from pre-C3, minus the planner_agent branch deleted
+  // in PR 4 (ADR-002 addendum 2026-04-18). Reached in production only when
+  // isDiscoveryIntent=true and `mode !== undefined` (strict-mode discovery
+  // bypass); the show_places flow is served by standard_itinerary below.
 
   const shouldUseStandardItinerary =
-    !shouldUsePlannerAgent &&
-    (parsedRequest.requestType === 'itinerary' || routeResult.route === 'PLAN');
-
-  if (shouldUsePlannerAgent) {
-    return {
-      executionBranch: 'planner_agent',
-      responseMode: isDiscoveryIntent ? 'show_places' : 'proposal_first_plan',
-      normalizedMissingFields,
-      messageType: isDiscoveryIntent ? 'discovery_results' : 'trip_planner',
-      shouldUsePlannerAgent,
-      shouldUseStandardItinerary: false,
-      shouldAskMinimalQuestion: false,
-      uiMeta: {
-        route: routeResult.route,
-        reason: routeResult.reason,
-        firstPlanHandledAs: null,
-      },
-    };
-  }
+    parsedRequest.requestType === 'itinerary' || routeResult.route === 'PLAN';
 
   if (shouldAskMinimalQuestion) {
     return {
@@ -683,7 +653,6 @@ export function resolveConversationTurn(options: {
       responseMode: 'needs_input',
       normalizedMissingFields,
       messageType: 'collect_question',
-      shouldUsePlannerAgent: false,
       shouldUseStandardItinerary: false,
       shouldAskMinimalQuestion: true,
       uiMeta: {
@@ -700,7 +669,6 @@ export function resolveConversationTurn(options: {
       responseMode: isDiscoveryIntent ? 'show_places' : routeResult.route === 'PLAN' ? 'proposal_first_plan' : 'standard',
       normalizedMissingFields,
       messageType: isDiscoveryIntent ? 'discovery_results' : 'trip_planner',
-      shouldUsePlannerAgent: false,
       shouldUseStandardItinerary: true,
       shouldAskMinimalQuestion: false,
       uiMeta: {
@@ -716,7 +684,6 @@ export function resolveConversationTurn(options: {
     responseMode: routeResult.route === 'QUOTE' ? 'quote_or_search' : 'standard',
     normalizedMissingFields,
     messageType: parsedRequest.requestType === 'general' ? 'general_response' : 'search_results',
-    shouldUsePlannerAgent: false,
     shouldUseStandardItinerary: false,
     shouldAskMinimalQuestion: false,
     uiMeta: {

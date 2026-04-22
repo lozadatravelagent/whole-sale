@@ -16,10 +16,7 @@ import Login from "./pages/Login";
 // Lazy loaded pages (code-splitting)
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Chat = lazy(() => import("./pages/Chat"));
-const CRM = lazy(() => import("./pages/CRM"));
-const Marketplace = lazy(() => import("./pages/Marketplace"));
 const Settings = lazy(() => import("./pages/Settings"));
-const Reports = lazy(() => import("./pages/Reports"));
 const Users = lazy(() => import("./pages/Users"));
 const Agencies = lazy(() => import("./pages/Agencies"));
 const Tenants = lazy(() => import("./pages/Tenants"));
@@ -29,11 +26,10 @@ const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Contact = lazy(() => import("./pages/Contact"));
 const EmiliaLanding = lazy(() => import("./pages/EmiliaLanding"));
-const CompanionChatPage = lazy(() => import("./pages/CompanionChatPage"));
+const EmiliaChatPage = lazy(() => import("./pages/EmiliaChatPage"));
 const ConsumerSignup = lazy(() => import("./pages/ConsumerSignup"));
 const ConsumerProfile = lazy(() => import("./pages/ConsumerProfile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
-const HotelbedsTest = lazy(() => import("./pages/HotelbedsTest"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 
 // Loading component
@@ -105,7 +101,7 @@ const AppRoutes = () => (
       path="/emilia/chat"
       element={
         <ProtectedRoute>
-          <CompanionChatPage />
+          <EmiliaChatPage />
         </ProtectedRoute>
       }
     />
@@ -113,7 +109,7 @@ const AppRoutes = () => (
       path="/emilia/chat/:conversationId"
       element={
         <ProtectedRoute>
-          <CompanionChatPage />
+          <EmiliaChatPage />
         </ProtectedRoute>
       }
     />
@@ -189,41 +185,6 @@ const AppRoutes = () => (
     <Route path="/agencies" element={<Navigate to="/emilia/agencies" replace />} />
     <Route path="/tenants" element={<Navigate to="/emilia/tenants" replace />} />
     <Route path="/settings" element={<Navigate to="/emilia/settings" replace />} />
-
-    {/* Legacy routes mantenidas tal cual; PR 4 las borra */}
-    <Route
-      path="/crm"
-      element={
-        <ProtectedRoute>
-          <CRM />
-        </ProtectedRoute>
-      }
-    />
-    <Route
-      path="/marketplace"
-      element={
-        <ProtectedRoute>
-          <Marketplace />
-        </ProtectedRoute>
-      }
-    />
-    <Route
-      path="/reports"
-      element={
-        <ProtectedRoute>
-          <Reports />
-        </ProtectedRoute>
-      }
-    />
-    {/* Hotelbeds certification test page (auth-guarded) */}
-    <Route
-      path="/hotelbeds-test"
-      element={
-        <ProtectedRoute>
-          <HotelbedsTest />
-        </ProtectedRoute>
-      }
-    />
 
     {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
     <Route path="*" element={<NotFound />} />

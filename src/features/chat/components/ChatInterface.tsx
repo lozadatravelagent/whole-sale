@@ -4,12 +4,10 @@ import ChatHeader from './ChatHeader';
 import MessageInput from './MessageInput';
 import MessageItem from './MessageItem';
 import TypingIndicator from './TypingIndicator';
-import PlannerAgentInputPrompt from '@/features/trip-planner/components/PlannerAgentInputPrompt';
-import PlannerChatHotelCard from '@/features/trip-planner/components/PlannerChatHotelCard';
-import PlannerChatFlightCard from '@/features/trip-planner/components/PlannerChatFlightCard';
+import MissingFieldsInputPrompt from '@/features/trip-planner/components/MissingFieldsInputPrompt';
 import DiscoveryMapPreview from './DiscoveryMapPreview';
 import RecommendedPlacesList from './RecommendedPlacesList';
-import type { MessageRow, LocalHotelData, FlightData } from '../types/chat';
+import type { MessageRow } from '../types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import { ArrowUpFromLine } from 'lucide-react';
 import { deriveConversationGaps, extractRecommendedPlacesFromMeta, getDiscoveryVisualConfig } from '../services/conversationOrchestrator';
@@ -354,18 +352,20 @@ const ChatInterface = React.memo(({
                   onGoToPlanner={onGoToPlanner}
                 />
               ))}
-              {/* Guided input for planner-agent missing info requests */}
+              {/* Guided input for any turn that surfaces missing fields (validation
+                  fallbacks emit 'missing_info_request'; ask_minimal emits 'collect_question'). */}
               {(() => {
                 const meta = lastMeta as any;
                 const conversationTurn = meta?.conversationTurn;
                 const resolvedMessageType = conversationTurn?.messageType || meta?.messageType;
                 const resolvedMissingFields = meta?.normalizedMissingFields || meta?.missingFields || conversationTurn?.normalizedMissingFields || [];
-                const needsGuidedInput = !isShowPlacesTurn && (resolvedMessageType === 'missing_info_request' || resolvedMessageType === 'collect_question')
+                const needsGuidedInput = !isShowPlacesTurn
+                  && (resolvedMessageType === 'missing_info_request' || resolvedMessageType === 'collect_question')
                   && resolvedMissingFields.length > 0;
                 if (needsGuidedInput && !isLoading) {
                   return (
                     <div className="px-4 py-2">
-                      <PlannerAgentInputPrompt
+                      <MissingFieldsInputPrompt
                         missingFields={resolvedMissingFields}
                         pendingAction={meta.pendingAction}
                         onSubmit={(text) => {
@@ -373,64 +373,6 @@ const ChatInterface = React.memo(({
                           setTimeout(() => onSendMessage(), 50);
                         }}
                       />
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-              {/* Inline hotel/flight cards from planner-agent */}
-              {(() => {
-                const lastMsg = lastVisibleMessage;
-                const meta = lastMeta as any;
-                if (meta?.source === 'planner-agent' && meta?.combinedData && lastMsg?.role === 'assistant' && !isLoading && !isFirstPlanProposal) {
-                  const hotels = (meta.combinedData.hotels as LocalHotelData[] | undefined)?.slice(0, 3);
-                  const flights = (meta.combinedData.flights as FlightData[] | undefined)?.slice(0, 3);
-                  const city = meta.combinedData.searchCity || '';
-                  const travelers = meta.combinedData.travelers?.adults ?? 2;
-                  const hasCards = (hotels?.length ?? 0) > 0 || (flights?.length ?? 0) > 0;
-
-                  if (!hasCards) return null;
-
-                  return (
-                    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      {hotels && hotels.length > 0 && (
-                        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory" style={{ scrollbarWidth: 'none' }}>
-                          {hotels.map((hotel, i) => (
-                            <PlannerChatHotelCard
-                              key={hotel.hotel_id || hotel.name || i}
-                              hotel={hotel}
-                              segmentCity={city || hotel.city}
-                              onAdd={(h) => {
-                                onMessageChange(`Agregá el hotel ${h.name} al itinerario`);
-                                setTimeout(() => onSendMessage(), 50);
-                              }}
-                              onViewDetails={(h) => {
-                                onMessageChange(`Contame más sobre el hotel ${h.name}`);
-                                setTimeout(() => onSendMessage(), 50);
-                              }}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      {flights && flights.length > 0 && (
-                        <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory" style={{ scrollbarWidth: 'none' }}>
-                          {flights.map((flight, i) => (
-                            <PlannerChatFlightCard
-                              key={flight.id || i}
-                              flight={flight}
-                              travelers={travelers}
-                              onSelect={(f) => {
-                                onMessageChange(`Seleccioná el vuelo de ${f.airline?.name || 'la aerolínea'}`);
-                                setTimeout(() => onSendMessage(), 50);
-                              }}
-                              onViewAlternatives={() => {
-                                onMessageChange('Mostrá más opciones de vuelo');
-                                setTimeout(() => onSendMessage(), 50);
-                              }}
-                            />
-                          ))}
-                        </div>
-                      )}
                     </div>
                   );
                 }
@@ -470,30 +412,6 @@ const ChatInterface = React.memo(({
                   </div>
                 </div>
               )}
-              {/* Action chips from planner-agent */}
-              {(() => {
-                const lastMsg = lastVisibleMessage;
-                const meta = lastMeta as any;
-                if (!isShowPlacesTurn && meta?.actionChips?.length > 0 && lastMsg?.role === 'assistant' && !isLoading && !isTyping) {
-                  return (
-                    <div className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      {(meta.actionChips as Array<{ label: string; message: string }>).map((chip: { label: string; message: string }, i: number) => (
-                        <button
-                          key={i}
-                          onClick={() => {
-                            onMessageChange(chip.message);
-                            setTimeout(() => onSendMessage(), 50);
-                          }}
-                          className="text-sm px-3 py-1.5 rounded-full border border-border bg-background hover:bg-muted transition-colors"
-                        >
-                          {chip.label}
-                        </button>
-                      ))}
-                    </div>
-                  );
-                }
-                return null;
-              })()}
               {/* PR 3 (C4): mode_bridge turn chips — "switch" + "stay". Handlers are optional; C5 wires them from ChatFeature. */}
               {(() => {
                 if (isLoading || isTyping) return null;

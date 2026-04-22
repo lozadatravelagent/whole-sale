@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { signOutConsumer } from '@/features/companion/services/consumerAuthService';
+import { signOutConsumer } from '@/features/auth/services/consumerAuthService';
 
 interface ConsumerTripCardData {
   id: string;

@@ -14,12 +14,12 @@ import { LanguageSelector } from '@/components/LanguageSelector';
 import {
   consumerSignupSchema,
   type ConsumerSignupFormData,
-} from '@/features/companion/utils/consumerAuthSchema';
-import { decideAuthRedirectAction } from '@/features/companion/utils/authRedirectDecider';
+} from '@/features/auth/utils/consumerAuthSchema';
+import { decideAuthRedirectAction } from '@/features/auth/utils/authRedirectDecider';
 import {
   signUpConsumer,
   signInConsumer,
-} from '@/features/companion/services/consumerAuthService';
+} from '@/features/auth/services/consumerAuthService';
 
 export default function ConsumerSignup() {
   const navigate = useNavigate();
