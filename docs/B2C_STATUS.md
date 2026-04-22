@@ -1,10 +1,10 @@
 # Emilia B2C — Estado del desarrollo
 
-**Última actualización:** 18 Abril 2026 (post-PR 2 unificación routing/layouts)
+**Última actualización:** 22 Abril 2026 (post-PR 3 chat unification)
 
 ## Estado actual
 
-**🟢 PR 2 de la unificación cerrada en rama** `feat/pr2-unification-routing-layouts`. Dual-host colapsado bajo `emilia.vibook.ai`, login unificado en `/login` (raíz), admin pages bajo `/emilia/*`, `UnifiedLayout` reemplaza `MainLayout`/`CompanionLayout` para todas las superficies que sobreviven, `RequireAgent` añadido. Sin downtime del chat: agents ven la rama B2B de `ChatFeature` (aún sobre `MainLayout`, PR 3 reescribe), consumers ven la rama companion sobre `UnifiedLayout` con `ItineraryPanel` como `rightPanel`. Pendiente: smoke 2 visual completo + merge a `main`.
+**🟢 PR 3 de la unificación mergeada a main en `d82ac244` (PR #75).** Chat con switch estricto agency/passenger, `mode_bridge` como UX de puente, rama B2B de `ChatFeature` migrada a `UnifiedLayout`. Agents y consumers comparten layout, guard y entry point. D14/D21 cerradas (adaptación de tests + fix sidebar consumer). C7.1.e documentado en addendum de ADR-002: passenger mode → `standard_itinerary` (reversión parcial del ADR original); `planner_agent` queda vivo pero sin call sites de routing productivos. **Próximo paso: PR 4 — purga de CRM/Marketplace/Reports, `src/features/companion/` handoff, migration de reverso de `leads`, dead code acumulado. NO purga `standard_itinerary` (cancelado por C7.1.e).**
 
 ---
 
@@ -25,6 +25,8 @@
 | Paso 3 | Panel de itinerario vivo | #66 |
 | Paso 4 | Registro/login/profile consumer | #67 |
 | Fase 1.2 | Internacionalización (i18n) para Emilia B2C — `LanguageSelector`, auto-detección de idioma del mensaje | #72 |
+| PR 2 | Unificación routing/layouts: dual-host colapsado, `UnifiedLayout`, `RequireAgent`, login unificado | `4ce93f67` |
+| PR 3 | Chat unification: ModeSwitch, strict mode routing, `mode_bridge`, rama B2B bajo UnifiedLayout | #75 (`d82ac244`) |
 
 ## Fixes y refinamientos aplicados durante testing
 
@@ -73,22 +75,23 @@ El consumer puede:
 
 ## Pendiente (refinamientos)
 
-| Item | Descripción | Prioridad | Estado al 18-Abr |
+| Item | Descripción | Prioridad | Estado al 22-Abr |
 |------|-------------|-----------|------------------|
 | Coherencia texto | Texto conversacional debe reflejar cambios estructurales | Alta | Sin progreso — `supabase/functions/planner-agent/prompts/` sin cambios |
 | Limpiar secciones | Quitar "Qué hacer en X" / "Puntos de interés" redundantes | Alta | Aún hardcodeados en `TripPlannerMap.tsx`, `TripPlannerWorkspace.tsx`, `plannerPlaceMapper.ts` |
 | ~~Inbox B2C~~ | ~~Vista en CRM para leads con `agency_id IS NULL`~~ | — | **Descartado por ADR-002** (handoff completo se borra en PR 4) |
 | Mobile drawer | Panel de itinerario en mobile | Media | `ItineraryPanel.tsx` sin branch responsive |
+| D17 — UnifiedLayout sin i18n | Avatar menu + "Cerrar sesión" literal en español | Baja | Diferido fuera de PR 3 (decisión 2026-04-22). Candidato a polish pre-launch |
 | Paso 5 | Capa social (feed, perfiles públicos) | Baja | No iniciado |
 
 ---
 
 ## Baseline de tests
 
-- **251 passed / 14 skipped / 0 failed** (baseline post-PR-2 sobre `feat/pr2-unification-routing-layouts`). +11 sobre el snapshot del 18-Abr post-ADR: 5 de `requireAgentLogic.test.ts` (C3) + 6 de `unifiedLayoutMenu.test.ts` (C6).
+- **330 passed / 11 skipped / 0 failed** (baseline post-PR-3 sobre `main @ d82ac244`). +79 sobre el baseline post-PR-2 (251/14/0): 6 test files nuevos en PR 3 (`deriveModeSwitchState`, `buildModeBridgeMessage`, `extractBridgeTurnProps`, `deriveDefaultMode`, `resolveEffectiveMode`, `useChat.loadConversations`) + adaptación de los 3 tests `.skip` de D14 al contrato vigente de strict mode.
 - Build: limpio.
 - TypeScript: sin errores.
-- D11 (las dos fallas históricas `localStorage is not defined`) confirmada cerrada — no reapareció en ninguno de los 6 ciclos de test de PR 2.
+- D11 (las dos fallas históricas `localStorage is not defined`) confirmada cerrada — no reapareció en los 6 ciclos de test de PR 2 ni en el baseline 330/11/0 post-PR-3. Cierre formal registrado en `TECH_DEBT.md` el 2026-04-22 (commit `877a6c66`).
 
 ---
 
@@ -124,9 +127,9 @@ Resumen: se unifica el chat B2B y B2C en un único surface con switch estricto a
 
 PRs planeadas:
 1. ADR + scaffolding (✅ mergeada en `dda48aac`).
-2. Unificación de routing y layouts (✅ cerrada en rama `feat/pr2-unification-routing-layouts`, pendiente smoke 2 + merge).
-3. Chat con switch + Nivel 2 de continuidad (pendiente).
-4. Purga de CRM, handoff y `standard_itinerary` (pendiente).
+2. Unificación de routing y layouts (✅ mergeada a main en `4ce93f67`).
+3. Chat con switch + Nivel 2 de continuidad (✅ mergeada a main en `d82ac244`, PR #75).
+4. Purga de CRM/Marketplace/Reports, handoff completo (`leads.trip_id` + RLS + banners/modales), dead code acumulado, eliminar dual-write a `messages` (1.1.g). **NO purga `standard_itinerary`** (cancelado por C7.1.e). Candidato adicional: eliminación de `planner_agent` (sin call sites de routing productivos post-C7.1.e) — decisión a cerrar en Paso 1 de PR 4. (pendiente).
 5. Export PDF de itinerario (pendiente).
 
 Las fases previas (0 → Paso 4 + Fase 1.2) quedan como baseline de ejecución. No se revierten; se refactorizan en las PRs siguientes.
@@ -160,31 +163,35 @@ Las fases previas (0 → Paso 4 + Fase 1.2) quedan como baseline de ejecución. 
 - `src/features/companion/services/consumerAuthService.ts`.
 
 **Layouts deprecados (vivos hasta PR 4):**
-- `src/components/layout/MainLayout.tsx` — sin nav rail visible (CRM/Marketplace/Reports removidos en C10). Solo lo consumen la rama B2B de `ChatFeature` (PR 3 reescribe) y los skeletons `CRMSkeleton`/`ReportsSkeleton` (PR 4 los borra junto con sus pages).
+- `src/components/layout/MainLayout.tsx` — sin nav rail visible. Sobrevive solo para los skeletons `CRMSkeleton`/`ReportsSkeleton` (PR 4 los borra junto con sus pages). La rama B2B de `ChatFeature` ya fue migrada a `UnifiedLayout` en PR 3 (commit `c32c88b5`).
 - `src/components/layouts/CompanionLayout.tsx` — sin consumers post-PR-2.
 
 ---
 
 ## Dead code pendiente para PR 4
 
-Cleanup acumulado durante PR 2 que se difiere a la PR de purga para mantener atomicidad:
+Cleanup acumulado durante PR 2 y PR 3 que se difiere a la PR de purga para mantener atomicidad:
 
 - `src/components/layouts/CompanionLayout.tsx` — sin consumers post-C7.
-- `src/components/layout/MainLayout.tsx` — sobrevive solo para la rama B2B de `ChatFeature` y los skeletons `CRMSkeleton`/`ReportsSkeleton`. Se borra cuando PR 3 reescriba `ChatFeature` y PR 4 elimine las pages CRM/Marketplace/Reports.
+- `src/components/layout/MainLayout.tsx` — sobrevive solo para los skeletons `CRMSkeleton`/`ReportsSkeleton` (PR 4 los borra junto con sus pages). La rama B2B de `ChatFeature` ya fue desacoplada en PR 3.
 - `src/features/companion/utils/consumerAuthSchema.ts` exports `consumerLoginSchema` y `ConsumerLoginFormData` — sin callers productivos post-borrado de `ConsumerLogin.tsx` en C5b. El test `consumerAuthSchema.test.ts` sigue ejerciendo el schema, así que queda hasta que PR 4 decida.
 - `src/features/companion/services/consumerAuthService.ts` export `fetchUserAccountType` — marcada `@deprecated` en C5b. Su único caller era la lógica "agent entrando por puerta consumer" de `ConsumerLogin`, obsoleta con el login unificado.
 - `src/lib/host.ts` exports `isEmiliaHost`, `isMainHost`, `mainOrigin`, `emiliaOrigin`, `isSafeReturnUrl`, `getHostname`, `EMILIA_HOSTS`, `MAIN_HOSTS`, `SAFE_RETURN_HOSTS` — todas marcadas `@deprecated` en C1/C2. Solo `COOKIE_DOMAIN` sobrevive (lo consume `src/integrations/supabase/client.ts`).
 - `src/components/skeletons/CRMSkeleton.tsx` y `ReportsSkeleton.tsx` — siguen usando `MainLayout`, se borran junto con sus pages.
+- `supabase/functions/planner-agent/` + handler `handlePlannerAgentTurn` en `src/features/chat/hooks/useMessageHandler.ts` — vivos pero sin call sites de routing productivos post-C7.1.e (passenger mode pasó a `standard_itinerary`). La decisión de borrar o diferir se cierra en Paso 1 de PR 4 (requiere verificar consumers externos de la edge function deployada antes del drop).
+- **Dual-write a `messages` en `persistPlannerState`** — desde 1.1.c, `trips` es source of truth para `loadPersistedPlannerState`; el dual-write sigue vivo como fallback para conversaciones pre-1.1.b. PR 4 lo elimina (1.1.g del roadmap original).
 
 ---
 
-## TODO antes del merge final de PR 2 a `main`
+## TODO pre-PR-4
 
-- **Smoke 2 visual a viewport 1024px (lg mínimo).** El ajuste C7.1 + C7 (rightPanel a 320px, chat ~376px de ancho) pasó análisis estático pero falta confirmación visual con el chat cargado, sidebar abierto y `ItineraryPanel` poblado. Si algo se siente apretado, el fix es subir el breakpoint del split (`lg:` → `xl:`) o reducir el sidebar consumer (`md:w-72` → `md:w-64`).
-- **Smoke completo de admin pages migradas** (Dashboard, Users, Agencies, Tenants, Settings) bajo `UnifiedLayout`: cargar cada una con role OWNER/SUPERADMIN y SELLER, abrir el avatar menu, confirmar items condicionales por rol, click cada link.
-- **Logout robusto en práctica:** loguearse, hacer logout desde el avatar, confirmar `localStorage` limpio (DevTools → Application → Local Storage, sin claves `sb-*`/`supabase`) y aterrizaje en `/emilia` vía el `RootRedirect` de C1.
+- **Decidir en Paso 1 de PR 4 si `planner_agent` se purga o se defiere.** Edge function + handler `handlePlannerAgentTurn` vivos sin call sites de routing productivos. Verificar consumers externos de la edge function deployada antes del drop.
+- **Pre-check crítico contra prod antes de la migration de reverso de `leads`:** `SELECT count(*) FROM leads WHERE agency_id IS NULL`. Si > 0, decidir destino de esas filas en Paso 1 de PR 4 (drop vs reasignación a agency sentinel) **antes** de restaurar la constraint `NOT NULL`. D13 (política: prohibido aplicar migrations a prod fuera de git) aplica.
+- **Verificar que no quedan imports huérfanos de `HandoffBanner`/`HandoffModal`/`handoffService`** fuera de `CompanionChatPage.tsx` antes del drop de `src/features/companion/`.
+- **Smoke post-purga:** `/emilia/chat` agent y consumer, confirmación de que nada rompe tras eliminar `src/features/companion/` y las 4 pages (CRM, Marketplace, Reports, HotelbedsTest). Redirects legacy de `App.tsx` revisados caso por caso.
 
 **Handoffs y contexto adicional:**
 - `docs/handoffs/auditoria-b2b-b2c-emilia.md`
 - `docs/handoffs/Emilia B2C.md`
-- `docs/handoffs/Handoff — Emilia B2C, post-1.1.d  pre-Fase 1.1.e.md` (último handoff por fase)
+- `docs/handoffs/Handoff — Emilia B2C, post-1.1.d  pre-Fase 1.1.e.md`
+- `docs/handoffs/Handoff___Emilia_B2C__post_PR-3__pre_PR-4.md` (último handoff por fase)
