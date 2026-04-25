@@ -1,6 +1,6 @@
 # Emilia B2C — Estado del desarrollo
 
-**Última actualización:** 22 Abril 2026 (post-PR 5)
+**Última actualización:** 25 Abril 2026 (post-PR #85)
 
 ## Estado actual
 
@@ -97,7 +97,7 @@ El consumer puede:
 
 ## Baseline de tests
 
-- **308 passed / 11 skipped / 0 failed** (baseline post-PR-5). +16 vs post-PR-4 (292): 5 tests canExportPdf + 11 tests renderItineraryHtml (incluye XSS guard y bufferedDays isolation). −38 vs post-PR-3 (330/11/0): 8 handoffFormSchema + 13 handoffService + 11 isTripReadyForHandoff + 3 consumerLoginSchema + 2 orchestrator legacy planner-agent + 1 pipeline agent convergence = 38 tests borrados con su código. Los test files de companion, las 3 suites handoff y los 2 legacy tests del orchestrator ya no existen.
+- **345 passed / 11 skipped / 0 failed** (baseline post-PR #85). +37 vs post-PR-5 (308): C1 tests (useMessageHandler guards, routing, execution switch) + B2 refactors (messageStorageService, external types). +16 vs post-PR-4 (292): 5 tests canExportPdf + 11 tests renderItineraryHtml (incluye XSS guard y bufferedDays isolation). −38 vs post-PR-3 (330/11/0): 8 handoffFormSchema + 13 handoffService + 11 isTripReadyForHandoff + 3 consumerLoginSchema + 2 orchestrator legacy planner-agent + 1 pipeline agent convergence = 38 tests borrados con su código. Los test files de companion, las 3 suites handoff y los 2 legacy tests del orchestrator ya no existen.
 - Build: limpio (warning informativo de `ChatFeature-*.js` ~2.68 MB pre-existente).
 - TypeScript: sin errores.
 - D11 (las dos fallas históricas `localStorage is not defined`) confirmada cerrada — no reapareció en los 6 ciclos de test de PR 2 ni en el baseline post-PR-3/4. Cierre formal registrado en `TECH_DEBT.md` el 2026-04-22 (commit `877a6c66`).
@@ -139,7 +139,7 @@ PRs planeadas:
 2. Unificación de routing y layouts (✅ mergeada a main en `4ce93f67`).
 3. Chat con switch + Nivel 2 de continuidad (✅ mergeada a main en `d82ac244`, PR #75).
 4. Purga post-unificación: companion/, pages B2B, crm/ orphan, layouts, host exports, planner_agent stack, migration reverso leads, rename EmiliaChatPage. Ejecutada; pendiente push a prod de la migration + `supabase functions delete planner-agent --linked`. **NO purga `standard_itinerary`** (cancelado por C7.1.e). 1.1.g (dual-write a `messages`) ya estaba cerrado en PR #63.
-5. Export PDF de itinerario (✅ ejecutada — feat/pr5-pdf-export-itinerary).
+5. Export PDF de itinerario (✅ ejecutada — feat/pr5-pdf-export-itinerary). Top de main: `4d02249f` (PR #85).
 
 Las fases previas (0 → Paso 4 + Fase 1.2) quedan como baseline de ejecución. No se revierten; se refactorizan en las PRs siguientes.
 
