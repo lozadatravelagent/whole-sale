@@ -454,3 +454,17 @@ Cuando `requestType === 'combined'`, `domainForTurn = 'flights'` (truthy), por l
 **Categorización tentativa**: bug de UX — el usuario ve un mensaje "enviando" permanente tras un error.
 
 **No bloquea**: nada hoy. No afecta la lógica de búsqueda ni datos persistidos.
+
+## D34 — Fixture de test usa shape incorrecto para `itinerary.destinations` 🟢 BAJA
+
+**Archivos involucrados**:
+- `src/features/trip-planner/utils.ts:603` — `isDomesticDestination(destination: string)` espera string
+- `src/features/trip-planner/utils.ts:619` — `destinations.every(isDomesticDestination)` pasa cada elemento directamente
+- `src/services/aiMessageParser.ts:109` — tipo declarado: `destinations: string[]`
+- `src/features/chat/__tests__/useMessageHandler.test.ts:386` — fixture usa `destinations: [{ city: 'Roma', country: 'Italia', nights: 7 }]` con `as any`
+
+**Descripción**: Los fixtures de test de C1.a y C1.c usan `destinations` como `Array<{ city, country, nights }>`, que es la shape de `TripPlannerState` (mundo del planner). Pero `ParsedTravelRequest['itinerary']['destinations']` (mundo del parser) es `string[]`. El `as any` en los fixtures silencia el error de TypeScript. En producción no hay mismatch: `parseMessageWithAI` retorna `destinations: string[]`, que es lo que `isDomesticDestination` espera. El error solo se dispara en tests que alcanzan `applySmartDefaults` con el fixture incorrecto (path: `requestType === 'itinerary'` + `plannerState === null`).
+
+**Categorización**: deuda de test / documentation gap. No es un bug de producción.
+
+**No bloquea**: nada hoy. La solución en C1.c fue mockear `@/features/trip-planner/utils`, lo cual es válido como aislamiento de test. Para eliminar la deuda: corregir los fixtures a `destinations: ['Roma, Italia']` (string) y remover el mock.
