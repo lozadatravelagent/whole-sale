@@ -400,3 +400,20 @@ El bucket `documents` en Supabase Storage tiene RLS que solo requiere `authentic
 **Mitigación**: Header comment agregado a `searchHandlers.ts` con `@internal SHARED SERVICE` para alertar a futuros desarrolladores sobre los call sites en ambas features.
 
 **Re-evaluar si**: surgen 3+ consumers adicionales de `searchHandlers`, o si el archivo se parte por otra razón independiente.
+
+## D31 — Tipado de messages.meta en messageStorageService 🟢 BAJA
+
+**Origen**: Refactor B1 (2026-04-25). Detectado en lint focalizado post-commit.
+
+`src/features/chat/services/messageStorageService.ts` accede a `messages.meta` (tipo `Json` en los types generados de Supabase) sin tipar la shape real. Resultado: 4 casts `as any` en líneas 29, 115, 116, heredados de `useContextualMemory.ts` donde vivían antes del refactor. Ninguno fue introducido por B1.
+
+**Shapes conocidas** (3 messageTypes distintos que el service lee/escribe):
+- `contextual_memory`: `{ messageType, parsedRequest: ParsedTravelRequest, timestamp }`
+- `missing_info_request`: `{ messageType, originalRequest: ParsedTravelRequest, ... }`
+- `context_state`: `{ messageType, contextState: ContextState, timestamp }`
+
+**Resolución**: Definir un tipo discriminado `MessageMeta` que cubra las 3 shapes y reemplazar los 4 casts. Candidato a vivir en `src/features/chat/types/contextState.ts` o en un nuevo `src/features/chat/types/messageMeta.ts`.
+
+**Conviene antes de C2**: el bloque C2 descompone `useMessageHandler.ts` y probablemente accede también a `messages.meta`. Resolver D31 primero evita propagar el patrón `as any` a los nuevos services de C2.
+
+**No bloquea**: nada hoy. Lint count preexistente, sin impacto runtime.
