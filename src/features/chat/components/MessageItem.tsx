@@ -6,7 +6,8 @@ import { CircleUser, Sparkle, FileText, ArrowDownToLine, Clock, Check, CheckChec
 // Lazy load heavy components
 const ReactMarkdown = lazy(() => import('react-markdown'));
 const CombinedTravelSelector = lazy(() => import('@/components/crm/CombinedTravelSelector'));
-import type { MessageRow, LocalCombinedTravelResults, LocalHotelData, LocalHotelSegmentResult } from '../types/chat';
+import type { MessageRow } from '../types/chat';
+import type { LocalCombinedTravelResults, LocalHotelData, LocalHotelSegmentResult } from '@/types/external';
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import { getMessageContent, getMessageStatusIconType, formatTime } from '../utils/messageHelpers';
 import { getCityNameFromCode } from '../utils/flightHelpers';

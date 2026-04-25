@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { runWithConcurrency, type CancelToken } from '@/utils/concurrencyPool';
 import { handleHotelSearch } from '@/features/chat/services/searchHandlers';
 import { makeBudget } from '@/services/hotelSearch';
-import type { LocalHotelData } from '@/features/chat/types/chat';
+import type { LocalHotelData } from '@/types/external';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { PlannerPlaceHotelCandidate, TripPlannerState } from '../types';
 import {

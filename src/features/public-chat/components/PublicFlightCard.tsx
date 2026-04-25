@@ -1,5 +1,5 @@
 import { Plane, Users, Timer, Luggage } from 'lucide-react';
-import type { FlightData } from '@/features/chat/types/chat';
+import type { FlightData } from '@/types/external';
 import { getCityNameFromCode, formatDuration } from '@/features/chat/utils/flightHelpers';
 
 interface PublicFlightCardProps {

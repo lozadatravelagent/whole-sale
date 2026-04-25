@@ -1,5 +1,5 @@
 import type { MessageRow } from '@/features/chat/types/chat';
-import type { LocalHotelData } from '@/features/chat/types/chat';
+import type { LocalHotelData } from '@/types/external';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { PlannerDay, PlannerFieldProvenance, PlannerSegment, TripPlannerState } from './types';
 import { getPlannerHotelDisplayId, normalizePlannerState } from './utils';

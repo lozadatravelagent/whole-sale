@@ -18,7 +18,7 @@ import { resolveActivityLocation } from '../services/plannerGeocoding';
 import { fetchInventoryHotelPlaces, fetchPlaceDetails, type PlaceDetails } from '../services/placesService';
 import { getPlannerPlaceCategoryLabel, getPlannerPlaceEmoji, pickCanonicalPlannerPlaceCategory } from '../services/plannerPlaceMapper';
 import { getHotelsFromStorage } from '@/features/chat/services/hotelStorageService';
-import type { LocalHotelData } from '@/features/chat/types/chat';
+import type { LocalHotelData } from '@/types/external';
 
 const DISCOVERY_CATEGORIES: PlannerPlaceCategory[] = ['hotel', 'restaurant', 'cafe', 'museum', 'activity', 'sights', 'nightlife', 'parks', 'shopping', 'culture'];
 const MAP_INVENTORY_HOTELS_LIMIT = 12;

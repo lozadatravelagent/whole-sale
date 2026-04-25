@@ -1,5 +1,5 @@
 import { logTimingStep, nowMs } from '@/utils/debugTiming';
-import type { LocalHotelData } from '@/features/chat/types/chat';
+import type { LocalHotelData } from '@/types/external';
 import type {
   PlannerInventoryHotelCandidate,
   PlannerPlaceHotelCandidate,

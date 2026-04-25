@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import type { FlightData } from '@/features/chat/types/chat';
+import type { FlightData } from '@/types/external';
 
 interface PlannerChatFlightCardProps {
   flight: FlightData;

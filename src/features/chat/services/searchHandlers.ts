@@ -12,7 +12,8 @@ import {
   hasUsableItineraryDates,
   resolveItineraryDateRange
 } from '@/services/aiMessageParser';
-import type { SearchResult, LocalHotelData, LocalHotelSegmentResult, LocalPackageData, LocalServiceData, FlightData, LocalHotelChainBalance, LocalHotelChainQuota } from '../types/chat';
+import type { LocalHotelData, LocalHotelSegmentResult, FlightData, LocalHotelChainBalance, LocalHotelChainQuota } from '@/types/external';
+import type { SearchResult, LocalPackageData, LocalServiceData } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
 import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatChainBalanceNote } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
@@ -26,6 +27,21 @@ import type { TripPlannerState } from '@/features/trip-planner/types';
 import { expandDestinationsIfRegional, getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '@/features/trip-planner';
 import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
+
+/**
+ * @internal SHARED SERVICE
+ *
+ * Este módulo es consumido por dos features:
+ * - src/features/chat/ (orquestación de turnos vía useMessageHandler)
+ * - src/features/trip-planner/ (búsqueda de hoteles/vuelos vía usePlannerHotels, usePlannerTransport)
+ *
+ * Cualquier cambio a la signature de handleHotelSearch / handleFlightSearch
+ * requiere verificar call sites en ambas features.
+ *
+ * Deuda técnica relacionada: ver TECH_DEBT.md entrada D27 (ciclo de servicio
+ * trip-planner → chat/services/searchHandlers, aceptado como deuda documentada
+ * en B2 — refactor de extracción de contratos diferido).
+ */
 
 // =====================================================================
 // PUNTA CANA HOTEL WHITELIST - SPECIAL FILTER

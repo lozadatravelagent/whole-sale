@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import MessageInput from '@/features/chat/components/MessageInput';
 import MessageItem from '@/features/chat/components/MessageItem';
-import type { LocalHotelData, MessageRow } from '@/features/chat/types/chat';
+import type { MessageRow } from '@/features/chat/types/chat';
+import type { LocalHotelData } from '@/types/external';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import {
   AlertTriangle,

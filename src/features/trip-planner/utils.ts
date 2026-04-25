@@ -1,6 +1,6 @@
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { MakeBudgetParams } from '@/services/hotelSearch';
-import type { FlightData, LocalHotelData } from '@/features/chat/types/chat';
+import type { FlightData, LocalHotelData } from '@/types/external';
 import type {
   PlannerActivity,
   PlannerBudgetLevel,

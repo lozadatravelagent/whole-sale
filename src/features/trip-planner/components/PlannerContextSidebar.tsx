@@ -17,7 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Hotel, PanelRightClose, Plane } from 'lucide-react';
-import type { LocalHotelData } from '@/features/chat/types/chat';
+import type { LocalHotelData } from '@/types/external';
 import type { PlannerPlaceHotelCandidate, PlannerSegment, TripPlannerState } from '../types';
 import { formatDateRange, formatDestinationLabel } from '../utils';
 import {
