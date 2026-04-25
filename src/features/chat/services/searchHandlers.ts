@@ -12,7 +12,8 @@ import {
   hasUsableItineraryDates,
   resolveItineraryDateRange
 } from '@/services/aiMessageParser';
-import type { SearchResult, LocalHotelData, LocalHotelSegmentResult, LocalPackageData, LocalServiceData, FlightData, LocalHotelChainBalance, LocalHotelChainQuota } from '../types/chat';
+import type { LocalHotelData, LocalHotelSegmentResult, FlightData, LocalHotelChainBalance, LocalHotelChainQuota } from '@/types/external';
+import type { SearchResult, LocalPackageData, LocalServiceData } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
 import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatChainBalanceNote } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';

@@ -16,7 +16,7 @@ import {
   validateItineraryRequiredFields,
   generateMissingInfoMessage,
 } from '@/services/aiMessageParser';
-import type { LocalCombinedTravelResults } from '@/features/chat/types/chat';
+import type { LocalCombinedTravelResults } from '@/types/external';
 
 export interface PublicMessage {
   id: string;

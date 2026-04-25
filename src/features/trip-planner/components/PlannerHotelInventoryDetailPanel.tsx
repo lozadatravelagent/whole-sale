@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Check, ExternalLink, Hotel, Loader2, MapPin, Phone } from 'lucide-react';
-import type { LocalHotelData } from '@/features/chat/types/chat';
+import type { LocalHotelData } from '@/types/external';
 import type { PlannerSegment } from '../types';
 import {
   formatDateRange,

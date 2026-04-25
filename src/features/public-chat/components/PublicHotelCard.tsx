@@ -1,5 +1,5 @@
 import { Hotel, MapPin, Calendar } from 'lucide-react';
-import type { LocalHotelData } from '@/features/chat/types/chat';
+import type { LocalHotelData } from '@/types/external';
 
 interface PublicHotelCardProps {
   hotel: LocalHotelData;

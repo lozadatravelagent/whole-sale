@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import type { LocalHotelData } from '@/features/chat/types/chat';
+import type { LocalHotelData } from '@/types/external';
 
 interface PlannerChatHotelCardProps {
   hotel: LocalHotelData;

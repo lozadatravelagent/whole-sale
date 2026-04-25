@@ -1,4 +1,4 @@
-import type { LocalCombinedTravelResults } from '@/features/chat/types/chat';
+import type { LocalCombinedTravelResults } from '@/types/external';
 import { PublicFlightCard } from './PublicFlightCard';
 import { PublicHotelCard } from './PublicHotelCard';
 

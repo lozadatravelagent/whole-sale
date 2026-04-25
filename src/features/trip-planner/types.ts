@@ -1,4 +1,4 @@
-import type { FlightData, LocalHotelData } from '@/features/chat/types/chat';
+import type { FlightData, LocalHotelData } from '@/types/external';
 import type { HotelDistanceTag } from './utils';
 
 export type PlannerBudgetLevel = 'low' | 'mid' | 'high' | 'luxury';
