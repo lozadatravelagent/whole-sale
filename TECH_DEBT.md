@@ -417,3 +417,40 @@ El bucket `documents` en Supabase Storage tiene RLS que solo requiere `authentic
 **Conviene antes de C2**: el bloque C2 descompone `useMessageHandler.ts` y probablemente accede también a `messages.meta`. Resolver D31 primero evita propagar el patrón `as any` a los nuevos services de C2.
 
 **No bloquea**: nada hoy. Lint count preexistente, sin impacto runtime.
+
+---
+
+## Hallazgos de auditoría — Fase C1
+
+Los siguientes ítems fueron detectados durante la escritura de tests para `useMessageHandler.ts` (bloque C1, branch `test/c1c-execution-switch`, 2026-04-25). No se propone fix en este PR — solo registro.
+
+## D32 — Branch inalcanzable: `combined` con domain-lock a `hotels` en useMessageHandler 🟡 ANÁLISIS PENDIENTE
+
+**Archivo**: `src/features/chat/hooks/useMessageHandler.ts`
+**Líneas**: L1480–L1483 (cálculo de `domainForTurn`) y L1532 (guarda `if (activeDomain === 'hotels')`)
+
+**Análisis**: `activeDomain` es un `let` declarado en el body del hook (L105), reset a `null` en cada render. En el cálculo previo al switch:
+
+```ts
+const domainForTurn = parsedRequest.requestType === 'hotels' ? 'hotels'
+  : parsedRequest.requestType === 'flights' ? 'flights'
+    : parsedRequest.requestType === 'combined' ? 'flights' : null;
+activeDomain = domainForTurn || activeDomain;
+```
+
+Cuando `requestType === 'combined'`, `domainForTurn = 'flights'` (truthy), por lo que `activeDomain = 'flights'` siempre. La guarda posterior `if (activeDomain === 'hotels')` dentro de `case 'combined'` (L1532) es inalcanzable: ninguna combinación de argumentos de entrada puede resultar en `activeDomain === 'hotels'` cuando el requestType llega al switch como `'combined'`.
+
+**Categorización tentativa**: dead code | bug latente | branch alcanzable solo desde estado no contemplado — sin clasificar.
+
+**No bloquea**: nada hoy. Sin impacto runtime conocido.
+
+## D33 — Optimistic message no se remueve en error path de useMessageHandler 🟡 BUG DE UX
+
+**Archivo**: `src/features/chat/hooks/useMessageHandler.ts`
+**Líneas**: L522–L540 (addOptimisticMessage en try block) y L1743–L1758 (catch block)
+
+**Análisis**: Al inicio del try block (L540), se agrega un mensaje optimista al estado local de la UI via `addOptimisticMessage`. Cuando un search handler lanza un error (e.g., `handleFlightSearch` rechaza), el catch block (L1743) ejecuta `setIsLoading(false)`, `setIsTyping(false)` y `toast({...})`, pero **no llama a `removeOptimisticMessage`**. El mensaje optimista queda colgado en el chat con estado `'sending'` tras el error de red, sin que el usuario reciba feedback visual de que el mensaje nunca se envió.
+
+**Categorización tentativa**: bug de UX — el usuario ve un mensaje "enviando" permanente tras un error.
+
+**No bloquea**: nada hoy. No afecta la lógica de búsqueda ni datos persistidos.
