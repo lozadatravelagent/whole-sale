@@ -1,13 +1,16 @@
 {
   "navbar": {
+    "logoAlt": "VIBOOK",
+    "submark": "Emilia",
     "links": {
-      "agencies": "Agências",
-      "wholesalers": "Operadoras"
+      "howItWorks": "Como funciona",
+      "solutions": "Soluções",
+      "models": "Modelos",
+      "aboutVibook": "Sobre a Vibook"
     },
-    "primaryCta": "Começar a conversar",
+    "primaryCta": "Comece a conversar",
     "openMenu": "Abrir menu",
-    "closeMenu": "Fechar menu",
-    "logoAlt": "Emilia"
+    "closeMenu": "Fechar menu"
   },
   "footer": {
     "tagline": "Feito pela Vibook",
@@ -21,202 +24,164 @@
     "photoCredit": "Fotografia via Unsplash"
   },
   "hero": {
-    "eyebrow": "Emilia by Vibook",
-    "headline": "Sua próxima viagem começa com uma conversa.",
-    "subheadline": "A Emilia ajuda você a transformar ideias de viagem em um plano claro — de forma natural, simples e bonita.",
-    "primaryCta": "Começar a conversar",
-    "secondaryCta": "Ver como funciona",
-    "promptChips": [
-      "Planeje uma viagem de 10 dias pela Itália",
-      "Quero férias de praia em fevereiro",
-      "Me ajude a escolher entre Espanha e Portugal",
-      "Planeje uma viagem em família com crianças",
-      "Quero uma viagem romântica ao Japão"
-    ],
-    "chatPreview": {
-      "assistantMessage": "Parece uma viagem linda. Você imagina algo mais cultural, relaxado, com foco em gastronomia ou um pouco de tudo? E está pensando em uma região ou em um roteiro por várias cidades?",
+    "eyebrow": "AI for Travel Planning & Quotation",
+    "headline": "Da ideia de viagem a uma proposta pronta para vender, em uma só conversa.",
+    "subheadline": "A Emilia é a interface conversacional da Vibook. Planeja e cotiza viagens em linguagem natural, transformando a intenção do usuário em planos estruturados ou cotações acionáveis, conectada a múltiplos fornecedores do setor turístico.",
+    "moat": "A Emilia não é uma ferramenta de viagens. É a interface que conecta a intenção de viajar com a decisão.",
+    "primaryCta": "Comece a conversar com a Emilia",
+    "microcopy": "Sem formulários. Sem fricção. Só conversa.",
+    "scene": {
       "assistantLabel": "Emilia",
-      "status": "Online",
-      "inputPlaceholder": "Conte à Emilia sobre sua próxima viagem...",
-      "sendLabel": "Enviar"
+      "status": "Planejando…",
+      "userMessage": "Quero ir a Cancún de 10 a 18 de janeiro, somos 2 adultos e 2 crianças, quarto quádruplo",
+      "assistantMessage": "Certo. Estou organizando sua viagem para Cancún — 10 a 18 de janeiro, 2 adultos + 2 crianças, em quarto quádruplo.",
+      "cards": {
+        "destination": { "label": "Destino", "value": "Cancún, México" },
+        "dates": { "label": "Datas", "value": "10 – 18 de janeiro" },
+        "guests": { "label": "Passageiros", "value": "2 adultos + 2 crianças" },
+        "room": { "label": "Quarto", "value": "Quádruplo" }
+      }
     }
   },
-  "ecosystem": {
-    "eyebrow": "Mais formas de experimentar a Emilia",
-    "headline": "A Emilia também potencializa negócios de viagem",
-    "subheadline": "A Emilia começa como uma conversa para viajantes, mas suas capacidades também se estendem ao lado profissional do turismo.",
+  "whatIsEmilia": {
+    "eyebrow": "O que é a Emilia",
+    "headline": "Uma nova forma de entender e vender viagens.",
+    "subheadline": "A Emilia transforma uma conversa em uma estrutura de viagem clara. De uma primeira ideia a uma proposta pronta para enviar — tudo em linguagem natural. Não é só inspiração: é planejamento, estruturação e cotação em uma única interface.",
+    "cards": [
+      { "title": "Planeja", "copy": "Entende a intenção da viagem e transforma em uma estrutura clara." },
+      { "title": "Estrutura", "copy": "Organiza destinos, datas, passageiros e quartos em dados acionáveis." },
+      { "title": "Cotiza", "copy": "Gera propostas prontas para enviar, conectadas aos seus fornecedores." }
+    ]
+  },
+  "realExample": {
+    "eyebrow": "Exemplo real",
+    "headline": "Assim a Emilia funciona na prática.",
+    "subheadline": "Uma só frase do usuário basta para a Emilia interpretar datas, passageiros, tipo de quarto e montar a proposta.",
+    "userLabel": "Você",
+    "assistantLabel": "Emilia",
+    "userMessage": "Quero ir a Cancún de 10 a 18 de janeiro, somos 2 adultos e 2 crianças, quarto quádruplo",
+    "assistantMessage": "Pronto. Identifiquei destino, datas, grupo familiar e tipo de quarto. Estou montando a proposta.",
     "cards": {
-      "agencies": {
-        "title": "Emilia para agências",
-        "copy": "Potencialize sua agência com a Emilia e ajude seu time a responder mais rápido, estruturar melhor os pedidos e vender com menos fricção.",
-        "ctaLabel": "Saiba mais",
-        "comingSoonBadge": "Em breve"
-      },
-      "wholesalers": {
-        "title": "Emilia B2B para operadoras",
-        "copy": "Traga a mágica da Emilia para a sua experiência de busca e ofereça à sua rede de agências uma forma mais inteligente e natural de explorar opções.",
-        "ctaLabel": "Saiba mais",
-        "comingSoonBadge": "Em breve"
-      }
+      "destination": { "label": "Destino", "value": "Cancún" },
+      "dates": { "label": "Datas", "value": "10 – 18 de janeiro" },
+      "guests": { "label": "Passageiros", "value": "2 adultos + 2 crianças" },
+      "room": { "label": "Quarto", "value": "Quádruplo" }
     }
   },
   "howItWorks": {
     "eyebrow": "Como funciona",
-    "headline": "Planejar viagens, com forma de conversa.",
-    "subheadline": "Comece com uma ideia, refine-a de forma natural e transforme em um plano mais claro e útil.",
+    "headline": "De uma conversa a uma proposta acionável.",
+    "subheadline": "Três passos. Uma linguagem. Zero formulários.",
     "steps": [
-      {
-        "title": "Conte para a Emilia que tipo de viagem você quer",
-        "copy": "Compartilhe um destino, uma sensação, um estilo de viagem ou apenas uma ideia aproximada."
+      { "title": "Input natural", "copy": "O usuário fala em linguagem livre — sem formulários, sem campos obrigatórios." },
+      { "title": "Interpretação inteligente", "copy": "A Emilia detecta destinos, datas, passageiros, quartos e estilo de viagem." },
+      { "title": "Saída estruturada e cotizável", "copy": "Transforma a intenção em uma proposta pronta para revisar, ajustar ou enviar." }
+    ]
+  },
+  "differentiator": {
+    "eyebrow": "O que torna a Emilia diferente",
+    "headline": "Não é só uma ferramenta. É uma nova interface.",
+    "items": [
+      { "title": "Não é só inspiração", "copy": "É ação — estrutura e cotação na mesma conversa." },
+      { "title": "Não é só busca", "copy": "É conversa — intenção, não keywords." },
+      { "title": "Não é só planejamento", "copy": "É cotação — da ideia à venda." },
+      { "title": "Não é só mais uma ferramenta", "copy": "É a nova interface para entender e vender viagens." }
+    ]
+  },
+  "twoModes": {
+    "eyebrow": "Dois modos",
+    "headline": "Dois modos, uma só experiência.",
+    "subheadline": "A Emilia começa planejando e evolui naturalmente para cotar.",
+    "connector": "Evolui naturalmente",
+    "modes": {
+      "planner": {
+        "title": "Planejador",
+        "copy": "Inspira, estrutura e ordena a ideia de viagem em dados acionáveis."
       },
-      {
-        "title": "Refinem o plano juntos",
-        "copy": "A Emilia faz perguntas inteligentes para entender o que combina mais com você."
-      },
-      {
-        "title": "Chegue a um plano de viagem mais claro",
-        "copy": "Transforme ideias soltas em uma viagem mais estruturada e pessoal."
+      "quoter": {
+        "title": "Cotador",
+        "copy": "Conecta com fornecedores e devolve propostas prontas para enviar."
       }
-    ]
+    }
   },
-  "promptDemo": {
-    "eyebrow": "Comece com qualquer coisa",
-    "headline": "A Emilia entende de viagens do jeito que as pessoas realmente falam.",
-    "subheadline": "De ideias vagas a planos mais estruturados, a Emilia ajuda você a dar forma à sua viagem de maneira natural.",
-    "prompts": [
-      "Quero uma viagem de praia em fevereiro mas não sei para onde ir",
-      "Me ajude a planejar uma viagem romântica ao Japão",
-      "Estou pensando em Espanha e Portugal por cerca de duas semanas",
-      "Quero uma viagem em família com crianças, clima quente e logística simples",
-      "Planeje uma primeira viagem ao Sudeste Asiático"
-    ]
-  },
-  "helpsWith": {
-    "eyebrow": "No que a Emilia ajuda",
-    "headline": "Menos fricção. Mais clareza.",
-    "subheadline": "A Emilia ajuda você a ir de \"tenho uma ideia\" para \"já sei como essa viagem pode tomar forma\".",
-    "features": [
-      {
-        "title": "Escolher melhores destinos",
-        "copy": "Explore lugares que combinam com seu tempo, estilo e humor de viagem."
+  "solutions": {
+    "eyebrow": "Soluções",
+    "headline": "Uma interface, três formas de usar.",
+    "subheadline": "A Emilia se adapta a quem a chama.",
+    "cards": {
+      "travelers": {
+        "title": "Viajantes",
+        "copy": "Dê forma à sua próxima viagem em uma conversa. Sem formulários, sem fricção.",
+        "ctaLabel": "Comece a conversar"
       },
-      {
-        "title": "Dar forma ao roteiro",
-        "copy": "Organize cidades, ritmo e fluxo da viagem de um jeito que faça sentido."
+      "agencies": {
+        "title": "Agências",
+        "copy": "Responda mais rápido, estruture melhor cada pedido e venda com menos fricção.",
+        "ctaLabel": "Saiba mais",
+        "comingSoonBadge": "Em breve"
       },
-      {
-        "title": "Comparar estilos de viagem",
-        "copy": "Pense em experiências culturais, de praia, românticas, em família ou mistas."
-      },
-      {
-        "title": "Tornar úteis as ideias vagas",
-        "copy": "Transforme intenções amplas em algo mais concreto e acionável."
-      },
-      {
-        "title": "Simplificar o planejamento",
-        "copy": "Reduza a sobrecarga mental e chegue antes a uma estrutura de viagem clara."
-      },
-      {
-        "title": "Pensar a lógica da rota",
-        "copy": "Combine lugares e durações de uma forma mais natural."
+      "wholesalers": {
+        "title": "Operadoras",
+        "copy": "Leve a Emilia ao seu motor B2B e ofereça às suas agências uma forma mais natural de cotar.",
+        "ctaLabel": "Saiba mais",
+        "comingSoonBadge": "Em breve"
       }
+    }
+  },
+  "ecosystemNetwork": {
+    "eyebrow": "Ecossistema",
+    "headline": "Conectada a múltiplos fornecedores do setor.",
+    "subheadline": "A Emilia integra a disponibilidade e os preços dos fornecedores que você já usa, em uma só interface.",
+    "centerLabel": "Emilia",
+    "nodes": {
+      "hotels": "Hotéis",
+      "flights": "Voos",
+      "transfers": "Transfers",
+      "activities": "Atividades",
+      "tours": "Tours",
+      "insurance": "Seguros"
+    }
+  },
+  "impact": {
+    "eyebrow": "Impacto",
+    "headline": "O que muda quando a Emilia entra no fluxo.",
+    "items": [
+      { "title": "Menos fricção", "copy": "Sem formulários, sem passos intermediários." },
+      { "title": "Mais velocidade", "copy": "Da ideia à proposta em minutos." },
+      { "title": "Mais propostas", "copy": "Mais volume sem mais time." },
+      { "title": "Melhor experiência", "copy": "Uma conversa que parece humana de ponta a ponta." }
     ]
   },
-  "inspiration": {
-    "eyebrow": "Ideias de viagem",
-    "headline": "Algumas formas de começar.",
-    "subheadline": "Escolha uma direção e deixe a Emilia te ajudar a dar forma.",
-    "ctaLabel": "Começar a partir desta ideia",
-    "cards": [
-      {
-        "title": "7 dias no Rio",
-        "prompt": "Planeje uma viagem de 7 dias ao Rio de Janeiro — primeira vez, me interesso por cultura, praia e gastronomia.",
-        "alt": "Cristo Redentor contemplando o Rio de Janeiro ao entardecer"
+  "models": {
+    "eyebrow": "Modelos",
+    "headline": "Escolha como quer trabalhar com a Emilia.",
+    "subheadline": "Três formas de integrar a Emilia, conforme o papel e a maturidade do seu produto.",
+    "tabs": {
+      "saas": {
+        "label": "SaaS",
+        "title": "Emilia como produto",
+        "copy": "Acesse a Emilia pela nossa plataforma. Sem instalação, pronta para usar."
       },
-      {
-        "title": "10 dias na Itália",
-        "prompt": "Planeje uma viagem de 10 dias pela Itália — gostaria de um mix de cultura e gastronomia, aberto a um roteiro por várias cidades.",
-        "alt": "Vila italiana na encosta com vinhedos e arquitetura em pedra quente"
+      "embedded": {
+        "label": "Embarcada",
+        "title": "Emilia dentro do seu produto",
+        "copy": "Embarque a interface conversacional no seu motor B2B, com sua marca e seus fornecedores."
       },
-      {
-        "title": "Espanha + Portugal",
-        "prompt": "Planeje uma viagem de 2 semanas combinando Espanha e Portugal — me ajude a escolher cidades e ritmo.",
-        "alt": "Praça ibérica histórica com paredes de azulejos e luz quente do entardecer"
-      },
-      {
-        "title": "Escape de praia em família",
-        "prompt": "Planeje uma viagem de praia em família com crianças, clima quente e logística simples. Qualquer continente.",
-        "alt": "Família caminhando por uma praia tropical margeada por palmeiras"
-      },
-      {
-        "title": "Europa romântica",
-        "prompt": "Planeje uma viagem romântica de 10 dias pela Europa — gostaria de incluir 2 ou 3 cidades com caráter.",
-        "alt": "Um casal caminhando por um centro histórico europeu romântico na hora dourada"
-      },
-      {
-        "title": "Japão pela primeira vez",
-        "prompt": "Planeje uma viagem ao Japão pela primeira vez, cerca de 12 dias, equilibrada entre Tóquio, Kyoto e mais uma região.",
-        "alt": "Templo japonês tradicional emoldurado por cerejeiras em flor e lanternas de papel"
+      "api": {
+        "label": "API",
+        "title": "Emilia como camada",
+        "copy": "Use a inteligência da Emilia pelo seu próprio frontend, via API."
       }
-    ]
+    }
   },
-  "understands": {
-    "eyebrow": "O que a Emilia entende",
-    "headline": "Feita para conversas reais sobre viagens.",
-    "subheadline": "A Emilia ajuda com diferentes tipos de pensamentos sobre viagens, não apenas pedidos perfeitamente estruturados.",
-    "pills": [
-      "Ideias vagas de viagem",
-      "Datas flexíveis",
-      "Viagens em família",
-      "Viagens a dois",
-      "Primeira viagem a um destino",
-      "Viagens por várias cidades",
-      "Combinações de cultura e praia",
-      "Escapadas curtas",
-      "Viagens mais longas",
-      "Diferentes humores e estilos de viagem"
-    ]
-  },
-  "personalized": {
-    "eyebrow": "Planejamento personalizado",
-    "headline": "Planos de viagem com a sua cara.",
-    "subheadline": "A Emilia se adapta ao seu ritmo, estilo, preferências e restrições, para que a viagem comece a tomar forma em volta do jeito que você quer viajar.",
-    "points": [
-      {
-        "label": "Ritmo da viagem",
-        "caption": "A velocidade que realmente combina com o jeito que você gosta de viajar."
-      },
-      {
-        "label": "Estilo e humor",
-        "caption": "Cultural, relaxado, gastronômico, aventureiro ou uma mistura."
-      },
-      {
-        "label": "Número de dias",
-        "caption": "De escapadas curtas a viagens longas, no seu tempo."
-      },
-      {
-        "label": "Quem está viajando",
-        "caption": "Sozinho, em casal, em família ou com amigos — com as considerações certas."
-      },
-      {
-        "label": "Flexibilidade e restrições",
-        "caption": "Datas, orçamentos, imperdíveis ou coisas que você prefere evitar."
-      },
-      {
-        "label": "Preferências pessoais",
-        "caption": "Os pequenos detalhes que fazem uma viagem parecer sua."
-      }
-    ]
-  },
-  "trust": {
-    "eyebrow": "Feito pela Vibook",
-    "headline": "Desenhada por uma empresa de tecnologia para viagens.",
-    "subheadline": "A Emilia faz parte da Vibook, uma empresa focada em construir melhores experiências de viagem por meio de interfaces inteligentes."
+  "aboutVibook": {
+    "eyebrow": "Sobre a Vibook",
+    "headline": "Construímos a interface que faltava.",
+    "copy": "A Vibook é uma empresa de tecnologia focada no setor turístico. Combinamos AI conversacional, dados do setor e design de produto para levar a experiência de planejar e vender viagens a um lugar mais humano, mais rápido e mais útil."
   },
   "finalCta": {
-    "headline": "Comece a planejar com a Emilia.",
-    "subheadline": "Sua próxima viagem pode começar com uma única mensagem.",
-    "primaryCta": "Começar a conversar",
-    "secondaryCta": "Ver como funciona"
+    "headline": "Comece a planejar sua próxima viagem com a Emilia.",
+    "primaryCta": "Comece a conversar com a Emilia",
+    "microcopy": "Abre o chat em modo planejador. Sem formulários."
   }
 }

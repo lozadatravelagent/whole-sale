@@ -2,26 +2,14 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { SectionEyebrow } from '../components/SectionEyebrow';
-import { PromptChip } from '../components/PromptChip';
-import { ChatPreview } from '../components/ChatPreview';
+import { AnimatedChatScene } from '../components/AnimatedChatScene';
 import { HeroAurora } from '../components/HeroAurora';
-
-function scrollToSection(id: string) {
-  if (typeof document === 'undefined') return;
-  const el = document.getElementById(id);
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
 
 export function Hero() {
   const { t } = useTranslation('landing');
   const navigate = useNavigate();
 
   const handleStartChat = () => navigate('/emilia/chat');
-  const handleSeeHow = () => scrollToSection('how-it-works');
-
-  const promptChips = t('hero.promptChips', {
-    returnObjects: true,
-  }) as string[];
 
   return (
     <section
@@ -32,7 +20,7 @@ export function Hero() {
       <HeroAurora className="absolute inset-0 h-full w-full opacity-60" />
       <div className="container relative z-10 mx-auto px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 items-center gap-12 lg:gap-16">
-          <div className="flex flex-col gap-6 lg:gap-8">
+          <div className="flex flex-col gap-6 lg:gap-7">
             <SectionEyebrow>{t('hero.eyebrow')}</SectionEyebrow>
             <h1
               id="hero-heading"
@@ -43,22 +31,18 @@ export function Hero() {
             <p className="max-w-xl text-lg leading-relaxed text-muted-foreground lg:text-xl">
               {t('hero.subheadline')}
             </p>
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <p className="max-w-xl border-l-2 border-primary/60 pl-4 text-base italic leading-relaxed text-foreground/90">
+              {t('hero.moat')}
+            </p>
+            <div className="flex flex-col items-start gap-3 pt-2">
               <Button size="lg" onClick={handleStartChat}>
                 {t('hero.primaryCta')}
               </Button>
-              <Button size="lg" variant="outline" onClick={handleSeeHow}>
-                {t('hero.secondaryCta')}
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2 pt-2">
-              {promptChips.map((prompt) => (
-                <PromptChip key={prompt} label={prompt} prompt={prompt} />
-              ))}
+              <p className="text-sm text-muted-foreground">{t('hero.microcopy')}</p>
             </div>
           </div>
           <div>
-            <ChatPreview />
+            <AnimatedChatScene />
           </div>
         </div>
       </div>

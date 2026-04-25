@@ -8,8 +8,10 @@ import { LanguageSelector } from '@/components/LanguageSelector';
 import { cn } from '@/lib/utils';
 
 const NAV_LINKS = [
-  { id: 'agencies', targetId: 'ecosystem-agencies', labelKey: 'navbar.links.agencies' },
-  { id: 'wholesalers', targetId: 'ecosystem-wholesalers', labelKey: 'navbar.links.wholesalers' },
+  { id: 'how-it-works', targetId: 'how-it-works', labelKey: 'navbar.links.howItWorks' },
+  { id: 'solutions', targetId: 'solutions', labelKey: 'navbar.links.solutions' },
+  { id: 'models', targetId: 'models', labelKey: 'navbar.links.models' },
+  { id: 'about-vibook', targetId: 'about-vibook', labelKey: 'navbar.links.aboutVibook' },
 ] as const;
 
 function scrollToSection(id: string) {
@@ -54,9 +56,14 @@ export function LandingNavbar() {
         <div className="flex items-center justify-between h-14 lg:h-16">
           <a
             href="/emilia"
-            className="text-foreground font-semibold tracking-tight text-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-md"
+            className="flex items-baseline gap-2 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-md"
           >
-            {t('navbar.logoAlt')}
+            <span className="font-semibold tracking-[0.18em] text-lg">
+              {t('navbar.logoAlt')}
+            </span>
+            <span className="text-sm font-medium text-muted-foreground tracking-tight">
+              {t('navbar.submark')}
+            </span>
           </a>
 
           <nav className="hidden lg:flex items-center gap-1" aria-label="Landing sections">

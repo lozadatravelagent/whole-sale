@@ -4,18 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { SectionHeading } from '../components/SectionHeading';
 
-function scrollToSection(id: string) {
-  if (typeof document === 'undefined') return;
-  const el = document.getElementById(id);
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
 export function FinalCta() {
   const { t } = useTranslation('landing');
   const navigate = useNavigate();
 
   const handleStartChat = () => navigate('/emilia/chat');
-  const handleSeeHow = () => scrollToSection('how-it-works');
 
   return (
     <motion.section
@@ -32,25 +25,15 @@ export function FinalCta() {
           <SectionHeading
             id="final-cta-heading"
             title={t('finalCta.headline')}
-            subtitle={t('finalCta.subheadline')}
             align="center"
           />
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <Button
-              size="lg"
-              onClick={handleStartChat}
-              className="w-full sm:w-auto"
-            >
+          <div className="flex flex-col items-center gap-3">
+            <Button size="lg" onClick={handleStartChat}>
               {t('finalCta.primaryCta')}
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              onClick={handleSeeHow}
-              className="w-full sm:w-auto"
-            >
-              {t('finalCta.secondaryCta')}
-            </Button>
+            <p className="text-sm text-muted-foreground">
+              {t('finalCta.microcopy')}
+            </p>
           </div>
         </div>
       </div>
