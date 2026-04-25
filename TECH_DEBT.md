@@ -468,3 +468,21 @@ Cuando `requestType === 'combined'`, `domainForTurn = 'flights'` (truthy), por l
 **Categorización**: deuda de test / documentation gap. No es un bug de producción.
 
 **No bloquea**: nada hoy. La solución en C1.c fue mockear `@/features/trip-planner/utils`, lo cual es válido como aislamiento de test. Para eliminar la deuda: corregir los fixtures a `destinations: ['Roma, Italia']` (string) y remover el mock.
+
+## D35 — Shape incorrecta en mocks de validateFlight/HotelRequiredFields en C1.a 🟢 BAJA
+
+**Archivo**: `src/features/chat/__tests__/useMessageHandler.test.ts`
+
+`validateFlightRequiredFields` y `validateHotelRequiredFields` están mockeadas retornando `[]` (array vacío). La shape correcta es `{ isValid: boolean, missingFields: string[], missingFieldsSpanish: string[] }`, que es la usada en `useMessageHandler.routing.test.ts` (C1.b, PR #82). Los tests de C1.a no alcanzan el bloque de validación flight/hotel, por eso no fallan hoy. (Referenciada como D-C1b en el PR description de C1.b — PR #82.)
+
+**Riesgo**: si un test futuro en `useMessageHandler.test.ts` alcanza el path de validación, `validation.isValid` será `undefined` (acceso a `.isValid` sobre un array) y el mock dará un falso negativo confuso. Fix: actualizar los dos mocks al return value correcto en C1.a. 2 líneas de cambio.
+
+**No bloquea**: nada hoy. Sin impacto runtime.
+
+## D36 — Assertion débil en test de iteration merge (C1.b) 🟢 BAJA
+
+**Archivo**: `src/features/chat/__tests__/useMessageHandler.routing.test.ts`
+
+El test `calls mergeIterationContext when detectIterationIntent returns isIteration true and persistentState exists` verifica el segundo argumento de `mergeIterationContext` con `expect.any(Object)`. El valor está fijado upstream por `parseMessageWithAI.mockResolvedValue(MISSING_INFO_PARSED)`, por lo que podría tightenearse a `expect.objectContaining({ requestType: 'missing_info_request' })` o directamente a `MISSING_INFO_PARSED`. Tightening trivial: 1 línea. (Referenciada como D-C1b-bis en el PR description de C1.b — PR #82.)
+
+**No bloquea**: nada hoy. El test es correcto — solo menos específico de lo necesario.
