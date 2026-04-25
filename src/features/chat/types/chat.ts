@@ -12,22 +12,6 @@ export interface ConversationWithAgency extends ConversationRow {
   creator_role?: Database['public']['Enums']['user_role'] | null;
 }
 
-export interface LocalPackageData {
-  name: string;
-  destination: string;
-  price: number;
-  currency: string;
-  duration: number;
-}
-
-export interface LocalServiceData {
-  name: string;
-  city: string;
-  price: number;
-  currency: string;
-  duration: string;
-}
-
 export interface ChatState {
   selectedConversation: string | null;
   message: string;

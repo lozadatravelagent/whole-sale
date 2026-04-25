@@ -5,7 +5,7 @@ import type {
   LocalHotelSegmentResult,
   LocalCombinedTravelResults,
 } from '@/types/external';
-import type { LocalPackageData, LocalServiceData } from '../types/chat';
+import type { LocalPackageData, LocalServiceData } from '@/types/external';
 import { generateFlightItinerary } from './flightTransformer';
 import { formatDuration } from '../utils/flightHelpers';
 import { translateRoomDescription, translateRoomTypeTitle, translateFlightInfo, translateBaggage } from '../utils/translations';
