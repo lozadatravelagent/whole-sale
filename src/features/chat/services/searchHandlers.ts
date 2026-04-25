@@ -28,6 +28,21 @@ import { expandDestinationsIfRegional, getInclusiveDateRangeDays, normalizePlann
 import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 
+/**
+ * @internal SHARED SERVICE
+ *
+ * Este módulo es consumido por dos features:
+ * - src/features/chat/ (orquestación de turnos vía useMessageHandler)
+ * - src/features/trip-planner/ (búsqueda de hoteles/vuelos vía usePlannerHotels, usePlannerTransport)
+ *
+ * Cualquier cambio a la signature de handleHotelSearch / handleFlightSearch
+ * requiere verificar call sites en ambas features.
+ *
+ * Deuda técnica relacionada: ver TECH_DEBT.md entrada D27 (ciclo de servicio
+ * trip-planner → chat/services/searchHandlers, aceptado como deuda documentada
+ * en B2 — refactor de extracción de contratos diferido).
+ */
+
 // =====================================================================
 // PUNTA CANA HOTEL WHITELIST - SPECIAL FILTER
 // =====================================================================

@@ -388,3 +388,15 @@ El bucket `documents` en Supabase Storage tiene RLS que solo requiere `authentic
 **Fix futuro** (si se decide persistir PDFs en Storage): crear bucket dedicado `itinerary-pdfs` con RLS scoped por `agency_id`. Requiere nueva migration. El path de subida debe incluir `agency_id` como prefijo.
 
 **No bloquea**: PR 5 no usa Storage. Bloquea persistencia de PDFs de consumer.
+
+## D30 — Ciclo de servicio: trip-planner importa desde chat/services/searchHandlers 🟡 ARQUITECTURA
+
+**Origen**: Documentado en refactor B2 (2026-04-25).
+
+`src/features/trip-planner/hooks/usePlannerHotels.ts` y `usePlannerTransport.ts` importan `handleHotelSearch` / `handleFlightSearch` directamente desde `src/features/chat/services/searchHandlers.ts`. Esto mantiene un ciclo de dependencia entre features: trip-planner → chat/services.
+
+**Aceptado en B2** porque extraer los handlers a un módulo neutro requeriría refactorizar `searchHandlers.ts` (~1800 LOC) y su inyección de dependencias. Costo/beneficio desfavorable en este ciclo.
+
+**Mitigación**: Header comment agregado a `searchHandlers.ts` con `@internal SHARED SERVICE` para alertar a futuros desarrolladores sobre los call sites en ambas features.
+
+**Re-evaluar si**: surgen 3+ consumers adicionales de `searchHandlers`, o si el archivo se parte por otra razón independiente.
