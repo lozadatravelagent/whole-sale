@@ -38,7 +38,7 @@ import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
  * Cualquier cambio a la signature de handleHotelSearch / handleFlightSearch
  * requiere verificar call sites en ambas features.
  *
- * Deuda técnica relacionada: ver TECH_DEBT.md entrada D27 (ciclo de servicio
+ * Deuda técnica relacionada: ver TECH_DEBT.md entrada D30 (ciclo de servicio
  * trip-planner → chat/services/searchHandlers, aceptado como deuda documentada
  * en B2 — refactor de extracción de contratos diferido).
  */
