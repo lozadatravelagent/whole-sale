@@ -485,4 +485,55 @@ Cuando `requestType === 'combined'`, `domainForTurn = 'flights'` (truthy), por l
 
 El test `calls mergeIterationContext when detectIterationIntent returns isIteration true and persistentState exists` verifica el segundo argumento de `mergeIterationContext` con `expect.any(Object)`. El valor está fijado upstream por `parseMessageWithAI.mockResolvedValue(MISSING_INFO_PARSED)`, por lo que podría tightenearse a `expect.objectContaining({ requestType: 'missing_info_request' })` o directamente a `MISSING_INFO_PARSED`. Tightening trivial: 1 línea. (Referenciada como D-C1b-bis en el PR description de C1.b — PR #82.)
 
-**No bloquea**: nada hoy. El test es correcto — solo menos específico de lo necesario.
+## D37 — MessageRow en trip-planner: cruce permanente aceptado 🟢 BAJA
+
+**Origen**: Auditoría de tipos cruzados chat ↔ trip-planner (2026-04-25).
+
+`MessageRow` (alias `Database['public']['Tables']['messages']['Row']`) está definido
+en `chat/types/chat.ts` e importado por 4 archivos en trip-planner:
+- `components/TripPlannerWorkspace.tsx`
+- `helpers.ts`
+- `hooks/usePlannerState.ts`
+- `useTripPlanner.ts`
+
+**Por qué no se mueve**: `MessageRow` es un alias de tipo Supabase generado automáticamente.
+Moverlo a un módulo neutral (`src/types/`) crearía una dependencia directa de
+`@/integrations/supabase/types` en ese módulo, que es peor que el acoplamiento actual.
+El alias pertenece semánticamente a chat (tabla `messages`). trip-planner lo usa porque
+`TripPlannerWorkspace` renderiza mensajes dentro del workspace — si esa arquitectura
+cambiara, el cruce desaparecería solo.
+
+**No bloquea**: nada. Aceptado como cruce permanente hasta una eventual separación
+del panel de mensajes del panel de planner.
+
+## D38 — eslint-plugin-boundaries: evaluación pendiente 🟢 BAJA
+
+**Origen**: Pregunta abierta 3 del planning de tipos cruzados (2026-04-25).
+
+Durante la auditoría de tipos cruzados se identificó `eslint-plugin-boundaries`
+como mecanismo preventivo para bloquear nuevos cruces no autorizados entre
+`chat` y `trip-planner`. El planning lo incluyó como parte de la Opción D, pero
+la decisión de instalación quedó postergada.
+
+**Cruces vivos que la configuración debería contemplar** (identificados en Paso 0):
+
+1. **D30** — `trip-planner/hooks/usePlannerHotels` y `usePlannerTransport` importan
+   `handleHotelSearch` / `handleFlightSearch` desde `chat/services/searchHandlers`.
+   Aceptado como deuda documentada.
+
+2. **D37** — `TripPlannerWorkspace`, `helpers.ts`, `usePlannerState`, `useTripPlanner`
+   importan `MessageRow` desde `chat/types/chat`. Aceptado como cruce permanente.
+
+3. **COMPONENT coupling** — `TripPlannerWorkspace.tsx` importa `MessageInput`,
+   `MessageItem` y `SuggestionChips` desde `chat/components/`. No bloqueante, pero
+   viola la jerarquía de features y requiere regla de excepción explícita.
+
+4. **SERVICE coupling** — `TripPlannerMap.tsx` importa `getHotelsFromStorage` desde
+   `chat/services/hotelStorageService`. Acceso a IndexedDB compartido entre features.
+
+**Qué haría**: configurar reglas en `.eslintrc` para bloquear nuevos cruces
+`trip-planner → chat/*` salvo los 4 listados arriba; y bloquear nuevos cruces
+`chat → trip-planner/hooks/` o `chat → trip-planner/services/`. ~30 líneas de config.
+
+**No bloquea**: nada hoy. El estado actual está auditado. La decisión de instalación
+es independiente del cierre del planning.

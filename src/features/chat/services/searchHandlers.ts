@@ -12,8 +12,8 @@ import {
   hasUsableItineraryDates,
   resolveItineraryDateRange
 } from '@/services/aiMessageParser';
-import type { LocalHotelData, LocalHotelSegmentResult, FlightData, LocalHotelChainBalance, LocalHotelChainQuota } from '@/types/external';
-import type { SearchResult, LocalPackageData, LocalServiceData } from '../types/chat';
+import type { LocalHotelData, LocalHotelSegmentResult, FlightData, LocalHotelChainBalance, LocalHotelChainQuota, LocalPackageData, LocalServiceData } from '@/types/external';
+import type { SearchResult } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
 import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatChainBalanceNote } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
@@ -38,7 +38,7 @@ import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
  * Cualquier cambio a la signature de handleHotelSearch / handleFlightSearch
  * requiere verificar call sites en ambas features.
  *
- * Deuda técnica relacionada: ver TECH_DEBT.md entrada D27 (ciclo de servicio
+ * Deuda técnica relacionada: ver TECH_DEBT.md entrada D30 (ciclo de servicio
  * trip-planner → chat/services/searchHandlers, aceptado como deuda documentada
  * en B2 — refactor de extracción de contratos diferido).
  */

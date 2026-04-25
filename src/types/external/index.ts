@@ -284,3 +284,19 @@ export interface LocalCombinedTravelResults {
   hotelSearchId?: string;
   hotelSearchIds?: string[];
 }
+
+export interface LocalPackageData {
+  name: string;
+  destination: string;
+  price: number;
+  currency: string;
+  duration: number;
+}
+
+export interface LocalServiceData {
+  name: string;
+  city: string;
+  price: number;
+  currency: string;
+  duration: string;
+}
