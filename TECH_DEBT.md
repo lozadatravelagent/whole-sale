@@ -537,5 +537,3 @@ la decisión de instalación quedó postergada.
 
 **No bloquea**: nada hoy. El estado actual está auditado. La decisión de instalación
 es independiente del cierre del planning.
-
-**No bloquea**: nada hoy. El test es correcto — solo menos específico de lo necesario.
