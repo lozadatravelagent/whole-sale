@@ -14,7 +14,7 @@ import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponsePayload } from '../services/discoveryService';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
-import type { PreloadedConversationKnowledge } from '../types/knowledge';
+import type { PlannerEditContext, PreloadedConversationKnowledge } from '../types/knowledge';
 import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
 import { applySmartDefaults, normalizePlannerState } from '@/features/trip-planner/utils';
 import { mergePlannerFieldUpdate, normalizeLocationLabel, buildPlannerHotelSearchSignature, buildPlannerTransportSearchSignature } from '@/features/trip-planner/helpers';
@@ -52,6 +52,77 @@ function calculateTripDays(startDate?: string, endDate?: string): number | undef
   const diff = new Date(`${endDate}T00:00:00`).getTime() - new Date(`${startDate}T00:00:00`).getTime();
   if (Number.isNaN(diff)) return undefined;
   return Math.max(1, Math.round(diff / 86400000) + 1);
+}
+
+function buildPlannerEditContext(plannerState?: TripPlannerState | null): PlannerEditContext | null {
+  if (!plannerState) return null;
+
+  return {
+    hasActivePlan: true,
+    title: plannerState.title,
+    summary: plannerState.summary,
+    destinations: plannerState.destinations,
+    days: plannerState.days,
+    startDate: plannerState.startDate,
+    endDate: plannerState.endDate,
+    isFlexibleDates: plannerState.isFlexibleDates,
+    flexibleMonth: plannerState.flexibleMonth,
+    flexibleYear: plannerState.flexibleYear,
+    budgetLevel: plannerState.budgetLevel,
+    budgetAmount: plannerState.budgetAmount,
+    pace: plannerState.pace,
+    travelers: plannerState.travelers,
+    interests: plannerState.interests?.slice(0, 12),
+    constraints: plannerState.constraints?.slice(0, 12),
+    segments: plannerState.segments?.map((segment) => ({
+      id: segment.id,
+      city: segment.city,
+      country: segment.country,
+      order: segment.order,
+      nights: segment.nights,
+      dayCount: segment.days?.length || segment.nights,
+      startDate: segment.startDate,
+      endDate: segment.endDate,
+      hotelStatus: segment.hotelPlan?.matchStatus || segment.hotelPlan?.searchStatus,
+      transportIn: segment.transportIn?.summary || segment.transportIn?.type,
+      transportOut: segment.transportOut?.summary || segment.transportOut?.type,
+      days: segment.days?.map((day) => ({
+        id: day.id,
+        dayNumber: day.dayNumber,
+        title: day.title,
+      })),
+    })),
+  };
+}
+
+function isExplicitPlannerRestart(message: string): boolean {
+  const normalized = normalizeLocationLabel(message);
+  return /\b(empeza|empezar|empieza|empezá|desde cero|de cero|descarta|descartar|descartá|borra todo|borrar todo|nuevo plan|otro plan|arma otro|armar otro|armá otro)\b/.test(normalized);
+}
+
+function buildPlannerItinerarySnapshot(plannerState: TripPlannerState, rawInstruction: string): NonNullable<ParsedTravelRequest['itinerary']> {
+  return {
+    destinations: plannerState.destinations || [],
+    days: plannerState.days,
+    startDate: plannerState.startDate,
+    endDate: plannerState.endDate,
+    isFlexibleDates: plannerState.isFlexibleDates,
+    flexibleMonth: plannerState.flexibleMonth,
+    flexibleYear: plannerState.flexibleYear,
+    budgetLevel: plannerState.budgetLevel,
+    budgetAmount: plannerState.budgetAmount,
+    interests: plannerState.interests,
+    pace: plannerState.pace,
+    travelers: plannerState.travelers,
+    constraints: plannerState.constraints,
+    currentPlanSummary: plannerState.summary,
+    editIntent: {
+      action: 'custom_instruction',
+      scope: 'plan',
+      rawInstruction,
+      confidence: 0.55,
+    },
+  };
 }
 
 const useMessageHandler = (
@@ -721,9 +792,11 @@ const useMessageHandler = (
       // === EMILIA 5.0: PARSE + ROUTE ===
       // Always parse first, then route based on content (not workspace_mode)
       const parseStart = nowMs();
+      const plannerEditContext = buildPlannerEditContext(plannerState as TripPlannerState | null);
       let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory, {
         conversationSummary,
         leadProfile,
+        plannerContext: plannerEditContext,
         contextMeta: {
           conversationId: finalConversationId,
           leadId: leadId ?? null,
@@ -733,6 +806,55 @@ const useMessageHandler = (
       logTimingStep('MESSAGE FLOW', 'parseMessageWithAI', parseStart, {
         requestType: parsedRequest.requestType,
       });
+
+      const effectiveMode = resolveEffectiveMode(options?.mode, chatMode);
+      const hasActivePlanner = Boolean(plannerEditContext?.hasActivePlan && plannerState);
+      const shouldTreatAsPlannerEdit = hasActivePlanner
+        && !isExplicitPlannerRestart(currentMessage)
+        && (workspaceMode === 'planner' || effectiveMode === 'passenger');
+
+      if (shouldTreatAsPlannerEdit && plannerState) {
+        if (parsedRequest.requestType === 'general') {
+          console.log('🗺️ [PLANNER EDIT] Coercing general response into custom planner instruction');
+          parsedRequest = {
+            requestType: 'itinerary',
+            itinerary: buildPlannerItinerarySnapshot(plannerState as TripPlannerState, currentMessage),
+            confidence: Math.max(parsedRequest.confidence || 0, 0.55),
+            originalMessage: parsedRequest.originalMessage || currentMessage,
+          };
+        } else if (parsedRequest.requestType === 'itinerary') {
+          parsedRequest = {
+            ...parsedRequest,
+            itinerary: {
+              ...buildPlannerItinerarySnapshot(plannerState as TripPlannerState, currentMessage),
+              ...parsedRequest.itinerary,
+              destinations: parsedRequest.itinerary?.destinations?.length
+                ? parsedRequest.itinerary.destinations
+                : (plannerState as TripPlannerState).destinations,
+              editIntent: parsedRequest.itinerary?.editIntent || {
+                action: 'custom_instruction',
+                scope: 'plan',
+                rawInstruction: currentMessage,
+                confidence: 0.6,
+              },
+            },
+          };
+        }
+      } else if (hasActivePlanner && isExplicitPlannerRestart(currentMessage) && parsedRequest.requestType === 'itinerary') {
+        parsedRequest = {
+          ...parsedRequest,
+          itinerary: {
+            ...parsedRequest.itinerary!,
+            editIntent: {
+              ...parsedRequest.itinerary?.editIntent,
+              action: 'restart_plan',
+              scope: 'plan',
+              rawInstruction: currentMessage,
+              confidence: Math.max(parsedRequest.itinerary?.editIntent?.confidence || 0, 0.8),
+            },
+          },
+        };
+      }
 
       const nextConversationSummary = buildConversationSummary(parsedRequest, parsedRequest.originalMessage || currentMessage, conversationSummary);
       saveConversationSummary(finalConversationId, nextConversationSummary).catch((e) => console.warn('⚠️ [SUMMARY] Failed to save conversation summary:', e));
@@ -779,7 +901,6 @@ const useMessageHandler = (
 
       // C7.1.a: options.mode wins over the closure-captured chatMode. Bridge
       // chip handlers that just called setChatMode pass it explicitly.
-      const effectiveMode = resolveEffectiveMode(options?.mode, chatMode);
       const conversationTurn = resolveConversationTurn({
         parsedRequest,
         routeResult,
@@ -1440,67 +1561,64 @@ const useMessageHandler = (
           return;
         }
 
-        // Merge follow-up into existing planner with assumed fields
-        if (plannerState?.fieldProvenance) {
-          const hasAssumedFields = Object.values(plannerState.fieldProvenance).some(
-            (source: string) => source === 'assumed'
-          );
-          if (hasAssumedFields && parsedRequest.itinerary) {
-            console.log('🔄 [VALIDATION] Merging follow-up into existing planner with assumed fields');
-            const { merged, fieldProvenance: updatedProvenance, requiresRegeneration } =
-              mergePlannerFieldUpdate(plannerState, parsedRequest.itinerary);
+        // Apply deterministic planner edits before deciding whether to regenerate.
+        if (plannerState && parsedRequest.itinerary && parsedRequest.itinerary.editIntent?.action !== 'restart_plan') {
+          console.log('🔄 [PLANNER EDIT] Applying edit patch over existing planner');
+          const { merged, fieldProvenance: updatedProvenance, requiresRegeneration } =
+            mergePlannerFieldUpdate(plannerState as TripPlannerState, parsedRequest.itinerary);
 
-            if (!requiresRegeneration) {
-              // Cosmetic update only — update state and respond without regeneration
-              await updatePlannerState?.((current) => ({
-                ...current,
-                ...merged,
-                fieldProvenance: updatedProvenance,
-              }));
+          if (!requiresRegeneration && updatePlannerState) {
+            await updatePlannerState((current) => ({
+              ...current,
+              ...merged,
+              fieldProvenance: updatedProvenance,
+            }));
 
-              const confirmedFields = Object.entries(updatedProvenance)
-                .filter(([, source]) => source === 'confirmed')
-                .map(([field]) => field);
-              const confirmMsg = confirmedFields.length > 0
-                ? `Actualicé ${confirmedFields.join(', ')} en tu planificador.`
-                : 'Tu planificador fue actualizado.';
+            const confirmMsg = parsedRequest.itinerary.editIntent?.rawInstruction
+              ? 'Listo, actualicé esa preferencia en el planificador y mantuve el resto del viaje.'
+              : 'Listo, actualicé tu planificador y mantuve el resto del viaje.';
 
-              await saveAndDisplayMessage({
-                conversation_id: finalConversationId,
-                role: 'assistant' as const,
-                content: { text: confirmMsg },
-                meta: { status: 'sent', messageType: 'planner_field_update' },
-              });
-
-              setIsTyping(false, conversationIdForThisSearch);
-              setIsLoading(false);
-              flowTimer.end('completed - planner cosmetic update', {});
-              return;
-            }
-
-            // Structural change — update parsedRequest with merged data for regeneration
-            parsedRequest = {
-              ...parsedRequest,
-              itinerary: {
-                ...parsedRequest.itinerary,
-                destinations: merged.destinations,
-                days: merged.days,
-                startDate: merged.startDate,
-                endDate: merged.endDate,
-                isFlexibleDates: merged.isFlexibleDates,
-                flexibleMonth: merged.flexibleMonth,
-                flexibleYear: merged.flexibleYear,
-                budgetLevel: merged.budgetLevel,
-                pace: merged.pace,
-                travelers: merged.travelers,
+            await saveAndDisplayMessage({
+              conversation_id: finalConversationId,
+              role: 'assistant' as const,
+              content: { text: confirmMsg },
+              meta: {
+                status: 'sent',
+                messageType: 'planner_field_update',
+                originalRequest: parsedRequest,
               },
-            };
-            setDraftPlannerFromRequest?.(parsedRequest, updatedProvenance);
+            });
+
+            setIsTyping(false, conversationIdForThisSearch);
+            setIsLoading(false);
+            flowTimer.end('completed - planner direct edit', {});
+            return;
           }
+
+          parsedRequest = {
+            ...parsedRequest,
+            itinerary: {
+              ...parsedRequest.itinerary,
+              destinations: merged.destinations,
+              days: merged.days,
+              startDate: merged.startDate,
+              endDate: merged.endDate,
+              isFlexibleDates: merged.isFlexibleDates,
+              flexibleMonth: merged.flexibleMonth,
+              flexibleYear: merged.flexibleYear,
+              budgetLevel: merged.budgetLevel,
+              budgetAmount: merged.budgetAmount,
+              interests: merged.interests,
+              pace: merged.pace,
+              travelers: merged.travelers,
+              constraints: merged.constraints,
+            },
+          };
+          setDraftPlannerFromRequest?.(parsedRequest, updatedProvenance);
         }
 
         // Apply smart defaults for missing optional fields
-        if (!plannerState?.fieldProvenance) {
+        if (!plannerState) {
           const { enrichedItinerary, fieldProvenance } = applySmartDefaults(parsedRequest.itinerary);
           parsedRequest = {
             ...parsedRequest,

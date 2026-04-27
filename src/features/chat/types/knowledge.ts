@@ -71,9 +71,51 @@ export interface PreloadedConversationKnowledge {
   leadProfile: LeadAiProfile | null;
 }
 
+export interface PlannerEditContext {
+  hasActivePlan: boolean;
+  title?: string;
+  summary?: string;
+  destinations?: string[];
+  days?: number;
+  startDate?: string;
+  endDate?: string;
+  isFlexibleDates?: boolean;
+  flexibleMonth?: string;
+  flexibleYear?: number;
+  budgetLevel?: string;
+  budgetAmount?: number;
+  pace?: string;
+  travelers?: {
+    adults?: number;
+    children?: number;
+    infants?: number;
+  };
+  interests?: string[];
+  constraints?: string[];
+  segments?: Array<{
+    id?: string;
+    city?: string;
+    country?: string;
+    order?: number;
+    nights?: number;
+    dayCount?: number;
+    startDate?: string;
+    endDate?: string;
+    hotelStatus?: string;
+    transportIn?: string;
+    transportOut?: string;
+    days?: Array<{
+      id?: string;
+      dayNumber?: number;
+      title?: string;
+    }>;
+  }>;
+}
+
 export interface ParseMessageKnowledge {
   conversationSummary?: ConversationSummary | null;
   leadProfile?: LeadAiProfile | null;
+  plannerContext?: PlannerEditContext | null;
   contextMeta?: {
     conversationId?: string | null;
     leadId?: string | null;

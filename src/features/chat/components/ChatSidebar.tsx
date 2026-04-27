@@ -12,16 +12,26 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import type { ConversationWithAgency, ConversationWorkspaceMode } from '@/features/chat/types/chat';
+import { getChatModeFilter, resolveVisibleHistoryMode } from '@/features/chat/utils/sidebarFilters';
+
+type ChatSidebarSurface = 'agency' | 'companion';
+
+interface ChatSidebarCapabilities {
+  canCreatePlanner: boolean;
+  canArchiveConversations: boolean;
+}
 
 interface ChatSidebarProps {
   conversations: ConversationWithAgency[];
   selectedConversation: string | null;
   activeTab: string;
   historyMode: ConversationWorkspaceMode;
+  surface?: ChatSidebarSurface;
+  capabilities?: ChatSidebarCapabilities;
   sidebarLimit: number;
   onSelectConversation: (id: string) => void;
   onCreateNewChat: () => void;
-  onCreateNewPlanner: () => void;
+  onCreateNewPlanner?: () => void;
   onTabChange: (tab: string) => void;
   onHistoryModeChange?: (mode: ConversationWorkspaceMode) => void;
   onArchiveConversation?: (conversationId: string, currentState: 'active' | 'closed') => void;
@@ -77,6 +87,8 @@ const ChatSidebar = React.memo(({
   selectedConversation,
   activeTab,
   historyMode,
+  surface = 'agency',
+  capabilities,
   sidebarLimit,
   onSelectConversation,
   onCreateNewChat,
@@ -95,6 +107,9 @@ const ChatSidebar = React.memo(({
   const { isOwner, isSuperAdmin } = useAuth();
   const [query, setQuery] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const isAgencySurface = surface === 'agency';
+  const canCreatePlanner = capabilities?.canCreatePlanner ?? (isAgencySurface && (isOwner || isSuperAdmin));
+  const canArchiveConversations = capabilities?.canArchiveConversations ?? (isAgencySurface && Boolean(onArchiveConversation));
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -112,7 +127,11 @@ const ChatSidebar = React.memo(({
     return () => clearTimeout(debounceRef.current);
   }, [query, onSearchMessages, onClearSearch]);
 
-  const visibleHistoryMode: ConversationWorkspaceMode = isOwner || isSuperAdmin ? historyMode : 'standard';
+  const visibleHistoryMode: ConversationWorkspaceMode = isAgencySurface
+    ? resolveVisibleHistoryMode(historyMode, canCreatePlanner)
+    : 'companion';
+  const chatSectionMode = getChatModeFilter(visibleHistoryMode);
+
   const handleHistoryModeChange = (mode: ConversationWorkspaceMode) => {
     onHistoryModeChange?.(mode);
   };
@@ -121,9 +140,13 @@ const ChatSidebar = React.memo(({
 
   const filteredConversations = useMemo(() => {
     const targetState = activeTab === 'archived' ? 'closed' : 'active';
+    const visibleModes = canCreatePlanner
+      ? new Set<ConversationWorkspaceMode>([chatSectionMode, 'planner'])
+      : new Set<ConversationWorkspaceMode>([chatSectionMode]);
 
     return conversations
       .filter((conversation) => conversation.state === targetState)
+      .filter((conversation) => visibleModes.has(conversation.workspace_mode))
       .filter((conversation) => {
         if (!normalizedQuery) {
           return true;
@@ -135,19 +158,19 @@ const ChatSidebar = React.memo(({
         return contentSearchResults?.has(conversation.id) ?? false;
       })
       .slice(0, sidebarLimit);
-  }, [activeTab, conversations, normalizedQuery, sidebarLimit, contentSearchResults]);
+  }, [activeTab, canCreatePlanner, chatSectionMode, conversations, normalizedQuery, sidebarLimit, contentSearchResults]);
 
   const tripConversations = useMemo(() => {
-    if (!isOwner && !isSuperAdmin) {
+    if (!canCreatePlanner) {
       return [];
     }
 
     return filteredConversations.filter((conversation) => conversation.workspace_mode === 'planner');
-  }, [filteredConversations, isOwner, isSuperAdmin]);
+  }, [canCreatePlanner, filteredConversations]);
 
   const chatConversations = useMemo(() => {
-    return filteredConversations.filter((conversation) => conversation.workspace_mode === 'standard');
-  }, [filteredConversations]);
+    return filteredConversations.filter((conversation) => conversation.workspace_mode === chatSectionMode);
+  }, [chatSectionMode, filteredConversations]);
 
   const orderedSections = useMemo(() => {
     const sections = [
@@ -155,10 +178,10 @@ const ChatSidebar = React.memo(({
         key: 'planner' as const,
         title: 'Trips',
         items: tripConversations,
-        visible: isOwner || isSuperAdmin,
+        visible: canCreatePlanner,
       },
       {
-        key: 'standard' as const,
+        key: chatSectionMode,
         title: 'Chats',
         items: chatConversations,
         visible: true,
@@ -169,8 +192,8 @@ const ChatSidebar = React.memo(({
       return sections.sort((left, right) => (left.key === 'planner' ? -1 : right.key === 'planner' ? 1 : 0));
     }
 
-    return sections.sort((left, right) => (left.key === 'standard' ? -1 : right.key === 'standard' ? 1 : 0));
-  }, [chatConversations, isOwner, isSuperAdmin, tripConversations, visibleHistoryMode]);
+    return sections.sort((left, right) => (left.key === chatSectionMode ? -1 : right.key === chatSectionMode ? 1 : 0));
+  }, [canCreatePlanner, chatConversations, chatSectionMode, tripConversations, visibleHistoryMode]);
 
   const handleArchiveClick = (
     event: React.MouseEvent<HTMLButtonElement>,
@@ -225,7 +248,7 @@ const ChatSidebar = React.memo(({
           </p>
         </div>
 
-        {onArchiveConversation && (
+        {canArchiveConversations && onArchiveConversation && (
           <Button
             variant="ghost"
             size="icon"
@@ -280,7 +303,7 @@ const ChatSidebar = React.memo(({
           <Button
             variant="ghost"
             onClick={() => {
-              handleHistoryModeChange('standard');
+              handleHistoryModeChange(chatSectionMode);
               onCreateNewChat();
             }}
             className="h-12 w-full justify-start gap-3 rounded-2xl px-3 text-[15px] font-medium hover:bg-background dark:hover:bg-card/80"
@@ -291,7 +314,7 @@ const ChatSidebar = React.memo(({
             <span>Nuevo Chat</span>
           </Button>
 
-          {(isOwner || isSuperAdmin) && (
+          {canCreatePlanner && onCreateNewPlanner && (
             <Button
               variant="ghost"
               onClick={() => {

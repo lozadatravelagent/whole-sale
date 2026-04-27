@@ -312,6 +312,64 @@ export function mergeEnrichedSegmentState(
 }
 
 const STRUCTURAL_FIELDS = new Set(['destinations', 'startDate', 'endDate', 'days']);
+const REGENERATING_EDIT_ACTIONS = new Set([
+  'replace_destination',
+  'add_destination',
+  'remove_destination',
+  'reorder_destinations',
+  'merge_destinations',
+  'split_destination',
+  'change_dates',
+  'adjust_duration',
+  'rebalance_duration',
+  'change_interests',
+  'change_hotels',
+  'change_transport',
+  'change_activities',
+  'change_restaurants',
+  'regenerate_day',
+  'regenerate_segment',
+  'upgrade_hotels',
+  'downgrade_hotels',
+  'custom_instruction',
+]);
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function inferBudgetLevelFromEditIntent(
+  editIntent: NonNullable<ParsedTravelRequest['itinerary']>['editIntent'],
+): TripPlannerState['budgetLevel'] | undefined {
+  const text = [
+    normalizeOptionalString(editIntent?.value),
+    normalizeOptionalString(editIntent?.rawInstruction),
+    normalizeOptionalString(editIntent?.direction),
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  if (!text) return undefined;
+  if (/lujo|luxury|premium|alto|mejor/.test(text)) return 'luxury';
+  if (/barat|econom|low|menos|bajar|ahorrar/.test(text)) return 'low';
+  if (/mid|medio|moderado/.test(text)) return 'mid';
+  if (/high|superior|subir/.test(text)) return 'high';
+  return undefined;
+}
+
+function inferPaceFromEditIntent(
+  editIntent: NonNullable<ParsedTravelRequest['itinerary']>['editIntent'],
+): TripPlannerState['pace'] | undefined {
+  const text = [
+    normalizeOptionalString(editIntent?.value),
+    normalizeOptionalString(editIntent?.rawInstruction),
+    normalizeOptionalString(editIntent?.direction),
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  if (!text) return undefined;
+  if (/tranquil|relax|lento|menos traslado|menos intenso|tiempo libre/.test(text)) return 'relaxed';
+  if (/intenso|rapido|rápido|fast|mas cosas|más cosas/.test(text)) return 'fast';
+  if (/balance|equilibr/.test(text)) return 'balanced';
+  return undefined;
+}
 
 export function mergePlannerFieldUpdate(
   current: TripPlannerState,
@@ -325,9 +383,29 @@ export function mergePlannerFieldUpdate(
   let requiresRegeneration = false;
 
   const merged = { ...current };
+  const editIntent = updates.editIntent;
+  const editAction = editIntent?.action;
+
+  if (editAction && REGENERATING_EDIT_ACTIONS.has(editAction)) {
+    requiresRegeneration = true;
+  }
 
   if (updates.days != null && updates.days > 0) {
     merged.days = updates.days;
+    currentProvenance.days = 'confirmed';
+    if (updates.days !== current.days) {
+      requiresRegeneration = true;
+    }
+  }
+
+  if (editIntent?.daysDelta && Number.isFinite(editIntent.daysDelta)) {
+    merged.days = Math.max(1, (merged.days || current.days || 1) + editIntent.daysDelta);
+    currentProvenance.days = 'confirmed';
+    requiresRegeneration = true;
+  }
+
+  if (editIntent?.desiredDays && Number.isFinite(editIntent.desiredDays) && !editIntent.targetCity && !editIntent.targetSegmentId) {
+    merged.days = Math.max(1, editIntent.desiredDays);
     currentProvenance.days = 'confirmed';
     requiresRegeneration = true;
   }
@@ -336,40 +414,57 @@ export function mergePlannerFieldUpdate(
     merged.startDate = updates.startDate;
     merged.isFlexibleDates = false;
     currentProvenance.startDate = 'confirmed';
-    requiresRegeneration = true;
+    if (updates.startDate !== current.startDate) {
+      requiresRegeneration = true;
+    }
   }
 
   if (updates.endDate) {
     merged.endDate = updates.endDate;
     merged.isFlexibleDates = false;
     currentProvenance.endDate = 'confirmed';
-    requiresRegeneration = true;
+    if (updates.endDate !== current.endDate) {
+      requiresRegeneration = true;
+    }
   }
 
   if (updates.isFlexibleDates != null) {
+    const flexibleChanged = updates.isFlexibleDates !== current.isFlexibleDates
+      || (updates.flexibleMonth && updates.flexibleMonth !== current.flexibleMonth)
+      || (updates.flexibleYear && updates.flexibleYear !== current.flexibleYear);
     merged.isFlexibleDates = updates.isFlexibleDates;
     if (updates.flexibleMonth) merged.flexibleMonth = updates.flexibleMonth;
     if (updates.flexibleYear) merged.flexibleYear = updates.flexibleYear;
     currentProvenance.startDate = 'confirmed';
     currentProvenance.endDate = 'confirmed';
-    requiresRegeneration = true;
+    if (flexibleChanged) {
+      requiresRegeneration = true;
+    }
   }
 
   if (updates.destinations && updates.destinations.length > 0) {
     const currentDests = current.destinations.map(d => d.toLowerCase()).sort().join(',');
     const newDests = updates.destinations.map(d => d.toLowerCase()).sort().join(',');
     if (currentDests !== newDests) {
+      merged.destinations = updates.destinations;
       requiresRegeneration = true;
     }
   }
 
-  if (updates.budgetLevel) {
-    merged.budgetLevel = updates.budgetLevel as TripPlannerState['budgetLevel'];
+  const nextBudgetLevel = updates.budgetLevel || (editAction === 'change_budget' ? inferBudgetLevelFromEditIntent(editIntent) : undefined);
+  if (nextBudgetLevel) {
+    merged.budgetLevel = nextBudgetLevel as TripPlannerState['budgetLevel'];
     currentProvenance.budgetLevel = 'confirmed';
   }
 
-  if (updates.pace) {
-    merged.pace = updates.pace as TripPlannerState['pace'];
+  if (updates.budgetAmount != null && Number.isFinite(updates.budgetAmount)) {
+    merged.budgetAmount = updates.budgetAmount;
+    currentProvenance.budgetLevel = 'confirmed';
+  }
+
+  const nextPace = updates.pace || (editAction === 'change_pace' ? inferPaceFromEditIntent(editIntent) : undefined);
+  if (nextPace) {
+    merged.pace = nextPace as TripPlannerState['pace'];
     currentProvenance.pace = 'confirmed';
   }
 
@@ -380,6 +475,17 @@ export function mergePlannerFieldUpdate(
       infants: updates.travelers.infants ?? current.travelers.infants,
     };
     currentProvenance.travelers = 'confirmed';
+  }
+
+  if (updates.interests?.length) {
+    merged.interests = updates.interests;
+    if (editAction === 'change_interests') {
+      requiresRegeneration = true;
+    }
+  }
+
+  if (updates.constraints?.length) {
+    merged.constraints = updates.constraints;
   }
 
   merged.fieldProvenance = currentProvenance;

@@ -1849,9 +1849,16 @@ export const handleGeneralQuery = async (parsed: ParsedTravelRequest): Promise<s
 // ITINERARY HANDLER - Generates AI-powered travel itineraries
 // =====================================================================
 
+interface ItineraryRequestContext {
+  conversationId?: string | null;
+  leadId?: string | null;
+  leadProfile?: unknown | null;
+}
+
 export const handleItineraryRequest = async (
   parsed: ParsedTravelRequest,
-  existingPlannerState?: TripPlannerState | null
+  existingPlannerState?: TripPlannerState | null,
+  requestContext?: ItineraryRequestContext
 ): Promise<SearchResult> => {
   console.log('🗺️ [ITINERARY] Starting itinerary generation process');
   console.log('📋 Parsed request:', parsed);
@@ -1880,6 +1887,8 @@ export const handleItineraryRequest = async (
       hotelCategory,
       editIntent
     } = itinerary;
+    const shouldRestartPlan = editIntent?.action === 'restart_plan';
+    const effectiveExistingPlannerState = shouldRestartPlan ? null : existingPlannerState;
     const hasExactDates = hasExactItineraryDateRange(itinerary);
     const hasFlexibleDates = hasFlexibleItineraryDateSelection(itinerary);
 
@@ -1979,9 +1988,14 @@ export const handleItineraryRequest = async (
         travelers,
         constraints,
         hotelCategory,
-        generationMode: editIntent ? 'full' : existingPlannerState ? 'skeleton' : 'full',
+        generationMode: editIntent && !shouldRestartPlan ? 'full' : effectiveExistingPlannerState ? 'skeleton' : 'full',
         editIntent,
-        existingPlannerState,
+        existingPlannerState: effectiveExistingPlannerState,
+        leadProfile: requestContext?.leadProfile || undefined,
+        contextMeta: requestContext ? {
+          conversationId: requestContext.conversationId,
+          leadId: requestContext.leadId,
+        } : undefined,
         ...(segmentHints && { segmentHints }),
       }
     });
@@ -2029,11 +2043,11 @@ export const handleItineraryRequest = async (
           ? 'regen_day'
           : editIntent?.action === 'regenerate_segment'
             ? 'regen_segment'
-            : existingPlannerState
+            : effectiveExistingPlannerState
               ? 'regen_plan'
               : 'chat',
         updatedAt: new Date().toISOString(),
-        version: (existingPlannerState?.generationMeta?.version || 0) + 1,
+        version: (effectiveExistingPlannerState?.generationMeta?.version || 0) + 1,
       },
     });
     logTimingStep('ITINERARY', 'normalizePlannerState', normalizeStart, {

@@ -12,7 +12,6 @@ import type { PreloadedConversationKnowledge } from './types/knowledge';
 
 // Import feature components and hooks
 import ChatSidebar from './components/ChatSidebar';
-import ChatSidebarCompanion from './components/ChatSidebarCompanion';
 import ChatInterface from './components/ChatInterface';
 import ChatSidebarFrame from './components/ChatSidebarFrame';
 import EmptyState from './components/EmptyState';
@@ -768,6 +767,27 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     onClearSearch: clearSearch,
   };
 
+  const agencySidebarProps = {
+    ...sharedSidebarProps,
+    surface: 'agency' as const,
+    capabilities: {
+      canCreatePlanner: isOwner || isSuperAdmin,
+      canArchiveConversations: true,
+    },
+  };
+
+  const companionSidebarProps = {
+    ...sharedSidebarProps,
+    surface: 'companion' as const,
+    capabilities: {
+      canCreatePlanner: false,
+      canArchiveConversations: false,
+    },
+    onCreateNewChat: handleCreateCompanionConversation,
+    onCreateNewPlanner: undefined,
+    onArchiveConversation: undefined,
+  };
+
   const chatContextPanel = selectedConversation && hasChatContextPanelContent(planner.plannerState, latestDiscoveryContext) ? (
     <ChatContextPanel
       plannerState={planner.plannerState}
@@ -813,12 +833,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
             collapsed={isHistoryCollapsed}
             onCollapsedChange={setIsHistoryCollapsed}
           >
-            <ChatSidebarCompanion
-              conversations={conversations}
-              selectedConversation={selectedConversation}
-              onSelectConversation={handleSelectConversation}
-              onCreateNewChat={handleCreateCompanionConversation}
-            />
+            <ChatSidebar {...companionSidebarProps} />
           </ChatSidebarFrame>
           <div
             className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0 min-w-0`}
@@ -925,7 +940,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
             collapsed={isHistoryCollapsed}
             onCollapsedChange={setIsHistoryCollapsed}
           >
-            <ChatSidebar {...sharedSidebarProps} />
+            <ChatSidebar {...agencySidebarProps} />
           </ChatSidebarFrame>
           <div
             className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0 min-w-0`}

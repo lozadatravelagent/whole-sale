@@ -190,6 +190,7 @@ serve(async (req) => {
           conversationHistory = [],
           conversationSummary = null,
           leadProfile = null,
+          plannerContext = null,
           historyWindow = 6,
           contextMeta = null,
         } = requestBody;
@@ -244,6 +245,7 @@ serve(async (req) => {
           previousContext,
           conversationSummary,
           leadProfile,
+          plannerContext,
         });
         const userPrompt = message;
         const modelDecision = resolveModelPolicy({

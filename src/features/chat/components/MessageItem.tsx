@@ -19,6 +19,61 @@ import { resolveRenderPolicy } from '../services/itineraryPipeline';
 import { PlannerEditorialBlock } from './PlannerEditorialBlock';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 
+interface LazySelectorErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface LazySelectorErrorBoundaryState {
+  hasError: boolean;
+}
+
+interface MessageMetaWithPlanner {
+  plannerData?: TripPlannerState;
+  editorial?: PlannerEditorialData | null;
+  conversationTurn?: {
+    responseMode?: string;
+  };
+  responseMode?: string;
+  plannerPromptAction?: string;
+  originalRequest?: ParsedTravelRequest;
+}
+
+class LazySelectorErrorBoundary extends React.Component<LazySelectorErrorBoundaryProps, LazySelectorErrorBoundaryState> {
+  state: LazySelectorErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): LazySelectorErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Combined travel selector failed to load:', error);
+  }
+
+  render() {
+    if (!this.state.hasError) {
+      return this.props.children;
+    }
+
+    return (
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-foreground">
+        <p className="font-medium">No se pudo cargar el selector de cotización.</p>
+        <p className="mt-1 text-muted-foreground">
+          Actualizá la conversación o recargá la página para volver a intentarlo.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          onClick={() => this.setState({ hasError: false })}
+        >
+          Reintentar
+        </Button>
+      </div>
+    );
+  }
+}
+
 interface MessageItemProps {
   msg: MessageRow;
   onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
@@ -105,18 +160,18 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
   }
 
   const plannerData = typeof msg.meta === 'object' && msg.meta && 'plannerData' in msg.meta
-    ? ((msg.meta as any).plannerData as TripPlannerState)
+    ? (msg.meta as MessageMetaWithPlanner).plannerData
     : null;
   const editorialData = typeof msg.meta === 'object' && msg.meta && 'editorial' in msg.meta
-    ? ((msg.meta as any).editorial as PlannerEditorialData | null)
+    ? (msg.meta as MessageMetaWithPlanner).editorial
     : null;
   const responseMode = typeof msg.meta === 'object' && msg.meta
-    ? ((msg.meta as any)?.conversationTurn?.responseMode || (msg.meta as any).responseMode)
+    ? ((msg.meta as MessageMetaWithPlanner).conversationTurn?.responseMode || (msg.meta as MessageMetaWithPlanner).responseMode)
     : undefined;
   const msgRenderPolicy = resolveRenderPolicy(responseMode);
   const plannerSegments = Array.isArray(plannerData?.segments) ? plannerData.segments : [];
-  const plannerDateSelectorRequest = typeof msg.meta === 'object' && msg.meta && (msg.meta as any).plannerPromptAction === 'open_date_selector'
-    ? ((msg.meta as any).originalRequest as ParsedTravelRequest | undefined)
+  const plannerDateSelectorRequest = typeof msg.meta === 'object' && msg.meta && (msg.meta as MessageMetaWithPlanner).plannerPromptAction === 'open_date_selector'
+    ? (msg.meta as MessageMetaWithPlanner).originalRequest
     : undefined;
 
   // Convert local combined data to global type for component compatibility
@@ -162,13 +217,13 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
       segment?: LocalHotelSegmentResult,
       segmentOrder?: number
     ): GlobalHotelData => ({
-      id: (hotel as any).unique_id || hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
-      unique_id: (hotel as any).unique_id || hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
+      id: hotel.unique_id || hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
+      unique_id: hotel.unique_id || hotel.hotel_id || `hotel_${hotel.name}_${hotel.city}`,
       name: hotel.name,
       category: hotel.category || '',
       city: hotel.city,
-      address: (hotel as any).address || '',
-      images: (hotel as any).images,
+      address: hotel.address || '',
+      images: hotel.images,
       rooms: hotel.rooms.map(room => ({
         type: room.type || 'Standard',
         description: translateRoomDescription(room.description || 'Habitación estándar'),
@@ -378,17 +433,19 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
             {/* Interactive selectors */}
             {hasCombinedTravel && combinedTravelData ? (
               <div className="space-y-3">
-                <Suspense fallback={
-                  <div className="h-64 bg-muted/30 animate-pulse rounded-lg flex items-center justify-center">
-                    <p className="text-sm text-muted-foreground">Cargando selector...</p>
-                  </div>
-                }>
-                  <CombinedTravelSelector
-                    combinedData={memoizedCombinedData!}
-                    conversationId={msg.conversation_id}
-                    onPdfGenerated={onPdfGenerated}
-                  />
-                </Suspense>
+                <LazySelectorErrorBoundary key={`combined-selector-${msg.id}`}>
+                  <Suspense fallback={
+                    <div className="h-64 bg-muted/30 animate-pulse rounded-lg flex items-center justify-center">
+                      <p className="text-sm text-muted-foreground">Cargando selector...</p>
+                    </div>
+                  }>
+                    <CombinedTravelSelector
+                      combinedData={memoizedCombinedData!}
+                      conversationId={msg.conversation_id}
+                      onPdfGenerated={onPdfGenerated}
+                    />
+                  </Suspense>
+                </LazySelectorErrorBoundary>
               </div>
             ) : (
               <>

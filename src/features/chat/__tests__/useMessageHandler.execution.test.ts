@@ -140,7 +140,7 @@ vi.mock('../services/leadAiProfileService', () => ({
 // ---------------------------------------------------------------------------
 
 import useMessageHandler from '../hooks/useMessageHandler';
-import { parseMessageWithAI } from '@/services/aiMessageParser';
+import { hasFlexibleItineraryDateSelection, hasUsableItineraryDates, parseMessageWithAI } from '@/services/aiMessageParser';
 import {
   handleFlightSearch,
   handleHotelSearch,
@@ -236,6 +236,8 @@ beforeEach(() => {
   vi.mocked(handleServiceSearch).mockResolvedValue({ response: 'service results', data: {} } as any);
   vi.mocked(handleGeneralQuery).mockResolvedValue('general query response' as any);
   vi.mocked(handleItineraryRequest).mockResolvedValue({ response: 'itinerary results', data: {} } as any);
+  vi.mocked(hasUsableItineraryDates).mockReturnValue(false);
+  vi.mocked(hasFlexibleItineraryDateSelection).mockReturnValue(false);
   vi.mocked(buildDiscoveryResponsePayload).mockResolvedValue({
     text: 'discovery results',
     discoveryContext: {},
@@ -266,6 +268,140 @@ describe('useMessageHandler', () => {
       expect(vi.mocked(handleFlightSearch)).toHaveBeenCalledWith(
         expect.objectContaining({ requestType: 'flights' })
       );
+    });
+
+    it('sends compact planner context to the parser when a planner exists', async () => {
+      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+        requestType: 'flights',
+        originalMessage: 'buscame vuelos',
+        flights: { origin: 'BUE', destination: 'MAD', departureDate: '2026-06-01', returnDate: '2026-06-15', adults: 2 },
+      }) as any);
+
+      const p = buildProps({
+        plannerState: {
+          title: 'Europa',
+          destinations: ['Madrid', 'París'],
+          days: 8,
+          isFlexibleDates: true,
+          flexibleMonth: '06',
+          flexibleYear: 2026,
+          travelers: { adults: 2, children: 0, infants: 0 },
+          segments: [
+            { id: 'seg-1', city: 'Madrid', order: 0, nights: 4, days: [{ id: 'd1', dayNumber: 1, title: 'Madrid' }], hotelPlan: { searchStatus: 'idle' } },
+            { id: 'seg-2', city: 'París', order: 1, nights: 4, days: [{ id: 'd5', dayNumber: 5, title: 'París' }], hotelPlan: { searchStatus: 'idle' } },
+          ],
+        } as any,
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('buscame vuelos');
+      });
+
+      const parserKnowledge = vi.mocked(parseMessageWithAI).mock.calls[0][3];
+      expect(parserKnowledge).toEqual(expect.objectContaining({
+        plannerContext: expect.objectContaining({
+          hasActivePlan: true,
+          destinations: ['Madrid', 'París'],
+          segments: expect.arrayContaining([
+            expect.objectContaining({ id: 'seg-1', city: 'Madrid', dayCount: 1 }),
+          ]),
+        }),
+      }));
+    });
+
+    it('treats general planner follow-ups as custom itinerary edits', async () => {
+      vi.mocked(hasUsableItineraryDates).mockReturnValue(true);
+      vi.mocked(hasFlexibleItineraryDateSelection).mockReturnValue(true);
+      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+        requestType: 'general',
+        originalMessage: 'sacale lo mas turistico',
+      }) as any);
+
+      const plannerState = {
+        title: 'Japón',
+        summary: 'Plan actual',
+        destinations: ['Tokio', 'Kioto'],
+        days: 8,
+        isFlexibleDates: true,
+        flexibleMonth: '10',
+        flexibleYear: 2026,
+        budgetLevel: 'mid',
+        pace: 'balanced',
+        travelers: { adults: 2, children: 0, infants: 0 },
+        interests: ['culture'],
+        constraints: [],
+        segments: [],
+      };
+      const p = buildProps({
+        plannerState: plannerState as any,
+        workspaceMode: 'planner',
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('sacale lo mas turistico');
+      });
+
+      expect(vi.mocked(handleItineraryRequest)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestType: 'itinerary',
+          itinerary: expect.objectContaining({
+            destinations: ['Tokio', 'Kioto'],
+            editIntent: expect.objectContaining({
+              action: 'custom_instruction',
+              rawInstruction: 'sacale lo mas turistico',
+            }),
+          }),
+        }),
+        plannerState,
+        expect.any(Object),
+      );
+    });
+
+    it('applies simple planner edits directly without regenerating', async () => {
+      vi.mocked(hasUsableItineraryDates).mockReturnValue(true);
+      vi.mocked(hasFlexibleItineraryDateSelection).mockReturnValue(true);
+      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+        requestType: 'itinerary',
+        originalMessage: 'que sea mas barato',
+        itinerary: {
+          destinations: ['Roma'],
+          days: 5,
+          isFlexibleDates: true,
+          flexibleMonth: '09',
+          flexibleYear: 2026,
+          editIntent: {
+            action: 'change_budget',
+            scope: 'budget',
+            rawInstruction: 'que sea mas barato',
+          },
+        },
+      }) as any);
+
+      const updatePlannerState = vi.fn().mockResolvedValue(undefined);
+      const p = buildProps({
+        plannerState: {
+          destinations: ['Roma'],
+          days: 5,
+          isFlexibleDates: true,
+          flexibleMonth: '09',
+          flexibleYear: 2026,
+          travelers: { adults: 2, children: 0, infants: 0 },
+          segments: [],
+          generationMeta: { source: 'chat', updatedAt: '2026-01-01T00:00:00Z', version: 1 },
+        } as any,
+        updatePlannerState,
+        workspaceMode: 'planner',
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('que sea mas barato');
+      });
+
+      expect(updatePlannerState).toHaveBeenCalled();
+      expect(vi.mocked(handleItineraryRequest)).not.toHaveBeenCalled();
     });
 
     it('calls handleHotelSearch for requestType hotels', async () => {

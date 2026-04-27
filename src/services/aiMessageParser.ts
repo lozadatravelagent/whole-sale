@@ -54,6 +54,67 @@ export interface HotelRequest {
     segments?: HotelStaySegment[];
 }
 
+export type PlannerEditIntentAction =
+    | 'create'
+    | 'restart_plan'
+    | 'replace_destination'
+    | 'add_destination'
+    | 'remove_destination'
+    | 'reorder_destinations'
+    | 'merge_destinations'
+    | 'split_destination'
+    | 'change_dates'
+    | 'adjust_duration'
+    | 'rebalance_duration'
+    | 'change_budget'
+    | 'change_pace'
+    | 'change_travelers'
+    | 'change_interests'
+    | 'change_hotels'
+    | 'change_transport'
+    | 'change_activities'
+    | 'change_restaurants'
+    | 'change_constraints'
+    | 'regenerate_day'
+    | 'regenerate_segment'
+    | 'upgrade_hotels'
+    | 'downgrade_hotels'
+    | 'custom_instruction';
+
+export type PlannerEditIntentScope =
+    | 'plan'
+    | 'destination'
+    | 'segment'
+    | 'day'
+    | 'dates'
+    | 'duration'
+    | 'budget'
+    | 'pace'
+    | 'travelers'
+    | 'interests'
+    | 'hotels'
+    | 'transport'
+    | 'activities'
+    | 'restaurants'
+    | 'constraints';
+
+export interface PlannerEditIntent {
+    action?: PlannerEditIntentAction;
+    scope?: PlannerEditIntentScope;
+    targetSegmentId?: string;
+    targetDayId?: string;
+    targetCity?: string;
+    target?: string | Record<string, unknown>;
+    replacement?: string | Record<string, unknown>;
+    replacementDestination?: string;
+    value?: string | number | boolean | string[] | Record<string, unknown>;
+    direction?: 'more' | 'less' | 'increase' | 'decrease' | 'add' | 'remove' | 'replace' | 'avoid' | 'prefer' | 'faster' | 'slower';
+    daysDelta?: number;
+    desiredDays?: number;
+    rawInstruction?: string;
+    confidence?: number;
+}
+
 export interface ParsedTravelRequest {
     requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
     flights?: {
@@ -128,12 +189,7 @@ export interface ParsedTravelRequest {
         };
         constraints?: string[];
         currentPlanSummary?: string;
-        editIntent?: {
-            action?: 'create' | 'replace_destination' | 'add_destination' | 'remove_destination' | 'reorder_destinations' | 'change_dates' | 'change_budget' | 'change_pace' | 'regenerate_day' | 'regenerate_segment' | 'upgrade_hotels' | 'downgrade_hotels';
-            targetSegmentId?: string;
-            targetDayId?: string;
-            targetCity?: string;
-        };
+        editIntent?: PlannerEditIntent;
     };
     confidence: number; // 0-1 score of parsing confidence
     originalMessage: string;
@@ -1782,6 +1838,7 @@ export async function parseMessageWithAI(
                 conversationHistory: conversationHistory || [],
                 conversationSummary: knowledge?.conversationSummary ?? null,
                 leadProfile: knowledge?.leadProfile ?? null,
+                plannerContext: knowledge?.plannerContext ?? null,
                 historyWindow: knowledge?.historyWindow ?? 6,
                 contextMeta: knowledge?.contextMeta ?? null,
             }

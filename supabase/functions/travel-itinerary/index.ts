@@ -31,9 +31,19 @@ interface PlannerRequest {
   existingPlannerState?: unknown;
   editIntent?: {
     action?: string;
+    scope?: string;
     targetSegmentId?: string;
     targetDayId?: string;
     targetCity?: string;
+    target?: unknown;
+    replacement?: unknown;
+    replacementDestination?: string;
+    value?: unknown;
+    direction?: string;
+    daysDelta?: number;
+    desiredDays?: number;
+    rawInstruction?: string;
+    confidence?: number;
   };
   segmentHints?: Array<{ city: string; dayCount: number }>;
   leadProfile?: Record<string, unknown>;
@@ -277,9 +287,19 @@ function summarizePromptDay(day: RawPlannerRecord, includeDetails = false): unkn
 function summarizeEditIntent(editIntent?: PlannerRequest['editIntent']): unknown {
   return compactPromptValue({
     action: editIntent?.action,
+    scope: editIntent?.scope,
     targetSegmentId: editIntent?.targetSegmentId,
     targetDayId: editIntent?.targetDayId,
     targetCity: editIntent?.targetCity,
+    target: editIntent?.target,
+    replacement: editIntent?.replacement,
+    replacementDestination: editIntent?.replacementDestination,
+    value: editIntent?.value,
+    direction: editIntent?.direction,
+    daysDelta: editIntent?.daysDelta,
+    desiredDays: editIntent?.desiredDays,
+    rawInstruction: truncateText(editIntent?.rawInstruction, 240),
+    confidence: editIntent?.confidence,
   });
 }
 
@@ -1002,6 +1022,7 @@ function buildPlannerRequestContext(input: PlannerRequest, blueprints: SegmentBl
     travelerProfile,
     leadProfileDefaults: input.leadProfile,
     editIntent: summarizeEditIntent(input.editIntent),
+    isEditingExistingPlan: Boolean(input.existingPlannerState && input.editIntent?.action !== 'restart_plan'),
     targetSegments: blueprints.map((blueprint) => compactPromptValue({
       city: blueprint.city,
       dayCount: blueprint.dayCount,
@@ -1041,7 +1062,12 @@ MUST FOLLOW:
 - Each segment must contain exactly the requested dayCount.
 - Respect the traveler profile "${travelerProfile}": ${profileGuidelines}
 - Use REQUEST_CONTEXT.leadProfileDefaults only as defaults when the current request omits a preference.
-- If editIntent exists, preserve unaffected structure and modify only what the request implies.
+- If REQUEST_CONTEXT.isEditingExistingPlan is true, this is an edit to the existing planner, not a new plan.
+- For planner edits, preserve unaffected destinations, segment order, dates, hotels, transports, activities, restaurants, and tips unless REQUEST_CONTEXT.editIntent asks to change them.
+- Apply REQUEST_CONTEXT.editIntent.rawInstruction semantically. If action is custom_instruction, still update the existing plan according to that instruction.
+- If the instruction is open-ended but actionable, make a reasonable travel-agent choice and reflect it in summary/generalTips without asking for more data.
+- Only rebuild the parts impacted by editIntent.scope/target. Regenerate one day or one segment only when that is the target.
+- If action is restart_plan, ignore the previous planner structure and create a fresh plan from the request.
 - First day of each segment after the first should feel lighter because it is a transfer day.
 
 OUTPUT LIMITS:
@@ -1323,6 +1349,10 @@ function buildPlannerUserMessage(
 
   if (mode === 'skeleton') {
     return `Generate only the fast skeleton planner for ${input.destinations.join(', ')} with ${blueprints.reduce((sum, blueprint) => sum + blueprint.dayCount, 0)} days.`;
+  }
+
+  if (input.existingPlannerState && input.editIntent?.action && input.editIntent.action !== 'restart_plan') {
+    return `Update the existing planner using this instruction: "${input.editIntent.rawInstruction || input.editIntent.action}". Preserve unaffected content and follow REQUEST_CONTEXT exactly.`;
   }
 
   return `Generate the planner now for ${input.destinations.join(', ')} with ${blueprints.reduce((sum, blueprint) => sum + blueprint.dayCount, 0)} days. Keep the JSON compact and follow REQUEST_CONTEXT exactly.`;

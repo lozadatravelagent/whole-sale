@@ -16,6 +16,7 @@ interface BuildSystemPromptArgs {
   previousContext?: unknown;
   conversationSummary?: unknown;
   leadProfile?: unknown;
+  plannerContext?: unknown;
 }
 
 export function buildSystemPrompt({
@@ -24,6 +25,7 @@ export function buildSystemPrompt({
   previousContext,
   conversationSummary,
   leadProfile,
+  plannerContext,
 }: BuildSystemPromptArgs): string {
   // Helper vars for dynamic prompt examples
   const [yearStr, monthStr, dayStr] = currentDate.split('-');
@@ -112,6 +114,21 @@ LEAD PROFILE RULES:
 - Treat this as long-term preference memory for the client or lead.
 - Use it only as a default when the current message, summary, and previousContext do not provide the value.
 - Never let lead profile preferences override explicit current user instructions.
+` : ''}
+
+${plannerContext ? `CURRENT PLANNER STATE:
+${JSON.stringify(plannerContext, null, 2)}
+
+PLANNER EDITING MODE:
+- When CURRENT PLANNER STATE.hasActivePlan is true, interpret the user's message first as an incremental edit to the existing planner.
+- Do not treat it as a brand-new itinerary unless the user explicitly says they want to start over, discard the plan, create another plan, or begin from zero.
+- Resolve references like "esa ciudad", "la primera parte", "la ultima parada", "el tramo largo", "dia 3", or "ahi" using CURRENT PLANNER STATE.
+- Keep requestType = "itinerary" for planner edits, preserve existing itinerary fields that were not changed, and populate itinerary.editIntent.
+- Normalize editIntent with: action, scope, target, replacement, value, direction, rawInstruction, confidence. Also include targetCity, targetSegmentId, targetDayId, daysDelta, or desiredDays when applicable.
+- Known actions: replace_destination, add_destination, remove_destination, reorder_destinations, merge_destinations, split_destination, adjust_duration, rebalance_duration, change_dates, change_pace, change_budget, change_travelers, change_interests, change_hotels, change_transport, change_activities, change_restaurants, change_constraints, regenerate_day, regenerate_segment, upgrade_hotels, downgrade_hotels.
+- If the user's intention is actionable but not one of those actions, use action: "custom_instruction", scope: "plan", rawInstruction: the user's exact instruction, and confidence based on how clear it is.
+- If the user explicitly asks to start over, use action: "restart_plan" and do not preserve the existing plan except as background.
+- For simple preference edits, also set the concrete itinerary fields when clear: budgetLevel, pace, travelers, interests, constraints, dates, days, or destinations.
 ` : ''}
 
 TASK: Extract structured data for flights, hotels, packages, services, combined, or itinerary requests.
@@ -411,16 +428,22 @@ If the user wants to plan activities/things to do in a destination WITHOUT booki
 - currentPlanSummary: carry from previousContext only when present
 - editIntent: object used for planner modifications
 
-**editIntent Patterns:**
-- "replace Paris with Lisbon" → action: "replace_destination", targetCity: "Paris"
-- "add Rome" → action: "add_destination", targetCity: "Rome"
-- "remove Madrid" → action: "remove_destination", targetCity: "Madrid"
-- "make it more relaxed" → action: "change_pace", pace: "relaxed"
-- "increase the budget" / "make it luxury" → action: "change_budget"
-- "regenerate day 3" → action: "regenerate_day"
-- "regenerate Paris" / "redo Rome" → action: "regenerate_segment", targetCity: "Paris"
-- "upgrade the hotels" → action: "upgrade_hotels"
-- "downgrade the hotels" → action: "downgrade_hotels"
+**editIntent Contract:**
+- Always return a normalized object for planner edits:
+  editIntent: { action, scope, target, replacement, value, direction, rawInstruction, confidence }
+- Destination edits: add, remove, replace, reorder, merge, or split destinations. Use targetCity/replacementDestination when a city/country is clear.
+- Duration edits: more/less days, exact days by city, total redistribution, shorter/longer trip. Use daysDelta or desiredDays when clear.
+- Dates edits: exact dates, flexible month, season, avoided dates.
+- Pace edits: relaxed, balanced, fast, fewer transfers, more free time.
+- Budget edits: cheaper, premium, luxury, concrete amount/range.
+- Traveler edits: adults, children, infants, family, couple, group, accessibility.
+- Interest/activity edits: food, beach, museums, shopping, nature, nightlife, history, adventure, fewer tourist spots, more local places.
+- Hotel edits: category, zone, style, amenities, all inclusive, boutique, family, luxury.
+- Transport edits: flights, trains, car, transfers, fewer connections, avoid long legs.
+- Restaurant edits: local food, fine dining, family options, dietary restrictions.
+- Constraint edits: avoid cities, long walks, accessibility, safety, weather, visa.
+- Unknown but actionable edits must use action: "custom_instruction" with rawInstruction instead of returning requestType "general".
+- Explicit reset phrases like "empeza de cero", "descarta este plan", "arma otro plan" use action: "restart_plan".
 
 **ITINERARY Examples:**
 
@@ -506,7 +529,14 @@ User: "replace Paris with Lisbon and make it faster"
     "pace": "fast",
     "editIntent": {
       "action": "replace_destination",
-      "targetCity": "Paris"
+      "scope": "destination",
+      "targetCity": "Paris",
+      "target": "Paris",
+      "replacementDestination": "Lisbon",
+      "replacement": "Lisbon",
+      "direction": "replace",
+      "rawInstruction": "Replace Paris with Lisbon and make the pace faster",
+      "confidence": 0.9
     }
   },
   "confidence": 0.9

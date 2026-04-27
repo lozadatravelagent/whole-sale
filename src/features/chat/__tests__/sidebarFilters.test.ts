@@ -2,9 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getChatModeFilter,
   resolveVisibleHistoryMode,
-  filterCompanionConversations,
 } from '../utils/sidebarFilters';
-import type { ConversationWithAgency } from '../types/chat';
 
 describe('getChatModeFilter', () => {
   it('returns standard for standard historyMode', () => {
@@ -79,57 +77,3 @@ describe('B2B/B2C sidebar isolation', () => {
   });
 });
 
-describe('filterCompanionConversations', () => {
-  function makeConv(id: string, overrides: Partial<ConversationWithAgency> = {}): ConversationWithAgency {
-    return {
-      id,
-      external_key: `chat-${id}`,
-      channel: 'web',
-      state: 'active',
-      workspace_mode: 'standard',
-      agency_id: null,
-      tenant_id: null,
-      created_by: 'user-1',
-      created_at: '2026-04-10T12:00:00Z',
-      last_message_at: '2026-04-10T12:00:00Z',
-      ...overrides,
-    } as unknown as ConversationWithAgency;
-  }
-
-  it('returns only active companion conversations', () => {
-    const input = [
-      makeConv('c1', { workspace_mode: 'companion' }),
-      makeConv('c2', { workspace_mode: 'standard' }),
-      makeConv('c3', { workspace_mode: 'planner' }),
-      makeConv('c4', { workspace_mode: 'companion' }),
-    ];
-    const result = filterCompanionConversations(input);
-    expect(result.map(c => c.id)).toEqual(['c1', 'c4']);
-  });
-
-  it('excludes archived (state=closed) companion conversations', () => {
-    const input = [
-      makeConv('active', { workspace_mode: 'companion', state: 'active' }),
-      makeConv('archived', { workspace_mode: 'companion', state: 'closed' }),
-    ];
-    const result = filterCompanionConversations(input);
-    expect(result.map(c => c.id)).toEqual(['active']);
-  });
-
-  it('returns empty when no companion conversations exist', () => {
-    const input = [
-      makeConv('s1', { workspace_mode: 'standard' }),
-      makeConv('p1', { workspace_mode: 'planner' }),
-    ];
-    expect(filterCompanionConversations(input)).toEqual([]);
-  });
-
-  it('does not leak planner or standard rows even when ids suggest otherwise', () => {
-    const input = [
-      makeConv('companion-like', { workspace_mode: 'standard' }),
-      makeConv('really-companion', { workspace_mode: 'companion' }),
-    ];
-    const result = filterCompanionConversations(input);
-    expect(result.map(c => c.id)).toEqual(['really-companion']);
-  });
-});
