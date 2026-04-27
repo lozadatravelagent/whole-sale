@@ -59,6 +59,7 @@ interface ChatInterfaceProps {
    */
   hasAgency?: boolean;
   onModeChange?: (next: 'agency' | 'passenger') => void;
+  headerVisibility?: 'default' | 'mobile-only' | 'hidden';
 }
 
 const ChatInterface = React.memo(({
@@ -83,7 +84,8 @@ const ChatInterface = React.memo(({
   onBridgeSwitch,
   onBridgeStay,
   hasAgency,
-  onModeChange
+  onModeChange,
+  headerVisibility = 'default',
 }: ChatInterfaceProps) => {
   const { t } = useTranslation('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -95,7 +97,7 @@ const ChatInterface = React.memo(({
 
   // Filter out system contextual memory messages
   const visibleMessages = messages.filter((m: MessageRow) => {
-    const meta = (m as any).meta;
+    const meta = m.meta as Record<string, unknown> | null;
     // Hide system memory/context messages
     if (m.role === 'system' && meta && (meta.messageType === 'contextual_memory' || meta.messageType === 'context_state' || meta.messageType === 'trip_planner_state' || meta.messageType === 'conversation_summary')) return false;
     return true;
@@ -284,7 +286,7 @@ const ChatInterface = React.memo(({
     ? lastVisibleMessage.content
     : (lastVisibleMessage?.content as { text?: string } | undefined)?.text || '';
   const discoveryVisual = isShowPlacesTurn
-    ? getDiscoveryVisualConfig(((lastMeta as any)?.requestText as string | undefined) || lastMessageText, lastRecommendedPlaces[0]?.city)
+    ? getDiscoveryVisualConfig((lastMeta?.requestText as string | undefined) || lastMessageText, lastRecommendedPlaces[0]?.city)
     : null;
 
   return (
@@ -295,18 +297,20 @@ const ChatInterface = React.memo(({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <ChatHeader
-        isTyping={isTyping}
-        isAddingToCRM={isAddingToCRM}
-        selectedConversation={selectedConversation}
-        messagesCount={messages.length}
-        onAddToCRM={onAddToCRM}
-        onBackToList={onBackToList}
-        accountType={accountType}
-        mode={mode}
-        hasAgency={hasAgency}
-        onModeChange={onModeChange}
-      />
+      <div className={headerVisibility === 'hidden' ? 'hidden' : headerVisibility === 'mobile-only' ? 'md:hidden' : undefined}>
+        <ChatHeader
+          isTyping={isTyping}
+          isAddingToCRM={isAddingToCRM}
+          selectedConversation={selectedConversation}
+          messagesCount={messages.length}
+          onAddToCRM={onAddToCRM}
+          onBackToList={onBackToList}
+          accountType={accountType}
+          mode={mode}
+          hasAgency={hasAgency}
+          onModeChange={onModeChange}
+        />
+      </div>
 
       {/* Drag and Drop Overlay - pointer-events-none para no interferir con drag events */}
       {isDraggingOver && (
@@ -355,10 +359,15 @@ const ChatInterface = React.memo(({
               {/* Guided input for any turn that surfaces missing fields (validation
                   fallbacks emit 'missing_info_request'; ask_minimal emits 'collect_question'). */}
               {(() => {
-                const meta = lastMeta as any;
-                const conversationTurn = meta?.conversationTurn;
+                const meta = lastMeta;
+                const conversationTurn = meta?.conversationTurn as Record<string, unknown> | undefined;
                 const resolvedMessageType = conversationTurn?.messageType || meta?.messageType;
-                const resolvedMissingFields = meta?.normalizedMissingFields || meta?.missingFields || conversationTurn?.normalizedMissingFields || [];
+                const resolvedMissingFields = (
+                  meta?.normalizedMissingFields ||
+                  meta?.missingFields ||
+                  conversationTurn?.normalizedMissingFields ||
+                  []
+                ) as string[];
                 const needsGuidedInput = !isShowPlacesTurn
                   && (resolvedMessageType === 'missing_info_request' || resolvedMessageType === 'collect_question')
                   && resolvedMissingFields.length > 0;

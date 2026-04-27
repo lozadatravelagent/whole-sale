@@ -18,6 +18,9 @@ interface UnifiedLayoutProps {
    * width.
    */
   rightPanel?: React.ReactNode;
+  rightPanelWidth?: React.CSSProperties['width'];
+  headerContext?: React.ReactNode;
+  headerActions?: React.ReactNode;
   className?: string;
 }
 
@@ -28,7 +31,14 @@ const HEADER_HEIGHT = 56;
 // shrinking to ~376px under a 360px panel.
 const RIGHT_PANEL_WIDTH = 320;
 
-export default function UnifiedLayout({ children, rightPanel, className }: UnifiedLayoutProps) {
+export default function UnifiedLayout({
+  children,
+  rightPanel,
+  rightPanelWidth = RIGHT_PANEL_WIDTH,
+  headerContext,
+  headerActions,
+  className,
+}: UnifiedLayoutProps) {
   const location = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -96,15 +106,28 @@ export default function UnifiedLayout({ children, rightPanel, className }: Unifi
   return (
     <div className={cn('flex min-h-screen flex-col bg-background', className)}>
       <header
-        className="flex items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur"
+        className="grid grid-cols-[minmax(128px,1fr)_minmax(0,760px)_minmax(128px,1fr)] items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur"
         style={{ height: HEADER_HEIGHT }}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 justify-self-start">
           <Sparkles className="h-5 w-5 text-primary" />
           <span className="text-base font-semibold text-foreground">Emilia</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        {headerContext ? (
+          <div className="hidden min-w-0 justify-self-center md:block">
+            {headerContext}
+          </div>
+        ) : (
+          <div />
+        )}
+
+        <div className="flex min-w-0 items-center gap-2 justify-self-end">
+          {headerActions && (
+            <div className="hidden items-center gap-2 md:flex">
+              {headerActions}
+            </div>
+          )}
           <LanguageSelector showLabel={false} />
           <Popover open={userMenuOpen} onOpenChange={setUserMenuOpen}>
             <PopoverTrigger asChild>
@@ -169,7 +192,7 @@ export default function UnifiedLayout({ children, rightPanel, className }: Unifi
             <div className="flex-1 min-w-0 overflow-hidden h-full">{children}</div>
             <aside
               className="hidden lg:block flex-shrink-0 border-l border-border overflow-hidden"
-              style={{ width: RIGHT_PANEL_WIDTH }}
+              style={{ width: rightPanelWidth }}
             >
               {rightPanel}
             </aside>

@@ -14,9 +14,12 @@ import type { PreloadedConversationKnowledge } from './types/knowledge';
 import ChatSidebar from './components/ChatSidebar';
 import ChatSidebarCompanion from './components/ChatSidebarCompanion';
 import ChatInterface from './components/ChatInterface';
+import ChatSidebarFrame from './components/ChatSidebarFrame';
 import EmptyState from './components/EmptyState';
 import useChatState from './hooks/useChatState';
-import ItineraryPanel from '@/features/chat/components/ItineraryPanel';
+import ChatContextPanel from './components/ChatContextPanel';
+import { ChatWorkspaceHeaderActions, ChatWorkspaceHeaderContext } from './components/ChatWorkspaceHeader';
+import { getLatestDiscoveryContext, hasChatContextPanelContent } from './utils/chatContextPanel';
 import useContextualMemory from './hooks/useContextualMemory';
 import usePdfAnalysis from './hooks/usePdfAnalysis';
 import useMessageHandler from './hooks/useMessageHandler';
@@ -40,6 +43,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   // conversation switch / createNewChat. Consumers don't use it; `chatMode` is
   // passed to `useMessageHandler` only when accountType === 'agent'.
   const [chatMode, setChatMode] = useState<ChatMode>(() => deriveDefaultMode(user));
+  const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
   // PR 3 (C6): reactive derivation of agency availability. Inline expression
   // (no useMemo) — the bool is cheap and re-derives on every ChatFeature
   // render. Reactivity comes from AuthContext re-rendering this component
@@ -203,6 +207,11 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       );
     });
   }, [conversationScopedMessages, planner.plannerState, previousParsedRequest, selectedConversationRow]);
+
+  const latestDiscoveryContext = useMemo(
+    () => getLatestDiscoveryContext(conversationScopedMessages),
+    [conversationScopedMessages],
+  );
 
   useEffect(() => {
     if (!selectedConversationRow) {
@@ -759,20 +768,50 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     onClearSearch: clearSearch,
   };
 
+  const chatContextPanel = selectedConversation && hasChatContextPanelContent(planner.plannerState, latestDiscoveryContext) ? (
+    <ChatContextPanel
+      plannerState={planner.plannerState}
+      discoveryContext={latestDiscoveryContext}
+      onRequestChanges={handleRequestItineraryChanges}
+      onExportPdf={handleExportItineraryPdf}
+    />
+  ) : undefined;
+
+  const headerContext = selectedConversation ? (
+    <ChatWorkspaceHeaderContext
+      selectedConversation={selectedConversation}
+      conversation={selectedConversationRow}
+      plannerState={planner.plannerState}
+      discoveryContext={latestDiscoveryContext}
+    />
+  ) : undefined;
+
+  const consumerHeaderActions = selectedConversation ? (
+    <ChatWorkspaceHeaderActions
+      accountType="consumer"
+      selectedConversation={selectedConversation}
+      messagesCount={conversationScopedMessages.length}
+      plannerState={planner.plannerState}
+      isAddingToCRM={isAddingToCRM}
+      onAddToCRM={handleAddToCRM}
+      onRequestChanges={handleRequestItineraryChanges}
+      onExportPdf={handleExportItineraryPdf}
+    />
+  ) : undefined;
+
   if (mode === 'companion') {
     return (
       <UnifiedLayout
-        rightPanel={
-          <ItineraryPanel
-            plannerState={planner.plannerState}
-            onRequestChanges={handleRequestItineraryChanges}
-            onExportPdf={handleExportItineraryPdf}
-          />
-        }
+        rightPanel={chatContextPanel}
+        rightPanelWidth="clamp(420px, 42vw, 640px)"
+        headerContext={headerContext}
+        headerActions={consumerHeaderActions}
       >
         <div className="flex h-full min-w-0">
-          <div
-            className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-72 md:flex-shrink-0`}
+          <ChatSidebarFrame
+            selectedConversation={selectedConversation}
+            collapsed={isHistoryCollapsed}
+            onCollapsedChange={setIsHistoryCollapsed}
           >
             <ChatSidebarCompanion
               conversations={conversations}
@@ -780,7 +819,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
               onSelectConversation={handleSelectConversation}
               onCreateNewChat={handleCreateCompanionConversation}
             />
-          </div>
+          </ChatSidebarFrame>
           <div
             className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0 min-w-0`}
           >
@@ -803,6 +842,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                   onPdfGenerated={handlePdfGenerated}
                   onBackToList={() => setSelectedConversation(null)}
                   accountType="consumer"
+                  headerVisibility="mobile-only"
                 />
               </div>
             ) : (
@@ -814,21 +854,30 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     );
   }
 
-  // PR 3 (C7): agent rightPanel — parity with the consumer path when plannerState
-  // exists + passenger mode. Agency mode + workspaceMode='planner' surfaces do
-  // NOT render the panel (agency chat is pure Q&A; TripPlannerWorkspace is
-  // full-bleed and owns the whole surface).
-  const agentRightPanel =
-    workspaceMode !== 'planner' && chatMode === 'passenger' && planner.plannerState ? (
-      <ItineraryPanel
-        plannerState={planner.plannerState}
-        onRequestChanges={handleRequestItineraryChanges}
-        onExportPdf={handleExportItineraryPdf}
-      />
-    ) : undefined;
+  const agentRightPanel = workspaceMode !== 'planner' ? chatContextPanel : undefined;
+  const agentHeaderActions = selectedConversation ? (
+    <ChatWorkspaceHeaderActions
+      accountType="agent"
+      selectedConversation={selectedConversation}
+      messagesCount={conversationScopedMessages.length}
+      plannerState={planner.plannerState}
+      chatMode={chatMode}
+      hasAgency={hasAgency}
+      isAddingToCRM={isAddingToCRM}
+      onModeChange={setChatMode}
+      onAddToCRM={handleAddToCRM}
+      onRequestChanges={handleRequestItineraryChanges}
+      onExportPdf={handleExportItineraryPdf}
+    />
+  ) : undefined;
 
   return (
-    <UnifiedLayout rightPanel={agentRightPanel}>
+    <UnifiedLayout
+      rightPanel={agentRightPanel}
+      rightPanelWidth="clamp(420px, 42vw, 640px)"
+      headerContext={headerContext}
+      headerActions={agentHeaderActions}
+    >
       {selectedConversation && workspaceMode === 'planner' ? (
         <TripPlannerWorkspace
           key={plannerWorkspaceKey ?? selectedConversation ?? 'planner-workspace'}
@@ -871,11 +920,13 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
         />
       ) : (
         <div className="flex h-full min-w-0">
-          <div
-            className={`${selectedConversation ? 'hidden md:block' : 'block'} w-full md:w-72 md:flex-shrink-0`}
+          <ChatSidebarFrame
+            selectedConversation={selectedConversation}
+            collapsed={isHistoryCollapsed}
+            onCollapsedChange={setIsHistoryCollapsed}
           >
             <ChatSidebar {...sharedSidebarProps} />
-          </div>
+          </ChatSidebarFrame>
           <div
             className={`${selectedConversation ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-h-0 min-w-0`}
           >
@@ -906,6 +957,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                 onModeChange={setChatMode}
                 onBridgeSwitch={handleBridgeSwitch}
                 onBridgeStay={handleBridgeStay}
+                headerVisibility="mobile-only"
               />
             ) : (
               <EmptyState
