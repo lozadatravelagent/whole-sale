@@ -633,6 +633,172 @@ export type Database = {
           },
         ]
       }
+      lead_ai_profiles: {
+        Row: {
+          agency_id: string
+          created_at: string
+          id: string
+          lead_id: string
+          profile_json: Json
+          schema_version: number
+          source_conversation_id: string | null
+          summary_text: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          profile_json?: Json
+          schema_version?: number
+          source_conversation_id?: string | null
+          summary_text?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          profile_json?: Json
+          schema_version?: number
+          source_conversation_id?: string | null
+          summary_text?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_ai_profiles_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_ai_profiles_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_ai_profiles_source_conversation_id_fkey"
+            columns: ["source_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_ai_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      llm_request_logs: {
+        Row: {
+          agency_id: string | null
+          cached_tokens: number | null
+          completion_tokens: number | null
+          conversation_id: string | null
+          created_at: string
+          estimated_cost_usd: number
+          feature: string
+          finish_reason: string | null
+          id: string
+          latency_ms: number | null
+          lead_id: string | null
+          metadata: Json
+          model: string
+          operation: string
+          prompt_tokens: number | null
+          provider: string
+          request_id: string | null
+          success: boolean
+          tenant_id: string | null
+          total_tokens: number | null
+        }
+        Insert: {
+          agency_id?: string | null
+          cached_tokens?: number | null
+          completion_tokens?: number | null
+          conversation_id?: string | null
+          created_at?: string
+          estimated_cost_usd?: number
+          feature: string
+          finish_reason?: string | null
+          id?: string
+          latency_ms?: number | null
+          lead_id?: string | null
+          metadata?: Json
+          model: string
+          operation: string
+          prompt_tokens?: number | null
+          provider: string
+          request_id?: string | null
+          success?: boolean
+          tenant_id?: string | null
+          total_tokens?: number | null
+        }
+        Update: {
+          agency_id?: string | null
+          cached_tokens?: number | null
+          completion_tokens?: number | null
+          conversation_id?: string | null
+          created_at?: string
+          estimated_cost_usd?: number
+          feature?: string
+          finish_reason?: string | null
+          id?: string
+          latency_ms?: number | null
+          lead_id?: string | null
+          metadata?: Json
+          model?: string
+          operation?: string
+          prompt_tokens?: number | null
+          provider?: string
+          request_id?: string | null
+          success?: boolean
+          tenant_id?: string | null
+          total_tokens?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "llm_request_logs_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "llm_request_logs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "llm_request_logs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "llm_request_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           client_id: string | null

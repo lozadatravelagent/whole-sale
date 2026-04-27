@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ContextState } from '../types/contextState';
+import type { ConversationSummary } from '../types/knowledge';
 import * as messageStorage from '../services/messageStorageService';
 
 const useContextualMemory = () => {
@@ -29,12 +30,24 @@ const useContextualMemory = () => {
     []
   );
 
+  const loadConversationSummary = useCallback(
+    (conversationId: string): Promise<ConversationSummary | null> => messageStorage.loadConversationSummary(conversationId),
+    []
+  );
+
+  const saveConversationSummary = useCallback(
+    (conversationId: string, conversationSummary: ConversationSummary) => messageStorage.saveConversationSummary(conversationId, conversationSummary),
+    []
+  );
+
   return {
     loadContextualMemory,
     saveContextualMemory,
     clearContextualMemory,
     loadContextState,
-    saveContextState
+    saveContextState,
+    loadConversationSummary,
+    saveConversationSummary
   };
 };
 

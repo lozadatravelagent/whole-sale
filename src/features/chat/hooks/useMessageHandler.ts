@@ -14,6 +14,7 @@ import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponsePayload } from '../services/discoveryService';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
+import type { PreloadedConversationKnowledge } from '../types/knowledge';
 import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
 import { applySmartDefaults, normalizePlannerState } from '@/features/trip-planner/utils';
 import { mergePlannerFieldUpdate, normalizeLocationLabel, buildPlannerHotelSearchSignature, buildPlannerTransportSearchSignature } from '@/features/trip-planner/helpers';
@@ -22,6 +23,8 @@ import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { translateBaggage } from '../utils/translations';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { transformStarlingResults } from '../services/flightTransformer';
+import { buildConversationSummary, loadConversationSummary, resolveLeadIdForConversation, saveConversationSummary } from '../services/conversationKnowledgeService';
+import { loadLeadAiProfile, mergeLeadAiProfile, saveLeadAiProfile } from '../services/leadAiProfileService';
 import i18n from '@/i18n';
 
 function formatPlannerDateSelectionMessage(selection: {
@@ -80,11 +83,7 @@ const useMessageHandler = (
   setDraftPlannerFromRequest?: (request: ParsedTravelRequest, fieldProvenance?: PlannerFieldProvenance) => void,
   setPlannerDraftPhase?: (phase: 'draft_parsing' | 'draft_generating') => void,
   updatePlannerState?: (updater: (current: TripPlannerState) => TripPlannerState, source?: 'ui_edit' | 'system') => Promise<void>,
-  preloadedContext?: {
-    conversationId: string;
-    contextualMemory: ParsedTravelRequest | null;
-    contextState: ContextState | null;
-  } | null,
+  preloadedContext?: PreloadedConversationKnowledge | null,
   workspaceMode?: 'standard' | 'planner',
   // PR 3 (C5): strict agency/passenger mode. When undefined, the orchestrator
   // runs its legacy path (used by consumer / any pre-PR-3 call site).
@@ -559,7 +558,14 @@ const useMessageHandler = (
 
       // Run DB save + context loading in parallel
       const saveAndContextStart = nowMs();
-      const [userMessage, contextFromDB, persistentState] = await Promise.all([
+      const [
+        userMessage,
+        contextFromDB,
+        persistentState,
+        conversationSummary,
+        leadId,
+        preloadedLeadProfile,
+      ] = await Promise.all([
         addMessageViaSupabase({
           conversation_id: finalConversationId,
           role: 'user' as const,
@@ -572,16 +578,34 @@ const useMessageHandler = (
         canUsePreloaded
           ? Promise.resolve(preloadedContext!.contextState)
           : loadContextState(finalConversationId) as Promise<ContextState | null>,
+        canUsePreloaded
+          ? Promise.resolve(preloadedContext!.conversationSummary)
+          : loadConversationSummary(finalConversationId),
+        canUsePreloaded
+          ? Promise.resolve(preloadedContext!.leadId)
+          : resolveLeadIdForConversation(finalConversationId),
+        canUsePreloaded
+          ? Promise.resolve(preloadedContext!.leadProfile)
+          : Promise.resolve(null),
       ]);
+      let leadProfile = preloadedLeadProfile;
       logTimingStep('MESSAGE FLOW', 'save user message + load context', saveAndContextStart, {
         canUsePreloaded,
         hasContextFromDb: Boolean(contextFromDB),
         hasPersistentState: Boolean(persistentState),
+        hasConversationSummary: Boolean(conversationSummary),
+        hasLeadId: Boolean(leadId),
       });
 
       console.log('✅ [MESSAGE FLOW] Step 3: User message saved + context loaded in parallel');
       console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
       console.log('🔍 [DEBUG] Persistent context state:', persistentState);
+      console.log('🔍 [DEBUG] Conversation summary:', conversationSummary);
+      console.log('🔍 [DEBUG] Lead profile:', leadProfile);
+
+      if (!leadProfile && leadId) {
+        leadProfile = await loadLeadAiProfile(leadId);
+      }
 
       // 🔄 ITERATION DETECTION: Check if this message is an iteration on previous search
       const iterationContext = detectIterationIntent(currentMessage, persistentState);
@@ -636,7 +660,8 @@ const useMessageHandler = (
           if (msg.role === 'system' && meta && (
             meta.messageType === 'contextual_memory' ||
             meta.messageType === 'context_state' ||
-            meta.messageType === 'trip_planner_state'
+            meta.messageType === 'trip_planner_state' ||
+            meta.messageType === 'conversation_summary'
           )) {
             return false;
           }
@@ -675,6 +700,7 @@ const useMessageHandler = (
 
           return true;
         })
+        .slice(-6)
         .map(msg => ({
           role: msg.role,
           content: typeof msg.content === 'string'
@@ -695,10 +721,29 @@ const useMessageHandler = (
       // === EMILIA 5.0: PARSE + ROUTE ===
       // Always parse first, then route based on content (not workspace_mode)
       const parseStart = nowMs();
-      let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory);
+      let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory, {
+        conversationSummary,
+        leadProfile,
+        contextMeta: {
+          conversationId: finalConversationId,
+          leadId: leadId ?? null,
+        },
+        historyWindow: 6,
+      });
       logTimingStep('MESSAGE FLOW', 'parseMessageWithAI', parseStart, {
         requestType: parsedRequest.requestType,
       });
+
+      const nextConversationSummary = buildConversationSummary(parsedRequest, parsedRequest.originalMessage || currentMessage, conversationSummary);
+      saveConversationSummary(finalConversationId, nextConversationSummary).catch((e) => console.warn('⚠️ [SUMMARY] Failed to save conversation summary:', e));
+
+      if (leadId) {
+        const nextLeadProfile = mergeLeadAiProfile(leadProfile, parsedRequest, {
+          leadId,
+          sourceConversationId: finalConversationId,
+        });
+        saveLeadAiProfile(nextLeadProfile).catch((e) => console.warn('⚠️ [LEAD_AI_PROFILE] Failed to save lead profile:', e));
+      }
 
       const routeResult = routeRequest(parsedRequest, plannerState);
       console.log('🧭 [ROUTER] Emilia route decision:', {
@@ -1469,7 +1514,7 @@ const useMessageHandler = (
         await clearContextualMemory(finalConversationId);
       }
 
-      // 6. Execute searches based on type (WITHOUT N8N)
+      // 6. Execute searches based on type
       console.log('🔍 [MESSAGE FLOW] Step 12: Starting search process');
       const searchStart = nowMs();
 
@@ -1567,7 +1612,11 @@ const useMessageHandler = (
           } else {
             setPlannerDraftPhase?.('draft_generating');
             setTypingMessage('Generando tu itinerario de viaje...', conversationIdForThisSearch);
-            const itineraryResult = await handleItineraryRequest(parsedRequest, plannerState || null);
+            const itineraryResult = await handleItineraryRequest(parsedRequest, plannerState || null, {
+              conversationId: finalConversationId,
+              leadId: leadId ?? null,
+              leadProfile,
+            });
             // Wrap in canonical pipeline
             const canonicalStdResult = buildCanonicalResultFromStandard({
               response: itineraryResult.response,
@@ -1887,7 +1936,11 @@ const useMessageHandler = (
         }
       });
 
-      const itineraryResult = await handleItineraryRequest(mergedRequest, plannerState || null);
+      const itineraryResult = await handleItineraryRequest(mergedRequest, plannerState || null, {
+        conversationId: currentConversationId,
+        leadId: await resolveLeadIdForConversation(currentConversationId),
+        leadProfile: null,
+      });
       const assistantResponse = itineraryResult.response;
       const structuredData = itineraryResult.data;
       const hasPlannerData = Boolean((structuredData as any)?.plannerData);

@@ -3,6 +3,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withRateLimit } from "../_shared/rateLimit.ts";
 import { normalizePlannerSegmentsScheduling } from "../_shared/scheduling.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import { requestOpenAiChatCompletion } from "../_shared/llm/openaiChat.ts";
+import { estimateCostUsd } from "../_shared/llm/pricing.ts";
+import { resolveModelPolicy } from "../_shared/llm/modelPolicy.ts";
+import { logLlmRequest, type LlmContextMeta } from "../_shared/llm/usageLogger.ts";
 
 interface PlannerRequest {
   destinations: string[];
@@ -32,6 +36,8 @@ interface PlannerRequest {
     targetCity?: string;
   };
   segmentHints?: Array<{ city: string; dayCount: number }>;
+  leadProfile?: Record<string, unknown>;
+  contextMeta?: LlmContextMeta | null;
 }
 
 type PlannerGenerationMode = 'skeleton' | 'segment' | 'full';
@@ -994,6 +1000,7 @@ function buildPlannerRequestContext(input: PlannerRequest, blueprints: SegmentBl
     travelers: input.travelers || { adults: 2, children: 0, infants: 0 },
     constraints: safeArray(input.constraints),
     travelerProfile,
+    leadProfileDefaults: input.leadProfile,
     editIntent: summarizeEditIntent(input.editIntent),
     targetSegments: blueprints.map((blueprint) => compactPromptValue({
       city: blueprint.city,
@@ -1033,6 +1040,7 @@ MUST FOLLOW:
 - Return exactly ${blueprints.length} segments in the exact order from REQUEST_CONTEXT.targetSegments.
 - Each segment must contain exactly the requested dayCount.
 - Respect the traveler profile "${travelerProfile}": ${profileGuidelines}
+- Use REQUEST_CONTEXT.leadProfileDefaults only as defaults when the current request omits a preference.
 - If editIntent exists, preserve unaffected structure and modify only what the request implies.
 - First day of each segment after the first should feel lighter because it is a transfer day.
 
@@ -1142,6 +1150,7 @@ MUST FOLLOW:
 - Return exactly ${blueprints.length} segments in the exact order from REQUEST_CONTEXT.targetSegments.
 - Each segment must contain exactly the requested dayCount.
 - Respect the traveler profile "${travelerProfile}": ${profileGuidelines}
+- Use REQUEST_CONTEXT.leadProfileDefaults only as defaults when the current request omits a preference.
 - First day of each segment after the first should feel lighter because it is a transfer day.
 
 OUTPUT LIMITS:
@@ -1226,6 +1235,7 @@ IMPORTANT:
 
 MUST FOLLOW:
 - Respect the traveler profile "${travelerProfile}": ${profileGuidelines}
+- Use REQUEST_CONTEXT.leadProfileDefaults only as defaults when the current request omits a preference.
 - Morning, afternoon, evening: 0 to 1 activity each.
 - Restaurants: 0 to 1 item per day.
 - travelTip: optional, max 12 words.
@@ -1350,38 +1360,29 @@ function getParseErrorContext(raw: string, parseError: unknown): { position?: nu
 async function repairPlannerJsonWithOpenAi(
   malformedJson: string,
   openaiApiKey: string,
-): Promise<{ repairedJson: string; finishReason: string | null }> {
+): Promise<{ repairedJson: string; finishReason: string | null; usage: any; model: string }> {
   const repairMaxTokens = Math.min(3800, Math.max(1400, Math.round(malformedJson.length * 0.45)));
-  const repairResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${openaiApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4.1',
-      messages: [
-        {
-          role: 'system',
-          content: 'You repair malformed JSON. Return only valid JSON. Preserve structure and values when possible. Do not add explanations.',
-        },
-        {
-          role: 'user',
-          content: malformedJson,
-        },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0,
-      max_tokens: repairMaxTokens,
-    }),
+  const repairModelDecision = resolveModelPolicy({
+    feature: 'travel-itinerary',
+    operation: 'repair',
   });
-
-  if (!repairResponse.ok) {
-    const errorText = await repairResponse.text();
-    throw new Error(`OpenAI repair failed: ${repairResponse.status} ${errorText}`);
-  }
-
-  const repairData = await repairResponse.json();
+  const repairData = await requestOpenAiChatCompletion<any>({
+    apiKey: openaiApiKey,
+    model: repairModelDecision.model,
+    messages: [
+      {
+        role: 'system',
+        content: 'You repair malformed JSON. Return only valid JSON. Preserve structure and values when possible. Do not add explanations.',
+      },
+      {
+        role: 'user',
+        content: malformedJson,
+      },
+    ],
+    responseFormat: { type: 'json_object' },
+    temperature: 0,
+    maxTokens: repairMaxTokens,
+  });
   const repairedJson = repairData?.choices?.[0]?.message?.content?.trim();
   if (!repairedJson) {
     throw new Error('OpenAI repair returned empty content');
@@ -1390,43 +1391,32 @@ async function repairPlannerJsonWithOpenAi(
   return {
     repairedJson,
     finishReason: repairData?.choices?.[0]?.finish_reason ?? null,
+    usage: repairData?.usage ?? {},
+    model: repairData?.model ?? repairModelDecision.model,
   };
 }
 
 async function requestPlannerCompletion(
   openaiApiKey: string,
+  model: string,
   systemPrompt: string,
   userMessage: string,
   maxTokens: number,
-): Promise<RawPlannerRecord> {
-  const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${openaiApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4.1',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        {
-          role: 'user',
-          content: userMessage,
-        },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.4,
-      max_tokens: maxTokens,
-    }),
+): Promise<any> {
+  return await requestOpenAiChatCompletion<any>({
+    apiKey: openaiApiKey,
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: userMessage,
+      },
+    ],
+    responseFormat: { type: 'json_object' },
+    temperature: 0.4,
+    maxTokens,
   });
-
-  if (!openaiResponse.ok) {
-    const errorData = await openaiResponse.text();
-    console.error('❌ OpenAI API error:', errorData);
-    throw new Error(`OpenAI API error: ${openaiResponse.status}`);
-  }
-
-  return await openaiResponse.json();
 }
 
 function normalizePlannerResponse(
@@ -1508,9 +1498,10 @@ serve(async (req) => {
     async () => {
       const requestId = crypto.randomUUID().slice(0, 8);
       const timer = createTimingLogger('TRAVEL-ITINERARY', { requestId });
+      let body: PlannerRequest | null = null;
       try {
         const requestParseStart = nowMs();
-        const body = await req.json() as PlannerRequest;
+        body = await req.json() as PlannerRequest;
         const parseRequestMs = timer.step('parse request body', requestParseStart, {
           destinationCount: safeArray(body.destinations).length,
           hasExistingPlannerState: Boolean(body.existingPlannerState),
@@ -1529,6 +1520,11 @@ serve(async (req) => {
         }
 
         const generationMode = resolveGenerationMode(body);
+        const generationModelDecision = resolveModelPolicy({
+          feature: 'travel-itinerary',
+          operation: 'generate',
+          generationMode,
+        });
         const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
         if (!openaiApiKey) throw new Error('OpenAI API key not configured');
         const segmentBlueprints = buildSegmentBlueprints(body);
@@ -1568,10 +1564,21 @@ serve(async (req) => {
           : generationMode === 'segment'
             ? Math.min(2400, Math.max(1200, targetDays * 160 + 380))
             : Math.min(4200, Math.max(2200, days * 200 + body.destinations.length * 240 + 300));
+        let repairUsageSummary: {
+          provider: string;
+          model: string;
+          promptTokens: number | null;
+          completionTokens: number | null;
+          totalTokens: number | null;
+          cachedTokens: number | null;
+          estimatedCostUsd: number;
+          finishReason: string | null;
+        } | null = null;
 
         const openaiFetchStart = nowMs();
         let openaiData = await requestPlannerCompletion(
           openaiApiKey,
+          generationModelDecision.model,
           systemPrompt,
           userMessage,
           maxCompletionTokens,
@@ -1579,7 +1586,7 @@ serve(async (req) => {
         let openaiUsage = openaiData?.usage || {};
         let openaiFinishReason = openaiData?.choices?.[0]?.finish_reason ?? null;
         const callOpenAiMs = timer.step('call OpenAI', openaiFetchStart, {
-          model: 'gpt-4.1',
+          model: openaiData?.model ?? generationModelDecision.model,
           maxCompletionTokens,
           finishReason: openaiFinishReason,
           promptTokens: openaiUsage.prompt_tokens ?? null,
@@ -1597,6 +1604,7 @@ serve(async (req) => {
           const retryStart = nowMs();
           openaiData = await requestPlannerCompletion(
             openaiApiKey,
+            generationModelDecision.model,
             systemPrompt,
             userMessage,
             retryMaxCompletionTokens,
@@ -1667,14 +1675,51 @@ serve(async (req) => {
               });
 
               const repairStart = nowMs();
-              const { repairedJson, finishReason: repairFinishReason } = await repairPlannerJsonWithOpenAi(
+              const { repairedJson, finishReason: repairFinishReason, usage: repairUsage, model: repairModel } = await repairPlannerJsonWithOpenAi(
                 sanitizedCandidate,
                 openaiApiKey,
               );
-              timer.step('repair planner JSON via OpenAI', repairStart, {
+              const repairLatencyMs = timer.step('repair planner JSON via OpenAI', repairStart, {
                 inputChars: sanitizedCandidate.length,
                 outputChars: repairedJson.length,
                 finishReason: repairFinishReason,
+              });
+              repairUsageSummary = {
+                provider: 'openai',
+                model: repairModel,
+                promptTokens: repairUsage?.prompt_tokens ?? null,
+                completionTokens: repairUsage?.completion_tokens ?? null,
+                totalTokens: repairUsage?.total_tokens ?? null,
+                cachedTokens: repairUsage?.prompt_tokens_details?.cached_tokens ?? null,
+                estimatedCostUsd: estimateCostUsd({
+                  model: repairModel,
+                  promptTokens: repairUsage?.prompt_tokens ?? null,
+                  completionTokens: repairUsage?.completion_tokens ?? null,
+                  cachedTokens: repairUsage?.prompt_tokens_details?.cached_tokens ?? null,
+                }),
+                finishReason: repairFinishReason,
+              };
+              await logLlmRequest(supabase, {
+                provider: 'openai',
+                model: repairModel,
+                feature: 'travel-itinerary',
+                operation: 'repair',
+                requestId,
+                success: true,
+                latencyMs: repairLatencyMs,
+                finishReason: repairFinishReason,
+                usage: {
+                  promptTokens: repairUsageSummary.promptTokens,
+                  completionTokens: repairUsageSummary.completionTokens,
+                  totalTokens: repairUsageSummary.totalTokens,
+                  cachedTokens: repairUsageSummary.cachedTokens,
+                },
+                contextMeta: body.contextMeta ?? null,
+                metadata: {
+                  generationMode,
+                  inputChars: sanitizedCandidate.length,
+                  outputChars: repairedJson.length,
+                },
               });
 
               parseStrategy = 'openai_repair';
@@ -1744,11 +1789,50 @@ serve(async (req) => {
             finishReason: openaiFinishReason,
           },
         };
+        const usage = {
+          provider: generationModelDecision.provider,
+          model: openaiData?.model ?? generationModelDecision.model,
+          promptTokens: openaiUsage.prompt_tokens ?? null,
+          completionTokens: openaiUsage.completion_tokens ?? null,
+          totalTokens: openaiUsage.total_tokens ?? null,
+          cachedTokens: openaiUsage?.prompt_tokens_details?.cached_tokens ?? null,
+          estimatedCostUsd: estimateCostUsd({
+            model: openaiData?.model ?? generationModelDecision.model,
+            promptTokens: openaiUsage.prompt_tokens ?? null,
+            completionTokens: openaiUsage.completion_tokens ?? null,
+            cachedTokens: openaiUsage?.prompt_tokens_details?.cached_tokens ?? null,
+          }),
+          finishReason: openaiFinishReason,
+          repair: repairUsageSummary,
+        };
+        await logLlmRequest(supabase, {
+          provider: usage.provider,
+          model: usage.model,
+          feature: 'travel-itinerary',
+          operation: 'generate',
+          requestId,
+          success: true,
+          latencyMs: (callOpenAiMs ?? 0) + (retryOpenAiMs ?? 0),
+          finishReason: usage.finishReason,
+          usage: {
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            totalTokens: usage.totalTokens,
+            cachedTokens: usage.cachedTokens,
+          },
+          contextMeta: body.contextMeta ?? null,
+          metadata: {
+            generationMode,
+            retryOpenAiMs,
+            parseStrategy,
+          },
+        });
 
         return new Response(JSON.stringify({
           success: true,
           data: normalized,
           timing,
+          usage,
           requestId,
           timestamp: new Date().toISOString()
         }), {
@@ -1761,6 +1845,27 @@ serve(async (req) => {
         timer.fail('total', error);
         console.error('❌ Travel Itinerary Generator error:', error);
         const errorMessage = error instanceof Error ? error.message : '';
+        const failureGenerationMode = body
+          ? (typeof body.generationMode === 'string' ? body.generationMode : resolveGenerationMode(body))
+          : 'full';
+        const failureModelDecision = resolveModelPolicy({
+          feature: 'travel-itinerary',
+          operation: 'generate',
+          generationMode: failureGenerationMode,
+        });
+        await logLlmRequest(supabase, {
+          provider: failureModelDecision.provider,
+          model: failureModelDecision.model,
+          feature: 'travel-itinerary',
+          operation: 'generate',
+          requestId,
+          success: false,
+          contextMeta: body?.contextMeta ?? null,
+          metadata: {
+            generationMode: failureGenerationMode,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
         const statusCode = errorMessage.includes('OpenAI') ? 502 : 500;
 
         return new Response(JSON.stringify({

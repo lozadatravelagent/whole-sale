@@ -426,7 +426,7 @@ function buildHotelRequestFromSegment(segment: HotelStaySegment): HotelRequest {
   };
 }
 
-// Handler functions WITHOUT N8N
+// Handler functions
 export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
   console.log('✈️ [FLIGHT SEARCH] Starting flight search process');
   console.log('📋 Parsed request:', parsed);
@@ -1835,7 +1835,7 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
 };
 
 export const handleGeneralQuery = async (parsed: ParsedTravelRequest): Promise<string> => {
-  // General response without N8N
+  // General response
   return '¡Hola! Soy Emilia, tu asistente de viajes. Puedo ayudarte con:\n\n' +
     '✈️ **Búsqueda de vuelos**\n' +
     '🏨 **Búsqueda de hoteles**\n' +

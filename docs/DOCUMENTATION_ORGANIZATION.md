@@ -34,7 +34,7 @@ docs/
 | **Architecture** | 3 | Async search, rate limiting, infrastructure |
 | **User Guides** | 3 | PDF templates, search manual, backgrounds |
 | **Business Rules** | 2 | User management, role hierarchy |
-| **Implementation** | 4 | Setup summaries, n8n workflows, testing |
+| **Implementation** | 4 | Setup summaries, workflow notes, testing |
 | **Archive** | 7 | Resolved issues (SUPERADMIN problems, etc.) |
 | **SQL Scripts** | 24 | Migrations, fixes, debug queries |
 | **PDF Templates** | 3 | HTML templates for PDFMonkey (flights-simple, flights-multiple, combined) |

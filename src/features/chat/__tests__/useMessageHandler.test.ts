@@ -93,6 +93,27 @@ vi.mock('../services/discoveryService', () => ({
   }),
 }));
 
+vi.mock('../services/conversationKnowledgeService', () => ({
+  buildConversationSummary: vi.fn().mockReturnValue({
+    schemaVersion: 1,
+    requestType: 'missing_info_request',
+    lastUserGoal: 'quiero volar',
+    resolved: {},
+    unresolvedFields: ['destination'],
+    turnCount: 1,
+    updatedAt: '2026-01-01T00:00:00Z',
+  }),
+  loadConversationSummary: vi.fn().mockResolvedValue(null),
+  resolveLeadIdForConversation: vi.fn().mockResolvedValue(null),
+  saveConversationSummary: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../services/leadAiProfileService', () => ({
+  loadLeadAiProfile: vi.fn().mockResolvedValue(null),
+  mergeLeadAiProfile: vi.fn(),
+  saveLeadAiProfile: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ---------------------------------------------------------------------------
 // Imports (after mocks are declared)
 // ---------------------------------------------------------------------------

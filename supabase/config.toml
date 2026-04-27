@@ -5,6 +5,3 @@ verify_jwt = false
 
 [functions.eurovips-soap]
 verify_jwt = false
-
-[functions.travel-chat]
-verify_jwt = false

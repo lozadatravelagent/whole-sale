@@ -6,7 +6,7 @@ Guidance for Claude Code when working with **WholeSale Connect AI** — a multi-
 - **Frontend**: React 18 + TypeScript, Vite, shadcn/ui, Tailwind CSS
 - **State**: Custom hooks + Supabase Realtime (primary), React Context (AuthContext)
 - **Backend**: Supabase PostgreSQL, Edge Functions, Fastify API Gateway (Node.js 20 + Railway)
-- **Integrations**: Starling (flights), EUROVIPS (hotels), Foursquare (places/venues), Mapbox GL (map rendering), Wikipedia (photo hydration), PDFMonkey (quotes), OpenAI (gpt-5.1 for planner-agent, gpt-4.1-mini for ai-message-parser, gpt-4.1 for travel-itinerary)
+- **Integrations**: Starling (flights), EUROVIPS (hotels), Foursquare (places/venues), Mapbox GL (map rendering), Wikipedia (photo hydration), PDFMonkey (quotes), OpenAI (central model policy for parser, itinerary generation, and JSON repair)
 - **Caching**: Redis (rate limits, idempotency), IndexedDB (places, planner state — 7d TTL), in-memory LRU (places, geocoding), in-memory (country codes)
 
 ## Critical Rules
@@ -62,7 +62,7 @@ supabase/functions/          # Edge Functions
 ├── eurovips-soap/           # EUROVIPS hotel SOAP API
 ├── travel-itinerary/        # Itinerary generation
 ├── ai-message-parser/       # NLP message parsing
-└── ...                      # travel-chat, add-message, create-user, api-auth, hotelbeds-*, pdf-*
+└── ...                      # add-message, create-user, api-auth, hotelbeds-*, pdf-*
 ```
 
 ## Database Schema
@@ -156,7 +156,7 @@ supabase/functions/          # Edge Functions
 - **Travel search**: starling-flights, eurovips-soap, search-coordinator
 - **Places**: foursquare-places, places-viewport, place-details, place-photos, place-recommendations, place-hotel-candidates, place-summary
 - **Agent**: planner-agent
-- **Chat/AI**: travel-chat, ai-message-parser, travel-itinerary, add-message
+- **Chat/AI**: ai-message-parser, travel-itinerary, add-message
 - **Hotels**: hotelbeds-api, hotelbeds-content-sync, hotelbeds-cache-sync, hotelbeds-activities, hotelbeds-transfers
 - **Other**: create-user, api-auth, pdf-ai-analyzer, pdf-text-extractor
 - **Shared**: `_shared/places/` (Foursquare provider, service layer, Wikipedia hydration, types), `_shared/cors.ts`, `_shared/cache.ts`

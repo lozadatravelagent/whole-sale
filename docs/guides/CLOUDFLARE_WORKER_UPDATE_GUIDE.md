@@ -299,7 +299,7 @@ Una vez verificado que todo funciona:
 ```
 ┌─────────────────────────────────────────────────────┐
 │              EXTERNAL CLIENTS                       │
-│        (N8N, Apps, Integrations)                    │
+│        (Apps, Integrations)                         │
 └────────────────────┬────────────────────────────────┘
                      │
                      ▼

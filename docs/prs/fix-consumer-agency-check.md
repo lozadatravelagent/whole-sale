@@ -59,7 +59,7 @@ CREATE POLICY "consumer_insert_own_conversations"
 - **Paso 1/2/3/4**: `CompanionLayout`, `ChatSidebarCompanion`, `HandoffBanner/Modal`, `ItineraryPanel`, `ConsumerSignup/Login/Profile`, `RequireConsumer`, `consumer-signup` edge function — all intact.
 - **B2B auth**: `Login.tsx`, `create-user` edge function, `Users.tsx`, `ProtectedRoute`, CRM, Dashboard, etc. — intact.
 - **AuthContext**, layouts, routes, schemas Zod — intact.
-- **`config.toml`** — not touched (the existing entries for starling-flights, eurovips-soap, travel-chat are unchanged).
+- **`config.toml`** — not touched in this PR.
 
 ## Bonus discovery (out of scope, follow-up)
 

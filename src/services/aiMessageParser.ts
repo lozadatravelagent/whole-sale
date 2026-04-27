@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
+import type { ParseMessageKnowledge } from '@/features/chat/types/knowledge';
 import {
     getNormalizedFlightSegments,
     normalizeFlightRequest,
@@ -1439,7 +1440,8 @@ export function combineWithPreviousRequest(
 export async function parseMessageWithAI(
     message: string,
     previousContext?: ParsedTravelRequest | null,
-    conversationHistory?: Array<{ role: string, content: string, timestamp: string }>
+    conversationHistory?: Array<{ role: string, content: string, timestamp: string }>,
+    knowledge?: ParseMessageKnowledge,
 ): Promise<ParsedTravelRequest> {
     const timer = createDebugTimer('AI PARSER', {
         messageLength: message.length,
@@ -1777,7 +1779,11 @@ export async function parseMessageWithAI(
                 language: 'es', // Spanish
                 currentDate: new Date().toISOString().split('T')[0],
                 previousContext: previousContext, // Include conversation context
-                conversationHistory: conversationHistory || [] // Include full conversation history
+                conversationHistory: conversationHistory || [],
+                conversationSummary: knowledge?.conversationSummary ?? null,
+                leadProfile: knowledge?.leadProfile ?? null,
+                historyWindow: knowledge?.historyWindow ?? 6,
+                contextMeta: knowledge?.contextMeta ?? null,
             }
         });
         logTimingStep('AI PARSER', 'invoke ai-message-parser', invokeStart, {

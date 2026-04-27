@@ -3,6 +3,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withRateLimit } from "../_shared/rateLimit.ts";
 import { buildSystemPrompt, PROMPT_VERSION } from "./prompt.ts";
 import { normalizeFlightRequest } from "../_shared/flightSegments.ts";
+import { requestOpenAiChatCompletion } from "../_shared/llm/openaiChat.ts";
+import { estimateCostUsd } from "../_shared/llm/pricing.ts";
+import { resolveModelPolicy } from "../_shared/llm/modelPolicy.ts";
+import { logLlmRequest } from "../_shared/llm/usageLogger.ts";
 import {
   normalizeDestinationListToCapitals,
   normalizeDestinationToCapitalIfCountry,
@@ -175,6 +179,7 @@ serve(async (req) => {
     supabase,
     { action: 'message', resource: 'ai-parser' },
     async () => {
+      const requestId = crypto.randomUUID();
       try {
         const requestBody = await req.json();
         const {
@@ -182,7 +187,11 @@ serve(async (req) => {
           language = 'es',
           currentDate = new Date().toISOString().split('T')[0], // Default to today's date (YYYY-MM-DD)
           previousContext,
-          conversationHistory = []
+          conversationHistory = [],
+          conversationSummary = null,
+          leadProfile = null,
+          historyWindow = 6,
+          contextMeta = null,
         } = requestBody;
 
         if (!message) {
@@ -196,8 +205,8 @@ serve(async (req) => {
         let conversationHistoryText = '';
         if (conversationHistory && conversationHistory.length > 0) {
           try {
-            // Take last 20 messages for comprehensive context (up from 8)
-            const recentHistory = conversationHistory.slice(-20);
+            const normalizedHistoryWindow = Math.max(1, Math.min(12, Number(historyWindow) || 6));
+            const recentHistory = conversationHistory.slice(-normalizedHistoryWindow);
 
             conversationHistoryText = recentHistory.map((msg, index) => {
               // Escape problematic characters
@@ -232,37 +241,33 @@ serve(async (req) => {
         const systemPrompt = buildSystemPrompt({
           currentDate,
           conversationHistoryText,
-          previousContext
+          previousContext,
+          conversationSummary,
+          leadProfile,
         });
         const userPrompt = message;
-        const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'gpt-4.1-mini',
-            messages: [
-              {
-                role: 'system',
-                content: systemPrompt
-              },
-              {
-                role: 'user',
-                content: userPrompt
-              }
-            ],
-            temperature: 0.1,
-            max_tokens: 1000
-          })
+        const modelDecision = resolveModelPolicy({
+          feature: 'ai-message-parser',
+          operation: 'parse',
         });
-        if (!openaiResponse.ok) {
-          const errorData = await openaiResponse.text();
-          console.error('❌ OpenAI API error:', errorData);
-          throw new Error(`OpenAI API error: ${openaiResponse.status}`);
-        }
-        const openaiData = await openaiResponse.json();
+        const openAiStartedAt = performance.now();
+        const openaiData = await requestOpenAiChatCompletion<any>({
+          apiKey: openaiApiKey,
+          model: modelDecision.model,
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
+            },
+            {
+              role: 'user',
+              content: userPrompt
+            }
+          ],
+          temperature: 0.1,
+          maxTokens: 1000,
+        });
+        const openAiLatencyMs = Math.round(performance.now() - openAiStartedAt);
         const aiResponse = openaiData.choices[0]?.message?.content;
         if (!aiResponse) {
           throw new Error('No response from OpenAI');
@@ -355,10 +360,47 @@ serve(async (req) => {
           throw new Error(`Invalid response structure from AI - requestType: ${parsed.requestType}, confidence: ${parsed.confidence} (${typeof parsed.confidence})`);
         }
         console.log('✅ AI parsing successful:', parsed);
+        const usage = {
+          provider: modelDecision.provider,
+          model: openaiData?.model ?? modelDecision.model,
+          promptTokens: openaiData?.usage?.prompt_tokens ?? null,
+          completionTokens: openaiData?.usage?.completion_tokens ?? null,
+          totalTokens: openaiData?.usage?.total_tokens ?? null,
+          cachedTokens: openaiData?.usage?.prompt_tokens_details?.cached_tokens ?? null,
+          estimatedCostUsd: estimateCostUsd({
+            model: openaiData?.model ?? modelDecision.model,
+            promptTokens: openaiData?.usage?.prompt_tokens ?? null,
+            completionTokens: openaiData?.usage?.completion_tokens ?? null,
+            cachedTokens: openaiData?.usage?.prompt_tokens_details?.cached_tokens ?? null,
+          }),
+          finishReason: openaiData?.choices?.[0]?.finish_reason ?? null,
+        };
+        await logLlmRequest(supabase, {
+          provider: usage.provider,
+          model: usage.model,
+          feature: 'ai-message-parser',
+          operation: 'parse',
+          requestId,
+          success: true,
+          latencyMs: openAiLatencyMs,
+          finishReason: usage.finishReason,
+          usage: {
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            totalTokens: usage.totalTokens,
+            cachedTokens: usage.cachedTokens,
+          },
+          contextMeta,
+          metadata: {
+            promptVersion: PROMPT_VERSION,
+          },
+        });
         return new Response(JSON.stringify({
           success: true,
           parsed,
           aiResponse: aiResponse,
+          usage,
+          requestId,
           timestamp: new Date().toISOString(),
           meta: {
             promptVersion: PROMPT_VERSION
@@ -372,6 +414,22 @@ serve(async (req) => {
       } catch (error) {
         console.error('❌ AI Message Parser error:', error);
         console.error('❌ Error stack:', error.stack);
+        const failureModelDecision = resolveModelPolicy({
+          feature: 'ai-message-parser',
+          operation: 'parse',
+        });
+        await logLlmRequest(supabase, {
+          provider: failureModelDecision.provider,
+          model: failureModelDecision.model,
+          feature: 'ai-message-parser',
+          operation: 'parse',
+          requestId,
+          success: false,
+          metadata: {
+            error: error instanceof Error ? error.message : String(error),
+            promptVersion: PROMPT_VERSION,
+          },
+        });
         const statusCode = error.message?.includes('OpenAI') ? 502 : 500;
         return new Response(JSON.stringify({
           success: false,

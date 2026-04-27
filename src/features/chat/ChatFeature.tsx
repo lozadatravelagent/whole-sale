@@ -8,6 +8,7 @@ import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } fro
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ContextState } from './types/contextState';
 import type { ConversationWithAgency, ConversationWorkspaceMode } from './types/chat';
+import type { PreloadedConversationKnowledge } from './types/knowledge';
 
 // Import feature components and hooks
 import ChatSidebar from './components/ChatSidebar';
@@ -20,6 +21,7 @@ import useContextualMemory from './hooks/useContextualMemory';
 import usePdfAnalysis from './hooks/usePdfAnalysis';
 import useMessageHandler from './hooks/useMessageHandler';
 import { addMessageViaSupabase } from './services/messageService';
+import { preloadConversationKnowledge } from './services/conversationKnowledgeService';
 import TripPlannerWorkspace from '@/features/trip-planner/components/TripPlannerWorkspace';
 import useTripPlanner from '@/features/trip-planner/useTripPlanner';
 import { buildPlannerPromptContext } from '@/features/trip-planner/utils';
@@ -98,14 +100,16 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   const { searchResults, searching, searchMessages, clearSearch } = useConversationSearch();
 
   // Contextual memory hooks
-  const { loadContextualMemory, saveContextualMemory, clearContextualMemory, loadContextState, saveContextState } = useContextualMemory();
+  const {
+    loadContextualMemory,
+    saveContextualMemory,
+    clearContextualMemory,
+    loadContextState,
+    saveContextState,
+  } = useContextualMemory();
 
   // Preload context when conversation changes to avoid DB calls during message send
-  const [preloadedContext, setPreloadedContext] = useState<{
-    conversationId: string;
-    contextualMemory: ParsedTravelRequest | null;
-    contextState: ContextState | null;
-  } | null>(null);
+  const [preloadedContext, setPreloadedContext] = useState<PreloadedConversationKnowledge | null>(null);
 
   useEffect(() => {
     if (!selectedConversation || selectedConversation.startsWith('temp-')) {
@@ -116,13 +120,15 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     Promise.all([
       loadContextualMemory(selectedConversation),
       loadContextState(selectedConversation) as Promise<ContextState | null>,
-    ]).then(([mem, state]) => {
+    ]).then(async ([mem, state]) => {
+      const knowledge = await preloadConversationKnowledge({
+        conversationId: selectedConversation,
+        contextualMemory: mem,
+        contextState: state,
+      });
+
       if (!cancelled) {
-        setPreloadedContext({
-          conversationId: selectedConversation,
-          contextualMemory: mem,
-          contextState: state,
-        });
+        setPreloadedContext(knowledge);
       }
     }).catch(() => {});
     return () => { cancelled = true; };

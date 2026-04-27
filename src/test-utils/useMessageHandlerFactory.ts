@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 import type { MessageRow } from '@/features/chat/types/chat';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ContextState } from '@/features/chat/types/contextState';
+import type { ConversationSummary, LeadAiProfile } from '@/features/chat/types/knowledge';
 
 export const DEFAULT_CONV_ID = 'test-conv-123';
 
@@ -62,7 +63,14 @@ function buildDefaultProps() {
     setDraftPlannerFromRequest: undefined as any,
     setPlannerDraftPhase: undefined as any,
     updatePlannerState: undefined as any,
-    preloadedContext: undefined as { conversationId: string; contextualMemory: ParsedTravelRequest | null; contextState: ContextState | null } | null | undefined,
+    preloadedContext: undefined as {
+      conversationId: string;
+      contextualMemory: ParsedTravelRequest | null;
+      contextState: ContextState | null;
+      conversationSummary: ConversationSummary | null;
+      leadId: string | null;
+      leadProfile: LeadAiProfile | null;
+    } | null | undefined,
     workspaceMode: undefined as 'standard' | 'planner' | undefined,
     chatMode: undefined as 'agency' | 'passenger' | undefined,
   };
