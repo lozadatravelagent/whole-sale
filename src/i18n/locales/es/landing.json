@@ -1,187 +1,214 @@
 {
   "navbar": {
-    "logoAlt": "VIBOOK",
-    "submark": "Emilia",
-    "links": {
-      "howItWorks": "Cómo funciona",
-      "solutions": "Soluciones",
-      "models": "Modelos",
-      "aboutVibook": "Sobre Vibook"
-    },
+    "logoAlt": "Emilia",
+    "submark": "by Vibook",
     "primaryCta": "Empezá a chatear",
     "openMenu": "Abrir menú",
-    "closeMenu": "Cerrar menú"
-  },
-  "footer": {
-    "tagline": "Hecho por Vibook",
-    "copyright": "© {{year}} Vibook. Todos los derechos reservados.",
+    "closeMenu": "Cerrar menú",
     "links": {
-      "privacy": "Privacidad",
-      "terms": "Términos",
-      "contact": "Contacto"
-    },
-    "vibookLogoAlt": "Vibook",
-    "photoCredit": "Fotografía vía Unsplash"
+      "valor": "Valor",
+      "diferencial": "Diferencial",
+      "usos": "Usos",
+      "sobre": "Sobre Vibook"
+    }
   },
   "hero": {
-    "eyebrow": "AI for Travel Planning & Quotation",
-    "headline": "De la idea de viaje a una propuesta lista para vender, en una sola conversación.",
-    "subheadline": "Emilia es la interfaz conversacional de Vibook que planifica y cotiza viajes en lenguaje natural, transformando la intención del usuario en planes estructurados o cotizaciones accionables, conectada a múltiples proveedores del sector turístico.",
-    "moat": "Emilia no es una herramienta de viajes. Es la interfaz que conecta la intención de viajar con la decisión.",
-    "primaryCta": "Empezá a chatear con Emilia",
-    "microcopy": "Sin formularios. Sin fricción. Solo conversación.",
-    "scene": {
-      "assistantLabel": "Emilia",
-      "status": "Planificando…",
-      "userMessage": "Quiero ir a Cancún del 10 al 18 de enero, somos 2 adultos y 2 chicos, habitación cuádruple",
-      "assistantMessage": "Perfecto. Estoy organizando tu viaje a Cancún para el 10–18 de enero, 2 adultos + 2 niños, en habitación cuádruple.",
-      "cards": {
-        "destination": { "label": "Destino", "value": "Cancún, México" },
-        "dates": { "label": "Fechas", "value": "10 – 18 enero" },
-        "guests": { "label": "Pasajeros", "value": "2 adultos + 2 niños" },
-        "room": { "label": "Habitación", "value": "Cuádruple" }
+    "badge": "Nueva forma de planificar viajes",
+    "headline": "Pensá el viaje.",
+    "headlineHighlight": "Emilia lo arma.",
+    "subtitle": "Contale en una frase lo que querés. Obtené una propuesta cotizada en segundos.",
+    "primaryCta": "Probá Emilia gratis",
+    "secondaryCta": "Ver cómo funciona",
+    "features": ["Sin login", "Sin formularios", "Respuesta en segundos"]
+  },
+  "mockup": {
+    "header": {
+      "title": "Emilia",
+      "status": "Asistente de viaje · en línea"
+    },
+    "input": {
+      "placeholder": "Contale tu próximo viaje…"
+    },
+    "floatingBadge": "Procesando intención",
+    "script": {
+      "q1": "Quiero ir a Cancún del 10 al 18 de enero, somos 2 adultos y 2 chicos.",
+      "a1": "Perfecto. ¿Buscás algo all inclusive o más tranquilo?",
+      "q2": "All inclusive, con pileta para los chicos.",
+      "a2": "Listo. ¿Sumamos traslados y alguna excursión?",
+      "q3": "Sí, traslados privados. Excursión a Isla Mujeres.",
+      "a3": "Listo. Armé esta propuesta cotizando en vivo 👇"
+    },
+    "proposal": {
+      "header": {
+        "id": "Propuesta #A2317",
+        "meta": "Generada en 1.4s · 3 proveedores",
+        "live": "En vivo"
+      },
+      "summary": {
+        "destination": { "label": "Cancún, México", "sub": "Destino" },
+        "dates": { "label": "10 – 18 ene", "sub": "8 noches" },
+        "pax": { "label": "2 adultos · 2 niños", "sub": "Pasajeros" },
+        "room": { "label": "Hab. cuádruple", "sub": "Vista al mar" }
+      },
+      "items": {
+        "flight": {
+          "title": "Vuelo directo · Aeroméxico",
+          "meta": "EZE → CUN · 9h 20m",
+          "tag": "Equipaje incluido"
+        },
+        "hotel": {
+          "title": "Riu Palace Península 5★",
+          "meta": "All inclusive · 8 noches",
+          "tag": "Cancelación gratis"
+        },
+        "transfer": {
+          "title": "Traslados privados",
+          "meta": "Aeropuerto ↔ hotel",
+          "tag": "24/7"
+        },
+        "tour": {
+          "title": "Excursión Isla Mujeres",
+          "meta": "Día completo · catamarán",
+          "tag": "Familiar"
+        }
+      },
+      "total": {
+        "label": "Total",
+        "guarantee": "Precio final · sin sorpresas"
       }
     }
   },
-  "whatIsEmilia": {
-    "eyebrow": "Qué es Emilia",
-    "headline": "Una nueva forma de entender y vender viajes.",
-    "subheadline": "Emilia convierte una conversación en una estructura de viaje clara. Desde una idea inicial hasta una propuesta lista para enviar, todo sucede en lenguaje natural. No es solo inspiración: es planificación, estructuración y cotización en una misma interfaz.",
-    "cards": [
-      { "title": "Planifica", "copy": "Entiende la intención del viaje y la convierte en una estructura clara." },
-      { "title": "Estructura", "copy": "Ordena destinos, fechas, pasajeros y habitaciones en datos accionables." },
-      { "title": "Cotiza", "copy": "Genera propuestas listas para enviar, conectadas a tus proveedores." }
-    ]
-  },
-  "realExample": {
-    "eyebrow": "Ejemplo real",
-    "headline": "Así se ve Emilia en acción.",
-    "subheadline": "Una sola frase del usuario alcanza para que Emilia interprete fechas, pasajeros, tipo de habitación y arme la propuesta.",
-    "userLabel": "Vos",
-    "assistantLabel": "Emilia",
-    "userMessage": "Quiero ir a Cancún del 10 al 18 de enero, somos 2 adultos y 2 chicos, habitación cuádruple",
-    "assistantMessage": "Listo. Identifiqué destino, fechas, grupo familiar y tipo de habitación. Estoy armando la propuesta.",
-    "cards": {
-      "destination": { "label": "Destino", "value": "Cancún" },
-      "dates": { "label": "Fechas", "value": "10 – 18 enero" },
-      "guests": { "label": "Pasajeros", "value": "2 adultos + 2 niños" },
-      "room": { "label": "Habitación", "value": "Cuádruple" }
-    }
-  },
-  "howItWorks": {
-    "eyebrow": "Cómo funciona",
-    "headline": "De una conversación a una propuesta accionable.",
-    "subheadline": "Tres pasos. Un lenguaje. Cero formularios.",
-    "steps": [
-      { "title": "Input natural", "copy": "El usuario habla en lenguaje libre, sin formularios ni campos obligatorios." },
-      { "title": "Interpretación inteligente", "copy": "Emilia detecta destinos, fechas, pasajeros, habitaciones y estilo de viaje." },
-      { "title": "Output estructurado y cotizable", "copy": "Convierte la intención en una propuesta lista para revisar, ajustar o enviar." }
-    ]
-  },
-  "differentiator": {
-    "eyebrow": "Qué hace diferente a Emilia",
-    "headline": "No es solo una herramienta. Es una nueva interfaz.",
-    "items": [
-      { "title": "No es solo inspiración", "copy": "Es acción: estructura y cotización en la misma conversación." },
-      { "title": "No es solo búsqueda", "copy": "Es conversación: entiende intención, no keywords." },
-      { "title": "No es solo planificación", "copy": "Es cotización: lleva la idea hasta la venta." },
-      { "title": "No es una herramienta más", "copy": "Es la nueva interfaz para entender y vender viajes." }
-    ]
-  },
-  "twoModes": {
-    "eyebrow": "Dos modos",
-    "headline": "Dos modos, una misma experiencia.",
-    "subheadline": "Emilia comienza planificando y evoluciona naturalmente hacia cotización.",
-    "connector": "Evoluciona naturalmente",
-    "modes": {
-      "planner": {
-        "title": "Planificador",
-        "copy": "Inspira, estructura y ordena la idea de viaje en datos accionables."
+  "coreValue": {
+    "eyebrow": "Valor",
+    "title": "De una idea suelta",
+    "highlight": "a un viaje cerrado.",
+    "subtitle": "Una sola conversación. Emilia entiende, organiza y cotiza.",
+    "items": {
+      "speed": {
+        "title": "Planificá viajes en segundos",
+        "desc": "Convertí una idea desordenada en un plan claro."
       },
-      "quoter": {
-        "title": "Cotizador",
-        "copy": "Conecta con proveedores y devuelve propuestas listas para enviar."
+      "structure": {
+        "title": "Convertí ideas en propuestas concretas",
+        "desc": "Estructurá fechas, destinos, pasajeros y preferencias."
+      },
+      "conversion": {
+        "title": "Respondé más rápido y vendé mejor",
+        "desc": "Reducí fricción entre consulta y decisión."
       }
     }
   },
-  "solutions": {
-    "eyebrow": "Soluciones",
-    "headline": "Una interfaz, tres formas de usarla.",
-    "subheadline": "Emilia se adapta al rol que la pide.",
-    "cards": {
-      "travelers": {
-        "title": "Viajeros",
-        "copy": "Dale forma a tu próximo viaje en una conversación. Sin formularios, sin fricción.",
-        "ctaLabel": "Empezá a chatear"
+  "diferencial": {
+    "eyebrow": "Diferencial",
+    "title": "No es un buscador.",
+    "highlight": "Es una nueva interfaz.",
+    "subtitle": "No te muestra resultados. Entiende tu intención y la convierte en un viaje.",
+    "pairs": {
+      "inspiration": { "from": "Inspiración", "to": "Acción" },
+      "search": { "from": "Búsqueda", "to": "Conversación" },
+      "planning": { "from": "Planificación", "to": "Cotización" },
+      "tool": { "from": "Herramienta", "to": "Interfaz" }
+    },
+    "tagline": "Una conversación. Una estructura. Un viaje listo para vender."
+  },
+  "useCases": {
+    "eyebrow": "Usos",
+    "title": "Una interfaz.",
+    "highlight": "Tres formas de usarla.",
+    "subtitle": "Tocá una card para ver el detalle.",
+    "labels": {
+      "forWho": "Para quién es",
+      "includes": "Qué incluye"
+    },
+    "viajeros": {
+      "title": "Viajeros",
+      "tagline": "Una conversación, un viaje.",
+      "desc": "Planificá tu viaje en lenguaje natural. Emilia ordena tus ideas en un itinerario claro y cotizado.",
+      "forWho": "Personas que quieren viajar y no saben por dónde empezar.",
+      "features": [
+        "Chat sin login ni formularios",
+        "Sugerencias según intereses y presupuesto",
+        "Itinerario armado en segundos",
+        "Cotización en tiempo real",
+        "Comparación inteligente de opciones"
+      ],
+      "cta": "Probar ahora"
+    },
+    "agencias": {
+      "title": "Agencias",
+      "tagline": "Cotizá más rápido. Vendé más.",
+      "desc": "Add-on dentro de Vibook para potenciar a tu equipo de ventas.",
+      "forWho": "Agencias que quieren reducir el tiempo entre consulta y propuesta.",
+      "features": [
+        "Integrada al flujo actual de Vibook",
+        "Propuestas listas para enviar al cliente",
+        "Multi-pasajero y multi-destino",
+        "Branding propio del agente",
+        "Historial por cliente",
+        "Conexión con tu inventario"
+      ],
+      "cta": "Hablar con ventas"
+    },
+    "mayoristas": {
+      "title": "Mayoristas",
+      "tagline": "Una interfaz para toda tu red.",
+      "desc": "White-label embebido en tu plataforma, con setup y fee mensual.",
+      "forWho": "Operadores que distribuyen producto a una red de agencias.",
+      "features": [
+        "White-label en tu plataforma",
+        "API para conectar tu inventario",
+        "Panel de control multi-agencia",
+        "Métricas de uso y conversión",
+        "Onboarding en minutos",
+        "Soporte dedicado y SLA"
+      ],
+      "cta": "Hablar con ventas"
+    }
+  },
+  "infraestructura": {
+    "eyebrow": "Infraestructura",
+    "title": "Conectada al",
+    "highlight": "ecosistema turístico.",
+    "subtitle": "Una capa conversacional sobre proveedores, GDS y plataformas. Cada frase se convierte en opciones reales.",
+    "diagram": {
+      "ariaLabel": "Diagrama orbital del ecosistema Emilia",
+      "intelligenceLayer": "Capa de inteligencia",
+      "live": "Live",
+      "inner": {
+        "vuelos": "Vuelos",
+        "hoteles": "Hoteles",
+        "servicios": "Servicios",
+        "agencias": "Agencias",
+        "mayoristas": "Mayoristas"
       },
-      "agencies": {
-        "title": "Agencias",
-        "copy": "Respondé más rápido, estructurá mejor cada pedido y vendé con menos fricción.",
-        "ctaLabel": "Saber más",
-        "comingSoonBadge": "Próximamente"
-      },
-      "wholesalers": {
-        "title": "Mayoristas",
-        "copy": "Llevá Emilia a tu motor B2B y dale a tus agencias una forma más natural de cotizar.",
-        "ctaLabel": "Saber más",
-        "comingSoonBadge": "Próximamente"
+      "outer": {
+        "gds": "GDS",
+        "otas": "OTAs",
+        "compliance": "PCI/SOC2",
+        "pagos": "Pagos",
+        "viajeros": "Viajeros"
       }
+    },
+    "stats": {
+      "providers": "Proveedores conectados",
+      "latency": "Latencia promedio",
+      "uptime": "Disponibilidad real"
     }
   },
-  "ecosystemNetwork": {
-    "eyebrow": "Ecosistema",
-    "headline": "Conectada a múltiples proveedores del sector.",
-    "subheadline": "Emilia integra disponibilidad y precios de los actores que ya usás, en una sola interfaz.",
-    "centerLabel": "Emilia",
-    "nodes": {
-      "hotels": "Hoteles",
-      "flights": "Vuelos",
-      "transfers": "Traslados",
-      "activities": "Actividades",
-      "tours": "Tours",
-      "insurance": "Seguros"
-    }
+  "about": {
+    "badge": "Construido por Vibook",
+    "headline": "Hecho por viajeros que construyen tecnología para cambiar cómo se venden los viajes.",
+    "signature": "Emilia es un producto de Vibook Holdings LLC."
   },
-  "impact": {
-    "eyebrow": "Impacto",
-    "headline": "Lo que cambia cuando Emilia entra al flujo.",
-    "items": [
-      { "title": "Menos fricción", "copy": "Sin formularios, sin pasos intermedios." },
-      { "title": "Más velocidad", "copy": "De la idea a la propuesta en minutos." },
-      { "title": "Más propuestas", "copy": "Más volumen sin más equipo." },
-      { "title": "Mejor experiencia", "copy": "Una conversación que se siente humana de punta a punta." }
-    ]
+  "ctaFinal": {
+    "headline": "Tu próximo viaje empieza con",
+    "highlight": "una frase",
+    "subtitle": "Decile a Emilia adónde querés ir. Del resto se encarga ella.",
+    "cta": "Probá Emilia gratis",
+    "microcopy": "Sin formularios. Sin login. Sin fricción."
   },
-  "models": {
-    "eyebrow": "Modelos",
-    "headline": "Elegí cómo querés trabajar con Emilia.",
-    "subheadline": "Tres formas de integrar a Emilia, según el rol y la madurez de tu producto.",
-    "tabs": {
-      "saas": {
-        "label": "SaaS",
-        "title": "Emilia como producto",
-        "copy": "Accedé a Emilia desde nuestra plataforma. Sin instalación, listo para usar."
-      },
-      "embedded": {
-        "label": "Embebida",
-        "title": "Emilia dentro de tu producto",
-        "copy": "Integrá la interfaz conversacional en tu motor B2B con tu marca y tus proveedores."
-      },
-      "api": {
-        "label": "API",
-        "title": "Emilia como capa",
-        "copy": "Usá la inteligencia de Emilia desde tu propio frontend vía API."
-      }
-    }
-  },
-  "aboutVibook": {
-    "eyebrow": "Sobre Vibook",
-    "headline": "Construimos la interfaz que faltaba.",
-    "copy": "Vibook es una compañía de tecnología enfocada en el sector turístico. Combinamos AI conversacional, data del sector y diseño de producto para llevar la experiencia de planificar y vender viajes a un lugar más humano, más rápido y más útil."
-  },
-  "finalCta": {
-    "headline": "Empezá a planificar tu próximo viaje con Emilia.",
-    "primaryCta": "Empezá a chatear con Emilia",
-    "microcopy": "Abre el chat directo en modo planificador. Sin formularios."
+  "footer": {
+    "copyrightVendor": "Vibook Holdings LLC.",
+    "copyrightSuffix": "Todos los derechos reservados."
   }
 }

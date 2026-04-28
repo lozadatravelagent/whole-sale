@@ -8,7 +8,7 @@ interface LandingLayoutProps {
 
 export function LandingLayout({ children }: LandingLayoutProps) {
   return (
-    <div className="landing-shell min-h-screen bg-background text-foreground flex flex-col">
+    <div className="landing-shell min-h-screen bg-background text-foreground antialiased flex flex-col">
       <LandingNavbar />
       <main className="flex-1">{children}</main>
       <LandingFooter />

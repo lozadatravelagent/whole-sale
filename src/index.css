@@ -116,14 +116,6 @@
     --sidebar-accent-foreground: 240 4.8% 95.9%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
-
-    /* L1.5 tokens — additive only. Consumed by .landing-section-light inside
-       the .landing-shell tree so dark-dominant landing can intercalate light
-       sections without touching any pre-existing .dark token. */
-    --landing-light-bg: 30 25% 97%;
-    --landing-light-fg: 24 20% 12%;
-    --landing-light-muted: 30 15% 55%;
-    --landing-light-border: 30 15% 88%;
   }
 }
 
@@ -450,38 +442,62 @@
 .animate-float-delayed { animation: float 6s ease-in-out infinite 2s; }
 .animate-pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
 
-/* Landing typography */
+/* Landing typography & design tokens — Aurora violet scope.
+   These tokens only resolve within the .landing-shell subtree, so chat,
+   profile and admin pages keep their own palette untouched. */
 .landing-shell {
   font-family: var(--planner-font-family);
+  overflow-x: hidden;
 
-  /* L1.5: warm palette scope (dark-dominant by default). These tokens only
-     resolve within the .landing-shell subtree; chat, profile and admin pages
-     keep the global .dark palette untouched. */
-  --background: 24 12% 6%;
-  --foreground: 30 10% 96%;
-  --card: 24 12% 9%;
-  --card-foreground: 30 10% 96%;
-  --popover: 24 12% 9%;
-  --popover-foreground: 30 10% 96%;
+  --background: 0 0% 100%;
+  --foreground: 240 10% 8%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 8%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 8%;
 
-  --primary: 16 85% 58%;
+  --primary: 252 38% 52%;
   --primary-foreground: 0 0% 100%;
-  --primary-glow: 16 85% 68%;
+  --primary-glow: 258 50% 68%;
 
-  --accent: 32 80% 55%;
+  --secondary: 240 6% 96%;
+  --secondary-foreground: 240 10% 8%;
+
+  --accent: 252 38% 56%;
   --accent-foreground: 0 0% 100%;
 
-  --muted: 24 10% 12%;
-  --muted-foreground: 30 8% 65%;
+  --muted: 240 10% 97.5%;
+  --muted-foreground: 240 5% 45%;
 
-  --border: 24 8% 18%;
-  --input: 24 8% 18%;
-  --ring: 16 85% 58%;
+  --border: 240 10% 92%;
+  --input: 240 10% 92%;
+  --ring: 252 38% 52%;
 
-  --gradient-hero: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
-  --gradient-card: linear-gradient(135deg, hsl(24 12% 8%), hsl(24 12% 11%));
-  --shadow-card: 0 8px 32px -8px hsl(24 20% 0% / 0.45);
-  --shadow-primary: 0 10px 40px -10px hsl(var(--primary) / 0.4);
+  --radius: 1.5rem;
+
+  --aurora-violet: 252 38% 78%;
+  --aurora-blue: 220 40% 80%;
+  --aurora-coral: 14 55% 82%;
+  --aurora-pink: 330 45% 84%;
+  --aurora-mint: 175 30% 80%;
+
+  --gradient-hero:
+    radial-gradient(ellipse 80% 50% at 50% -20%, hsl(252 50% 95%), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 50%, hsl(220 55% 96%), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 20% 70%, hsl(258 45% 96%), transparent 60%),
+    hsl(0 0% 100%);
+  --gradient-primary: linear-gradient(135deg, hsl(252 38% 52%), hsl(258 42% 62%));
+  --gradient-cta: linear-gradient(180deg, hsl(252 40% 55%), hsl(248 42% 46%));
+  --gradient-text: linear-gradient(135deg, hsl(248 42% 46%) 0%, hsl(258 40% 56%) 50%, hsl(220 45% 60%) 100%);
+  --gradient-card: linear-gradient(135deg, hsl(0 0% 98%), hsl(0 0% 100%));
+
+  --shadow-card: 0 8px 32px -8px hsla(248, 40%, 20%, 0.1);
+  --shadow-primary: 0 10px 40px -10px hsla(252, 50%, 35%, 0.32);
+  --shadow-cta: 0 10px 30px -10px hsla(252, 50%, 35%, 0.32), inset 0 1px 0 hsla(0, 0%, 100%, 0.18);
+  --shadow-glow: 0 0 80px -10px hsla(252, 60%, 60%, 0.35);
+  --shadow-inset-glass: inset 0 1px 0 hsla(0, 0%, 100%, 0.6), inset 0 -1px 0 hsla(240, 20%, 80%, 0.1);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .landing-shell button,
@@ -491,40 +507,90 @@
   font-family: inherit;
 }
 
-/* Sections inside .landing-shell that opt into the cream light theme (L1.5).
-   Overrides surface tokens only — primary/accent/ring stay coral so CTAs
-   remain consistent across dark and light sections. Consume the
-   --landing-light-* tokens declared on .dark above. */
-.landing-section-light {
-  /* Desindirected values post-C9. CSS var indirection (var within a var
-     declaration) is spec-valid but flagged as a possible cascade edge-case
-     in the contrast bug report; direct HSL values close that risk.
-     The --landing-light-* tokens still exist in .dark for reference but
-     no longer have consumers — trivial cleanup post-merge if desired. */
-  --background: 30 25% 97%;       /* cream off-white */
-  --foreground: 24 20% 12%;       /* warm near-black */
-  --card: 30 30% 99%;             /* near-white with warm tint */
-  --card-foreground: 24 20% 12%;  /* warm near-black */
-  --muted: 30 20% 94%;
-  /* Bumped from 30 15% 55% to 30 15% 40%: gives ~7:1 contrast on the
-     cream background (WCAG AAA) instead of the borderline ~4:1 that the
-     previous value produced on bg-card 30 30% 99%. */
-  --muted-foreground: 30 15% 40%; /* warm dark-gray */
-  --border: 30 15% 88%;           /* light warm border */
-  --input: 30 15% 88%;
-
-  /* Apply the overridden tokens to this element so the section paints
-     cream and descendants inherit the light color. Without these, the
-     .landing-section-light rule only declares variables and the
-     <section> stays transparent — its visible background then comes
-     from the .landing-shell ancestor in LandingLayout (warm dark
-     café), which defeats the theme switch for everything that does
-     not explicitly consume bg-card (the inner cards do, which is why
-     HowItWorks and HelpsWith cards looked right even while the
-     surrounding section and heading did not). */
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+/* Glass surfaces — Apple-style optical blur, scoped to the landing. */
+.landing-shell .glass {
+  background: hsla(0, 0%, 100%, 0.55);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid hsla(0, 0%, 100%, 0.65);
+  box-shadow: var(--shadow-inset-glass), 0 8px 24px -8px hsla(240, 30%, 20%, 0.08);
 }
+.landing-shell .glass-strong {
+  background: hsla(0, 0%, 100%, 0.78);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid hsla(0, 0%, 100%, 0.7);
+  box-shadow: var(--shadow-inset-glass), 0 24px 48px -12px hsla(248, 40%, 20%, 0.12);
+}
+.landing-shell .glass-dark {
+  background: hsla(248, 50%, 12%, 0.5);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid hsla(0, 0%, 100%, 0.08);
+}
+
+.landing-shell .gradient-hero { background: var(--gradient-hero); }
+.landing-shell .gradient-primary { background: var(--gradient-primary); }
+.landing-shell .gradient-cta { background: var(--gradient-cta); }
+
+.landing-shell .text-gradient {
+  background: var(--gradient-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.025em;
+}
+
+.landing-shell .shadow-cta { box-shadow: var(--shadow-cta); }
+.landing-shell .shadow-glow { box-shadow: var(--shadow-glow); }
+
+.landing-shell .display { font-weight: 700; letter-spacing: -0.04em; line-height: 0.95; }
+.landing-shell .display-lg { font-weight: 700; letter-spacing: -0.045em; line-height: 0.92; }
+
+.landing-shell .container-page {
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+@media (min-width: 1024px) {
+  .landing-shell .container-page { padding-left: 2rem; padding-right: 2rem; }
+}
+
+.landing-shell .grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* === Aurora keyframes (suffixes avoid collision with existing
+   blink/shimmer/pulse-ring animations elsewhere in the app) === */
+@keyframes aurora-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(40px, -30px, 0) scale(1.08); }
+  66% { transform: translate3d(-30px, 40px, 0) scale(0.94); }
+}
+@keyframes aurora-drift-slow {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.55; }
+  50% { transform: translate3d(-40px, 30px, 0) scale(1.1); opacity: 0.7; }
+}
+@keyframes blink-cursor { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes shimmer-x { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
+@keyframes pulse-ring-out {
+  0% { transform: scale(0.95); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.animate-aurora { animation: aurora-drift 22s ease-in-out infinite; }
+.animate-aurora-slow { animation: aurora-drift-slow 28s ease-in-out infinite; }
+.animate-blink-cursor { animation: blink-cursor 1s step-end infinite; }
+.animate-shimmer-x { animation: shimmer-x 2.5s ease-in-out infinite; }
+.animate-pulse-ring-out { animation: pulse-ring-out 2.4s var(--ease-out-expo, cubic-bezier(0.16, 1, 0.3, 1)) infinite; }
 
 .group\/sidebar-wrapper,
 .group\/sidebar-wrapper *,
@@ -768,43 +834,8 @@
   }
 }
 
-.landing-page-backdrop {
-  background:
-    radial-gradient(circle at 16% 20%, rgba(56, 189, 248, 0.12), transparent 28%),
-    radial-gradient(circle at 78% 22%, rgba(14, 165, 233, 0.14), transparent 26%),
-    radial-gradient(circle at 52% 78%, rgba(251, 191, 36, 0.06), transparent 22%),
-    linear-gradient(180deg, #02040b 0%, #020611 38%, #030917 100%);
-}
-
-.landing-orbital-fallback {
-  background:
-    radial-gradient(circle at 26% 30%, rgba(125, 211, 252, 0.2), transparent 18%),
-    radial-gradient(circle at 68% 24%, rgba(56, 189, 248, 0.16), transparent 24%),
-    radial-gradient(circle at 74% 62%, rgba(14, 165, 233, 0.1), transparent 20%),
-    linear-gradient(180deg, rgba(2, 6, 23, 0) 0%, rgba(2, 6, 23, 0.22) 42%, rgba(2, 6, 23, 0.58) 100%);
-}
-
 .landing-panel {
   background: linear-gradient(160deg, rgba(15, 23, 42, 0.7), rgba(2, 6, 23, 0.88));
   box-shadow: 0 32px 100px -52px rgba(14, 165, 233, 0.55);
   backdrop-filter: blur(20px);
-}
-
-.landing-section-scrim {
-  background:
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 30%),
-    linear-gradient(180deg, rgba(2, 6, 23, 0.36) 0%, rgba(2, 6, 23, 0.66) 100%);
-}
-
-.landing-section-scrim-strong {
-  background:
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.1), transparent 26%),
-    linear-gradient(180deg, rgba(2, 6, 23, 0.48) 0%, rgba(2, 6, 23, 0.78) 100%);
-}
-
-.landing-section-grid {
-  background-image:
-    linear-gradient(rgba(125, 211, 252, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(125, 211, 252, 0.06) 1px, transparent 1px);
-  background-size: 72px 72px;
 }
