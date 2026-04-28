@@ -512,16 +512,9 @@ function distributeDaysByWeights(totalDays: number, weights: number[]): number[]
   return counts;
 }
 
-function validateSegmentHints(hints: Array<{ city: string; dayCount: number }>, totalDays: number, destinations: string[]): string | null {
+function validateSegmentHints(hints: Array<{ city: string; dayCount: number }>, destinations: string[]): string | null {
   if (hints.length !== destinations.length) {
     return `segmentHints count (${hints.length}) does not match destinations count (${destinations.length})`;
-  }
-  const hintsSum = hints.reduce((sum, h) => sum + h.dayCount, 0);
-  if (hintsSum !== totalDays) {
-    return `segmentHints dayCount sum (${hintsSum}) does not match totalDays (${totalDays})`;
-  }
-  if (hints.some((h) => h.dayCount < 1)) {
-    return 'segmentHints contains a segment with 0 or negative days';
   }
   return null;
 }
@@ -534,11 +527,14 @@ function buildSegmentBlueprints(input: PlannerRequest): SegmentBlueprint[] {
   let dayCounts: number[];
 
   if (hints.length > 0) {
-    const validationError = validateSegmentHints(hints, totalDays, destinations);
+    const validationError = validateSegmentHints(hints, destinations);
     if (validationError) {
       throw new Error(validationError);
     }
-    dayCounts = hints.map((h) => h.dayCount);
+    dayCounts = distributeDaysByWeights(
+      totalDays,
+      hints.map((h) => Number.isFinite(h.dayCount) && h.dayCount > 0 ? h.dayCount : 1),
+    );
   } else {
     const existingSegments = getExistingSegments(input.existingPlannerState);
     const mappedExistingSegments = mapExistingSegmentsByDestination(destinations, existingSegments);

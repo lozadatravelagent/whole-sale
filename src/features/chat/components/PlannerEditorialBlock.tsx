@@ -108,14 +108,14 @@ function ExtraordinaryHighlights({ items }: { items: string[] }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="mt-3 rounded-lg border border-amber-200/50 bg-amber-50/30 p-3">
-      <div className="flex items-center gap-1.5 text-sm font-medium text-amber-800">
+    <div className="mt-3 rounded-lg border border-amber-200/50 bg-amber-50/30 p-3 dark:border-amber-400/30 dark:bg-amber-400/10">
+      <div className="flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-200">
         <Sparkles className="h-4 w-4" />
         <span>Experiencias destacadas</span>
       </div>
       <ul className="mt-2 space-y-1">
         {items.map((item, i) => (
-          <li key={i} className="text-sm text-amber-900/80 pl-5">
+          <li key={i} className="text-sm text-amber-900/80 pl-5 dark:text-amber-100/85">
             {item}
           </li>
         ))}

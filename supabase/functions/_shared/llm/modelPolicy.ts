@@ -20,7 +20,7 @@ export interface ModelPolicyDecision {
 
 export function resolveModelPolicy(input: ResolveModelPolicyInput): ModelPolicyDecision {
   if (input.feature === "ai-message-parser") {
-    return { provider: "openai", model: "gpt-5-mini" };
+    return { provider: "openai", model: "gpt-4.1-mini" };
   }
 
   if (input.operation === "repair") {
@@ -29,7 +29,7 @@ export function resolveModelPolicy(input: ResolveModelPolicyInput): ModelPolicyD
 
   if (input.feature === "travel-itinerary") {
     if (input.generationMode === "skeleton") {
-      return { provider: "openai", model: "gpt-5-mini" };
+      return { provider: "openai", model: "gpt-4.1-mini" };
     }
 
     return { provider: "openai", model: "gpt-4.1" };

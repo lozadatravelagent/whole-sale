@@ -91,6 +91,28 @@ function augmentMultiCitySegmentsFromMessage(message: string, parsed: any): any 
   };
 }
 
+function extractOpenAiMessageContent(openaiData: any): string {
+  const content = openaiData?.choices?.[0]?.message?.content;
+
+  if (typeof content === 'string') {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (typeof part?.text === 'string') return part.text;
+        if (typeof part?.content === 'string') return part.content;
+        return '';
+      })
+      .join('')
+      .trim();
+  }
+
+  return '';
+}
+
 function normalizeLocationsToCountryCapitals(parsed: any): any {
   if (!parsed || typeof parsed !== 'object') return parsed;
 
@@ -253,26 +275,42 @@ serve(async (req) => {
           operation: 'parse',
         });
         const openAiStartedAt = performance.now();
-        const openaiData = await requestOpenAiChatCompletion<any>({
+        const parserMessages = [
+          {
+            role: 'system' as const,
+            content: systemPrompt
+          },
+          {
+            role: 'user' as const,
+            content: userPrompt
+          }
+        ];
+        let openaiData = await requestOpenAiChatCompletion<any>({
           apiKey: openaiApiKey,
           model: modelDecision.model,
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt
-            },
-            {
-              role: 'user',
-              content: userPrompt
-            }
-          ],
+          messages: parserMessages,
           temperature: 0.1,
-          maxTokens: 1000,
+          maxTokens: 1800,
         });
         const openAiLatencyMs = Math.round(performance.now() - openAiStartedAt);
-        const aiResponse = openaiData.choices[0]?.message?.content;
+        let aiResponse = extractOpenAiMessageContent(openaiData);
+        if (!aiResponse && modelDecision.model !== 'gpt-4.1') {
+          console.warn('⚠️ Empty parser response from OpenAI, retrying with gpt-4.1', {
+            model: modelDecision.model,
+            finishReason: openaiData?.choices?.[0]?.finish_reason ?? null,
+            usage: openaiData?.usage ?? null,
+          });
+          openaiData = await requestOpenAiChatCompletion<any>({
+            apiKey: openaiApiKey,
+            model: 'gpt-4.1',
+            messages: parserMessages,
+            temperature: 0.1,
+            maxTokens: 1800,
+          });
+          aiResponse = extractOpenAiMessageContent(openaiData);
+        }
         if (!aiResponse) {
-          throw new Error('No response from OpenAI');
+          throw new Error(`No response from OpenAI (finishReason: ${openaiData?.choices?.[0]?.finish_reason ?? 'unknown'})`);
         }
         console.log('🤖 Raw AI response:', aiResponse);
         console.log('🤖 AI response type:', typeof aiResponse);
