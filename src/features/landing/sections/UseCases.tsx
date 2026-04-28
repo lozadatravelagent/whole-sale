@@ -14,7 +14,7 @@ export function UseCases() {
 
   const handleCta = () => {
     writePendingPrompt('');
-    navigate('/emilia/chat');
+    navigate('/emilia/whitelist');
   };
 
   return (

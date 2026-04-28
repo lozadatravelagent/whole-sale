@@ -17,14 +17,13 @@
     "headline": "Imagine a viagem.",
     "headlineHighlight": "A Emilia monta.",
     "subtitle": "Diga numa frase o que você quer. Receba uma proposta cotada em segundos.",
-    "primaryCta": "Experimente a Emilia grátis",
+    "primaryCta": "Experimente a Emilia",
     "secondaryCta": "Veja como funciona",
     "features": ["Sem login", "Sem formulários", "Resposta em segundos"]
   },
   "mockup": {
     "header": {
-      "title": "Emilia",
-      "status": "Assistente de viagem · online"
+      "title": "Emilia"
     },
     "input": {
       "placeholder": "Conte sobre sua próxima viagem…"
@@ -196,19 +195,34 @@
     }
   },
   "about": {
-    "badge": "Construído pela Vibook",
-    "headline": "Feito por viajantes que constroem tecnologia para mudar como as viagens são vendidas.",
-    "signature": "A Emilia é um produto da Vibook Holdings LLC."
+    "headline": "Feito por viajantes que constroem tecnologia para mudar como as viagens são vendidas."
   },
   "ctaFinal": {
     "headline": "Sua próxima viagem começa com",
     "highlight": "uma frase",
     "subtitle": "Diga à Emilia para onde você quer ir. Do resto ela cuida.",
-    "cta": "Experimente a Emilia grátis",
-    "microcopy": "Sem formulários. Sem login. Sem fricção."
+    "cta": "Experimente a Emilia"
   },
   "footer": {
-    "copyrightVendor": "Vibook Holdings LLC.",
+    "copyrightVendor": "Vibook Holdings.",
     "copyrightSuffix": "Todos os direitos reservados."
+  },
+  "whitelist": {
+    "eyebrow": "Acesso antecipado",
+    "title": "Solicite acesso à",
+    "titleHighlight": "Emilia",
+    "subtitle": "Em 24 horas entramos em contato para liberar seu acesso.",
+    "emailLabel": "Seu email",
+    "emailPlaceholder": "seunome@email.com",
+    "submit": "Solicitar acesso",
+    "submitting": "Enviando…",
+    "microcopy": "Não usaremos seu email para mais nada.",
+    "errorInvalid": "Insira um email válido.",
+    "errorDuplicate": "Você já está na lista. Entraremos em contato em breve.",
+    "errorGeneric": "Não conseguimos registrar seu email. Tente novamente em alguns minutos.",
+    "successTitle": "Pronto! Você está na lista.",
+    "successSubtitle": "Em menos de 24 horas entraremos em contato para liberar o acesso à Emilia.",
+    "successCta": "Voltar",
+    "back": "← Voltar"
   }
 }

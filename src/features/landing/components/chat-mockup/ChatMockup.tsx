@@ -22,7 +22,7 @@ export function ChatMockup() {
         className="relative glass-strong rounded-[2rem] p-2"
       >
         <div className="rounded-[1.6rem] bg-white/85 backdrop-blur-xl overflow-hidden">
-          <ChatHeader />
+          <ChatHeader thinking={thinking} />
 
           <div ref={scrollRef} className="px-4 sm:px-5 py-4 sm:py-5 space-y-3 h-[340px] sm:h-[380px] md:h-[420px] overflow-hidden">
             <AnimatePresence initial={false}>

@@ -22,19 +22,12 @@ export function About() {
           transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
           className="max-w-2xl mx-auto text-center"
         >
-          <div className="inline-flex items-center gap-2 rounded-full glass px-3.5 py-1.5 mb-6">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            <span className="text-[11px] font-semibold tracking-[0.14em] uppercase text-primary">
-              {t('about.badge')}
-            </span>
-          </div>
           <p
             id="sobre-heading"
             className="text-2xl md:text-3xl text-foreground leading-snug font-semibold tracking-tight"
           >
             {t('about.headline')}
           </p>
-          <p className="mt-5 text-sm text-muted-foreground">{t('about.signature')}</p>
         </motion.div>
       </div>
     </section>

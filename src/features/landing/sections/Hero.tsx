@@ -14,7 +14,7 @@ export function Hero() {
   const mockupY = useTransform(scrollYProgress, [0, 1], [0, 120]);
   const mockupScale = useTransform(scrollYProgress, [0, 1], [1, 0.92]);
 
-  const handleStartChat = () => navigate('/emilia/chat');
+  const handleStartChat = () => navigate('/emilia/whitelist');
 
   return (
     <section

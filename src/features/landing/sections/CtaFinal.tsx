@@ -7,7 +7,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 export function CtaFinal() {
   const { t } = useTranslation('landing');
   const navigate = useNavigate();
-  const handleStartChat = () => navigate('/emilia/chat');
+  const handleStartChat = () => navigate('/emilia/whitelist');
 
   return (
     <section
@@ -27,7 +27,7 @@ export function CtaFinal() {
         >
           <h2
             id="cta-final-heading"
-            className="display-lg text-[34px] sm:text-5xl md:text-6xl lg:text-7xl text-foreground"
+            className="display-lg text-[34px] sm:text-5xl md:text-6xl lg:text-7xl text-foreground !leading-[1.18]"
           >
             {t('ctaFinal.headline')} <span className="text-gradient">{t('ctaFinal.highlight')}</span>
           </h2>
@@ -37,7 +37,6 @@ export function CtaFinal() {
               {t('ctaFinal.cta')}
             </PrimaryButton>
           </div>
-          <p className="mt-5 text-[12px] text-muted-foreground/70">{t('ctaFinal.microcopy')}</p>
         </motion.div>
       </div>
     </section>

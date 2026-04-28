@@ -45,6 +45,13 @@ export default {
 					DEFAULT: 'hsl(var(--accent))',
 					foreground: 'hsl(var(--accent-foreground))'
 				},
+				aurora: {
+					violet: 'hsl(var(--aurora-violet))',
+					blue: 'hsl(var(--aurora-blue))',
+					coral: 'hsl(var(--aurora-coral))',
+					pink: 'hsl(var(--aurora-pink))',
+					mint: 'hsl(var(--aurora-mint))'
+				},
 				success: {
 					DEFAULT: 'hsl(var(--success))',
 					foreground: 'hsl(var(--success-foreground))'
@@ -75,7 +82,10 @@ export default {
 			backgroundImage: {
 				'gradient-hero': 'var(--gradient-hero)',
 				'gradient-success': 'var(--gradient-success)',
-				'gradient-card': 'var(--gradient-card)'
+				'gradient-card': 'var(--gradient-card)',
+				'gradient-primary': 'var(--gradient-primary)',
+				'gradient-cta': 'var(--gradient-cta)',
+				'gradient-text': 'var(--gradient-text)'
 			},
 			boxShadow: {
 				'primary': 'var(--shadow-primary)',
@@ -89,7 +99,9 @@ export default {
 			borderRadius: {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',
-				sm: 'calc(var(--radius) - 4px)'
+				sm: 'calc(var(--radius) - 4px)',
+				'2xl': '1.5rem',
+				'3xl': '1.75rem'
 			},
 			keyframes: {
 				'accordion-down': {

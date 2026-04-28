@@ -17,14 +17,13 @@
     "headline": "Picture the trip.",
     "headlineHighlight": "Emilia builds it.",
     "subtitle": "Tell us in one sentence what you want. Get a quoted proposal in seconds.",
-    "primaryCta": "Try Emilia free",
+    "primaryCta": "Try Emilia",
     "secondaryCta": "See how it works",
     "features": ["No login", "No forms", "Reply in seconds"]
   },
   "mockup": {
     "header": {
-      "title": "Emilia",
-      "status": "Travel assistant · online"
+      "title": "Emilia"
     },
     "input": {
       "placeholder": "Tell us about your next trip…"
@@ -196,19 +195,34 @@
     }
   },
   "about": {
-    "badge": "Built by Vibook",
-    "headline": "Made by travelers building technology to change how trips are sold.",
-    "signature": "Emilia is a product of Vibook Holdings LLC."
+    "headline": "Made by travelers building technology to change how trips are sold."
   },
   "ctaFinal": {
     "headline": "Your next trip starts with",
     "highlight": "a sentence",
     "subtitle": "Tell Emilia where you want to go. She'll handle the rest.",
-    "cta": "Try Emilia free",
-    "microcopy": "No forms. No login. No friction."
+    "cta": "Try Emilia"
   },
   "footer": {
-    "copyrightVendor": "Vibook Holdings LLC.",
+    "copyrightVendor": "Vibook Holdings.",
     "copyrightSuffix": "All rights reserved."
+  },
+  "whitelist": {
+    "eyebrow": "Early access",
+    "title": "Request access to",
+    "titleHighlight": "Emilia",
+    "subtitle": "We'll get back to you within 24 hours to grant access.",
+    "emailLabel": "Your email",
+    "emailPlaceholder": "yourname@email.com",
+    "submit": "Request access",
+    "submitting": "Sending…",
+    "microcopy": "We won't use your email for anything else.",
+    "errorInvalid": "Enter a valid email.",
+    "errorDuplicate": "You're already on the list. We'll be in touch.",
+    "errorGeneric": "We couldn't register your email. Please try again in a few minutes.",
+    "successTitle": "You're on the list!",
+    "successSubtitle": "We'll get back to you within 24 hours to grant access to Emilia.",
+    "successCta": "Back",
+    "back": "← Back"
   }
 }

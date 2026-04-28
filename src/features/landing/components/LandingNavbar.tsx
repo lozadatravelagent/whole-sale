@@ -41,7 +41,17 @@ export function LandingNavbar() {
 
   const handleStartChat = () => {
     setMobileOpen(false);
-    navigate('/emilia/chat');
+    navigate('/emilia/whitelist');
+  };
+
+  const handleLogoClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    setMobileOpen(false);
+    if (window.location.pathname === '/emilia') {
+      scrollToSection('hero');
+    } else {
+      navigate('/emilia');
+    }
   };
 
   return (
@@ -59,32 +69,23 @@ export function LandingNavbar() {
           )}
         >
           <a
-            href="#hero"
+            href="/emilia"
+            onClick={handleLogoClick}
             aria-label={t('navbar.logoAlt')}
-            className="flex items-center gap-1.5 sm:gap-2 pl-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md"
+            className="flex items-center pl-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md"
           >
             <svg
-              viewBox="0 0 175 80"
+              viewBox="0 0 80 80"
               fill="none"
               aria-hidden="true"
-              className="h-8 w-auto sm:h-11"
+              className="h-9 w-9 sm:h-11 sm:w-11"
             >
               <circle cx="40" cy="40" r="32" stroke="rgba(124,58,237,0.18)" strokeWidth="1" fill="none" />
               <circle cx="40" cy="40" r="22" stroke="rgba(124,58,237,0.45)" strokeWidth="1.5" strokeDasharray="4 3" fill="none" />
               <path d="M 40 8 A 32 32 0 0 1 72 40 A 32 32 0 0 1 40 72 A 32 32 0 0 0 8 40 A 32 32 0 0 0 40 8" stroke="#7c3aed" strokeWidth="2" fill="none" strokeLinecap="round" />
-              <circle cx="72" cy="40" r="4" fill="#7c3aed" />
               <circle cx="72" cy="40" r="8" fill="rgba(124,58,237,0.25)" />
-              <text x="88" y="50" fontFamily="'Playfair Display', serif" fontStyle="italic" fontWeight="400" fontSize="32" fill="hsl(var(--foreground))" letterSpacing="-0.5">Emilia</text>
+              <circle cx="72" cy="40" r="4" fill="#7c3aed" />
             </svg>
-            <div className="flex items-center gap-0">
-              <span className="text-[10px] sm:text-[11px] lowercase text-muted-foreground">by</span>
-              <img
-                src="/vibook-black.png?v=2"
-                alt="Vibook"
-                className="h-3 sm:h-4 w-auto select-none"
-                draggable={false}
-              />
-            </div>
           </a>
 
           <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2" aria-label="Landing sections">

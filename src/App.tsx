@@ -26,6 +26,7 @@ const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Contact = lazy(() => import("./pages/Contact"));
 const EmiliaLanding = lazy(() => import("./pages/EmiliaLanding"));
+const EmiliaWhitelist = lazy(() => import("./pages/EmiliaWhitelist"));
 const EmiliaChatPage = lazy(() => import("./pages/EmiliaChatPage"));
 const ConsumerSignup = lazy(() => import("./pages/ConsumerSignup"));
 const ConsumerProfile = lazy(() => import("./pages/ConsumerProfile"));
@@ -96,6 +97,7 @@ const AppRoutes = () => (
 
     {/* Emilia consumer surfaces */}
     <Route path="/emilia" element={<EmiliaLanding />} />
+    <Route path="/emilia/whitelist" element={<EmiliaWhitelist />} />
     <Route path="/emilia/signup" element={<ConsumerSignup />} />
     <Route
       path="/emilia/chat"

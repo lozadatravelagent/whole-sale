@@ -17,14 +17,13 @@
     "headline": "Pensá el viaje.",
     "headlineHighlight": "Emilia lo arma.",
     "subtitle": "Contale en una frase lo que querés. Obtené una propuesta cotizada en segundos.",
-    "primaryCta": "Probá Emilia gratis",
+    "primaryCta": "Probá Emilia",
     "secondaryCta": "Ver cómo funciona",
     "features": ["Sin login", "Sin formularios", "Respuesta en segundos"]
   },
   "mockup": {
     "header": {
-      "title": "Emilia",
-      "status": "Asistente de viaje · en línea"
+      "title": "Emilia"
     },
     "input": {
       "placeholder": "Contale tu próximo viaje…"
@@ -196,19 +195,34 @@
     }
   },
   "about": {
-    "badge": "Construido por Vibook",
-    "headline": "Hecho por viajeros que construyen tecnología para cambiar cómo se venden los viajes.",
-    "signature": "Emilia es un producto de Vibook Holdings LLC."
+    "headline": "Hecho por viajeros que construyen tecnología para cambiar cómo se venden los viajes."
   },
   "ctaFinal": {
     "headline": "Tu próximo viaje empieza con",
     "highlight": "una frase",
     "subtitle": "Decile a Emilia adónde querés ir. Del resto se encarga ella.",
-    "cta": "Probá Emilia gratis",
-    "microcopy": "Sin formularios. Sin login. Sin fricción."
+    "cta": "Probá Emilia"
   },
   "footer": {
-    "copyrightVendor": "Vibook Holdings LLC.",
+    "copyrightVendor": "Vibook Holdings.",
     "copyrightSuffix": "Todos los derechos reservados."
+  },
+  "whitelist": {
+    "eyebrow": "Acceso anticipado",
+    "title": "Solicitá acceso a",
+    "titleHighlight": "Emilia",
+    "subtitle": "En 24 horas nos ponemos en contacto con vos para brindarte un acceso.",
+    "emailLabel": "Tu email",
+    "emailPlaceholder": "tunombre@email.com",
+    "submit": "Solicitar acceso",
+    "submitting": "Enviando…",
+    "microcopy": "No vamos a usar tu email para nada más.",
+    "errorInvalid": "Ingresá un email válido.",
+    "errorDuplicate": "Ya estás en la lista. Te contactamos pronto.",
+    "errorGeneric": "No pudimos registrar tu email. Probá de nuevo en unos minutos.",
+    "successTitle": "¡Listo! Estás en la lista.",
+    "successSubtitle": "En menos de 24 horas te contactamos para darte acceso a Emilia.",
+    "successCta": "Volver",
+    "back": "← Volver"
   }
 }
