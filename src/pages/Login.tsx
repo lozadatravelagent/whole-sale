@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Lock, Clock, Sparkles } from 'lucide-react';
+import { Mail, Lock, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
 
@@ -117,9 +117,20 @@ const Login = () => {
       <div className="w-full max-w-md">
         <Card className="shadow-card">
           <CardHeader className="space-y-2 text-center">
-            <div className="flex items-center justify-center gap-2 text-primary">
-              <Sparkles className="h-5 w-5" />
-              <span className="text-sm font-semibold uppercase tracking-wide">Emilia</span>
+            <div className="flex justify-center">
+              <svg
+                viewBox="0 0 80 80"
+                fill="none"
+                aria-label="Emilia"
+                role="img"
+                className="h-16 w-16"
+              >
+                <circle cx="40" cy="40" r="32" stroke="rgba(124,58,237,0.18)" strokeWidth="1" fill="none" />
+                <circle cx="40" cy="40" r="22" stroke="rgba(124,58,237,0.45)" strokeWidth="1.5" strokeDasharray="4 3" fill="none" />
+                <path d="M 40 8 A 32 32 0 0 1 72 40 A 32 32 0 0 1 40 72 A 32 32 0 0 0 8 40 A 32 32 0 0 0 40 8" stroke="#7c3aed" strokeWidth="2" fill="none" strokeLinecap="round" />
+                <circle cx="72" cy="40" r="8" fill="rgba(124,58,237,0.25)" />
+                <circle cx="72" cy="40" r="4" fill="#7c3aed" />
+              </svg>
             </div>
             <CardTitle className="text-2xl">Bienvenido</CardTitle>
             <CardDescription>
