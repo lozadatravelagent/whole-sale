@@ -72,13 +72,13 @@ export function LandingNavbar() {
             href="/emilia"
             onClick={handleLogoClick}
             aria-label={t('navbar.logoAlt')}
-            className="flex items-center pl-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md"
+            className="flex items-center pl-3 sm:pl-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 rounded-md"
           >
             <svg
               viewBox="0 0 80 80"
               fill="none"
               aria-hidden="true"
-              className="h-9 w-9 sm:h-11 sm:w-11"
+              className="h-11 w-11 sm:h-14 sm:w-14"
             >
               <circle cx="40" cy="40" r="32" stroke="rgba(124,58,237,0.18)" strokeWidth="1" fill="none" />
               <circle cx="40" cy="40" r="22" stroke="rgba(124,58,237,0.45)" strokeWidth="1.5" strokeDasharray="4 3" fill="none" />

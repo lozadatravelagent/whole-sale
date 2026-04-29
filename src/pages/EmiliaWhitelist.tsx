@@ -52,7 +52,7 @@ export default function EmiliaWhitelist() {
 
   return (
     <LandingLayout>
-      <section className="relative pt-28 md:pt-36 pb-20 md:pb-28 overflow-hidden grain min-h-[calc(100vh-4rem)]">
+      <section className="relative pt-24 md:pt-28 pb-10 md:pb-14 overflow-hidden grain">
         <AuroraBackdrop variant="hero" />
 
         <div className="container-page relative">
@@ -62,19 +62,21 @@ export default function EmiliaWhitelist() {
             transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
             className="max-w-xl mx-auto text-center"
           >
-            <button
-              type="button"
-              onClick={() => navigate('/emilia')}
-              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors mb-6"
-            >
-              {t('whitelist.back')}
-            </button>
+            <div className="flex items-center justify-center gap-3 sm:gap-4 mb-6 sm:mb-8">
+              <button
+                type="button"
+                onClick={() => navigate('/emilia')}
+                className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {t('whitelist.back')}
+              </button>
 
-            <div className="inline-flex items-center gap-2 rounded-full glass px-3.5 py-1.5 mb-6">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-              <span className="text-[11px] font-semibold tracking-[0.14em] uppercase text-primary">
-                {t('whitelist.eyebrow')}
-              </span>
+              <div className="inline-flex items-center gap-2 rounded-full glass px-3.5 py-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                <span className="text-[11px] font-semibold tracking-[0.14em] uppercase text-primary">
+                  {t('whitelist.eyebrow')}
+                </span>
+              </div>
             </div>
 
             {status === 'success' ? (
@@ -103,19 +105,14 @@ export default function EmiliaWhitelist() {
               <>
                 <h1 className="display-lg text-3xl sm:text-5xl md:text-6xl text-foreground">
                   {t('whitelist.title')}{' '}
-                  <span
-                    className="text-gradient"
-                    style={{ fontFamily: "'Playfair Display', serif", fontStyle: 'italic' }}
-                  >
-                    {t('whitelist.titleHighlight')}
-                  </span>
+                  <span className="text-gradient">{t('whitelist.titleHighlight')}</span>
                 </h1>
-                <p className="mt-5 text-base sm:text-lg text-muted-foreground leading-relaxed">
+                <p className="mt-4 text-sm sm:text-base text-muted-foreground leading-relaxed">
                   {t('whitelist.subtitle')}
                 </p>
 
-                <form onSubmit={handleSubmit} className="mt-10 glass-strong rounded-[1.6rem] p-2 text-left">
-                  <div className="rounded-[1.2rem] bg-white/85 backdrop-blur-xl p-5 sm:p-6">
+                <form onSubmit={handleSubmit} className="mt-8 glass-strong rounded-[1.6rem] p-2 text-left">
+                  <div className="rounded-[1.2rem] bg-white/85 backdrop-blur-xl p-4 sm:p-5">
                     <label htmlFor="whitelist-email" className="block text-[12px] font-semibold tracking-tight text-foreground mb-2">
                       {t('whitelist.emailLabel')}
                     </label>
@@ -160,7 +157,7 @@ export default function EmiliaWhitelist() {
                   </div>
                 </form>
 
-                <p className="mt-5 text-[12px] text-muted-foreground/70">
+                <p className="mt-4 text-[12px] text-muted-foreground/70">
                   {t('whitelist.microcopy')}
                 </p>
               </>
