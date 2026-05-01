@@ -287,32 +287,33 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
         const baggageInfo = getBaggageInfoFromLeg(leg, selectedOptionIndex);
 
         return (
-          <div key={legIndex} className="border border-border rounded-lg p-3 bg-background">
-            <div className="flex items-center space-x-2 mb-3">
-              {React.cloneElement(legIcon, { className: "h-4 w-4 text-foreground" })}
-              <span className="font-semibold text-sm text-foreground">{legType}</span>
-              <BaggageIcon
-                {...baggageInfo}
-                size="sm"
-                showTooltip={true}
-                className="text-foreground"
-              />
-              {/* Mostrar texto del equipaje al lado */}
-              <span className="text-sm text-foreground font-bold">
-                {getBaggageTextFromLeg(leg, flight.airline.code, selectedOptionIndex)}
-              </span>
+          <div key={legIndex} className="meridian-glass rounded-2xl p-4">
+            <div className="flex items-center space-x-2 mb-4">
+              {React.cloneElement(legIcon, { className: "h-4 w-4 text-primary" })}
+              <span className="font-display italic text-base text-foreground tracking-tight">{legType}</span>
+              <div className="ml-auto flex items-center gap-2">
+                <BaggageIcon
+                  {...baggageInfo}
+                  size="sm"
+                  showTooltip={true}
+                  className="text-foreground"
+                />
+                <span className="font-utility text-[11px] font-bold uppercase tracking-[0.08em] text-foreground">
+                  {getBaggageTextFromLeg(leg, flight.airline.code, selectedOptionIndex)}
+                </span>
+              </div>
             </div>
 
-            {/* Simplified display for current FlightLeg structure */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between bg-muted/50 rounded-lg p-3 border border-border">
+            {/* Vuelo summary pill — flat surface (no glass, avoids stacking with parent) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between rounded-2xl border border-border/40 bg-foreground/[0.03] p-3">
                 <div className="flex items-center space-x-3">
-                  <div className="bg-muted p-2 rounded-full">
-                    <Navigation className="h-4 w-4 text-foreground" />
+                  <div className="rounded-full bg-primary/20 p-2">
+                    <Navigation className="h-4 w-4 text-primary" />
                   </div>
                   <div>
-                    <div className="font-medium text-sm text-foreground">Vuelo {legType}</div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="font-display italic text-base text-foreground tracking-tight">Vuelo {legType}</div>
+                    <div className="font-mono text-[11px] tracking-[0.08em] uppercase text-muted-foreground">
                       {leg.duration}
                     </div>
                   </div>
@@ -321,46 +322,46 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
 
               <div className="flex items-center justify-between px-3">
                 <div className="text-center">
-                  <div className="font-bold text-lg text-foreground">{leg.departure.city_code}</div>
-                  <div className="text-sm font-medium text-foreground">{leg.departure.time}</div>
-                  <div className="text-[10px] text-muted-foreground">{formatDate(baseDate)}</div>
-                  <div className="text-xs text-muted-foreground">{leg.departure.city_name}</div>
+                  <div className="font-display italic text-2xl text-foreground tracking-tight">{leg.departure.city_code}</div>
+                  <div className="font-mono text-sm tracking-[0.05em] text-foreground mt-1">{leg.departure.time}</div>
+                  <div className="font-mono text-[10px] tracking-[0.08em] uppercase text-muted-foreground mt-0.5">{formatDate(baseDate)}</div>
+                  <div className="font-display italic text-xs text-muted-foreground mt-1">{leg.departure.city_name}</div>
                 </div>
 
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="h-0.5 bg-gradient-to-r from-muted to-muted-foreground flex-1"></div>
-                  <Plane className="h-5 w-5 mx-2 text-foreground" />
-                  <div className="h-0.5 bg-gradient-to-r from-muted-foreground to-muted flex-1"></div>
+                <div className="flex-1 flex items-center justify-center px-2">
+                  <div className="h-px bg-gradient-to-r from-transparent to-primary/30 flex-1"></div>
+                  <Plane className="h-4 w-4 mx-2 text-primary" />
+                  <div className="h-px bg-gradient-to-r from-primary/30 to-transparent flex-1"></div>
                 </div>
 
                 <div className="text-center">
-                  <div className="font-bold text-lg text-foreground">{leg.arrival.city_code}</div>
-                  <div className="text-sm font-medium text-foreground flex items-center justify-center space-x-1">
+                  <div className="font-display italic text-2xl text-foreground tracking-tight">{leg.arrival.city_code}</div>
+                  <div className="font-mono text-sm tracking-[0.05em] text-foreground mt-1 flex items-center justify-center gap-1">
                     <span>{formatTime(leg.arrival.time)}</span>
                     {arrivalNextDay && (
-                      <span className="text-[10px] px-1 py-0.5 rounded bg-background text-foreground border border-orange-500">+1</span>
+                      <span className="font-utility text-[9px] font-bold uppercase tracking-[0.1em] px-1.5 py-0.5 rounded-full bg-warning/15 text-warning border border-warning/30">+1</span>
                     )}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">{formatDate(arrivalDate)}</div>
-                  <div className="text-xs text-muted-foreground">{leg.arrival.city_name}</div>
+                  <div className="font-mono text-[10px] tracking-[0.08em] uppercase text-muted-foreground mt-0.5">{formatDate(arrivalDate)}</div>
+                  <div className="font-display italic text-xs text-muted-foreground mt-1">{leg.arrival.city_name}</div>
                 </div>
               </div>
 
               {/* Show layovers if present */}
               {leg.layovers && leg.layovers.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-2 pt-1">
                   {leg.layovers.map((layover, layoverIndex) => (
                     <div key={layoverIndex} className="flex justify-center">
-                      <div className="bg-background border border-orange-500 rounded-lg p-2 min-w-[200px]">
+                      <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] px-4 py-2.5 min-w-[220px]">
                         <div className="text-center">
-                          <div className="flex items-center justify-center space-x-1 mb-1">
-                            <Timer className="h-3 w-3 text-orange-500" />
-                            <span className="text-xs font-medium text-foreground">CONEXIÓN</span>
+                          <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                            <Timer className="h-3 w-3 text-primary" />
+                            <span className="font-utility text-[10px] font-bold uppercase tracking-[0.18em] text-primary">CONEXIÓN</span>
                           </div>
-                          <div className="text-sm font-bold text-foreground">
-                            {layover.destination_code} - {layover.waiting_time}
+                          <div className="font-mono text-sm font-bold tracking-[0.08em] text-foreground">
+                            {layover.destination_code} · {layover.waiting_time}
                           </div>
-                          <div className="text-xs text-muted-foreground">Cambio de terminal/puerta</div>
+                          <div className="font-utility text-[9px] uppercase tracking-[0.18em] text-muted-foreground mt-1">Cambio de terminal/puerta</div>
                         </div>
                       </div>
                     </div>
@@ -1066,9 +1067,9 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   };
 
   const getAvailabilityStatus = (availability: number) => {
-    if (availability >= 3) return { text: 'Disponible', icon: CheckCircle, color: 'bg-green-500' };
-    if (availability >= 2) return { text: 'Consultar', icon: AlertCircle, color: 'bg-yellow-500' };
-    return { text: 'No disponible', icon: AlertCircle, color: 'bg-red-500' };
+    if (availability >= 3) return { text: 'Disponible', icon: CheckCircle, color: 'bg-success' };
+    if (availability >= 2) return { text: 'Consultar', icon: AlertCircle, color: 'bg-warning' };
+    return { text: 'No disponible', icon: AlertCircle, color: 'bg-destructive' };
   };
 
   const formatTime = (timeStr: string) => {

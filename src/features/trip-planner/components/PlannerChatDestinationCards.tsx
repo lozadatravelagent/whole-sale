@@ -38,7 +38,7 @@ export function DiscoveryPlaceCard({ place, onClick, onAddClick }: { place: Plan
         {(onAddClick || onClick) && (
           <button
             type="button"
-            className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-primary shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
+            className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-background/90 text-primary shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
             onClick={(e) => { e.stopPropagation(); (onAddClick || onClick)?.(); }}
             title="Agregar al itinerario"
           >

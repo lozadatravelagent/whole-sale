@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, Sparkles } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { LanguageSelector } from '@/components/LanguageSelector';
+import { OrbitMark, MeridianMono } from '@/components/meridian';
 import { getAvatarMenuItems } from './unifiedLayoutMenu';
 
 interface UnifiedLayoutProps {
@@ -106,12 +107,25 @@ export default function UnifiedLayout({
   return (
     <div className={cn('flex min-h-screen flex-col bg-background', className)}>
       <header
-        className="grid grid-cols-[minmax(128px,1fr)_minmax(0,760px)_minmax(128px,1fr)] items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur"
+        className="grid grid-cols-[minmax(128px,1fr)_minmax(0,760px)_minmax(128px,1fr)] items-center gap-3 border-b border-border/40 bg-background/80 px-4 backdrop-blur-xl"
         style={{ height: HEADER_HEIGHT }}
       >
         <div className="flex min-w-0 items-center gap-2 justify-self-start">
-          <Sparkles className="h-5 w-5 text-primary" />
-          <span className="text-base font-semibold text-foreground">Emilia</span>
+          <Link to="/emilia/chat" aria-label="Emilia · inicio" className="inline-flex items-center gap-2 transition-opacity duration-300 ease-out-expo hover:opacity-80">
+            <OrbitMark size={28} />
+            <span
+              className="italic text-foreground"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 20,
+                fontWeight: 400,
+                letterSpacing: '-0.02em',
+                lineHeight: 1,
+              }}
+            >
+              Emilia
+            </span>
+          </Link>
         </div>
 
         {headerContext ? (
@@ -140,11 +154,16 @@ export default function UnifiedLayout({
                 <span className="text-xs font-semibold">{initials}</span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-56">
+            <PopoverContent
+              align="end"
+              className="meridian-glass-strong w-56 rounded-2xl border-border/40 bg-transparent p-2 shadow-none"
+            >
               <div className="flex flex-col gap-1">
                 {user?.email && (
-                  <div className="border-b border-border pb-2">
-                    <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                  <div className="border-b border-border/40 pb-2 px-2 pt-1">
+                    <MeridianMono size="sm" className="block truncate text-foreground">
+                      {user.email}
+                    </MeridianMono>
                   </div>
                 )}
                 {menuItems.map((item) => {
@@ -155,10 +174,10 @@ export default function UnifiedLayout({
                       to={item.href}
                       onClick={() => setUserMenuOpen(false)}
                       className={cn(
-                        'rounded-md px-2 py-1.5 text-sm transition-colors',
+                        'rounded-xl px-3 py-2 font-utility text-[11px] font-bold uppercase tracking-[0.12em] transition-all duration-300 ease-out-expo',
                         isActive
-                          ? 'bg-foreground text-background'
-                          : 'text-foreground/80 hover:bg-muted'
+                          ? 'bg-primary/15 text-primary'
+                          : 'text-foreground hover:bg-foreground/10'
                       )}
                     >
                       {item.label}
@@ -168,7 +187,7 @@ export default function UnifiedLayout({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="justify-start text-destructive hover:text-destructive"
+                  className="justify-start rounded-xl font-utility text-[11px] font-bold uppercase tracking-[0.12em] text-destructive hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => {
                     setUserMenuOpen(false);
                     handleLogout();

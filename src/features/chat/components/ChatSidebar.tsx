@@ -5,6 +5,7 @@ import {
   ArchiveRestore,
   Compass,
   MessageCirclePlus,
+  PanelLeftClose,
   Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,14 +43,21 @@ interface ChatSidebarProps {
   isSearching?: boolean;
   onSearchMessages?: (query: string) => void;
   onClearSearch?: () => void;
+  /**
+   * When provided, renders an inline collapse button in the sidebar header.
+   * Replaces the floating absolute button that previously overlapped search.
+   */
+  onCollapseSidebar?: () => void;
 }
 
+// Aurora-tinted trip gradients — Meridian palette (violet / cobalt / lilac
+// / coral / mint), no slate-blue legacy.
 const tripGradients = [
-  'linear-gradient(135deg, #0f172a 0%, #2563eb 100%)',
-  'linear-gradient(135deg, #134e4a 0%, #14b8a6 100%)',
-  'linear-gradient(135deg, #3f3f46 0%, #84cc16 100%)',
-  'linear-gradient(135deg, #4c1d95 0%, #f59e0b 100%)',
-  'linear-gradient(135deg, #1d4ed8 0%, #06b6d4 100%)',
+  'linear-gradient(135deg, hsl(248 60% 12%) 0%, hsl(262 75% 55%) 100%)',
+  'linear-gradient(135deg, hsl(248 50% 7%) 0%, hsl(220 70% 60%) 100%)',
+  'linear-gradient(135deg, hsl(258 50% 14%) 0%, hsl(255 80% 72%) 100%)',
+  'linear-gradient(135deg, hsl(252 38% 22%) 0%, hsl(14 65% 70%) 100%)',
+  'linear-gradient(135deg, hsl(248 50% 10%) 0%, hsl(175 40% 60%) 100%)',
 ];
 
 const formatConversationDate = (dateString: string) => {
@@ -103,9 +111,11 @@ const ChatSidebar = React.memo(({
   isSearching,
   onSearchMessages,
   onClearSearch,
+  onCollapseSidebar,
 }: ChatSidebarProps) => {
   const { isOwner, isSuperAdmin } = useAuth();
   const [query, setQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const isAgencySurface = surface === 'agency';
   const canCreatePlanner = capabilities?.canCreatePlanner ?? (isAgencySurface && (isOwner || isSuperAdmin));
@@ -219,11 +229,11 @@ const ChatSidebar = React.memo(({
       <div
         key={conversation.id}
         className={cn(
-          "group relative flex cursor-pointer items-center rounded-2xl px-2.5 py-2 transition",
+          "group relative flex cursor-pointer items-center rounded-2xl px-3 py-2.5 transition-all duration-300 ease-out-expo",
           isTrip ? "gap-3" : "gap-0",
           isSelected
-            ? "bg-foreground/6 dark:bg-white/10"
-            : "hover:bg-foreground/4 dark:hover:bg-white/5"
+            ? "bg-primary/12 border border-primary/25"
+            : "border border-transparent hover:bg-foreground/5"
         )}
         onClick={() => {
           handleHistoryModeChange(conversation.workspace_mode);
@@ -232,7 +242,7 @@ const ChatSidebar = React.memo(({
       >
         {isTrip ? (
           <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl font-utility text-[11px] font-bold uppercase tracking-[0.06em] text-primary-foreground shadow-md"
             style={{ background: getTripGradient(title) }}
           >
             {getTitleInitials(title)}
@@ -240,8 +250,11 @@ const ChatSidebar = React.memo(({
         ) : null}
 
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium text-foreground">{title}</p>
-          <p className="truncate text-sm text-muted-foreground">
+          <p className={cn(
+            "truncate text-[15px] font-medium",
+            isSelected ? "text-primary" : "text-foreground"
+          )}>{title}</p>
+          <p className="truncate font-mono text-[11px] tracking-[0.05em] text-muted-foreground">
             {normalizedQuery && contentSearchResults?.has(conversation.id)
               ? (contentSearchResults.get(conversation.id) ?? '').slice(0, 60)
               : getConversationSubtitle(conversation)}
@@ -253,7 +266,7 @@ const ChatSidebar = React.memo(({
             variant="ghost"
             size="icon"
             onClick={(event) => handleArchiveClick(event, conversation.id, conversation.state)}
-            className="h-8 w-8 rounded-full opacity-0 transition group-hover:opacity-100 hover:bg-background dark:hover:bg-card"
+            className="h-8 w-8 rounded-full opacity-0 transition group-hover:opacity-100 hover:bg-foreground/10"
             title={isArchived ? 'Restaurar conversación' : 'Archivar conversación'}
           >
             {isArchived ? <ArchiveRestore className="h-4 w-4" /> : <ArchiveX className="h-4 w-4" />}
@@ -266,12 +279,12 @@ const ChatSidebar = React.memo(({
   return (
     <aside
       className={cn(
-        "flex h-full w-full flex-col border-r border-border/70 bg-gradient-card shadow-card backdrop-blur-xl",
+        "flex h-full w-full flex-col border-r border-border/40 bg-background",
         className
       )}
     >
-      <div className="border-b border-border/60 px-4 pb-4 pt-4">
-        <div className="flex items-center gap-2">
+      <div className="border-b border-border/40 px-4 pb-4 pt-4">
+        <div className="flex items-center">
           {showBackToMainMenu && onBackToMainMenu && (
             <Button
               variant="ghost"
@@ -282,36 +295,62 @@ const ChatSidebar = React.memo(({
                   onBackToMainMenu();
                 }
               }}
-              className="h-11 w-11 shrink-0 rounded-full border border-border/70 bg-background/85 text-muted-foreground shadow-sm hover:bg-background hover:text-foreground dark:bg-card/85 dark:hover:bg-card"
+              className="meridian-glass mr-2 h-11 w-11 shrink-0 rounded-full text-muted-foreground transition-all duration-300 ease-out-expo hover:text-foreground"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
           )}
 
-          <div className="relative flex-1">
+          <div className="meridian-glass relative flex-1 rounded-full transition-all duration-300 ease-out-expo focus-within:border-primary/40 focus-within:shadow-glow">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar..."
-              className="h-12 rounded-full border-0 bg-muted/60 pl-11 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-foreground/10 focus-visible:ring-offset-0 dark:bg-background/50"
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => setIsSearchFocused(false)}
+              placeholder="Buscar…"
+              className="h-11 rounded-full border-0 bg-transparent pl-11 text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/70"
             />
           </div>
+
+          {onCollapseSidebar && (
+            <div
+              aria-hidden={isSearchFocused}
+              className={cn(
+                "hidden overflow-hidden transition-all duration-300 ease-out-expo md:block",
+                isSearchFocused
+                  ? "ml-0 max-w-0 opacity-0"
+                  : "ml-2 max-w-[44px] opacity-100"
+              )}
+            >
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onCollapseSidebar}
+                aria-label="Colapsar historial"
+                title="Colapsar historial"
+                tabIndex={isSearchFocused ? -1 : 0}
+                className="meridian-glass h-11 w-11 shrink-0 rounded-full text-muted-foreground transition-all duration-300 ease-out-expo hover:text-foreground"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
 
-        <div className="mt-5 space-y-1">
+        <div className="mt-5 space-y-1.5">
           <Button
             variant="ghost"
             onClick={() => {
               handleHistoryModeChange(chatSectionMode);
               onCreateNewChat();
             }}
-            className="h-12 w-full justify-start gap-3 rounded-2xl px-3 text-[15px] font-medium hover:bg-background dark:hover:bg-card/80"
+            className="h-12 w-full justify-start gap-3 rounded-2xl px-3 font-utility text-[12px] font-bold uppercase tracking-[0.12em] text-foreground transition-all duration-300 ease-out-expo hover:bg-foreground/5"
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.9rem] border border-border/60 bg-foreground/[0.03] text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] dark:bg-white/[0.04]">
+            <span className="meridian-glass flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-foreground">
               <MessageCirclePlus className="h-4 w-4" />
             </span>
-            <span>Nuevo Chat</span>
+            <span>Nuevo chat</span>
           </Button>
 
           {canCreatePlanner && onCreateNewPlanner && (
@@ -321,23 +360,25 @@ const ChatSidebar = React.memo(({
                 handleHistoryModeChange('planner');
                 onCreateNewPlanner();
               }}
-              className="h-12 w-full justify-start gap-3 rounded-2xl px-3 text-[15px] font-medium hover:bg-background dark:hover:bg-card/80"
+              className="h-12 w-full justify-start gap-3 rounded-2xl px-3 font-utility text-[12px] font-bold uppercase tracking-[0.12em] text-foreground transition-all duration-300 ease-out-expo hover:bg-foreground/5"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.9rem] border border-primary/15 bg-primary/[0.08] text-primary shadow-[0_8px_20px_rgba(37,99,235,0.12)] dark:border-primary/20 dark:bg-primary/12">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-primary/25 bg-primary/[0.12] text-primary">
                 <Compass className="h-4 w-4" />
               </span>
-              <span>Planifica un viaje</span>
+              <span>Planificá un viaje</span>
             </Button>
           )}
         </div>
 
-        <div className="mt-5 inline-flex rounded-full bg-muted/60 p-1 dark:bg-background/50">
+        <div className="meridian-glass mt-5 inline-flex rounded-full p-1">
           <Button
             variant="ghost"
             onClick={() => onTabChange('active')}
             className={cn(
-              "h-9 rounded-full px-4 text-xs font-medium",
-              activeTab === 'active' && "bg-background shadow-sm hover:bg-background dark:bg-card dark:hover:bg-card"
+              "h-9 rounded-full px-4 font-utility text-[10px] font-bold uppercase tracking-[0.18em] transition-all duration-300 ease-out-expo",
+              activeTab === 'active'
+                ? "bg-primary/15 text-primary hover:bg-primary/15"
+                : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
             )}
           >
             Activas
@@ -346,8 +387,10 @@ const ChatSidebar = React.memo(({
             variant="ghost"
             onClick={() => onTabChange('archived')}
             className={cn(
-              "h-9 rounded-full px-4 text-xs font-medium",
-              activeTab === 'archived' && "bg-background shadow-sm hover:bg-background dark:bg-card dark:hover:bg-card"
+              "h-9 rounded-full px-4 font-utility text-[10px] font-bold uppercase tracking-[0.18em] transition-all duration-300 ease-out-expo",
+              activeTab === 'archived'
+                ? "bg-primary/15 text-primary hover:bg-primary/15"
+                : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
             )}
           >
             Archivadas
@@ -355,38 +398,40 @@ const ChatSidebar = React.memo(({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5">
-        {isSearching && normalizedQuery.length >= 2 && (
-          <p className="mb-3 animate-pulse text-center text-sm text-muted-foreground">Buscando...</p>
-        )}
-        {orderedSections.every((section) => section.items.length === 0) ? (
-          <div className="rounded-3xl border border-dashed border-border bg-background/70 px-4 py-8 text-center text-sm text-muted-foreground dark:bg-card/60">
-            No se encontraron conversaciones en esta vista.
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {orderedSections.map((section) => {
-              if (section.items.length === 0) {
-                return null;
-              }
+      <div className="flex-1 overflow-hidden p-3">
+        <div className="meridian-glass h-full overflow-y-auto rounded-3xl p-3">
+          {isSearching && normalizedQuery.length >= 2 && (
+            <p className="mb-3 animate-pulse text-center font-utility text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Buscando…</p>
+          )}
+          {orderedSections.every((section) => section.items.length === 0) ? (
+            <div className="rounded-2xl border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+              No se encontraron conversaciones en esta vista.
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {orderedSections.map((section) => {
+                if (section.items.length === 0) {
+                  return null;
+                }
 
-              return (
-                <section key={section.key} className="space-y-2">
-                  <div className="flex items-center justify-between px-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                      {section.title}
-                    </p>
-                    <span className="text-xs text-muted-foreground">{section.items.length}</span>
-                  </div>
+                return (
+                  <section key={section.key} className="space-y-2">
+                    <div className="flex items-center justify-between px-2">
+                      <p className="font-utility text-[10px] font-bold uppercase tracking-[0.28em] text-accent">
+                        {section.title}
+                      </p>
+                      <span className="font-mono text-[10px] tracking-[0.1em] text-muted-foreground">{section.items.length}</span>
+                    </div>
 
-                  <div className="space-y-1">
-                    {section.items.map(renderConversationRow)}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-        )}
+                    <div className="space-y-1">
+                      {section.items.map(renderConversationRow)}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </aside>
   );

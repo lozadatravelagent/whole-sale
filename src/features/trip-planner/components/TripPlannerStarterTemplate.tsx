@@ -62,8 +62,8 @@ function TemplateBlock({ className = '' }: { className?: string }) {
 
 function StarterMapPlaceholder({ isProcessing }: { isProcessing: boolean }) {
   return (
-    <div className="flex h-full flex-col justify-between gap-4 rounded-[24px] border border-white/80 bg-white/70 p-5 backdrop-blur">
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+    <div className="meridian-glass flex h-full flex-col justify-between gap-4 rounded-[24px] p-5">
+      <div className="flex items-center gap-2 font-utility text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
         <MapPinned className="h-3.5 w-3.5 text-primary" />
         Mapa del recorrido
       </div>
@@ -72,7 +72,7 @@ function StarterMapPlaceholder({ isProcessing }: { isProcessing: boolean }) {
         <TemplateBlock className="h-24" />
         <TemplateBlock className="h-24" />
       </div>
-      <div className="flex items-center gap-2 text-xs text-slate-500">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Route className="h-3.5 w-3.5 text-primary" />
         {isProcessing
           ? 'La ruta y los destinos van a aparecer acá apenas termine de interpretar tu pedido.'
@@ -154,19 +154,19 @@ export default function TripPlannerStarterTemplate({
                     interactive={false}
                   />
                 ) : (
-                  <div className="flex h-full bg-[linear-gradient(180deg,rgba(248,250,252,1),rgba(226,232,240,0.92))] p-4">
+                  <div className="flex h-full bg-gradient-to-b from-muted/40 to-muted/60 p-4">
                     <StarterMapPlaceholder isProcessing={isProcessing} />
                   </div>
                 )}
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/40 px-6 text-center backdrop-blur-[1px]">
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/40 px-6 text-center backdrop-blur-[1px]">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <MapPinned className="h-6 w-6" />
                   </div>
                   <div className="space-y-1">
-                    <p className="font-medium text-slate-900">
+                    <p className="font-medium text-foreground">
                       {isProcessing ? 'Armando tu viaje...' : 'Esperando destinos del viaje'}
                     </p>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted-foreground">
                       {isProcessing
                         ? 'Los destinos van a aparecer acá cuando termine de interpretar tu pedido.'
                         : 'El mapa mostrará la ruta completa cuando se definan los destinos.'}

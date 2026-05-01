@@ -115,7 +115,7 @@ export default function DayCarousel({ items, dayId, onCardClick, onAddToDay, sug
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onAddToDay(item.id); }}
-                className="absolute right-2.5 top-2.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-600 shadow-md backdrop-blur-sm transition-all duration-200 hover:bg-primary hover:text-white hover:scale-110 opacity-0 group-hover/card:opacity-100"
+                className="absolute right-2.5 top-2.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-background/90 text-muted-foreground shadow-md backdrop-blur-sm transition-all duration-200 hover:bg-primary hover:text-primary-foreground hover:scale-110 opacity-0 group-hover/card:opacity-100"
                 aria-label="Agregar al itinerario"
               >
                 <Plus className="h-3.5 w-3.5" />

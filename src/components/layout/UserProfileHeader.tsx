@@ -83,13 +83,13 @@ export function UserProfileHeader({ user, onLogout }: UserProfileHeaderProps) {
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'OWNER':
-        return <Crown className="h-3 w-3 text-yellow-600 dark:text-yellow-500" />;
+        return <Crown className="h-3 w-3 text-warning" />;
       case 'SUPERADMIN':
-        return <Shield className="h-3 w-3 text-purple-600 dark:text-purple-400" />;
+        return <Shield className="h-3 w-3 text-primary" />;
       case 'ADMIN':
-        return <UserCog className="h-3 w-3 text-blue-600 dark:text-blue-400" />;
+        return <UserCog className="h-3 w-3 text-primary" />;
       case 'SELLER':
-        return <User className="h-3 w-3 text-green-600 dark:text-green-400" />;
+        return <User className="h-3 w-3 text-success" />;
       default:
         return <User className="h-3 w-3" />;
     }

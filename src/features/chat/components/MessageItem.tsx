@@ -425,10 +425,10 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
     <div key={msg.id}>
       <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
         <div className={`${hasCombinedTravel ? 'max-w-full md:max-w-4xl' : 'max-w-[85%] md:max-w-lg'} flex items-start space-x-1.5 md:space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-          <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-card flex items-center justify-center flex-shrink-0">
+          <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-primary/20' : 'bg-secondary'}`}>
             {msg.role === 'user' ? <CircleUser className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" /> : <Sparkle className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />}
           </div>
-          <div className={`rounded-lg p-3 md:p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : ''} text-sm md:text-base`}>
+          <div className={`rounded-2xl p-3 md:p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground shadow-cta' : 'text-foreground'} text-sm md:text-base`}>
 
             {/* Interactive selectors */}
             {hasCombinedTravel && combinedTravelData ? (
@@ -528,22 +528,23 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
 
                 {/* PDF Download Button */}
                 {hasPdf && pdfUrl && (
-                  <div className="mt-2 md:mt-3 p-2 md:p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="mt-2 md:mt-3 p-2 md:p-3 meridian-glass border-primary/30 rounded-2xl">
                     <div className="flex items-center space-x-2">
-                      <FileText className="h-4 md:h-5 w-4 md:w-5 text-blue-600 flex-shrink-0" />
+                      <FileText className="h-4 md:h-5 w-4 md:w-5 text-primary flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs md:text-sm font-medium text-blue-900 truncate">
+                        <p className="text-xs md:text-sm font-medium text-foreground truncate">
                           Cotización de Viaje
                         </p>
-                        <p className="text-[10px] md:text-xs text-blue-700 truncate">
+                        <p className="text-[10px] md:text-xs text-muted-foreground truncate">
                           PDF con todos los detalles de tu viaje
                         </p>
                       </div>
                       <Button
                         size="sm"
+                        variant="meridian"
                         onClick={handleDownloadPdf}
                         disabled={isDownloading}
-                        className="bg-blue-600 hover:bg-blue-700 flex-shrink-0 text-xs md:text-sm px-2 md:px-3 disabled:opacity-50"
+                        className="flex-shrink-0 text-xs md:text-sm px-2 md:px-3 disabled:opacity-50"
                       >
                         {isDownloading ? (
                           <Loader2 className="h-3 md:h-4 w-3 md:w-4 animate-spin md:mr-1" />

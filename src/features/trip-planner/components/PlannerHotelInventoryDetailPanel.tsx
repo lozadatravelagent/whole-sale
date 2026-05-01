@@ -274,7 +274,7 @@ export function PlannerHotelInventoryDetailBody({
                               {room.type || `Habitación ${index + 1}`}
                             </p>
                             {isRoomSelected && (
-                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
                                 <Check className="h-3 w-3" />
                               </span>
                             )}

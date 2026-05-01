@@ -767,6 +767,8 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     onClearSearch: clearSearch,
   };
 
+  const handleCollapseSidebar = () => setIsHistoryCollapsed(true);
+
   const agencySidebarProps = {
     ...sharedSidebarProps,
     surface: 'agency' as const,
@@ -774,6 +776,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       canCreatePlanner: isOwner || isSuperAdmin,
       canArchiveConversations: true,
     },
+    onCollapseSidebar: handleCollapseSidebar,
   };
 
   const companionSidebarProps = {
@@ -786,6 +789,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     onCreateNewChat: handleCreateCompanionConversation,
     onCreateNewPlanner: undefined,
     onArchiveConversation: undefined,
+    onCollapseSidebar: handleCollapseSidebar,
   };
 
   const chatContextPanel = selectedConversation && hasChatContextPanelContent(planner.plannerState, latestDiscoveryContext) ? (

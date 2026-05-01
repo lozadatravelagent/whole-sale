@@ -225,9 +225,9 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
   };
 
   const getAvailabilityIcon = (availability: number) => {
-    if (availability >= 3) return <CheckCircle className="h-4 w-4 text-green-500" />;
-    if (availability >= 2) return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-    return <Clock className="h-4 w-4 text-red-500" />;
+    if (availability >= 3) return <CheckCircle className="h-4 w-4 text-success" />;
+    if (availability >= 2) return <AlertCircle className="h-4 w-4 text-warning" />;
+    return <Clock className="h-4 w-4 text-destructive" />;
   };
 
   const getAvailabilityText = (availability: number) => {

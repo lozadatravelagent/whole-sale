@@ -21,7 +21,7 @@ export default function TripPlannerWorkspaceSkeleton() {
           </div>
 
           <div className="w-full">
-            <div className="h-[320px] rounded-[28px] border border-primary/15 bg-slate-100 p-4 sm:h-[380px]">
+            <div className="h-[320px] rounded-[28px] border border-primary/15 bg-muted/40 p-4 sm:h-[380px]">
               <PulseBlock className="h-full w-full rounded-[24px] bg-[linear-gradient(180deg,rgba(148,163,184,0.18),rgba(148,163,184,0.08))]" />
             </div>
           </div>

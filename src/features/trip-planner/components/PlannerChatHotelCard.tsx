@@ -45,7 +45,7 @@ export default function PlannerChatHotelCard({
             {hotel.name}
           </p>
           {stars > 0 && (
-            <span className="text-xs shrink-0 text-yellow-500 leading-snug">
+            <span className="text-xs shrink-0 text-amber-400 leading-snug">
               {'★'.repeat(Math.min(stars, 5))}
             </span>
           )}

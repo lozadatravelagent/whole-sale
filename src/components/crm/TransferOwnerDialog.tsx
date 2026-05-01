@@ -190,9 +190,9 @@ export function TransferOwnerDialog({
 
           {/* User Found Success */}
           {userFound && (
-            <Alert className="border-green-200 bg-green-50">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
+            <Alert className="border-success/30 bg-success/10">
+              <CheckCircle className="h-4 w-4 text-success" />
+              <AlertDescription className="text-success">
                 Usuario encontrado: <strong>{userFound.name || userFound.email}</strong>
               </AlertDescription>
             </Alert>

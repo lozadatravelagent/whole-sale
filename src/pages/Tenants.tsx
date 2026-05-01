@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
+import { MeridianHeading, MeridianTag } from '@/components/meridian';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -194,8 +195,9 @@ const Tenants = () => {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Tenant Management</h1>
-            <p className="text-sm md:text-base text-muted-foreground mt-1">
+            <MeridianTag tone="lilac" className="mb-3">Administración · Tenants</MeridianTag>
+            <MeridianHeading as="h1" size="md" italic>Tenant Management</MeridianHeading>
+            <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">
               {isOwner ? 'Manage organizations (tenants) in the system' : 'View your organization'}
             </p>
           </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Loader2, LogOut, MapPin, Plane } from 'lucide-react';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
+import { MeridianHeading, MeridianTag } from '@/components/meridian';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
@@ -98,6 +99,13 @@ export default function ConsumerProfile() {
   return (
     <UnifiedLayout>
       <div className="mx-auto flex h-full w-full max-w-2xl flex-col gap-4 overflow-y-auto px-4 py-6">
+        <header>
+          <MeridianTag tone="lilac" className="mb-3">Cuenta · Perfil</MeridianTag>
+          <MeridianHeading as="h1" size="md" italic>Tu cuenta</MeridianHeading>
+          <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">
+            Gestioná tu información y revisá tus viajes en curso.
+          </p>
+        </header>
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">Tu perfil</CardTitle>

@@ -341,7 +341,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                     {leg.layovers && leg.layovers.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-border/50">
                         {leg.layovers.map((layover, layoverIndex) => (
-                          <div key={layoverIndex} className="text-xs text-amber-600 flex items-center">
+                          <div key={layoverIndex} className="text-xs text-warning flex items-center">
                             <MapPin className="h-3 w-3 mr-1" />
                             Escala en {layover.destination_city} ({layover.destination_code}) - {layover.waiting_time}
                           </div>

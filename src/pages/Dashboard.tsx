@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { MeridianHeading, MeridianTag } from '@/components/meridian';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -213,13 +214,14 @@ const Dashboard = () => {
       <div className="h-full overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{getDashboardTitle()}</h1>
-            <p className="text-sm md:text-base text-muted-foreground mt-1">
+            <MeridianTag tone="lilac" className="mb-3">Panel · Resumen</MeridianTag>
+            <MeridianHeading as="h1" size="md" italic>{getDashboardTitle()}</MeridianHeading>
+            <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">
               {getDashboardDescription()}
             </p>
           </div>
-          <Badge variant="outline" className="h-6 text-xs md:text-sm w-fit">
-            Hoy, {new Date().toLocaleDateString()}
+          <Badge variant="tag" className="h-7 w-fit">
+            Hoy · {new Date().toLocaleDateString()}
           </Badge>
         </div>
 

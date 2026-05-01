@@ -1,7 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowUp, Loader2, Sparkles, Plane } from 'lucide-react';
+import { ArrowUp, Loader2, Plane } from 'lucide-react';
+import {
+  AuroraBackdrop,
+  MeridianHeading,
+  MeridianMono,
+  MeridianTag,
+  OrbitMark,
+} from '@/components/meridian';
 
 interface EmptyStateProps {
   onSendNewMessage: (message: string) => Promise<void>;
@@ -30,32 +37,49 @@ const EmptyState = React.memo(({ onSendNewMessage, onCreatePlanner }: EmptyState
   }, [newMessage, isCreatingChat, onSendNewMessage]);
 
   return (
-    <div className="flex-1 flex items-center justify-center bg-muted/20">
-      <div className="text-center max-w-xl w-full px-6">
-        <Sparkles className="h-10 w-10 mx-auto mb-6 text-muted-foreground/40" />
+    <div className="relative flex-1 flex items-center justify-center overflow-hidden bg-background">
+      <AuroraBackdrop intensity="full" withGrid />
 
-        <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-4 text-foreground">
-          ¿Dónde querés viajar hoy?
-        </h1>
-        <p className="text-lg text-muted-foreground mb-10">
+      <div className="relative z-10 w-full max-w-xl px-6 py-12 text-center animate-meridian-fade-up">
+        <div className="relative mb-7 inline-block">
+          <OrbitMark size={88} animated />
+          <div
+            aria-hidden
+            className="absolute inset-0 -z-10 animate-meridian-glow-pulse"
+            style={{
+              background: 'radial-gradient(circle, hsl(var(--primary) / 0.3), transparent 70%)',
+            }}
+          />
+        </div>
+
+        <MeridianTag tone="lilac" className="mb-4">
+          Conversación · Emilia
+        </MeridianTag>
+
+        <MeridianHeading as="h1" size="lg" gradient italic className="mb-4">
+          ¿A dónde<br />vamos hoy?
+        </MeridianHeading>
+
+        <p className="font-sans text-sm md:text-base font-light leading-relaxed text-muted-foreground mb-10 max-w-md mx-auto">
           Buscá vuelos, hoteles o pedí una cotización completa.
         </p>
 
-        <div className="relative">
+        <div className="meridian-glass relative rounded-3xl p-1.5 transition-all duration-300 ease-out-expo focus-within:border-primary/40 focus-within:shadow-glow">
           <Input
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Preguntale algo a Emilia..."
+            placeholder="Preguntale algo a Emilia…"
             disabled={isCreatingChat}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendNewMessage()}
-            className="pr-14 h-14 text-base rounded-2xl"
+            className="h-12 rounded-2xl border-0 bg-transparent pl-4 pr-14 text-base shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/70"
             autoComplete="off"
           />
           <Button
             onClick={handleSendNewMessage}
             disabled={isCreatingChat || !newMessage.trim()}
-            className="absolute right-1 top-1 h-12 w-12 rounded-xl p-0"
-            size="sm"
+            variant="meridian"
+            size="icon"
+            className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 rounded-2xl"
           >
             {isCreatingChat ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -68,19 +92,19 @@ const EmptyState = React.memo(({ onSendNewMessage, onCreatePlanner }: EmptyState
         {onCreatePlanner && (
           <>
             <div className="flex items-center gap-3 my-6">
-              <div className="flex-1 h-px bg-border/70" />
-              <span className="text-sm text-muted-foreground">o</span>
-              <div className="flex-1 h-px bg-border/70" />
+              <div className="flex-1 h-px bg-foreground/10" />
+              <MeridianMono size="xs" className="text-muted-foreground/60">O</MeridianMono>
+              <div className="flex-1 h-px bg-foreground/10" />
             </div>
 
             <button
               onClick={onCreatePlanner}
-              className="w-full flex items-center gap-4 rounded-2xl border border-border/70 bg-background/80 hover:bg-muted/50 transition cursor-pointer px-5 py-4 text-left"
+              className="meridian-glass group w-full flex items-center gap-4 rounded-3xl px-5 py-4 text-left transition-all duration-300 ease-out-expo hover:bg-foreground/[0.06] hover:-translate-y-0.5"
             >
-              <Plane className="h-5 w-5 text-muted-foreground shrink-0" />
+              <Plane className="h-5 w-5 text-primary shrink-0 transition-transform duration-300 ease-out-expo group-hover:translate-x-1" />
               <div>
-                <div className="font-medium text-foreground text-sm">Planificá un viaje</div>
-                <div className="text-sm text-muted-foreground">
+                <div className="font-display italic text-base text-foreground">Planificá un viaje</div>
+                <div className="font-sans text-sm text-muted-foreground">
                   Armá un itinerario día a día con destinos, hoteles y vuelos
                 </div>
               </div>

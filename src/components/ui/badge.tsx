@@ -15,6 +15,14 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
+        // === Meridian variants — Cabinet/Space Grotesk, uppercase, tracked ===
+        tag: "border-primary/[0.22] bg-primary/[0.1] text-primary font-utility font-bold uppercase tracking-[0.08em] text-[11px] px-3.5",
+        success:
+          "border-success/30 bg-success/10 text-success font-utility font-bold uppercase tracking-[0.08em] text-[11px] px-3.5",
+        warning:
+          "border-warning/30 bg-warning/10 text-warning font-utility font-bold uppercase tracking-[0.08em] text-[11px] px-3.5",
+        beta:
+          "border-accent/30 bg-accent/10 text-accent font-utility font-bold uppercase tracking-[0.08em] text-[11px] px-3.5",
       },
     },
     defaultVariants: {

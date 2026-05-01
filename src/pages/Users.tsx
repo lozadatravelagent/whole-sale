@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
+import { MeridianHeading, MeridianTag } from '@/components/meridian';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -197,13 +198,13 @@ const Users = () => {
       case 'OWNER':
         return 'bg-red-100 text-red-800';
       case 'SUPERADMIN':
-        return 'bg-purple-100 text-purple-800';
+        return 'bg-primary/15 text-primary';
       case 'ADMIN':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-accent/15 text-accent';
       case 'SELLER':
-        return 'bg-green-100 text-green-800';
+        return 'bg-success/15 text-success';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-muted-foreground';
     }
   };
 
@@ -228,8 +229,9 @@ const Users = () => {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">User Management</h1>
-            <p className="text-sm md:text-base text-muted-foreground mt-1">Create and manage system users</p>
+            <MeridianTag tone="lilac" className="mb-3">Administración · Usuarios</MeridianTag>
+            <MeridianHeading as="h1" size="md" italic>User Management</MeridianHeading>
+            <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">Create and manage system users</p>
           </div>
           <div className="flex items-center gap-2">
             {(isOwner || isSuperAdmin) && agencies.length > 0 && (

@@ -344,7 +344,7 @@ export function LeadDialog({
                 {/* Progress Bar */}
                 <div className="w-full bg-muted rounded-full h-2">
                   <div
-                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                    className="bg-success h-2 rounded-full transition-all duration-300"
                     style={{ width: `${progressPercentage}%` }}
                   />
                 </div>
@@ -378,7 +378,7 @@ export function LeadDialog({
                         variant="ghost"
                         size="sm"
                         onClick={() => removeChecklistItem(item.id)}
-                        className="text-red-600 opacity-0 group-hover:opacity-100 hover:bg-red-50"
+                        className="text-destructive opacity-0 group-hover:opacity-100 hover:bg-destructive/10"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

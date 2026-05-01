@@ -29,19 +29,20 @@ function SuggestionChips({ suggestions, onSuggestionClick, loadingAction, discov
   return (
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
       {hasChips && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {[...suggestions].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99)).map((suggestion) => {
             const Icon = ICON_BY_TYPE[suggestion.type];
             const isLoading = loadingAction === suggestion.id;
+            const isPrimary = (suggestion.priority ?? 99) <= 2;
 
             return (
               <Button
                 key={suggestion.id}
-                variant={(suggestion.priority ?? 99) <= 2 ? 'default' : 'outline'}
-                size="sm"
+                variant={isPrimary ? 'meridian' : 'meridian-glass'}
+                size="meridian-sm"
                 disabled={isLoading}
                 onClick={() => onSuggestionClick(suggestion)}
-                className="gap-1.5 text-xs"
+                className="gap-1.5"
               >
                 {isLoading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -61,7 +62,7 @@ function SuggestionChips({ suggestions, onSuggestionClick, loadingAction, discov
             <button
               key={`${card.label}-${card.city}`}
               type="button"
-              className="group relative shrink-0 rounded-lg border bg-background p-3 text-left shadow-sm transition-shadow hover:shadow-md min-w-[200px] max-w-[240px]"
+              className="meridian-glass group relative shrink-0 rounded-2xl p-3 text-left transition-all duration-300 ease-out-expo hover:-translate-y-0.5 hover:bg-foreground/[0.06] min-w-[200px] max-w-[240px]"
               onClick={() => onDiscoveryAdd(card)}
             >
               <div className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100">

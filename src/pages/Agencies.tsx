@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
+import { MeridianHeading, MeridianTag } from '@/components/meridian';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -243,8 +244,9 @@ const Agencies = () => {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Agency Management</h1>
-            <p className="text-sm md:text-base text-muted-foreground mt-1">
+            <MeridianTag tone="lilac" className="mb-3">Administración · Agencias</MeridianTag>
+            <MeridianHeading as="h1" size="md" italic>Agency Management</MeridianHeading>
+            <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">
               Create and manage agencies
             </p>
           </div>

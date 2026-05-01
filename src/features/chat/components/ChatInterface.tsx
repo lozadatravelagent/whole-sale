@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import ChatHeader from './ChatHeader';
-import MessageInput from './MessageInput';
+import ChatInputDock from './shell/ChatInputDock';
+import ChatEmptyState from './shell/ChatEmptyState';
 import MessageItem from './MessageItem';
 import TypingIndicator from './TypingIndicator';
+import { OrbitMark } from '@/components/meridian';
 import MissingFieldsInputPrompt from '@/features/trip-planner/components/MissingFieldsInputPrompt';
 import DiscoveryMapPreview from './DiscoveryMapPreview';
 import RecommendedPlacesList from './RecommendedPlacesList';
@@ -312,18 +314,18 @@ const ChatInterface = React.memo(({
         />
       </div>
 
-      {/* Drag and Drop Overlay - pointer-events-none para no interferir con drag events */}
+      {/* Drag and Drop Overlay — Meridian glass */}
       {isDraggingOver && (
-        <div 
-          className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary rounded-lg flex items-center justify-center pointer-events-none"
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none meridian-glass-strong rounded-3xl m-3 border-2 border-dashed border-primary/60"
           aria-live="polite"
           role="status"
         >
-          <div className="text-center">
-            <ArrowUpFromLine className="h-16 w-16 text-primary mx-auto mb-4 animate-bounce" />
-            <p className="text-xl font-semibold text-primary">Suelta el PDF aquí</p>
-            <p className="text-sm text-muted-foreground mt-2">Solo archivos PDF (máx. 10MB)</p>
-            <p className="text-xs text-muted-foreground mt-1">Presiona ESC para cancelar</p>
+          <div className="text-center px-6">
+            <ArrowUpFromLine className="h-14 w-14 text-primary mx-auto mb-4 animate-bounce" />
+            <p className="font-display italic text-2xl text-foreground tracking-tight">Soltá el PDF aquí</p>
+            <p className="text-sm text-muted-foreground mt-2 font-sans">Solo archivos PDF · máx. 10MB</p>
+            <p className="font-mono text-[10px] tracking-[0.1em] text-muted-foreground/60 mt-3 uppercase">ESC para cancelar</p>
           </div>
         </div>
       )}
@@ -449,21 +451,19 @@ const ChatInterface = React.memo(({
 
           {isTyping && (
             <div className="flex items-start gap-2 md:gap-3 animate-in fade-in duration-300">
-              <div className="flex-shrink-0 w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
-                <span className="text-base md:text-lg">🤖</span>
+              <div className="flex-shrink-0 w-9 h-9 md:w-10 md:h-10 flex items-center justify-center">
+                <OrbitMark size={36} animated />
               </div>
-              <div className="flex-1 bg-muted/50 border border-primary/10 rounded-2xl p-3 md:p-4 max-w-[85%] md:max-w-[80%]">
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2 md:gap-3">
-                    <div className="flex gap-1 md:gap-1.5">
-                      <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '0.6s' }}></div>
-                      <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '0.6s' }}></div>
-                      <div className="w-2 h-2 md:w-2.5 md:h-2.5 bg-primary/70 rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '0.6s' }}></div>
-                    </div>
-                    <span className="text-xs md:text-sm font-medium text-foreground/80 animate-pulse">
-                      {typingMessage || 'Pensando...'}
-                    </span>
+              <div className="flex-1 meridian-glass rounded-3xl p-3 md:p-4 max-w-[85%] md:max-w-[80%]">
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1.5">
+                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '0.6s' }}></div>
+                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '0.6s' }}></div>
+                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '0.6s' }}></div>
                   </div>
+                  <span className="font-utility text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground animate-pulse">
+                    {typingMessage || 'Pensando…'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -476,7 +476,7 @@ const ChatInterface = React.memo(({
 
       {/* Input area - always fixed at bottom */}
       <div className="flex-shrink-0">
-        <MessageInput
+        <ChatInputDock
           value={message}
           onChange={onMessageChange}
           onSend={onSendMessage}

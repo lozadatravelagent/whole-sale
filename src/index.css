@@ -1,122 +1,204 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,400;1,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@300;400;500&family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* VBOOK Travel SaaS Design System - Premium B2B Platform */
+/* Emilia Meridian Design System — Authenticated app surfaces.
+   Landing public surfaces redefine these tokens inside `.landing-shell`
+   (lines further below) and remain untouched by this palette. */
 
 @layer base {
   :root {
-    /* Light Mode - Brand Colors */
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    /* === MERIDIAN LIGHT (Smoke + Violet) === */
+    /* Used 30% of the time — reports, dense tables, light-toggled pages. */
+    --background: 40 14% 93%;        /* Smoke */
+    --foreground: 240 10% 8%;
 
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 240 10% 8%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
+    --popover-foreground: 240 10% 8%;
 
-    /* Premium travel brand palette */
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 98%;
-    --primary-glow: 217 91% 70%;
+    /* Brand — Violet desaturado premium (Meridian Light variant) */
+    --primary: 252 38% 52%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 258 50% 68%;
 
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
+    --secondary: 240 6% 96%;
+    --secondary-foreground: 240 10% 8%;
 
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
+    --muted: 240 10% 97.5%;
+    --muted-foreground: 240 5% 45%;
 
-    --accent: 142 76% 36%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 252 38% 56%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
 
-    --success: 142 76% 36%;
+    --success: 175 35% 38%;          /* Aurora Mint deep */
     --success-foreground: 0 0% 98%;
 
-    --warning: 38 92% 50%;
+    --warning: 14 60% 50%;           /* Aurora Coral deep */
     --warning-foreground: 0 0% 98%;
 
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 217 91% 60%;
+    --border: 240 10% 92%;
+    --input: 240 10% 92%;
+    --ring: 252 38% 52%;
 
-    --radius: 0.75rem;
+    /* Geometry — brandbook rule: 1.5rem minimum on cards/surfaces */
+    --radius: 1.5rem;
 
-    /* Travel-specific gradients */
-    --gradient-hero: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(142 76% 46%));
-    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(142 76% 46%));
+    /* Aurora palette — orbs and atmospheric backgrounds */
+    --aurora-violet: 252 38% 78%;
+    --aurora-blue: 220 40% 80%;
+    --aurora-coral: 14 55% 82%;
+    --aurora-pink: 330 45% 84%;
+    --aurora-mint: 175 30% 80%;
+
+    /* Meridian gradients */
+    --gradient-hero:
+      radial-gradient(ellipse 80% 50% at 50% -20%, hsl(252 50% 95%), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 50%, hsl(220 55% 96%), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 20% 70%, hsl(258 45% 96%), transparent 60%),
+      hsl(40 14% 93%);
+    --gradient-primary: linear-gradient(135deg, hsl(252 38% 52%), hsl(258 42% 62%));
+    --gradient-cta: linear-gradient(180deg, hsl(252 40% 55%), hsl(248 42% 46%));
+    --gradient-text: linear-gradient(135deg, hsl(248 42% 46%) 0%, hsl(258 40% 56%) 50%, hsl(220 45% 60%) 100%);
     --gradient-card: linear-gradient(135deg, hsl(0 0% 98%), hsl(0 0% 100%));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(175 30% 50%));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(258 45% 65%));
 
-    /* Shadows with brand colors */
-    --shadow-primary: 0 10px 40px -10px hsl(var(--primary) / 0.4);
-    --shadow-accent: 0 10px 40px -10px hsl(var(--accent) / 0.3);
-    --shadow-success: 0 10px 40px -10px hsl(var(--success) / 0.3);
-    --shadow-card: 0 8px 32px -8px hsl(240 10% 20% / 0.1);
+    /* Meridian shadows — violet/cool tinted, never pure black */
+    --shadow-xs: 0 1px 2px hsla(240, 30%, 20%, 0.04);
+    --shadow-sm: 0 2px 8px -2px hsla(240, 30%, 20%, 0.06), 0 1px 2px hsla(240, 30%, 20%, 0.04);
+    --shadow-md: 0 8px 24px -8px hsla(240, 30%, 20%, 0.08), 0 2px 6px -2px hsla(240, 30%, 20%, 0.04);
+    --shadow-lg: 0 24px 48px -12px hsla(248, 40%, 20%, 0.12), 0 8px 16px -8px hsla(248, 40%, 20%, 0.06);
+    --shadow-xl: 0 40px 80px -20px hsla(248, 50%, 18%, 0.18), 0 12px 24px -12px hsla(248, 40%, 20%, 0.08);
+    --shadow-cta: 0 10px 30px -10px hsla(252, 50%, 35%, 0.32), inset 0 1px 0 hsla(0, 0%, 100%, 0.18);
+    --shadow-glow: 0 0 80px -10px hsla(252, 60%, 60%, 0.35);
+    --shadow-inset-glass: inset 0 1px 0 hsla(0, 0%, 100%, 0.6), inset 0 -1px 0 hsla(240, 20%, 80%, 0.1);
 
-    /* Animations */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-spring: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-    --planner-font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    /* Legacy aliases — point to Meridian shadows so existing
+       `shadow-card`, `shadow-primary`, `shadow-success` Tailwind utilities
+       keep working without code changes. */
+    --shadow-primary: 0 10px 40px -10px hsla(252, 50%, 45%, 0.32);
+    --shadow-accent: 0 10px 40px -10px hsla(252, 38%, 56%, 0.3);
+    --shadow-success: 0 10px 40px -10px hsla(175, 35%, 38%, 0.3);
+    --shadow-card: var(--shadow-md);
 
-    --sidebar-background: 0 0% 98%;
+    /* Easing — Apple/Linear/Vercel premium standard */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --transition-smooth: all 0.3s var(--ease-out-expo);
+    --transition-spring: all 0.5s var(--ease-spring);
+
+    /* Typography stacks (Meridian) */
+    --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+    --font-body: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "DM Mono", ui-monospace, "SF Mono", Consolas, monospace;
+    --font-utility: "Space Grotesk", "DM Sans", ui-sans-serif, system-ui, sans-serif;
+
+    /* Compatibility: planner-font-family used in legacy scopes */
+    --planner-font-family: var(--font-body);
+
+    --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-primary: 252 38% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 252 38% 96%;
+    --sidebar-accent-foreground: 240 10% 8%;
+    --sidebar-border: 240 10% 92%;
+    --sidebar-ring: 252 38% 52%;
   }
 
   .dark {
-    /* Dark Mode - Brand Colors */
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
+    /* === MERIDIAN DARK (Void + Violet Core) === */
+    /* Default 70% of the time — the brand-defining mode. */
+    --background: 248 60% 4%;        /* Void */
+    --foreground: 40 14% 93%;        /* Smoke */
 
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
+    --card: 258 50% 9%;              /* mid-surface, violet-tinted */
+    --card-foreground: 40 14% 93%;
 
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 258 50% 12%;          /* mid-surface2, violet-tinted */
+    --popover-foreground: 40 14% 93%;
 
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 98%;
+    --primary: 262 75% 55%;          /* Violet Core (saturated for dark) */
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 252 60% 60%;
 
-    --secondary: 240 5% 11%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 258 50% 14%;
+    --secondary-foreground: 40 14% 93%;
 
-    --muted: 240 5% 11%;
-    --muted-foreground: 240 5% 65%;
+    --muted: 258 45% 12%;
+    --muted-foreground: 258 28% 72%;
 
-    --accent: 142 76% 36%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 255 80% 72%;            /* Lilac */
+    --accent-foreground: 248 60% 4%;
 
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 240 5% 18%;
-    --input: 240 5% 18%;
-    --ring: 217 91% 60%;
+    --success: 175 30% 60%;
+    --success-foreground: 248 60% 4%;
 
-    /* Dark mode specific gradients */
-    --gradient-card: linear-gradient(135deg, hsl(240 5% 6%), hsl(240 5% 11%));
-    --shadow-card: 0 8px 32px -8px hsl(240 10% 0% / 0.4);
+    --warning: 14 55% 65%;
+    --warning-foreground: 248 60% 4%;
 
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 217 91% 60%;
+    /* Dark borders — solid muted violet (use `border-white/10` directly
+       when you need a glass translucent border instead of the token) */
+    --border: 258 35% 18%;
+    --input: 258 45% 14%;
+    --ring: 262 75% 55%;
+
+    /* Aurora palette — same hues, Meridian Dark uses them through glow layers */
+    --aurora-violet: 252 60% 65%;
+    --aurora-blue: 220 70% 60%;
+    --aurora-coral: 14 65% 70%;
+    --aurora-pink: 330 55% 70%;
+    --aurora-mint: 175 40% 60%;
+
+    /* Dark gradients */
+    --gradient-hero:
+      radial-gradient(ellipse 80% 50% at 50% -10%, hsla(262, 75%, 55%, 0.18), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 80% 60%, hsla(220, 85%, 55%, 0.1), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 15% 80%, hsla(258, 50%, 50%, 0.12), transparent 60%),
+      hsl(248 60% 4%);
+    --gradient-primary: linear-gradient(135deg, hsl(262 75% 55%), hsl(255 80% 72%));
+    --gradient-cta: linear-gradient(180deg, hsl(252 40% 55%), hsl(248 42% 38%));
+    --gradient-text: linear-gradient(135deg, hsl(262 75% 65%) 0%, hsl(255 80% 78%) 50%, hsl(220 70% 70%) 100%);
+    --gradient-card: linear-gradient(135deg, hsl(248 50% 7%), hsl(248 45% 10%));
+    --gradient-success: linear-gradient(135deg, hsl(175 30% 50%), hsl(175 30% 60%));
+    --gradient-accent: linear-gradient(135deg, hsl(255 80% 72%), hsl(252 60% 60%));
+
+    /* Dark shadows — pure black for actual depth on Void background.
+       Using hsl(248,60%,4%) failed because that IS the bg color.
+       Pure black (lightness 0%) with high alpha gives real elevation. */
+    --shadow-xs: 0 1px 2px hsla(0, 0%, 0%, 0.5);
+    --shadow-sm: 0 2px 8px -2px hsla(0, 0%, 0%, 0.55), 0 1px 2px hsla(0, 0%, 0%, 0.4);
+    --shadow-md: 0 8px 24px -8px hsla(0, 0%, 0%, 0.65), 0 2px 6px -2px hsla(0, 0%, 0%, 0.45);
+    --shadow-lg: 0 24px 48px -12px hsla(0, 0%, 0%, 0.75), 0 8px 16px -8px hsla(0, 0%, 0%, 0.55);
+    --shadow-xl: 0 40px 80px -20px hsla(0, 0%, 0%, 0.85), 0 12px 24px -12px hsla(0, 0%, 0%, 0.65);
+    --shadow-cta: 0 10px 30px -10px hsla(262, 75%, 35%, 0.6), inset 0 1px 0 hsla(0, 0%, 100%, 0.18);
+    --shadow-glow: 0 0 80px -10px hsla(262, 75%, 55%, 0.5);
+    --shadow-inset-glass: inset 0 1px 0 hsla(0, 0%, 100%, 0.08), inset 0 -1px 0 hsla(0, 0%, 0%, 0.4);
+
+    --shadow-primary: 0 10px 40px -10px hsla(262, 75%, 45%, 0.5);
+    --shadow-accent: 0 10px 40px -10px hsla(255, 80%, 60%, 0.4);
+    --shadow-success: 0 10px 40px -10px hsla(175, 30%, 50%, 0.3);
+    --shadow-card: var(--shadow-md);
+
+    --sidebar-background: 258 50% 9%;
+    --sidebar-foreground: 40 14% 93%;
+    --sidebar-primary: 262 75% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-accent: 258 45% 16%;
+    --sidebar-accent-foreground: 40 14% 93%;
+    --sidebar-border: 258 35% 18%;
+    --sidebar-ring: 262 75% 55%;
   }
 }
 
@@ -127,7 +209,10 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: var(--planner-font-family);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   button,
@@ -137,14 +222,24 @@
     font-family: inherit;
   }
 
+  /* h1-h6 default to Playfair Italic — Meridian display.
+     Dense surfaces opt out via `font-utility` or `font-sans` utility. */
   h1,
   h2,
   h3,
   h4,
   h5,
   h6 {
-    font-family: var(--planner-font-family);
-    letter-spacing: -0.03em;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+    color: hsl(var(--foreground));
   }
 }
 
@@ -259,11 +354,11 @@
   height: 4px;
   width: 100%;
   overflow: hidden;
-  background: linear-gradient(90deg, rgba(37, 99, 235, 0.08), rgba(59, 130, 246, 0.18), rgba(37, 99, 235, 0.08));
+  background: linear-gradient(90deg, hsl(var(--primary) / 0.08), hsl(var(--primary) / 0.18), hsl(var(--primary) / 0.08));
 }
 
 .dark .planner-map-loading-rail {
-  background: linear-gradient(90deg, rgba(96, 165, 250, 0.12), rgba(59, 130, 246, 0.22), rgba(96, 165, 250, 0.12));
+  background: linear-gradient(90deg, hsl(var(--primary) / 0.12), hsl(var(--primary) / 0.22), hsl(var(--primary) / 0.12));
 }
 
 .planner-map-loading-rail__beam {
@@ -273,11 +368,11 @@
   background:
     linear-gradient(
       90deg,
-      rgba(59, 130, 246, 0) 0%,
-      rgba(96, 165, 250, 0.5) 18%,
-      rgba(147, 197, 253, 0.95) 50%,
-      rgba(96, 165, 250, 0.5) 82%,
-      rgba(59, 130, 246, 0) 100%
+      hsl(var(--primary) / 0) 0%,
+      hsl(var(--primary) / 0.5) 18%,
+      hsl(var(--accent) / 0.95) 50%,
+      hsl(var(--primary) / 0.5) 82%,
+      hsl(var(--primary) / 0) 100%
     );
   filter: blur(0.2px);
   animation: planner-map-loading-scan 1.35s ease-in-out infinite;
@@ -287,11 +382,11 @@
   background:
     linear-gradient(
       90deg,
-      rgba(96, 165, 250, 0) 0%,
-      rgba(125, 211, 252, 0.55) 18%,
-      rgba(191, 219, 254, 0.98) 50%,
-      rgba(125, 211, 252, 0.55) 82%,
-      rgba(96, 165, 250, 0) 100%
+      hsl(var(--primary) / 0) 0%,
+      hsl(var(--accent) / 0.55) 18%,
+      hsl(var(--primary-glow) / 0.98) 50%,
+      hsl(var(--accent) / 0.55) 82%,
+      hsl(var(--primary) / 0) 100%
     );
 }
 
@@ -443,10 +538,162 @@
 .animate-float-delayed { animation: float 6s ease-in-out infinite 2s; }
 .animate-pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
 
+/* ═══════════════════════════════════════════
+   MERIDIAN GLOBAL UTILITIES — App-wide.
+   Available everywhere except inside `.landing-shell`,
+   where the same class names get scoped overrides.
+   ═══════════════════════════════════════════ */
+
+/* Glass surfaces — three depth levels per brandbook 05.
+   Dark mode uses violet-tinted fills with higher saturation so surfaces
+   read as violet (not gray) and elevate clearly above Void. The borders
+   carry a subtle violet glow to reinforce the brand hue. */
+.meridian-glass {
+  background: hsla(258, 50%, 14%, 0.7);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid hsla(258, 50%, 60%, 0.18);
+  box-shadow: var(--shadow-md);
+}
+.meridian-glass-strong {
+  background: hsla(258, 55%, 17%, 0.82);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid hsla(258, 60%, 65%, 0.22);
+  box-shadow: var(--shadow-inset-glass), var(--shadow-lg);
+}
+.meridian-glass-dark {
+  background: hsla(258, 60%, 8%, 0.9);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid hsla(258, 50%, 50%, 0.12);
+}
+
+/* Light-mode override: opaque white surfaces on Smoke canvas. */
+:root:not(.dark) .meridian-glass {
+  background: hsla(0, 0%, 100%, 0.7);
+  border-color: hsla(240, 10%, 92%, 0.9);
+}
+:root:not(.dark) .meridian-glass-strong {
+  background: hsla(0, 0%, 100%, 0.85);
+  border-color: hsla(240, 10%, 92%, 0.9);
+}
+:root:not(.dark) .meridian-glass-dark {
+  background: hsla(0, 0%, 100%, 0.5);
+  border-color: hsla(240, 10%, 88%, 0.8);
+}
+
+/* Meridian text gradient (display titles) */
+.meridian-text-gradient {
+  background: var(--gradient-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.025em;
+}
+
+/* Grid overlay — subtle architecture lines */
+.meridian-grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    repeating-linear-gradient(90deg, hsla(255, 80%, 72%, 0.04) 0 1px, transparent 1px 120px),
+    repeating-linear-gradient(0deg, hsla(255, 80%, 72%, 0.04) 0 1px, transparent 1px 100px);
+}
+:root:not(.dark) .meridian-grid-overlay {
+  background:
+    repeating-linear-gradient(90deg, hsla(252, 38%, 52%, 0.05) 0 1px, transparent 1px 120px),
+    repeating-linear-gradient(0deg, hsla(252, 38%, 52%, 0.05) 0 1px, transparent 1px 100px);
+}
+
+/* Grain texture — apply via `position:relative` parent + `.meridian-grain::before` */
+.meridian-grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  z-index: 1;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* === MERIDIAN KEYFRAMES — Global, available app-wide === */
+@keyframes meridian-aurora-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(40px, -30px, 0) scale(1.08); }
+  66% { transform: translate3d(-30px, 40px, 0) scale(0.94); }
+}
+@keyframes meridian-aurora-drift-slow {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.55; }
+  50% { transform: translate3d(-40px, 30px, 0) scale(1.1); opacity: 0.7; }
+}
+@keyframes meridian-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+@keyframes meridian-pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+@keyframes meridian-orbit-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes meridian-glow-pulse {
+  0%, 100% { opacity: 0.6; filter: blur(40px); }
+  50% { opacity: 1; filter: blur(55px); }
+}
+@keyframes meridian-fade-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes meridian-float-node {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-meridian-aurora { animation: meridian-aurora-drift 22s ease-in-out infinite; }
+.animate-meridian-aurora-slow { animation: meridian-aurora-drift-slow 28s ease-in-out infinite; }
+.animate-meridian-shimmer { animation: meridian-shimmer 2.5s ease-in-out infinite; }
+.animate-meridian-pulse-ring { animation: meridian-pulse-ring 2.4s var(--ease-out-expo) infinite; }
+.animate-meridian-orbit-spin { animation: meridian-orbit-spin 22s linear infinite; }
+.animate-meridian-orbit-spin-slow { animation: meridian-orbit-spin 32s linear infinite; }
+.animate-meridian-glow-pulse { animation: meridian-glow-pulse 4s ease-in-out infinite; }
+.animate-meridian-fade-up { animation: meridian-fade-up 0.7s var(--ease-out-expo) both; }
+.animate-meridian-float-node { animation: meridian-float-node 3s ease-in-out infinite; }
+
+/* Respect user motion preferences — non-negotiable per brandbook 07 */
+@media (prefers-reduced-motion: reduce) {
+  .animate-meridian-aurora,
+  .animate-meridian-aurora-slow,
+  .animate-meridian-shimmer,
+  .animate-meridian-pulse-ring,
+  .animate-meridian-orbit-spin,
+  .animate-meridian-orbit-spin-slow,
+  .animate-meridian-glow-pulse,
+  .animate-meridian-fade-up,
+  .animate-meridian-float-node {
+    animation: none !important;
+  }
+}
+
 /* Landing typography & design tokens — Aurora violet scope.
    These tokens only resolve within the .landing-shell subtree, so chat,
    profile and admin pages keep their own palette untouched. */
 .landing-shell {
+  /* Restore pre-Meridian typography for the public landing.
+     These overrides keep `/emilia` and `/emilia/whitelist` rendering with
+     Inter body + Playfair display, untouched by the Meridian fonts the
+     authenticated app now uses. */
+  --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --planner-font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
+  --font-utility: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
   font-family: var(--planner-font-family);
   overflow-x: hidden;
 
@@ -506,6 +753,22 @@
 .landing-shell textarea,
 .landing-shell select {
   font-family: inherit;
+}
+
+/* Neutralize the global Meridian h1-h6 rule for the landing.
+   Authenticated app keeps Playfair Italic 400, but the landing relied on
+   Inter body inheritance + per-component display styling. */
+.landing-shell h1,
+.landing-shell h2,
+.landing-shell h3,
+.landing-shell h4,
+.landing-shell h5,
+.landing-shell h6 {
+  font-family: var(--planner-font-family);
+  font-style: normal;
+  font-weight: inherit;
+  letter-spacing: -0.03em;
+  line-height: inherit;
 }
 
 /* Glass surfaces — Apple-style optical blur, scoped to the landing. */
@@ -719,7 +982,7 @@
   width: 1px;
   transform: translateX(-50%);
   border-radius: 9999px;
-  background: rgba(148, 163, 184, 0.35);
+  background: hsl(var(--muted-foreground) / 0.35);
   transition: background-color 160ms ease, box-shadow 160ms ease;
 }
 

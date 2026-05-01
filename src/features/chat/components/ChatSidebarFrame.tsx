@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -28,20 +28,22 @@ export default function ChatSidebarFrame({
         {children}
       </div>
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className={cn(
-          'absolute right-2 top-2 z-20 hidden h-8 w-8 rounded-full border border-border bg-background/90 p-0 shadow-sm backdrop-blur md:flex',
-          collapsed && 'left-1/2 right-auto -translate-x-1/2'
-        )}
-        onClick={() => onCollapsedChange(!collapsed)}
-        aria-label={collapsed ? 'Expandir historial' : 'Colapsar historial'}
-        title={collapsed ? 'Expandir historial' : 'Colapsar historial'}
-      >
-        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-      </Button>
+      {/* When expanded, the collapse trigger lives inline inside ChatSidebar's
+          header (next to the search input). This floating button only appears
+          when the sidebar is collapsed, so the user can re-open it. */}
+      {collapsed && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="meridian-glass absolute left-1/2 top-3 z-20 hidden h-9 w-9 -translate-x-1/2 rounded-full text-muted-foreground transition-all duration-300 ease-out-expo hover:text-foreground md:flex"
+          onClick={() => onCollapsedChange(false)}
+          aria-label="Expandir historial"
+          title="Expandir historial"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   );
 }

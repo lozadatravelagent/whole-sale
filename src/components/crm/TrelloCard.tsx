@@ -122,15 +122,15 @@ export function TrelloCard({ lead, onClick, isDragging }: TrelloCardProps) {
         return lead.budget || 0;
     };
 
-    // Get status color
+    // Get status color (Meridian semantic tokens)
     const getStatusColor = (status: string) => {
         switch (status) {
-            case 'new': return 'bg-blue-100 text-blue-800 border-blue-200';
-            case 'quoted': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-            case 'negotiating': return 'bg-orange-100 text-orange-800 border-orange-200';
-            case 'won': return 'bg-green-100 text-green-800 border-green-200';
-            case 'lost': return 'bg-red-100 text-red-800 border-red-200';
-            default: return 'bg-gray-100 text-gray-800 border-gray-200';
+            case 'new': return 'bg-primary/10 text-primary border-primary/30';
+            case 'quoted': return 'bg-warning/10 text-warning border-warning/30';
+            case 'negotiating': return 'bg-warning/15 text-warning border-warning/30';
+            case 'won': return 'bg-success/10 text-success border-success/30';
+            case 'lost': return 'bg-destructive/10 text-destructive border-destructive/30';
+            default: return 'bg-muted text-muted-foreground border-border';
         }
     };
 
@@ -188,8 +188,8 @@ export function TrelloCard({ lead, onClick, isDragging }: TrelloCardProps) {
                 {/* Precio - alineado a la derecha abajo */}
                 <div className="flex justify-end mt-2">
                     <div className="flex items-center gap-1">
-                        <DollarSign className="h-3 w-3 text-green-600" />
-                        <span className="text-sm font-bold text-green-600">
+                        <DollarSign className="h-3 w-3 text-success" />
+                        <span className="text-sm font-bold text-success">
                             {getPrice() > 0 ? formatCurrency(getPrice()) : 'Sin precio'}
                         </span>
                     </div>

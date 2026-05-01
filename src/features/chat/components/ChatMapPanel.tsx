@@ -132,10 +132,10 @@ export default function ChatMapPanel({
                   <button
                     type="button"
                     className={cn(
-                      'flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-white px-2 text-xs font-semibold shadow-md transition-transform hover:scale-105',
+                      'flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-background px-2 text-xs font-semibold shadow-md transition-transform hover:scale-105',
                       marker.kind === 'place'
-                        ? 'bg-amber-600 text-white'
-                        : 'bg-slate-950 text-white'
+                        ? 'bg-warning text-warning-foreground'
+                        : 'bg-primary text-primary-foreground'
                     )}
                     aria-label={marker.name}
                   >
@@ -189,8 +189,8 @@ export default function ChatMapPanel({
               <span className={cn(
                 'mt-0.5 flex h-5 min-w-5 items-center justify-center rounded-full text-[11px] font-semibold',
                 marker.kind === 'place'
-                  ? 'bg-amber-100 text-amber-800'
-                  : 'bg-slate-100 text-slate-900'
+                  ? 'bg-warning/15 text-warning'
+                  : 'bg-primary/15 text-primary'
               )}>
                 {marker.order ?? <MapPin className="h-3 w-3" />}
               </span>

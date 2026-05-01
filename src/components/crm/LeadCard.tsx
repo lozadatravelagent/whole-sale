@@ -92,13 +92,13 @@ export function LeadCard({ lead, onClick, isDragging, sectionName }: LeadCardPro
           <div className="flex items-center gap-1">
             <DollarSign className={`h-3 w-3 ${
               sectionName?.toLowerCase().includes('perdido') || sectionName?.toLowerCase().includes('lost')
-                ? 'text-red-600'
-                : 'text-green-600'
+                ? 'text-destructive'
+                : 'text-success'
             }`} />
             <span className={`text-sm font-bold ${
               sectionName?.toLowerCase().includes('perdido') || sectionName?.toLowerCase().includes('lost')
-                ? 'text-red-600'
-                : 'text-green-600'
+                ? 'text-destructive'
+                : 'text-success'
             }`}>
               {formatCurrency(lead.budget)}
             </span>

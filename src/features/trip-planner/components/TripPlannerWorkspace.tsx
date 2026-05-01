@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import MessageInput from '@/features/chat/components/MessageInput';
+import ChatInputDock from '@/features/chat/components/shell/ChatInputDock';
 import MessageItem from '@/features/chat/components/MessageItem';
 import type { MessageRow } from '@/features/chat/types/chat';
 import type { LocalHotelData } from '@/types/external';
@@ -2019,7 +2019,7 @@ export default function TripPlannerWorkspace({
           <div ref={messagesEndRef} />
         </div>
       </div>
-      <MessageInput
+      <ChatInputDock
         value={message}
         onChange={onMessageChange}
         onSend={onSendMessage}
