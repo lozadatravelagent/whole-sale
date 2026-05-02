@@ -288,24 +288,70 @@ The automated tests cover the units. These four test the **deployed system** end
 
 ---
 
-## 5. Known limitation: `mode_bridge` vs the tool loop
+### Test 5 — Pending-action slot-fill (v2 flow)
 
-**Observed in this session's manual Test 4 attempt** (logs: `executionBranch: 'mode_bridge', responseMode: 'needs_mode_switch'`).
+**Goal**: the model sees a `<pending_action>` block, invokes `apply_slot_values` instead of restarting analysis, and the client applies the resolution to the planner — all in one turn, without round-tripping back to the user.
 
-**The conflict**:
-- The legacy `conversationOrchestrator.ts` (Emilia 5.0) classifies `Cotizame este viaje` as `route: 'PLAN', reason: 'edit_existing_plan'` and emits `mode_bridge` if the user is in the "wrong" mode for the action.
-- This happens **client-side**, **before** the parser/tool loop is even called.
-- So the tool loop never gets a chance to invoke `get_planner_state` — the user gets the "¿Cambiamos de modo?" message first.
+**This is the v2 flow that replaces the broken Test 4 sequence from the Phase 9 baseline.**
 
-**Why this is correct (sort of)**:
-- If the user is in passenger mode and says "cotizame", the bridge prompts them to switch to agency. Reasonable UX.
-- If the user is **already** in agency mode, the bridge should NOT fire. Verify: when `chatMode === 'agency'` AND there's a plan ref, the orchestrator should emit `standard_search` or `standard_itinerary`, not `mode_bridge`.
+**Setup**: client + server flags on, brand new conversation, mode = agency.
 
-**Open question for product**:
-- Should agency mode + plan ref + "cotizame" route directly to the tool loop (skip bridge)?
-- Currently: probably depends on what `chatMode` returns when toggle is on agency. Need to trace.
+**Steps**:
 
-**To investigate**: search for `mode_bridge` in `src/features/chat/services/conversationOrchestrator.ts`, find the branch decision logic, see if `mode === 'agency'` is treated specially.
+| Step | Action | What to verify |
+|---|---|---|
+| 1 | Send `Armame un viaje a Italia para 2 adultos en septiembre, 8 días` | Planner generates Roma+Florencia. `agent_states` row created with `mode='agency'`, `active_refs[0].type='plan'`. `pending_action` is null. |
+| 2 | Send `Cotizame este plan` | Response is the `quote_active_plan` block ("Tengo el plan activo… necesito ciudad de salida y fechas exactas"). **In Studio**: `state.pending_action` is now set with `kind='awaiting_user_input', for='quote_completion', fields=['ciudad de salida','fechas exactas'], ref={type:'plan', id:...}`. |
+| 3 | Send `Buenos Aires, diciembre 2026` | **Logs**: `[CTX-TOOL] tools_called: ["apply_slot_values"]`. Response payload has `meta.pendingActionResolution = { for: 'quote_completion', applied: { origin: 'Buenos Aires', flexible_month: '12', flexible_year: 2026 }, complete: true }`. **Browser**: `[PENDING-ACTION] Applied + cleared` log. **Planner state**: `origin='Buenos Aires', isFlexibleDates=true, flexibleMonth='12', flexibleYear=2026`. **In Studio**: `state.pending_action` is now `null`. |
+| 4 | Send `cotiza ahora` (or any short ack) | Re-emits `quote_active_plan` against the now-complete plan. Since origin + dates are filled, `missingQuoteFields` is empty and the response is the "Ya puedo usar este itinerario como base…" path. NO mode_bridge. |
+
+**Pass criteria**:
+- `apply_slot_values` invoked at step 3
+- `pending_action` cleared after step 3
+- planner state updated correctly (origin + flexible month/year)
+- step 4 does NOT emit `mode_bridge`
+
+**Fail signals & diagnosis**:
+
+| Symptom | Diagnosis |
+|---|---|
+| Step 2: `state.pending_action` stays null | `setPendingAction` not invoked. Check `quote_active_plan` branch in `useMessageHandler.ts:~1864` — needs `USE_CONTEXT_ENGINEERING && ctxEngState && missingFields.length > 0`. Verify CE flag is on. |
+| Step 3: `tools_called: []` (no apply_slot_values) | (a) `<pending_action>` block missing from rendered prompt — check audit endpoint `rendered_memory_block`. (b) Model decided to ignore — check the actual prompt payload includes the `<tool_selection>` rule about pending_action (PROMPT_VERSION should be `emilia-parser-v5`). (c) User message looks too off-topic — try a more obvious slot answer. |
+| Step 3: `apply_slot_values` invoked but `meta.pendingActionResolution.applied` is empty `{}` | Server-side `intersectFields` dropped all keys. Either the model used field names that don't match `pending_action.fields` (check audit endpoint), or the values were null/empty after sanitization. |
+| Step 3: response has resolution but planner state didn't update | `applyPendingActionResolution` ran but couldn't extract recognized values. Check console for `[PENDING-ACTION] quote_completion: no recognizable values`. Likely the model returned dates in a non-ISO format AND no flexible_month — extend the dispatcher's parser. |
+| Step 3: `agent_states.pending_action` still set after the turn | Client failed to call `clearPendingAction` (check console for `[CTX-ENG] saveEmiliaState (clear pending_action) failed`). Could be RLS or schema mismatch. |
+| Step 4: emits `mode_bridge` | G3/G4 guards not firing. Check `previousMessageType` of step 3's assistant message — should be `quote_active_plan` (NOT `apply_slot_values_resolution`). The orchestrator looks at the LAST `assistant` message's `meta.messageType`. |
+
+**Audit endpoint readout** (recommended for step 3 debugging):
+
+```bash
+curl ".../agent-state-audit?conversation_id=<id>&turn=3" -H "Authorization: Bearer <jwt>"
+```
+
+Look for:
+- `state_snapshot.pending_action` — expected `null` (just cleared) OR the action that was just resolved (depending on timing).
+- `tool_calls_for_turn` — should show `apply_slot_values` with `latencyMs < 100ms` (pure handler, no DB call).
+- `rendered_memory_block` — should include the `<pending_action>` block as injected into the system prompt for THIS turn.
+
+---
+
+## 5. Resolved: `mode_bridge` vs slot-fill flow (v2 — 2026-05-02)
+
+**Original issue (Phase 9 baseline)**: the orchestrator emitted `mode_bridge` whenever the user replied to a `quote_active_plan` prompt with what looked like a fresh request ("Buenos Aires, diciembre 2026" → parser saw `requestType=flights, missingFields=['destination']` → router said COLLECT → orchestrator suggested mode switch). Tool loop never got the chance to invoke `get_planner_state` or recognize the slot-fill.
+
+**Fix (v2)**: introduced **two new bridge guards** in `resolveConversationTurn`:
+
+- **G3 — `hasPendingAction && hasActivePlanner`**: the assistant is mid-ask; bouncing modes would interrupt the in-flight prompt.
+- **G4 — `previousMessageType === 'quote_active_plan'`**: the previous turn opened a quote flow against the active plan; the user's current message is the slot-fill answer regardless of what the parser made of it.
+
+Combined with the new `apply_slot_values` tool (see [tool-catalog-spec.md §3.5](./tool-catalog-spec.md)), the flow is now:
+
+1. Turn N: client emits `quote_active_plan` response AND calls `setPendingAction({for:'quote_completion', fields:[...], ref:{type:'plan',id}})` → persisted to `agent_states`.
+2. Turn N+1: edge function loads state, renders `<pending_action>` in system prompt, model invokes `apply_slot_values({values: {...}})`. Server batch-persists. Response carries `meta.pendingActionResolution`.
+3. Client: `applyPendingActionResolution` dispatches by `for` → mutates planner state → clears `pending_action`.
+4. Orchestrator: G3/G4 prevent any `mode_bridge` from firing during the in-flight ask.
+
+Tests cover this in `src/features/trip-planner/__tests__/conversationOrchestrator.test.ts` (cases G3, G3-negative, G4) and `supabase/functions/_shared/__tests__/pendingActionTools.test.ts`.
 
 ---
 
@@ -350,11 +396,14 @@ Or with conversation_id + turn:
 
 ---
 
-## 7. Bug fixes shipped in this session (post-Phase 9)
+## 7. Bug fixes & enhancements shipped (post-Phase 9 + v2)
 
-| Bug | Symptom | Fix |
+| Bug / change | Symptom / motivation | Fix |
 |---|---|---|
 | temp ID load | `agent_states?conversation_id=eq.temp-... 400` in console; `[EMILIA_STATE] load failed for temp-...` | `useEmiliaState.ts:isValidUuid()` — skip load until ID promotion completes |
+| pending_action mechanism (v2) | Test 4 broken: model lost context after `quote_active_plan` because no turn-state existed. | Generic `pending_action` field on EmiliaState (schema v2), two new tools (`apply_slot_values`, `confirm_pending_action`), client dispatcher `applyPendingActionResolution`, G3/G4 mode_bridge guards. See [context-engineering-spec.md §1.6](./context-engineering-spec.md). |
+| schema v1 → v2 migration | New field `pending_action` on existing rows. | `persistence.ts:loadEmiliaState` forward-migrates v1 rows in memory by defaulting `pending_action: null`. Save path stamps `schema_version=2` on UPSERT. Edge function batch save also updates the column. |
+| flexible-month slot fill | Model may emit `"diciembre 2026"` instead of an ISO `start_date`. Original dispatcher dropped these silently. | `applyPendingActionResolution` now accepts `flexible_month` (ES + EN names + numbers) + `flexible_year` and writes them to `plannerState.isFlexibleDates/flexibleMonth/flexibleYear`. |
 
 If you find more bugs while running the manual tests, file them with: log snippet + reproduction steps + state snapshot from audit endpoint.
 
@@ -364,19 +413,21 @@ If you find more bugs while running the manual tests, file them with: log snippe
 
 Before saying "Context Engineering works", confirm all of these:
 
-- [ ] `npm test -- --run` → 487 pass, 0 fail
+- [ ] `npm test -- --run` → 527 pass, 0 fail (v2 baseline)
 - [ ] `npm run build` → success
-- [ ] `supabase functions list` → shows `ai-message-parser` v119+ and `agent-state-audit` v1+
+- [ ] `supabase functions list` → shows `ai-message-parser` v123+ and `agent-state-audit` v4+
 - [ ] Supabase secrets includes `USE_FUNCTION_TOOLS=true`
 - [ ] `.env` includes `VITE_USE_CONTEXT_ENGINEERING=true`
 - [ ] Dev server restarted after env var change
 - [ ] Browser hard-reloaded
 - [ ] DevTools console shows `[CTX-` logs when opening a conversation
 - [ ] Network tab shows `memoryStateBlock` in POST body to `ai-message-parser`
+- [ ] Edge function logs show `promptVersion: 'emilia-parser-v5'`
 - [ ] Test 1 passes: `[CTX-TOOL] iterations:1 tools_called:[]` for a simple message
 - [ ] Test 2 passes: model invokes `get_planner_state` when referencing a plan
 - [ ] Test 3 passes: `[CTX-MEMORY] attempted:1 accepted:1` for a clear preference statement
 - [ ] Test 4 passes: passenger plans → toggle to agency → model quotes via `get_planner_state` (REQUIRES the toggle click)
+- [ ] **Test 5 passes (v2)**: `pending_action` set after quote_active_plan; `apply_slot_values` invoked next turn; planner state mutated; `pending_action` cleared; no `mode_bridge` regression
 
 If any of these fails, see the relevant test section above for diagnosis.
 
@@ -390,7 +441,9 @@ These are explicitly out of scope for this session and remain as future work:
 - **Gradual rollout** dev → 10% → 100%. Manual decision based on metrics.
 - **DEBT-9 deep wiring**: read `currency`/`language` from `agency_config` table at the call sites of `bootstrapStateIfMissing`. The factory accepts the args; nothing passes them yet.
 - **DEBT-10**: request body validation on the 23 edge functions (separate hardening pass).
-- **mode_bridge vs tool loop** decision: should agency mode + plan ref skip bridge entirely? (See §5.)
+- ~~mode_bridge vs tool loop~~ **RESOLVED in v2**: G3/G4 guards in `conversationOrchestrator` plus the `pending_action` mechanism let the slot-fill flow complete without bridge interruption.
+- **DEBT-11 (new)**: `confirm_pending_action` has no client-side dispatcher case in `applyPendingActionResolution`. The tool resolves state correctly but no domain mutation happens. Add `case 'confirm_*':` arms when the first booking-confirmation flow ships.
+- **DEBT-12 (new)**: only `for: 'quote_completion'` is wired in `applyPendingActionResolution`. Adding new pending-action flows (e.g. `for: 'collect_passenger'`) requires only a new `case` — by design, no parser/router changes.
 - **`get_quote` real implementation**: depends on `quotes` table being provisioned. Currently a stub.
 - **SummarizingSession**: only needed if amnesia rate exceeds threshold in production. Not implemented yet.
 

@@ -482,6 +482,13 @@ Insert verbatim into the system prompt (Phase 6 will tune wording):
   invent numbers.
 - For conceptual questions about destinations (climate, culture, "qué tal X"):
   use internal knowledge. Do NOT call a tool just to confirm well-known facts.
+- If MEMORY STATE includes a <pending_action> block, resolve it FIRST:
+    * kind=awaiting_user_input: parse user reply into the listed `fields`
+      and call apply_slot_values. Snake_case/camelCase keys are tolerated
+      (server normalizes). Use ISO YYYY-MM-DD for dates, integers for counts.
+    * kind=awaiting_user_confirmation: call confirm_pending_action
+      with confirmed=true|false (notes optional, ≤200 chars).
+    * If user clearly changed topic, do NOT call these — proceed normally.
 - If the user references "the plan" / "el itinerario" / "esto" AND mode=agency:
   invoke get_planner_state BEFORE any search or quote tool.
 - If the user references "the quote" / "la cotización" / "ese precio":
@@ -622,9 +629,11 @@ Explicit list, drawn from the GPT-5.1 Prompting Guide, the Function Calling Guid
 | `get_quote` | retrieval | yes | quote JSON | quote ref + needs detail |
 | `get_recent_searches` | retrieval | yes | last N searches | user references prior search |
 | `get_lead_full_history` | retrieval | yes | extended lead profile | recurring lead, strategy |
-| `save_memory_note` | write | NO (serialize) | `{ok:true}` or `{ok:false,reason}` | distill durable fact |
+| `save_memory_note` | write (state) | NO (serialize) | `{ok:true}` or `{ok:false,reason}` | distill durable fact |
+| `apply_slot_values` | write (state) | NO (serialize) | `{ok, applied, remaining, complete}` | resolve `pending_action` kind=awaiting_user_input |
+| `confirm_pending_action` | write (state) | NO (serialize) | `{ok, confirmed, notes}` | resolve `pending_action` kind=awaiting_user_confirmation |
 
-Total: **5 tools**. The catalog is intentionally small (cookbook anti-pattern: bloated tool sets). Adding a 6th requires updating this doc and the Phase 6 audit checklist.
+Total: **7 tools** (5 retrieval-grade + 3 state-write tools, of which `apply_slot_values` and `confirm_pending_action` are domain-agnostic). The retrieval set is deliberately small (cookbook anti-pattern: bloated tool sets). Adding a 6th retrieval tool requires updating this doc and the Phase 6 audit checklist; adding a new pending-action `for` value requires NO new tools — only a `case` in `applyPendingActionResolution`.
 
 ---
 

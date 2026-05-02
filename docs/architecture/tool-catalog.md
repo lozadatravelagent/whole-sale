@@ -1,11 +1,13 @@
-# Tool Catalog — Audit Report (Phase 6)
+# Tool Catalog — Audit Report (Phase 6 + v2 update)
 
-**Status:** YELLOW — schemas pass GPT-5.1 checklist, but **system prompt is missing every tool-related directive** (no persistence reminders, no `<tool_selection>` block, no mention of any tool's existence). The function-tools loop is wired and gated behind `USE_FUNCTION_TOOLS`/`x-use-tool-loop`, and the retrieval tools themselves are spec-compliant; what's missing is the prompt-side context that GPT-5.1 needs in order to actually invoke them well. Phase 9 must close this gap.
+**Status (2026-05-02 v2):** GREEN — system prompt now carries `<persistence>`, `<tool_selection>`, and `<pending_action>` directives (PROMPT_VERSION=`emilia-parser-v5`). Two new turn-state tools (`apply_slot_values`, `confirm_pending_action`) shipped with the same audit pass criteria as the retrieval tools.
+
+**Status (Phase 6 baseline):** YELLOW — schemas pass GPT-5.1 checklist, but **system prompt is missing every tool-related directive**. Phase 9 closed this gap; v2 added pending_action tools.
 
 **Auditor:** Claude (Opus 4.7, 1M-context subagent)
-**Date:** 2026-05-02
+**Date:** 2026-05-02 (v2 amendment)
 **Scope:** every tool/edge function reachable from the chat surface
-**Spec consulted:** `docs/architecture/tool-catalog-spec.md` (sections 1–7), `docs/architecture/context-engineering-spec.md`
+**Spec consulted:** `docs/architecture/tool-catalog-spec.md` (sections 1–7 + 3.5), `docs/architecture/context-engineering-spec.md` (incl. §1.6 PendingAction)
 **No source code was modified during this audit.**
 
 ---
@@ -22,9 +24,11 @@ These are the tools the LLM itself decides to call inside `runToolLoop` in `supa
 | 2 | `get_quote` | `supabase/functions/_shared/functionTools.ts:203` | ✅ true | ✅ pass | none | n/a — handler returns `not_implemented` stub | YES |
 | 3 | `get_recent_searches` | `supabase/functions/_shared/functionTools.ts:254` | ✅ true | ✅ pass | none | 8000 chars via `fitToCap` | YES |
 | 4 | `get_lead_full_history` | `supabase/functions/_shared/functionTools.ts:353` | ✅ true | ✅ pass | none | 8000 chars via `fitToCap` | YES |
-| 5 | `save_memory_note` | `supabase/functions/_shared/memoryTools.ts:37` | ✅ true | ✅ pass (slightly shorter than retrieval tools but still meets ≥30 chars + Use when / Don't use for) | none | `{ok:true}` or `{ok:false,reason}` — minimal | **NO — DEBT** (schema exists, executor `executeSaveMemoryNote` exists, but `index.ts` never spreads it into `getRetrievalToolHandlers()` — see §4) |
+| 5 | `save_memory_note` | `supabase/functions/_shared/memoryTools.ts:37` | ✅ true | ✅ pass | none | `{ok:true}` or `{ok:false,reason}` | YES (Phase 9 wired into `runToolLoop`) |
+| 6 | `apply_slot_values` | `supabase/functions/_shared/pendingActionTools.ts` | ✅ true | ✅ pass (Use when / Don't use for) | none | `{ok, applied, remaining, complete}` | YES (v2) |
+| 7 | `confirm_pending_action` | `supabase/functions/_shared/pendingActionTools.ts` | ✅ true | ✅ pass | none | `{ok, confirmed, notes}` | YES (v2) |
 
-Total exposed to model right now: **4 tools** (the retrieval set). `save_memory_note` is implemented but unwired.
+Total exposed to model right now: **7 tools** (4 retrieval + 1 memory write + 2 turn-state resolution). `apply_slot_values` and `confirm_pending_action` are domain-agnostic — adding new pending-action `for` flows requires NO new tool, just a `case` in `applyPendingActionResolution` (client) or in the upstream handler that calls `setPendingAction`.
 
 ### 1.2 Edge functions (code-invoked from src/, never seen by the model)
 
@@ -125,6 +129,34 @@ For each tool I checked the eight-point GPT-5.1 checklist:
 
 **Score: 4 of 4 retrieval tools fully pass; `save_memory_note` passes the schema audit but fails the wiring audit.**
 
+### 2.6 `apply_slot_values` (v2)
+
+- **(1)** ✅ 491 chars, both clauses ("Use when" / "Don't use for") present, explicitly tells the model to default to ISO YYYY-MM-DD and integers.
+- **(2)** ✅ `strict: true`.
+- **(3)** ✅ top-level `additionalProperties: false`. `values` itself is `additionalProperties: true` BY DESIGN — the slot keys are dynamic per `pending_action.fields`, so the schema cannot enumerate them. Server-side `intersectFields` filters unknown keys out (no security or correctness risk; the model is encouraged but not forced to match).
+- **(4)** ✅ `["values"]` required.
+- **(5)** ✅ description includes worked example payload.
+- **(6)** ✅ no overlap — only fires when `pending_action.kind=awaiting_user_input`.
+- **(7)** ✅ response envelope ≤200 bytes.
+- **(8)** ✅ unambiguous: prompt block + `<pending_action>` rendering tells the model exactly when this tool applies.
+- **Wiring:** YES, in `runToolLoop({ tools: [..., applySlotValuesToolSchema], toolHandlers: { ..., apply_slot_values: ...} })` (`ai-message-parser/index.ts`).
+- **State mutation:** pure in-memory; batch-persisted at end of loop alongside any `save_memory_note` writes (single `UPDATE` round trip).
+
+### 2.7 `confirm_pending_action` (v2)
+
+- **(1)** ✅ 268 chars, both clauses present.
+- **(2)** ✅ `strict: true`.
+- **(3)** ✅ `additionalProperties: false`.
+- **(4)** ✅ `["confirmed", "notes"]` both required (`notes` is nullable per OpenAI strict-mode pattern).
+- **(5)** ✅ each field documented.
+- **(6)** ✅ no overlap — fires only when `kind=awaiting_user_confirmation`.
+- **(7)** ✅ response envelope ≤120 bytes.
+- **(8)** ✅ unambiguous.
+- **Wiring:** YES.
+- **DEBT-11 (low):** no client-side dispatcher case yet for `for: 'confirm_*'` flows in `applyPendingActionResolution` — the tool returns OK and the state is stamped, but no domain mutation happens. Acceptable for v2 (no flow uses it yet). Add a `case 'confirm_booking':` (and friends) when the first booking confirmation flow ships.
+
+**Score (v2 amendment): 7 of 7 tools pass schema + wiring audit.** All gaps are resolved or formally tracked as DEBT.
+
 ---
 
 ## 3. System prompt audit (`supabase/functions/ai-message-parser/prompt.ts`)
@@ -208,6 +240,8 @@ This is good — and crucially, it's the ONLY place in the prompt-rendered outpu
 | DEBT-8 | low | Empty `supabase/functions/travel-chat/` directory | `supabase/functions/travel-chat/` | Delete. Pure dead-folder cleanup. **RESOLVED in Phase 9: directory removed.** |
 | DEBT-9 | low | `get_planner_state` returns hardcoded `currency: "USD"` | `_shared/functionTools.ts:173` | Either add `currency` column to `trips` or pull from `agency` row. **PARTIALLY RESOLVED in Phase 9: `createInitialEmiliaState` and `bootstrapStateIfMissing` now accept optional `currency`/`language` overrides (defaults USD/es). Call sites still need to wire agency_config when available; tracked as a follow-up.** |
 | DEBT-10 | low | Edge functions called from chat (`starling-flights`, `eurovips-soap`, `places-viewport`) lack request-body schema validation at HTTP boundary | several | Add Zod or hand-rolled validation in each handler's first 10 lines. Currently they trust the caller. **DEFERRED to a separate hardening pass. Scope is too broad for Context Engineering Phase 9 — it touches 23 edge functions, each with its own input shape. Should be a focused security-review work item.** |
+| DEBT-11 | low | `confirm_pending_action` has no client-side dispatcher case | `useMessageHandler.ts:applyPendingActionResolution` | Add `case 'confirm_*':` arms when the first booking-confirmation flow ships. Tool itself is correctly wired; only the domain-specific consumer is missing. |
+| DEBT-12 | low | `applyPendingActionResolution` only handles `for: 'quote_completion'` today | `useMessageHandler.ts:applyPendingActionResolution` | Add new `case` per new pending-action `for` value. By design the parser/router need NO change — just the dispatcher. |
 
 ---
 

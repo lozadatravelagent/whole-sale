@@ -545,42 +545,44 @@
    ═══════════════════════════════════════════ */
 
 /* Glass surfaces — three depth levels per brandbook 05.
-   Dark mode uses violet-tinted fills with higher saturation so surfaces
-   read as violet (not gray) and elevate clearly above Void. The borders
-   carry a subtle violet glow to reinforce the brand hue. */
+   Light is the default (matches the :root token set). Dark mode overrides
+   under any `.dark` ancestor so scoped wrappers (e.g. the Login shell)
+   render correctly even when <html> is in light mode. */
 .meridian-glass {
-  background: hsla(258, 50%, 14%, 0.7);
+  background: hsla(0, 0%, 100%, 0.7);
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid hsla(258, 50%, 60%, 0.18);
+  border: 1px solid hsla(240, 10%, 92%, 0.9);
   box-shadow: var(--shadow-md);
 }
 .meridian-glass-strong {
-  background: hsla(258, 55%, 17%, 0.82);
+  background: hsla(0, 0%, 100%, 0.85);
   backdrop-filter: blur(40px) saturate(200%);
   -webkit-backdrop-filter: blur(40px) saturate(200%);
-  border: 1px solid hsla(258, 60%, 65%, 0.22);
+  border: 1px solid hsla(240, 10%, 92%, 0.9);
   box-shadow: var(--shadow-inset-glass), var(--shadow-lg);
 }
 .meridian-glass-dark {
-  background: hsla(258, 60%, 8%, 0.9);
+  background: hsla(0, 0%, 100%, 0.5);
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid hsla(258, 50%, 50%, 0.12);
+  border: 1px solid hsla(240, 10%, 88%, 0.8);
 }
 
-/* Light-mode override: opaque white surfaces on Smoke canvas. */
-:root:not(.dark) .meridian-glass {
-  background: hsla(0, 0%, 100%, 0.7);
-  border-color: hsla(240, 10%, 92%, 0.9);
+/* Dark-mode override: violet-tinted fills with higher saturation so surfaces
+   read as violet (not gray) and elevate clearly above Void. The borders
+   carry a subtle violet glow to reinforce the brand hue. */
+.dark .meridian-glass {
+  background: hsla(258, 50%, 14%, 0.7);
+  border-color: hsla(258, 50%, 60%, 0.18);
 }
-:root:not(.dark) .meridian-glass-strong {
-  background: hsla(0, 0%, 100%, 0.85);
-  border-color: hsla(240, 10%, 92%, 0.9);
+.dark .meridian-glass-strong {
+  background: hsla(258, 55%, 17%, 0.82);
+  border-color: hsla(258, 60%, 65%, 0.22);
 }
-:root:not(.dark) .meridian-glass-dark {
-  background: hsla(0, 0%, 100%, 0.5);
-  border-color: hsla(240, 10%, 88%, 0.8);
+.dark .meridian-glass-dark {
+  background: hsla(258, 60%, 8%, 0.9);
+  border-color: hsla(258, 50%, 50%, 0.12);
 }
 
 /* Meridian text gradient (display titles) */
@@ -592,20 +594,21 @@
   letter-spacing: -0.025em;
 }
 
-/* Grid overlay — subtle architecture lines */
+/* Grid overlay — subtle architecture lines.
+   Light is the default; `.dark` ancestor switches to lilac-tinted lines. */
 .meridian-grid-overlay {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 0;
   background:
-    repeating-linear-gradient(90deg, hsla(255, 80%, 72%, 0.04) 0 1px, transparent 1px 120px),
-    repeating-linear-gradient(0deg, hsla(255, 80%, 72%, 0.04) 0 1px, transparent 1px 100px);
-}
-:root:not(.dark) .meridian-grid-overlay {
-  background:
     repeating-linear-gradient(90deg, hsla(252, 38%, 52%, 0.05) 0 1px, transparent 1px 120px),
     repeating-linear-gradient(0deg, hsla(252, 38%, 52%, 0.05) 0 1px, transparent 1px 100px);
+}
+.dark .meridian-grid-overlay {
+  background:
+    repeating-linear-gradient(90deg, hsla(255, 80%, 72%, 0.04) 0 1px, transparent 1px 120px),
+    repeating-linear-gradient(0deg, hsla(255, 80%, 72%, 0.04) 0 1px, transparent 1px 100px);
 }
 
 /* Grain texture — apply via `position:relative` parent + `.meridian-grain::before` */
