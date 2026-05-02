@@ -365,6 +365,110 @@ No echo of the saved text, no note id, no metadata. Per the cookbook: avoid leak
 
 ---
 
+## 3.5 Pending-Action Tools (turn-state resolution, v2)
+
+These two tools resolve `state.pending_action` (see context-engineering-spec §1.6). They are **generic** — they don't know about quotes, planners, or any domain — they only mutate `state.pending_action.applied/complete`. The client-side dispatcher (`applyPendingActionResolution` in `useMessageHandler.ts`) keys off `pending_action.for` to apply the actual domain mutation (planner update, quote update, etc.).
+
+Both tools are pure (no DB writes inside the handler); the parser batch-persists state once at the end of the tool loop.
+
+### 3.5.1 `apply_slot_values`
+
+Resolves a `pending_action` of `kind='awaiting_user_input'` by submitting parsed slot values from the user's reply.
+
+**Description:**
+
+> Resolve a pending_action of kind='awaiting_user_input' by submitting parsed slot values from the user's reply.
+> Use when: <pending_action> is present in MEMORY STATE, kind="awaiting_user_input", and the latest user message plausibly answers any of the listed `fields`.
+> Pass `values` as an object keyed by field names (snake_case is fine). Unrecognized keys are dropped server-side.
+> Don't use for: greetings, off-topic messages, or replies that clearly start a new request — let the parser route normally instead.
+
+**Schema:**
+
+```json
+{
+  "name": "apply_slot_values",
+  "strict": true,
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "values": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Parsed slot values keyed by the field names from pending_action.fields. Examples: {\"origin_city\":\"Buenos Aires\",\"start_date\":\"2026-12-01\",\"end_date\":\"2026-12-09\"}. Use string for cities/places, ISO YYYY-MM-DD for dates, integers for counts."
+      }
+    },
+    "required": ["values"]
+  }
+}
+```
+
+**Server-side filtering** (`pendingActionTools.ts:intersectFields`):
+
+The handler normalizes incoming keys (case-insensitive, snake/camel/space collapse) and intersects them with `pending_action.fields`. Unrecognized keys are dropped. If `fields` is undefined or empty, all keys are accepted.
+
+**Response envelopes:**
+
+| Outcome | Response |
+|---|---|
+| Success (partial fill) | `{ "ok": true, "applied": {…}, "remaining": ["start_date"], "complete": false }` |
+| Success (full fill) | `{ "ok": true, "applied": {…}, "remaining": [], "complete": true }` |
+| No pending_action | `{ "ok": false, "reason": "no_pending_action" }` |
+| Wrong kind | `{ "ok": false, "reason": "wrong_kind" }` |
+| Empty values | `{ "ok": false, "reason": "empty_values" }` |
+| All keys outside fields | `{ "ok": false, "reason": "no_recognized_fields" }` |
+
+**Client-side consumption:**
+
+The edge function returns `meta.pendingActionResolution = { kind, for, ref, applied, complete }` to the client. `useMessageHandler` consumes it via `applyPendingActionResolution`, which dispatches by `for`:
+
+| `for` value | Domain mutation |
+|---|---|
+| `quote_completion` | Updates `plannerState.origin / startDate / endDate / flexibleMonth / flexibleYear` via `updatePlannerState`. Tolerates field-name synonyms (origin/origin_city/from, start_date/startDate/from_date, etc.) and flexible-month names (ES + EN). |
+| `<future kinds>` | Add a new `case` in the dispatcher; the parser/router need NO changes. |
+
+After the dispatcher runs, the client calls `clearPendingAction(state) + saveEmiliaState`.
+
+### 3.5.2 `confirm_pending_action`
+
+Resolves a `pending_action` of `kind='awaiting_user_confirmation'` with the user's yes/no answer.
+
+**Description:**
+
+> Resolve a pending_action of kind='awaiting_user_confirmation' with the user's yes/no answer.
+> Use when: <pending_action> kind="awaiting_user_confirmation" and the user replied affirmatively or negatively.
+> Don't use for: ambiguous replies (let the parser handle them as new analysis).
+
+**Schema:**
+
+```json
+{
+  "name": "confirm_pending_action",
+  "strict": true,
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "confirmed": { "type": "boolean", "description": "true if the user accepted, false if they declined." },
+      "notes": { "type": ["string", "null"], "description": "Optional free-text caveat the user added (e.g. \"sí pero cambialo a 5 días\"). ≤200 chars." }
+    },
+    "required": ["confirmed", "notes"]
+  }
+}
+```
+
+**Response envelopes:**
+
+| Outcome | Response |
+|---|---|
+| Success | `{ "ok": true, "confirmed": true|false, "notes": "..."|null }` |
+| No pending_action | `{ "ok": false, "reason": "no_pending_action" }` |
+| Wrong kind | `{ "ok": false, "reason": "wrong_kind" }` |
+
+Currently no domain dispatcher consumes `for: 'confirm_*'` results in `applyPendingActionResolution` — the wiring is in place for future booking/payment confirmation flows.
+
+---
+
 ## 4. Tool Selection Rules (system prompt directives)
 
 These directives belong in the system prompt **as a single `<tool_selection>` block**, not scattered. They are the narrow exception to the GPT-5.1 guide rule "tool guidance lives in descriptions" — these are *cross-tool* arbitration rules that no individual tool description can express.

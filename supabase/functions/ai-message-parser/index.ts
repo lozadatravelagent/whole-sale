@@ -23,6 +23,18 @@ import {
   validateMemoryNote,
   type MemoryNoteScope,
 } from "../_shared/memoryTools.ts";
+import {
+  applySlotValuesToolSchema,
+  confirmPendingActionToolSchema,
+  executeApplySlotValues,
+  executeConfirmPendingAction,
+  type ApplySlotValuesArgs,
+  type ConfirmPendingActionArgs,
+} from "../_shared/pendingActionTools.ts";
+import type {
+  EmiliaState,
+  PendingActionKind,
+} from "../_shared/emiliaStateTypes.ts";
 import { countRedundantCalls, emitTelemetry } from "../_shared/telemetry.ts";
 
 function cleanLocation(value: string | undefined): string {
@@ -316,6 +328,17 @@ serve(async (req) => {
         let aiResponse = '';
         let toolLoopTrace: Array<{ tool: string; latencyMs: number; error?: string }> = [];
         let toolLoopIterations = 0;
+        // Resolution of any pending_action consumed during the loop. Returned
+        // to the client in `meta.pendingActionResolution` so the client can
+        // mutate domain state (planner, quote, etc.) without re-parsing.
+        interface PendingActionResolutionEnvelope {
+          kind: PendingActionKind;
+          for: string;
+          ref?: { type: 'plan' | 'quote' | 'lead'; id: string };
+          applied: Record<string, unknown>;
+          complete: boolean;
+        }
+        let pendingActionResolution: PendingActionResolutionEnvelope | null = null;
 
         if (useToolLoop) {
           // Build a ToolContext from the same scope used by retrieval tools.
@@ -326,6 +349,36 @@ serve(async (req) => {
             agencyId: contextMeta?.agencyId ?? '',
             leadId: contextMeta?.leadId ?? undefined,
           };
+
+          // -------------------------------------------------------------
+          // Load EmiliaState ONCE at the top of the loop so the
+          // pending_action handlers can read+mutate it across (potentially
+          // parallel) tool calls within this turn. Final state is batch-
+          // persisted after the loop along with any save_memory_note notes.
+          // -------------------------------------------------------------
+          let stateForTools: EmiliaState | null = null;
+          let stateLoadFailed = false;
+          if (ctx.conversationId && ctx.agencyId) {
+            try {
+              const { data: row, error: loadErr } = await supabase
+                .from('agent_states')
+                .select('state')
+                .eq('conversation_id', ctx.conversationId)
+                .eq('agency_id', ctx.agencyId)
+                .single();
+              if (loadErr) {
+                if (loadErr.code !== 'PGRST116') {
+                  console.warn('[CTX-TOOL] state preload failed:', loadErr.message);
+                  stateLoadFailed = true;
+                }
+              } else if (row?.state) {
+                stateForTools = row.state as unknown as EmiliaState;
+              }
+            } catch (preloadErr) {
+              console.warn('[CTX-TOOL] state preload threw:', preloadErr);
+              stateLoadFailed = true;
+            }
+          }
 
           // save_memory_note handler — validates and returns the structured
           // note. Persistence to agent_states happens in batch AFTER the loop
@@ -347,6 +400,48 @@ serve(async (req) => {
             };
           };
 
+          // apply_slot_values handler — pure mutation against stateForTools.
+          // Accumulates `applied` across (possibly parallel) calls so the
+          // final pendingActionResolution carries every value the model parsed.
+          const applySlotValuesHandler = async (args: ApplySlotValuesArgs) => {
+            if (!stateForTools) {
+              return { ok: false, reason: 'no_pending_action' as const };
+            }
+            const { nextState, result } = executeApplySlotValues(stateForTools, args);
+            if (result.ok) {
+              stateForTools = nextState;
+              const pa = nextState.pending_action!;
+              pendingActionResolution = {
+                kind: pa.kind,
+                for: pa.for,
+                ref: pa.ref,
+                applied: { ...(pa.applied ?? {}) },
+                complete: Boolean(pa.complete),
+              };
+            }
+            return result;
+          };
+
+          // confirm_pending_action handler — same shape, different kind guard.
+          const confirmPendingActionHandler = async (args: ConfirmPendingActionArgs) => {
+            if (!stateForTools) {
+              return { ok: false, reason: 'no_pending_action' as const };
+            }
+            const { nextState, result } = executeConfirmPendingAction(stateForTools, args);
+            if (result.ok) {
+              stateForTools = nextState;
+              const pa = nextState.pending_action!;
+              pendingActionResolution = {
+                kind: pa.kind,
+                for: pa.for,
+                ref: pa.ref,
+                applied: { ...(pa.applied ?? {}) },
+                complete: Boolean(pa.complete),
+              };
+            }
+            return result;
+          };
+
           try {
             const loopResult = await runToolLoop({
               apiKey: openaiApiKey,
@@ -357,10 +452,21 @@ serve(async (req) => {
               model: Deno.env.get('CTX_TOOL_LOOP_MODEL') ?? 'gpt-4.1',
               systemPrompt,
               userMessage: userPrompt,
-              tools: [...getRetrievalToolSchemas(), saveMemoryNoteToolSchema],
+              tools: [
+                ...getRetrievalToolSchemas(),
+                saveMemoryNoteToolSchema,
+                applySlotValuesToolSchema,
+                confirmPendingActionToolSchema,
+              ],
               toolHandlers: {
                 ...getRetrievalToolHandlers(),
                 save_memory_note: saveMemoryNoteHandler,
+                apply_slot_values: applySlotValuesHandler as unknown as (
+                  args: unknown,
+                ) => Promise<unknown>,
+                confirm_pending_action: confirmPendingActionHandler as unknown as (
+                  args: unknown,
+                ) => Promise<unknown>,
               },
               ctx,
               iterationCap: 3,
@@ -395,44 +501,59 @@ serve(async (req) => {
             const memoryAccepted = acceptedNotes.length;
             const memoryRejected = memoryAttempted - memoryAccepted;
 
-            // Batch-persist accepted save_memory_note calls into
-            // agent_states.session_memory.notes (Option A scope:
-            // per-conversation; never crosses to other conversations).
-            if (acceptedNotes.length > 0 && ctx.conversationId && ctx.agencyId) {
+            // Batch-persist BOTH accepted save_memory_note notes AND any
+            // pending_action mutations from apply_slot_values /
+            // confirm_pending_action — single UPDATE round trip per turn.
+            //
+            // Option A scope: per-conversation. Never crosses to other
+            // conversations. Skipped silently if state preload failed (we
+            // don't want to clobber an unloaded row with a half-state).
+            const hasMemoryWrites = acceptedNotes.length > 0;
+            const hasPendingMutation = pendingActionResolution !== null;
+            if (
+              (hasMemoryWrites || hasPendingMutation) &&
+              ctx.conversationId &&
+              ctx.agencyId &&
+              !stateLoadFailed
+            ) {
               try {
-                const { data: row, error: loadErr } = await supabase
-                  .from('agent_states')
-                  .select('state')
-                  .eq('conversation_id', ctx.conversationId)
-                  .eq('agency_id', ctx.agencyId)
-                  .single();
-
-                if (loadErr) {
-                  if (loadErr.code !== 'PGRST116') {
-                    console.warn('[CTX-TOOL] save_memory_note load failed:', loadErr.message);
+                // If we never loaded a row (fresh conversation not yet
+                // bootstrapped by the client) we can't safely upsert here —
+                // the client owns bootstrap. Just log and skip.
+                if (!stateForTools) {
+                  console.log('[CTX-TOOL] no agent_states row to persist into; client must bootstrap first');
+                } else {
+                  // Apply memory writes onto the same in-memory state object
+                  // that the pending_action handlers already mutated, so we
+                  // do one consistent UPDATE.
+                  if (hasMemoryWrites) {
+                    stateForTools.session_memory = stateForTools.session_memory ?? { notes: [] };
+                    stateForTools.session_memory.notes = (stateForTools.session_memory.notes ?? [])
+                      .concat(acceptedNotes);
                   }
-                } else if (row?.state) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const state: any = row.state;
-                  state.session_memory = state.session_memory || { notes: [] };
-                  state.session_memory.notes = (state.session_memory.notes || [])
-                    .concat(acceptedNotes);
                   const { error: saveErr } = await supabase
                     .from('agent_states')
-                    .update({ state })
+                    .update({
+                      state: stateForTools as unknown as Record<string, unknown>,
+                      // Keep the DB column in sync with state.meta.schema_version.
+                      // Client may have just migrated a v1 row in memory (see
+                      // src/features/chat/state/persistence.ts).
+                      schema_version: stateForTools.meta?.schema_version ?? 1,
+                    })
                     .eq('conversation_id', ctx.conversationId)
                     .eq('agency_id', ctx.agencyId);
                   if (saveErr) {
-                    console.warn('[CTX-TOOL] save_memory_note save failed:', saveErr.message);
+                    console.warn('[CTX-TOOL] state batch save failed:', saveErr.message);
                   } else {
-                    console.log('[CTX-TOOL] persisted save_memory_note batch:', {
-                      count: acceptedNotes.length,
+                    console.log('[CTX-TOOL] persisted state batch:', {
                       conversationId: ctx.conversationId,
+                      memoryNotes: acceptedNotes.length,
+                      pendingResolved: hasPendingMutation,
                     });
                   }
                 }
               } catch (persistErr) {
-                console.warn('[CTX-TOOL] save_memory_note persistence threw:', persistErr);
+                console.warn('[CTX-TOOL] state batch persistence threw:', persistErr);
               }
             }
 
@@ -691,6 +812,10 @@ serve(async (req) => {
                   trace: toolLoopTrace,
                 }
               : { enabled: false },
+            // When the model invoked apply_slot_values / confirm_pending_action,
+            // surface the resolution to the client so it can mutate domain
+            // state (planner, quote, etc.) without re-parsing.
+            pendingActionResolution,
           }
         }), {
           headers: {

@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v4';
+export const PROMPT_VERSION = 'emilia-parser-v5';
 export const PROMPT_CONTRACT_SNIPPETS = [
   'IMPORTANTE: Siempre responde solo con JSON válido.',
   "NO roomType or mealPlan because user didn't mention them",
@@ -82,12 +82,25 @@ IMPORTANTE: Siempre responde solo con JSON válido. Usa \\n para saltos de líne
 </persistence>
 
 <tool_selection>
-You have access to retrieval tools and one memory tool. Selection rules:
+You have access to retrieval tools, one memory tool, and two turn-state resolution tools. Selection rules:
+
+PENDING ACTION (highest priority — check FIRST):
+- If MEMORY STATE includes a \`<pending_action>\` block, the user's reply most likely answers it. Resolve before doing anything else.
+  * kind="awaiting_user_input": parse the user's message into the listed \`fields\` and call \`apply_slot_values({values: {...}})\`. Keys SHOULD match the field names. Cities/places as strings, dates as ISO YYYY-MM-DD, integers for counts.
+  * kind="awaiting_user_confirmation": call \`confirm_pending_action({confirmed: true|false, notes: ...|null})\`.
+  * If the user clearly changed topic (off-topic, greeting, brand-new request), do NOT call these — proceed normally.
+- After resolving pending_action, you may STILL emit the final JSON envelope; the client consumes \`apply_slot_values\` results separately and re-routes accordingly.
+
+RETRIEVAL:
 - Use \`get_planner_state(planner_id)\` BEFORE quoting/editing when the user references "the plan" / "el itinerario" / "esto" AND a plan ref is active in MEMORY STATE.
 - Use \`get_recent_searches(limit)\` when the user references prior searches like "esa búsqueda", "los vuelos que vimos", "el hotel anterior".
 - Use \`get_lead_full_history(lead_id)\` only when the conversation summary and profile are insufficient and the user asks something requiring lead history (e.g. "¿qué reservó el año pasado?").
 - Use \`get_quote(quote_id)\` only when a quote ref is active and the user references the existing cotization.
+
+MEMORY:
 - Use \`save_memory_note(text, keywords, scope)\` ONLY when the user explicitly states a durable preference, constraint, or decision. NEVER save: speculation, instructions to yourself, sensitive PII (passports, payments, DOB, SSN), or trip-specific ephemeral details.
+
+GENERAL:
 - Do NOT call tools for conceptual questions about destinations or general travel knowledge — use your training data.
 - Do NOT call tools when the user message is a simple acknowledgement or chitchat.
 - Prefer parallel tool calls when independent (e.g. \`get_planner_state\` + \`get_lead_full_history\`).

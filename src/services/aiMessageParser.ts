@@ -198,6 +198,22 @@ export interface ParsedTravelRequest {
     missingFields?: string[];
     missingRequiredFields?: string[]; // Campos requeridos que faltan
     needsMoreInfo?: boolean; // Si necesita más información del usuario
+
+    /**
+     * Context-Engineering passthrough. When the edge-function tool loop
+     * resolved a `pending_action` (apply_slot_values / confirm_pending_action),
+     * this carries the resolution so `useMessageHandler` can mutate domain
+     * state (planner, quote, etc.) without an extra LLM round-trip.
+     *
+     * Null when no pending_action existed or the model did not invoke the tool.
+     */
+    pendingActionResolution?: {
+        kind: 'awaiting_user_input' | 'awaiting_user_confirmation';
+        for: string;
+        ref?: { type: 'plan' | 'quote' | 'lead'; id: string };
+        applied: Record<string, unknown>;
+        complete: boolean;
+    } | null;
 }
 
 // Interfaz para campos requeridos de vuelos
@@ -1930,6 +1946,17 @@ export async function parseMessageWithAI(
 
         // Guardrail: restore country names if parser collapsed them to capitals
         const mergedResult = restoreCountryDestinationsForItinerary(normalizedResult, message);
+
+        // Surface the Context-Engineering pending_action resolution from the
+        // edge function (when the model invoked apply_slot_values /
+        // confirm_pending_action). Null when no resolution happened.
+        const pendingActionResolution =
+            (response.data?.meta?.pendingActionResolution ?? null) as
+                ParsedTravelRequest['pendingActionResolution'];
+        if (pendingActionResolution) {
+            (mergedResult as ParsedTravelRequest).pendingActionResolution = pendingActionResolution;
+            console.log('🎯 [PENDING-ACTION] Resolution from tool loop:', pendingActionResolution);
+        }
 
         console.log('🌍 [GEO-TRACE-2] After merge/post-processing destinations:', mergedResult.itinerary?.destinations);
         console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);

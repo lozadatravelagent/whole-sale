@@ -10,7 +10,7 @@ import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
 import { routeRequest, buildSearchSummary, getInferredFieldDetails } from '../services/routeRequest';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
-import { buildConversationalMissingInfoMessage, buildModeBridgeMessage, resolveConversationTurn } from '../services/conversationOrchestrator';
+import { buildConversationalMissingInfoMessage, buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTurn, resolveTravelContextBridge } from '../services/conversationOrchestrator';
 import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponsePayload } from '../services/discoveryService';
 import type { MessageRow } from '../types/chat';
@@ -30,10 +30,12 @@ import {
   applyModeChange,
   bootstrapStateIfMissing,
   buildMemoryStateBlockFromState,
+  clearPendingAction,
   setActiveRef,
+  setPendingAction,
 } from '@/features/chat/state/contextEngineeringIntegration';
 import { saveEmiliaState } from '@/features/chat/state/persistence';
-import type { EmiliaState } from '@/features/chat/state/emiliaState';
+import type { EmiliaState, PendingAction } from '@/features/chat/state/emiliaState';
 import i18n from '@/i18n';
 
 /**
@@ -70,6 +72,103 @@ async function resolveAgencyIdForConversation(conversationId: string): Promise<s
   } catch (e) {
     console.warn('[CTX-ENG] resolveAgencyIdForConversation threw:', e);
     return null;
+  }
+}
+
+/**
+ * Apply a pending_action resolution coming back from the edge-function tool
+ * loop. Generic dispatcher keyed by `resolution.for` — adding a new pending
+ * action kind is "register a new case here" plus "set the action somewhere
+ * upstream", nothing else.
+ *
+ * Domain mutations (planner, quote, etc.) happen here so the React state stays
+ * the source of truth client-side. EmiliaState is cleared by the caller.
+ */
+async function applyPendingActionResolution(args: {
+  resolution: NonNullable<ParsedTravelRequest['pendingActionResolution']>;
+  plannerState: TripPlannerState | null;
+  updatePlannerState?: (
+    updater: (current: TripPlannerState) => TripPlannerState,
+    source?: 'ui_edit' | 'system',
+  ) => Promise<void>;
+}): Promise<void> {
+  const { resolution, plannerState, updatePlannerState } = args;
+  const { for: forKind, applied, ref } = resolution;
+
+  switch (forKind) {
+    case 'quote_completion': {
+      // Verify the resolution is targeting the active planner.
+      if (!plannerState || (ref && ref.type === 'plan' && ref.id !== plannerState.id)) {
+        console.warn('[PENDING-ACTION] quote_completion ignored — ref/plan mismatch');
+        return;
+      }
+      if (!updatePlannerState) {
+        console.warn('[PENDING-ACTION] quote_completion: no updatePlannerState provided');
+        return;
+      }
+      // Field-name-tolerant extraction. The model may emit any of these
+      // synonyms based on what was in pending_action.fields.
+      const originRaw = applied.origin ?? applied.origin_city ?? applied['ciudad de salida']
+        ?? applied.ciudad_de_salida ?? applied.from;
+      const startRaw = applied.start_date ?? applied.startDate ?? applied.from_date
+        ?? applied['fecha de salida'] ?? applied.fecha_de_salida ?? applied.fechas;
+      const endRaw = applied.end_date ?? applied.endDate ?? applied.to_date
+        ?? applied['fecha de regreso'] ?? applied.fecha_de_regreso;
+      // Flexible-month fallback. When the model can't pin a YYYY-MM-DD (user
+      // said "diciembre 2026"), it may emit either of these instead.
+      const flexMonthRaw = applied.flexible_month ?? applied.flexibleMonth ?? applied.month;
+      const flexYearRaw = applied.flexible_year ?? applied.flexibleYear ?? applied.year;
+
+      const origin = typeof originRaw === 'string' && originRaw.trim() ? originRaw.trim() : undefined;
+      const startDate = typeof startRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startRaw) ? startRaw : undefined;
+      const endDate = typeof endRaw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(endRaw) ? endRaw : undefined;
+
+      // Normalize flexible month: accept "12", "diciembre", "december" → "12".
+      const monthNames: Record<string, string> = {
+        enero: '01', january: '01', febrero: '02', february: '02', marzo: '03', march: '03',
+        abril: '04', april: '04', mayo: '05', may: '05', junio: '06', june: '06',
+        julio: '07', july: '07', agosto: '08', august: '08', septiembre: '09', september: '09',
+        octubre: '10', october: '10', noviembre: '11', november: '11', diciembre: '12', december: '12',
+      };
+      let flexibleMonth: string | undefined;
+      if (typeof flexMonthRaw === 'string') {
+        const lower = flexMonthRaw.trim().toLowerCase();
+        flexibleMonth = monthNames[lower] ?? (/^\d{1,2}$/.test(lower) ? lower.padStart(2, '0') : undefined);
+      } else if (typeof flexMonthRaw === 'number' && flexMonthRaw >= 1 && flexMonthRaw <= 12) {
+        flexibleMonth = String(flexMonthRaw).padStart(2, '0');
+      }
+      const flexibleYear = typeof flexYearRaw === 'number'
+        ? flexYearRaw
+        : (typeof flexYearRaw === 'string' && /^\d{4}$/.test(flexYearRaw) ? parseInt(flexYearRaw, 10) : undefined);
+
+      if (!origin && !startDate && !endDate && !flexibleMonth) {
+        console.warn('[PENDING-ACTION] quote_completion: no recognizable values in', applied);
+        return;
+      }
+
+      await updatePlannerState((current) => {
+        const next = { ...current };
+        if (origin) next.origin = origin;
+        if (startDate) {
+          next.startDate = startDate;
+          next.isFlexibleDates = false;
+        }
+        if (endDate) next.endDate = endDate;
+        // Only set flexible mode when no exact date was provided, so a model
+        // that emits both YYYY-MM-DD AND a month name doesn't downgrade.
+        if (flexibleMonth && !startDate) {
+          next.isFlexibleDates = true;
+          next.flexibleMonth = flexibleMonth;
+          if (flexibleYear) next.flexibleYear = flexibleYear;
+        }
+        return next;
+      }, 'system');
+      return;
+    }
+
+    default:
+      console.log('[PENDING-ACTION] no handler for `for`:', forKind, '— resolution ignored');
+      return;
   }
 }
 
@@ -930,6 +1029,41 @@ const useMessageHandler = (
         requestType: parsedRequest.requestType,
       });
 
+      // === Phase 5: pending_action READ — apply any slot values the tool
+      // loop resolved this turn. This is the GENERAL mechanism: any handler
+      // that previously asked for input via setPendingAction sees its prompt
+      // answered here, regardless of which domain it belongs to.
+      //
+      // Concrete handling per `for` value lives in the helper below; this
+      // block just dispatches and clears the pending_action when complete.
+      if (
+        USE_CONTEXT_ENGINEERING &&
+        ctxEngState &&
+        parsedRequest.pendingActionResolution &&
+        parsedRequest.pendingActionResolution.kind === 'awaiting_user_input'
+      ) {
+        const resolution = parsedRequest.pendingActionResolution;
+        try {
+          await applyPendingActionResolution({
+            resolution,
+            plannerState: plannerState as TripPlannerState | null,
+            updatePlannerState,
+          });
+          // Clear pending_action now that the client has consumed it.
+          ctxEngState = clearPendingAction(ctxEngState);
+          await saveEmiliaState(ctxEngState).catch((e) =>
+            console.warn('[CTX-ENG] saveEmiliaState (clear pending_action) failed:', e),
+          );
+          console.log('✅ [PENDING-ACTION] Applied + cleared:', {
+            for: resolution.for,
+            applied: resolution.applied,
+            complete: resolution.complete,
+          });
+        } catch (e) {
+          console.warn('[PENDING-ACTION] apply failed:', e);
+        }
+      }
+
       const effectiveMode = resolveEffectiveMode(options?.mode, chatMode);
       const hasActivePlanner = Boolean(plannerEditContext?.hasActivePlan && plannerState);
       const shouldTreatAsPlannerEdit = hasActivePlanner
@@ -979,6 +1113,18 @@ const useMessageHandler = (
         };
       }
 
+      const preRouteTravelBridge = resolveTravelContextBridge({
+        message: currentMessage,
+        parsedRequest,
+        plannerState: plannerState as TripPlannerState | null,
+        persistentState,
+        previousParsedRequest,
+      });
+      if (preRouteTravelBridge.kind === 'quote_to_plan') {
+        console.log('🔁 [TRAVEL BRIDGE] Reusing quote/search context to build itinerary');
+        parsedRequest = preRouteTravelBridge.parsedRequest;
+      }
+
       const nextConversationSummary = buildConversationSummary(parsedRequest, parsedRequest.originalMessage || currentMessage, conversationSummary);
       saveConversationSummary(finalConversationId, nextConversationSummary).catch((e) => console.warn('⚠️ [SUMMARY] Failed to save conversation summary:', e));
 
@@ -991,6 +1137,19 @@ const useMessageHandler = (
       }
 
       const routeResult = routeRequest(parsedRequest, plannerState);
+      const travelContextBridge = resolveTravelContextBridge({
+        message: currentMessage,
+        parsedRequest,
+        plannerState: plannerState as TripPlannerState | null,
+        persistentState,
+        previousParsedRequest,
+        routeResult,
+      });
+      const isQuoteActivePlanTurn = travelContextBridge.kind === 'plan_to_quote';
+      if (isQuoteActivePlanTurn && travelContextBridge.parsedRequest.requestType !== parsedRequest.requestType) {
+        console.log('🔁 [TRAVEL BRIDGE] Converting active planner into quote/search request');
+        parsedRequest = travelContextBridge.parsedRequest;
+      }
       console.log('🧭 [ROUTER] Emilia route decision:', {
         route: routeResult.route,
         score: routeResult.score.toFixed(2),
@@ -1035,6 +1194,10 @@ const useMessageHandler = (
         previousMessageType,
         forceCurrentMode: options?.forceCurrentMode,
         mode: effectiveMode,
+        // Suppress mode_bridge while the assistant is mid-ask. ctxEngState
+        // reflects the LATEST (post-resolution) pending_action; we already
+        // cleared it above when the model resolved it via apply_slot_values.
+        hasPendingAction: Boolean(ctxEngState?.pending_action),
       });
 
       console.log('🧠 [CONVERSATION] Turn resolution:', conversationTurn);
@@ -1642,7 +1805,7 @@ const useMessageHandler = (
         // Clear previous request since we have all required fields
         setPreviousParsedRequest(null);
         await clearContextualMemory(finalConversationId);
-      } else if (parsedRequest.requestType === 'itinerary') {
+      } else if (parsedRequest.requestType === 'itinerary' && !isQuoteActivePlanTurn) {
         console.log('🗺️ [VALIDATION] Validating itinerary required fields');
 
         // Hard requirement: at least 1 destination
@@ -1836,7 +1999,39 @@ const useMessageHandler = (
         }
         case 'itinerary': {
           console.log('🗺️ [MESSAGE FLOW] Step 12g: Processing itinerary request');
-          if (conversationTurn.responseMode === 'show_places') {
+          if (isQuoteActivePlanTurn && plannerState) {
+            console.log('💬 [QUOTE ACTIVE PLAN] Responding from active planner context');
+            const quoteResult = buildPlanToQuoteResponse(plannerState as TripPlannerState);
+            assistantResponse = quoteResult.response;
+            structuredData = quoteResult.data as any;
+
+            // === Phase 5: persist pending_action so the next turn knows what
+            // we asked for. Generic mechanism — quote_completion is just one
+            // value of `for`. The model on the next turn will see this in
+            // <pending_action> and call apply_slot_values to resolve it.
+            // Silent no-op when CE is off or state was never bootstrapped.
+            if (USE_CONTEXT_ENGINEERING && ctxEngState) {
+              const missingFields = (quoteResult.data as { quoteContext?: { missingQuoteFields?: string[] } })
+                ?.quoteContext?.missingQuoteFields;
+              if (Array.isArray(missingFields) && missingFields.length > 0) {
+                const plannerId = (plannerState as TripPlannerState).id;
+                const action: PendingAction = {
+                  kind: 'awaiting_user_input',
+                  for: 'quote_completion',
+                  fields: missingFields,
+                  ref: plannerId ? { type: 'plan', id: plannerId } : undefined,
+                  prompt: assistantResponse.slice(0, 240),
+                  issuedAt: new Date().toISOString(),
+                };
+                const nextState = setPendingAction(ctxEngState, action);
+                ctxEngState = nextState;
+                saveEmiliaState(nextState).catch((e) =>
+                  console.warn('[CTX-ENG] saveEmiliaState (pending_action) failed:', e),
+                );
+                console.log('🎯 [PENDING-ACTION] Persisted quote_completion request:', missingFields);
+              }
+            }
+          } else if (conversationTurn.responseMode === 'show_places') {
             setTypingMessage('Buscando los lugares más representativos...', conversationIdForThisSearch);
             const discoveryResult = await buildDiscoveryResponsePayload({
               message: parsedRequest.originalMessage || currentMessage,
@@ -1906,7 +2101,8 @@ const useMessageHandler = (
         const hotelsCount = (structuredData as any)?.combinedData?.hotels?.length ?? 0;
         const hasPlannerData = Boolean((structuredData as any)?.plannerData);
         const hasDiscoveryContext = Boolean((structuredData as any)?.discoveryContext);
-        const hasResults = flightsCount > 0 || hotelsCount > 0 || hasPlannerData || hasDiscoveryContext;
+        const hasQuoteContext = Boolean((structuredData as any)?.quoteContext);
+        const hasResults = flightsCount > 0 || hotelsCount > 0 || hasPlannerData || hasDiscoveryContext || hasQuoteContext;
         
         if (hasResults) {
           // We have usable results, clear old contextual memory

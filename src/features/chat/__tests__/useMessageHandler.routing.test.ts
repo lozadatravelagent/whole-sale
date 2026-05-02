@@ -83,6 +83,15 @@ vi.mock('../services/conversationOrchestrator', () => ({
   }),
   buildConversationalMissingInfoMessage: vi.fn().mockReturnValue('collect message'),
   buildModeBridgeMessage: vi.fn().mockReturnValue('bridge message'),
+  resolveTravelContextBridge: vi.fn(({ parsedRequest }: any) => ({
+    kind: null,
+    parsedRequest,
+    reason: null,
+  })),
+  buildPlanToQuoteResponse: vi.fn().mockReturnValue({
+    response: 'quote active plan',
+    data: { messageType: 'quote_active_plan', quoteContext: {} },
+  }),
   formatDiscoveryResponse: vi.fn().mockReturnValue(''),
 }));
 

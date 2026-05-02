@@ -24,6 +24,7 @@ import {
   type ContextRef,
   type MemoryNote,
   type EmiliaProfile,
+  type PendingAction,
   MAX_GLOBAL_NOTES,
   MAX_SESSION_NOTES,
 } from './emiliaStateTypes.ts';
@@ -42,10 +43,16 @@ const MAX_OUTPUT_CHARS = 4000; // ~1000 tokens at 4 chars/token
 const MEMORY_INSTRUCTIONS = `<memory_instructions>
 PRECEDENCE (highest to lowest):
 1. User's latest message
-2. Active refs (current turn)
-3. Profile fields (trusted)
-4. Session memory (current convo)
-5. Global memory (advisory default)
+2. pending_action (if present — the user's reply most likely answers it)
+3. Active refs (current turn)
+4. Profile fields (trusted)
+5. Session memory (current convo)
+6. Global memory (advisory default)
+
+When <pending_action> is present:
+- If kind="awaiting_user_input" and the user's reply plausibly contains values for any of the listed fields, call apply_slot_values with the parsed values keyed by those field names — do NOT start a fresh analysis.
+- If kind="awaiting_user_confirmation", call confirm_pending_action with confirmed=true|false.
+- If the user clearly changed topic (greeting, off-topic, new request unrelated to the prompt), proceed normally — the next handler will clear pending_action.
 
 When current_mode=agency and a plan ref is active, the user likely wants to quote it.
 When current_mode=passenger and a lead is in profile, consider lead preferences when suggesting.
@@ -147,6 +154,32 @@ function renderRefsBlock(refs: ContextRef[], now: Date): string {
 }
 
 // ---------------------------------------------------------------------------
+// Pending action block — the per-turn "what is the user answering" pointer
+// ---------------------------------------------------------------------------
+
+function renderPendingActionBlock(pa: PendingAction | null | undefined, now: Date): string {
+  if (!pa) return '';
+  const lines: string[] = [];
+  lines.push(`  kind: ${pa.kind}`);
+  lines.push(`  for: ${pa.for}`);
+  if (pa.fields && pa.fields.length > 0) {
+    lines.push(`  fields: [${pa.fields.join(', ')}]`);
+  }
+  if (pa.ref) {
+    lines.push(`  ref: ${pa.ref.type}:${pa.ref.id}`);
+  }
+  lines.push(`  prompt: ${JSON.stringify(pa.prompt)}`);
+  lines.push(`  issued: ${relativeTime(pa.issuedAt, now)}`);
+  if (pa.applied && Object.keys(pa.applied).length > 0) {
+    lines.push(`  applied_so_far: ${JSON.stringify(pa.applied)}`);
+    if (pa.complete !== undefined) {
+      lines.push(`  complete: ${pa.complete}`);
+    }
+  }
+  return `<pending_action>\n${lines.join('\n')}\n</pending_action>`;
+}
+
+// ---------------------------------------------------------------------------
 // Memories block
 // ---------------------------------------------------------------------------
 
@@ -226,6 +259,9 @@ export function renderStateForSystemPrompt(
     const refsBlock = renderRefsBlock(state.active_refs ?? [], now);
     if (refsBlock) parts.push(refsBlock);
 
+    const pendingBlock = renderPendingActionBlock(state.pending_action ?? null, now);
+    if (pendingBlock) parts.push(pendingBlock);
+
     parts.push(
       renderMemoriesMd({
         global: state.global_memory?.notes ?? [],
@@ -264,6 +300,7 @@ export function renderStateForSystemPrompt(
 export const __testing = {
   renderProfileYAML,
   renderRefsBlock,
+  renderPendingActionBlock,
   renderMemoriesMd,
   relativeTime,
   MAX_OUTPUT_CHARS,

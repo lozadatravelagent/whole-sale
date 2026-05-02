@@ -107,6 +107,18 @@ export interface EmiliaState {
    */
   inject_session_memories_next_turn: boolean;
 
+  /**
+   * Generic single-slot turn-state. When non-null the assistant is awaiting
+   * a user reply (slot fill, confirmation, etc.). The next turn renders
+   * `<pending_action>` into the system prompt and the model is steered to
+   * resolve it via `apply_slot_values` (kind=awaiting_user_input) or
+   * `confirm_pending_action` (kind=awaiting_user_confirmation).
+   *
+   * Mutated ONLY through `setPendingAction` / `clearPendingAction` /
+   * `markPendingActionApplied`. See §1.6.
+   */
+  pending_action: PendingAction | null;
+
   /** Bookkeeping. Never injected into the prompt. */
   meta: {
     conversation_id: string;
@@ -117,6 +129,11 @@ export interface EmiliaState {
   };
 }
 ```
+
+> **Schema version**: bumped to **v2** when `pending_action` was introduced.
+> The persistence loader (`src/features/chat/state/persistence.ts`) auto-migrates
+> v1 rows in memory by defaulting `pending_action: null`; existing JSONB rows do
+> not need a backfill SQL.
 
 ### 1.2 Profile
 
@@ -203,6 +220,115 @@ export interface TripSummary {
 }
 ```
 
+### 1.6 PendingAction (v2)
+
+Generic single-slot turn-state for "the assistant just asked the user for X, the
+next message most likely answers it". Replaces the earlier ad-hoc pattern of
+re-parsing each user message from scratch when context was already implicit.
+
+```ts
+export type PendingActionKind = 'awaiting_user_input' | 'awaiting_user_confirmation';
+
+export interface PendingAction {
+  /** Distinguishes the two tool resolution paths. */
+  kind: PendingActionKind;
+
+  /**
+   * Stable identifier for the flow that produced the prompt.
+   * Examples: 'quote_completion', 'collect_passenger', 'confirm_booking'.
+   * The client-side dispatcher in `useMessageHandler` keys off this value
+   * to decide what domain mutation to apply.
+   */
+  for: string;
+
+  /**
+   * For kind='awaiting_user_input': list of slot names being asked.
+   * Capped to 6 by `setPendingAction` to keep the rendered block within
+   * the token budget. The model uses these to validate values before
+   * calling apply_slot_values; unrecognized keys are dropped server-side.
+   */
+  fields?: string[];
+
+  /** Optional ref the prompt is about (the active plan / quote / lead). */
+  ref?: { type: 'plan' | 'quote' | 'lead'; id: string };
+
+  /** ≤240 chars. The natural-language prompt the user saw. Helps the model match user replies to slots. */
+  prompt: string;
+
+  /** ISO 8601. When the prompt was issued. */
+  issuedAt: string;
+
+  /** Slot values applied by `apply_slot_values`, merged across calls. */
+  applied?: Record<string, unknown>;
+
+  /** Whether `applied` covers every required `field`. Set by the tool handler. */
+  complete?: boolean;
+}
+```
+
+**Lifecycle (one round trip)**:
+
+```
+Turn N (assistant asks):
+  handler decides to ask for missing info
+    → setPendingAction(state, { kind, for, fields, ref, prompt, issuedAt })
+    → saveEmiliaState(state)
+    → assistant message goes out
+
+Turn N+1 (user replies):
+  edge function loads state
+    → renders <pending_action> in system prompt
+    → model sees pending + tool_selection rules
+    → invokes apply_slot_values({values}) or confirm_pending_action({confirmed, notes})
+    → executeApplySlotValues mutates pending_action.applied + complete
+    → batch-persists state (one UPDATE)
+    → returns meta.pendingActionResolution to client
+  client (useMessageHandler):
+    → applyPendingActionResolution dispatches by `for`
+    → mutates domain state (planner, quote, …)
+    → clearPendingAction(state) + saveEmiliaState
+```
+
+**Mutator contract** (only API for writes):
+
+| Function | When to call | Side effects |
+|---|---|---|
+| `setPendingAction(state, action)` | A handler decided to ask the user something. | Replaces any existing `pending_action`. Trims `prompt` to 240 chars and `fields` to 6. |
+| `markPendingActionApplied(state, applied, complete)` | A tool handler wants to record progress without overwriting prompt/fields/ref. | Merges `applied` into existing; sets `complete`. No-op if `pending_action` is null. |
+| `clearPendingAction(state)` | Resolution consumed by client OR user explicitly drops topic. | Sets to `null`. Returns same reference if already null. |
+
+**Anti-patterns** (forbidden):
+
+- Direct assignment `state.pending_action = {...}` — bypasses the trimming + cloning guarantees.
+- Stacking multiple pending actions — single-slot semantics, `setPendingAction` always replaces.
+- Persisting domain values inside `pending_action.applied` *and* not reading them out via `applyPendingActionResolution` — leaves the planner stale.
+
+**Render output** (Appendix A illustrates):
+
+```
+<pending_action>
+  kind: awaiting_user_input
+  for: quote_completion
+  fields: [origin, start_date, end_date]
+  ref: plan:6f3a…b4
+  prompt: "Tengo el plan activo para cotizar... necesito ciudad de salida y fechas exactas"
+  issued: 1min ago
+</pending_action>
+```
+
+**Tool selection policy** (lives in `prompt.ts` v5 `<tool_selection>` block, copied here for reference):
+
+> If MEMORY STATE includes a `<pending_action>` block, the user's reply most likely answers it.
+> Resolve before doing anything else.
+> - kind=`awaiting_user_input`: parse user message into the listed `fields`, call `apply_slot_values`.
+> - kind=`awaiting_user_confirmation`: call `confirm_pending_action`.
+> - If user clearly changed topic, do NOT call these — proceed normally.
+
+**Mode-bridge guard**: while `pending_action` is non-null AND a planner is active, the
+`conversationOrchestrator` suppresses `mode_bridge` (G3 guardrail), and `previousMessageType ===
+'quote_active_plan'` does the same (G4). Tests in
+`src/features/trip-planner/__tests__/conversationOrchestrator.test.ts`.
+
 ---
 
 ## 2. Token Budget Targets
@@ -241,21 +367,28 @@ Verbatim from `[CB-CTX]`, with the per-field interpretation we apply.
 > If the user says "ahora vamos en pareja, sin chicos", the model must update behavior
 > immediately and the next consolidate run must overwrite `preferences.party_composition`.
 
-> **2. Active refs (current turn).**
+> **2. Pending action (if present).**
+> When `state.pending_action` is non-null and `kind='awaiting_user_input'`, the user's reply
+> most likely answers the listed `fields`. The model is steered to call `apply_slot_values`
+> rather than re-parse from scratch. The only override is precedence-1: if the user clearly
+> changed topic (greeting, off-topic, brand-new request), pending_action is ignored and the
+> next handler clears it. Detail in §1.6.
+
+> **3. Active refs (current turn).**
 > Anything in `state.active_refs` reflects what the user is actively working on RIGHT NOW.
 > If `mode=agency` and a `plan` ref is active, the model treats that plan as the subject
 > of the next utterance unless the user explicitly references something else.
 
-> **3. Profile fields (trusted).**
+> **4. Profile fields (trusted).**
 > `profile.*` comes from internal systems (CRM, agency config, IP detection). Trusted by
 > default. Overridden only by precedence-1 (explicit user statement) — and that override
 > must be persisted via consolidate, not silently dropped.
 
-> **4. Session memory (current convo).**
+> **5. Session memory (current convo).**
 > `session_memory.notes` are facts distilled THIS conversation but not yet consolidated.
 > They beat `global_memory` because they are more recent within the active context.
 
-> **5. Global memory (advisory default).**
+> **6. Global memory (advisory default).**
 > `global_memory.notes` are the lowest-trust signal injected. They are advisory: useful
 > defaults for personalization, never authoritative against anything above.
 
@@ -532,6 +665,15 @@ preferences:
 - lead:lead_8a1f  — "Cliente recurrente, prefiere mid-range" (updated 5min ago)
 </active_refs>
 
+<pending_action>
+  kind: awaiting_user_input
+  for: quote_completion
+  fields: [origin, start_date, end_date]
+  ref: plan:plan_abc123
+  prompt: "Tengo el plan activo para cotizar… necesito ciudad de salida y fechas exactas."
+  issued: 1min ago
+</pending_action>
+
 <memories>
 GLOBAL_NOTES (most recent first):
 - [planning] 2026-04-12 Prefiere vuelos directos sobre escalas largas (>4h).
@@ -544,7 +686,7 @@ GLOBAL_NOTES (most recent first):
 </trip_history>
 ```
 
-Approximate cost: ~520 tokens — comfortably inside the 800-token state-injection budget (§2).
+Approximate cost: ~580 tokens (with the optional `<pending_action>` block) — still inside the 800-token state-injection budget (§2). When `pending_action` is null, the block is omitted entirely.
 
 ---
 

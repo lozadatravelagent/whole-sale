@@ -22,6 +22,7 @@
 import {
   type EmiliaState,
   type ContextRef,
+  type PendingAction,
   cloneEmiliaState,
   createInitialEmiliaState,
 } from './emiliaState';
@@ -165,6 +166,71 @@ export function clearActiveRef(
 
   const next = cloneEmiliaState(state);
   next.active_refs = filtered;
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Pending action (turn-state)
+// ---------------------------------------------------------------------------
+
+/**
+ * Set or replace the pending_action. The previous pending action (if any) is
+ * dropped — the assistant only ever waits on one prompt at a time.
+ *
+ * Trims `prompt` to 240 chars and `fields` to 6 entries to keep the rendered
+ * block within the token budget.
+ *
+ * Returns a new state. Original is not mutated.
+ */
+export function setPendingAction(
+  state: EmiliaState,
+  action: PendingAction,
+): EmiliaState {
+  const safe: PendingAction = {
+    kind: action.kind,
+    for: action.for,
+    fields: action.fields ? action.fields.slice(0, 6) : undefined,
+    ref: action.ref ? { type: action.ref.type, id: action.ref.id } : undefined,
+    prompt: (action.prompt ?? '').slice(0, 240),
+    issuedAt: action.issuedAt || new Date().toISOString(),
+    applied: action.applied ? { ...action.applied } : undefined,
+    complete: action.complete,
+  };
+  const next = cloneEmiliaState(state);
+  next.pending_action = safe;
+  return next;
+}
+
+/**
+ * Clear pending_action. Returns the same reference if already null to keep
+ * React identity checks cheap.
+ */
+export function clearPendingAction(state: EmiliaState): EmiliaState {
+  if (state.pending_action == null) return state;
+  const next = cloneEmiliaState(state);
+  next.pending_action = null;
+  return next;
+}
+
+/**
+ * Stamp `applied` values onto the current pending_action without losing the
+ * prompt/fields/ref. Use this when a tool handler resolves part of the
+ * pending request but more turns may still be needed (`complete=false`).
+ *
+ * No-op (returns same reference) if there is no pending_action.
+ */
+export function markPendingActionApplied(
+  state: EmiliaState,
+  applied: Record<string, unknown>,
+  complete: boolean,
+): EmiliaState {
+  if (state.pending_action == null) return state;
+  const next = cloneEmiliaState(state);
+  next.pending_action = {
+    ...next.pending_action!,
+    applied: { ...(next.pending_action!.applied ?? {}), ...applied },
+    complete,
+  };
   return next;
 }
 

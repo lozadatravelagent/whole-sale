@@ -1,5 +1,6 @@
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { TripPlannerState, PlannerActivity, PlannerRestaurant } from '@/features/trip-planner/types';
+import type { ContextState } from '../types/contextState';
 import type { RouteResult } from './routeRequest';
 import { isGenericPlaceholder } from './itineraryPipeline';
 
@@ -60,6 +61,14 @@ export interface ConversationTurnResolution {
   };
 }
 
+export type TravelContextBridgeKind = 'plan_to_quote' | 'quote_to_plan';
+
+export interface TravelContextBridgeResolution {
+  kind: TravelContextBridgeKind | null;
+  parsedRequest: ParsedTravelRequest;
+  reason: string | null;
+}
+
 export interface DiscoveryVisualConfig {
   title: string;
   subtitle: string;
@@ -78,6 +87,252 @@ function normalizeText(value?: string | null): string {
 
 const DISCOVERY_PATTERN = /\b(cosas\s+para\s+hacer|que\s+ver|qué\s+ver|que\s+hacer|qué\s+hacer|imperdibles?|museos?|barrios?|restaurantes?|actividades?)\b/i;
 const SPECIALIZED_CULTURE_PATTERN = /\b(museos?|arte|galerias?|galerías|arquitectura|historia)\b/i;
+const QUOTE_CONTEXT_REFERENCE_PATTERN =
+  /\b(este|esta|ese|esa|el|la)\s+(viaje|plan|itinerario|recorrido|propuesta|cotizacion|cotización|busqueda|búsqueda|resultado|opcion|opción)\b|\b(esto|eso|lo\s+(anterior|que\s+armamos|que\s+cotizamos|que\s+buscamos))\b/i;
+const ITINERARY_FROM_CONTEXT_PATTERN =
+  /\b(arma(me)?|armame|armá|planifica(me)?|itinerario|recorrido|ruta|dia\s+por\s+dia|día\s+por\s+día)\b/i;
+
+function addDays(date: string, days: number): string | undefined {
+  const parsedDate = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(parsedDate.getTime())) return undefined;
+  parsedDate.setDate(parsedDate.getDate() + days);
+  return parsedDate.toISOString().slice(0, 10);
+}
+
+function calculateDaysFromDates(startDate?: string, endDate?: string): number | undefined {
+  if (!startDate || !endDate) return undefined;
+  const diff = new Date(`${endDate}T00:00:00`).getTime() - new Date(`${startDate}T00:00:00`).getTime();
+  if (Number.isNaN(diff)) return undefined;
+  return Math.max(1, Math.round(diff / 86400000) + 1);
+}
+
+function getSearchContext(
+  persistentState?: ContextState | null,
+  previousParsedRequest?: ParsedTravelRequest | null,
+) {
+  const lastSearch = persistentState?.lastSearch;
+  const flights = lastSearch?.flightsParams || previousParsedRequest?.flights;
+  const hotels = lastSearch?.hotelsParams || previousParsedRequest?.hotels;
+  const destination = flights?.destination || hotels?.city;
+  const startDate = flights?.departureDate || hotels?.checkinDate;
+  const endDate = flights?.returnDate || hotels?.checkoutDate;
+  const adults = flights?.adults || hotels?.adults;
+  const children = flights?.children ?? hotels?.children;
+  const infants = flights?.infants ?? hotels?.infants;
+
+  if (!destination) return null;
+
+  return {
+    destination,
+    startDate,
+    endDate,
+    days: calculateDaysFromDates(startDate, endDate),
+    travelers: adults ? {
+      adults,
+      children: children ?? 0,
+      infants: infants ?? 0,
+    } : undefined,
+  };
+}
+
+function getPlanQuoteMissingFields(plannerState: TripPlannerState): string[] {
+  return [
+    !plannerState.origin ? 'ciudad de salida' : null,
+    (plannerState.isFlexibleDates || !plannerState.startDate || !plannerState.endDate) ? 'fechas exactas' : null,
+  ].filter(Boolean) as string[];
+}
+
+function buildQuoteRequestFromPlanner(
+  message: string,
+  parsedRequest: ParsedTravelRequest,
+  plannerState: TripPlannerState,
+): ParsedTravelRequest | null {
+  const missingQuoteFields = getPlanQuoteMissingFields(plannerState);
+  if (missingQuoteFields.length > 0) return null;
+
+  const segments = (plannerState.segments || [])
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const firstDestination = segments[0]?.city || plannerState.destinations?.[0];
+  if (!plannerState.origin || !firstDestination || !plannerState.startDate || !plannerState.endDate) {
+    return null;
+  }
+
+  let cursorDate = plannerState.startDate;
+  const hotelSegments = segments.length > 0
+    ? segments.map((segment, index) => {
+        const checkinDate = segment.startDate || cursorDate;
+        const checkoutDate =
+          segment.endDate ||
+          (segment.nights ? addDays(checkinDate, segment.nights) : undefined) ||
+          (index === segments.length - 1 ? plannerState.endDate : checkinDate);
+        cursorDate = checkoutDate || cursorDate;
+        return {
+          id: segment.id,
+          city: segment.city,
+          checkinDate,
+          checkoutDate,
+          adults: plannerState.travelers.adults,
+          children: plannerState.travelers.children,
+          infants: plannerState.travelers.infants,
+        };
+      })
+    : undefined;
+
+  return {
+    ...parsedRequest,
+    requestType: 'combined',
+    confidence: Math.max(parsedRequest.confidence || 0, 0.8),
+    originalMessage: parsedRequest.originalMessage || message,
+    flights: {
+      origin: plannerState.origin,
+      destination: firstDestination,
+      departureDate: plannerState.startDate,
+      returnDate: plannerState.endDate,
+      adults: plannerState.travelers.adults,
+      children: plannerState.travelers.children,
+      infants: plannerState.travelers.infants,
+    },
+    hotels: {
+      city: firstDestination,
+      checkinDate: plannerState.startDate,
+      checkoutDate: plannerState.endDate,
+      adults: plannerState.travelers.adults,
+      children: plannerState.travelers.children,
+      infants: plannerState.travelers.infants,
+      ...(hotelSegments?.length ? { segments: hotelSegments } : {}),
+    },
+  };
+}
+
+export function resolveTravelContextBridge(options: {
+  message: string;
+  parsedRequest: ParsedTravelRequest;
+  plannerState?: TripPlannerState | null;
+  persistentState?: ContextState | null;
+  previousParsedRequest?: ParsedTravelRequest | null;
+  routeResult?: RouteResult;
+}): TravelContextBridgeResolution {
+  const { message, parsedRequest, plannerState, persistentState, previousParsedRequest, routeResult } = options;
+  const hasActivePlanner = Boolean(plannerState && !plannerState.generationMeta?.isDraft);
+  const referencesCurrentContext = QUOTE_CONTEXT_REFERENCE_PATTERN.test(message);
+
+  if (routeResult?.reason === 'quote_active_plan' && hasActivePlanner) {
+    return {
+      kind: 'plan_to_quote',
+      parsedRequest: buildQuoteRequestFromPlanner(message, parsedRequest, plannerState) || parsedRequest,
+      reason: 'quote_active_plan',
+    };
+  }
+
+  const wantsItineraryFromContext =
+    referencesCurrentContext &&
+    ITINERARY_FROM_CONTEXT_PATTERN.test(message) &&
+    !hasActivePlanner;
+
+  if (!wantsItineraryFromContext) {
+    return {
+      kind: null,
+      parsedRequest,
+      reason: null,
+    };
+  }
+
+  const searchContext = getSearchContext(persistentState, previousParsedRequest);
+  if (!searchContext) {
+    return {
+      kind: null,
+      parsedRequest,
+      reason: null,
+    };
+  }
+
+  return {
+    kind: 'quote_to_plan',
+    reason: 'itinerary_from_quote_context',
+    parsedRequest: {
+      ...parsedRequest,
+      requestType: 'itinerary',
+      confidence: Math.max(parsedRequest.confidence || 0, 0.7),
+      originalMessage: parsedRequest.originalMessage || message,
+      itinerary: {
+        ...(parsedRequest.itinerary || {}),
+        destinations: parsedRequest.itinerary?.destinations?.length
+          ? parsedRequest.itinerary.destinations
+          : [searchContext.destination],
+        startDate: parsedRequest.itinerary?.startDate || searchContext.startDate,
+        endDate: parsedRequest.itinerary?.endDate || searchContext.endDate,
+        days: parsedRequest.itinerary?.days || searchContext.days,
+        travelers: parsedRequest.itinerary?.travelers || searchContext.travelers,
+      },
+    },
+  };
+}
+
+export function buildPlanToQuoteResponse(plannerState: TripPlannerState) {
+  const segments = (plannerState.segments || [])
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const segmentLabels = segments.length > 0
+    ? segments.map((segment) => `${segment.city}${segment.nights ? ` (${segment.nights} noches)` : ''}`)
+    : (plannerState.destinations || []);
+  const days = plannerState.days || segments.reduce((total, segment) => total + (segment.nights || 0), 0);
+  const travelers = plannerState.travelers;
+  const travelerLabel = [
+    `${travelers?.adults || 1} adulto${(travelers?.adults || 1) === 1 ? '' : 's'}`,
+    travelers?.children ? `${travelers.children} menor${travelers.children === 1 ? '' : 'es'}` : null,
+    travelers?.infants ? `${travelers.infants} infante${travelers.infants === 1 ? '' : 's'}` : null,
+  ].filter(Boolean).join(', ');
+  const dateLabel = plannerState.isFlexibleDates
+    ? (() => {
+        const flexibleLabel = plannerState.flexibleMonth
+          ? new Date(`${plannerState.flexibleYear || new Date().getFullYear()}-${plannerState.flexibleMonth}-01T00:00:00`)
+            .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+          : 'mes flexible';
+        return `${flexibleLabel}${days ? ` (${days} días)` : ''}`;
+      })()
+    : `${plannerState.startDate || 'sin salida'}${plannerState.endDate ? ` al ${plannerState.endDate}` : ''}`;
+  const missingQuoteFields = getPlanQuoteMissingFields(plannerState);
+
+  const summary = [
+    segmentLabels.length > 0 ? segmentLabels.join(' → ') : 'el plan activo',
+    days ? `${days} días` : null,
+    travelerLabel,
+    dateLabel,
+  ].filter(Boolean).join(' · ');
+
+  const response = missingQuoteFields.length > 0
+    ? `Tengo el plan activo para cotizar: ${summary}.\n\nPara avanzar con precios reales necesito cerrar: ${missingQuoteFields.join(' y ')}. Con eso puedo buscar vuelos y hoteles sobre este mismo itinerario, sin volver a armar el viaje.`
+    : `Tengo el plan activo para cotizar: ${summary}.\n\nYa puedo usar este itinerario como base para buscar vuelos y hoteles, sin volver a armar el viaje.`;
+
+  return {
+    response,
+    data: {
+      messageType: 'quote_active_plan',
+      quoteContext: {
+        source: 'active_planner',
+        title: plannerState.title,
+        destinations: plannerState.destinations || [],
+        days,
+        startDate: plannerState.startDate,
+        endDate: plannerState.endDate,
+        isFlexibleDates: plannerState.isFlexibleDates,
+        flexibleMonth: plannerState.flexibleMonth,
+        flexibleYear: plannerState.flexibleYear,
+        origin: plannerState.origin || null,
+        travelers: plannerState.travelers,
+        missingQuoteFields,
+        segments: segments.map((segment) => ({
+          city: segment.city,
+          country: segment.country,
+          nights: segment.nights,
+          startDate: segment.startDate,
+          endDate: segment.endDate,
+        })),
+      },
+    },
+  };
+}
 const FOOD_PATTERN = /\b(restaurantes?|gastronomia|gastronomía|comida|cena|cafes?|cafés)\b/i;
 const NEIGHBORHOOD_PATTERN = /\b(barrios?|zonas?)\b/i;
 
@@ -479,6 +734,14 @@ export function resolveConversationTurn(options: {
   // mode's default branch.
   previousMessageType?: string;
   forceCurrentMode?: boolean;
+  /**
+   * Phase 5 (Context Engineering): when EmiliaState carries a non-null
+   * `pending_action`, the assistant is awaiting user input on a prior prompt
+   * (slot fill, confirmation, etc.). We must NOT bounce them to mode_bridge
+   * — that would interrupt the in-flight ask. Generic guardrail: any kind of
+   * pending_action with an active planner suppresses the bridge.
+   */
+  hasPendingAction?: boolean;
 }): ConversationTurnResolution {
   const {
     parsedRequest,
@@ -491,10 +754,12 @@ export function resolveConversationTurn(options: {
     mode,
     previousMessageType,
     forceCurrentMode,
+    hasPendingAction,
   } = options;
 
   const hasActivePlanner = Boolean(plannerState && !plannerState.generationMeta?.isDraft);
   const isDiscoveryIntent = DISCOVERY_PATTERN.test(parsedRequest.originalMessage || '');
+  const isQuoteFromActivePlanner = routeResult.reason === 'quote_active_plan';
   const normalizedMissingFields = [...new Set(routeResult.missingFields.map(normalizeMissingField))];
   const collectExhausted = recentCollectCount >= maxCollectTurns;
 
@@ -527,10 +792,10 @@ export function resolveConversationTurn(options: {
   // responseMode='show_places'.
   //
   // BRIDGE RULES:
-  //   - agency → passenger  when (requestType==='itinerary' || route==='PLAN').
-  //     No active-planner refinement: an active plan is itself a
-  //     passenger-mode artifact, so bridging an itinerary-intent turn is
-  //     always appropriate in agency.
+  //   - agency → passenger  when (requestType==='itinerary' || route==='PLAN'),
+  //     except `quote_active_plan`: the router owns the "quote the current
+  //     plan" intent, so agency mode can price/search against that planner
+  //     context instead of bouncing back to passenger mode.
   //   - passenger → agency  when route==='QUOTE' && requestType in
   //     {flights, hotels, combined} && !hasActivePlanner. With an active
   //     planner the QUOTE turn is contextually grounded in the plan; it
@@ -552,12 +817,25 @@ export function resolveConversationTurn(options: {
   // handler tolerates `!hasActivePlanner` as the consumer flow already
   // demonstrates.
   if (mode !== undefined && !isDiscoveryIntent) {
-    const bridgeBlocked = previousMessageType === 'mode_bridge' || forceCurrentMode === true;
+    // Bridge guard composition (most → least specific):
+    //   G1 — anti-loop: previous turn was already a bridge.
+    //   G2 — explicit user choice: clicked "seguir en este modo".
+    //   G3 — pending_action with active planner: the assistant is mid-ask
+    //        (slot fill / confirmation), bouncing modes would interrupt.
+    //   G4 — quote_active_plan messageType: the previous turn opened a quote
+    //        flow against the active plan; the user's current message is the
+    //        slot fill answer, regardless of what the parser made of it.
+    const bridgeBlocked =
+      previousMessageType === 'mode_bridge' ||
+      forceCurrentMode === true ||
+      previousMessageType === 'quote_active_plan' ||
+      Boolean(hasPendingAction && hasActivePlanner);
 
     let bridgeTarget: 'agency' | 'passenger' | null = null;
     if (!bridgeBlocked) {
       if (
         mode === 'agency' &&
+        !isQuoteFromActivePlanner &&
         (parsedRequest.requestType === 'itinerary' || routeResult.route === 'PLAN')
       ) {
         bridgeTarget = 'passenger';

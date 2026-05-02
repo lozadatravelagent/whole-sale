@@ -728,6 +728,47 @@ describe('conversationOrchestrator', () => {
       expect(resolution.executionBranch).toBe('mode_bridge');
     });
 
+    // ---- G3 / G4: Phase 5 Context-Engineering bridge guards ---------------
+    it('G3: agency + itinerary intent + hasPendingAction + active planner → no bridge (slot-fill in progress)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: { generationMeta: { isDraft: false } },
+        mode: 'agency',
+        hasPendingAction: true,
+        ...baseFlags,
+      });
+      // Active planner + agency + pending_action → falls to standard_search
+      // (the bridge is suppressed so the in-flight ask isn't interrupted).
+      expect(resolution.executionBranch).not.toBe('mode_bridge');
+      expect(resolution.executionBranch).toBe('standard_search');
+    });
+
+    it('G3 negative: hasPendingAction without active planner → bridge still fires (no risk of interrupting an ask)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: null,
+        mode: 'agency',
+        hasPendingAction: true,
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).toBe('mode_bridge');
+    });
+
+    it('G4: previousMessageType=quote_active_plan → no bridge (user is answering the quote prompt)', () => {
+      const resolution = resolveConversationTurn({
+        parsedRequest: itineraryPlanRequest,
+        routeResult: itineraryPlanRoute,
+        plannerState: null,
+        mode: 'agency',
+        previousMessageType: 'quote_active_plan',
+        ...baseFlags,
+      });
+      expect(resolution.executionBranch).not.toBe('mode_bridge');
+      expect(resolution.executionBranch).toBe('standard_search');
+    });
+
     // -------------------------------------------------------------------------
     // Discovery bypass — strict mode is bypassed when isDiscoveryIntent=true.
     // Carryover for C8: discovery needs its own branch before standard_itinerary

@@ -20,7 +20,7 @@
 // ---------------------------------------------------------------------------
 
 /** Schema version. Bump on breaking shape changes; persistence layer reads it for migrations. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** Top-k cap for global memory notes injected into the prompt per turn. */
 export const MAX_GLOBAL_NOTES = 6;
@@ -107,6 +107,46 @@ export interface ContextRef {
 }
 
 // ---------------------------------------------------------------------------
+// Pending action (turn-state)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generic "the assistant is awaiting something from the user" marker.
+ *
+ * Lifecycle:
+ *  1. The handler that ASKS sets `pending_action` (e.g. quote_active_plan
+ *     emits "ciudad de salida y fechas" — fields go here).
+ *  2. The next turn renders `<pending_action>` into the system prompt so the
+ *     model knows the user's reply most likely answers those fields.
+ *  3. The model invokes `apply_slot_values` (or, for `awaiting_user_confirmation`,
+ *     `confirm_pending_action`) — handler stamps `applied` here.
+ *  4. The client consumes `applied`, mutates the underlying domain state
+ *     (planner / quote / etc.), and clears `pending_action`.
+ *
+ * This is intentionally domain-agnostic: any flow that needs "ask, then read
+ * the user's reply as an answer" plugs in by setting a fresh PendingAction.
+ */
+export type PendingActionKind = 'awaiting_user_input' | 'awaiting_user_confirmation';
+
+export interface PendingAction {
+  kind: PendingActionKind;
+  /** Stable identifier for the flow that produced the prompt. e.g. 'quote_completion', 'collect_passenger', 'confirm_booking'. */
+  for: string;
+  /** When kind='awaiting_user_input': list of slot names being asked (max ~6). */
+  fields?: string[];
+  /** Reference the prompt is about (the active plan/quote/lead). */
+  ref?: { type: 'plan' | 'quote' | 'lead'; id: string };
+  /** ≤240 chars. The natural-language prompt that was shown to the user. Helps the model match user replies to slots. */
+  prompt: string;
+  /** ISO 8601. When the prompt was issued. */
+  issuedAt: string;
+  /** Slot values applied by `apply_slot_values` (cleared on the next turn after consumption). */
+  applied?: Record<string, unknown>;
+  /** Whether `applied` covers every required field. Set by the tool handler. */
+  complete?: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Trip history
 // ---------------------------------------------------------------------------
 
@@ -182,6 +222,14 @@ export interface EmiliaState {
    */
   inject_session_memories_next_turn: boolean;
 
+  /**
+   * Generic turn-state slot. When non-null, the assistant is awaiting a
+   * user reply (slot values, a confirmation, etc.). The next turn injects
+   * this into the system prompt and the model invokes `apply_slot_values`
+   * or `confirm_pending_action` to resolve it. See PendingAction docstring.
+   */
+  pending_action: PendingAction | null;
+
   /** Bookkeeping. Never injected into the prompt. */
   meta: {
     conversation_id: string;
@@ -244,6 +292,7 @@ export function createInitialEmiliaState(args: CreateInitialEmiliaStateArgs): Em
     mode,
     trip_history: { trips: [] },
     inject_session_memories_next_turn: false,
+    pending_action: null,
     meta: {
       conversation_id: conversationId,
       agency_id: agencyId,

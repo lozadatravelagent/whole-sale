@@ -84,10 +84,13 @@ const COUNTRIES = new Set([
 const FAMILY_WORDS = /\b(familia|familias|familiar|flia)\b/i;
 
 const QUOTE_INTENT =
-  /\b(cotiz|precio|cuanto\s*(sale|cuesta|me\s*sale)|tarifa|busca(me)?|dame\s*(un\s*)?(vuelo|hotel|pasaje))\b/;
+  /\b(cotiz\w*|precio|presupuesto|valor|cuanto\s*(sale|cuesta|me\s*sale)|tarifa|busca(me)?|dame\s*(un\s*)?(vuelo|hotel|pasaje))\b/;
 
 const PLAN_INTENT =
   /\b(arma(me)?|planifica|itinerario|recorrido|ruta|circuito|viaje\s+por)\b/;
+
+const CURRENT_PLAN_REFERENCE =
+  /\b(este|esta|ese|esa|el|la)\s+(viaje|plan|itinerario|recorrido|propuesta)\b|\b(esto|eso|lo\s+(anterior|que\s+armamos|que\s+te\s+propuse))\b/;
 
 // ---------------------------------------------------------------------------
 // COLLECT question templates
@@ -119,6 +122,29 @@ function norm(text: string): string {
 function isRegionOrCountry(destination: string): boolean {
   const n = norm(destination);
   return REGIONS.has(n) || COUNTRIES.has(n);
+}
+
+function hasActivePlannerState(
+  plannerState?: {
+    generationMeta?: { isDraft?: boolean };
+    segments?: unknown[];
+  } | null,
+): boolean {
+  return Boolean(plannerState && !plannerState.generationMeta?.isDraft);
+}
+
+function isQuoteActivePlanIntent(
+  parsed: ParsedTravelRequest,
+  msg: string,
+  plannerState?: {
+    generationMeta?: { isDraft?: boolean };
+    segments?: unknown[];
+  } | null,
+): boolean {
+  if (!hasActivePlannerState(plannerState)) return false;
+  if (!QUOTE_INTENT.test(msg)) return false;
+  if (CURRENT_PLAN_REFERENCE.test(msg)) return true;
+  return parsed.requestType === 'itinerary' && parsed.itinerary?.editIntent === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,6 +364,17 @@ export function routeRequest(
   const inferredFields = detectInferredFields(parsed).map(f => f.field);
 
   // ----- Intent overrides -----
+
+  if (isQuoteActivePlanIntent(parsed, msg, plannerState)) {
+    return {
+      route: 'QUOTE',
+      score,
+      dimensions,
+      missingFields,
+      inferredFields,
+      reason: 'quote_active_plan',
+    };
+  }
 
   // Explicit itinerary type or planning language → PLAN
   if (parsed.requestType === 'itinerary' || PLAN_INTENT.test(msg)) {

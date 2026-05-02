@@ -72,20 +72,24 @@ vi.mock('../services/routeRequest', () => ({
   getInferredFieldDetails: vi.fn().mockReturnValue([]),
 }));
 
-vi.mock('../services/conversationOrchestrator', () => ({
-  resolveConversationTurn: vi.fn().mockReturnValue({
-    shouldAskMinimalQuestion: false,
-    executionBranch: 'standard_search',
-    responseMode: 'standard',
-    messageType: 'standard_response',
-    normalizedMissingFields: [],
-    uiMeta: {},
-    turnNumber: 1,
-  }),
-  buildConversationalMissingInfoMessage: vi.fn().mockReturnValue('missing info message'),
-  buildModeBridgeMessage: vi.fn().mockReturnValue('bridge message'),
-  formatDiscoveryResponse: vi.fn().mockReturnValue(''),
-}));
+vi.mock('../services/conversationOrchestrator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/conversationOrchestrator')>();
+  return {
+    ...actual,
+    resolveConversationTurn: vi.fn().mockReturnValue({
+      shouldAskMinimalQuestion: false,
+      executionBranch: 'standard_search',
+      responseMode: 'standard',
+      messageType: 'standard_response',
+      normalizedMissingFields: [],
+      uiMeta: {},
+      turnNumber: 1,
+    }),
+    buildConversationalMissingInfoMessage: vi.fn().mockReturnValue('missing info message'),
+    buildModeBridgeMessage: vi.fn().mockReturnValue('bridge message'),
+    formatDiscoveryResponse: vi.fn().mockReturnValue(''),
+  };
+});
 
 vi.mock('../services/itineraryPipeline', () => ({
   buildCanonicalResultFromStandard: vi.fn().mockReturnValue({}),
@@ -153,6 +157,7 @@ import {
 import { addMessageViaSupabase } from '../services/messageService';
 import { buildDiscoveryResponsePayload } from '../services/discoveryService';
 import { resolveConversationTurn } from '../services/conversationOrchestrator';
+import { routeRequest } from '../services/routeRequest';
 import { buildProps, buildParsedRequest, DEFAULT_CONV_ID } from '@/test-utils/useMessageHandlerFactory';
 
 // ---------------------------------------------------------------------------
@@ -548,6 +553,219 @@ describe('useMessageHandler', () => {
           conversationId: DEFAULT_CONV_ID,
           leadId: null,
           leadProfile: null,
+        }),
+      );
+    });
+
+    it('does not regenerate itinerary when quoting the active planner', async () => {
+      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+        requestType: 'itinerary',
+        originalMessage: 'Cotizame este plan',
+        itinerary: {
+          destinations: ['Roma', 'Florencia'],
+          days: 8,
+          isFlexibleDates: true,
+          flexibleMonth: '09',
+          flexibleYear: 2026,
+        } as any,
+      }) as any);
+      vi.mocked(routeRequest).mockReturnValue({
+        route: 'QUOTE',
+        score: 0.6,
+        missingFields: [],
+        collectQuestion: null,
+        reason: 'quote_active_plan',
+        dimensions: {},
+        inferredFields: [],
+      } as any);
+      vi.mocked(resolveConversationTurn).mockReturnValue({
+        ...STANDARD_TURN,
+        responseMode: 'quote_or_search',
+        messageType: 'search_results',
+      } as any);
+
+      const p = buildProps({
+        chatMode: 'agency',
+        setDraftPlannerFromRequest: vi.fn(),
+        plannerState: {
+          id: 'plan-1',
+          title: 'Roma y Florencia',
+          summary: 'Arte, historia y sabores',
+          destinations: ['Roma', 'Florencia'],
+          days: 8,
+          isFlexibleDates: true,
+          flexibleMonth: '09',
+          flexibleYear: 2026,
+          travelers: { adults: 2, children: 0, infants: 0 },
+          interests: [],
+          constraints: [],
+          segments: [
+            { id: 'seg-1', city: 'Roma', country: 'Italia', order: 0, nights: 5, days: [], hotelPlan: { searchStatus: 'idle' } },
+            { id: 'seg-2', city: 'Florencia', country: 'Italia', order: 1, nights: 3, days: [], hotelPlan: { searchStatus: 'idle' } },
+          ],
+          generalTips: [],
+          generationMeta: { source: 'chat', updatedAt: '2026-01-01T00:00:00Z', version: 1 },
+        } as any,
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Cotizame este plan');
+      });
+
+      expect(vi.mocked(handleItineraryRequest)).not.toHaveBeenCalled();
+      expect(p.setDraftPlannerFromRequest).not.toHaveBeenCalled();
+
+      const assistantSave = vi.mocked(addMessageViaSupabase).mock.calls.find(
+        call => call[0].role === 'assistant'
+      );
+      expect(assistantSave).toBeDefined();
+      expect(assistantSave![0].content.text).toContain('Tengo el plan activo para cotizar');
+      expect(assistantSave![0].content.text).toContain('sin volver a armar el viaje');
+      expect((assistantSave![0].meta as any).quoteContext).toEqual(expect.objectContaining({
+        source: 'active_planner',
+        destinations: ['Roma', 'Florencia'],
+        missingQuoteFields: ['ciudad de salida', 'fechas exactas'],
+      }));
+    });
+
+    it('builds an itinerary from the latest quote/search context', async () => {
+      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+        requestType: 'general',
+        originalMessage: 'Armame un itinerario con esta cotización',
+      }) as any);
+      vi.mocked(routeRequest).mockReturnValue({
+        route: 'PLAN',
+        score: 0.7,
+        missingFields: [],
+        collectQuestion: null,
+        reason: 'itinerary_from_quote_context',
+        dimensions: {},
+        inferredFields: [],
+      } as any);
+      vi.mocked(resolveConversationTurn).mockReturnValue({
+        ...STANDARD_TURN,
+        executionBranch: 'standard_itinerary',
+        responseMode: 'proposal_first_plan',
+        messageType: 'trip_planner',
+        shouldUseStandardItinerary: true,
+      } as any);
+
+      const p = buildProps({
+        loadContextState: vi.fn().mockResolvedValue({
+          schemaVersion: 1,
+          turnNumber: 1,
+          constraintsHistory: [],
+          lastSearch: {
+            requestType: 'combined',
+            timestamp: '2026-01-01T00:00:00Z',
+            flightsParams: {
+              origin: 'BUE',
+              destination: 'MAD',
+              departureDate: '2026-09-10',
+              returnDate: '2026-09-18',
+              adults: 2,
+              children: 0,
+              infants: 0,
+            },
+          },
+        }),
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Armame un itinerario con esta cotización');
+      });
+
+      expect(vi.mocked(routeRequest)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestType: 'itinerary',
+          itinerary: expect.objectContaining({
+            destinations: ['MAD'],
+            startDate: '2026-09-10',
+            endDate: '2026-09-18',
+            days: 9,
+            travelers: { adults: 2, children: 0, infants: 0 },
+          }),
+        }),
+        null,
+      );
+      expect(vi.mocked(handleItineraryRequest)).toHaveBeenCalled();
+    });
+
+    it('runs a combined quote search when the active planner has exact quote fields', async () => {
+      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+        requestType: 'itinerary',
+        originalMessage: 'Cotizame este plan',
+        itinerary: {
+          destinations: ['Roma', 'Florencia'],
+          days: 8,
+        } as any,
+      }) as any);
+      vi.mocked(routeRequest).mockReturnValue({
+        route: 'QUOTE',
+        score: 0.8,
+        missingFields: [],
+        collectQuestion: null,
+        reason: 'quote_active_plan',
+        dimensions: {},
+        inferredFields: [],
+      } as any);
+      vi.mocked(resolveConversationTurn).mockReturnValue({
+        ...STANDARD_TURN,
+        responseMode: 'quote_or_search',
+        messageType: 'search_results',
+      } as any);
+
+      const p = buildProps({
+        chatMode: 'agency',
+        plannerState: {
+          id: 'plan-1',
+          title: 'Roma y Florencia',
+          summary: 'Arte, historia y sabores',
+          startDate: '2026-09-10',
+          endDate: '2026-09-18',
+          isFlexibleDates: false,
+          days: 8,
+          travelers: { adults: 2, children: 0, infants: 0 },
+          interests: [],
+          constraints: [],
+          destinations: ['Roma', 'Florencia'],
+          origin: 'BUE',
+          segments: [
+            { id: 'seg-1', city: 'Roma', country: 'Italia', order: 0, nights: 5, days: [], hotelPlan: { searchStatus: 'idle' } },
+            { id: 'seg-2', city: 'Florencia', country: 'Italia', order: 1, nights: 3, days: [], hotelPlan: { searchStatus: 'idle' } },
+          ],
+          generalTips: [],
+          generationMeta: { source: 'chat', updatedAt: '2026-01-01T00:00:00Z', version: 1 },
+        } as any,
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Cotizame este plan');
+      });
+
+      expect(vi.mocked(handleItineraryRequest)).not.toHaveBeenCalled();
+      expect(vi.mocked(handleCombinedSearch)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestType: 'combined',
+          flights: expect.objectContaining({
+            origin: 'BUE',
+            destination: 'Roma',
+            departureDate: '2026-09-10',
+            returnDate: '2026-09-18',
+            adults: 2,
+          }),
+          hotels: expect.objectContaining({
+            city: 'Roma',
+            checkinDate: '2026-09-10',
+            checkoutDate: '2026-09-18',
+            segments: expect.arrayContaining([
+              expect.objectContaining({ city: 'Roma', checkinDate: '2026-09-10', checkoutDate: '2026-09-15' }),
+              expect.objectContaining({ city: 'Florencia', checkinDate: '2026-09-15', checkoutDate: '2026-09-18' }),
+            ]),
+          }),
         }),
       );
     });

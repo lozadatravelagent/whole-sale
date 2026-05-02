@@ -12,7 +12,7 @@
  * and the persistence loader.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** Top-k cap for global memory notes injected into the prompt per turn. */
 export const MAX_GLOBAL_NOTES = 6;
@@ -70,6 +70,25 @@ export interface TripSummary {
   ended_at: string;
 }
 
+/**
+ * Generic "the assistant is awaiting something from the user" marker.
+ * KEEP IN SYNC with src/features/chat/state/emiliaState.ts (PendingAction).
+ */
+export type PendingActionKind = 'awaiting_user_input' | 'awaiting_user_confirmation';
+
+export interface PendingAction {
+  kind: PendingActionKind;
+  for: string;
+  fields?: string[];
+  ref?: { type: 'plan' | 'quote' | 'lead'; id: string };
+  /** ≤240 chars. */
+  prompt: string;
+  /** ISO 8601. */
+  issuedAt: string;
+  applied?: Record<string, unknown>;
+  complete?: boolean;
+}
+
 export interface EmiliaState {
   profile: EmiliaProfile;
   /**
@@ -85,6 +104,7 @@ export interface EmiliaState {
   mode: 'passenger' | 'agency';
   trip_history: { trips: TripSummary[] };
   inject_session_memories_next_turn: boolean;
+  pending_action: PendingAction | null;
   meta: {
     conversation_id: string;
     agency_id: string;

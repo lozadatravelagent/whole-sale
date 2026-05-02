@@ -24,9 +24,17 @@ import {
   bootstrapStateIfMissing,
   buildMemoryStateBlockFromState,
   clearActiveRef,
+  clearPendingAction,
+  markPendingActionApplied,
   setActiveRef,
+  setPendingAction,
 } from '../contextEngineeringIntegration';
-import { createInitialEmiliaState, type EmiliaState, type ContextRef } from '../emiliaState';
+import {
+  createInitialEmiliaState,
+  type EmiliaState,
+  type ContextRef,
+  type PendingAction,
+} from '../emiliaState';
 
 const CONV_ID = 'conv-int-1';
 const AGENCY_ID = 'agency-int-1';
@@ -292,5 +300,136 @@ describe('buildMemoryStateBlockFromState', () => {
     expect(block).toContain('<user_profile>');
     expect(block).toContain('<current_mode>');
     expect(block).toContain('<memory_instructions>');
+  });
+
+  it('emits <pending_action> block only when state.pending_action is non-null', () => {
+    // The literal `<pending_action>` token also appears inside <memory_instructions>
+    // (policy text), so check for the BLOCK form (opening tag immediately followed
+    // by a newline and `kind:`) which only appears when the renderer emits it.
+    const stateNo = buildBaseState();
+    expect(buildMemoryStateBlockFromState(stateNo)).not.toMatch(/<pending_action>\n\s*kind:/);
+
+    const stateYes = setPendingAction(buildBaseState(), {
+      kind: 'awaiting_user_input',
+      for: 'quote_completion',
+      fields: ['origin', 'start_date'],
+      ref: { type: 'plan', id: 'plan-7' },
+      prompt: 'Para avanzar necesito ciudad de salida y fechas exactas',
+      issuedAt: new Date().toISOString(),
+    });
+    const block = buildMemoryStateBlockFromState(stateYes);
+    expect(block).toMatch(/<pending_action>\n\s*kind:/);
+    expect(block).toContain('kind: awaiting_user_input');
+    expect(block).toContain('for: quote_completion');
+    expect(block).toContain('fields: [origin, start_date]');
+    expect(block).toContain('ref: plan:plan-7');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pending_action helpers (Phase 5 — Test 4 abstraction)
+// ---------------------------------------------------------------------------
+
+describe('setPendingAction', () => {
+  it('clones state and sets pending_action', () => {
+    const state = buildBaseState();
+    expect(state.pending_action).toBeNull();
+
+    const action: PendingAction = {
+      kind: 'awaiting_user_input',
+      for: 'quote_completion',
+      fields: ['origin', 'start_date', 'end_date'],
+      ref: { type: 'plan', id: 'plan-1' },
+      prompt: 'Need origin and dates',
+      issuedAt: new Date().toISOString(),
+    };
+    const next = setPendingAction(state, action);
+
+    expect(next).not.toBe(state);
+    expect(state.pending_action).toBeNull(); // immutability
+    expect(next.pending_action).not.toBeNull();
+    expect(next.pending_action!.for).toBe('quote_completion');
+    expect(next.pending_action!.fields).toEqual(['origin', 'start_date', 'end_date']);
+  });
+
+  it('replaces an existing pending_action (single-slot semantics)', () => {
+    const state = setPendingAction(buildBaseState(), {
+      kind: 'awaiting_user_input',
+      for: 'collect_passenger',
+      fields: ['adults'],
+      prompt: 'How many?',
+      issuedAt: new Date().toISOString(),
+    });
+    const next = setPendingAction(state, {
+      kind: 'awaiting_user_confirmation',
+      for: 'confirm_booking',
+      prompt: 'Confirm?',
+      issuedAt: new Date().toISOString(),
+    });
+    expect(next.pending_action!.for).toBe('confirm_booking');
+    expect(next.pending_action!.kind).toBe('awaiting_user_confirmation');
+  });
+
+  it('caps fields to 6 and prompt to 240 chars', () => {
+    const longFields = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    const longPrompt = 'x'.repeat(500);
+    const next = setPendingAction(buildBaseState(), {
+      kind: 'awaiting_user_input',
+      for: 'collect_many',
+      fields: longFields,
+      prompt: longPrompt,
+      issuedAt: new Date().toISOString(),
+    });
+    expect(next.pending_action!.fields).toHaveLength(6);
+    expect(next.pending_action!.prompt.length).toBe(240);
+  });
+});
+
+describe('clearPendingAction', () => {
+  it('returns same reference when already null', () => {
+    const state = buildBaseState();
+    expect(clearPendingAction(state)).toBe(state);
+  });
+
+  it('drops pending_action when present, leaves rest intact', () => {
+    const state = setPendingAction(buildBaseState(), {
+      kind: 'awaiting_user_input',
+      for: 'quote_completion',
+      fields: ['origin'],
+      prompt: 'where from?',
+      issuedAt: new Date().toISOString(),
+    });
+    const next = clearPendingAction(state);
+    expect(next.pending_action).toBeNull();
+    expect(next.profile).toEqual(state.profile);
+    expect(next.global_memory).toEqual(state.global_memory);
+    expect(next.active_refs).toEqual(state.active_refs);
+  });
+});
+
+describe('markPendingActionApplied', () => {
+  it('no-ops when pending_action is null', () => {
+    const state = buildBaseState();
+    expect(markPendingActionApplied(state, { foo: 'bar' }, true)).toBe(state);
+  });
+
+  it('merges values onto applied and stamps complete', () => {
+    const state = setPendingAction(buildBaseState(), {
+      kind: 'awaiting_user_input',
+      for: 'quote_completion',
+      fields: ['origin', 'start_date'],
+      prompt: 'where + when',
+      issuedAt: new Date().toISOString(),
+    });
+    const partial = markPendingActionApplied(state, { origin: 'BUE' }, false);
+    expect(partial.pending_action!.applied).toEqual({ origin: 'BUE' });
+    expect(partial.pending_action!.complete).toBe(false);
+
+    const full = markPendingActionApplied(partial, { start_date: '2026-12-01' }, true);
+    expect(full.pending_action!.applied).toEqual({
+      origin: 'BUE',
+      start_date: '2026-12-01',
+    });
+    expect(full.pending_action!.complete).toBe(true);
   });
 });
