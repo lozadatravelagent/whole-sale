@@ -1,39 +1,30 @@
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { PublicPageShell } from "@/components/public/PublicPageShell";
 
-const sections = [
-  {
-    title: "Primeros pasos",
-    items: [
-      "Crear usuarios y definir permisos por rol.",
-      "Configurar agencia y branding base.",
-      "Conectar proveedores desde Marketplace.",
-    ],
-  },
-  {
-    title: "Operación diaria",
-    items: [
-      "Gestionar leads en CRM y asignar responsables.",
-      "Registrar operaciones y seguimiento comercial.",
-      "Consultar reportes para detectar oportunidades.",
-    ],
-  },
-  {
-    title: "Recursos rápidos",
-    items: [
-      "Guías de onboarding para equipos nuevos.",
-      "Buenas prácticas para seguimiento comercial.",
-      "Checklist de implementación por agencia.",
-    ],
-  },
-];
-
 const Documentation = () => {
+  const { t } = useTranslation("pages");
+
+  const sections = [
+    {
+      title: t("documentation.sections.gettingStarted.title"),
+      items: t("documentation.sections.gettingStarted.items", { returnObjects: true }) as string[],
+    },
+    {
+      title: t("documentation.sections.dailyOps.title"),
+      items: t("documentation.sections.dailyOps.items", { returnObjects: true }) as string[],
+    },
+    {
+      title: t("documentation.sections.quickResources.title"),
+      items: t("documentation.sections.quickResources.items", { returnObjects: true }) as string[],
+    },
+  ];
+
   return (
     <PublicPageShell
-      title="Documentación"
-      subtitle="Guía rápida para implementar Vibook y ordenar la operación comercial de tu agencia."
-      updatedAt="12 de febrero de 2026"
+      title={t("documentation.title")}
+      subtitle={t("documentation.subtitle")}
+      updatedAt={t("common.updatedAt")}
     >
       <div className="space-y-8">
         {sections.map((section) => (
@@ -51,8 +42,11 @@ const Documentation = () => {
 
         <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-6">
           <p className="text-cyan-100">
-            ¿Necesitás ayuda en la implementación? Visitá <Link to="/soporte" className="underline">Soporte</Link> o{" "}
-            <Link to="/contacto" className="underline">contactá a ventas</Link>.
+            {t("documentation.helpPrefix")}{" "}
+            <Link to="/soporte" className="underline">{t("documentation.supportLink")}</Link>{" "}
+            {t("documentation.or")}{" "}
+            <Link to="/contacto" className="underline">{t("documentation.salesLink")}</Link>
+            {t("documentation.helpSuffix")}
           </p>
         </div>
       </div>

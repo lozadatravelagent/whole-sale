@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v3';
+export const PROMPT_VERSION = 'emilia-parser-v4';
 export const PROMPT_CONTRACT_SNIPPETS = [
   'IMPORTANTE: Siempre responde solo con JSON válido.',
   "NO roomType or mealPlan because user didn't mention them",
@@ -17,7 +17,27 @@ interface BuildSystemPromptArgs {
   conversationSummary?: unknown;
   leadProfile?: unknown;
   plannerContext?: unknown;
+  /**
+   * Pre-rendered Context-Engineering memory state block
+   * (output of `_shared/renderState.ts:renderStateForSystemPrompt`).
+   * When present, it is injected after planner context and treated as
+   * authoritative per the documented precedence rules.
+   */
+  memoryStateBlock?: string;
+  /**
+   * BCP-47 short code ('es' | 'en' | 'pt'). Controls the natural-language
+   * register of user-facing strings emitted in the JSON output (clarifying
+   * messages, missing-field prompts, suggestion text). JSON keys, enums,
+   * codes (IATA, city codes) and ISO dates always remain in canonical form.
+   */
+  language?: 'es' | 'en' | 'pt';
 }
+
+const LANGUAGE_NAMES: Record<NonNullable<BuildSystemPromptArgs['language']>, string> = {
+  es: 'Spanish',
+  en: 'English',
+  pt: 'Portuguese',
+};
 
 export function buildSystemPrompt({
   currentDate,
@@ -26,7 +46,11 @@ export function buildSystemPrompt({
   conversationSummary,
   leadProfile,
   plannerContext,
+  memoryStateBlock,
+  language = 'es',
 }: BuildSystemPromptArgs): string {
+  const languageName = LANGUAGE_NAMES[language] ?? LANGUAGE_NAMES.es;
+  const languageDirective = `\nUSER LANGUAGE: ${language} (${languageName})\n- All natural-language strings in the JSON output (clarifying questions, missing-field prompts, suggestion or recommendation text shown to the user, "message" / "ask" / "explanation" fields) MUST be written in ${languageName}.\n- JSON keys, enum values, IATA / city codes, and ISO dates remain in their canonical form regardless of language.\n`;
   // Helper vars for dynamic prompt examples
   const [yearStr, monthStr, dayStr] = currentDate.split('-');
   const year = parseInt(yearStr);
@@ -45,10 +69,30 @@ export function buildSystemPrompt({
   const futureMonthYear = month < 12 ? year : nextYear;
 
   return `
-Eres un experto asistente de viajes que analiza solicitudes de viaje en ESPAÑOL y extrae datos estructurados en JSON.
-
+Eres un experto asistente de viajes que analiza solicitudes de viaje y extrae datos estructurados en JSON.
+${languageDirective}
 FECHA ACTUAL: ${currentDate}
 IMPORTANTE: Siempre responde solo con JSON válido. Usa \\n para saltos de línea en strings.
+
+<persistence>
+- Persist until the parsing task is fully resolved end-to-end. Don't yield prematurely with partial JSON or "needs more info" unless a critical field is truly missing.
+- For ambiguous directives, assume sensible defaults (typical traveler counts, current month dates, common origin) rather than asking back.
+- Only signal "missing info" for hard requirements: destination city, headcount when not implied, exact dates when explicitly required.
+- If you call tools, complete the loop: gather what you need, then return the final JSON.
+</persistence>
+
+<tool_selection>
+You have access to retrieval tools and one memory tool. Selection rules:
+- Use \`get_planner_state(planner_id)\` BEFORE quoting/editing when the user references "the plan" / "el itinerario" / "esto" AND a plan ref is active in MEMORY STATE.
+- Use \`get_recent_searches(limit)\` when the user references prior searches like "esa búsqueda", "los vuelos que vimos", "el hotel anterior".
+- Use \`get_lead_full_history(lead_id)\` only when the conversation summary and profile are insufficient and the user asks something requiring lead history (e.g. "¿qué reservó el año pasado?").
+- Use \`get_quote(quote_id)\` only when a quote ref is active and the user references the existing cotization.
+- Use \`save_memory_note(text, keywords, scope)\` ONLY when the user explicitly states a durable preference, constraint, or decision. NEVER save: speculation, instructions to yourself, sensitive PII (passports, payments, DOB, SSN), or trip-specific ephemeral details.
+- Do NOT call tools for conceptual questions about destinations or general travel knowledge — use your training data.
+- Do NOT call tools when the user message is a simple acknowledgement or chitchat.
+- Prefer parallel tool calls when independent (e.g. \`get_planner_state\` + \`get_lead_full_history\`).
+</tool_selection>
+${memoryStateBlock ? `**IMPORTANT**: a structured MEMORY STATE block is included below. Treat it as authoritative; precedence rules apply.\n` : ''}
 
 ${conversationHistoryText ? `CONVERSATION HISTORY:
 ${conversationHistoryText}
@@ -129,6 +173,10 @@ PLANNER EDITING MODE:
 - If the user's intention is actionable but not one of those actions, use action: "custom_instruction", scope: "plan", rawInstruction: the user's exact instruction, and confidence based on how clear it is.
 - If the user explicitly asks to start over, use action: "restart_plan" and do not preserve the existing plan except as background.
 - For simple preference edits, also set the concrete itinerary fields when clear: budgetLevel, pace, travelers, interests, constraints, dates, days, or destinations.
+` : ''}
+
+${memoryStateBlock ? `MEMORY STATE (Context Engineering layer):
+${memoryStateBlock}
 ` : ''}
 
 TASK: Extract structured data for flights, hotels, packages, services, combined, or itinerary requests.

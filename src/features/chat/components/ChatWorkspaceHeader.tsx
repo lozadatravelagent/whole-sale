@@ -1,5 +1,6 @@
 import { Calendar, Download, Loader2, MapPin, Plus, Route, Users } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -78,10 +79,14 @@ function getDateLabel(plannerState: TripPlannerState | null): string | null {
   return null;
 }
 
-function getConversationTitle(conversation: ConversationWithAgency | null, plannerState: TripPlannerState | null): string {
+function getConversationTitle(
+  conversation: ConversationWithAgency | null,
+  plannerState: TripPlannerState | null,
+  fallback: string,
+): string {
   if (plannerState?.title) return plannerState.title;
   if (conversation?.external_key) return conversation.external_key;
-  return 'Nueva conversación';
+  return fallback;
 }
 
 export function ChatWorkspaceHeaderContext({
@@ -90,6 +95,7 @@ export function ChatWorkspaceHeaderContext({
   plannerState,
   discoveryContext,
 }: ChatWorkspaceHeaderContextProps) {
+  const { t } = useTranslation('chat');
   if (!selectedConversation) return null;
 
   const destinations = getDestinations(plannerState, discoveryContext);
@@ -100,7 +106,7 @@ export function ChatWorkspaceHeaderContext({
   const daysLabel = plannerState?.days ? `${plannerState.days} días` : null;
   const budgetLabel = plannerState?.budgetLevel ? formatBudgetLevel(plannerState.budgetLevel) : null;
   const paceLabel = plannerState?.pace ? formatPaceLabel(plannerState.pace) : null;
-  const title = getConversationTitle(conversation, plannerState);
+  const title = getConversationTitle(conversation, plannerState, t('sidebar.newConversation'));
 
   return (
     <div className="flex min-w-0 justify-center">

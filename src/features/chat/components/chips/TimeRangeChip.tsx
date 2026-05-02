@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import {
   Popover,
@@ -21,19 +22,20 @@ interface TimeRangeChipProps {
 }
 
 const TIME_SLOTS = [
-  { key: 'morning', label: 'Mañana', range: [600, 1159] as [number, number], icon: '🌅' },
-  { key: 'afternoon', label: 'Tarde', range: [1200, 1759] as [number, number], icon: '☀️' },
-  { key: 'evening', label: 'Noche', range: [1800, 2159] as [number, number], icon: '🌆' },
-  { key: 'night', label: 'Madrugada', range: [2200, 559] as [number, number], icon: '🌙' },
+  { key: 'morning', i18nKey: 'morning', range: [600, 1159] as [number, number], icon: '🌅' },
+  { key: 'afternoon', i18nKey: 'afternoon', range: [1200, 1759] as [number, number], icon: '☀️' },
+  { key: 'evening', i18nKey: 'night', range: [1800, 2159] as [number, number], icon: '🌆' },
+  { key: 'night', i18nKey: 'earlyMorning', range: [2200, 559] as [number, number], icon: '🌙' },
 ] as const;
 
 export function TimeRangeChip({ value, distribution, onChange }: TimeRangeChipProps) {
+  const { t } = useTranslation('chat');
   const [open, setOpen] = useState(false);
 
   const hasFilter = value !== null;
 
   const getLabel = (): string => {
-    if (!value) return 'Horario';
+    if (!value) return t('chips.departureTime');
 
     const [min, max] = value;
     return `${timeNumberToString(min)} - ${timeNumberToString(max)}`;
@@ -79,10 +81,10 @@ export function TimeRangeChip({ value, distribution, onChange }: TimeRangeChipPr
       </PopoverTrigger>
       <PopoverContent className="w-56 p-2" align="start">
         <div className="text-xs font-medium text-muted-foreground mb-2">
-          Horario de salida
+          {t('chips.departureHeader')}
         </div>
         <div className="grid grid-cols-2 gap-1">
-          {TIME_SLOTS.map(({ key, label, range, icon }) => {
+          {TIME_SLOTS.map(({ key, i18nKey, range, icon }) => {
             const count = distribution[key as keyof typeof distribution] || 0;
             const isSelected = value && value[0] === range[0] && value[1] === range[1];
             const isDisabled = count === 0;
@@ -100,10 +102,10 @@ export function TimeRangeChip({ value, distribution, onChange }: TimeRangeChipPr
                 onClick={() => handleSlotClick(range)}
               >
                 <span className="text-xs">
-                  {icon} {label}
+                  {icon} {t(`chips.timeRanges.${i18nKey}`)}
                 </span>
                 <span className="text-[10px] text-muted-foreground">
-                  {count} vuelos
+                  {t('chips.flightsCount', { count })}
                 </span>
               </Button>
             );

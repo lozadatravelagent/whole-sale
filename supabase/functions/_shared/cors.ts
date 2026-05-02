@@ -13,7 +13,7 @@ function isLocalDevOrigin(origin: string): boolean {
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': allowedOrigins.length === 1 ? allowedOrigins[0] : '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-use-tool-loop',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 

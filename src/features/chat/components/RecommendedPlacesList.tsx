@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { ChatRecommendedPlace } from '../services/conversationOrchestrator';
 
@@ -11,43 +12,34 @@ interface RecommendedPlacesListProps {
   exploreLabel?: string;
 }
 
-function formatSlotLabel(slot?: 'morning' | 'afternoon' | 'evening') {
-  if (slot === 'morning') return 'Mañana';
-  if (slot === 'afternoon') return 'Tarde';
-  if (slot === 'evening') return 'Noche';
-  return 'Sugerido';
-}
+export default function RecommendedPlacesList({ places, onExplore, onAdd, title, subtitle, addLabel, exploreLabel }: RecommendedPlacesListProps) {
+  const { t } = useTranslation('chat');
 
-function formatPlaceBadge(place: ChatRecommendedPlace) {
-  switch (place.bucket) {
-    case 'imperdibles':
-      return 'Imperdible';
-    case 'historia':
-      return 'Historia';
-    case 'museos':
-      return 'Museo';
-    case 'barrios':
-      return 'Barrio';
-    case 'miradores':
-      return 'Mirador';
-    case 'parques':
-      return 'Paseo';
-    case 'gastronomia':
-      return 'Gastronomia';
-    case 'noche':
-      return 'Noche';
-    default:
-      return place.category;
-  }
-}
+  const formatSlotLabel = (slot?: 'morning' | 'afternoon' | 'evening') => {
+    if (slot === 'morning') return t('recommendedPlaces.slots.morning');
+    if (slot === 'afternoon') return t('recommendedPlaces.slots.afternoon');
+    if (slot === 'evening') return t('recommendedPlaces.slots.evening');
+    return t('recommendedPlaces.slots.suggested');
+  };
 
-export default function RecommendedPlacesList({ places, onExplore, onAdd, title = 'Lugares recomendados', subtitle, addLabel = 'Sumarlo', exploreLabel = 'Ver más' }: RecommendedPlacesListProps) {
+  const formatPlaceBadge = (place: ChatRecommendedPlace) => {
+    const knownBuckets = ['imperdibles', 'historia', 'museos', 'barrios', 'miradores', 'parques', 'gastronomia', 'noche'];
+    if (place.bucket && knownBuckets.includes(place.bucket)) {
+      return t(`recommendedPlaces.badges.${place.bucket}`);
+    }
+    return place.category;
+  };
+
+  const resolvedTitle = title ?? t('recommendedPlaces.title');
+  const resolvedAddLabel = addLabel ?? t('recommendedPlaces.addToTrip');
+  const resolvedExploreLabel = exploreLabel ?? t('recommendedPlaces.showMore');
+
   if (places.length === 0) return null;
 
   return (
     <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="px-1">
-        <p className="text-xs font-medium text-muted-foreground">{title}</p>
+        <p className="text-xs font-medium text-muted-foreground">{resolvedTitle}</p>
         {subtitle && <p className="text-[11px] text-muted-foreground/80 mt-0.5">{subtitle}</p>}
       </div>
       <div className="relative">
@@ -88,12 +80,12 @@ export default function RecommendedPlacesList({ places, onExplore, onAdd, title 
                   <div className="flex gap-2 pt-1">
                     {onAdd && (
                       <Button size="sm" className="flex-1 h-8 text-xs" onClick={() => onAdd(place)}>
-                        {addLabel}
+                        {resolvedAddLabel}
                       </Button>
                     )}
                     {onExplore && (
                       <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onExplore(place)}>
-                        {exploreLabel}
+                        {resolvedExploreLabel}
                       </Button>
                     )}
                   </div>

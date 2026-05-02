@@ -1,0 +1,82 @@
+{
+  "tag": "Painel · Resumo",
+  "today": "Hoje · {{date}}",
+  "title": {
+    "owner": "Painel Global (OWNER)",
+    "superAdmin": "Painel do Atacadista",
+    "admin": "Painel da Agência",
+    "seller": "Meu Painel Pessoal",
+    "default": "Painel"
+  },
+  "description": {
+    "owner": "Visão completa de todos os tenants e agências do sistema",
+    "superAdmin": "Gestão e supervisão de todas as suas agências",
+    "admin": "Supervisão da equipe de vendedores e métricas da agência",
+    "seller": "Seus leads atribuídos e métricas pessoais de desempenho",
+    "default": "Resumo do desempenho comercial da sua agência"
+  },
+  "loginRequired": "Por favor, faça login para ver o painel",
+  "alerts": {
+    "title": "Alertas Importantes",
+    "pendingFollowups": "{{count}} leads pendentes de acompanhamento",
+    "viewLeads": "Ver leads",
+    "upcomingDeadlines": "{{count}} acompanhamentos programados em breve",
+    "viewSchedule": "Ver agenda",
+    "allCaughtUp": "Tudo em dia. Bom trabalho!",
+    "viewCrm": "Ver CRM"
+  },
+  "goals": {
+    "title": "Metas do Mês",
+    "subtitle": "Progresso em direção às metas estabelecidas",
+    "monthlyRevenue": "Receita Mensal",
+    "leadsWonContext": "De {{count}} leads ganhos este mês",
+    "conversionRate": "Taxa de Conversão",
+    "conversionContext": "{{won}} ganhos de {{closed}} leads fechados"
+  },
+  "metrics": {
+    "conversationsToday": "Conversas Hoje",
+    "trendVsYesterday": "+12% em relação a ontem",
+    "quotes": "Cotações",
+    "pdfsSent": "{{count}} PDFs enviados"
+  },
+  "agencyPerformance": {
+    "titleAll": "Desempenho por Agência (Todas)",
+    "titleScoped": "Desempenho de Agências",
+    "subtitleAll": "Comparativa cross-tenant",
+    "subtitleScoped": "Agências do seu atacadista",
+    "conversion": "{{rate}}% conversão",
+    "revenue": "Receita",
+    "leads": "Leads",
+    "conversations": "Conversas",
+    "sellers": "Vendedores"
+  },
+  "team": {
+    "title": "Desempenho da Equipe",
+    "subtitle": "Desempenho de vendedores este mês",
+    "viewAll": "Ver Todos",
+    "leads": "{{count}} leads",
+    "won": "{{count}} ganhos",
+    "conversion": "{{rate}}% conversão"
+  },
+  "deadlines": {
+    "title": "Próximos Vencimentos",
+    "subtitle": "Ações importantes pendentes",
+    "days": "{{count}} dias",
+    "viewPending": "Ver {{count}} acompanhamentos pendentes"
+  },
+  "activity": {
+    "title": "Atividade Recente",
+    "subtitle": "Últimas interações importantes",
+    "loading": "Carregando atividades...",
+    "empty": "Sem atividade recente",
+    "destination": "Destino: {{place}}",
+    "timeAgo": {
+      "justNow": "Agora mesmo",
+      "minutes": "{{count}} min",
+      "hour": "{{count}} hora",
+      "hours": "{{count}} horas",
+      "day": "{{count}} dia",
+      "days": "{{count}} dias"
+    }
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "tag": "Panel · Resumen",
+  "today": "Hoy · {{date}}",
+  "title": {
+    "owner": "Dashboard Global (OWNER)",
+    "superAdmin": "Dashboard del Mayorista",
+    "admin": "Dashboard de la Agencia",
+    "seller": "Mi Dashboard Personal",
+    "default": "Dashboard"
+  },
+  "description": {
+    "owner": "Vista completa de todos los tenants y agencias del sistema",
+    "superAdmin": "Gestión y supervisión de todas tus agencias",
+    "admin": "Supervisión del equipo de vendedores y métricas de agencia",
+    "seller": "Tus leads asignados y métricas personales de rendimiento",
+    "default": "Resumen del rendimiento comercial de tu agencia"
+  },
+  "loginRequired": "Por favor, inicia sesión para ver el dashboard",
+  "alerts": {
+    "title": "Alertas Importantes",
+    "pendingFollowups": "{{count}} leads pendientes de seguimiento",
+    "viewLeads": "Ver leads",
+    "upcomingDeadlines": "{{count}} seguimientos programados próximamente",
+    "viewSchedule": "Ver agenda",
+    "allCaughtUp": "Todo al día. ¡Buen trabajo!",
+    "viewCrm": "Ver CRM"
+  },
+  "goals": {
+    "title": "Objetivos del Mes",
+    "subtitle": "Progreso hacia las metas establecidas",
+    "monthlyRevenue": "Ingresos Mensuales",
+    "leadsWonContext": "De {{count}} leads ganados este mes",
+    "conversionRate": "Tasa de Conversión",
+    "conversionContext": "{{won}} ganados de {{closed}} leads cerrados"
+  },
+  "metrics": {
+    "conversationsToday": "Conversaciones Hoy",
+    "trendVsYesterday": "+12% desde ayer",
+    "quotes": "Cotizaciones",
+    "pdfsSent": "{{count}} PDFs enviados"
+  },
+  "agencyPerformance": {
+    "titleAll": "Performance por Agencia (Todas)",
+    "titleScoped": "Performance de Agencias",
+    "subtitleAll": "Comparativa cross-tenant",
+    "subtitleScoped": "Agencias de tu mayorista",
+    "conversion": "{{rate}}% conversión",
+    "revenue": "Ingresos",
+    "leads": "Leads",
+    "conversations": "Conversaciones",
+    "sellers": "Vendedores"
+  },
+  "team": {
+    "title": "Performance del Equipo",
+    "subtitle": "Rendimiento de vendedores este mes",
+    "viewAll": "Ver Todos",
+    "leads": "{{count}} leads",
+    "won": "{{count}} ganados",
+    "conversion": "{{rate}}% conversión"
+  },
+  "deadlines": {
+    "title": "Próximos Vencimientos",
+    "subtitle": "Acciones importantes pendientes",
+    "days": "{{count}} días",
+    "viewPending": "Ver {{count}} seguimientos pendientes"
+  },
+  "activity": {
+    "title": "Actividad Reciente",
+    "subtitle": "Últimas interacciones importantes",
+    "loading": "Cargando actividades...",
+    "empty": "No hay actividades recientes",
+    "destination": "Destino: {{place}}",
+    "timeAgo": {
+      "justNow": "Justo ahora",
+      "minutes": "{{count}} min",
+      "hour": "{{count}} hora",
+      "hours": "{{count}} horas",
+      "day": "{{count}} día",
+      "days": "{{count}} días"
+    }
+  }
+}

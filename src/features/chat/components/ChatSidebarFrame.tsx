@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,7 @@ export default function ChatSidebarFrame({
   onCollapsedChange,
   children,
 }: ChatSidebarFrameProps) {
+  const { t } = useTranslation('chat');
   return (
     <div
       className={cn(
@@ -38,8 +40,8 @@ export default function ChatSidebarFrame({
           size="icon"
           className="meridian-glass absolute left-1/2 top-3 z-20 hidden h-9 w-9 -translate-x-1/2 rounded-full text-muted-foreground transition-all duration-300 ease-out-expo hover:text-foreground md:flex"
           onClick={() => onCollapsedChange(false)}
-          aria-label="Expandir historial"
-          title="Expandir historial"
+          aria-label={t('sidebar.expand')}
+          title={t('sidebar.expand')}
         >
           <PanelLeftOpen className="h-4 w-4" />
         </Button>

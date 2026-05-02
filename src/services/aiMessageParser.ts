@@ -1498,6 +1498,7 @@ export async function parseMessageWithAI(
     previousContext?: ParsedTravelRequest | null,
     conversationHistory?: Array<{ role: string, content: string, timestamp: string }>,
     knowledge?: ParseMessageKnowledge,
+    language: 'es' | 'en' | 'pt' = 'es',
 ): Promise<ParsedTravelRequest> {
     const timer = createDebugTimer('AI PARSER', {
         messageLength: message.length,
@@ -1832,7 +1833,7 @@ export async function parseMessageWithAI(
         const response = await supabase.functions.invoke('ai-message-parser', {
             body: {
                 message,
-                language: 'es', // Spanish
+                language,
                 currentDate: new Date().toISOString().split('T')[0],
                 previousContext: previousContext, // Include conversation context
                 conversationHistory: conversationHistory || [],
@@ -1841,6 +1842,10 @@ export async function parseMessageWithAI(
                 plannerContext: knowledge?.plannerContext ?? null,
                 historyWindow: knowledge?.historyWindow ?? 6,
                 contextMeta: knowledge?.contextMeta ?? null,
+                // Phase 5 (Context Engineering): pre-rendered state injection
+                // block. Edge function consumes this in `prompt.ts`. Undefined
+                // when the feature flag is off — payload key is omitted.
+                ...(knowledge?.memoryStateBlock ? { memoryStateBlock: knowledge.memoryStateBlock } : {}),
             }
         });
         logTimingStep('AI PARSER', 'invoke ai-message-parser', invokeStart, {

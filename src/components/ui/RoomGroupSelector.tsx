@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { CheckCircle, AlertCircle, Bed, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
-import { translateRoomDescription } from '@/features/chat/utils/translations';
+import { useChatDataTranslations } from '@/features/chat/hooks/useChatDataTranslations';
 
 interface Room {
     occupancy_id: string;
@@ -59,6 +59,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     nights
 }) => {
     const [showAllRooms, setShowAllRooms] = useState(false);
+    const { translateRoomDescription } = useChatDataTranslations();
 
     // Helper to get exact price for a room
     const getExactPrice = (roomId: string): ExactPriceData | null => {

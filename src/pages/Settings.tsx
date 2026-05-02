@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { MeridianHeading, MeridianTag } from '@/components/meridian';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +41,7 @@ import SimplePdfTemplateManager from '@/components/settings/SimplePdfTemplateMan
 import PdfTemplateManager from '@/components/settings/PdfTemplateManager';
 
 const Settings = () => {
+  const { t } = useTranslation('settings');
   const { user, isOwner, isSuperAdmin, isAdmin, isSeller } = useAuth();
   const {
     agency,
@@ -108,12 +110,12 @@ const Settings = () => {
 
   const handleChangePassword = async () => {
     if (newPassword !== confirmPassword) {
-      alert('Las contraseñas no coinciden');
+      alert(t('validation.passwordsMismatch'));
       return;
     }
 
     if (newPassword.length < 6) {
-      alert('La contraseña debe tener al menos 6 caracteres');
+      alert(t('validation.passwordTooShort'));
       return;
     }
 
@@ -135,19 +137,19 @@ const Settings = () => {
 
     const targetAgencyId = selectedAgencyId || user?.agency_id;
     if (!targetAgencyId) {
-      alert('No se pudo determinar la agencia');
+      alert(t('validation.noAgency'));
       return;
     }
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Por favor selecciona una imagen válida');
+      alert(t('validation.invalidImage'));
       return;
     }
 
     // Validate file size (max 2MB)
     if (file.size > 2 * 1024 * 1024) {
-      alert('La imagen debe ser menor a 2MB');
+      alert(t('validation.imageTooLarge'));
       return;
     }
 
@@ -199,12 +201,12 @@ const Settings = () => {
       <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <MeridianTag tone="lilac" className="mb-3">Cuenta · Configuración</MeridianTag>
-            <MeridianHeading as="h1" size="md" italic>Configuración</MeridianHeading>
+            <MeridianTag tone="lilac" className="mb-3">{t('tag')}</MeridianTag>
+            <MeridianHeading as="h1" size="md" italic>{t('title')}</MeridianHeading>
             <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">
               {canEditAgencySettings
-                ? 'Personaliza el branding y preferencias de tu agencia'
-                : 'Gestiona la configuración de tu cuenta personal'}
+                ? t('subtitleAgency')
+                : t('subtitlePersonal')}
             </p>
           </div>
         </div>
@@ -214,7 +216,7 @@ const Settings = () => {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Como vendedor, solo puedes editar tu perfil personal. Para cambiar la configuración de la agencia, contacta a tu administrador.
+              {t('sellerNotice')}
             </AlertDescription>
           </Alert>
         )}
@@ -223,17 +225,17 @@ const Settings = () => {
         {needsAgencySelector && agencies.length > 0 && (
           <Card className="shadow-card">
             <CardHeader>
-              <CardTitle className="text-lg">Seleccionar Agencia</CardTitle>
+              <CardTitle className="text-lg">{t('agencySelector.title')}</CardTitle>
               <CardDescription>
                 {isOwner
-                  ? 'Elige qué agencia quieres configurar'
-                  : 'Elige una agencia de tu tenant'}
+                  ? t('agencySelector.descriptionOwner')
+                  : t('agencySelector.descriptionAdmin')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Select value={selectedAgencyId || ''} onValueChange={setSelectedAgencyId}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecciona una agencia..." />
+                  <SelectValue placeholder={t('agencySelector.placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {agencies.map((agency) => (
@@ -255,17 +257,17 @@ const Settings = () => {
               className="text-xs md:text-sm"
               disabled={!canEditAgencySettings}
             >
-              Branding
+              {t('tabs.branding')}
             </TabsTrigger>
             <TabsTrigger
               value="contact"
               className="text-xs md:text-sm"
               disabled={!canEditAgencySettings}
             >
-              Información de Contacto
+              {t('tabs.contact')}
             </TabsTrigger>
             <TabsTrigger value="account" className="text-xs md:text-sm">
-              Cuenta
+              {t('tabs.account')}
             </TabsTrigger>
           </TabsList>
 
@@ -275,9 +277,9 @@ const Settings = () => {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Branding de la Agencia</CardTitle>
+                    <CardTitle>{t('branding.title')}</CardTitle>
                     <CardDescription className="mt-2">
-                      Personaliza la apariencia de tu agencia en cotizaciones y comunicaciones
+                      {t('branding.description')}
                     </CardDescription>
                   </div>
                   <Button
@@ -286,9 +288,9 @@ const Settings = () => {
                     className="bg-gradient-hero shadow-primary"
                   >
                     {saving ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Guardando...</>
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('branding.saving')}</>
                     ) : (
-                      <><Save className="h-4 w-4 mr-2" /> Guardar Cambios</>
+                      <><Save className="h-4 w-4 mr-2" /> {t('branding.save')}</>
                     )}
                   </Button>
                 </div>
@@ -296,7 +298,7 @@ const Settings = () => {
               <CardContent className="space-y-6">
                 {/* Logo Upload */}
                 <div className="space-y-2">
-                  <Label>Logo de la Agencia</Label>
+                  <Label>{t('branding.logo')}</Label>
                   <div className="flex items-center space-x-4">
                     <div className="w-20 h-20 bg-gradient-card rounded-lg flex items-center justify-center border-2 border-dashed border-border overflow-hidden">
                       {editedBranding?.logoUrl ? (
@@ -318,21 +320,21 @@ const Settings = () => {
                       disabled={uploadingLogo}
                     >
                       {uploadingLogo ? (
-                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Subiendo...</>
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('branding.uploading')}</>
                       ) : (
-                        <><Upload className="h-4 w-4 mr-2" /> Subir Logo</>
+                        <><Upload className="h-4 w-4 mr-2" /> {t('branding.uploadLogo')}</>
                       )}
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Tamaño recomendado: 200x200px, formato PNG o JPG (máx 2MB)
+                    {t('branding.logoHint')}
                   </p>
                 </div>
 
                 {/* Color Scheme */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="primaryColor">Color Primario</Label>
+                    <Label htmlFor="primaryColor">{t('branding.primaryColor')}</Label>
                     <div className="flex items-center space-x-3">
                       <div
                         className="w-10 h-10 rounded-lg border"
@@ -355,7 +357,7 @@ const Settings = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="secondaryColor">Color Secundario</Label>
+                    <Label htmlFor="secondaryColor">{t('branding.secondaryColor')}</Label>
                     <div className="flex items-center space-x-3">
                       <div
                         className="w-10 h-10 rounded-lg border"
@@ -381,7 +383,7 @@ const Settings = () => {
                 {/* PDF Header/Footer Background Colors */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label htmlFor="pdfHeaderBgColor">Color de Fondo Header PDF</Label>
+                    <Label htmlFor="pdfHeaderBgColor">{t('branding.pdfHeaderBg')}</Label>
                     <div className="flex items-center space-x-3">
                       <div
                         className="w-10 h-10 rounded-lg border"
@@ -397,17 +399,17 @@ const Settings = () => {
                       <Input
                         value={editedBranding?.pdfHeaderBgColor || ''}
                         onChange={(e) => handleColorChange('pdfHeaderBgColor', e.target.value)}
-                        placeholder="Transparente"
+                        placeholder={t('branding.transparentPlaceholder')}
                         className="flex-1"
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Dejar vacío para fondo transparente
+                      {t('branding.transparentHint')}
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="pdfFooterBgColor">Color de Fondo Footer PDF</Label>
+                    <Label htmlFor="pdfFooterBgColor">{t('branding.pdfFooterBg')}</Label>
                     <div className="flex items-center space-x-3">
                       <div
                         className="w-10 h-10 rounded-lg border"
@@ -423,19 +425,19 @@ const Settings = () => {
                       <Input
                         value={editedBranding?.pdfFooterBgColor || ''}
                         onChange={(e) => handleColorChange('pdfFooterBgColor', e.target.value)}
-                        placeholder="Transparente"
+                        placeholder={t('branding.transparentPlaceholder')}
                         className="flex-1"
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Dejar vacío para fondo transparente
+                      {t('branding.transparentHint')}
                     </p>
                   </div>
                 </div>
 
                 {/* Preview */}
                 <div className="space-y-2">
-                  <Label>Vista Previa</Label>
+                  <Label>{t('branding.preview')}</Label>
                   <div className="p-6 border rounded-lg space-y-4" style={{
                     background: `linear-gradient(135deg, ${editedBranding?.primaryColor || '#3b82f6'}10, ${editedBranding?.secondaryColor || '#1e40af'}10)`,
                     borderColor: (editedBranding?.primaryColor || '#3b82f6') + '20'
@@ -450,9 +452,9 @@ const Settings = () => {
                       </div>
                       <div>
                         <h3 className="font-semibold" style={{ color: editedBranding?.primaryColor || '#3b82f6' }}>
-                          {editedBranding?.contact?.name || 'Tu Agencia'}
+                          {editedBranding?.contact?.name || t('branding.previewAgency')}
                         </h3>
-                        <p className="text-sm text-muted-foreground">Vista Previa de Cotización</p>
+                        <p className="text-sm text-muted-foreground">{t('branding.previewQuote')}</p>
                       </div>
                     </div>
                     <Button
@@ -462,7 +464,7 @@ const Settings = () => {
                       }}
                       className="text-white"
                     >
-                      Reservar Ahora
+                      {t('branding.previewBookNow')}
                     </Button>
                   </div>
                 </div>
@@ -488,8 +490,8 @@ const Settings = () => {
                   <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-muted-foreground">
                     {needsAgencySelector
-                      ? 'Por favor selecciona una agencia para gestionar las plantillas PDF'
-                      : 'Cargando información de la agencia...'}
+                      ? t('branding.selectAgencyForTemplates')
+                      : t('branding.loadingAgency')}
                   </p>
                 </CardContent>
               </Card>
@@ -502,9 +504,9 @@ const Settings = () => {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Información de Contacto</CardTitle>
+                    <CardTitle>{t('contact.title')}</CardTitle>
                     <CardDescription>
-                      Esta información aparecerá en tus cotizaciones y comunicaciones
+                      {t('contact.description')}
                     </CardDescription>
                   </div>
                   <Button
@@ -513,16 +515,16 @@ const Settings = () => {
                     className="bg-gradient-hero shadow-primary"
                   >
                     {saving ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Guardando...</>
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('branding.saving')}</>
                     ) : (
-                      <><Save className="h-4 w-4 mr-2" /> Guardar Cambios</>
+                      <><Save className="h-4 w-4 mr-2" /> {t('branding.save')}</>
                     )}
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="agencyName">Nombre de la Agencia</Label>
+                  <Label htmlFor="agencyName">{t('contact.agencyName')}</Label>
                   <div className="relative">
                     <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -530,13 +532,13 @@ const Settings = () => {
                       value={editedBranding?.contact?.name || ''}
                       onChange={(e) => handleContactChange('name', e.target.value)}
                       className="pl-10"
-                      placeholder="Tu Agencia de Viajes"
+                      placeholder={t('contact.agencyNamePlaceholder')}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email de Contacto</Label>
+                  <Label htmlFor="email">{t('contact.email')}</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -545,13 +547,13 @@ const Settings = () => {
                       value={editedBranding?.contact?.email || ''}
                       onChange={(e) => handleContactChange('email', e.target.value)}
                       className="pl-10"
-                      placeholder="contacto@tuagencia.com"
+                      placeholder={t('contact.emailPlaceholder')}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Número de Teléfono</Label>
+                  <Label htmlFor="phone">{t('contact.phone')}</Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -559,13 +561,13 @@ const Settings = () => {
                       value={editedBranding?.contact?.phone || ''}
                       onChange={(e) => handleContactChange('phone', e.target.value)}
                       className="pl-10"
-                      placeholder="+34 123 456 789"
+                      placeholder={t('contact.phonePlaceholder')}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="pdfFooterText">Texto para pie de página del PDF</Label>
+                  <Label htmlFor="pdfFooterText">{t('contact.pdfFooter')}</Label>
                   <Textarea
                     id="pdfFooterText"
                     value={editedBranding?.pdfFooterText || ''}
@@ -573,11 +575,11 @@ const Settings = () => {
                       if (!editedBranding) return;
                       setEditedBranding(prev => prev ? { ...prev, pdfFooterText: e.target.value } : prev);
                     }}
-                    placeholder="Ej: Dirección, CUIT, sitio web, condiciones..."
+                    placeholder={t('contact.pdfFooterPlaceholder')}
                     rows={3}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Este texto aparecerá en el pie de página de los PDFs generados por tu agencia
+                    {t('contact.pdfFooterHint')}
                   </p>
                 </div>
               </CardContent>
@@ -589,8 +591,8 @@ const Settings = () => {
             {/* Role Badge */}
             <Card className="shadow-card">
               <CardHeader>
-                <CardTitle>Información de la Cuenta</CardTitle>
-                <CardDescription>Tu rol y permisos en el sistema</CardDescription>
+                <CardTitle>{t('account.title')}</CardTitle>
+                <CardDescription>{t('account.description')}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-4 bg-gradient-card rounded-lg">
@@ -599,10 +601,10 @@ const Settings = () => {
                     <div>
                       <p className="font-medium">{profile?.email || user?.email}</p>
                       <p className="text-sm text-muted-foreground">
-                        {isOwner && 'Propietario de la Plataforma - Acceso a todos los tenants'}
-                        {isSuperAdmin && 'Administrador de Tenant - Acceso a todas las agencias del tenant'}
-                        {isAdmin && 'Administrador de Agencia - Gestiona tu agencia'}
-                        {isSeller && 'Agente de Ventas - Gestiona leads asignados'}
+                        {isOwner && t('account.roles.owner')}
+                        {isSuperAdmin && t('account.roles.superAdmin')}
+                        {isAdmin && t('account.roles.admin')}
+                        {isSeller && t('account.roles.seller')}
                       </p>
                     </div>
                   </div>
@@ -618,8 +620,8 @@ const Settings = () => {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>Perfil Personal</CardTitle>
-                    <CardDescription>Actualiza tu información personal</CardDescription>
+                    <CardTitle>{t('account.personalTitle')}</CardTitle>
+                    <CardDescription>{t('account.personalDescription')}</CardDescription>
                   </div>
                   <Button
                     onClick={handleSaveProfile}
@@ -627,33 +629,33 @@ const Settings = () => {
                     className="bg-gradient-hero shadow-primary"
                   >
                     {saving ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Guardando...</>
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('branding.saving')}</>
                     ) : (
-                      <><Save className="h-4 w-4 mr-2" /> Guardar Perfil</>
+                      <><Save className="h-4 w-4 mr-2" /> {t('account.saveProfile')}</>
                     )}
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="userName">Nombre para Mostrar</Label>
+                  <Label htmlFor="userName">{t('account.displayName')}</Label>
                   <Input
                     id="userName"
                     value={editedName}
                     onChange={(e) => setEditedName(e.target.value)}
-                    placeholder="Tu Nombre"
+                    placeholder={t('account.displayNamePlaceholder')}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Dirección de Email</Label>
+                  <Label>{t('account.emailLabel')}</Label>
                   <Input
                     value={profile?.email || user?.email || ''}
                     disabled
                     className="bg-muted"
                   />
                   <p className="text-xs text-muted-foreground">
-                    El email no se puede cambiar. Contacta a soporte si lo necesitas.
+                    {t('account.emailLocked')}
                   </p>
                 </div>
               </CardContent>
@@ -662,12 +664,12 @@ const Settings = () => {
             {/* Password Change */}
             <Card className="shadow-card">
               <CardHeader>
-                <CardTitle>Cambiar Contraseña</CardTitle>
-                <CardDescription>Actualiza tu contraseña por seguridad</CardDescription>
+                <CardTitle>{t('account.passwordTitle')}</CardTitle>
+                <CardDescription>{t('account.passwordDescription')}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="newPassword">Nueva Contraseña</Label>
+                  <Label htmlFor="newPassword">{t('account.newPassword')}</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -682,7 +684,7 @@ const Settings = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
+                  <Label htmlFor="confirmPassword">{t('account.confirmPassword')}</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -702,9 +704,9 @@ const Settings = () => {
                   className="w-full"
                 >
                   {saving ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Actualizando...</>
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('account.updating')}</>
                   ) : (
-                    <>Actualizar Contraseña</>
+                    <>{t('account.updatePassword')}</>
                   )}
                 </Button>
               </CardContent>

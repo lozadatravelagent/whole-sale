@@ -1,0 +1,185 @@
+{
+  "common": {
+    "active": "Ativo",
+    "suspended": "Suspenso",
+    "edit": "Editar",
+    "delete": "Excluir",
+    "suspend": "Suspender",
+    "activate": "Ativar",
+    "create": "Criar",
+    "creating": "Criando...",
+    "save": "Salvar Alterações",
+    "saving": "Salvando...",
+    "cancel": "Cancelar",
+    "close": "Fechar",
+    "remove": "Remover",
+    "assign": "Atribuir",
+    "noPermissions": "Você não tem as permissões necessárias."
+  },
+  "tenants": {
+    "tag": "Administração · Tenants",
+    "title": "Gestão de Tenants",
+    "subtitleOwner": "Gerencie as organizações (tenants) do sistema",
+    "subtitleScoped": "Visualize sua organização",
+    "createButton": "Criar Tenant",
+    "noPermissions": "Você não tem permissão para ver tenants.",
+    "listTitle": "Lista de Tenants",
+    "listCount_one": "{{count}} tenant no total",
+    "listCount_other": "{{count}} tenants no total",
+    "empty": "Nenhum tenant encontrado",
+    "table": {
+      "name": "Nome",
+      "status": "Status",
+      "agencies": "Agências",
+      "users": "Usuários",
+      "actions": "Ações"
+    },
+    "tooltips": {
+      "manageAgencies": "Gerenciar Agências"
+    },
+    "createDialog": {
+      "title": "Criar Novo Tenant",
+      "description": "Adicione uma nova organização ao sistema",
+      "nameLabel": "Nome do Tenant *",
+      "namePlaceholder": "WholeSale Travel Group",
+      "submit": "Criar Tenant"
+    },
+    "editDialog": {
+      "title": "Editar Tenant",
+      "description": "Atualize as informações do tenant",
+      "nameLabel": "Nome do Tenant"
+    },
+    "agenciesDialog": {
+      "title": "Gerenciar Agências para {{name}}",
+      "description": "Atribua ou desvincule agências deste tenant",
+      "assignedTitle": "Agências Atribuídas ({{count}})",
+      "assignedEmpty": "Ainda não há agências atribuídas a este tenant.",
+      "availableTitle": "Agências Disponíveis ({{count}})",
+      "availableEmpty": "Todas as agências estão atribuídas a um tenant."
+    },
+    "validation": {
+      "nameRequired": "O nome é obrigatório"
+    },
+    "confirm": {
+      "suspend": "Suspender este tenant? Todas as agências e usuários sob este tenant perderão acesso.",
+      "activate": "Ativar este tenant?",
+      "delete": "Excluir permanentemente este tenant? Esta ação não pode ser desfeita. Verifique se não há agências ou usuários atribuídos."
+    }
+  },
+  "agencies": {
+    "tag": "Administração · Agências",
+    "title": "Gestão de Agências",
+    "subtitle": "Crie e gerencie agências",
+    "createButton": "Criar Agência",
+    "noPermissions": "Você não tem permissão para gerenciar agências.",
+    "stats": {
+      "totalAgencies": "Total de Agências",
+      "totalAgenciesActive": "{{count}} ativas",
+      "totalUsers": "Total de Usuários",
+      "totalLeads": "Total de Leads",
+      "acrossAll": "Em todas as agências"
+    },
+    "listTitle": "Lista de Agências",
+    "listCount_one": "{{count}} agência no total",
+    "listCount_other": "{{count}} agências no total",
+    "empty": "Nenhuma agência encontrada",
+    "table": {
+      "name": "Nome",
+      "tenant": "Tenant",
+      "status": "Status",
+      "users": "Usuários",
+      "leads": "Leads",
+      "activeChats": "Chats Ativos",
+      "whatsapp": "WhatsApp",
+      "actions": "Ações"
+    },
+    "createDialog": {
+      "title": "Criar Nova Agência",
+      "description": "Adicione uma nova agência ao sistema",
+      "tenantLabel": "Tenant *",
+      "tenantPlaceholder": "Selecione tenant...",
+      "nameLabel": "Nome da Agência *",
+      "namePlaceholder": "Minha Agência de Viagens",
+      "phonesLabel": "Telefones (separados por vírgula)",
+      "phonesPlaceholder": "+1234567890, +0987654321",
+      "phonesHint": "Separe múltiplos números com vírgulas",
+      "submit": "Criar Agência"
+    },
+    "editDialog": {
+      "title": "Editar Agência",
+      "description": "Atualize as informações da agência",
+      "tenantLabel": "Tenant",
+      "tenantLocked": "O tenant não pode ser alterado",
+      "nameLabel": "Nome da Agência"
+    },
+    "validation": {
+      "tenantNameRequired": "Tenant e nome são obrigatórios"
+    },
+    "confirm": {
+      "suspend": "Suspender esta agência? Os usuários perderão acesso.",
+      "activate": "Ativar esta agência?",
+      "delete": "Excluir permanentemente esta agência? Esta ação não pode ser desfeita. Verifique se não há usuários ou leads atribuídos."
+    }
+  },
+  "users": {
+    "tag": "Administração · Usuários",
+    "title": "Gestão de Usuários",
+    "subtitle": "Crie e gerencie os usuários do sistema",
+    "createButton": "Criar Usuário",
+    "noPermissions": "Você não tem permissão para gerenciar usuários.",
+    "filterAll": "Todas as agências",
+    "listTitle": "Lista de Usuários",
+    "listCount_one": "{{count}} usuário visível",
+    "listCount_other": "{{count}} usuários visíveis",
+    "ownerHidden": "(usuários OWNER ocultos)",
+    "empty": "Nenhum usuário encontrado",
+    "table": {
+      "name": "Nome",
+      "email": "Email",
+      "role": "Papel",
+      "agency": "Agência",
+      "tenant": "Tenant",
+      "actions": "Ações"
+    },
+    "tooltips": {
+      "ownerOnly": "Apenas OWNER pode editar usuários OWNER",
+      "edit": "Editar usuário",
+      "delete": "Excluir usuário"
+    },
+    "createDialog": {
+      "title": "Criar Novo Usuário",
+      "description": "Adicione um novo usuário ao sistema",
+      "emailLabel": "Email *",
+      "emailPlaceholder": "usuario@exemplo.com",
+      "passwordLabel": "Senha *",
+      "nameLabel": "Nome",
+      "namePlaceholder": "João Silva",
+      "roleLabel": "Papel *",
+      "tenantLabel": "Tenant",
+      "tenantRequired": "*",
+      "tenantPlaceholder": "Selecione tenant...",
+      "noTenant": "Sem Tenant",
+      "agencyLabel": "Agência",
+      "agencyRequired": "*",
+      "agencyPlaceholder": "Selecione agência...",
+      "noAgency": "Sem Agência",
+      "superAdminHint": "Usuários SUPERADMIN pertencem ao tenant, não a uma agência específica",
+      "ownerHint": "Usuários OWNER podem opcionalmente pertencer a um tenant, mas não a uma agência específica",
+      "superAdminTenantHint": "Atribua SUPERADMIN a um tenant para gerenciar suas agências e usuários",
+      "ownerTenantHint": "Atribua OWNER a um tenant (opcional)",
+      "submit": "Criar Usuário"
+    },
+    "editDialog": {
+      "title": "Editar Usuário",
+      "description": "Atualize as informações do usuário",
+      "emailLocked": "O email não pode ser alterado",
+      "ownerOnlyWarning": "⚠️ Apenas usuários com papel OWNER podem alterar o papel de outros OWNER"
+    },
+    "validation": {
+      "emailPasswordRequired": "Email e senha são obrigatórios"
+    },
+    "confirm": {
+      "delete": "Tem certeza que deseja excluir este usuário? Esta ação não pode ser desfeita."
+    }
+  }
+}

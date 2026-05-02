@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Luggage, X } from 'lucide-react';
@@ -12,6 +13,7 @@ interface BaggageChipProps {
 }
 
 export function BaggageChip({ value, count = 0, onChange }: BaggageChipProps) {
+  const { t } = useTranslation('chat');
   const hasFilter = value === true;
 
   const handleClick = () => {
@@ -35,7 +37,7 @@ export function BaggageChip({ value, count = 0, onChange }: BaggageChipProps) {
         )}
       >
         <Luggage className="h-3 w-3" />
-        Con equipaje
+        {t('chips.withBaggage')}
         {count > 0 && (
           <span className="text-[10px] opacity-70">({count})</span>
         )}

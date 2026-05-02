@@ -1,0 +1,83 @@
+{
+  "tag": "Conta · Configurações",
+  "title": "Configurações",
+  "subtitleAgency": "Personalize o branding e as preferências da sua agência",
+  "subtitlePersonal": "Gerencie as configurações da sua conta pessoal",
+  "sellerNotice": "Como vendedor, você só pode editar seu perfil pessoal. Para alterar as configurações da agência, contate seu administrador.",
+  "agencySelector": {
+    "title": "Selecionar Agência",
+    "descriptionOwner": "Escolha qual agência você quer configurar",
+    "descriptionAdmin": "Escolha uma agência do seu tenant",
+    "placeholder": "Selecione uma agência..."
+  },
+  "tabs": {
+    "branding": "Branding",
+    "contact": "Informações de Contato",
+    "account": "Conta"
+  },
+  "branding": {
+    "title": "Branding da Agência",
+    "description": "Personalize a aparência da sua agência em cotações e comunicações",
+    "save": "Salvar Alterações",
+    "saving": "Salvando...",
+    "logo": "Logo da Agência",
+    "uploadLogo": "Enviar Logo",
+    "uploading": "Enviando...",
+    "logoHint": "Tamanho recomendado: 200x200px, formato PNG ou JPG (máx 2MB)",
+    "primaryColor": "Cor Primária",
+    "secondaryColor": "Cor Secundária",
+    "pdfHeaderBg": "Cor de Fundo Cabeçalho PDF",
+    "pdfFooterBg": "Cor de Fundo Rodapé PDF",
+    "transparentHint": "Deixe em branco para fundo transparente",
+    "transparentPlaceholder": "Transparente",
+    "preview": "Visualização",
+    "previewQuote": "Pré-visualização da Cotação",
+    "previewAgency": "Sua Agência",
+    "previewBookNow": "Reservar Agora",
+    "selectAgencyForTemplates": "Por favor selecione uma agência para gerenciar os modelos PDF",
+    "loadingAgency": "Carregando informações da agência..."
+  },
+  "contact": {
+    "title": "Informações de Contato",
+    "description": "Esta informação aparecerá nas suas cotações e comunicações",
+    "agencyName": "Nome da Agência",
+    "agencyNamePlaceholder": "Sua Agência de Viagens",
+    "email": "Email de Contato",
+    "emailPlaceholder": "contato@suaagencia.com",
+    "phone": "Número de Telefone",
+    "phonePlaceholder": "+55 11 9 9999 9999",
+    "pdfFooter": "Texto do rodapé do PDF",
+    "pdfFooterPlaceholder": "Ex: Endereço, CNPJ, site, condições...",
+    "pdfFooterHint": "Este texto aparecerá no rodapé dos PDFs gerados pela sua agência"
+  },
+  "account": {
+    "title": "Informações da Conta",
+    "description": "Seu papel e permissões no sistema",
+    "roles": {
+      "owner": "Proprietário da Plataforma - Acesso a todos os tenants",
+      "superAdmin": "Administrador de Tenant - Acesso a todas as agências do tenant",
+      "admin": "Administrador de Agência - Gerencia sua agência",
+      "seller": "Agente de Vendas - Gerencia leads atribuídos"
+    },
+    "personalTitle": "Perfil Pessoal",
+    "personalDescription": "Atualize suas informações pessoais",
+    "saveProfile": "Salvar Perfil",
+    "displayName": "Nome de Exibição",
+    "displayNamePlaceholder": "Seu Nome",
+    "emailLabel": "Endereço de Email",
+    "emailLocked": "O email não pode ser alterado. Contate o suporte se precisar.",
+    "passwordTitle": "Alterar Senha",
+    "passwordDescription": "Atualize sua senha por segurança",
+    "newPassword": "Nova Senha",
+    "confirmPassword": "Confirmar Senha",
+    "updatePassword": "Atualizar Senha",
+    "updating": "Atualizando..."
+  },
+  "validation": {
+    "passwordsMismatch": "As senhas não coincidem",
+    "passwordTooShort": "A senha deve ter pelo menos 6 caracteres",
+    "noAgency": "Não foi possível determinar a agência",
+    "invalidImage": "Por favor selecione uma imagem válida",
+    "imageTooLarge": "A imagem deve ser menor que 2MB"
+  }
+}

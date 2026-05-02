@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,6 +42,7 @@ import {
 } from 'lucide-react';
 
 const Dashboard = () => {
+  const { t } = useTranslation('dashboard');
   const [timeRange, setTimeRange] = useState('today');
   const navigate = useNavigate();
   const { user, isOwner, isSuperAdmin, isAdmin, isSeller, loading: authLoading } = useAuth();
@@ -112,8 +114,9 @@ const Dashboard = () => {
     if (displayMetrics.pending_followups > 0) {
       alertList.push({
         type: 'urgent',
-        message: `${displayMetrics.pending_followups} leads pendientes de seguimiento`,
-        action: 'Ver leads',
+        message: t('alerts.pendingFollowups', { count: displayMetrics.pending_followups }),
+        action: t('alerts.viewLeads'),
+        actionKey: 'viewLeads' as const,
         icon: AlertTriangle
       });
     }
@@ -122,8 +125,9 @@ const Dashboard = () => {
     if (isSeller && upcomingDeadlines.length > 0) {
       alertList.push({
         type: 'info',
-        message: `${upcomingDeadlines.length} seguimientos programados próximamente`,
-        action: 'Ver agenda',
+        message: t('alerts.upcomingDeadlines', { count: upcomingDeadlines.length }),
+        action: t('alerts.viewSchedule'),
+        actionKey: 'viewSchedule' as const,
         icon: Clock
       });
     }
@@ -132,14 +136,15 @@ const Dashboard = () => {
     if (alertList.length === 0) {
       alertList.push({
         type: 'info',
-        message: 'Todo al día. ¡Buen trabajo!',
-        action: 'Ver CRM',
+        message: t('alerts.allCaughtUp'),
+        action: t('alerts.viewCrm'),
+        actionKey: 'viewCrm' as const,
         icon: CheckCircle
       });
     }
 
     return alertList;
-  }, [displayMetrics.pending_followups, isSeller, upcomingDeadlines.length]);
+  }, [displayMetrics.pending_followups, isSeller, upcomingDeadlines.length, t]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -159,17 +164,12 @@ const Dashboard = () => {
     }
   };
 
-  const handleAlertAction = (action: string) => {
-    switch (action) {
-      case 'Ver leads':
-      case 'Ver CRM':
+  const handleAlertAction = (actionKey: 'viewLeads' | 'viewCrm' | 'viewSchedule' | undefined) => {
+    switch (actionKey) {
+      case 'viewLeads':
+      case 'viewCrm':
+      case 'viewSchedule':
         navigate('/crm');
-        break;
-      case 'Ver agenda':
-        navigate('/crm');
-        break;
-      case 'Revisar':
-        navigate('/marketplace');
         break;
       default:
         navigate('/emilia/dashboard');
@@ -178,19 +178,19 @@ const Dashboard = () => {
 
   // Títulos y descripciones contextuales por rol
   const getDashboardTitle = () => {
-    if (isOwner) return 'Dashboard Global (OWNER)';
-    if (isSuperAdmin) return 'Dashboard del Mayorista';
-    if (isAdmin) return 'Dashboard de la Agencia';
-    if (isSeller) return 'Mi Dashboard Personal';
-    return 'Dashboard';
+    if (isOwner) return t('title.owner');
+    if (isSuperAdmin) return t('title.superAdmin');
+    if (isAdmin) return t('title.admin');
+    if (isSeller) return t('title.seller');
+    return t('title.default');
   };
 
   const getDashboardDescription = () => {
-    if (isOwner) return 'Vista completa de todos los tenants y agencias del sistema';
-    if (isSuperAdmin) return 'Gestión y supervisión de todas tus agencias';
-    if (isAdmin) return 'Supervisión del equipo de vendedores y métricas de agencia';
-    if (isSeller) return 'Tus leads asignados y métricas personales de rendimiento';
-    return 'Resumen del rendimiento comercial de tu agencia';
+    if (isOwner) return t('description.owner');
+    if (isSuperAdmin) return t('description.superAdmin');
+    if (isAdmin) return t('description.admin');
+    if (isSeller) return t('description.seller');
+    return t('description.default');
   };
 
   // Show loading state
@@ -203,7 +203,7 @@ const Dashboard = () => {
     return (
       <UnifiedLayout>
         <div className="flex h-96 items-center justify-center">
-          <p className="text-muted-foreground">Por favor, inicia sesión para ver el dashboard</p>
+          <p className="text-muted-foreground">{t('loginRequired')}</p>
         </div>
       </UnifiedLayout>
     );
@@ -214,14 +214,14 @@ const Dashboard = () => {
       <div className="h-full overflow-y-auto p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <MeridianTag tone="lilac" className="mb-3">Panel · Resumen</MeridianTag>
+            <MeridianTag tone="lilac" className="mb-3">{t('tag')}</MeridianTag>
             <MeridianHeading as="h1" size="md" italic>{getDashboardTitle()}</MeridianHeading>
             <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">
               {getDashboardDescription()}
             </p>
           </div>
           <Badge variant="tag" className="h-7 w-fit">
-            Hoy · {new Date().toLocaleDateString()}
+            {t('today', { date: new Date().toLocaleDateString() })}
           </Badge>
         </div>
 
@@ -232,7 +232,7 @@ const Dashboard = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Bell className="h-4 md:h-5 w-4 md:w-5 text-warning" />
-                  <CardTitle className="text-base md:text-lg">Alertas Importantes</CardTitle>
+                  <CardTitle className="text-base md:text-lg">{t('alerts.title')}</CardTitle>
                 </div>
                 <Badge variant="secondary" className="text-xs">{alerts.length}</Badge>
               </div>
@@ -249,7 +249,7 @@ const Dashboard = () => {
                     <Button
                       variant={getAlertVariant(alert.type)}
                       size="sm"
-                      onClick={() => handleAlertAction(alert.action)}
+                      onClick={() => handleAlertAction(alert.actionKey)}
                       className="text-xs w-full sm:w-auto"
                     >
                       {alert.action}
@@ -266,33 +266,33 @@ const Dashboard = () => {
           <CardHeader className="p-4 md:p-6">
             <CardTitle className="flex items-center gap-2 text-base md:text-lg">
               <Target className="h-4 md:h-5 w-4 md:w-5 text-primary" />
-              Objetivos del Mes
+              {t('goals.title')}
             </CardTitle>
-            <CardDescription className="text-xs md:text-sm">Progreso hacia las metas establecidas</CardDescription>
+            <CardDescription className="text-xs md:text-sm">{t('goals.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 md:space-y-6 p-4 md:p-6">
             <div>
               <div className="flex items-center justify-between mb-2 gap-2">
-                <span className="font-medium text-sm md:text-base">Ingresos Mensuales</span>
+                <span className="font-medium text-sm md:text-base">{t('goals.monthlyRevenue')}</span>
                 <span className="text-lg md:text-xl font-bold text-success">
                   ${displayMetrics.monthly_revenue.toLocaleString()}
                 </span>
               </div>
               <p className="text-[10px] md:text-xs text-muted-foreground">
-                De {displayMetrics.leads_won} leads ganados este mes
+                {t('goals.leadsWonContext', { count: displayMetrics.leads_won })}
               </p>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-2 gap-2">
-                <span className="font-medium text-sm md:text-base">Tasa de Conversión</span>
+                <span className="font-medium text-sm md:text-base">{t('goals.conversionRate')}</span>
                 <span className="text-lg md:text-xl font-bold text-primary">
                   {displayMetrics.conversion_rate}%
                 </span>
               </div>
               <Progress value={displayMetrics.conversion_rate} className="h-2 md:h-3" />
               <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
-                {displayMetrics.leads_won} ganados de {displayMetrics.leads_won + displayMetrics.leads_lost} leads cerrados
+                {t('goals.conversionContext', { won: displayMetrics.leads_won, closed: displayMetrics.leads_won + displayMetrics.leads_lost })}
               </p>
             </div>
           </CardContent>
@@ -302,27 +302,27 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 lg:gap-6">
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 md:p-6">
-              <CardTitle className="text-xs md:text-sm font-medium">Conversaciones Hoy</CardTitle>
+              <CardTitle className="text-xs md:text-sm font-medium">{t('metrics.conversationsToday')}</CardTitle>
               <MessageSquare className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" />
             </CardHeader>
             <CardContent className="p-4 md:p-6 pt-0">
               <div className="text-xl md:text-2xl font-bold">{displayMetrics.conversations_today}</div>
               <p className="text-[10px] md:text-xs text-success flex items-center mt-1">
                 <TrendingUp className="h-2.5 md:h-3 w-2.5 md:w-3 mr-1" />
-                +12% desde ayer
+                {t('metrics.trendVsYesterday')}
               </p>
             </CardContent>
           </Card>
 
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 md:p-6">
-              <CardTitle className="text-xs md:text-sm font-medium">Cotizaciones</CardTitle>
+              <CardTitle className="text-xs md:text-sm font-medium">{t('metrics.quotes')}</CardTitle>
               <FileText className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />
             </CardHeader>
             <CardContent className="p-4 md:p-6 pt-0">
               <div className="text-xl md:text-2xl font-bold">{displayMetrics.quotes_generated}</div>
               <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
-                {displayMetrics.pdfs_created} PDFs enviados
+                {t('metrics.pdfsSent', { count: displayMetrics.pdfs_created })}
               </p>
             </CardContent>
           </Card>
@@ -345,10 +345,10 @@ const Dashboard = () => {
             <CardHeader className="p-4 md:p-6">
               <CardTitle className="flex items-center gap-2 text-base md:text-lg">
                 <Building className="h-4 md:h-5 w-4 md:w-5 text-primary" />
-                {isOwner ? 'Performance por Agencia (Todas)' : 'Performance de Agencias'}
+                {isOwner ? t('agencyPerformance.titleAll') : t('agencyPerformance.titleScoped')}
               </CardTitle>
               <CardDescription className="text-xs md:text-sm">
-                {isOwner ? 'Comparativa cross-tenant' : 'Agencias de tu mayorista'}
+                {isOwner ? t('agencyPerformance.subtitleAll') : t('agencyPerformance.subtitleScoped')}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 md:p-6">
@@ -363,25 +363,25 @@ const Dashboard = () => {
                         )}
                       </div>
                       <Badge variant="outline" className="ml-2">
-                        {agency.conversion_rate.toFixed(1)}% conversión
+                        {t('agencyPerformance.conversion', { rate: agency.conversion_rate.toFixed(1) })}
                       </Badge>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                       <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Ingresos</p>
+                        <p className="text-xs text-muted-foreground">{t('agencyPerformance.revenue')}</p>
                         <p className="font-bold text-success">${agency.revenue.toLocaleString()}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Leads</p>
+                        <p className="text-xs text-muted-foreground">{t('agencyPerformance.leads')}</p>
                         <p className="font-semibold">{agency.leads_count}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Conversaciones</p>
+                        <p className="text-xs text-muted-foreground">{t('agencyPerformance.conversations')}</p>
                         <p className="font-semibold">{agency.active_conversations}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-xs text-muted-foreground">Vendedores</p>
+                        <p className="text-xs text-muted-foreground">{t('agencyPerformance.sellers')}</p>
                         <p className="font-semibold">{agency.sellers_count || 0}</p>
                       </div>
                     </div>
@@ -400,11 +400,11 @@ const Dashboard = () => {
                 <div>
                   <CardTitle className="flex items-center gap-2 text-base md:text-lg">
                     <Award className="h-4 md:h-5 w-4 md:w-5 text-primary" />
-                    Performance del Equipo
+                    {t('team.title')}
                   </CardTitle>
-                  <CardDescription className="text-xs md:text-sm">Rendimiento de vendedores este mes</CardDescription>
+                  <CardDescription className="text-xs md:text-sm">{t('team.subtitle')}</CardDescription>
                 </div>
-                <Button variant="outline" size="sm" className="text-xs md:text-sm w-full sm:w-auto">Ver Todos</Button>
+                <Button variant="outline" size="sm" className="text-xs md:text-sm w-full sm:w-auto">{t('team.viewAll')}</Button>
               </div>
             </CardHeader>
             <CardContent className="p-4 md:p-6">
@@ -421,8 +421,8 @@ const Dashboard = () => {
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-sm md:text-base truncate">{member.seller_name}</p>
                         <div className="flex flex-wrap items-center gap-2 md:gap-4 text-[10px] md:text-xs text-muted-foreground">
-                          <span>{member.leads_count} leads</span>
-                          <span>{member.won_count} ganados</span>
+                          <span>{t('team.leads', { count: member.leads_count })}</span>
+                          <span>{t('team.won', { count: member.won_count })}</span>
                           <div className="flex items-center gap-1">
                             <Star className="h-2.5 md:h-3 w-2.5 md:w-3 text-warning" />
                             {member.conversion_rate.toFixed(1)}%
@@ -433,7 +433,7 @@ const Dashboard = () => {
                     <div className="text-left sm:text-right">
                       <p className="font-bold text-success text-sm md:text-base">${member.revenue.toLocaleString()}</p>
                       <p className="text-[10px] md:text-xs text-muted-foreground">
-                        {member.conversion_rate.toFixed(1)}% conversión
+                        {t('team.conversion', { rate: member.conversion_rate.toFixed(1) })}
                       </p>
                     </div>
                   </div>
@@ -449,9 +449,9 @@ const Dashboard = () => {
             <CardHeader className="p-4 md:p-6">
               <CardTitle className="flex items-center gap-2 text-base md:text-lg">
                 <Clock className="h-4 md:h-5 w-4 md:w-5 text-warning" />
-                Próximos Vencimientos
+                {t('deadlines.title')}
               </CardTitle>
-              <CardDescription className="text-xs md:text-sm">Acciones importantes pendientes</CardDescription>
+              <CardDescription className="text-xs md:text-sm">{t('deadlines.subtitle')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6">
               {upcomingDeadlines.map((item, index) => (
@@ -469,7 +469,7 @@ const Dashboard = () => {
                   </div>
                   <div className="text-left sm:text-right flex sm:flex-col items-center sm:items-end gap-2">
                     <Badge variant={item.days <= 2 ? 'destructive' : item.days <= 5 ? 'secondary' : 'outline'} className="text-xs">
-                      {item.days} días
+                      {t('deadlines.days', { count: item.days })}
                     </Badge>
                     <p className="text-xs text-muted-foreground">{item.type}</p>
                   </div>
@@ -480,7 +480,7 @@ const Dashboard = () => {
                 <div className="pt-2 border-t">
                   <Button variant="outline" size="sm" className="w-full text-xs md:text-sm">
                     <Briefcase className="h-3.5 md:h-4 w-3.5 md:w-4 mr-2" />
-                    Ver {displayMetrics.pending_followups} seguimientos pendientes
+                    {t('deadlines.viewPending', { count: displayMetrics.pending_followups })}
                   </Button>
                 </div>
               )}
@@ -491,15 +491,15 @@ const Dashboard = () => {
             <CardHeader className="p-4 md:p-6">
               <CardTitle className="flex items-center gap-2 text-base md:text-lg">
                 <Activity className="h-4 md:h-5 w-4 md:w-5 text-primary" />
-                Actividad Reciente
+                {t('activity.title')}
               </CardTitle>
-              <CardDescription className="text-xs md:text-sm">Últimas interacciones importantes</CardDescription>
+              <CardDescription className="text-xs md:text-sm">{t('activity.subtitle')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 md:space-y-4 p-4 md:p-6">
               {activitiesLoading ? (
-                <div className="text-center text-muted-foreground text-sm">Cargando actividades...</div>
+                <div className="text-center text-muted-foreground text-sm">{t('activity.loading')}</div>
               ) : activities.length === 0 ? (
-                <div className="text-center text-muted-foreground text-sm">No hay actividades recientes</div>
+                <div className="text-center text-muted-foreground text-sm">{t('activity.empty')}</div>
               ) : (
                 activities.map((activity, index) => {
                   // Map activity type to icon and color
@@ -526,10 +526,10 @@ const Dashboard = () => {
                     const diffHours = Math.floor(diffMs / 3600000);
                     const diffDays = Math.floor(diffMs / 86400000);
 
-                    if (diffMins < 1) return 'Justo ahora';
-                    if (diffMins < 60) return `${diffMins} min`;
-                    if (diffHours < 24) return `${diffHours} hora${diffHours > 1 ? 's' : ''}`;
-                    return `${diffDays} día${diffDays > 1 ? 's' : ''}`;
+                    if (diffMins < 1) return t('activity.timeAgo.justNow');
+                    if (diffMins < 60) return t('activity.timeAgo.minutes', { count: diffMins });
+                    if (diffHours < 24) return t(diffHours === 1 ? 'activity.timeAgo.hour' : 'activity.timeAgo.hours', { count: diffHours });
+                    return t(diffDays === 1 ? 'activity.timeAgo.day' : 'activity.timeAgo.days', { count: diffDays });
                   };
 
                   return (
@@ -541,7 +541,7 @@ const Dashboard = () => {
                         <div className="min-w-0">
                           <p className="font-medium text-sm md:text-base truncate">{activity.description}</p>
                           <p className="text-xs md:text-sm text-muted-foreground truncate">
-                            {activity.metadata?.destination ? `Destino: ${activity.metadata.destination}` : ''}
+                            {activity.metadata?.destination ? t('activity.destination', { place: activity.metadata.destination }) : ''}
                           </p>
                         </div>
                       </div>

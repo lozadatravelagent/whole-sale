@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { MeridianHeading, MeridianTag } from '@/components/meridian';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,6 +52,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
 const Agencies = () => {
+  const { t } = useTranslation('admin');
   const { user: currentUser, isOwner, isSuperAdmin } = useAuth();
   const {
     agencies,
@@ -130,7 +132,7 @@ const Agencies = () => {
 
   const handleCreate = async () => {
     if (!newTenantId || !newName) {
-      alert('Tenant y nombre son requeridos');
+      alert(t('agencies.validation.tenantNameRequired'));
       return;
     }
 
@@ -183,8 +185,8 @@ const Agencies = () => {
   const handleToggleStatus = async (agencyId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
     const confirmMessage = newStatus === 'suspended'
-      ? '¿Suspender esta agencia? Los usuarios no podrán acceder.'
-      : '¿Activar esta agencia?';
+      ? t('agencies.confirm.suspend')
+      : t('agencies.confirm.activate');
 
     if (!confirm(confirmMessage)) return;
 
@@ -192,7 +194,7 @@ const Agencies = () => {
   };
 
   const handleDelete = async (agencyId: string) => {
-    if (!confirm('¿Eliminar permanentemente esta agencia? Esta acción no se puede deshacer. Asegúrate de que no tiene usuarios ni leads asignados.')) {
+    if (!confirm(t('agencies.confirm.delete'))) {
       return;
     }
 
@@ -211,14 +213,14 @@ const Agencies = () => {
       return (
         <Badge className="bg-green-100 text-green-800">
           <CheckCircle className="h-3 w-3 mr-1" />
-          Active
+          {t('common.active')}
         </Badge>
       );
     }
     return (
       <Badge className="bg-red-100 text-red-800">
         <XCircle className="h-3 w-3 mr-1" />
-        Suspended
+        {t('common.suspended')}
       </Badge>
     );
   };
@@ -230,7 +232,7 @@ const Agencies = () => {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              No tienes permisos para gestionar agencias.
+              {t('agencies.noPermissions')}
             </AlertDescription>
           </Alert>
         </div>
@@ -244,10 +246,10 @@ const Agencies = () => {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <MeridianTag tone="lilac" className="mb-3">Administración · Agencias</MeridianTag>
-            <MeridianHeading as="h1" size="md" italic>Agency Management</MeridianHeading>
+            <MeridianTag tone="lilac" className="mb-3">{t('agencies.tag')}</MeridianTag>
+            <MeridianHeading as="h1" size="md" italic>{t('agencies.title')}</MeridianHeading>
             <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">
-              Create and manage agencies
+              {t('agencies.subtitle')}
             </p>
           </div>
           {canCreateAgencies && (
@@ -256,7 +258,7 @@ const Agencies = () => {
               className="bg-gradient-hero shadow-primary"
             >
               <Plus className="h-4 w-4 mr-2" />
-              Create Agency
+              {t('agencies.createButton')}
             </Button>
           )}
         </div>
@@ -265,20 +267,20 @@ const Agencies = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Agencies</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('agencies.stats.totalAgencies')}</CardTitle>
               <Building className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{agencies.length}</div>
               <p className="text-xs text-muted-foreground">
-                {agencies.filter(a => a.status === 'active').length} active
+                {t('agencies.stats.totalAgenciesActive', { count: agencies.filter(a => a.status === 'active').length })}
               </p>
             </CardContent>
           </Card>
 
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('agencies.stats.totalUsers')}</CardTitle>
               <UsersIcon className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
@@ -286,14 +288,14 @@ const Agencies = () => {
                 {Object.values(agencyMetrics).reduce((sum, m) => sum + m.users_count, 0)}
               </div>
               <p className="text-xs text-muted-foreground">
-                Across all agencies
+                {t('agencies.stats.acrossAll')}
               </p>
             </CardContent>
           </Card>
 
           <Card className="shadow-card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('agencies.stats.totalLeads')}</CardTitle>
               <BarChart3 className="h-4 w-4 text-purple-500" />
             </CardHeader>
             <CardContent>
@@ -301,7 +303,7 @@ const Agencies = () => {
                 {Object.values(agencyMetrics).reduce((sum, m) => sum + m.leads_count, 0)}
               </div>
               <p className="text-xs text-muted-foreground">
-                Across all agencies
+                {t('agencies.stats.acrossAll')}
               </p>
             </CardContent>
           </Card>
@@ -310,9 +312,9 @@ const Agencies = () => {
         {/* Agencies Table */}
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Agencies List</CardTitle>
+            <CardTitle>{t('agencies.listTitle')}</CardTitle>
             <CardDescription>
-              {agencies.length} agenc{agencies.length !== 1 ? 'ies' : 'y'} total
+              {t('agencies.listCount', { count: agencies.length })}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -322,21 +324,21 @@ const Agencies = () => {
               </div>
             ) : agencies.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No agencies found
+                {t('agencies.empty')}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      {isOwner && <TableHead>Tenant</TableHead>}
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-center">Users</TableHead>
-                      <TableHead className="text-center">Leads</TableHead>
-                      <TableHead className="text-center">Active Chats</TableHead>
-                      <TableHead>WhatsApp</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>{t('agencies.table.name')}</TableHead>
+                      {isOwner && <TableHead>{t('agencies.table.tenant')}</TableHead>}
+                      <TableHead>{t('agencies.table.status')}</TableHead>
+                      <TableHead className="text-center">{t('agencies.table.users')}</TableHead>
+                      <TableHead className="text-center">{t('agencies.table.leads')}</TableHead>
+                      <TableHead className="text-center">{t('agencies.table.activeChats')}</TableHead>
+                      <TableHead>{t('agencies.table.whatsapp')}</TableHead>
+                      <TableHead className="text-right">{t('agencies.table.actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -386,7 +388,7 @@ const Agencies = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openEditDialog(agency)}
-                                title="Edit"
+                                title={t('common.edit')}
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -394,7 +396,7 @@ const Agencies = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleToggleStatus(agency.id, agency.status)}
-                                title={agency.status === 'active' ? 'Suspend' : 'Activate'}
+                                title={agency.status === 'active' ? t('common.suspend') : t('common.activate')}
                               >
                                 <Power className={agency.status === 'active' ? 'h-4 w-4 text-orange-500' : 'h-4 w-4 text-green-500'} />
                               </Button>
@@ -403,7 +405,7 @@ const Agencies = () => {
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleDelete(agency.id)}
-                                  title="Delete"
+                                  title={t('common.delete')}
                                 >
                                   <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
@@ -424,17 +426,17 @@ const Agencies = () => {
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New Agency</DialogTitle>
+              <DialogTitle>{t('agencies.createDialog.title')}</DialogTitle>
               <DialogDescription>
-                Add a new agency to the system
+                {t('agencies.createDialog.description')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="new-tenant">Tenant *</Label>
+                <Label htmlFor="new-tenant">{t('agencies.createDialog.tenantLabel')}</Label>
                 <Select value={newTenantId} onValueChange={setNewTenantId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select tenant..." />
+                    <SelectValue placeholder={t('agencies.createDialog.tenantPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {tenants.map((tenant) => (
@@ -446,36 +448,36 @@ const Agencies = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-name">Agency Name *</Label>
+                <Label htmlFor="new-name">{t('agencies.createDialog.nameLabel')}</Label>
                 <Input
                   id="new-name"
-                  placeholder="My Travel Agency"
+                  placeholder={t('agencies.createDialog.namePlaceholder')}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-phones">Phones (comma-separated)</Label>
+                <Label htmlFor="new-phones">{t('agencies.createDialog.phonesLabel')}</Label>
                 <Input
                   id="new-phones"
-                  placeholder="+1234567890, +0987654321"
+                  placeholder={t('agencies.createDialog.phonesPlaceholder')}
                   value={newPhones}
                   onChange={(e) => setNewPhones(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Separate multiple phone numbers with commas
+                  {t('agencies.createDialog.phonesHint')}
                 </p>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleCreate} disabled={saving}>
                 {saving ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('common.creating')}</>
                 ) : (
-                  'Create Agency'
+                  t('agencies.createDialog.submit')
                 )}
               </Button>
             </DialogFooter>
@@ -486,19 +488,19 @@ const Agencies = () => {
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit Agency</DialogTitle>
+              <DialogTitle>{t('agencies.editDialog.title')}</DialogTitle>
               <DialogDescription>
-                Update agency information
+                {t('agencies.editDialog.description')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Tenant</Label>
+                <Label>{t('agencies.editDialog.tenantLabel')}</Label>
                 <Input value={selectedAgency?.tenant_name || ''} disabled className="bg-muted" />
-                <p className="text-xs text-muted-foreground">Tenant cannot be changed</p>
+                <p className="text-xs text-muted-foreground">{t('agencies.editDialog.tenantLocked')}</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-name">Agency Name</Label>
+                <Label htmlFor="edit-name">{t('agencies.editDialog.nameLabel')}</Label>
                 <Input
                   id="edit-name"
                   value={editName}
@@ -506,27 +508,27 @@ const Agencies = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-phones">Phones (comma-separated)</Label>
+                <Label htmlFor="edit-phones">{t('agencies.createDialog.phonesLabel')}</Label>
                 <Input
                   id="edit-phones"
-                  placeholder="+1234567890, +0987654321"
+                  placeholder={t('agencies.createDialog.phonesPlaceholder')}
                   value={editPhones}
                   onChange={(e) => setEditPhones(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Separate multiple phone numbers with commas
+                  {t('agencies.createDialog.phonesHint')}
                 </p>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleEdit} disabled={saving}>
                 {saving ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('common.saving')}</>
                 ) : (
-                  'Save Changes'
+                  t('common.save')
                 )}
               </Button>
             </DialogFooter>

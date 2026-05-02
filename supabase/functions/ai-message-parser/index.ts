@@ -12,6 +12,18 @@ import {
   normalizeDestinationToCapitalIfCountry,
 } from "../_shared/countryCapitalResolver.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import {
+  getRetrievalToolHandlers,
+  getRetrievalToolSchemas,
+  type ToolContext,
+} from "../_shared/functionTools.ts";
+import { runToolLoop } from "../_shared/toolRunner.ts";
+import {
+  saveMemoryNoteToolSchema,
+  validateMemoryNote,
+  type MemoryNoteScope,
+} from "../_shared/memoryTools.ts";
+import { countRedundantCalls, emitTelemetry } from "../_shared/telemetry.ts";
 
 function cleanLocation(value: string | undefined): string {
   return (value || '')
@@ -215,6 +227,7 @@ serve(async (req) => {
           plannerContext = null,
           historyWindow = 6,
           contextMeta = null,
+          memoryStateBlock = null,
         } = requestBody;
 
         if (!message) {
@@ -268,6 +281,8 @@ serve(async (req) => {
           conversationSummary,
           leadProfile,
           plannerContext,
+          memoryStateBlock: memoryStateBlock ?? undefined,
+          language,
         });
         const userPrompt = message;
         const modelDecision = resolveModelPolicy({
@@ -285,30 +300,255 @@ serve(async (req) => {
             content: userPrompt
           }
         ];
-        let openaiData = await requestOpenAiChatCompletion<any>({
-          apiKey: openaiApiKey,
-          model: modelDecision.model,
-          messages: parserMessages,
-          temperature: 0.1,
-          maxTokens: 1800,
-        });
-        const openAiLatencyMs = Math.round(performance.now() - openAiStartedAt);
-        let aiResponse = extractOpenAiMessageContent(openaiData);
-        if (!aiResponse && modelDecision.model !== 'gpt-4.1') {
-          console.warn('⚠️ Empty parser response from OpenAI, retrying with gpt-4.1', {
-            model: modelDecision.model,
-            finishReason: openaiData?.choices?.[0]?.finish_reason ?? null,
-            usage: openaiData?.usage ?? null,
-          });
+
+        // -------------------------------------------------------------
+        // Phase 3: Function-tools (tool-calling loop) — feature-flagged.
+        // Header `x-use-tool-loop: true` OR env `USE_FUNCTION_TOOLS=true`
+        // enables the new path. Legacy single-shot is preserved verbatim
+        // below; Phase 9 A/B test compares both. Spec: docs/architecture/
+        // tool-catalog-spec.md §5.
+        // -------------------------------------------------------------
+        const useToolLoop = req.headers.get('x-use-tool-loop') === 'true' ||
+                            Deno.env.get('USE_FUNCTION_TOOLS') === 'true';
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let openaiData: any;
+        let aiResponse = '';
+        let toolLoopTrace: Array<{ tool: string; latencyMs: number; error?: string }> = [];
+        let toolLoopIterations = 0;
+
+        if (useToolLoop) {
+          // Build a ToolContext from the same scope used by retrieval tools.
+          // RLS is enforced via service-role client filtered by agency_id.
+          const ctx: ToolContext = {
+            supabase,
+            conversationId: contextMeta?.conversationId ?? '',
+            agencyId: contextMeta?.agencyId ?? '',
+            leadId: contextMeta?.leadId ?? undefined,
+          };
+
+          // save_memory_note handler — validates and returns the structured
+          // note. Persistence to agent_states happens in batch AFTER the loop
+          // completes, to avoid race conditions when the model parallel-calls
+          // this tool multiple times within a single turn.
+          const saveMemoryNoteHandler = async (
+            args: { text: string; keywords: string[]; scope: string },
+          ) => {
+            const result = validateMemoryNote(args.text, args.keywords, args.scope);
+            if (!result.ok) return { ok: false, reason: result.reason };
+            return {
+              ok: true,
+              note: {
+                text: args.text,
+                keywords: args.keywords.map((k) => k.trim().toLowerCase()),
+                scope: args.scope as MemoryNoteScope,
+                last_update_date: new Date().toISOString(),
+              },
+            };
+          };
+
+          try {
+            const loopResult = await runToolLoop({
+              apiKey: openaiApiKey,
+              // gpt-4.1 supports tool calls + reliable JSON; mini doesn't always.
+              // Override the default via the `CTX_TOOL_LOOP_MODEL` env var to swap
+              // the model without redeploying (e.g. to bump to gpt-5.1 once parity
+              // is verified — see DEBT-7 in docs/architecture/tool-catalog.md).
+              model: Deno.env.get('CTX_TOOL_LOOP_MODEL') ?? 'gpt-4.1',
+              systemPrompt,
+              userMessage: userPrompt,
+              tools: [...getRetrievalToolSchemas(), saveMemoryNoteToolSchema],
+              toolHandlers: {
+                ...getRetrievalToolHandlers(),
+                save_memory_note: saveMemoryNoteHandler,
+              },
+              ctx,
+              iterationCap: 3,
+              parallelToolCalls: true,
+              perToolTimeoutMs: 8000,
+              totalLoopTimeoutMs: 25000,
+            });
+
+            // Partition save_memory_note trace entries into accepted/rejected
+            // for both persistence and the [CTX-MEMORY] telemetry event.
+            const memoryTraceEntries = loopResult.toolCallsTrace
+              .filter((t) => t.tool === 'save_memory_note');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const isOk = (r: any) => r && typeof r === 'object' && r.ok === true && r.note;
+            const acceptedNotes = memoryTraceEntries
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .filter((t) => isOk(t.result as any))
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .map((t) => (t.result as any).note);
+            const rejectedReasons: Record<string, number> = {};
+            for (const t of memoryTraceEntries) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const r = t.result as any;
+              if (!isOk(r)) {
+                const reason = (r && typeof r === 'object' && typeof r.reason === 'string')
+                  ? r.reason
+                  : (t.error ?? 'unknown');
+                rejectedReasons[reason] = (rejectedReasons[reason] ?? 0) + 1;
+              }
+            }
+            const memoryAttempted = memoryTraceEntries.length;
+            const memoryAccepted = acceptedNotes.length;
+            const memoryRejected = memoryAttempted - memoryAccepted;
+
+            // Batch-persist accepted save_memory_note calls into
+            // agent_states.session_memory.notes (Option A scope:
+            // per-conversation; never crosses to other conversations).
+            if (acceptedNotes.length > 0 && ctx.conversationId && ctx.agencyId) {
+              try {
+                const { data: row, error: loadErr } = await supabase
+                  .from('agent_states')
+                  .select('state')
+                  .eq('conversation_id', ctx.conversationId)
+                  .eq('agency_id', ctx.agencyId)
+                  .single();
+
+                if (loadErr) {
+                  if (loadErr.code !== 'PGRST116') {
+                    console.warn('[CTX-TOOL] save_memory_note load failed:', loadErr.message);
+                  }
+                } else if (row?.state) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const state: any = row.state;
+                  state.session_memory = state.session_memory || { notes: [] };
+                  state.session_memory.notes = (state.session_memory.notes || [])
+                    .concat(acceptedNotes);
+                  const { error: saveErr } = await supabase
+                    .from('agent_states')
+                    .update({ state })
+                    .eq('conversation_id', ctx.conversationId)
+                    .eq('agency_id', ctx.agencyId);
+                  if (saveErr) {
+                    console.warn('[CTX-TOOL] save_memory_note save failed:', saveErr.message);
+                  } else {
+                    console.log('[CTX-TOOL] persisted save_memory_note batch:', {
+                      count: acceptedNotes.length,
+                      conversationId: ctx.conversationId,
+                    });
+                  }
+                }
+              } catch (persistErr) {
+                console.warn('[CTX-TOOL] save_memory_note persistence threw:', persistErr);
+              }
+            }
+
+            aiResponse = loopResult.finalMessage.content?.trim() ?? '';
+            toolLoopTrace = loopResult.toolCallsTrace.map((t) => ({
+              tool: t.tool,
+              latencyMs: t.latencyMs,
+              error: t.error,
+            }));
+            toolLoopIterations = loopResult.iterationsUsed;
+
+            // Synthesize an openai-style envelope so the downstream usage
+            // logger and parsing path stay unchanged.
+            openaiData = {
+              model: 'gpt-4.1',
+              choices: [{
+                index: 0,
+                finish_reason: loopResult.hitIterationCap || loopResult.hitLoopTimeout ? 'length' : 'stop',
+                message: loopResult.finalMessage,
+              }],
+              usage: {
+                prompt_tokens: loopResult.totalUsage.promptTokens,
+                completion_tokens: loopResult.totalUsage.completionTokens,
+                total_tokens: loopResult.totalUsage.totalTokens,
+                prompt_tokens_details: { cached_tokens: loopResult.totalUsage.cachedTokens },
+              },
+            };
+
+            // -- Phase 8 telemetry: structured per-turn events. --
+            // [CTX-TOOL]: tool-loop summary (iterations, tools, errors, tokens, redundancy).
+            const redundantCalls = countRedundantCalls(
+              loopResult.toolCallsTrace.map((t) => ({ tool: t.tool, args: t.args })),
+            );
+            emitTelemetry({
+              category: 'CTX-TOOL',
+              conversation_id: ctx.conversationId,
+              agency_id: ctx.agencyId,
+              iterations: toolLoopIterations,
+              tools_called: toolLoopTrace.map((t) => t.tool),
+              errors_count: toolLoopTrace.filter((t) => t.error).length,
+              hit_cap: loopResult.hitIterationCap,
+              hit_timeout: loopResult.hitLoopTimeout,
+              prompt_tokens: loopResult.totalUsage.promptTokens,
+              completion_tokens: loopResult.totalUsage.completionTokens,
+              cached_tokens: loopResult.totalUsage.cachedTokens,
+              redundant_calls: redundantCalls,
+            });
+
+            // [CTX-MEMORY]: only emit when the model attempted at least one
+            // save_memory_note this turn — keeps the event log signal-rich.
+            if (memoryAttempted > 0) {
+              emitTelemetry({
+                category: 'CTX-MEMORY',
+                conversation_id: ctx.conversationId,
+                agency_id: ctx.agencyId,
+                attempted: memoryAttempted,
+                accepted: memoryAccepted,
+                rejected: memoryRejected,
+                rejection_reasons: rejectedReasons,
+              });
+            }
+
+            // If the loop produced no parseable JSON, fall back to legacy.
+            const looksLikeJson = aiResponse.trim().startsWith('{') ||
+                                  aiResponse.trim().includes('{');
+            if (!looksLikeJson) {
+              console.warn('⚠️ [CTX-TOOL] tool-loop final message did not contain JSON, falling back to single-shot');
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              openaiData = await requestOpenAiChatCompletion<any>({
+                apiKey: openaiApiKey,
+                model: modelDecision.model,
+                messages: parserMessages,
+                temperature: 0.1,
+                maxTokens: 1800,
+              });
+              aiResponse = extractOpenAiMessageContent(openaiData);
+            }
+          } catch (toolLoopErr) {
+            console.error('❌ [CTX-TOOL] runToolLoop failed, falling back to single-shot:', toolLoopErr);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            openaiData = await requestOpenAiChatCompletion<any>({
+              apiKey: openaiApiKey,
+              model: modelDecision.model,
+              messages: parserMessages,
+              temperature: 0.1,
+              maxTokens: 1800,
+            });
+            aiResponse = extractOpenAiMessageContent(openaiData);
+          }
+        } else {
+          // -------- Legacy single-shot path (Phase 9 A leg) --------
           openaiData = await requestOpenAiChatCompletion<any>({
             apiKey: openaiApiKey,
-            model: 'gpt-4.1',
+            model: modelDecision.model,
             messages: parserMessages,
             temperature: 0.1,
             maxTokens: 1800,
           });
           aiResponse = extractOpenAiMessageContent(openaiData);
+          if (!aiResponse && modelDecision.model !== 'gpt-4.1') {
+            console.warn('⚠️ Empty parser response from OpenAI, retrying with gpt-4.1', {
+              model: modelDecision.model,
+              finishReason: openaiData?.choices?.[0]?.finish_reason ?? null,
+              usage: openaiData?.usage ?? null,
+            });
+            openaiData = await requestOpenAiChatCompletion<any>({
+              apiKey: openaiApiKey,
+              model: 'gpt-4.1',
+              messages: parserMessages,
+              temperature: 0.1,
+              maxTokens: 1800,
+            });
+            aiResponse = extractOpenAiMessageContent(openaiData);
+          }
         }
+        const openAiLatencyMs = Math.round(performance.now() - openAiStartedAt);
         if (!aiResponse) {
           throw new Error(`No response from OpenAI (finishReason: ${openaiData?.choices?.[0]?.finish_reason ?? 'unknown'})`);
         }
@@ -443,7 +683,14 @@ serve(async (req) => {
           requestId,
           timestamp: new Date().toISOString(),
           meta: {
-            promptVersion: PROMPT_VERSION
+            promptVersion: PROMPT_VERSION,
+            toolLoop: useToolLoop
+              ? {
+                  enabled: true,
+                  iterations: toolLoopIterations,
+                  trace: toolLoopTrace,
+                }
+              : { enabled: false },
           }
         }), {
           headers: {

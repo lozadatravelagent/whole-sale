@@ -1,4 +1,5 @@
 import React, { useMemo, Suspense, lazy, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { CircleUser, Sparkle, FileText, ArrowDownToLine, Clock, Check, CheckCheck, Loader2, Wand2 } from 'lucide-react';
@@ -11,7 +12,7 @@ import type { LocalCombinedTravelResults, LocalHotelData, LocalHotelSegmentResul
 import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
 import { getMessageContent, getMessageStatusIconType, formatTime } from '../utils/messageHelpers';
 import { getCityNameFromCode } from '../utils/flightHelpers';
-import { translateRoomDescription } from '../utils/translations';
+import { useChatDataTranslations } from '../hooks/useChatDataTranslations';
 import type { TripPlannerState } from '@/features/trip-planner/types';
 import type { PlannerEditorialData } from '@/features/trip-planner/editorial';
 import { formatBudgetLevel, formatDateRange, formatDestinationLabel, formatFlexibleMonth, formatPaceLabel } from '@/features/trip-planner/utils';
@@ -38,6 +39,19 @@ interface MessageMetaWithPlanner {
   originalRequest?: ParsedTravelRequest;
 }
 
+function LazySelectorErrorFallback({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation('chat');
+  return (
+    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-foreground">
+      <p className="font-medium">{t('messageItem.errorTitle')}</p>
+      <p className="mt-1 text-muted-foreground">{t('messageItem.errorBody')}</p>
+      <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
+        {t('messageItem.retry')}
+      </Button>
+    </div>
+  );
+}
+
 class LazySelectorErrorBoundary extends React.Component<LazySelectorErrorBoundaryProps, LazySelectorErrorBoundaryState> {
   state: LazySelectorErrorBoundaryState = { hasError: false };
 
@@ -53,24 +67,7 @@ class LazySelectorErrorBoundary extends React.Component<LazySelectorErrorBoundar
     if (!this.state.hasError) {
       return this.props.children;
     }
-
-    return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-foreground">
-        <p className="font-medium">No se pudo cargar el selector de cotización.</p>
-        <p className="mt-1 text-muted-foreground">
-          Actualizá la conversación o recargá la página para volver a intentarlo.
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="mt-3"
-          onClick={() => this.setState({ hasError: false })}
-        >
-          Reintentar
-        </Button>
-      </div>
-    );
+    return <LazySelectorErrorFallback onRetry={() => this.setState({ hasError: false })} />;
   }
 }
 
@@ -103,6 +100,8 @@ const MarkdownContent = ({ content }: { content: string }) => {
 
 // Memoized message component to prevent unnecessary re-renders
 const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector, onGoToPlanner }: MessageItemProps) => {
+  const { t } = useTranslation('chat');
+  const { translateRoomDescription } = useChatDataTranslations();
   const messageText = getMessageContent(msg);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -226,7 +225,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
       images: hotel.images,
       rooms: hotel.rooms.map(room => ({
         type: room.type || 'Standard',
-        description: translateRoomDescription(room.description || 'Habitación estándar'),
+        description: translateRoomDescription(room.description || t('messageItem.defaultRoomDescription')),
         price_per_night: room.price_per_night,
         total_price: room.total_price,
         currency: room.currency,
@@ -436,7 +435,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                 <LazySelectorErrorBoundary key={`combined-selector-${msg.id}`}>
                   <Suspense fallback={
                     <div className="h-64 bg-muted/30 animate-pulse rounded-lg flex items-center justify-center">
-                      <p className="text-sm text-muted-foreground">Cargando selector...</p>
+                      <p className="text-sm text-muted-foreground">{t('messageItem.loadingSelector')}</p>
                     </div>
                   }>
                     <CombinedTravelSelector
@@ -484,10 +483,10 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                         {onGoToPlanner ? (
                           <Button size="sm" className="shrink-0 gap-1.5" onClick={onGoToPlanner}>
                             <Wand2 className="h-3.5 w-3.5" />
-                            Abrir
+                            {t('messageItem.openPlanner')}
                           </Button>
                         ) : (
-                          <Badge variant="secondary">Planificador</Badge>
+                          <Badge variant="secondary">{t('messageItem.plannerBadge')}</Badge>
                         )}
                       </div>
                       {plannerSegments.length > 0 && (
@@ -510,9 +509,9 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                   <div className="mt-3 rounded-lg border border-primary/20 bg-background/70 p-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-sm font-medium">Elegí las fechas de tu viaje</p>
+                        <p className="text-sm font-medium">{t('messageItem.datePrompt')}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Seleccioná un rango de fechas o un mes flexible y me pongo a armar todo.
+                          {t('messageItem.dateInstruction')}
                         </p>
                       </div>
                       <Button
@@ -520,7 +519,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                         className="sm:self-start"
                         onClick={() => onOpenPlannerDateSelector(plannerDateSelectorRequest)}
                       >
-                        Elegir fechas
+                        {t('messageItem.datePickButton')}
                       </Button>
                     </div>
                   </div>
@@ -533,10 +532,10 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                       <FileText className="h-4 md:h-5 w-4 md:w-5 text-primary flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs md:text-sm font-medium text-foreground truncate">
-                          Cotización de Viaje
+                          {t('messageItem.pdfTitle')}
                         </p>
                         <p className="text-[10px] md:text-xs text-muted-foreground truncate">
-                          PDF con todos los detalles de tu viaje
+                          {t('messageItem.pdfSubtitle')}
                         </p>
                       </div>
                       <Button
@@ -551,7 +550,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                         ) : (
                           <ArrowDownToLine className="h-3 md:h-4 w-3 md:w-4 md:mr-1" />
                         )}
-                        <span className="hidden md:inline">{isDownloading ? 'Descargando...' : 'Descargar'}</span>
+                        <span className="hidden md:inline">{isDownloading ? t('messageItem.pdfDownloading') : t('messageItem.pdfDownload')}</span>
                       </Button>
                     </div>
                   </div>

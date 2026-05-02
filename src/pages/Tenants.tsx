@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { MeridianHeading, MeridianTag } from '@/components/meridian';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,6 +42,7 @@ import { useAgencies } from '@/hooks/useAgencies';
 import { useAuth } from '@/contexts/AuthContext';
 
 const Tenants = () => {
+  const { t } = useTranslation('admin');
   const { user: currentUser, isOwner, isSuperAdmin } = useAuth();
   const {
     tenants,
@@ -72,7 +74,7 @@ const Tenants = () => {
 
   const handleCreate = async () => {
     if (!newName) {
-      alert('Nombre es requerido');
+      alert(t('tenants.validation.nameRequired'));
       return;
     }
 
@@ -110,8 +112,8 @@ const Tenants = () => {
   const handleToggleStatus = async (tenantId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
     const confirmMessage = newStatus === 'suspended'
-      ? '¿Suspender este tenant? Todas las agencias y usuarios bajo este tenant perderán acceso.'
-      : '¿Activar este tenant?';
+      ? t('tenants.confirm.suspend')
+      : t('tenants.confirm.activate');
 
     if (!confirm(confirmMessage)) return;
 
@@ -119,7 +121,7 @@ const Tenants = () => {
   };
 
   const handleDelete = async (tenantId: string) => {
-    if (!confirm('¿Eliminar permanentemente este tenant? Esta acción no se puede deshacer. Asegúrate de que no tiene agencias ni usuarios asignados.')) {
+    if (!confirm(t('tenants.confirm.delete'))) {
       return;
     }
 
@@ -162,14 +164,14 @@ const Tenants = () => {
       return (
         <Badge className="bg-green-100 text-green-800">
           <CheckCircle className="h-3 w-3 mr-1" />
-          Active
+          {t('common.active')}
         </Badge>
       );
     }
     return (
       <Badge className="bg-red-100 text-red-800">
         <XCircle className="h-3 w-3 mr-1" />
-        Suspended
+        {t('common.suspended')}
       </Badge>
     );
   };
@@ -181,7 +183,7 @@ const Tenants = () => {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              No tienes permisos para ver tenants.
+              {t('tenants.noPermissions')}
             </AlertDescription>
           </Alert>
         </div>
@@ -195,10 +197,10 @@ const Tenants = () => {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <MeridianTag tone="lilac" className="mb-3">Administración · Tenants</MeridianTag>
-            <MeridianHeading as="h1" size="md" italic>Tenant Management</MeridianHeading>
+            <MeridianTag tone="lilac" className="mb-3">{t('tenants.tag')}</MeridianTag>
+            <MeridianHeading as="h1" size="md" italic>{t('tenants.title')}</MeridianHeading>
             <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">
-              {isOwner ? 'Manage organizations (tenants) in the system' : 'View your organization'}
+              {isOwner ? t('tenants.subtitleOwner') : t('tenants.subtitleScoped')}
             </p>
           </div>
           {canManageTenants && (
@@ -207,7 +209,7 @@ const Tenants = () => {
               className="bg-gradient-hero shadow-primary"
             >
               <Plus className="h-4 w-4 mr-2" />
-              Create Tenant
+              {t('tenants.createButton')}
             </Button>
           )}
         </div>
@@ -215,9 +217,9 @@ const Tenants = () => {
         {/* Tenants Table */}
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Tenants List</CardTitle>
+            <CardTitle>{t('tenants.listTitle')}</CardTitle>
             <CardDescription>
-              {tenants.length} tenant{tenants.length !== 1 ? 's' : ''} total
+              {t('tenants.listCount', { count: tenants.length })}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -227,18 +229,18 @@ const Tenants = () => {
               </div>
             ) : tenants.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No tenants found
+                {t('tenants.empty')}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Agencies</TableHead>
-                      <TableHead>Users</TableHead>
-                      {canManageTenants && <TableHead className="text-right">Actions</TableHead>}
+                      <TableHead>{t('tenants.table.name')}</TableHead>
+                      <TableHead>{t('tenants.table.status')}</TableHead>
+                      <TableHead>{t('tenants.table.agencies')}</TableHead>
+                      <TableHead>{t('tenants.table.users')}</TableHead>
+                      {canManageTenants && <TableHead className="text-right">{t('tenants.table.actions')}</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -272,7 +274,7 @@ const Tenants = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openAgenciesDialog(tenant)}
-                                title="Manage Agencies"
+                                title={t('tenants.tooltips.manageAgencies')}
                               >
                                 <Building className="h-4 w-4 text-blue-500" />
                               </Button>
@@ -280,7 +282,7 @@ const Tenants = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openEditDialog(tenant)}
-                                title="Edit"
+                                title={t('common.edit')}
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -288,7 +290,7 @@ const Tenants = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleToggleStatus(tenant.id, tenant.status)}
-                                title={tenant.status === 'active' ? 'Suspend' : 'Activate'}
+                                title={tenant.status === 'active' ? t('common.suspend') : t('common.activate')}
                               >
                                 <Power className={tenant.status === 'active' ? 'h-4 w-4 text-orange-500' : 'h-4 w-4 text-green-500'} />
                               </Button>
@@ -296,7 +298,7 @@ const Tenants = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleDelete(tenant.id)}
-                                title="Delete"
+                                title={t('common.delete')}
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
@@ -316,17 +318,17 @@ const Tenants = () => {
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New Tenant</DialogTitle>
+              <DialogTitle>{t('tenants.createDialog.title')}</DialogTitle>
               <DialogDescription>
-                Add a new organization to the system
+                {t('tenants.createDialog.description')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="new-name">Tenant Name *</Label>
+                <Label htmlFor="new-name">{t('tenants.createDialog.nameLabel')}</Label>
                 <Input
                   id="new-name"
-                  placeholder="WholeSale Travel Group"
+                  placeholder={t('tenants.createDialog.namePlaceholder')}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                 />
@@ -334,13 +336,13 @@ const Tenants = () => {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleCreate} disabled={saving}>
                 {saving ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('common.creating')}</>
                 ) : (
-                  'Create Tenant'
+                  t('tenants.createDialog.submit')
                 )}
               </Button>
             </DialogFooter>
@@ -351,14 +353,14 @@ const Tenants = () => {
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit Tenant</DialogTitle>
+              <DialogTitle>{t('tenants.editDialog.title')}</DialogTitle>
               <DialogDescription>
-                Update tenant information
+                {t('tenants.editDialog.description')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-name">Tenant Name</Label>
+                <Label htmlFor="edit-name">{t('tenants.editDialog.nameLabel')}</Label>
                 <Input
                   id="edit-name"
                   value={editName}
@@ -368,13 +370,13 @@ const Tenants = () => {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleEdit} disabled={saving}>
                 {saving ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('common.saving')}</>
                 ) : (
-                  'Save Changes'
+                  t('common.save')
                 )}
               </Button>
             </DialogFooter>
@@ -385,17 +387,17 @@ const Tenants = () => {
         <Dialog open={showAgenciesDialog} onOpenChange={setShowAgenciesDialog}>
           <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Manage Agencies for {selectedTenant?.name}</DialogTitle>
+              <DialogTitle>{t('tenants.agenciesDialog.title', { name: selectedTenant?.name })}</DialogTitle>
               <DialogDescription>
-                Assign or unassign agencies to this tenant
+                {t('tenants.agenciesDialog.description')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-6 py-4">
               {/* Assigned Agencies */}
               <div className="space-y-3">
-                <h3 className="font-semibold text-sm">Assigned Agencies ({getAgenciesForTenant(selectedTenant?.id || '').length})</h3>
+                <h3 className="font-semibold text-sm">{t('tenants.agenciesDialog.assignedTitle', { count: getAgenciesForTenant(selectedTenant?.id || '').length })}</h3>
                 {getAgenciesForTenant(selectedTenant?.id || '').length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No agencies assigned to this tenant yet.</p>
+                  <p className="text-sm text-muted-foreground">{t('tenants.agenciesDialog.assignedEmpty')}</p>
                 ) : (
                   <div className="space-y-2">
                     {getAgenciesForTenant(selectedTenant?.id || '').map((agency) => (
@@ -411,7 +413,7 @@ const Tenants = () => {
                           onClick={() => handleAssignAgency(agency.id, null)}
                           disabled={saving}
                         >
-                          Remove
+                          {t('common.remove')}
                         </Button>
                       </div>
                     ))}
@@ -421,9 +423,9 @@ const Tenants = () => {
 
               {/* Unassigned Agencies */}
               <div className="space-y-3">
-                <h3 className="font-semibold text-sm">Available Agencies ({getUnassignedAgencies().length})</h3>
+                <h3 className="font-semibold text-sm">{t('tenants.agenciesDialog.availableTitle', { count: getUnassignedAgencies().length })}</h3>
                 {getUnassignedAgencies().length === 0 ? (
-                  <p className="text-sm text-muted-foreground">All agencies are assigned to a tenant.</p>
+                  <p className="text-sm text-muted-foreground">{t('tenants.agenciesDialog.availableEmpty')}</p>
                 ) : (
                   <div className="space-y-2">
                     {getUnassignedAgencies().map((agency) => (
@@ -439,7 +441,7 @@ const Tenants = () => {
                           onClick={() => handleAssignAgency(agency.id, selectedTenant?.id)}
                           disabled={saving}
                         >
-                          Assign
+                          {t('common.assign')}
                         </Button>
                       </div>
                     ))}
@@ -449,7 +451,7 @@ const Tenants = () => {
             </div>
             <DialogFooter>
               <Button onClick={() => setShowAgenciesDialog(false)}>
-                Close
+                {t('common.close')}
               </Button>
             </DialogFooter>
           </DialogContent>

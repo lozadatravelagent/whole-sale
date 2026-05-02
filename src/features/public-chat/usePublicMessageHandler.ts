@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import i18n from '@/i18n';
 import { parseMessageWithAI, combineWithPreviousRequest } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import {
@@ -82,7 +83,9 @@ export function usePublicMessageHandler() {
       try {
         // Parse the message with AI
         const conversationHistory = buildConversationHistory();
-        let parsed = await parseMessageWithAI(trimmed, previousContext.current, conversationHistory);
+        const langRaw = (i18n.language || 'es').split('-')[0];
+        const userLanguage: 'es' | 'en' | 'pt' = langRaw === 'en' || langRaw === 'pt' ? langRaw : 'es';
+        let parsed = await parseMessageWithAI(trimmed, previousContext.current, conversationHistory, undefined, userLanguage);
 
         // Combine with previous context for follow-up questions
         if (previousContext.current) {

@@ -8,10 +8,13 @@
  * include `'CONSUMER'`, even though that value reaches client code via
  * `useAuth().user?.role`. Defensive default returns an empty list for any
  * unknown role.
+ *
+ * Each item exposes `labelKey` so the rendering layout can resolve the label
+ * via `t(common:nav.<key>)` and render it in the user's preferred language.
  */
 
 export interface AvatarMenuItem {
-  label: string;
+  labelKey: 'dashboard' | 'settings' | 'users' | 'agencies' | 'tenants' | 'profile';
   href: string;
 }
 
@@ -20,25 +23,25 @@ export function getAvatarMenuItems(role: string | null | undefined): AvatarMenuI
     case 'OWNER':
     case 'SUPERADMIN':
       return [
-        { label: 'Settings', href: '/emilia/settings' },
-        { label: 'Users', href: '/emilia/users' },
-        { label: 'Agencies', href: '/emilia/agencies' },
-        { label: 'Tenants', href: '/emilia/tenants' },
-        { label: 'Dashboard', href: '/emilia/dashboard' },
+        { labelKey: 'settings', href: '/emilia/settings' },
+        { labelKey: 'users', href: '/emilia/users' },
+        { labelKey: 'agencies', href: '/emilia/agencies' },
+        { labelKey: 'tenants', href: '/emilia/tenants' },
+        { labelKey: 'dashboard', href: '/emilia/dashboard' },
       ];
     case 'ADMIN':
       return [
-        { label: 'Settings', href: '/emilia/settings' },
-        { label: 'Users', href: '/emilia/users' },
-        { label: 'Dashboard', href: '/emilia/dashboard' },
+        { labelKey: 'settings', href: '/emilia/settings' },
+        { labelKey: 'users', href: '/emilia/users' },
+        { labelKey: 'dashboard', href: '/emilia/dashboard' },
       ];
     case 'SELLER':
       return [
-        { label: 'Settings', href: '/emilia/settings' },
-        { label: 'Dashboard', href: '/emilia/dashboard' },
+        { labelKey: 'settings', href: '/emilia/settings' },
+        { labelKey: 'dashboard', href: '/emilia/dashboard' },
       ];
     case 'CONSUMER':
-      return [{ label: 'Profile', href: '/emilia/profile' }];
+      return [{ labelKey: 'profile', href: '/emilia/profile' }];
     default:
       return [];
   }

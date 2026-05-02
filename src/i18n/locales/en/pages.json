@@ -1,0 +1,109 @@
+{
+  "common": {
+    "updatedAt": "February 12, 2026"
+  },
+  "documentation": {
+    "title": "Documentation",
+    "subtitle": "Quick guide to roll out Vibook and streamline your agency's commercial operation.",
+    "sections": {
+      "gettingStarted": {
+        "title": "Getting started",
+        "items": [
+          "Create users and define role-based permissions.",
+          "Configure your agency and base branding.",
+          "Connect providers from Marketplace."
+        ]
+      },
+      "dailyOps": {
+        "title": "Daily operations",
+        "items": [
+          "Manage leads in the CRM and assign owners.",
+          "Log operations and sales follow-ups.",
+          "Review reports to spot opportunities."
+        ]
+      },
+      "quickResources": {
+        "title": "Quick resources",
+        "items": [
+          "Onboarding guides for new teams.",
+          "Best practices for sales follow-up.",
+          "Per-agency rollout checklist."
+        ]
+      }
+    },
+    "helpPrefix": "Need help with implementation? Visit",
+    "supportLink": "Support",
+    "or": "or",
+    "salesLink": "contact sales",
+    "helpSuffix": "."
+  },
+  "support": {
+    "title": "Support",
+    "subtitle": "Contact channels for implementation, incidents, and operational queries.",
+    "channels": {
+      "title": "Available channels",
+      "general": "General support:",
+      "sales": "Sales and implementation:",
+      "hours": "Service hours: Monday to Friday, 9:00 AM to 6:00 PM (GMT-3)."
+    },
+    "checklist": {
+      "title": "What to include in your request",
+      "items": [
+        "Agency name and affected user.",
+        "Module or screen involved.",
+        "Screenshot or step-by-step description.",
+        "Expected result vs actual result."
+      ]
+    }
+  },
+  "privacy": {
+    "title": "Privacy policy",
+    "subtitle": "How we handle data from agencies, users, and operations within Vibook.",
+    "section1": {
+      "title": "1. Data we process",
+      "body": "We process user identity data, operational information from agencies, and activity logs needed to deliver the service and improve the user experience."
+    },
+    "section2": {
+      "title": "2. Purpose of processing",
+      "body": "We use the information for authentication, platform operation, technical support, and aggregated product performance metrics."
+    },
+    "section3": {
+      "title": "3. Inquiries and rights",
+      "bodyPrefix": "For privacy inquiries or data access/update requests, write to",
+      "bodySuffix": "."
+    }
+  },
+  "contact": {
+    "title": "Sales contact",
+    "subtitle": "Schedule a demo or get answers about plans, implementation, and integrations.",
+    "channels": {
+      "title": "Sales channels",
+      "email": "Sales email:",
+      "whatsapp": "Sales WhatsApp:",
+      "responseTime": "Estimated response time: 1 business day.",
+      "implementation": "Guided onboarding for agencies and sales teams."
+    },
+    "next": {
+      "title": "Recommended next step",
+      "body": "If you already have access, sign in and review the product from inside.",
+      "writeWhatsapp": "Message us on WhatsApp",
+      "login": "Sign in"
+    }
+  },
+  "terms": {
+    "title": "Terms of service",
+    "subtitle": "General conditions for using the Vibook platform.",
+    "section1": {
+      "title": "1. Scope of the service",
+      "body": "Vibook provides commercial and operational management tools for travel agencies. Access may vary based on the plan and the wholesaler or agency configuration."
+    },
+    "section2": {
+      "title": "2. Use responsibility",
+      "body": "Each account is responsible for the use of its credentials, the accuracy of submitted information, and compliance with applicable regulations for commercial and fiscal operation."
+    },
+    "section3": {
+      "title": "3. Support and availability",
+      "body": "Support and availability levels may depend on the plan and specific commercial agreements. For tailored conditions, contact the sales team."
+    }
+  }
+}

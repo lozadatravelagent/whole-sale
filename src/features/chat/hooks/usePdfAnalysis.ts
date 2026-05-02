@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { analyzePdfContent, generatePriceChangeSuggestions, searchCheaperFlights, processPriceChangeRequest } from '@/services/pdfProcessor';
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
@@ -13,6 +14,7 @@ const usePdfAnalysis = (
   addOptimisticMessage: (message: any) => void,
   toast: (args: { title: string; description?: string; variant?: 'default' | 'destructive' }) => void
 ) => {
+  const { t } = useTranslation('chat');
   // Save message to DB and immediately add assistant messages to local state (no Realtime dependency)
   const saveAndDisplayMessage = useCallback(async (messageData: Parameters<typeof addMessageViaSupabase>[0]) => {
     const saved = await addMessageViaSupabase(messageData);
@@ -147,8 +149,8 @@ const usePdfAnalysis = (
     const file = event.target.files?.[0];
     if (!file || file.type !== 'application/pdf') {
       toast({
-        title: "Archivo no válido",
-        description: "Por favor selecciona un archivo PDF.",
+        title: t('toasts.invalidFile.title'),
+        description: t('toasts.invalidFile.description'),
         variant: "destructive",
       });
       return;
@@ -156,8 +158,8 @@ const usePdfAnalysis = (
 
     if (file.size > 10 * 1024 * 1024) { // 10MB limit
       toast({
-        title: "Archivo muy grande",
-        description: "El archivo no puede ser mayor a 10MB.",
+        title: t('toasts.fileTooLarge.title'),
+        description: t('toasts.fileTooLarge.description'),
         variant: "destructive",
       });
       return;
@@ -165,8 +167,8 @@ const usePdfAnalysis = (
 
     if (!selectedConversation) {
       toast({
-        title: "Error",
-        description: "No hay conversación seleccionada.",
+        title: t('toasts.pdfNoConversation.title'),
+        description: t('toasts.pdfNoConversation.description'),
         variant: "destructive",
       });
       return;
@@ -241,15 +243,15 @@ const usePdfAnalysis = (
       await processPdfContent(file, selectedConversation, isFirstMessage);
 
       toast({
-        title: "PDF subido exitosamente",
-        description: `${file.name} ha sido analizado y procesado.`,
+        title: t('toasts.pdfUploaded.title'),
+        description: t('toasts.pdfUploaded.description', { filename: file.name }),
       });
 
     } catch (error) {
       console.error('Error uploading PDF:', error);
       toast({
-        title: "Error al subir PDF",
-        description: "No se pudo procesar el archivo. Inténtalo nuevamente.",
+        title: t('toasts.pdfUploadFailed.title'),
+        description: t('toasts.pdfUploadFailed.description'),
         variant: "destructive",
       });
     } finally {

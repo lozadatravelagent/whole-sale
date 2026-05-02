@@ -139,6 +139,48 @@ export type Database = {
           },
         ]
       }
+      agent_states: {
+        Row: {
+          agency_id: string
+          conversation_id: string
+          created_at: string
+          schema_version: number
+          state: Json
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          conversation_id: string
+          created_at?: string
+          schema_version?: number
+          state: Json
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          conversation_id?: string
+          created_at?: string
+          schema_version?: number
+          state?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_states_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_states_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       api_keys: {
         Row: {
           agency_id: string | null
@@ -510,129 +552,6 @@ export type Database = {
           },
         ]
       }
-      leads: {
-        Row: {
-          agency_id: string | null
-          assigned_user_id: string | null
-          attachments: Json | null
-          budget: number | null
-          checklist: Json | null
-          contact: Json
-          conversation_id: string | null
-          created_at: string
-          description: string | null
-          due_date: string | null
-          id: string
-          loss_reason: string | null
-          pdf_urls: string[]
-          section_id: string | null
-          status: Database["public"]["Enums"]["lead_status"]
-          tenant_id: string | null
-          trip: Json
-          trip_id: string | null
-          updated_at: string
-        }
-        Insert: {
-          agency_id?: string | null
-          assigned_user_id?: string | null
-          attachments?: Json | null
-          budget?: number | null
-          checklist?: Json | null
-          contact: Json
-          conversation_id?: string | null
-          created_at?: string
-          description?: string | null
-          due_date?: string | null
-          id?: string
-          loss_reason?: string | null
-          pdf_urls?: string[]
-          section_id?: string | null
-          status?: Database["public"]["Enums"]["lead_status"]
-          tenant_id?: string | null
-          trip: Json
-          trip_id?: string | null
-          updated_at?: string
-        }
-        Update: {
-          agency_id?: string | null
-          assigned_user_id?: string | null
-          attachments?: Json | null
-          budget?: number | null
-          checklist?: Json | null
-          contact?: Json
-          conversation_id?: string | null
-          created_at?: string
-          description?: string | null
-          due_date?: string | null
-          id?: string
-          loss_reason?: string | null
-          pdf_urls?: string[]
-          section_id?: string | null
-          status?: Database["public"]["Enums"]["lead_status"]
-          tenant_id?: string | null
-          trip?: Json
-          trip_id?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "leads_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: false
-            referencedRelation: "agencies"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_assigned_user_id_fkey"
-            columns: ["assigned_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_assigned_user_id_fkey"
-            columns: ["assigned_user_id"]
-            isOneToOne: false
-            referencedRelation: "users_with_details"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "conversations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_section_id_fkey"
-            columns: ["section_id"]
-            isOneToOne: false
-            referencedRelation: "sections"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_trip_id_fkey"
-            columns: ["trip_id"]
-            isOneToOne: false
-            referencedRelation: "lead_trips"
-            referencedColumns: ["trip_id"]
-          },
-          {
-            foreignKeyName: "leads_trip_id_fkey"
-            columns: ["trip_id"]
-            isOneToOne: false
-            referencedRelation: "trips"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       lead_ai_profiles: {
         Row: {
           agency_id: string
@@ -694,6 +613,112 @@ export type Database = {
           },
           {
             foreignKeyName: "lead_ai_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          agency_id: string
+          assigned_user_id: string | null
+          attachments: Json | null
+          budget: number | null
+          checklist: Json | null
+          contact: Json
+          conversation_id: string | null
+          created_at: string
+          description: string | null
+          due_date: string | null
+          id: string
+          loss_reason: string | null
+          pdf_urls: string[]
+          section_id: string | null
+          status: Database["public"]["Enums"]["lead_status"]
+          tenant_id: string
+          trip: Json
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          assigned_user_id?: string | null
+          attachments?: Json | null
+          budget?: number | null
+          checklist?: Json | null
+          contact: Json
+          conversation_id?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          loss_reason?: string | null
+          pdf_urls?: string[]
+          section_id?: string | null
+          status?: Database["public"]["Enums"]["lead_status"]
+          tenant_id: string
+          trip: Json
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          assigned_user_id?: string | null
+          attachments?: Json | null
+          budget?: number | null
+          checklist?: Json | null
+          contact?: Json
+          conversation_id?: string | null
+          created_at?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          loss_reason?: string | null
+          pdf_urls?: string[]
+          section_id?: string | null
+          status?: Database["public"]["Enums"]["lead_status"]
+          tenant_id?: string
+          trip?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_user_id_fkey"
+            columns: ["assigned_user_id"]
+            isOneToOne: false
+            referencedRelation: "users_with_details"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -1414,6 +1439,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      waitlist: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          language: string | null
+          source: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          language?: string | null
+          source?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          language?: string | null
+          source?: string | null
+        }
+        Relationships: []
       }
       whatsapp_numbers: {
         Row: {

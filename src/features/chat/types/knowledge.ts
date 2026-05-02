@@ -123,6 +123,14 @@ export interface ParseMessageKnowledge {
     agencyId?: string | null;
   };
   historyWindow?: number;
+  /**
+   * Phase 5 (Context Engineering) — pre-rendered state injection block
+   * built by `buildMemoryStateBlockFromState`. Forwarded to the
+   * `ai-message-parser` edge function which already accepts it (see
+   * `supabase/functions/ai-message-parser/prompt.ts` `memoryStateBlock`).
+   * Undefined when the feature flag is off.
+   */
+  memoryStateBlock?: string;
 }
 
 export interface LlmUsage {

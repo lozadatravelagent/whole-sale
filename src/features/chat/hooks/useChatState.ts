@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ChatState, ConversationWorkspaceMode } from '../types/chat';
@@ -12,6 +13,7 @@ interface UseChatStateOptions {
 }
 
 const useChatState = (options: UseChatStateOptions = {}) => {
+  const { t } = useTranslation('chat');
   const { defaultWorkspaceMode = 'standard' } = options;
   const [chatState, setChatState] = useState<ChatState>({
     selectedConversation: null,
@@ -225,13 +227,13 @@ const useChatState = (options: UseChatStateOptions = {}) => {
         isLoading: false,
       });
       toast({
-        title: "Error",
-        description: "No se pudo crear la conversación. Inténtalo de nuevo.",
+        title: t('toasts.newChatFailed.title'),
+        description: t('toasts.newChatFailed.description'),
         variant: "destructive",
       });
       return null;
     }
-  }, [user, authUser.user, createConversation, toast, updateChatState]);
+  }, [user, authUser.user, createConversation, toast, updateChatState, t]);
 
   // Load conversations on mount
   useEffect(() => {

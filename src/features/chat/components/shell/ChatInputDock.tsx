@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowUp, Loader2, Paperclip } from 'lucide-react';
@@ -31,6 +32,7 @@ const ChatInputDock = React.memo(({
   selectedConversation,
   className,
 }: ChatInputDockProps) => {
+  const { t } = useTranslation('chat');
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previousConversationRef = useRef<string | null>(null);
@@ -92,7 +94,7 @@ const ChatInputDock = React.memo(({
           disabled={disabled || isUploadingPdf}
           variant="ghost"
           size="icon"
-          aria-label="Adjuntar PDF"
+          aria-label={t('input.attachPdf')}
           className="h-9 w-9 shrink-0 rounded-full text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground"
         >
           {isUploadingPdf ? (
@@ -108,7 +110,7 @@ const ChatInputDock = React.memo(({
           name="message"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Pedime una idea, una ruta o una cotización…"
+          placeholder={t('input.placeholder')}
           disabled={disabled}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -132,7 +134,7 @@ const ChatInputDock = React.memo(({
           disabled={disabled || isEmpty}
           variant="meridian"
           size="icon"
-          aria-label="Enviar"
+          aria-label={t('input.send')}
           className="h-9 w-9 shrink-0 rounded-full p-0"
         >
           {disabled ? (

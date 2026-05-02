@@ -8,5 +8,22 @@
   "loading": "Carregando...",
   "error": "Erro",
   "success": "Sucesso",
-  "tryAgain": "Tente novamente"
+  "tryAgain": "Tente novamente",
+  "nav": {
+    "dashboard": "Painel",
+    "settings": "Configurações",
+    "users": "Usuários",
+    "agencies": "Agências",
+    "tenants": "Tenants",
+    "profile": "Perfil",
+    "home": "Emilia · início"
+  },
+  "theme": {
+    "label": "Tema:",
+    "toggle": "Alternar tema"
+  },
+  "logoutToast": {
+    "title": "Erro ao sair",
+    "description": "Houve um problema ao encerrar a sessão."
+  }
 }

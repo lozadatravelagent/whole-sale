@@ -1,0 +1,83 @@
+{
+  "tag": "Cuenta · Configuración",
+  "title": "Configuración",
+  "subtitleAgency": "Personaliza el branding y preferencias de tu agencia",
+  "subtitlePersonal": "Gestiona la configuración de tu cuenta personal",
+  "sellerNotice": "Como vendedor, solo puedes editar tu perfil personal. Para cambiar la configuración de la agencia, contacta a tu administrador.",
+  "agencySelector": {
+    "title": "Seleccionar Agencia",
+    "descriptionOwner": "Elige qué agencia quieres configurar",
+    "descriptionAdmin": "Elige una agencia de tu tenant",
+    "placeholder": "Selecciona una agencia..."
+  },
+  "tabs": {
+    "branding": "Branding",
+    "contact": "Información de Contacto",
+    "account": "Cuenta"
+  },
+  "branding": {
+    "title": "Branding de la Agencia",
+    "description": "Personaliza la apariencia de tu agencia en cotizaciones y comunicaciones",
+    "save": "Guardar Cambios",
+    "saving": "Guardando...",
+    "logo": "Logo de la Agencia",
+    "uploadLogo": "Subir Logo",
+    "uploading": "Subiendo...",
+    "logoHint": "Tamaño recomendado: 200x200px, formato PNG o JPG (máx 2MB)",
+    "primaryColor": "Color Primario",
+    "secondaryColor": "Color Secundario",
+    "pdfHeaderBg": "Color de Fondo Header PDF",
+    "pdfFooterBg": "Color de Fondo Footer PDF",
+    "transparentHint": "Dejar vacío para fondo transparente",
+    "transparentPlaceholder": "Transparente",
+    "preview": "Vista Previa",
+    "previewQuote": "Vista Previa de Cotización",
+    "previewAgency": "Tu Agencia",
+    "previewBookNow": "Reservar Ahora",
+    "selectAgencyForTemplates": "Por favor selecciona una agencia para gestionar las plantillas PDF",
+    "loadingAgency": "Cargando información de la agencia..."
+  },
+  "contact": {
+    "title": "Información de Contacto",
+    "description": "Esta información aparecerá en tus cotizaciones y comunicaciones",
+    "agencyName": "Nombre de la Agencia",
+    "agencyNamePlaceholder": "Tu Agencia de Viajes",
+    "email": "Email de Contacto",
+    "emailPlaceholder": "contacto@tuagencia.com",
+    "phone": "Número de Teléfono",
+    "phonePlaceholder": "+34 123 456 789",
+    "pdfFooter": "Texto para pie de página del PDF",
+    "pdfFooterPlaceholder": "Ej: Dirección, CUIT, sitio web, condiciones...",
+    "pdfFooterHint": "Este texto aparecerá en el pie de página de los PDFs generados por tu agencia"
+  },
+  "account": {
+    "title": "Información de la Cuenta",
+    "description": "Tu rol y permisos en el sistema",
+    "roles": {
+      "owner": "Propietario de la Plataforma - Acceso a todos los tenants",
+      "superAdmin": "Administrador de Tenant - Acceso a todas las agencias del tenant",
+      "admin": "Administrador de Agencia - Gestiona tu agencia",
+      "seller": "Agente de Ventas - Gestiona leads asignados"
+    },
+    "personalTitle": "Perfil Personal",
+    "personalDescription": "Actualiza tu información personal",
+    "saveProfile": "Guardar Perfil",
+    "displayName": "Nombre para Mostrar",
+    "displayNamePlaceholder": "Tu Nombre",
+    "emailLabel": "Dirección de Email",
+    "emailLocked": "El email no se puede cambiar. Contacta a soporte si lo necesitas.",
+    "passwordTitle": "Cambiar Contraseña",
+    "passwordDescription": "Actualiza tu contraseña por seguridad",
+    "newPassword": "Nueva Contraseña",
+    "confirmPassword": "Confirmar Contraseña",
+    "updatePassword": "Actualizar Contraseña",
+    "updating": "Actualizando..."
+  },
+  "validation": {
+    "passwordsMismatch": "Las contraseñas no coinciden",
+    "passwordTooShort": "La contraseña debe tener al menos 6 caracteres",
+    "noAgency": "No se pudo determinar la agencia",
+    "invalidImage": "Por favor selecciona una imagen válida",
+    "imageTooLarge": "La imagen debe ser menor a 2MB"
+  }
+}

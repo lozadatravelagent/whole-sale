@@ -1,0 +1,82 @@
+{
+  "tag": "Panel · Overview",
+  "today": "Today · {{date}}",
+  "title": {
+    "owner": "Global Dashboard (OWNER)",
+    "superAdmin": "Wholesaler Dashboard",
+    "admin": "Agency Dashboard",
+    "seller": "My Personal Dashboard",
+    "default": "Dashboard"
+  },
+  "description": {
+    "owner": "Full view of every tenant and agency in the system",
+    "superAdmin": "Management and oversight of all your agencies",
+    "admin": "Sales team supervision and agency metrics",
+    "seller": "Your assigned leads and personal performance metrics",
+    "default": "Summary of your agency's commercial performance"
+  },
+  "loginRequired": "Please sign in to view the dashboard",
+  "alerts": {
+    "title": "Important Alerts",
+    "pendingFollowups": "{{count}} leads pending follow-up",
+    "viewLeads": "View leads",
+    "upcomingDeadlines": "{{count}} follow-ups scheduled soon",
+    "viewSchedule": "View schedule",
+    "allCaughtUp": "All caught up. Nice work!",
+    "viewCrm": "View CRM"
+  },
+  "goals": {
+    "title": "Monthly Goals",
+    "subtitle": "Progress towards your targets",
+    "monthlyRevenue": "Monthly Revenue",
+    "leadsWonContext": "Out of {{count}} leads won this month",
+    "conversionRate": "Conversion Rate",
+    "conversionContext": "{{won}} won out of {{closed}} closed leads"
+  },
+  "metrics": {
+    "conversationsToday": "Conversations Today",
+    "trendVsYesterday": "+12% vs yesterday",
+    "quotes": "Quotes",
+    "pdfsSent": "{{count}} PDFs sent"
+  },
+  "agencyPerformance": {
+    "titleAll": "Agency Performance (All)",
+    "titleScoped": "Agency Performance",
+    "subtitleAll": "Cross-tenant comparison",
+    "subtitleScoped": "Your wholesaler's agencies",
+    "conversion": "{{rate}}% conversion",
+    "revenue": "Revenue",
+    "leads": "Leads",
+    "conversations": "Conversations",
+    "sellers": "Sellers"
+  },
+  "team": {
+    "title": "Team Performance",
+    "subtitle": "Sales reps performance this month",
+    "viewAll": "View All",
+    "leads": "{{count}} leads",
+    "won": "{{count}} won",
+    "conversion": "{{rate}}% conversion"
+  },
+  "deadlines": {
+    "title": "Upcoming Deadlines",
+    "subtitle": "Important pending actions",
+    "days": "{{count}} days",
+    "viewPending": "View {{count}} pending follow-ups"
+  },
+  "activity": {
+    "title": "Recent Activity",
+    "subtitle": "Latest important interactions",
+    "loading": "Loading activities...",
+    "empty": "No recent activity",
+    "destination": "Destination: {{place}}",
+    "timeAgo": {
+      "justNow": "Just now",
+      "minutes": "{{count}} min",
+      "hour": "{{count}} hour",
+      "hours": "{{count}} hours",
+      "day": "{{count}} day",
+      "days": "{{count}} days"
+    }
+  }
+}

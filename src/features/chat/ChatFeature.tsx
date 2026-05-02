@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,6 +23,8 @@ import { getLatestDiscoveryContext, hasChatContextPanelContent } from './utils/c
 import useContextualMemory from './hooks/useContextualMemory';
 import usePdfAnalysis from './hooks/usePdfAnalysis';
 import useMessageHandler from './hooks/useMessageHandler';
+// Phase 5 (Context Engineering) — feature-flagged side-effects only.
+import { useEmiliaState, useUpdateState } from './state/useEmiliaState';
 import { addMessageViaSupabase } from './services/messageService';
 import { preloadConversationKnowledge } from './services/conversationKnowledgeService';
 import TripPlannerWorkspace from '@/features/trip-planner/components/TripPlannerWorkspace';
@@ -35,6 +38,7 @@ interface ChatFeatureProps {
 }
 
 const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
+  const { t } = useTranslation('chat');
   const navigate = useNavigate();
   const { isOwner, isSuperAdmin, user } = useAuth();
   // PR 3 (C5): chat mode for agents. Lives in component state (not useChatState)
@@ -333,6 +337,36 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     user?.accountType === 'agent' ? chatMode : undefined
   );
 
+  // Phase 5 (Context Engineering) — keep state.mode in sync with chatMode for
+  // the active conversation. No-op when:
+  //   - feature flag is off
+  //   - no conversation selected
+  //   - no EmiliaState loaded yet (bootstrap happens in `useMessageHandler`
+  //     on the first send)
+  // The mode mutation is the single source of truth for reciprocity (see
+  // `applyModeChange` invariants in contextEngineeringIntegration.ts).
+  const USE_CONTEXT_ENGINEERING_FE =
+    (import.meta as { env?: { VITE_USE_CONTEXT_ENGINEERING?: string } }).env?.VITE_USE_CONTEXT_ENGINEERING === 'true';
+  const { state: emiliaState } = useEmiliaState(
+    USE_CONTEXT_ENGINEERING_FE ? selectedConversation : null,
+  );
+  const { mutate: mutateEmiliaState } = useUpdateState(
+    USE_CONTEXT_ENGINEERING_FE ? selectedConversation : null,
+  );
+
+  useEffect(() => {
+    if (!USE_CONTEXT_ENGINEERING_FE) return;
+    if (!selectedConversation) return;
+    if (!emiliaState) return;
+    const desiredMode: 'agency' | 'passenger' = chatMode === 'agency' ? 'agency' : 'passenger';
+    if (emiliaState.mode === desiredMode) return;
+    mutateEmiliaState((draft) => {
+      draft.mode = desiredMode;
+    }).catch((e) => {
+      console.warn('[CTX-ENG] ChatFeature mode sync failed:', e);
+    });
+  }, [USE_CONTEXT_ENGINEERING_FE, chatMode, emiliaState, mutateEmiliaState, selectedConversation]);
+
   // PR 3 (C5): bridge chip handlers. Wired only into the B2B (agent) branch of
   // ChatInterface below. Consumer branch doesn't pass them — the bridge never
   // emits for consumer (chatMode is undefined → legacy orchestrator path).
@@ -367,11 +401,11 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       if (isLoading) return;
       // Send a minimal message that our parser understands to allow stops
       handleSendMessageRaw('con escalas');
-      toast({ title: 'Buscando con escalas', description: 'Reintentando la búsqueda permitiendo conexiones.' });
+      toast({ title: t('toasts.retryWithStops.title'), description: t('toasts.retryWithStops.description') });
     };
     window.addEventListener('chat:retryWithStops', onRetryWithStops);
     return () => window.removeEventListener('chat:retryWithStops', onRetryWithStops);
-  }, [handleSendMessageRaw, isLoading, toast]);
+  }, [handleSendMessageRaw, isLoading, toast, t]);
 
   // Wrapper for handleSendMessage
   const handleSendMessage = useCallback(() => {
@@ -388,10 +422,10 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       await updateConversationState(conversationId, newState);
 
       toast({
-        title: currentState === 'active' ? "Conversación archivada" : "Conversación restaurada",
+        title: currentState === 'active' ? t('toasts.archived.title') : t('toasts.restored.title'),
         description: currentState === 'active'
-          ? "La conversación ha sido archivada exitosamente"
-          : "La conversación ha sido restaurada exitosamente",
+          ? t('toasts.archived.description')
+          : t('toasts.restored.description'),
       });
 
       // Switch to the appropriate tab after archiving/restoring
@@ -404,12 +438,12 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     } catch (error) {
       console.error('❌ [ARCHIVE] Error archiving/restoring conversation:', error);
       toast({
-        title: "Error",
-        description: "No se pudo archivar/restaurar la conversación",
+        title: t('toasts.archiveFailed.title'),
+        description: t('toasts.archiveFailed.description'),
         variant: "destructive"
       });
     }
-  }, [selectedConversation, updateConversationState, toast, setActiveTab, setSelectedConversation]);
+  }, [selectedConversation, updateConversationState, toast, setActiveTab, setSelectedConversation, t]);
 
   const handleSelectConversation = useCallback((conversationId: string) => {
     const conversation = conversations.find((item) => item.id === conversationId) || null;
@@ -476,8 +510,8 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   const handleAddToCRM = useCallback(async () => {
     if (!selectedConversation || !conversationScopedMessages.length) {
       toast({
-        title: "Error",
-        description: "No hay conversación seleccionada o mensajes disponibles",
+        title: t('toasts.noConversation.title'),
+        description: t('toasts.noConversation.description'),
         variant: "destructive"
       });
       return;
@@ -611,8 +645,8 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
 
       if (leadId) {
         toast({
-          title: "¡Lead creado exitosamente!",
-          description: `Lead agregado al CRM con ID: ${leadId}`,
+          title: t('toasts.leadCreated.title'),
+          description: t('toasts.leadCreated.description', { leadId }),
         });
 
         console.log('✅ [ADD TO CRM] Lead created successfully:', leadId);
@@ -623,14 +657,14 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     } catch (error) {
       console.error('❌ [ADD TO CRM] Error creating lead:', error);
       toast({
-        title: "Error",
-        description: "No se pudo crear el lead. Inténtalo de nuevo.",
+        title: t('toasts.leadFailed.title'),
+        description: t('toasts.leadFailed.description'),
         variant: "destructive"
       });
     } finally {
       setIsAddingToCRM(false);
     }
-  }, [selectedConversation, conversationScopedMessages, conversations, previousParsedRequest, toast, setIsAddingToCRM]);
+  }, [selectedConversation, conversationScopedMessages, conversations, previousParsedRequest, toast, setIsAddingToCRM, t]);
 
   // Handle PDF generated from selectors
   const handlePdfGenerated = useCallback(async (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => {
@@ -685,14 +719,14 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       if (leadId) {
         console.log('✅ Lead updated successfully with PDF data, Lead ID:', leadId);
         toast({
-          title: "PDF Generado y Lead Actualizado",
-          description: "Tu cotización se ha generado y el lead se ha actualizado en el CRM.",
+          title: t('toasts.pdfGeneratedAndLead.title'),
+          description: t('toasts.pdfGeneratedAndLead.description'),
         });
       } else {
         console.warn('⚠️ PDF generated but lead update failed');
         toast({
-          title: "PDF Generado",
-          description: "Tu cotización se ha generado y agregado al chat.",
+          title: t('toasts.pdfGenerated.title'),
+          description: t('toasts.pdfGenerated.description'),
         });
       }
 
@@ -701,11 +735,11 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     } catch (error) {
       console.error('❌ Error adding PDF message to chat or updating lead:', error);
       toast({
-        title: "PDF Generado",
-        description: "Tu cotización se ha generado exitosamente.",
+        title: t('toasts.pdfGeneratedFallback.title'),
+        description: t('toasts.pdfGeneratedFallback.description'),
       });
     }
-  }, [selectedConversation, toast, saveAndDisplayMessage]);
+  }, [selectedConversation, toast, saveAndDisplayMessage, t]);
 
   // Handle new message from empty state
   const handleSendNewMessage = useCallback(async (messageToSend: string) => {
@@ -741,13 +775,13 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     } catch (error) {
       console.error('❌ [NEW CHAT] Error creating conversation or sending message:', error);
       toast({
-        title: "Error",
-        description: "No se pudo crear la conversación. Inténtalo de nuevo.",
+        title: t('toasts.newChatFailed.title'),
+        description: t('toasts.newChatFailed.description'),
         variant: "destructive",
       });
       throw error;
     }
-  }, [createNewChat, handleSendMessageRaw, historyMode, setMessage, setSelectedConversation, toast]);
+  }, [createNewChat, handleSendMessageRaw, historyMode, setMessage, setSelectedConversation, toast, t]);
 
   const sharedSidebarProps = {
     conversations,

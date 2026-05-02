@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -10,13 +11,13 @@ interface StopsChipProps {
   onChange: (maxStops: number | null) => void;
 }
 
-const STOPS_OPTIONS = [
-  { value: 0, label: 'Directo' },
-  { value: 1, label: '1 escala' },
-  { value: 2, label: '2+ escalas' },
-] as const;
-
 export function StopsChip({ distribution, value, onChange }: StopsChipProps) {
+  const { t } = useTranslation('chat');
+  const STOPS_OPTIONS = [
+    { value: 0, label: t('chips.stopsDirect') },
+    { value: 1, label: t('chips.stopsOne') },
+    { value: 2, label: t('chips.stopsTwoPlus') },
+  ] as const;
   // Agrupar 2+ escalas
   const getCount = (stops: number): number => {
     if (stops === 2) {

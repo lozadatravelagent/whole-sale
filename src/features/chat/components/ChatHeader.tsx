@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Sparkle, Plus, Loader2, ChevronLeft } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -49,6 +50,7 @@ const ChatHeader = React.memo(({
   hasAgency = false,
   onModeChange,
 }: ChatHeaderProps) => {
+  const { t } = useTranslation('chat');
   const showAgentChrome = accountType === 'agent';
   const showModeSwitch = showAgentChrome && mode !== undefined && onModeChange !== undefined;
 
@@ -78,9 +80,9 @@ const ChatHeader = React.memo(({
             <>
               <Sparkle className="h-6 w-6 md:h-8 md:w-8 text-accent flex-shrink-0" />
               <div className="min-w-0">
-                <h2 className="font-semibold text-sm md:text-base truncate">Emilia</h2>
+                <h2 className="font-semibold text-sm md:text-base truncate">{t('header.assistant')}</h2>
                 <p className="text-xs md:text-sm text-muted-foreground">
-                  {isTyping ? 'Escribiendo...' : 'En línea'}
+                  {isTyping ? t('header.typing') : t('header.online')}
                 </p>
               </div>
             </>
@@ -112,15 +114,15 @@ const ChatHeader = React.memo(({
               size="sm"
               variant="outline"
               className="px-2 md:px-3"
-              title="Agregar conversación al CRM"
+              title={t('header.addToCrm')}
             >
               {isAddingToCRM ? (
                 <Loader2 className="h-3.5 md:h-4 w-3.5 md:w-4 animate-spin md:mr-2" />
               ) : (
                 <Plus className="h-3.5 md:h-4 w-3.5 md:w-4 md:mr-2" />
               )}
-              <span className="hidden md:inline">Generar card en CRM</span>
-              <span className="md:hidden text-xs">CRM</span>
+              <span className="hidden md:inline">{t('header.generateCrmCard')}</span>
+              <span className="md:hidden text-xs">{t('header.crmShort')}</span>
             </Button>
           </div>
         )}

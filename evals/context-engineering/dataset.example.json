@@ -1,0 +1,43 @@
+{
+  "$schema_note": "Shape contract for Phase 9 eval dataset. See README.md for field definitions. This file is illustrative only — real cases will be sourced from production conversations and stored in dataset.json (gitignored if PII is present).",
+  "cases": [
+    {
+      "id": "case-001-passenger-to-agency",
+      "description": "Passenger arma plan en pasajero, switch a agency, pide cotizar el plan activo.",
+      "turns": [
+        {
+          "user": "buenos aires a rio 7 dias en septiembre, somos 2 adultos",
+          "expected_intent": "itinerary",
+          "expected_tools": []
+        },
+        {
+          "user": "perfecto, ahora cotiza esto",
+          "expected_intent": "combined",
+          "expected_tools": ["get_planner_state"]
+        }
+      ]
+    },
+    {
+      "id": "case-002-plan-edit",
+      "description": "Plan ya armado en active_refs; usuario pide cambiar el hotel de Rio.",
+      "turns": [
+        {
+          "user": "cambiame el hotel de rio por algo mas centrico",
+          "expected_intent": "hotels",
+          "expected_tools": ["get_planner_state"]
+        }
+      ]
+    },
+    {
+      "id": "case-003-collect-minimal",
+      "description": "Mensaje vago; el agente debe entrar en COLLECT y pedir 1 dato crítico, sin invocar herramientas de búsqueda.",
+      "turns": [
+        {
+          "user": "queremos viajar en familia",
+          "expected_intent": "general",
+          "expected_tools": []
+        }
+      ]
+    }
+  ]
+}

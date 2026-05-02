@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import {
   Popover,
@@ -24,14 +25,15 @@ const LAYOVER_OPTIONS = [
 ] as const;
 
 export function MaxLayoverChip({ value, onChange }: MaxLayoverChipProps) {
+  const { t } = useTranslation('chat');
   const [open, setOpen] = useState(false);
 
   const hasFilter = value !== null;
 
   const getLabel = (): string => {
-    if (!value) return 'Escala';
+    if (!value) return t('chips.layoverLabel');
 
-    return `Escala ≤${value}h`;
+    return t('chips.layoverWithMax', { hours: value });
   };
 
   const handleOptionClick = (hours: number) => {
@@ -74,7 +76,7 @@ export function MaxLayoverChip({ value, onChange }: MaxLayoverChipProps) {
       </PopoverTrigger>
       <PopoverContent className="w-48 p-2" align="start">
         <div className="text-xs font-medium text-muted-foreground mb-2">
-          Duración máxima de escala
+          {t('chips.layoverHeader')}
         </div>
         <div className="grid grid-cols-2 gap-1">
           {LAYOVER_OPTIONS.map(({ hours, label }) => {

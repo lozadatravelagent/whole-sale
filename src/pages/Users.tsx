@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
 import { MeridianHeading, MeridianTag } from '@/components/meridian';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,6 +48,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { Role } from '@/types';
 
 const Users = () => {
+  const { t } = useTranslation('admin');
   const { user: currentUser, isOwner, isSuperAdmin, isAdmin } = useAuth();
   const {
     users,
@@ -100,7 +102,7 @@ const Users = () => {
 
   const handleCreate = async () => {
     if (!newEmail || !newPassword) {
-      alert('Email y contraseña son requeridos');
+      alert(t('users.validation.emailPasswordRequired'));
       return;
     }
 
@@ -177,7 +179,7 @@ const Users = () => {
   };
 
   const handleDelete = async (userId: string) => {
-    if (!confirm('¿Estás seguro de eliminar este usuario? Esta acción no se puede deshacer.')) {
+    if (!confirm(t('users.confirm.delete'))) {
       return;
     }
 
@@ -215,7 +217,7 @@ const Users = () => {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              No tienes permisos para gestionar usuarios.
+              {t('users.noPermissions')}
             </AlertDescription>
           </Alert>
         </div>
@@ -229,18 +231,18 @@ const Users = () => {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <MeridianTag tone="lilac" className="mb-3">Administración · Usuarios</MeridianTag>
-            <MeridianHeading as="h1" size="md" italic>User Management</MeridianHeading>
-            <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">Create and manage system users</p>
+            <MeridianTag tone="lilac" className="mb-3">{t('users.tag')}</MeridianTag>
+            <MeridianHeading as="h1" size="md" italic>{t('users.title')}</MeridianHeading>
+            <p className="font-sans text-sm md:text-base font-light text-muted-foreground mt-2">{t('users.subtitle')}</p>
           </div>
           <div className="flex items-center gap-2">
             {(isOwner || isSuperAdmin) && agencies.length > 0 && (
               <Select value={filterAgency} onValueChange={setFilterAgency}>
                 <SelectTrigger className="w-[220px]">
-                  <SelectValue placeholder="All agencies" />
+                  <SelectValue placeholder={t('users.filterAll')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All agencies</SelectItem>
+                  <SelectItem value="all">{t('users.filterAll')}</SelectItem>
                   {agencies.map((agency) => (
                     <SelectItem key={agency.id} value={agency.id}>{agency.name}</SelectItem>
                   ))}
@@ -249,7 +251,7 @@ const Users = () => {
             )}
             <Button onClick={() => setShowCreateDialog(true)} className="bg-gradient-hero shadow-primary">
               <UserPlus className="h-4 w-4 mr-2" />
-              Create User
+              {t('users.createButton')}
             </Button>
           </div>
         </div>
@@ -257,12 +259,12 @@ const Users = () => {
         {/* Users Table */}
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Users List</CardTitle>
+            <CardTitle>{t('users.listTitle')}</CardTitle>
             <CardDescription>
-              {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''} visible
+              {t('users.listCount', { count: filteredUsers.length })}
               {!isOwner && users.length > filteredUsers.length && (
                 <span className="text-xs text-muted-foreground ml-2">
-                  (OWNER users hidden)
+                  {t('users.ownerHidden')}
                 </span>
               )}
             </CardDescription>
@@ -274,19 +276,19 @@ const Users = () => {
               </div>
             ) : filteredUsers.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No users found
+                {t('users.empty')}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Agency</TableHead>
-                      {isOwner && <TableHead>Tenant</TableHead>}
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead>{t('users.table.name')}</TableHead>
+                      <TableHead>{t('users.table.email')}</TableHead>
+                      <TableHead>{t('users.table.role')}</TableHead>
+                      <TableHead>{t('users.table.agency')}</TableHead>
+                      {isOwner && <TableHead>{t('users.table.tenant')}</TableHead>}
+                      <TableHead className="text-right">{t('users.table.actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -324,7 +326,7 @@ const Users = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openEditDialog(user)}
-                                title={user.role === 'OWNER' && !isOwner ? 'Solo OWNER puede editar usuarios OWNER' : 'Editar usuario'}
+                                title={user.role === 'OWNER' && !isOwner ? t('users.tooltips.ownerOnly') : t('users.tooltips.edit')}
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -335,7 +337,7 @@ const Users = () => {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleDelete(user.id)}
-                                title="Eliminar usuario"
+                                title={t('users.tooltips.delete')}
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
@@ -355,24 +357,24 @@ const Users = () => {
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New User</DialogTitle>
+              <DialogTitle>{t('users.createDialog.title')}</DialogTitle>
               <DialogDescription>
-                Add a new user to the system
+                {t('users.createDialog.description')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="new-email">Email *</Label>
+                <Label htmlFor="new-email">{t('users.createDialog.emailLabel')}</Label>
                 <Input
                   id="new-email"
                   type="email"
-                  placeholder="user@example.com"
+                  placeholder={t('users.createDialog.emailPlaceholder')}
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-password">Password *</Label>
+                <Label htmlFor="new-password">{t('users.createDialog.passwordLabel')}</Label>
                 <Input
                   id="new-password"
                   type="password"
@@ -382,16 +384,16 @@ const Users = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-name">Name</Label>
+                <Label htmlFor="new-name">{t('users.createDialog.nameLabel')}</Label>
                 <Input
                   id="new-name"
-                  placeholder="John Doe"
+                  placeholder={t('users.createDialog.namePlaceholder')}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="new-role">Role *</Label>
+                <Label htmlFor="new-role">{t('users.createDialog.roleLabel')}</Label>
                 <Select value={newRole} onValueChange={(val) => {
                   setNewRole(val as Role);
                   // Reset agency when SUPERADMIN or OWNER is selected
@@ -412,21 +414,21 @@ const Users = () => {
                 </Select>
                 {(newRole === 'SUPERADMIN' || newRole === 'OWNER') && (
                   <p className="text-xs text-muted-foreground">
-                    {newRole === 'SUPERADMIN' 
-                      ? 'SUPERADMIN users belong to the tenant, not to a specific agency'
-                      : 'OWNER users can optionally belong to a tenant, but not to a specific agency'}
+                    {newRole === 'SUPERADMIN'
+                      ? t('users.createDialog.superAdminHint')
+                      : t('users.createDialog.ownerHint')}
                   </p>
                 )}
               </div>
               {isOwner && (newRole === 'SUPERADMIN' || newRole === 'OWNER') && (
                 <div className="space-y-2">
-                  <Label htmlFor="new-tenant">Tenant {newRole === 'SUPERADMIN' ? '*' : ''}</Label>
+                  <Label htmlFor="new-tenant">{t('users.createDialog.tenantLabel')} {newRole === 'SUPERADMIN' ? t('users.createDialog.tenantRequired') : ''}</Label>
                   <Select value={newTenantId} onValueChange={setNewTenantId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select tenant..." />
+                      <SelectValue placeholder={t('users.createDialog.tenantPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No Tenant</SelectItem>
+                      <SelectItem value="none">{t('users.createDialog.noTenant')}</SelectItem>
                       {tenants.map((tenant) => (
                         <SelectItem key={tenant.id} value={tenant.id}>
                           {tenant.name}
@@ -435,21 +437,21 @@ const Users = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {newRole === 'SUPERADMIN' 
-                      ? 'Assign SUPERADMIN to a tenant to manage its agencies and users'
-                      : 'Assign OWNER to a tenant (optional)'}
+                    {newRole === 'SUPERADMIN'
+                      ? t('users.createDialog.superAdminTenantHint')
+                      : t('users.createDialog.ownerTenantHint')}
                   </p>
                 </div>
               )}
               {newRole !== 'SUPERADMIN' && newRole !== 'OWNER' && (
                 <div className="space-y-2">
-                  <Label htmlFor="new-agency">Agency {newRole === 'ADMIN' || newRole === 'SELLER' ? '*' : ''}</Label>
+                  <Label htmlFor="new-agency">{t('users.createDialog.agencyLabel')} {newRole === 'ADMIN' || newRole === 'SELLER' ? t('users.createDialog.agencyRequired') : ''}</Label>
                   <Select value={newAgencyId} onValueChange={setNewAgencyId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select agency..." />
+                      <SelectValue placeholder={t('users.createDialog.agencyPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No Agency</SelectItem>
+                      <SelectItem value="none">{t('users.createDialog.noAgency')}</SelectItem>
                       {agencies.map((agency) => (
                         <SelectItem key={agency.id} value={agency.id}>
                           {agency.name}
@@ -462,13 +464,13 @@ const Users = () => {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleCreate} disabled={saving}>
                 {saving ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('common.creating')}</>
                 ) : (
-                  'Create User'
+                  t('users.createDialog.submit')
                 )}
               </Button>
             </DialogFooter>
@@ -479,19 +481,19 @@ const Users = () => {
         <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit User</DialogTitle>
+              <DialogTitle>{t('users.editDialog.title')}</DialogTitle>
               <DialogDescription>
-                Update user information
+                {t('users.editDialog.description')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Email</Label>
+                <Label>{t('users.table.email')}</Label>
                 <Input value={selectedUser?.email || ''} disabled className="bg-muted" />
-                <p className="text-xs text-muted-foreground">Email cannot be changed</p>
+                <p className="text-xs text-muted-foreground">{t('users.editDialog.emailLocked')}</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-name">Name</Label>
+                <Label htmlFor="edit-name">{t('users.createDialog.nameLabel')}</Label>
                 <Input
                   id="edit-name"
                   value={editName}
@@ -499,7 +501,7 @@ const Users = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-role">Role</Label>
+                <Label htmlFor="edit-role">{t('users.table.role')}</Label>
                 <Select
                   value={editRole}
                   onValueChange={(val) => {
@@ -524,26 +526,26 @@ const Users = () => {
                 </Select>
                 {selectedUser?.role === 'OWNER' && !isOwner && (
                   <p className="text-xs text-destructive">
-                    ⚠️ Solo usuarios con rol OWNER pueden cambiar el rol de otros OWNER
+                    {t('users.editDialog.ownerOnlyWarning')}
                   </p>
                 )}
                 {(editRole === 'SUPERADMIN' || editRole === 'OWNER') && (
                   <p className="text-xs text-muted-foreground">
-                    {editRole === 'SUPERADMIN' 
-                      ? 'SUPERADMIN users belong to the tenant, not to a specific agency'
-                      : 'OWNER users can optionally belong to a tenant, but not to a specific agency'}
+                    {editRole === 'SUPERADMIN'
+                      ? t('users.createDialog.superAdminHint')
+                      : t('users.createDialog.ownerHint')}
                   </p>
                 )}
               </div>
               {isOwner && (editRole === 'SUPERADMIN' || editRole === 'OWNER') && (
                 <div className="space-y-2">
-                  <Label htmlFor="edit-tenant">Tenant {editRole === 'SUPERADMIN' ? '*' : ''}</Label>
+                  <Label htmlFor="edit-tenant">{t('users.createDialog.tenantLabel')} {editRole === 'SUPERADMIN' ? t('users.createDialog.tenantRequired') : ''}</Label>
                   <Select value={editTenantId} onValueChange={setEditTenantId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select tenant..." />
+                      <SelectValue placeholder={t('users.createDialog.tenantPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No Tenant</SelectItem>
+                      <SelectItem value="none">{t('users.createDialog.noTenant')}</SelectItem>
                       {tenants.map((tenant) => (
                         <SelectItem key={tenant.id} value={tenant.id}>
                           {tenant.name}
@@ -552,21 +554,21 @@ const Users = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {editRole === 'SUPERADMIN' 
-                      ? 'Assign SUPERADMIN to a tenant to manage its agencies and users'
-                      : 'Assign OWNER to a tenant (optional)'}
+                    {editRole === 'SUPERADMIN'
+                      ? t('users.createDialog.superAdminTenantHint')
+                      : t('users.createDialog.ownerTenantHint')}
                   </p>
                 </div>
               )}
               {editRole !== 'SUPERADMIN' && editRole !== 'OWNER' && (
                 <div className="space-y-2">
-                  <Label htmlFor="edit-agency">Agency {editRole === 'ADMIN' || editRole === 'SELLER' ? '*' : ''}</Label>
+                  <Label htmlFor="edit-agency">{t('users.createDialog.agencyLabel')} {editRole === 'ADMIN' || editRole === 'SELLER' ? t('users.createDialog.agencyRequired') : ''}</Label>
                   <Select value={editAgencyId} onValueChange={setEditAgencyId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select agency..." />
+                      <SelectValue placeholder={t('users.createDialog.agencyPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No Agency</SelectItem>
+                      <SelectItem value="none">{t('users.createDialog.noAgency')}</SelectItem>
                       {agencies.map((agency) => (
                         <SelectItem key={agency.id} value={agency.id}>
                           {agency.name}
@@ -579,13 +581,13 @@ const Users = () => {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleEdit} disabled={saving}>
                 {saving ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t('common.saving')}</>
                 ) : (
-                  'Save Changes'
+                  t('common.save')
                 )}
               </Button>
             </DialogFooter>

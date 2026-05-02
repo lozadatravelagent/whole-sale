@@ -1,0 +1,185 @@
+{
+  "common": {
+    "active": "Activo",
+    "suspended": "Suspendido",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "suspend": "Suspender",
+    "activate": "Activar",
+    "create": "Crear",
+    "creating": "Creando...",
+    "save": "Guardar Cambios",
+    "saving": "Guardando...",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "remove": "Quitar",
+    "assign": "Asignar",
+    "noPermissions": "No tienes los permisos necesarios."
+  },
+  "tenants": {
+    "tag": "Administración · Tenants",
+    "title": "Gestión de Tenants",
+    "subtitleOwner": "Gestiona las organizaciones (tenants) del sistema",
+    "subtitleScoped": "Visualiza tu organización",
+    "createButton": "Crear Tenant",
+    "noPermissions": "No tienes permisos para ver tenants.",
+    "listTitle": "Lista de Tenants",
+    "listCount_one": "{{count}} tenant en total",
+    "listCount_other": "{{count}} tenants en total",
+    "empty": "No se encontraron tenants",
+    "table": {
+      "name": "Nombre",
+      "status": "Estado",
+      "agencies": "Agencias",
+      "users": "Usuarios",
+      "actions": "Acciones"
+    },
+    "tooltips": {
+      "manageAgencies": "Gestionar Agencias"
+    },
+    "createDialog": {
+      "title": "Crear Nuevo Tenant",
+      "description": "Agrega una nueva organización al sistema",
+      "nameLabel": "Nombre del Tenant *",
+      "namePlaceholder": "WholeSale Travel Group",
+      "submit": "Crear Tenant"
+    },
+    "editDialog": {
+      "title": "Editar Tenant",
+      "description": "Actualiza la información del tenant",
+      "nameLabel": "Nombre del Tenant"
+    },
+    "agenciesDialog": {
+      "title": "Gestionar Agencias para {{name}}",
+      "description": "Asigna o desvincula agencias de este tenant",
+      "assignedTitle": "Agencias Asignadas ({{count}})",
+      "assignedEmpty": "Aún no hay agencias asignadas a este tenant.",
+      "availableTitle": "Agencias Disponibles ({{count}})",
+      "availableEmpty": "Todas las agencias están asignadas a un tenant."
+    },
+    "validation": {
+      "nameRequired": "El nombre es requerido"
+    },
+    "confirm": {
+      "suspend": "¿Suspender este tenant? Todas las agencias y usuarios bajo este tenant perderán acceso.",
+      "activate": "¿Activar este tenant?",
+      "delete": "¿Eliminar permanentemente este tenant? Esta acción no se puede deshacer. Asegúrate de que no tiene agencias ni usuarios asignados."
+    }
+  },
+  "agencies": {
+    "tag": "Administración · Agencias",
+    "title": "Gestión de Agencias",
+    "subtitle": "Crea y gestiona agencias",
+    "createButton": "Crear Agencia",
+    "noPermissions": "No tienes permisos para gestionar agencias.",
+    "stats": {
+      "totalAgencies": "Total de Agencias",
+      "totalAgenciesActive": "{{count}} activas",
+      "totalUsers": "Total de Usuarios",
+      "totalLeads": "Total de Leads",
+      "acrossAll": "En todas las agencias"
+    },
+    "listTitle": "Lista de Agencias",
+    "listCount_one": "{{count}} agencia en total",
+    "listCount_other": "{{count}} agencias en total",
+    "empty": "No se encontraron agencias",
+    "table": {
+      "name": "Nombre",
+      "tenant": "Tenant",
+      "status": "Estado",
+      "users": "Usuarios",
+      "leads": "Leads",
+      "activeChats": "Chats Activos",
+      "whatsapp": "WhatsApp",
+      "actions": "Acciones"
+    },
+    "createDialog": {
+      "title": "Crear Nueva Agencia",
+      "description": "Agrega una nueva agencia al sistema",
+      "tenantLabel": "Tenant *",
+      "tenantPlaceholder": "Selecciona tenant...",
+      "nameLabel": "Nombre de la Agencia *",
+      "namePlaceholder": "Mi Agencia de Viajes",
+      "phonesLabel": "Teléfonos (separados por coma)",
+      "phonesPlaceholder": "+1234567890, +0987654321",
+      "phonesHint": "Separa múltiples números con comas",
+      "submit": "Crear Agencia"
+    },
+    "editDialog": {
+      "title": "Editar Agencia",
+      "description": "Actualiza la información de la agencia",
+      "tenantLabel": "Tenant",
+      "tenantLocked": "El tenant no se puede cambiar",
+      "nameLabel": "Nombre de la Agencia"
+    },
+    "validation": {
+      "tenantNameRequired": "Tenant y nombre son requeridos"
+    },
+    "confirm": {
+      "suspend": "¿Suspender esta agencia? Los usuarios no podrán acceder.",
+      "activate": "¿Activar esta agencia?",
+      "delete": "¿Eliminar permanentemente esta agencia? Esta acción no se puede deshacer. Asegúrate de que no tiene usuarios ni leads asignados."
+    }
+  },
+  "users": {
+    "tag": "Administración · Usuarios",
+    "title": "Gestión de Usuarios",
+    "subtitle": "Crea y gestiona los usuarios del sistema",
+    "createButton": "Crear Usuario",
+    "noPermissions": "No tienes permisos para gestionar usuarios.",
+    "filterAll": "Todas las agencias",
+    "listTitle": "Lista de Usuarios",
+    "listCount_one": "{{count}} usuario visible",
+    "listCount_other": "{{count}} usuarios visibles",
+    "ownerHidden": "(usuarios OWNER ocultos)",
+    "empty": "No se encontraron usuarios",
+    "table": {
+      "name": "Nombre",
+      "email": "Email",
+      "role": "Rol",
+      "agency": "Agencia",
+      "tenant": "Tenant",
+      "actions": "Acciones"
+    },
+    "tooltips": {
+      "ownerOnly": "Solo OWNER puede editar usuarios OWNER",
+      "edit": "Editar usuario",
+      "delete": "Eliminar usuario"
+    },
+    "createDialog": {
+      "title": "Crear Nuevo Usuario",
+      "description": "Agrega un nuevo usuario al sistema",
+      "emailLabel": "Email *",
+      "emailPlaceholder": "usuario@ejemplo.com",
+      "passwordLabel": "Contraseña *",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Juan Pérez",
+      "roleLabel": "Rol *",
+      "tenantLabel": "Tenant",
+      "tenantRequired": "*",
+      "tenantPlaceholder": "Selecciona tenant...",
+      "noTenant": "Sin Tenant",
+      "agencyLabel": "Agencia",
+      "agencyRequired": "*",
+      "agencyPlaceholder": "Selecciona agencia...",
+      "noAgency": "Sin Agencia",
+      "superAdminHint": "Los usuarios SUPERADMIN pertenecen al tenant, no a una agencia específica",
+      "ownerHint": "Los usuarios OWNER pueden pertenecer opcionalmente a un tenant, pero no a una agencia específica",
+      "superAdminTenantHint": "Asigna SUPERADMIN a un tenant para gestionar sus agencias y usuarios",
+      "ownerTenantHint": "Asigna OWNER a un tenant (opcional)",
+      "submit": "Crear Usuario"
+    },
+    "editDialog": {
+      "title": "Editar Usuario",
+      "description": "Actualiza la información del usuario",
+      "emailLocked": "El email no se puede cambiar",
+      "ownerOnlyWarning": "⚠️ Solo usuarios con rol OWNER pueden cambiar el rol de otros OWNER"
+    },
+    "validation": {
+      "emailPasswordRequired": "Email y contraseña son requeridos"
+    },
+    "confirm": {
+      "delete": "¿Estás seguro de eliminar este usuario? Esta acción no se puede deshacer."
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ export default function UnifiedLayout({
   headerActions,
   className,
 }: UnifiedLayoutProps) {
+  const { t } = useTranslation('common');
   const location = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -93,8 +95,8 @@ export default function UnifiedLayout({
       }
       console.error('Error during logout:', error);
       toast({
-        title: 'Error al cerrar sesión',
-        description: msg || 'Hubo un problema cerrando la sesión.',
+        title: t('logoutToast.title'),
+        description: msg || t('logoutToast.description'),
         variant: 'destructive',
       });
     }
@@ -111,7 +113,7 @@ export default function UnifiedLayout({
         style={{ height: HEADER_HEIGHT }}
       >
         <div className="flex min-w-0 items-center gap-2 justify-self-start">
-          <Link to="/emilia/chat" aria-label="Emilia · inicio" className="inline-flex items-center gap-2 transition-opacity duration-300 ease-out-expo hover:opacity-80">
+          <Link to="/emilia/chat" aria-label={t('nav.home')} className="inline-flex items-center gap-2 transition-opacity duration-300 ease-out-expo hover:opacity-80">
             <OrbitMark size={28} />
             <span
               className="italic text-foreground"
@@ -149,7 +151,7 @@ export default function UnifiedLayout({
                 variant="ghost"
                 size="sm"
                 className="h-9 w-9 rounded-full p-0"
-                aria-label="Menú de usuario"
+                aria-label={t('userMenu')}
               >
                 <span className="text-xs font-semibold">{initials}</span>
               </Button>
@@ -180,7 +182,7 @@ export default function UnifiedLayout({
                           : 'text-foreground hover:bg-foreground/10'
                       )}
                     >
-                      {item.label}
+                      {t(`nav.${item.labelKey}`)}
                     </Link>
                   );
                 })}
@@ -194,7 +196,7 @@ export default function UnifiedLayout({
                   }}
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  Cerrar sesión
+                  {t('logout')}
                 </Button>
               </div>
             </PopoverContent>

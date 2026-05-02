@@ -1,12 +1,17 @@
 {
   "emptyState": {
-    "title": "Para onde você quer viajar hoje?",
-    "subtitle": "Me conte sua ideia de viagem e eu ajudo a planejar",
-    "placeholder": "Ex: Quero ir para a Itália por 10 dias em setembro..."
+    "tag": "Conversa · Emilia",
+    "title": "Para onde vamos hoje?",
+    "subtitle": "Busque voos, hotéis ou peça uma cotação completa.",
+    "placeholder": "Pergunte algo à Emilia…",
+    "planTripLabel": "Planejar uma viagem",
+    "planTripDescription": "Monte um itinerário dia a dia com destinos, hotéis e voos",
+    "or": "Ou"
   },
   "input": {
-    "placeholder": "Digite sua mensagem...",
-    "send": "Enviar"
+    "placeholder": "Peça uma ideia, uma rota ou uma cotação…",
+    "send": "Enviar",
+    "attachPdf": "Anexar PDF"
   },
   "typing": {
     "thinking": "Emilia está pensando...",
@@ -23,10 +28,201 @@
     "ariaGroup": "Modo de chat",
     "tooltipNoAgency": "Sem agência atribuída",
     "bridgeTitle": {
-      "toAgency": "Este pedido funciona melhor cotando voos e hotéis. Mudamos de modo?",
-      "toPassenger": "Este pedido funciona melhor planejando o roteiro. Mudamos de modo?"
+      "toAgency": "Este pedido é melhor resolvido cotando voos e hotéis. Trocamos de modo?",
+      "toPassenger": "Este pedido funciona melhor montando um itinerário. Trocamos de modo?"
     },
-    "bridgeSwitchTo": "Mudar para {{otherMode}} e retomar",
+    "bridgeSwitchTo": "Mudar para {{otherMode}} e continuar",
     "bridgeStay": "Continuar neste modo"
+  },
+  "header": {
+    "assistant": "Emilia",
+    "typing": "Digitando...",
+    "online": "Online",
+    "addToCrm": "Adicionar conversa ao CRM",
+    "generateCrmCard": "Gerar card no CRM",
+    "crmShort": "CRM"
+  },
+  "sidebar": {
+    "tripsTitle": "Viagens",
+    "chatsTitle": "Chats",
+    "search": "Buscar…",
+    "searching": "Buscando…",
+    "collapse": "Recolher histórico",
+    "expand": "Expandir histórico",
+    "archive": "Arquivar conversa",
+    "restore": "Restaurar conversa",
+    "noResults": "Nenhuma conversa encontrada nesta visualização.",
+    "newChat": "Novo chat",
+    "planTrip": "Planejar uma viagem",
+    "activeTab": "Ativas",
+    "archivedTab": "Arquivadas",
+    "newConversation": "Nova conversa"
+  },
+  "dragDrop": {
+    "title": "Solte o PDF aqui",
+    "hint": "Apenas arquivos PDF · máx. 10MB",
+    "cancel": "ESC para cancelar",
+    "loadingMessages": "Carregando mensagens"
+  },
+  "messageItem": {
+    "errorTitle": "Não foi possível carregar o seletor de cotação.",
+    "errorBody": "Atualize a conversa ou recarregue a página para tentar novamente.",
+    "retry": "Tentar novamente",
+    "loadingSelector": "Carregando seletor...",
+    "datePrompt": "Escolha as datas da sua viagem",
+    "dateInstruction": "Selecione um intervalo de datas ou um mês flexível e eu começo a montar tudo.",
+    "datePickButton": "Escolher datas",
+    "pdfTitle": "Cotação de Viagem",
+    "pdfSubtitle": "PDF com todos os detalhes da sua viagem",
+    "pdfDownload": "Baixar",
+    "pdfDownloading": "Baixando...",
+    "defaultRoomDescription": "Quarto padrão",
+    "openPlanner": "Abrir",
+    "plannerBadge": "Planejador"
+  },
+  "recommendedPlaces": {
+    "title": "Lugares recomendados",
+    "addToTrip": "Adicionar",
+    "showMore": "Ver mais",
+    "saveAsHighlight": "Salvar {{name}} como imperdível em {{city}}",
+    "addToItinerary": "Adicionar {{name}} em {{city}} ao itinerário",
+    "showMorePlaces": "Mostre-me mais lugares como {{name}} em {{city}}",
+    "tellMeMore": "Conte-me mais sobre {{name}} em {{city}}",
+    "contextGap": "Para seguir avançando:",
+    "slots": {
+      "morning": "Manhã",
+      "afternoon": "Tarde",
+      "evening": "Noite",
+      "suggested": "Sugerido"
+    },
+    "badges": {
+      "imperdibles": "Imperdível",
+      "historia": "História",
+      "museos": "Museu",
+      "barrios": "Bairro",
+      "miradores": "Mirante",
+      "parques": "Passeio",
+      "gastronomia": "Gastronomia",
+      "noche": "Noite"
+    }
+  },
+  "chips": {
+    "directFlight": "Voo direto",
+    "stopsDirect": "Direto",
+    "stopsOne": "1 escala",
+    "stopsTwoPlus": "2+ escalas",
+    "withBaggage": "Com bagagem",
+    "maxLayover": "Máximo {{hours}} horas",
+    "departureTime": "Horário",
+    "arrivalTime": "Chegada",
+    "arrivalRange": "Chegada {{min}} - {{max}}",
+    "departureHeader": "Horário de saída",
+    "arrivalHeader": "Horário de chegada",
+    "layoverHeader": "Duração máxima da escala",
+    "layoverLabel": "Escala",
+    "layoverWithMax": "Escala ≤{{hours}}h",
+    "flightsCount": "{{count}} voos",
+    "timeRanges": {
+      "earlyMorning": "Madrugada",
+      "morning": "Manhã",
+      "afternoon": "Tarde",
+      "night": "Noite"
+    }
+  },
+  "toasts": {
+    "archived": { "title": "Conversa arquivada", "description": "A conversa foi arquivada com sucesso" },
+    "restored": { "title": "Conversa restaurada", "description": "A conversa foi restaurada com sucesso" },
+    "archiveFailed": { "title": "Erro", "description": "Não foi possível arquivar/restaurar a conversa" },
+    "noConversation": { "title": "Erro", "description": "Nenhuma conversa selecionada ou mensagens disponíveis" },
+    "leadCreated": { "title": "Lead criado com sucesso!", "description": "Lead adicionado ao CRM com ID: {{leadId}}" },
+    "leadFailed": { "title": "Erro", "description": "Não foi possível criar o lead. Tente novamente." },
+    "pdfGeneratedAndLead": { "title": "PDF Gerado e Lead Atualizado", "description": "Sua cotação foi gerada e o lead foi atualizado no CRM." },
+    "pdfGenerated": { "title": "PDF Gerado", "description": "Sua cotação foi gerada e adicionada ao chat." },
+    "pdfGeneratedFallback": { "title": "PDF Gerado", "description": "Sua cotação foi gerada com sucesso." },
+    "newChatFailed": { "title": "Erro", "description": "Não foi possível criar a conversa. Tente novamente." },
+    "messageFailed": { "title": "Erro", "description": "Não foi possível enviar a mensagem. Tente novamente." },
+    "noActivePlanner": { "title": "Erro", "description": "Não há conversa ativa para continuar o plano." },
+    "plannerDateFailed": { "title": "Erro", "description": "Não foi possível continuar o plano com as datas escolhidas." },
+    "pdfModified": { "title": "PDF Modificado Gerado", "description": "Criei um novo PDF com o preço que você solicitou." },
+    "priceChangeFailed": { "title": "Erro", "description": "Não consegui processar sua solicitação de mudança de preço." },
+    "retryWithStops": { "title": "Buscando com escalas", "description": "Tentando novamente a busca permitindo conexões." },
+    "invalidFile": { "title": "Arquivo inválido", "description": "Por favor selecione um arquivo PDF." },
+    "fileTooLarge": { "title": "Arquivo muito grande", "description": "O arquivo não pode ser maior que 10MB." },
+    "pdfNoConversation": { "title": "Erro", "description": "Nenhuma conversa selecionada." },
+    "pdfUploaded": { "title": "PDF enviado com sucesso", "description": "{{filename}} foi analisado e processado." },
+    "pdfUploadFailed": { "title": "Erro ao enviar PDF", "description": "Não foi possível processar o arquivo. Tente novamente." }
+  },
+  "data": {
+    "roomTypes": {
+      "SGL": "Quarto Individual",
+      "DUS": "Quarto Duplo de Uso Individual",
+      "DBL": "Quarto Duplo",
+      "TPL": "Quarto Triplo",
+      "QUA": "Quarto Quádruplo/Familiar",
+      "FAMILY": "Quarto Familiar",
+      "OTHER": "Outros Quartos",
+      "single": "individual",
+      "double": "duplo",
+      "triple": "triplo",
+      "quad": "quádruplo",
+      "family": "familiar"
+    },
+    "baggage": {
+      "carryOn": "bagagem de mão",
+      "checked": "bagagem despachada",
+      "both": "bagagem de mão e despachada",
+      "none": "sem bagagem",
+      "piecesIncluded": "✅ {{count}} peça(s) incluída(s)",
+      "kgIncluded": "✅ {{count}}kg incluído(s)",
+      "notIncluded": "❌ Não incluído"
+    },
+    "flightTypes": {
+      "oneWay": "somente ida",
+      "roundTrip": "ida e volta",
+      "direct": "voo direto",
+      "oneStop": "com uma escala",
+      "twoStops": "com duas escalas",
+      "any": "qualquer tipo"
+    },
+    "layovers": {
+      "layover": "escala",
+      "connection": "conexão",
+      "stopover": "escala prolongada"
+    },
+    "cabinClasses": {
+      "Economy": "Econômica",
+      "Premium": "Premium",
+      "Business": "Business",
+      "First": "Primeira",
+      "cabin": "classe"
+    },
+    "fares": {
+      "fare": "tarifa",
+      "baseFare": "tarifa base",
+      "totalFare": "tarifa total",
+      "netFare": "tarifa líquida"
+    },
+    "roomServices": {
+      "breakfast": "café da manhã",
+      "bedAndBreakfast": "cama e café",
+      "roomOnly": "somente quarto",
+      "allInclusive": "tudo incluído",
+      "halfBoard": "meia pensão",
+      "fullBoard": "pensão completa"
+    },
+    "roomCategories": {
+      "standard": "padrão",
+      "superior": "superior",
+      "executive": "executiva",
+      "comfort": "conforto",
+      "deluxe": "deluxe",
+      "basic": "básica"
+    },
+    "availability": {
+      "available": "disponível",
+      "limited": "disponibilidade limitada",
+      "notAvailable": "não disponível",
+      "onRequest": "sob consulta"
+    }
   }
 }

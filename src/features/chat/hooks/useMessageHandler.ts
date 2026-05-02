@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type React from 'react';
 import { parseMessageWithAI, combineWithPreviousRequest, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
@@ -20,12 +21,57 @@ import { applySmartDefaults, normalizePlannerState } from '@/features/trip-plann
 import { mergePlannerFieldUpdate, normalizeLocationLabel, buildPlannerHotelSearchSignature, buildPlannerTransportSearchSignature } from '@/features/trip-planner/helpers';
 import { buildCanonicalResultFromStandard, buildCanonicalMeta, persistCanonicalResult, buildTurnContextState, type CanonicalItineraryResult } from '../services/itineraryPipeline';
 import { buildEditorialData } from '@/features/trip-planner/editorial';
-import { translateBaggage } from '../utils/translations';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { transformStarlingResults } from '../services/flightTransformer';
 import { buildConversationSummary, loadConversationSummary, resolveLeadIdForConversation, saveConversationSummary } from '../services/conversationKnowledgeService';
 import { loadLeadAiProfile, mergeLeadAiProfile, saveLeadAiProfile } from '../services/leadAiProfileService';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  applyModeChange,
+  bootstrapStateIfMissing,
+  buildMemoryStateBlockFromState,
+  setActiveRef,
+} from '@/features/chat/state/contextEngineeringIntegration';
+import { saveEmiliaState } from '@/features/chat/state/persistence';
+import type { EmiliaState } from '@/features/chat/state/emiliaState';
 import i18n from '@/i18n';
+
+/**
+ * Phase 5 integration — Context Engineering feature flag.
+ * When OFF (default), `handleSendMessage` runs the legacy code path verbatim.
+ * When ON, an EmiliaState is bootstrapped and a memoryStateBlock is rendered
+ * for the system prompt of `parseMessageWithAI`.
+ *
+ * Set `VITE_USE_CONTEXT_ENGINEERING=true` in `.env` to enable.
+ */
+const USE_CONTEXT_ENGINEERING =
+  (typeof import.meta !== 'undefined'
+    && (import.meta as { env?: { VITE_USE_CONTEXT_ENGINEERING?: string } }).env?.VITE_USE_CONTEXT_ENGINEERING === 'true');
+
+/**
+ * Resolve the agency_id for a conversation. Returns null when the row is
+ * missing or has no agency assignment (RLS enforced — failed queries return
+ * null and we fall back to the legacy path).
+ *
+ * Cheap one-shot select; only invoked when the Context Engineering flag is on.
+ */
+async function resolveAgencyIdForConversation(conversationId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('agency_id')
+      .eq('id', conversationId)
+      .maybeSingle();
+    if (error) {
+      console.warn('[CTX-ENG] resolveAgencyIdForConversation failed:', error.message);
+      return null;
+    }
+    return (data?.agency_id as string | null) ?? null;
+  } catch (e) {
+    console.warn('[CTX-ENG] resolveAgencyIdForConversation threw:', e);
+    return null;
+  }
+}
 
 function formatPlannerDateSelectionMessage(selection: {
   startDate?: string;
@@ -160,6 +206,7 @@ const useMessageHandler = (
   // runs its legacy path (used by consumer / any pre-PR-3 call site).
   chatMode?: 'agency' | 'passenger',
 ) => {
+  const { t } = useTranslation('chat');
   // ✅ Messages are now passed as parameter - no need for second useMessages call
 
   // Save message to DB and immediately add assistant messages to local state (no Realtime dependency)
@@ -510,8 +557,8 @@ const useMessageHandler = (
 
             if (result.modifiedPdfUrl) {
               toast({
-                title: "PDF Modificado Generado",
-                description: "He creado un nuevo PDF con el precio que solicitaste.",
+                title: t('toasts.pdfModified.title'),
+                description: t('toasts.pdfModified.description'),
               });
             }
           }
@@ -532,8 +579,8 @@ const useMessageHandler = (
           });
 
           toast({
-            title: "Error",
-            description: "No pude procesar tu solicitud de cambio de precio.",
+            title: t('toasts.priceChangeFailed.title'),
+            description: t('toasts.priceChangeFailed.description'),
             variant: "destructive",
           });
         } finally {
@@ -789,10 +836,71 @@ const useMessageHandler = (
         previousContext: contextToUse ? 'Yes' : 'No'
       });
 
+      // === PHASE 5: Context Engineering bootstrap (feature-flagged) ===
+      // When VITE_USE_CONTEXT_ENGINEERING=true, bootstrap (or load) the
+      // EmiliaState for this conversation, sync mode, register the active
+      // planner ref, and render a memoryStateBlock for the parser. On any
+      // failure we silently fall back to the legacy path (memoryStateBlock
+      // stays undefined; behavior matches flag-off exactly).
+      let memoryStateBlock: string | undefined;
+      let ctxEngState: EmiliaState | null = null;
+      if (USE_CONTEXT_ENGINEERING) {
+        try {
+          const ctxAgencyId = await resolveAgencyIdForConversation(finalConversationId);
+          if (ctxAgencyId) {
+            const desiredMode: 'agency' | 'passenger' =
+              chatMode === 'agency' ? 'agency' : 'passenger';
+
+            ctxEngState = await bootstrapStateIfMissing({
+              conversationId: finalConversationId,
+              agencyId: ctxAgencyId,
+              leadId: leadId ?? undefined,
+              mode: desiredMode,
+            });
+
+            // Reciprocity: align mode without disturbing any other field.
+            if (ctxEngState.mode !== desiredMode) {
+              ctxEngState = applyModeChange(ctxEngState, desiredMode);
+              await saveEmiliaState(ctxEngState).catch((e) =>
+                console.warn('[CTX-ENG] saveEmiliaState (mode) failed:', e),
+              );
+            }
+
+            // Register the active planner ref so the model sees it.
+            const plannerId = (plannerState as TripPlannerState | null)?.id;
+            if (plannerId) {
+              const summary =
+                ((plannerState as TripPlannerState | null)?.summary
+                  || (plannerState as TripPlannerState | null)?.title
+                  || `Plan ${plannerId}`).toString().slice(0, 120);
+              ctxEngState = setActiveRef(ctxEngState, {
+                type: 'plan',
+                id: plannerId,
+                summary1Line: summary,
+                lastUpdated: new Date().toISOString(),
+              });
+              await saveEmiliaState(ctxEngState).catch((e) =>
+                console.warn('[CTX-ENG] saveEmiliaState (active_ref) failed:', e),
+              );
+            }
+
+            memoryStateBlock = buildMemoryStateBlockFromState(ctxEngState);
+          } else {
+            console.warn('[CTX-ENG] No agency_id resolved for conversation; skipping CE bootstrap');
+          }
+        } catch (e) {
+          console.warn('[CTX-ENG] Bootstrap failed; falling back to legacy path:', e);
+          memoryStateBlock = undefined;
+          ctxEngState = null;
+        }
+      }
+
       // === EMILIA 5.0: PARSE + ROUTE ===
       // Always parse first, then route based on content (not workspace_mode)
       const parseStart = nowMs();
       const plannerEditContext = buildPlannerEditContext(plannerState as TripPlannerState | null);
+      const userLanguageRaw = (i18n.language || 'es').split('-')[0];
+      const userLanguage: 'es' | 'en' | 'pt' = userLanguageRaw === 'en' || userLanguageRaw === 'pt' ? userLanguageRaw : 'es';
       let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory, {
         conversationSummary,
         leadProfile,
@@ -802,7 +910,22 @@ const useMessageHandler = (
           leadId: leadId ?? null,
         },
         historyWindow: 6,
-      });
+        memoryStateBlock,
+      }, userLanguage);
+
+      // Phase 5: increment turn count after a successful parse. Failures here
+      // do not break the flow.
+      if (USE_CONTEXT_ENGINEERING && ctxEngState) {
+        try {
+          const bumped: EmiliaState = {
+            ...ctxEngState,
+            meta: { ...ctxEngState.meta, turn_count: (ctxEngState.meta.turn_count ?? 0) + 1 },
+          };
+          await saveEmiliaState(bumped);
+        } catch (e) {
+          console.warn('[CTX-ENG] saveEmiliaState (turn_count) failed:', e);
+        }
+      }
       logTimingStep('MESSAGE FLOW', 'parseMessageWithAI', parseStart, {
         requestType: parsedRequest.requestType,
       });
@@ -1919,8 +2042,8 @@ const useMessageHandler = (
       console.log('❌ [TYPING] Hiding typing indicator due to error for conversation:', conversationIdForThisSearch);
 
       toast({
-        title: "Error",
-        description: "No se pudo enviar el mensaje. Inténtalo de nuevo.",
+        title: t('toasts.messageFailed.title'),
+        description: t('toasts.messageFailed.description'),
         variant: "destructive",
       });
     }
@@ -1968,8 +2091,8 @@ const useMessageHandler = (
     const currentConversationId = selectedConversationRef.current;
     if (!currentConversationId) {
       toast({
-        title: "Error",
-        description: "No hay una conversación activa para continuar el plan.",
+        title: t('toasts.noActivePlanner.title'),
+        description: t('toasts.noActivePlanner.description'),
         variant: "destructive",
       });
       return;
@@ -2097,8 +2220,8 @@ const useMessageHandler = (
       setIsLoading(false);
       setIsTyping(false, currentConversationId);
       toast({
-        title: "Error",
-        description: "No se pudo continuar el plan con las fechas elegidas.",
+        title: t('toasts.plannerDateFailed.title'),
+        description: t('toasts.plannerDateFailed.description'),
         variant: "destructive",
       });
     }

@@ -281,6 +281,7 @@ describe('useMessageHandler', () => {
             leadId: null,
           }),
         }),
+        expect.any(String),
       );
     });
   });

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Switch } from '@/components/ui/switch';
 import { Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/components/theme-provider';
@@ -10,6 +11,7 @@ interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ variant = 'default', className, showLabel = false }: ThemeToggleProps) {
+  const { t } = useTranslation('common');
   const { theme, setTheme } = useTheme();
 
   const sizes = {
@@ -44,12 +46,12 @@ export function ThemeToggle({ variant = 'default', className, showLabel = false 
         className
       )}
     >
-      {showLabel && <span className="text-xs text-muted-foreground hidden sm:inline">Tema:</span>}
+      {showLabel && <span className="text-xs text-muted-foreground hidden sm:inline">{t('theme.label')}</span>}
       <Sun className={cn(currentSize.icon, 'text-muted-foreground')} />
       <Switch
         checked={theme === 'dark'}
         onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
-        aria-label="Cambiar tema"
+        aria-label={t('theme.toggle')}
         className={currentSize.scale}
       />
       <Moon className={cn(currentSize.icon, 'text-muted-foreground')} />

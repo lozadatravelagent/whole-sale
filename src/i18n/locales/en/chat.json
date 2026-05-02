@@ -1,12 +1,17 @@
 {
   "emptyState": {
-    "title": "Where do you want to travel today?",
-    "subtitle": "Tell me your trip idea and I'll help you plan it",
-    "placeholder": "E.g.: I want to go to Italy for 10 days in September..."
+    "tag": "Conversation · Emilia",
+    "title": "Where are we going today?",
+    "subtitle": "Search flights, hotels or request a complete quote.",
+    "placeholder": "Ask Emilia anything…",
+    "planTripLabel": "Plan a trip",
+    "planTripDescription": "Build a day-by-day itinerary with destinations, hotels and flights",
+    "or": "Or"
   },
   "input": {
-    "placeholder": "Type your message...",
-    "send": "Send"
+    "placeholder": "Ask for an idea, a route or a quote…",
+    "send": "Send",
+    "attachPdf": "Attach PDF"
   },
   "typing": {
     "thinking": "Emilia is thinking...",
@@ -23,10 +28,201 @@
     "ariaGroup": "Chat mode",
     "tooltipNoAgency": "No agency assigned",
     "bridgeTitle": {
-      "toAgency": "This works better in agency mode for quoting flights and hotels. Switch?",
-      "toPassenger": "This works better in passenger mode for itinerary planning. Switch?"
+      "toAgency": "This request is best handled by quoting flights and hotels. Switch mode?",
+      "toPassenger": "This request works better by building an itinerary. Switch mode?"
     },
     "bridgeSwitchTo": "Switch to {{otherMode}} and continue",
     "bridgeStay": "Stay in this mode"
+  },
+  "header": {
+    "assistant": "Emilia",
+    "typing": "Typing...",
+    "online": "Online",
+    "addToCrm": "Add conversation to CRM",
+    "generateCrmCard": "Generate CRM card",
+    "crmShort": "CRM"
+  },
+  "sidebar": {
+    "tripsTitle": "Trips",
+    "chatsTitle": "Chats",
+    "search": "Search…",
+    "searching": "Searching…",
+    "collapse": "Collapse history",
+    "expand": "Expand history",
+    "archive": "Archive conversation",
+    "restore": "Restore conversation",
+    "noResults": "No conversations found in this view.",
+    "newChat": "New chat",
+    "planTrip": "Plan a trip",
+    "activeTab": "Active",
+    "archivedTab": "Archived",
+    "newConversation": "New conversation"
+  },
+  "dragDrop": {
+    "title": "Drop the PDF here",
+    "hint": "PDF files only · max 10MB",
+    "cancel": "ESC to cancel",
+    "loadingMessages": "Loading messages"
+  },
+  "messageItem": {
+    "errorTitle": "Could not load the quote selector.",
+    "errorBody": "Refresh the conversation or reload the page to try again.",
+    "retry": "Retry",
+    "loadingSelector": "Loading selector...",
+    "datePrompt": "Pick the dates of your trip",
+    "dateInstruction": "Select a date range or a flexible month and I'll start putting it all together.",
+    "datePickButton": "Pick dates",
+    "pdfTitle": "Trip Quote",
+    "pdfSubtitle": "PDF with all the details of your trip",
+    "pdfDownload": "Download",
+    "pdfDownloading": "Downloading...",
+    "defaultRoomDescription": "Standard room",
+    "openPlanner": "Open",
+    "plannerBadge": "Planner"
+  },
+  "recommendedPlaces": {
+    "title": "Recommended places",
+    "addToTrip": "Add it",
+    "showMore": "Show more",
+    "saveAsHighlight": "Save {{name}} as a must-see in {{city}}",
+    "addToItinerary": "Add {{name}} in {{city}} to the itinerary",
+    "showMorePlaces": "Show me more places like {{name}} in {{city}}",
+    "tellMeMore": "Tell me more about {{name}} in {{city}}",
+    "contextGap": "To keep moving forward:",
+    "slots": {
+      "morning": "Morning",
+      "afternoon": "Afternoon",
+      "evening": "Evening",
+      "suggested": "Suggested"
+    },
+    "badges": {
+      "imperdibles": "Must-see",
+      "historia": "History",
+      "museos": "Museum",
+      "barrios": "Neighborhood",
+      "miradores": "Viewpoint",
+      "parques": "Walk",
+      "gastronomia": "Food",
+      "noche": "Nightlife"
+    }
+  },
+  "chips": {
+    "directFlight": "Direct flight",
+    "stopsDirect": "Direct",
+    "stopsOne": "1 stop",
+    "stopsTwoPlus": "2+ stops",
+    "withBaggage": "With baggage",
+    "maxLayover": "Max {{hours}} hours",
+    "departureTime": "Departure",
+    "arrivalTime": "Arrival",
+    "arrivalRange": "Arrival {{min}} - {{max}}",
+    "departureHeader": "Departure time",
+    "arrivalHeader": "Arrival time",
+    "layoverHeader": "Max layover duration",
+    "layoverLabel": "Layover",
+    "layoverWithMax": "Layover ≤{{hours}}h",
+    "flightsCount": "{{count}} flights",
+    "timeRanges": {
+      "earlyMorning": "Early morning",
+      "morning": "Morning",
+      "afternoon": "Afternoon",
+      "night": "Night"
+    }
+  },
+  "toasts": {
+    "archived": { "title": "Conversation archived", "description": "The conversation has been archived successfully" },
+    "restored": { "title": "Conversation restored", "description": "The conversation has been restored successfully" },
+    "archiveFailed": { "title": "Error", "description": "Could not archive/restore the conversation" },
+    "noConversation": { "title": "Error", "description": "No conversation selected or no messages available" },
+    "leadCreated": { "title": "Lead created successfully!", "description": "Lead added to CRM with ID: {{leadId}}" },
+    "leadFailed": { "title": "Error", "description": "Could not create the lead. Try again." },
+    "pdfGeneratedAndLead": { "title": "PDF Generated and Lead Updated", "description": "Your quote has been generated and the lead has been updated in the CRM." },
+    "pdfGenerated": { "title": "PDF Generated", "description": "Your quote has been generated and added to the chat." },
+    "pdfGeneratedFallback": { "title": "PDF Generated", "description": "Your quote has been generated successfully." },
+    "newChatFailed": { "title": "Error", "description": "Could not create the conversation. Try again." },
+    "messageFailed": { "title": "Error", "description": "Could not send the message. Try again." },
+    "noActivePlanner": { "title": "Error", "description": "There is no active conversation to continue the plan." },
+    "plannerDateFailed": { "title": "Error", "description": "Could not continue the plan with the selected dates." },
+    "pdfModified": { "title": "Modified PDF Generated", "description": "I created a new PDF with the price you requested." },
+    "priceChangeFailed": { "title": "Error", "description": "I could not process your price change request." },
+    "retryWithStops": { "title": "Searching with stops", "description": "Retrying the search allowing connections." },
+    "invalidFile": { "title": "Invalid file", "description": "Please select a PDF file." },
+    "fileTooLarge": { "title": "File too large", "description": "The file cannot exceed 10MB." },
+    "pdfNoConversation": { "title": "Error", "description": "No conversation selected." },
+    "pdfUploaded": { "title": "PDF uploaded successfully", "description": "{{filename}} has been analyzed and processed." },
+    "pdfUploadFailed": { "title": "PDF upload error", "description": "Could not process the file. Try again." }
+  },
+  "data": {
+    "roomTypes": {
+      "SGL": "Single Room",
+      "DUS": "Double Room for Single Use",
+      "DBL": "Double Room",
+      "TPL": "Triple Room",
+      "QUA": "Quadruple/Family Room",
+      "FAMILY": "Family Room",
+      "OTHER": "Other Rooms",
+      "single": "single",
+      "double": "double",
+      "triple": "triple",
+      "quad": "quadruple",
+      "family": "family"
+    },
+    "baggage": {
+      "carryOn": "carry-on baggage",
+      "checked": "checked baggage",
+      "both": "carry-on and checked baggage",
+      "none": "no baggage",
+      "piecesIncluded": "✅ {{count}} piece(s) included",
+      "kgIncluded": "✅ {{count}}kg included",
+      "notIncluded": "❌ Not included"
+    },
+    "flightTypes": {
+      "oneWay": "one-way",
+      "roundTrip": "round trip",
+      "direct": "direct flight",
+      "oneStop": "with one stop",
+      "twoStops": "with two stops",
+      "any": "any type"
+    },
+    "layovers": {
+      "layover": "layover",
+      "connection": "connection",
+      "stopover": "extended stopover"
+    },
+    "cabinClasses": {
+      "Economy": "Economy",
+      "Premium": "Premium",
+      "Business": "Business",
+      "First": "First",
+      "cabin": "class"
+    },
+    "fares": {
+      "fare": "fare",
+      "baseFare": "base fare",
+      "totalFare": "total fare",
+      "netFare": "net fare"
+    },
+    "roomServices": {
+      "breakfast": "breakfast",
+      "bedAndBreakfast": "bed and breakfast",
+      "roomOnly": "room only",
+      "allInclusive": "all inclusive",
+      "halfBoard": "half board",
+      "fullBoard": "full board"
+    },
+    "roomCategories": {
+      "standard": "standard",
+      "superior": "superior",
+      "executive": "executive",
+      "comfort": "comfort",
+      "deluxe": "deluxe",
+      "basic": "basic"
+    },
+    "availability": {
+      "available": "available",
+      "limited": "limited availability",
+      "notAvailable": "not available",
+      "onRequest": "on request"
+    }
   }
 }

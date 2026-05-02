@@ -1,0 +1,109 @@
+{
+  "common": {
+    "updatedAt": "12 de fevereiro de 2026"
+  },
+  "documentation": {
+    "title": "Documentação",
+    "subtitle": "Guia rápido para implementar Vibook e organizar a operação comercial da sua agência.",
+    "sections": {
+      "gettingStarted": {
+        "title": "Primeiros passos",
+        "items": [
+          "Criar usuários e definir permissões por papel.",
+          "Configurar agência e branding base.",
+          "Conectar provedores pelo Marketplace."
+        ]
+      },
+      "dailyOps": {
+        "title": "Operação diária",
+        "items": [
+          "Gerenciar leads no CRM e atribuir responsáveis.",
+          "Registrar operações e acompanhamento comercial.",
+          "Consultar relatórios para detectar oportunidades."
+        ]
+      },
+      "quickResources": {
+        "title": "Recursos rápidos",
+        "items": [
+          "Guias de onboarding para equipes novas.",
+          "Boas práticas para acompanhamento comercial.",
+          "Checklist de implementação por agência."
+        ]
+      }
+    },
+    "helpPrefix": "Precisa de ajuda na implementação? Visite",
+    "supportLink": "Suporte",
+    "or": "ou",
+    "salesLink": "contate vendas",
+    "helpSuffix": "."
+  },
+  "support": {
+    "title": "Suporte",
+    "subtitle": "Canais de contato para implementação, incidentes e consultas operacionais.",
+    "channels": {
+      "title": "Canais disponíveis",
+      "general": "Suporte geral:",
+      "sales": "Vendas e implementação:",
+      "hours": "Horário de atendimento: segunda a sexta, 9:00 às 18:00 (GMT-3)."
+    },
+    "checklist": {
+      "title": "O que incluir na sua consulta",
+      "items": [
+        "Nome da agência e usuário afetado.",
+        "Módulo ou tela envolvida.",
+        "Captura de tela ou descrição passo a passo.",
+        "Resultado esperado e resultado atual."
+      ]
+    }
+  },
+  "privacy": {
+    "title": "Política de privacidade",
+    "subtitle": "Como tratamos os dados de agências, usuários e operações dentro do Vibook.",
+    "section1": {
+      "title": "1. Dados que processamos",
+      "body": "Processamos dados de identificação de usuários, informações operacionais de agências e registros de atividade necessários para prestar o serviço e melhorar a experiência de uso."
+    },
+    "section2": {
+      "title": "2. Finalidade do tratamento",
+      "body": "Utilizamos as informações para autenticação, operação funcional da plataforma, suporte técnico e métricas agregadas de desempenho do produto."
+    },
+    "section3": {
+      "title": "3. Consultas e direitos",
+      "bodyPrefix": "Para consultas sobre privacidade ou solicitações de acesso/atualização de dados, escreva para",
+      "bodySuffix": "."
+    }
+  },
+  "contact": {
+    "title": "Contato comercial",
+    "subtitle": "Agende uma demonstração ou tire dúvidas sobre planos, implementação e integrações.",
+    "channels": {
+      "title": "Canais de vendas",
+      "email": "Email comercial:",
+      "whatsapp": "WhatsApp comercial:",
+      "responseTime": "Tempo de resposta estimado: 1 dia útil.",
+      "implementation": "Implementação guiada para agências e equipes comerciais."
+    },
+    "next": {
+      "title": "Próximo passo recomendado",
+      "body": "Se você já tem acesso, pode fazer login e revisar o produto por dentro.",
+      "writeWhatsapp": "Escrever pelo WhatsApp",
+      "login": "Entrar"
+    }
+  },
+  "terms": {
+    "title": "Termos de serviço",
+    "subtitle": "Condições gerais de uso da plataforma Vibook.",
+    "section1": {
+      "title": "1. Escopo do serviço",
+      "body": "Vibook oferece ferramentas de gestão comercial e operacional para agências de viagens. O acesso pode variar conforme o plano contratado e a configuração do atacadista ou agência."
+    },
+    "section2": {
+      "title": "2. Responsabilidade de uso",
+      "body": "Cada conta é responsável pelo uso de suas credenciais, pela veracidade das informações inseridas e pelo cumprimento da normativa aplicável à sua operação comercial e fiscal."
+    },
+    "section3": {
+      "title": "3. Suporte e disponibilidade",
+      "body": "Os níveis de suporte e disponibilidade podem depender do plano contratado e de acordos comerciais específicos. Para condições particulares, contate a equipe comercial."
+    }
+  }
+}

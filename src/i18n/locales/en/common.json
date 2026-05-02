@@ -8,5 +8,22 @@
   "loading": "Loading...",
   "error": "Error",
   "success": "Success",
-  "tryAgain": "Try again"
+  "tryAgain": "Try again",
+  "nav": {
+    "dashboard": "Dashboard",
+    "settings": "Settings",
+    "users": "Users",
+    "agencies": "Agencies",
+    "tenants": "Tenants",
+    "profile": "Profile",
+    "home": "Emilia · home"
+  },
+  "theme": {
+    "label": "Theme:",
+    "toggle": "Toggle theme"
+  },
+  "logoutToast": {
+    "title": "Logout error",
+    "description": "There was a problem signing out."
+  }
 }

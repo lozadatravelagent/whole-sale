@@ -323,9 +323,9 @@ const ChatInterface = React.memo(({
         >
           <div className="text-center px-6">
             <ArrowUpFromLine className="h-14 w-14 text-primary mx-auto mb-4 animate-bounce" />
-            <p className="font-display italic text-2xl text-foreground tracking-tight">Soltá el PDF aquí</p>
-            <p className="text-sm text-muted-foreground mt-2 font-sans">Solo archivos PDF · máx. 10MB</p>
-            <p className="font-mono text-[10px] tracking-[0.1em] text-muted-foreground/60 mt-3 uppercase">ESC para cancelar</p>
+            <p className="font-display italic text-2xl text-foreground tracking-tight">{t('dragDrop.title')}</p>
+            <p className="text-sm text-muted-foreground mt-2 font-sans">{t('dragDrop.hint')}</p>
+            <p className="font-mono text-[10px] tracking-[0.1em] text-muted-foreground/60 mt-3 uppercase">{t('dragDrop.cancel')}</p>
           </div>
         </div>
       )}
@@ -338,7 +338,7 @@ const ChatInterface = React.memo(({
         <div className="space-y-3 md:space-y-4">
           {/* Inline skeleton while loading messages - only for existing conversations */}
           {isLoading && visibleMessages.length === 0 && selectedConversation && !selectedConversation.startsWith('temp-') ? (
-            <div className="space-y-4" aria-busy="true" aria-label="Cargando mensajes">
+            <div className="space-y-4" aria-busy="true" aria-label={t('dragDrop.loadingMessages')}>
               {[1, 2, 3, 4].map(i => (
                 <div key={i} className="flex items-start gap-2">
                   <div className="h-8 w-8 bg-muted/50 animate-pulse rounded-full" />
@@ -398,14 +398,14 @@ const ChatInterface = React.memo(({
                   exploreLabel={discoveryVisual?.secondaryCtaLabel}
                   onAdd={(place) => {
                     onMessageChange(isShowPlacesTurn
-                      ? `Guardá ${place.name} como imperdible en ${place.city}`
-                      : `Sumá ${place.name} en ${place.city} al itinerario`);
+                      ? t('recommendedPlaces.saveAsHighlight', { name: place.name, city: place.city })
+                      : t('recommendedPlaces.addToItinerary', { name: place.name, city: place.city }));
                     setTimeout(() => onSendMessage(), 50);
                   }}
                   onExplore={(place) => {
                     onMessageChange(isShowPlacesTurn
-                      ? `Mostrame más lugares como ${place.name} en ${place.city}`
-                      : `Contame más sobre ${place.name} en ${place.city}`);
+                      ? t('recommendedPlaces.showMorePlaces', { name: place.name, city: place.city })
+                      : t('recommendedPlaces.tellMeMore', { name: place.name, city: place.city }));
                     setTimeout(() => onSendMessage(), 50);
                   }}
                 />
@@ -415,7 +415,7 @@ const ChatInterface = React.memo(({
               )}
               {lastVisibleMessage?.role === 'assistant' && lastConversationGaps.length > 0 && !isLoading && (
                 <div className="mx-4 mb-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5 animate-in fade-in duration-300">
-                  <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Para seguir avanzando:</p>
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('recommendedPlaces.contextGap')}</p>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                     {lastConversationGaps.map((gap) => (
                       <span key={gap.key}>{gap.label}</span>
