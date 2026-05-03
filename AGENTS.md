@@ -49,7 +49,6 @@ api/                         # Fastify API Gateway (Railway) — separate projec
 ├── src/middleware/           # CORS, auth, rate limiting, correlation
 ├── src/services/            # searchExecutor, advancedFilters, cityCodeResolver
 supabase/functions/          # Edge Functions
-├── planner-agent/           # NLP agent loop (tools/, prompts/, guardrails)
 ├── foursquare-places/       # Eager place search
 ├── places-viewport/         # Viewport dynamic loading (multi-point, concurrency, partial retry)
 ├── place-details/           # Single place enrichment
@@ -83,17 +82,17 @@ supabase/functions/          # Edge Functions
 
 ## Chat Routing & Orchestration (Emilia 5.0)
 - **Router** (`routeRequest.ts`): Deterministic scoring of parsed travel requests — no LLM call, <1ms. Routes to: QUOTE (search-ready), COLLECT (need fields), PLAN (propose trip structure).
-- **Orchestrator** (`conversationOrchestrator.ts`): Maps route → execution branch: `planner_agent`, `ask_minimal`, `standard_itinerary`, or `standard_search`.
-- **Itinerary Pipeline** (`itineraryPipeline.ts`): Produces `CanonicalItineraryResult` — the unified output shape from both AI parser and planner agent branches.
+- **Orchestrator** (`conversationOrchestrator.ts`): Strict mode routing. Agency mode emits `standard_search` or `ask_minimal`; passenger mode emits `standard_itinerary` or `ask_minimal`; mismatched intent emits `mode_bridge`.
+- **Itinerary Pipeline** (`itineraryPipeline.ts`): Produces `CanonicalItineraryResult` from the productive `standard_itinerary` branch before persistence/rendering.
 - **Discovery Service** (`discoveryService.ts`): Curated place suggestions with Foursquare data, quality scoring, bucket categorization, and telemetry.
 - **Editorial** (`editorial.ts`): Pure function `TripPlannerState → PlannerEditorialData`. Modes: multi_city_country, multi_city_region, multi_country, single_city, route_refinement.
 
-## Planner Agent
-- Edge function at `supabase/functions/planner-agent/`. Uses OpenAI gpt-5.1 in an agent loop.
-- **Tools**: search_flights, search_hotels, generate_itinerary, resolve_city_code, search_packages, ask_user.
-- **Guardrails**: Iteration limit, execution timeout, parallel tool cap, human confirmation required for bookings/payments.
-- **User context**: IP-based city/country detection used as default origin for flight searches.
-- **Persona**: Emilia — expert travel agent, value-first, minimal asking, responds in Spanish neutral.
+## Context Engineering Agent Layer
+- The old `planner-agent` edge function and `planner_agent` routing branch were removed. Do not reintroduce them without a new ADR.
+- The active LLM entry point is `supabase/functions/ai-message-parser/`, which hosts the Context Engineering tool loop.
+- Model routing is centralized in `supabase/functions/_shared/llm/modelPolicy.ts`; `CTX_TOOL_LOOP_MODEL` can override the tool-loop model.
+- Emilia state lives in `agent_states` per conversation. See `docs/architecture/context-engineering-overview.md` and `docs/architecture/tool-catalog.md`.
+- Docs source of truth: read `docs/architecture/context-engineering-overview.md` for the live `/emilia/chat` runtime, `docs/architecture/context-engineering-spec.md` for the state contract, and `docs/architecture/tool-catalog.md` for current tool inventory + debt.
 
 ## Trip Planner & Places System
 
@@ -102,8 +101,8 @@ supabase/functions/          # Edge Functions
 - `TripPlannerWorkspace` orchestrates hooks and UI. `TripPlannerMap` (Mapbox GL) is presentation-only.
 
 ### Category Policy
-- `CATEGORY_POLICY` in `usePlacesOrchestrator.ts` defines per-category flags: `eager`, `defaultActive`, `chatPush`, `viewportFetch`.
-- All derived constants (`EAGER_FETCH_CATEGORIES`, `VIEWPORT_FETCH_CATEGORIES`, `CHAT_PUSH_CATEGORIES`, default active state) auto-compute from it.
+- `CATEGORY_POLICY` in `usePlacesOrchestrator.ts` defines per-category flags: `eager`, `defaultActive`, `viewportFetch`.
+- All derived constants (`EAGER_FETCH_CATEGORIES`, `VIEWPORT_FETCH_CATEGORIES`, default active state) auto-compute from it.
 - To change which categories are eager/lazy or on/off by default, edit the policy — nothing else.
 
 ### Viewport Loading
@@ -155,7 +154,6 @@ supabase/functions/          # Edge Functions
 ### Function inventory (by domain)
 - **Travel search**: starling-flights, eurovips-soap, search-coordinator
 - **Places**: foursquare-places, places-viewport, place-details, place-photos, place-recommendations, place-hotel-candidates, place-summary
-- **Agent**: planner-agent
 - **Chat/AI**: ai-message-parser, travel-itinerary, add-message
 - **Hotels**: hotelbeds-api, hotelbeds-content-sync, hotelbeds-cache-sync, hotelbeds-activities, hotelbeds-transfers
 - **Other**: create-user, api-auth, pdf-ai-analyzer, pdf-text-extractor
@@ -163,7 +161,7 @@ supabase/functions/          # Edge Functions
 
 ## Invariants — Do Not Break
 - **CATEGORY_POLICY** is the single source of truth for place-fetching behavior. All derived constants auto-compute from it. Never hardcode category lists elsewhere.
-- **CanonicalItineraryResult** is the only shape that exits the itinerary pipeline. Both planner-agent and standard branches must produce it.
+- **CanonicalItineraryResult** is the only shape that exits the itinerary pipeline. The productive branch is `standard_itinerary`.
 - **Race condition guards** (version refs, AbortController, signature dedup) protect all async hooks. Never remove them without understanding the concurrent flow they guard.
 - **api/ and src/** are completely separate projects. Zero shared code, independent deploys.
 - **RLS is mandatory**. Never use service_role to bypass row-level security.

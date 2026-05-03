@@ -2,7 +2,7 @@
 
 > **Audience**: a developer new to the project who needs to understand how Emilia keeps state across turns and decides which tools to call. Read this **before** touching anything in `src/features/chat/state/`, `supabase/functions/_shared/{memoryTools,functionTools,toolRunner,renderState,lifecycleHooks,consolidateMemory}.ts`, or `supabase/functions/ai-message-parser/`.
 >
-> **Status**: Phases 0–8 of the plan in `~/.claude/plans/analiza-como-es-el-parallel-patterson.md` are implemented. Phase 9 (rollout / docs) is what you're reading. Open audit notes live in `docs/architecture/tool-catalog.md`.
+> **Status**: This document describes the current `/emilia/chat` Context Engineering runtime. Open audit notes and remaining debt live in `docs/architecture/tool-catalog.md`.
 
 ---
 
@@ -23,7 +23,7 @@ A faithful TypeScript port of the OpenAI Agents SDK / Cookbook *Context Engineer
 
 - **Structured state** (`EmiliaState`) — a single typed object with `profile`, `global_memory`, `session_memory`, `active_refs`, `mode`, `trip_history`, and bookkeeping `meta`. Persisted per `conversation_id` in `agent_states`. This is what the cookbook calls `TravelState`.
 - **Just-in-time function tools** — the model calls `get_planner_state`, `get_quote`, `get_recent_searches`, `get_lead_full_history` only when it needs that detail. Plus one write tool: `save_memory_note`.
-- **Lifecycle hooks** — `onTurnStart` renders state into the system prompt; `onTurnEnd` increments turn count and flags re-injection if the trim window will drop fresh notes; `onSessionEnd` consolidates session memory into "global" memory (still per-conversation — see §6).
+- **Lifecycle helpers** — turn-start behavior is wired through `messageTurnContext.ts` + `useMessageHandler.ts`; turn count is bumped after parse; consolidation helpers (`lifecycleHooks.ts`, `consolidateMemory.ts`) exist but are not wired into the main chat runtime yet.
 
 Why not adopt the Python Agents SDK directly? Our stack is fully TS (React 18 frontend, Supabase Edge Functions in Deno, Fastify gateway in Node 20). Adding a Python service would introduce duplicate domain types, cross-language RPC for everything Emilia touches, and a new ops surface. We needed the **patterns** — structured state, lifecycle hooks, sessions, function tools, precedence rules — not the runtime. The patterns are language-agnostic. See `docs/architecture/context-engineering-spec.md` §5 for the full mapping table.
 
@@ -63,8 +63,8 @@ User message in chat UI
 │     └─ up to 3 iterations, parallel tool calls (cap 4),                 │
 │        per-tool 8s, total 25s, force-final-answer fallback              │
 │                                                                         │
-│   batch-persist accepted save_memory_note results into                  │
-│   agent_states.session_memory.notes (Option A scope)                    │
+│   batch-persist accepted save_memory_note results + pending_action      │
+│   mutations into agent_states.state (Option A scope)                    │
 │                                                                         │
 │   emitTelemetry({ category: 'CTX-TOOL', ...iterations, tokens, ... })   │
 │   if (memoryAttempted > 0):                                             │
@@ -95,8 +95,8 @@ User message in chat UI
 | **Memory tool** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\_shared\memoryTools.ts` | `saveMemoryNoteToolSchema` + `validateMemoryNote` + `executeSaveMemoryNote`. PII / instruction-shaped / speculation regex rejection. |
 | **Retrieval tools** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\_shared\functionTools.ts` | `get_planner_state`, `get_quote` (stub), `get_recent_searches`, `get_lead_full_history`. All `strict: true`, `additionalProperties: false`, `fitToCap` (~8000 chars ≈ 2000 tokens). |
 | **Tool loop** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\_shared\toolRunner.ts` | `runToolLoop` — generic OpenAI tool-calling loop. Iteration cap 3, per-tool 8s, total 25s, parallel cap 4, force-final-answer on cap/timeout. |
-| **Lifecycle hooks** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\_shared\lifecycleHooks.ts` | `createLifecycleHooks()` returning `{onTurnStart, onTurnEnd, onSessionEnd}`. Pure; no I/O. `shouldConsolidateNow(state, everyN=20)` helper. |
-| **Consolidate** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\_shared\consolidateMemory.ts` | `consolidateMemory(state, openai)` — gpt-4.1, temp 0.1. On any failure returns the original state unchanged. |
+| **Lifecycle helpers** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\_shared\lifecycleHooks.ts` | `createLifecycleHooks()` returning `{onTurnStart, onTurnEnd, onSessionEnd}`. Pure; no I/O. Available helper API, not wired into the main chat runtime today. |
+| **Consolidate helper** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\_shared\consolidateMemory.ts` | `consolidateMemory(state, openai)` — gpt-4.1, temp 0.1. On any failure returns the original state unchanged. Implemented helper; runtime integration remains open. |
 | **Telemetry** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\_shared\telemetry.ts` | `emitTelemetry({ category: 'CTX-STATE'\|'CTX-TOOL'\|'CTX-MEMORY', ... })`. Plain `console.log` today, swappable for a sink in Phase 9 without touching call sites. |
 | **System prompt** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\ai-message-parser\prompt.ts` | `PROMPT_VERSION = 'emilia-parser-v5'`. Carries `<persistence>` + `<tool_selection>` blocks; injects `MEMORY STATE` section when `memoryStateBlock` is provided. |
 | **Parser entry** | `C:\Users\Fran\Desktop\Projects\WholeSale\wholesale-connect-ai\supabase\functions\ai-message-parser\index.ts` | Hosts the tool loop (Phase 3). Internal network-resilience fallbacks for unparseable JSON / runToolLoop throw. |
@@ -116,9 +116,19 @@ User message in chat UI
 7. **Edge**: any `save_memory_note` calls are validated; accepted notes are batched and appended to `agent_states.session_memory.notes` after the loop completes (avoids races when the model parallel-calls the tool). Persistence failures log a warning and never break the conversation.
 8. **Edge**: `emitTelemetry({ category: 'CTX-TOOL', iterations, tools_called, errors, hit_cap, hit_timeout, prompt/completion/cached tokens, redundant_calls })`. If at least one `save_memory_note` was attempted: `emitTelemetry({ category: 'CTX-MEMORY', attempted, accepted, rejected, rejection_reasons })`.
 9. **Edge**: response is the parsed JSON envelope plus a `meta.toolLoop` block (iteration count, trace) when the loop ran.
-10. **Client**: persist the message, render. Re-iterate.
+10. **Client**: if `meta.pendingActionResolution` is present, `consumePendingActionResolution` dispatches it to `pendingActionDispatcher`, mutates domain state when needed, then clears `pending_action`.
+11. **Client**: persist the message, render. Re-iterate.
 
-`onSessionEnd` (consolidate) fires explicitly when a conversation closes, on idle timeout, or as a fallback every N=20 turns via `shouldConsolidateNow(state)`. It reads `session_memory ⊕ global_memory`, asks gpt-4.1 to dedup with most-recent-wins conflict resolution, writes back to `state.global_memory.notes`, clears `state.session_memory.notes`, and stamps `meta.last_consolidated_at`. Failures return the original state unchanged.
+`onSessionEnd` / `consolidateMemory` are implemented as shared helpers, but the main chat turn loop does **not** currently call them when a conversation closes, idles, or reaches N=20 turns. Treat consolidation as available infrastructure pending runtime integration, not as active production behavior.
+
+---
+
+## 5.1 Source of truth
+
+- **Runtime flow**: `src/features/chat/hooks/useMessageHandler.ts`, `src/features/chat/state/messageTurnContext.ts`, `supabase/functions/ai-message-parser/index.ts`.
+- **State contract**: `docs/architecture/context-engineering-spec.md`.
+- **Tool inventory and debt**: `docs/architecture/tool-catalog.md`.
+- **Agent instructions**: `CLAUDE.md` and `AGENTS.md` should point here instead of duplicating runtime details.
 
 ---
 
@@ -174,10 +184,11 @@ The renderer enforces the state-injection cap with progressive degradation: drop
 
 ## 10. Status & open DEBT
 
-- Phase 9 audit: `docs/architecture/tool-catalog.md`. The retrieval tool schemas pass the GPT-5.1 checklist; the system prompt was found missing `<persistence>` and `<tool_selection>` blocks at audit time and has since been patched in `prompt.ts` (the `PROMPT_VERSION = 'emilia-parser-v5'` build carries both blocks). Other open items (DEBT-1 `get_quote` stub warning, DEBT-3 serialization of multi-`save_memory_note` calls, DEBT-7 model upgrade to GPT-5.1, DEBT-9 `currency` hardcode) are tracked in that file.
-- `get_quote` returns `{ error: "not_implemented" }` until the `quotes` table lands (Phase 5 dependency).
-- Telemetry today writes structured `console.log` lines. Phase 9.6 will swap the body for a sink (table or external) without touching call sites.
-- The empty `supabase/functions/travel-chat/` directory is dead and can be removed (DEBT-8).
+- Phase 9 audit: `docs/architecture/tool-catalog.md`. The retrieval tool schemas pass the GPT-5.1 checklist; the system prompt carries `<persistence>` and `<tool_selection>` blocks in `PROMPT_VERSION = 'emilia-parser-v5'`.
+- `get_quote` returns `{ error: "not_implemented" }` until the `quotes` table lands (Phase 5 dependency), and its tool description now warns the model not to retry it.
+- Remaining open items are tracked in `docs/architecture/tool-catalog.md`, including save-memory-note serialization, compact-view currency sourcing, edge-function HTTP input validation, and dispatcher cases for future confirmation flows.
+- Telemetry today writes structured `console.log` lines. A future sink (table or external) can replace the body without touching call sites.
+- The old empty `supabase/functions/travel-chat/` directory has been removed.
 
 ---
 

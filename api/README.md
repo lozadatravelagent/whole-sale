@@ -183,13 +183,13 @@ Body:
 - [x] Redis-based rate limiting (sliding window)
 - [x] Redis-based idempotency cache (5 min TTL)
 - [x] Health check endpoints
+- [x] Full `/v1/search` execution path ported from the `api-search` Edge Function
 - [x] Structured JSON logging
 - [x] Multi-stage Docker build
 - [x] Graceful shutdown
 
-### 🔄 To Be Implemented (Phase 3)
+### 🔄 To Be Implemented
 
-- [ ] Full search logic ported from Edge Functions
 - [ ] Circuit breakers (Opossum)
 - [ ] OpenTelemetry integration
 - [ ] OpenAPI/Swagger documentation
@@ -234,8 +234,9 @@ Railway will automatically ping `/v1/health` for liveness checks.
 1. ✅ Create Fastify API structure
 2. ✅ Implement middleware chain
 3. ✅ Deploy to Railway
-4. 🔄 Add proxy in Edge Function (backward compatibility)
-5. 🔄 Gradual traffic migration (0% → 100%)
+4. ✅ Port full search execution path from the `api-search` Edge Function
+5. 🔄 Add/maintain proxy path where backward compatibility is still required
+6. 🔄 Gradual traffic migration (0% → 100%)
 
 ### Phase 3 (Future)
 

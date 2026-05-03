@@ -8,6 +8,8 @@
 > Out of scope (deferred to later docs): function tool catalog (0.2/0.3 → Phase 3), distill/consolidate
 > implementation (Phase 2), session implementation (Phase 4), telemetry (Phase 8).
 >
+> **How to read this today**: this is the state-layer contract and design spec, not the live runtime status page. For the current `/emilia/chat` flow read `docs/architecture/context-engineering-overview.md`; for current tool inventory and debt read `docs/architecture/tool-catalog.md`.
+>
 > **Authoritative sources** (cited inline as `[CB-CTX]`, `[CB-SESS]`, `[GPT5.1]`, `[FC]`):
 > - `[CB-CTX]` — OpenAI Cookbook: *Context Engineering for Personalization with Agents SDK*
 >   (`developers.openai.com/cookbook/examples/agents_sdk/context_personalization`)

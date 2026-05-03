@@ -53,7 +53,7 @@ These are the supplier/integration HTTP endpoints. The chat invokes them via det
 | `consumer-signup` | `consumerAuthService.ts:36` | yes (Zod-shaped) | yes | Auth, out of chat scope. |
 | `create-user` | `useUsers.ts:142` | yes | yes | Admin, out of chat scope. |
 | `api-auth` / `api-search` | external public API gateway | yes (FastAPI-style boundary) | yes | Different surface (Railway), not Edge. |
-| `travel-chat/` | — | — | — | **Empty directory** (legacy/deprecated, can be deleted; no source files inside). |
+| `travel-chat/` | — | — | — | **Removed** legacy directory. Not present in the current tree. |
 
 ### 1.3 Client services (pure fetching/parsing, no chat tool surface)
 
@@ -65,11 +65,11 @@ These are not "tools" by the spec definition; they are TypeScript helpers the ch
 - `src/services/pdf/*` — PDF pipeline.
 - `src/services/pdfMonkey.ts`, `pdfMonkeyTemplates.ts`, `pdfProcessor.ts` — PDF generation.
 - `src/features/chat/services/searchHandlers.ts` (2,129 lines) — the deterministic dispatcher that maps parsed `requestType` → edge function call.
-- `src/features/chat/services/conversationOrchestrator.ts` (695 lines) — strict-mode (agency/passenger) routing into `executionBranch` ∈ {`ask_minimal`, `standard_itinerary`, `standard_search`, `mode_bridge`}.
+- `src/features/chat/services/conversationOrchestrator.ts` — strict-mode (agency/passenger) routing into `executionBranch` ∈ {`ask_minimal`, `standard_itinerary`, `standard_search`, `mode_bridge`}.
 
 ---
 
-## 2. Per-tool audit (the five model-invocable tools)
+## 2. Per-tool audit (the seven model-invocable tools)
 
 For each tool I checked the eight-point GPT-5.1 checklist:
 1. Description ≥30 chars with `Use when:` and `Don't use for:`
@@ -96,7 +96,7 @@ For each tool I checked the eight-point GPT-5.1 checklist:
 - **(1)** ✅ 459 chars, both clauses present.
 - **(2)–(7)** ✅ same shape as 2.1.
 - **(8)** ✅ unambiguous.
-- **Caveat:** the handler is a stub that always returns `{error: "not_implemented", detail: "quotes table not yet provisioned…"}` because the `quotes` table does not yet exist (Phase 5 dependency). The description does NOT warn the model that the tool will currently always fail — this is a small UX risk: the model may keep retrying. **DEBT-1 (low-prio):** add a one-sentence note to the description like "Currently returns `not_implemented` until Phase 5; do not retry the same call within a turn."
+- **Caveat:** the handler is a stub that always returns `{error: "not_implemented", detail: "quotes table not yet provisioned…"}` because the `quotes` table does not yet exist (Phase 5 dependency). The tool description now explicitly warns the model that it currently returns `not_implemented` and should not be invoked until the table is provisioned. **DEBT-1 is resolved; the remaining product dependency is the missing `quotes` table / real handler.**
 
 ### 2.3 `get_recent_searches`
 - **(1)** ✅ 478 chars, both clauses present.
@@ -125,7 +125,7 @@ For each tool I checked the eight-point GPT-5.1 checklist:
 - **(7)** ✅ response is `{ok:true}` or `{ok:false,reason}` — minimal by design (spec §3.1).
 - **(8)** ✅ unambiguous.
 - **DEBT-2 (HIGH-prio): RESOLVED in Phase 9.** `saveMemoryNoteToolSchema` is now spread into `tools` and a `saveMemoryNoteHandler` is registered (`ai-message-parser/index.ts:387–401, 457, 463`). Accepted notes are batch-persisted to `agent_states.session_memory.notes` at the end of the tool loop alongside any pending-action mutations (single UPDATE per turn). Telemetry emits `[CTX-MEMORY]` with attempted/accepted/rejected counts.
-- **DEBT-3 (medium):** spec §1.6 / §7.8 says `save_memory_note` is NOT parallel-safe with itself (de-dup ordering matters); the runtime serialization isn't enforced — `runToolLoop`'s `execBatch` runs everything in chunks of up to 4 in parallel. When the tool gets wired, either (a) `save_memory_note` calls must be partitioned and serialized inside `execBatch`, or (b) the runtime must reject more than one `save_memory_note` per iteration.
+- **DEBT-3 (medium):** multiple `save_memory_note` calls are batch-persisted after the loop, so same-turn parallel writes no longer clobber each other. Full serialization is still not enforced inside `toolRunner.execBatch`; the remaining risk is simultaneous turns on the same conversation, or future de-dup logic that depends on strict call order.
 
 **Score: 7 of 7 tools fully pass schema + wiring audit (post-v2 amendment, per §§2.6–2.7 below).**
 
@@ -234,37 +234,37 @@ Plus the v5 `<tool_selection>` block now also documents the tool in its MEMORY s
 
 ---
 
-## 4. Debt items (NOT resolved in Phase 6 — actions for Phase 9 QA)
+## 4. Debt items (current runtime status)
 
 | ID | Severity | Title | File(s) | Action |
 |----|----------|-------|---------|--------|
-| DEBT-1 | low | `get_quote` description doesn't warn about `not_implemented` stub | `_shared/functionTools.ts:208–210` | Add one-sentence caveat about Phase-5 dependency; or remove tool until table exists. |
+| DEBT-1 | resolved | `get_quote` description warns about `not_implemented` stub | `_shared/functionTools.ts:208–211` | **RESOLVED:** the description now warns that the tool returns `{error:'not_implemented'}` until the `quotes` table is provisioned and tells the model not to invoke it. Remaining product work: provision `quotes` + replace the stub handler. |
 | DEBT-2 | ~~HIGH~~ | `save_memory_note` schema not wired into tool loop | `ai-message-parser/index.ts:330–331` | ~~Spread `saveMemoryNoteToolSchema` into `tools` and add a handler that wraps `executeSaveMemoryNote` (with state plumbing).~~ **RESOLVED in Phase 9: tool wired at `index.ts:457`, handler at `:387–401`. Notes batch-persisted to `agent_states.session_memory.notes` after the loop. `[CTX-MEMORY]` telemetry emitted with attempted/accepted/rejected counts.** |
-| DEBT-3 | medium | No serialization of multiple `save_memory_note` calls per turn | `_shared/toolRunner.ts:287–323` (`execBatch`) | Either partition `save_memory_note` calls and serialize them, or cap `save_memory_note` to one per iteration. **MITIGATED in Phase 8: parallel save_memory_note calls are batch-persisted after the loop completes (single UPDATE per turn). Race only theoretically possible across simultaneous turns of the same conversation, which is not a real-world pattern. Full serialization in toolRunner deferred.** |
+| DEBT-3 | medium | No strict serialization of multiple `save_memory_note` calls in `toolRunner` | `_shared/toolRunner.ts:287–323` (`execBatch`) | **MITIGATED:** accepted notes are batch-persisted after the loop in a single `agent_states` update. Remaining work, if needed: partition `save_memory_note` calls inside `execBatch` or cap to one per iteration for strict ordering guarantees. |
 | DEBT-4 | ~~HIGH~~ → low | Persistence reminders missing from system prompt | `ai-message-parser/prompt.ts:77–82` | ~~Add `<persistence>` block~~ **RESOLVED in Phase 9 (v5):** block added covering 3 of 4 directives. Residual: "one focused question per turn" line still missing — low-priority follow-up. |
 | DEBT-5 | ~~HIGH~~ → low | `<tool_selection>` block missing from system prompt | `ai-message-parser/prompt.ts:84–107` | ~~Paste spec §4 block verbatim~~ **RESOLVED in Phase 9 (v5):** block added with 4 sub-sections (PENDING ACTION / RETRIEVAL / MEMORY / GENERAL) plus v2 turn-state tools. Residual: "3-iteration cap" directive missing (runtime enforces it but model has no instruction to economize) — low-priority one-line addition. |
 | DEBT-6 | medium | `<memory_instructions>` only renders when `memoryStateBlock` provided | `ai-message-parser/prompt.ts:60, 143–145` and `_shared/renderState.ts` | Always render memory instructions when tool loop is active. **BY DESIGN: `<memory_instructions>` only renders when state is being injected (memoryStateBlock provided). Without state, the prompt has no memories to instruct on, so the block adds no value. This is correct behavior.** |
 | DEBT-7 | low | `runToolLoop` uses `model: 'gpt-4.1'` hardcoded, not GPT-5.1 | `ai-message-parser/index.ts:327` | When upgrading to GPT-5.1, change here. The comment says "gpt-4.1 supports tool calls + reliable JSON; mini doesn't always" — verify GPT-5.1 parity before swap. **RESOLVED in Phase 9: model is now overridable via the `CTX_TOOL_LOOP_MODEL` env var (defaults to `gpt-4.1`). Allows swap without redeploy.** |
-| DEBT-8 | low | Empty `supabase/functions/travel-chat/` directory | `supabase/functions/travel-chat/` | Delete. Pure dead-folder cleanup. **RESOLVED in Phase 9: directory removed.** |
+| DEBT-8 | resolved | Empty `supabase/functions/travel-chat/` directory | `supabase/functions/travel-chat/` | **RESOLVED:** directory removed from the current tree. |
 | DEBT-9 | low | `get_planner_state` returns hardcoded `currency: "USD"` | `_shared/functionTools.ts:173` | Either add `currency` column to `trips` or pull from `agency` row. **PARTIALLY RESOLVED in Phase 9: `createInitialEmiliaState` and `bootstrapStateIfMissing` now accept optional `currency`/`language` overrides (defaults USD/es). Call sites still need to wire agency_config when available; tracked as a follow-up.** |
 | DEBT-10 | low | Edge functions called from chat (`starling-flights`, `eurovips-soap`, `places-viewport`) lack request-body schema validation at HTTP boundary | several | Add Zod or hand-rolled validation in each handler's first 10 lines. Currently they trust the caller. **DEFERRED to a separate hardening pass. Scope is too broad for Context Engineering Phase 9 — it touches 23 edge functions, each with its own input shape. Should be a focused security-review work item.** |
 | DEBT-11 | low | `confirm_pending_action` has no client-side dispatcher case | `useMessageHandler.ts:applyPendingActionResolution` | Add `case 'confirm_*':` arms when the first booking-confirmation flow ships. Tool itself is correctly wired; only the domain-specific consumer is missing. |
-| DEBT-12 | low | `pendingActionDispatcher.ts` only handles `for: 'quote_completion'` today | `src/features/chat/state/pendingActionDispatcher.ts` | Add new handler per new pending-action `for` value. By design the parser/router need NO change — just the dispatcher. **Refactored in Phase 9: dispatch logic moved out of `useMessageHandler.ts` into a registry-pattern dispatcher file.** |
+| DEBT-12 | resolved | `pendingActionDispatcher.ts` handles the currently emitted `for` values | `src/features/chat/state/pendingActionDispatcher.ts` | **RESOLVED for current flows:** dispatcher handles `quote_completion`, `collect_clarification`, `combined_completion`, `flight_completion`, `hotel_completion`, and `itinerary_completion`. Future flows still require adding a handler for the new `for` value; parser/router need no change. |
 | DEBT-13 | medium | `conversationKnowledgeService.ts` summary helpers (`buildConversationSummary` / `loadConversationSummary` / `saveConversationSummary`) are dead code post-CE | `src/features/chat/services/conversationKnowledgeService.ts`, `src/features/chat/services/messageStorageService.ts`, `src/features/chat/hooks/useMessageHandler.ts:674, 835, 932-933` | Per CE spec §6, per-conversation memory lives in `agent_states.session_memory`. The summary load → parser-prompt path is no longer consumed; the post-turn save is fire-and-forget with no reader. **Action (Phase 7 of cleanup plan):** delete the 3 helpers from both `conversationKnowledgeService.ts` and the duplicated impl in `messageStorageService.ts:202-266`; remove the unused load + save calls in `useMessageHandler.ts`; update test mocks. |
 | DEBT-14 | low | `useContextualMemory.ts` hook is exported but never imported by active code | `src/features/chat/hooks/useContextualMemory.ts`, `src/features/chat/hooks/index.ts:2` | Wrapper hook around the dead summary helpers (DEBT-13). Only referenced by historical docs (handoffs, PR notes). **Action (Phase 7 of cleanup plan):** delete the hook file and its barrel export. Safe deletion — zero active imports. |
-| DEBT-15 | medium | `leadAiProfileService.ts` still loaded via legacy parser-prompt injection path instead of the `get_lead_full_history` retrieval tool | `src/features/chat/hooks/useMessageHandler.ts:698, 836, 936-940`; `src/features/chat/services/conversationKnowledgeService.ts:166` | The `lead_ai_profiles` table is legitimate persistent storage (cross-conversation lead preferences) and stays. But the load/inject pattern duplicates what `get_lead_full_history` already does in the tool loop. **Action (after Phase 3 of cleanup plan — flag flip):** drop the `leadProfile` parameter from `parseMessageWithAI` and let the tool loop pull it on demand; keep the post-turn `mergeLeadAiProfile` + `saveLeadAiProfile` (it's the only writer of that table). Migration is non-breaking because `get_lead_full_history` is already wired and tested. |
+| DEBT-15 | resolved/partial | Legacy `leadProfile` parser-prompt injection removed; `lead_ai_profiles` writer remains | `src/features/chat/hooks/useMessageHandler.ts:884–892, 1886–1889`; `_shared/functionTools.ts:get_lead_full_history` | **RESOLVED for Context Engineering:** the parser prompt no longer receives a loaded lead profile; lead history is retrieved on demand via `get_lead_full_history`. Keep the post-turn `mergeLeadAiProfile` + `saveLeadAiProfile` writer because `lead_ai_profiles` is still the durable cross-conversation lead profile store used by the retrieval tool. |
 
 ---
 
 ## 5. Recommendations for new tools (Phase 9+ scope)
 
-The current 5-tool catalog is correctly scoped per spec §7.1 (avoid bloat). I do NOT recommend adding tools speculatively. However, three concrete gaps were observable:
+The current 7-tool catalog is correctly scoped per spec §7.1 (avoid bloat). I do NOT recommend adding tools speculatively. However, three concrete gaps were observable:
 
 ### 5.1 `search_inventory` (or split: `search_flights` / `search_hotels` / `search_packages`) — **DO NOT add yet**
 
 Today the model emits `requestType: "flights" | "hotels" | "combined" | "packages"` and the deterministic dispatcher in `useMessageHandler` calls the appropriate edge function. Per spec §4 (`<tool_selection>` rule #1): *"For ANY mention of specific prices, availability, or schedules: you MUST call at least one search tool."* The current architecture satisfies this rule via the parser → dispatcher contract, NOT via model-invoked tools.
 
-If Phase 9 wants the LLM to be in charge of *whether* to search (rather than always emitting a `requestType`), then `search_flights`, `search_hotels`, `search_packages` would need to be added as proper function tools. **My recommendation: keep the current architecture (deterministic dispatch off `requestType`) for now.** Adding search tools would (a) duplicate the dispatcher logic, (b) put provider rate-limit handling on the LLM, (c) inflate the prompt with a bigger tool catalog, all for marginal gain. Re-evaluate after Phase 9 metrics.
+If a future iteration wants the LLM to be in charge of *whether* to search (rather than always emitting a `requestType`), then `search_flights`, `search_hotels`, `search_packages` would need to be added as proper function tools. **My recommendation: keep the current architecture (deterministic dispatch off `requestType`) for now.** Adding search tools would (a) duplicate the dispatcher logic, (b) put provider rate-limit handling on the LLM, (c) inflate the prompt with a bigger tool catalog, all for marginal gain. Re-evaluate only after tool-loop telemetry shows a clear need.
 
 ### 5.2 `propose_destinations` — small, targeted tool worth considering
 

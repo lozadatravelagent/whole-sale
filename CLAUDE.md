@@ -26,16 +26,17 @@ Guidance for Claude Code on **WholeSale Connect AI** — multi-tenant travel CRM
 
 ## Chat Routing & Orchestration (Emilia 5.0)
 - **Router** (`features/chat/services/routeRequest.ts`): deterministic scoring, no LLM, <1ms. Routes: QUOTE / COLLECT / PLAN.
-- **Orchestrator** (`conversationOrchestrator.ts`): maps route → `planner_agent` | `ask_minimal` | `standard_itinerary` | `standard_search`.
-- **Itinerary Pipeline** (`itineraryPipeline.ts`): produces `CanonicalItineraryResult` — unified shape from both AI parser and planner-agent branches.
+- **Orchestrator** (`conversationOrchestrator.ts`): strict mode routing. Agency mode emits `standard_search` or `ask_minimal`; passenger mode emits `standard_itinerary` or `ask_minimal`; mismatched intent emits `mode_bridge`.
+- **Itinerary Pipeline** (`itineraryPipeline.ts`): produces `CanonicalItineraryResult` from the productive `standard_itinerary` branch before persistence/rendering.
 - **Discovery** (`discoveryService.ts`): curated suggestions, quality scoring, bucket categorization, telemetry.
 - **Editorial** (`editorial.ts`): pure `TripPlannerState → PlannerEditorialData`. Modes: multi_city_country, multi_city_region, multi_country, single_city, route_refinement.
 
-## Planner Agent
-- `supabase/functions/planner-agent/`. OpenAI gpt-5.1 in agent loop.
-- Tools: search_flights, search_hotels, generate_itinerary, resolve_city_code, search_packages, ask_user.
-- Guardrails: iteration limit, execution timeout, parallel tool cap, human confirmation for bookings/payments.
-- Default origin: IP-based city/country detection. Persona: Emilia, expert agent, value-first, Spanish neutral.
+## Context Engineering Agent Layer
+- The old `planner-agent` edge function and `planner_agent` routing branch were removed. Do not reintroduce them without a new ADR.
+- The active LLM entry point is `supabase/functions/ai-message-parser/`, which hosts the Context Engineering tool loop.
+- Model routing is centralized in `supabase/functions/_shared/llm/modelPolicy.ts`; `CTX_TOOL_LOOP_MODEL` can override the tool-loop model.
+- Emilia state lives in `agent_states` per conversation. See `docs/architecture/context-engineering-overview.md` and `docs/architecture/tool-catalog.md`.
+- Docs source of truth: read `docs/architecture/context-engineering-overview.md` for the live `/emilia/chat` runtime, `docs/architecture/context-engineering-spec.md` for the state contract, and `docs/architecture/tool-catalog.md` for current tool inventory + debt.
 
 ## Trip Planner & Places
 - `useTripPlanner.ts` is a thin composition root over specialized hooks (state, location, content, destinations, places, hotels, transport).
@@ -51,8 +52,8 @@ Guidance for Claude Code on **WholeSale Connect AI** — multi-tenant travel CRM
 - Vague input (region/country) expands to concrete cities with proportional day allocation.
 
 ## Invariants — Do Not Break
-- **`CATEGORY_POLICY`** in `usePlacesOrchestrator.ts` is the single source of truth for place-fetching behavior. All derived constants (`EAGER_FETCH_CATEGORIES`, `VIEWPORT_FETCH_CATEGORIES`, `CHAT_PUSH_CATEGORIES`, default active state) auto-compute from it. Never hardcode category lists elsewhere.
-- **`CanonicalItineraryResult`** is the only shape that exits the itinerary pipeline.
+- **`CATEGORY_POLICY`** in `usePlacesOrchestrator.ts` is the single source of truth for place-fetching behavior. All derived constants (`EAGER_FETCH_CATEGORIES`, `VIEWPORT_FETCH_CATEGORIES`, default active state) auto-compute from it. Never hardcode category lists elsewhere.
+- **`CanonicalItineraryResult`** is the only shape that exits the itinerary pipeline. The productive branch is `standard_itinerary`.
 - **Race condition guards** (version refs, AbortController, signature dedup) protect all async hooks. Never remove without understanding the concurrent flow.
 - **`api/` and `src/` are separate projects.** Zero shared code, independent deploys. Changes in one never impact the other.
 - **RLS is mandatory.** Filter every query by `agency_id` via helpers. Never bypass with service_role. Never expose one tenant's data to another.
@@ -68,8 +69,9 @@ Guidance for Claude Code on **WholeSale Connect AI** — multi-tenant travel CRM
 - Cloudflare Worker proxy: `/v1/*` → Railway, `/search` → Supabase.
 
 ## Context Engineering Layer
-- **Spec docs**: `docs/architecture/context-engineering-spec.md`, `tool-catalog-spec.md`
-- **Operational docs**: `docs/architecture/context-engineering-overview.md`, `memory-lifecycle.md`, `rollback-plan.md`
-- **Audit & DEBT**: `docs/architecture/tool-catalog.md`
+- **Runtime flow**: `docs/architecture/context-engineering-overview.md`
+- **State contract**: `docs/architecture/context-engineering-spec.md`
+- **Tool inventory & DEBT**: `docs/architecture/tool-catalog.md`
+- **Reference specs**: `docs/architecture/tool-catalog-spec.md`, `memory-lifecycle.md`, `rollback-plan.md`
 - **No feature flags**: the CE layer is the only path. Flags (`VITE_USE_CONTEXT_ENGINEERING`, `USE_FUNCTION_TOOLS`, `x-use-tool-loop`) and the legacy single-shot/state-less paths were removed in the cleanup migration (commits `63ac42f0..10e626ed`). Rollback is via `git revert <commit>` + redeploy.
 - **Audit endpoint**: `supabase/functions/agent-state-audit/` — debug what the model saw at a specific turn

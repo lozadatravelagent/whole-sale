@@ -1,12 +1,12 @@
 # Emilia B2C — Estado del desarrollo
 
-**Última actualización:** 25 Abril 2026 (post-PR #85)
+**Última actualización:** 3 Mayo 2026 (auditoría docs/código)
 
 ## Estado actual
 
 **🟢 PR 5 ejecutada.** Export de itinerario a PDF implementado: `renderItineraryHtml` (template puro, 16 tests), `canExportPdf` (predicado de visibilidad del botón), `generateItineraryPdf` (pipeline html2canvas + jsPDF + blob download). Botón "Descargar itinerario" en footer de `ItineraryPanel`, wired en ambos modos (companion + passenger). Sin Supabase Storage (bucket `documents` carece de tenant isolation — diferido). Sin i18n del template (labels hardcoded en español — diferido). Baseline: 308 passed / 11 skipped / 0 failed.
 
-**🟢 PR 4 ejecutada.** Purga post-unificación completa: `src/features/companion/` borrado (handoff stack + relocaciones a `auth/` y `chat/`), pages B2B legacy eliminadas (CRM, Marketplace, Reports, HotelbedsTest), `src/features/crm/` orphan borrado, `MainLayout` + `CompanionLayout` + skeletons eliminados, deprecated exports de `host.ts` limpiados, `planner_agent` dead-path removido del stack de routing + handler + pipeline + ChatInterface + edge function dir, migration de reverso de `leads` commiteada (pendiente push a prod), `CompanionChatPage` renombrada a `EmiliaChatPage`. Dual-write a `messages` en `persistPlannerState` ya había cerrado en PR #63 (1.1.g). Tests: 330 → 292 passed. Pendiente: `supabase functions delete planner-agent --linked` + `supabase db push --linked` (checklist D13) como pasos manuales post-merge.
+**🟢 PR 4 ejecutada.** Purga post-unificación completa: `src/features/companion/` borrado (handoff stack + relocaciones a `auth/` y `chat/`), pages B2B legacy eliminadas (CRM, Marketplace, Reports, HotelbedsTest), `src/features/crm/` orphan borrado, `MainLayout` + `CompanionLayout` + skeletons eliminados, deprecated exports de `host.ts` limpiados, `planner_agent` dead-path removido del stack de routing + handler + pipeline + ChatInterface + edge function dir, migration de reverso de `leads` commiteada (pendiente push a prod según D24), `CompanionChatPage` renombrada a `EmiliaChatPage`. Dual-write a `messages` en `persistPlannerState` ya había cerrado en PR #63 (1.1.g). Tests: 330 → 292 passed. `planner-agent` ya fue borrada de prod según D25 en `TECH_DEBT.md`.
 
 ---
 
@@ -29,7 +29,7 @@
 | Fase 1.2 | Internacionalización (i18n) para Emilia B2C — `LanguageSelector`, auto-detección de idioma del mensaje | #72 |
 | PR 2 | Unificación routing/layouts: dual-host colapsado, `UnifiedLayout`, `RequireAgent`, login unificado | `4ce93f67` |
 | PR 3 | Chat unification: ModeSwitch, strict mode routing, `mode_bridge`, rama B2B bajo UnifiedLayout | #75 (`d82ac244`) |
-| PR 4 | Purga post-unificación: `src/features/companion/`, pages B2B, `crm/` orphan, layouts muertos, deprecated host exports, planner_agent stack, rename CompanionChatPage → EmiliaChatPage, migration reverso leads | pendiente merge |
+| PR 4 | Purga post-unificación: `src/features/companion/`, pages B2B, `crm/` orphan, layouts muertos, deprecated host exports, planner_agent stack, rename CompanionChatPage → EmiliaChatPage, migration reverso leads | ejecutada |
 | PR 5 | Export de itinerario a PDF: template day-by-day, canExportPdf, escapeHtml (XSS guard), botón en ItineraryPanel (companion + passenger), on-demand blob download | feat/pr5-pdf-export-itinerary |
 
 ## Fixes y refinamientos aplicados durante testing
@@ -53,9 +53,6 @@
 ```bash
 # Ejecutar después de cada merge que toque edge functions
 supabase functions deploy consumer-signup --linked
-
-# Post-PR-4 (paso manual, una vez):
-# supabase functions delete planner-agent --linked
 ```
 
 ## Migrations aplicadas
@@ -64,7 +61,7 @@ supabase functions deploy consumer-signup --linked
 - `20260409000002_b2c_ownership.sql`
 - `20260411000001_b2c_handoff_leads.sql`
 - `20260411000002_consumer_conversations_rls.sql`
-- `20260418000001_revert_b2c_handoff.sql` (PR 4, pendiente push a prod — checklist D13)
+- `20260418000001_revert_b2c_handoff.sql` (PR 4, pendiente push a prod según D24 — checklist D13)
 
 ---
 
@@ -138,7 +135,7 @@ PRs planeadas:
 1. ADR + scaffolding (✅ mergeada en `dda48aac`).
 2. Unificación de routing y layouts (✅ mergeada a main en `4ce93f67`).
 3. Chat con switch + Nivel 2 de continuidad (✅ mergeada a main en `d82ac244`, PR #75).
-4. Purga post-unificación: companion/, pages B2B, crm/ orphan, layouts, host exports, planner_agent stack, migration reverso leads, rename EmiliaChatPage. Ejecutada; pendiente push a prod de la migration + `supabase functions delete planner-agent --linked`. **NO purga `standard_itinerary`** (cancelado por C7.1.e). 1.1.g (dual-write a `messages`) ya estaba cerrado en PR #63.
+4. Purga post-unificación: companion/, pages B2B, crm/ orphan, layouts, host exports, planner_agent stack, migration reverso leads, rename EmiliaChatPage. Ejecutada; queda pendiente confirmar/aplicar a prod la migration D24. `planner-agent` ya fue borrada de prod según D25. **NO purga `standard_itinerary`** (cancelado por C7.1.e). 1.1.g (dual-write a `messages`) ya estaba cerrado en PR #63.
 5. Export PDF de itinerario (✅ ejecutada — feat/pr5-pdf-export-itinerary). Top de main: `4d02249f` (PR #85).
 
 Las fases previas (0 → Paso 4 + Fase 1.2) quedan como baseline de ejecución. No se revierten; se refactorizan en las PRs siguientes.

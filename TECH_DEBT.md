@@ -537,3 +537,28 @@ la decisión de instalación quedó postergada.
 
 **No bloquea**: nada hoy. El estado actual está auditado. La decisión de instalación
 es independiente del cierre del planning.
+
+## D39 — Rate limiting server-side para usuarios anónimos / públicos 🟡 MEDIA
+
+**Origen**: Auditoría docs/código del 2026-05-03.
+
+`supabase/functions/_shared/rateLimit.ts` saltea explícitamente el rate limiting
+cuando no puede extraer `userId` y `tenantId` del request. El comentario actual
+indica que se confía en Cloudflare para tráfico anónimo. En frontend,
+`src/hooks/usePublicSearchLimit.ts` limita el modo público con `localStorage`
+(`MAX_SEARCHES = 3`), lo cual es útil para UX pero no es una protección real:
+se puede resetear limpiando storage, cambiando navegador o automatizando requests
+directos contra las Edge Functions públicas.
+
+**Impacto**: riesgo de abuso/costo en superficies públicas o anónimas, sobre todo
+si se expone Emilia/Planner sin login o si Cloudflare no está configurado con las
+reglas esperadas en todos los paths.
+
+**Fix recomendado**: agregar una cuota server-side para anonymous/public traffic,
+idealmente por IP normalizada + user-agent/fingerprint liviano + action, usando
+Redis/Upstash o una tabla Supabase dedicada con TTL/ventanas. Mantener Cloudflare
+como primera capa, pero no como único control. El hook `usePublicSearchLimit`
+debería quedar sólo como feedback de UI.
+
+**No bloquea**: usuarios autenticados. Sí bloquea considerar "seguro para modo
+público" sin una capa server-side.

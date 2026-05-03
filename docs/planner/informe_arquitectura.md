@@ -1,5 +1,13 @@
 # Informe de Arquitectura Técnica — Trip Planner
 
+> **Estado del documento (2026-05-03)**: histórico. Este informe describe una arquitectura anterior del Trip Planner. No es fuente de verdad para el runtime actual.
+>
+> Cambios relevantes posteriores:
+> - `supabase/functions/planner-agent/` y la branch `planner_agent` fueron removidos. El modo planner productivo usa `standard_itinerary`.
+> - El mapa actual usa Mapbox GL (`react-map-gl/mapbox`) y el sistema de lugares usa Foursquare/Wikipedia vía Edge Functions, no Google Maps/Google Places como capa principal.
+> - `useTripPlanner.ts` fue reducido a composition root sobre hooks especializados (`usePlannerState`, `usePlannerGeneration`, `usePlannerPlaces`, `usePlannerHotels`, `usePlannerTransport`, etc.).
+> - Para arquitectura vigente, leer `AGENTS.md`, `CLAUDE.md`, `docs/adr/ADR-002-chat-unification.md`, `docs/architecture/context-engineering-overview.md` y `docs/B2C_STATUS.md`.
+
 > **Autor**: Senior Solutions Architect (análisis automatizado)
 > **Fecha**: 2026-03-16
 > **Alcance**: Feature Trip Planner end-to-end (frontend + backend)

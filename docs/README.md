@@ -23,6 +23,11 @@ System design, performance optimizations, and technical infrastructure.
 - **[ASYNC_SEARCH_GUIDE.md](./architecture/ASYNC_SEARCH_GUIDE.md)** - Async search system implementation (50% faster searches)
 - **[RATE_LIMITING_SUMMARY.md](./architecture/RATE_LIMITING_SUMMARY.md)** - Rate limiting implementation and strategy
 - **[CLOUDFLARE_RATE_LIMITING_SETUP.md](./architecture/CLOUDFLARE_RATE_LIMITING_SETUP.md)** - Cloudflare rate limiting configuration
+- **[context-engineering-overview.md](./architecture/context-engineering-overview.md)** - Current Emilia state, memory, tool-loop, and lifecycle architecture
+- **[context-engineering-spec.md](./architecture/context-engineering-spec.md)** - Detailed Context Engineering contract and invariants
+- **[tool-catalog.md](./architecture/tool-catalog.md)** - Current model-invocable tools, edge-function survey, and tracked DEBT
+- **[memory-lifecycle.md](./architecture/memory-lifecycle.md)** - Memory persistence/consolidation behavior
+- **[rollback-plan.md](./architecture/rollback-plan.md)** - Context Engineering rollback plan
 
 **When to use**: Understanding system performance, implementing async patterns, configuring rate limits, troubleshooting bottlenecks.
 
@@ -57,6 +62,17 @@ Setup instructions, migration guides, and deployment documentation.
 - **[test-settings-backend.md](./implementation/test-settings-backend.md)** - Backend settings testing guide
 
 **When to use**: Setting up features, running migrations, understanding what has been implemented.
+
+---
+
+### 🧭 [ADRs & Current State](./adr/)
+Architecture decisions and active product-state references.
+
+- **[ADR-002-chat-unification.md](./adr/ADR-002-chat-unification.md)** - Accepted B2B/B2C chat unification decision, including the addendum that keeps `standard_itinerary` as the productive planner branch
+- **[B2C_STATUS.md](./B2C_STATUS.md)** - Current Emilia B2C implementation status and remaining product refinements
+- **[planner/informe_arquitectura.md](./planner/informe_arquitectura.md)** - Historical Trip Planner audit; useful for background, not authoritative for current runtime
+
+**When to use**: Understanding why the current `/emilia/chat` surface, strict mode routing, and Context Engineering layer exist.
 
 ---
 
@@ -115,6 +131,16 @@ docs/architecture/ASYNC_SEARCH_GUIDE.md
 docs/architecture/RATE_LIMITING_SUMMARY.md
 ```
 
+**Chat, Planner & Context Engineering**:
+```
+CLAUDE.md
+AGENTS.md
+docs/adr/ADR-002-chat-unification.md
+docs/architecture/context-engineering-overview.md
+docs/architecture/tool-catalog.md
+docs/B2C_STATUS.md
+```
+
 ---
 
 ## 📋 Root Directory Files
@@ -122,6 +148,7 @@ docs/architecture/RATE_LIMITING_SUMMARY.md
 Some documentation remains in the root for special purposes:
 
 - **[CLAUDE.md](../CLAUDE.md)** - Primary instructions for Claude Code (MUST STAY IN ROOT)
+- **[AGENTS.md](../AGENTS.md)** - Primary instructions for Codex/agentic coding workflows
 - **[README.md](../README.md)** - Project setup and overview (STANDARD LOCATION)
 
 ---
@@ -133,6 +160,7 @@ Some documentation remains in the root for special purposes:
 - **PDF Templates**: `guides/CUSTOM_PDF_TEMPLATES_GUIDE.md`
 - **Async Searches**: `architecture/ASYNC_SEARCH_GUIDE.md`
 - **API Integration**: `api/Softur - API GUIDE.md`
+- **Chat/Planner orchestration**: `adr/ADR-002-chat-unification.md`, `architecture/context-engineering-overview.md`
 
 ### By Task
 - **Implementing features**: Start with `implementation/IMPLEMENTATION_SUMMARY.md`
@@ -161,16 +189,17 @@ Some documentation remains in the root for special purposes:
 
 | Category | Files | Status |
 |----------|-------|--------|
-| API | 3 docs + 6 examples | ✅ Current |
-| Architecture | 3 | ✅ Current |
+| API | 3 docs + examples | Current plus historical vendor references |
+| Architecture | 8+ | Current for Context Engineering; older search/rate-limit docs may require prod verification |
 | Guides | 3 | ✅ Current |
 | Business Rules | 2 | ✅ Current |
-| Implementation | 4 | ✅ Current |
+| Implementation | 4 | Mixed: some historical implementation summaries |
+| ADRs / Current State | 2+ | Current entrypoints for Emilia chat/planner decisions |
 | SQL Scripts | 23 | 🔧 Reference |
 | Archive | 7 | 📦 Historical |
 
-**Last Updated**: 2025-10-23
-**Total Documentation Files**: 51 organized files (45 docs + 6 JSON examples)
+**Last Updated**: 2026-05-03
+**Note**: Source-of-truth operational instructions live in `AGENTS.md` and `CLAUDE.md`. Some older handoffs and implementation reports are intentionally preserved as history and should not be treated as runtime truth without checking current code.
 
 ---
 
