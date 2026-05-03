@@ -120,6 +120,13 @@ export interface PlacePhotosRequest {
 export interface PlaceRecommendationsRequest {
   destinations: string[];
   limitPerCity?: number;
+  /**
+   * Optional category filter. When provided, recommendations are fetched per
+   * requested category using semantic queries (e.g. "bars and nightlife in {city}").
+   * When omitted, falls back to the broad "top tourist attractions in {city}" query.
+   * The `hotel` category is accepted for completeness but typically routed elsewhere.
+   */
+  categories?: PlannerPlaceCategory[];
 }
 
 export interface PlaceHotelCandidatesRequest {

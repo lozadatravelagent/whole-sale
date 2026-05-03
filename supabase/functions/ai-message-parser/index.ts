@@ -13,6 +13,7 @@ import {
 } from "../_shared/countryCapitalResolver.ts";
 import { corsHeaders } from '../_shared/cors.ts';
 import {
+  extractDiscoveryCandidates,
   getRetrievalToolHandlers,
   getRetrievalToolSchemas,
   type ToolContext,
@@ -28,8 +29,11 @@ import {
   confirmPendingActionToolSchema,
   executeApplySlotValues,
   executeConfirmPendingAction,
+  executeProposePlannerAddition,
+  proposePlannerAdditionToolSchema,
   type ApplySlotValuesArgs,
   type ConfirmPendingActionArgs,
+  type ProposePlannerAdditionArgs,
 } from "../_shared/pendingActionTools.ts";
 import type {
   EmiliaState,
@@ -324,6 +328,7 @@ serve(async (req) => {
         let aiResponse = '';
         let toolLoopTrace: Array<{ tool: string; latencyMs: number; error?: string }> = [];
         let toolLoopIterations = 0;
+        let placeDiscoveryResult: unknown = null;
         // Resolution of any pending_action consumed during the loop. Returned
         // to the client in `meta.pendingActionResolution` so the client can
         // mutate domain state (planner, quote, etc.) without re-parsing.
@@ -413,12 +418,17 @@ serve(async (req) => {
                 ref: pa.ref,
                 applied: { ...(pa.applied ?? {}) },
                 complete: Boolean(pa.complete),
+                ...(pa.payload ? { payload: { ...pa.payload } } : {}),
               };
             }
             return result;
           };
 
           // confirm_pending_action handler — same shape, different kind guard.
+          // The pending_action's `payload` (set by the tool that asked the
+          // question, e.g. propose_planner_addition stashing resolved_places)
+          // is forwarded so the client dispatcher can mutate domain state
+          // without re-resolving from a stale state.
           const confirmPendingActionHandler = async (args: ConfirmPendingActionArgs) => {
             if (!stateForTools) {
               return { ok: false, reason: 'no_pending_action' as const };
@@ -433,7 +443,53 @@ serve(async (req) => {
                 ref: pa.ref,
                 applied: { ...(pa.applied ?? {}) },
                 complete: Boolean(pa.complete),
+                ...(pa.payload ? { payload: { ...pa.payload } } : {}),
               };
+            }
+            return result;
+          };
+
+          // propose_planner_addition handler — sets a kind=awaiting_user_confirmation
+          // pending_action with the resolved_places payload. Does NOT set
+          // pendingActionResolution: the model still has to call confirm_pending_action
+          // on the user's reply. Persistence flushes the pending_action so the
+          // next turn renders it for the model.
+          let pendingActionWritten = false;
+          const proposePlannerAdditionHandler = async (args: ProposePlannerAdditionArgs) => {
+            if (!stateForTools) {
+              return { ok: false, error: 'no_candidates_to_resolve' as const };
+            }
+            const { nextState, result } = executeProposePlannerAddition(stateForTools, args);
+            if (result.ok) {
+              stateForTools = nextState;
+              pendingActionWritten = true;
+            }
+            return result;
+          };
+
+          // discover_places wrapper — runs the underlying retrieval handler,
+          // then OVERWRITES `stateForTools.discovery_candidates` with the
+          // top-N candidates from the result so the next turn can resolve
+          // referential phrases like "agregá el segundo del listado" → a
+          // concrete placeId. Phase-3 (`propose_planner_addition`) reads
+          // this slot. Latest call wins; never accumulated.
+          let discoveryCandidatesWritten = 0;
+          const baseDiscoverPlacesHandler = getRetrievalToolHandlers().discover_places;
+          const discoverPlacesHandlerWithPersist = async (args: unknown) => {
+            const result = await baseDiscoverPlacesHandler(args, ctx);
+            if (stateForTools) {
+              const candidates = extractDiscoveryCandidates(result);
+              if (candidates && candidates.length > 0) {
+                stateForTools.discovery_candidates = candidates;
+                discoveryCandidatesWritten = candidates.length;
+                emitTelemetry({
+                  category: 'CTX-DISCOVERY-PERSIST',
+                  conversation_id: ctx.conversationId,
+                  agency_id: ctx.agencyId,
+                  count: candidates.length,
+                  categories: Array.from(new Set(candidates.map((c) => c.category))),
+                });
+              }
             }
             return result;
           };
@@ -453,14 +509,22 @@ serve(async (req) => {
                 saveMemoryNoteToolSchema,
                 applySlotValuesToolSchema,
                 confirmPendingActionToolSchema,
+                proposePlannerAdditionToolSchema,
               ],
               toolHandlers: {
                 ...getRetrievalToolHandlers(),
+                // Override discover_places with the persisting wrapper so the
+                // candidates flow into stateForTools alongside memory writes
+                // and pending_action mutations.
+                discover_places: discoverPlacesHandlerWithPersist,
                 save_memory_note: saveMemoryNoteHandler,
                 apply_slot_values: applySlotValuesHandler as unknown as (
                   args: unknown,
                 ) => Promise<unknown>,
                 confirm_pending_action: confirmPendingActionHandler as unknown as (
+                  args: unknown,
+                ) => Promise<unknown>,
+                propose_planner_addition: proposePlannerAdditionHandler as unknown as (
                   args: unknown,
                 ) => Promise<unknown>,
               },
@@ -506,8 +570,10 @@ serve(async (req) => {
             // don't want to clobber an unloaded row with a half-state).
             const hasMemoryWrites = acceptedNotes.length > 0;
             const hasPendingMutation = pendingActionResolution !== null;
+            const hasDiscoveryWrite = discoveryCandidatesWritten > 0;
+            const hasPendingActionWrite = pendingActionWritten;
             if (
-              (hasMemoryWrites || hasPendingMutation) &&
+              (hasMemoryWrites || hasPendingMutation || hasDiscoveryWrite || hasPendingActionWrite) &&
               ctx.conversationId &&
               ctx.agencyId &&
               !stateLoadFailed
@@ -545,6 +611,7 @@ serve(async (req) => {
                       conversationId: ctx.conversationId,
                       memoryNotes: acceptedNotes.length,
                       pendingResolved: hasPendingMutation,
+                      discoveryCandidates: discoveryCandidatesWritten,
                     });
                   }
                 }
@@ -554,6 +621,12 @@ serve(async (req) => {
             }
 
             aiResponse = loopResult.finalMessage.content?.trim() ?? '';
+            const lastPlaceDiscoveryCall = [...loopResult.toolCallsTrace]
+              .reverse()
+              .find((t) => t.tool === 'discover_places' && !t.error);
+            if (lastPlaceDiscoveryCall?.result) {
+              placeDiscoveryResult = lastPlaceDiscoveryCall.result;
+            }
             toolLoopTrace = loopResult.toolCallsTrace.map((t) => ({
               tool: t.tool,
               latencyMs: t.latencyMs,
@@ -791,6 +864,7 @@ serve(async (req) => {
             // surface the resolution to the client so it can mutate domain
             // state (planner, quote, etc.) without re-parsing.
             pendingActionResolution,
+            placeDiscovery: placeDiscoveryResult,
           }
         }), {
           headers: {

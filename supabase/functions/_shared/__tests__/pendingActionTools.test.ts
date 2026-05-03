@@ -81,11 +81,12 @@ describe('schemas', () => {
     ]);
   });
 
-  it('catalog returns both schemas', () => {
+  it('catalog returns all schemas', () => {
     const all = getPendingActionToolSchemas();
     expect(all.map((s) => s.function.name).sort()).toEqual([
       'apply_slot_values',
       'confirm_pending_action',
+      'propose_planner_addition',
     ]);
   });
 });

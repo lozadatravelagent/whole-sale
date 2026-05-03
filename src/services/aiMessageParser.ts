@@ -191,6 +191,30 @@ export interface ParsedTravelRequest {
         currentPlanSummary?: string;
         editIntent?: PlannerEditIntent;
     };
+    placeDiscoveryResult?: {
+        ok?: boolean;
+        intent?: string;
+        destination?: {
+            city?: string;
+            country?: string | null;
+            lat?: number | null;
+            lng?: number | null;
+        };
+        categories?: string[];
+        places?: Array<{
+            placeId?: string;
+            name: string;
+            category?: string;
+            lat?: number | null;
+            lng?: number | null;
+            rating?: number | null;
+            userRatingsTotal?: number | null;
+            photoUrl?: string | null;
+            description?: string | null;
+            source?: string | null;
+        }>;
+        meta?: Record<string, unknown>;
+    } | null;
     confidence: number; // 0-1 score of parsing confidence
     originalMessage: string;
     // Fields for missing_info_request
@@ -213,6 +237,13 @@ export interface ParsedTravelRequest {
         ref?: { type: 'plan' | 'quote' | 'lead'; id: string };
         applied: Record<string, unknown>;
         complete: boolean;
+        /**
+         * Domain payload set upstream by the tool that issued the question
+         * (e.g. propose_planner_addition stashes resolved_places + segment_id
+         * here). Forwarded by the server when the model resolves the action.
+         * The dispatcher reads this to mutate domain state without re-resolving.
+         */
+        payload?: Record<string, unknown>;
     } | null;
 }
 
@@ -1954,6 +1985,16 @@ export async function parseMessageWithAI(
         if (pendingActionResolution) {
             (mergedResult as ParsedTravelRequest).pendingActionResolution = pendingActionResolution;
             console.log('🎯 [PENDING-ACTION] Resolution from tool loop:', pendingActionResolution);
+        }
+
+        const placeDiscoveryResult =
+            (response.data?.meta?.placeDiscovery ?? null) as ParsedTravelRequest['placeDiscoveryResult'];
+        if (placeDiscoveryResult) {
+            (mergedResult as ParsedTravelRequest).placeDiscoveryResult = placeDiscoveryResult;
+            console.log('🗺️ [PLACE-DISCOVERY] Result from tool loop:', {
+                places: placeDiscoveryResult.places?.length ?? 0,
+                intent: placeDiscoveryResult.intent,
+            });
         }
 
         console.log('🌍 [GEO-TRACE-2] After merge/post-processing destinations:', mergedResult.itinerary?.destinations);

@@ -195,6 +195,7 @@ export function setPendingAction(
     issuedAt: action.issuedAt || new Date().toISOString(),
     applied: action.applied ? { ...action.applied } : undefined,
     complete: action.complete,
+    payload: action.payload ? { ...action.payload } : undefined,
   };
   const next = cloneEmiliaState(state);
   next.pending_action = safe;

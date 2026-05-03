@@ -28,6 +28,14 @@ export const MAX_GLOBAL_NOTES = 6;
 /** Top-k cap for session memory notes injected when re-inject flag is set. */
 export const MAX_SESSION_NOTES = 8;
 
+/**
+ * Top-k cap for discovery candidates persisted on every `discover_places`
+ * tool call. Latest call wins (the slot is OVERWRITTEN, not accumulated).
+ * Phase-3 tools read this to resolve referential phrases like "el segundo
+ * del listado" → concrete placeId.
+ */
+export const MAX_DISCOVERY_CANDIDATES = 10;
+
 // ---------------------------------------------------------------------------
 // Profile
 // ---------------------------------------------------------------------------
@@ -106,6 +114,36 @@ export interface ContextRef {
   lastUpdated: string;
 }
 
+/**
+ * A place candidate the agent surfaced to the user via `discover_places`.
+ * Persisted in `EmiliaState.discovery_candidates` (top-N, latest call wins)
+ * so the model can resolve referential phrases like "agregá el segundo del
+ * listado" → concrete `placeId` in subsequent turns.
+ *
+ * Lifecycle:
+ *  - Written by the `discover_places` handler on every successful call (the
+ *    full slot is OVERWRITTEN; we never accumulate across calls).
+ *  - Read by Phase-3 tools (e.g. `propose_planner_addition`) and by the
+ *    inject layer to render a compact reference list into the system prompt.
+ *  - NOT cleared by `apply_slot_values` / `confirm_pending_action`. Cleared
+ *    only on the next `discover_places` call.
+ *
+ * KEEP IN SYNC with `supabase/functions/_shared/emiliaStateTypes.ts`.
+ */
+export interface DiscoveryCandidateRef {
+  /** Provider place id (e.g. Foursquare fsq_id). Stable enough to round-trip. */
+  placeId: string;
+  name: string;
+  lat: number;
+  lng: number;
+  /** PlannerPlaceCategory string (kept loose to avoid a cross-module import). */
+  category: string;
+  rating?: number;
+  /** Foursquare formatted address; useful for disambiguation in the prompt. */
+  address?: string;
+  photoUrl?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Pending action (turn-state)
 // ---------------------------------------------------------------------------
@@ -144,6 +182,23 @@ export interface PendingAction {
   applied?: Record<string, unknown>;
   /** Whether `applied` covers every required field. Set by the tool handler. */
   complete?: boolean;
+  /**
+   * Optional domain payload set at the same time as the pending_action by the
+   * tool that ASKED the question. Distinct from `applied` (which carries the
+   * USER'S reply via apply_slot_values / confirm_pending_action).
+   *
+   * Use case: `propose_planner_addition` resolves placeIds against
+   * `state.discovery_candidates` upfront and stashes the resolved places +
+   * target slot in `payload`. When the user confirms, the dispatcher reads
+   * the payload to mutate the planner state. Without this slot the dispatcher
+   * would have to re-resolve placeIds from a stale state, or the model would
+   * have to re-emit the payload on confirmation.
+   *
+   * Optional so existing pending_actions persisted under schema_version=2
+   * load cleanly without a migration. KEEP IN SYNC with
+   * `supabase/functions/_shared/emiliaStateTypes.ts`.
+   */
+  payload?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +254,22 @@ export interface EmiliaState {
    * Highest precedence after user's latest message — overrides profile defaults.
    */
   active_refs: ContextRef[];
+
+  /**
+   * Top-N place candidates surfaced by the most recent `discover_places` call.
+   * Lives at the top level (parallel to `active_refs`, NOT nested under it)
+   * because `active_refs` is a `ContextRef[]` array; making it an object would
+   * be a breaking refactor across the renderer, persistence and dispatcher.
+   * Same conceptual lifecycle as `active_refs`: per-conversation, transient,
+   * never cross-conversation.
+   *
+   * OVERWRITE semantics: every successful `discover_places` call replaces this
+   * slot in full; never accumulated. TTL is implicit (until the next call).
+   *
+   * Optional so that pre-existing persisted rows (schema_version=2) load
+   * cleanly without a migration. Absent ≡ no candidates yet.
+   */
+  discovery_candidates?: DiscoveryCandidateRef[];
 
   /**
    * Current chat surface mode. Persists across mode changes within a conversation.

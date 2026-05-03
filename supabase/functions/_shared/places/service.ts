@@ -401,6 +401,68 @@ async function resolveVenueForLookup(input: PlaceDetailsRequest | PlaceSummaryRe
     : first;
 }
 
+// ── City coordinate geocoding (isolate-local cache) ─────────────────────────
+//
+// Resolves a (city, country) pair to lat/lng via Foursquare's text search.
+// Cached at the module level so repeated calls within the same isolate don't
+// re-hit the provider. Cache key is the normalized (city, country) tuple.
+// Cache size is unbounded by design — it's tiny (one entry per unique city
+// queried during the isolate's lifetime, typically <100) and the isolate
+// itself recycles, providing implicit TTL.
+//
+// Returns null when geocoding fails so callers can decide on a fallback.
+const cityCoordinateCache = new Map<string, { lat: number; lng: number } | null>();
+
+function cityCoordinateCacheKey(city: string, country?: string | null): string {
+  return `${normalizeText(city)}::${normalizeText(country || '')}`;
+}
+
+export async function resolveCityCoordinates(
+  city: string,
+  country?: string | null,
+  logger?: LoggerLike,
+): Promise<{ lat: number; lng: number } | null> {
+  const trimmedCity = (city || '').trim();
+  if (!trimmedCity) return null;
+
+  const cacheKey = cityCoordinateCacheKey(trimmedCity, country);
+  if (cityCoordinateCache.has(cacheKey)) {
+    return cityCoordinateCache.get(cacheKey) ?? null;
+  }
+
+  const near = country?.trim()
+    ? `${trimmedCity}, ${country.trim()}`
+    : trimmedCity;
+
+  try {
+    const venues = await searchText({
+      query: trimmedCity,
+      near,
+      limit: 1,
+    });
+    const first = venues[0];
+    const lat = first?.location?.lat;
+    const lng = first?.location?.lng;
+    if (typeof lat === 'number' && typeof lng === 'number'
+      && Number.isFinite(lat) && Number.isFinite(lng)) {
+      const coords = { lat, lng };
+      cityCoordinateCache.set(cacheKey, coords);
+      return coords;
+    }
+    cityCoordinateCache.set(cacheKey, null);
+    return null;
+  } catch (err) {
+    // Don't poison the cache on transient errors (rate limits, network):
+    // those should be retried on the next invocation.
+    logger?.warn('places.geocode', 'City coordinate resolution failed', {
+      city: trimmedCity,
+      country: country ?? null,
+      reason: err instanceof Error ? err.message : 'unknown',
+    });
+    return null;
+  }
+}
+
 export async function fetchViewportPlaces(
   input: PlacesViewportRequest,
   logger: LoggerLike,
@@ -708,6 +770,24 @@ export async function fetchPlacePhotos(
   return result;
 }
 
+/**
+ * Semantic query templates per category for the "broad" recommendations path
+ * (no coordinates available). Used when a caller passes `categories` to bias
+ * the textual search toward specific intents (e.g. "bars and nightlife in Madrid").
+ */
+const RECOMMENDATION_QUERY_BY_CATEGORY: Record<PlannerPlaceCategory, (city: string) => string> = {
+  restaurant: (city) => `restaurants in ${city}`,
+  cafe: (city) => `cafes in ${city}`,
+  museum: (city) => `museums in ${city}`,
+  activity: (city) => `things to do in ${city}`,
+  sights: (city) => `sights in ${city}`,
+  nightlife: (city) => `bars and nightlife in ${city}`,
+  parks: (city) => `parks in ${city}`,
+  shopping: (city) => `shopping in ${city}`,
+  culture: (city) => `cultural attractions in ${city}`,
+  hotel: (city) => `hotels in ${city}`,
+};
+
 export async function fetchPlaceRecommendations(
   input: PlaceRecommendationsRequest,
   logger: LoggerLike,
@@ -716,6 +796,16 @@ export async function fetchPlaceRecommendations(
 
   const destinations = uniq(input.destinations.map((city) => city.trim()).filter(Boolean)).slice(0, 8);
   const limitPerCity = sanitizeLimit(input.limitPerCity, 4, 6);
+  // Filter to known categories, dedup, cap at 8 (max categories defined in PlannerPlaceCategory).
+  // Empty/undefined → empty array → falls back to broad "top tourist attractions" path below.
+  const requestedCategories = input.categories?.length
+    ? uniq(
+        input.categories.filter((category): category is PlannerPlaceCategory =>
+          category in RECOMMENDATION_QUERY_BY_CATEGORY,
+        ),
+      ).slice(0, 8)
+    : [];
+
   const response: PlaceRecommendationsResponse = { destinations: [] };
   let aggregateCacheStatus: CacheState = 'hit';
 
@@ -723,24 +813,57 @@ export async function fetchPlaceRecommendations(
     const cacheParams = {
       city: normalizeText(city),
       limitPerCity,
+      // Sorted for stable cache key. Empty array means broad path.
+      categories: [...requestedCategories].sort(),
     };
 
     const result = await withCache<PlannerPlaceCandidate[]>('placeRecommendations', cacheParams, async () => {
-      let venues = await searchText({
-        query: `top tourist attractions in ${city}`,
-        near: city,
-        limit: limitPerCity,
-      });
+      let candidates: PlannerPlaceCandidate[];
 
-      if (venues.length === 0) {
-        venues = await searchText({
-          query: `${city} attractions`,
+      if (requestedCategories.length > 0) {
+        // Per-category semantic search. Each call is independent; <=8 categories
+        // so plain Promise.all is fine (no concurrency limiter needed).
+        const perCategory = await Promise.all(requestedCategories.map(async (category) => {
+          const venues = await searchText({
+            query: RECOMMENDATION_QUERY_BY_CATEGORY[category](city),
+            near: city,
+            limit: limitPerCity,
+          });
+          // Force the requested category on the resulting candidates so downstream
+          // grouping/dedup honors the LLM's intent (e.g. nightlife query → nightlife).
+          return venues.map((venue) => mapVenueToCandidate(venue, category));
+        }));
+
+        candidates = dedupeCandidates(perCategory.flat());
+
+        // Fallback if every per-category query came up empty.
+        if (candidates.length === 0) {
+          const fallback = await searchText({
+            query: `${city} attractions`,
+            near: city,
+            limit: limitPerCity,
+          });
+          candidates = dedupeCandidates(fallback.map((venue) => mapVenueToCandidate(venue)));
+        }
+      } else {
+        // Broad path: original behavior preserved for callers that don't pass categories.
+        let venues = await searchText({
+          query: `top tourist attractions in ${city}`,
           near: city,
           limit: limitPerCity,
         });
+
+        if (venues.length === 0) {
+          venues = await searchText({
+            query: `${city} attractions`,
+            near: city,
+            limit: limitPerCity,
+          });
+        }
+
+        candidates = dedupeCandidates(venues.map((venue) => mapVenueToCandidate(venue))).slice(0, limitPerCity);
       }
 
-      const candidates = dedupeCandidates(venues.map((venue) => mapVenueToCandidate(venue))).slice(0, limitPerCity);
       await hydrateCandidatesWithWikipedia(candidates, city);
       return candidates;
     });
@@ -757,6 +880,7 @@ export async function fetchPlaceRecommendations(
   logger.info('places.recommendations', 'Fetched place recommendations', {
     destinations,
     limitPerCity,
+    categories: requestedCategories,
     cache_status: aggregateCacheStatus,
   });
 

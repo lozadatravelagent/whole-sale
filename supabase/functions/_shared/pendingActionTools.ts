@@ -19,6 +19,7 @@
 // =============================================================================
 
 import {
+  type DiscoveryCandidateRef,
   type EmiliaState,
   type PendingAction,
 } from './emiliaStateTypes.ts';
@@ -283,11 +284,237 @@ export function executeConfirmPendingAction(
 }
 
 // -----------------------------------------------------------------------------
+// propose_planner_addition — set a confirmation pending_action that, when
+// confirmed, adds discovery candidates to the trip planner.
+// -----------------------------------------------------------------------------
+//
+// Flow:
+//   1. The model previously called `discover_places`; the result top-N was
+//      persisted into `state.discovery_candidates` by the index.ts wrapper.
+//   2. The user references one or more of those places ("agregá el segundo
+//      al día 2"). The model resolves placeIds against discovery_candidates
+//      and calls `propose_planner_addition({place_ids, segment_id?, day_index?, note?})`.
+//   3. This tool resolves placeIds → DiscoveryCandidateRef[], stashes the
+//      resolved payload on `pending_action.payload`, sets kind=
+//      'awaiting_user_confirmation' for='add_places_to_itinerary'.
+//   4. Persistence flushes the pending_action; the next turn renders it into
+//      <pending_action> so the model knows the user's reply most likely is
+//      a yes/no. The model then calls `confirm_pending_action`.
+//   5. The server includes `payload` in the resolution envelope; the client
+//      dispatcher reads `resolved_places, segment_id, day_index, note` and
+//      mutates the planner via `addPlaceToPlanner` (or first-available slot).
+//
+// Domain payload lives in `pending_action.payload`, NOT in `applied`, because
+// `applied` is reserved for the user's reply (overwritten by confirm_pending_action).
+// -----------------------------------------------------------------------------
+
+export interface ProposePlannerAdditionArgs {
+  /** PlaceIds previously surfaced by `discover_places`. Must be non-empty. */
+  place_ids: string[];
+  /** Optional trip segment / day to add to. Asked of the user if omitted. */
+  segment_id: string | null;
+  /** Optional 0-based day index within the segment. Asked of the user if omitted. */
+  day_index: number | null;
+  /** Optional free-form note attached to the proposal. */
+  note: string | null;
+}
+
+export interface ProposePlannerAdditionResult {
+  ok: boolean;
+  pending_action_set?: boolean;
+  places_count?: number;
+  segment_id?: string | null;
+  day_index?: number | null;
+  /** Resolution context for the model (echoed names so it can confirm in NL). */
+  resolved_names?: string[];
+  /** When ok=false, why the call was rejected. */
+  error?:
+    | 'bad_arguments'
+    | 'no_candidates_to_resolve'
+    | 'no_matching_place_ids';
+  detail?: string;
+}
+
+export const proposePlannerAdditionToolSchema: OpenAIToolSchema = {
+  type: 'function',
+  function: {
+    name: 'propose_planner_addition',
+    description:
+      'Propose adding one or more places (from a previous discover_places call) to the trip planner. ' +
+      'Sets a pending_action of kind="awaiting_user_confirmation" so the user can confirm before mutation. ' +
+      'Resolves place_ids against state.discovery_candidates (must be present in MEMORY STATE). ' +
+      'Use when: the user references places from the most recent discovery listing — "agregá el primero al día 2", "sumá esos dos al itinerario", "el restaurante japonés a la noche del día 1". ' +
+      "Don't use for: hotels (use the hotel search flow), flights, generic conceptual additions without a concrete placeId, or proposing a place the user hasn't seen yet (call discover_places first).",
+    strict: true,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        place_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'PlaceIds from the most recent discover_places result. Must match entries in state.discovery_candidates ' +
+            "(rendered in MEMORY STATE under <discovery_candidates>). Resolve by position when the user says "
+            + '"el segundo del listado" — index 0-based against the order shown.',
+        },
+        segment_id: {
+          type: ['string', 'null'],
+          description:
+            'Optional. The trip segment id to add the places to. Resolve from active planner segments when the user says "al primer tramo" or names the city. Null when unknown — the user will be asked.',
+        },
+        day_index: {
+          type: ['integer', 'null'],
+          description:
+            'Optional. 0-based day index within the segment. Null when not specified — the dispatcher will fall back to the first available slot in the segment.',
+        },
+        note: {
+          type: ['string', 'null'],
+          description:
+            'Optional. Free-form note to attach to the proposal (e.g. "great for dinner", "if there is time"). Null when none.',
+        },
+      },
+      required: ['place_ids', 'segment_id', 'day_index', 'note'],
+    },
+  },
+};
+
+/**
+ * Pure: returns next state + result envelope. Caller is responsible for
+ * persisting the next state (batch-save at end of tool loop). Does not
+ * mutate `state`.
+ *
+ * Validation:
+ *   - place_ids must be a non-empty array of strings.
+ *   - state.discovery_candidates must be present and non-empty.
+ *   - At least one place_id must match a candidate; unmatched ids are dropped.
+ *   - If zero matches, returns ok=false with `no_matching_place_ids` so the
+ *     model can re-discoverer rather than silently producing an empty proposal.
+ *
+ * On success the new pending_action OVERWRITES any prior pending_action.
+ * Per the single-slot invariant the assistant only ever waits on one prompt
+ * at a time; previous prompts (if any) are dropped here intentionally.
+ */
+export function executeProposePlannerAddition(
+  state: EmiliaState,
+  args: ProposePlannerAdditionArgs,
+): { nextState: EmiliaState; result: ProposePlannerAdditionResult } {
+  const placeIds = Array.isArray(args?.place_ids)
+    ? args.place_ids.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : [];
+  if (placeIds.length === 0) {
+    return {
+      nextState: state,
+      result: {
+        ok: false,
+        error: 'bad_arguments',
+        detail: 'place_ids must be a non-empty array of strings',
+      },
+    };
+  }
+
+  const candidates = state.discovery_candidates ?? [];
+  if (candidates.length === 0) {
+    return {
+      nextState: state,
+      result: {
+        ok: false,
+        error: 'no_candidates_to_resolve',
+        detail:
+          'state.discovery_candidates is empty; call discover_places before propose_planner_addition.',
+      },
+    };
+  }
+
+  // Build a lookup once. PlaceIds are case-sensitive provider ids; do not lowercase.
+  const byId = new Map<string, DiscoveryCandidateRef>();
+  for (const c of candidates) {
+    if (c.placeId) byId.set(c.placeId, c);
+  }
+
+  // Preserve the order the model passed (so "el primero, después el tercero"
+  // round-trips in the same order) and dedupe.
+  const seen = new Set<string>();
+  const resolvedPlaces: DiscoveryCandidateRef[] = [];
+  for (const id of placeIds) {
+    if (seen.has(id)) continue;
+    const hit = byId.get(id);
+    if (!hit) continue;
+    seen.add(id);
+    resolvedPlaces.push(hit);
+  }
+
+  if (resolvedPlaces.length === 0) {
+    return {
+      nextState: state,
+      result: {
+        ok: false,
+        error: 'no_matching_place_ids',
+        detail:
+          'None of the supplied place_ids match state.discovery_candidates. Re-call discover_places or use ids from the latest result.',
+      },
+    };
+  }
+
+  const segmentId = typeof args.segment_id === 'string' && args.segment_id.trim()
+    ? args.segment_id.trim()
+    : null;
+  const dayIndex = Number.isInteger(args.day_index as number) && (args.day_index as number) >= 0
+    ? (args.day_index as number)
+    : null;
+  const note = typeof args.note === 'string' && args.note.trim()
+    ? args.note.trim().slice(0, 240)
+    : null;
+
+  const promptCount = resolvedPlaces.length === 1
+    ? `1 lugar (${resolvedPlaces[0].name})`
+    : `${resolvedPlaces.length} lugares`;
+  const target = dayIndex !== null
+    ? `al día ${dayIndex + 1}${segmentId ? ` del tramo ${segmentId}` : ''}`
+    : segmentId
+      ? `al tramo ${segmentId}`
+      : 'al itinerario';
+  const promptText = `¿Confirmás agregar ${promptCount} ${target}?`;
+
+  const nextPending: PendingAction = {
+    kind: 'awaiting_user_confirmation',
+    for: 'add_places_to_itinerary',
+    prompt: promptText.slice(0, 240),
+    issuedAt: new Date().toISOString(),
+    payload: {
+      resolved_places: resolvedPlaces,
+      segment_id: segmentId,
+      day_index: dayIndex,
+      note,
+    },
+  };
+
+  const nextState: EmiliaState = JSON.parse(JSON.stringify(state)) as EmiliaState;
+  nextState.pending_action = nextPending;
+
+  return {
+    nextState,
+    result: {
+      ok: true,
+      pending_action_set: true,
+      places_count: resolvedPlaces.length,
+      segment_id: segmentId,
+      day_index: dayIndex,
+      resolved_names: resolvedPlaces.map((p) => p.name),
+    },
+  };
+}
+
+// -----------------------------------------------------------------------------
 // Catalog helpers
 // -----------------------------------------------------------------------------
 
 export function getPendingActionToolSchemas(): OpenAIToolSchema[] {
-  return [applySlotValuesToolSchema, confirmPendingActionToolSchema];
+  return [
+    applySlotValuesToolSchema,
+    confirmPendingActionToolSchema,
+    proposePlannerAdditionToolSchema,
+  ];
 }
 
 // Exported for tests.

@@ -12,7 +12,7 @@ import { routeRequest, buildSearchSummary, getInferredFieldDetails } from '../se
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
 import { buildConversationalMissingInfoMessage, buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTurn, resolveTravelContextBridge } from '../services/conversationOrchestrator';
 import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
-import { buildDiscoveryResponsePayload } from '../services/discoveryService';
+import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { PlannerEditContext, PreloadedConversationKnowledge } from '../types/knowledge';
@@ -1865,18 +1865,32 @@ const useMessageHandler = (
             }
           } else if (conversationTurn.responseMode === 'show_places') {
             setTypingMessage('Buscando los lugares más representativos...', conversationIdForThisSearch);
-            const discoveryResult = await buildDiscoveryResponsePayload({
-              message: parsedRequest.originalMessage || currentMessage,
-              parsedRequest,
-              plannerState: plannerState || null,
-              conversationHistory: messages,
+            const discoveryMessage = parsedRequest.originalMessage || currentMessage;
+            // Discovery is now sourced exclusively from the LLM `discover_places`
+            // tool result (`placeDiscoveryResult`). The orchestrator only emits
+            // `show_places` when the tool returned ok=true, so this build should
+            // succeed; the null branch is a defensive fallback for malformed
+            // tool payloads (no city, no places, or no usable coordinates).
+            const discoveryResult = buildDiscoveryResponseFromToolResult({
+              message: discoveryMessage,
+              placeDiscoveryResult: parsedRequest.placeDiscoveryResult,
             });
-            assistantResponse = discoveryResult.text;
-            structuredData = {
-              messageType: 'discovery_results',
-              discoveryContext: discoveryResult.discoveryContext,
-              recommendedPlaces: discoveryResult.recommendedPlaces,
-            };
+            if (discoveryResult) {
+              assistantResponse = discoveryResult.text;
+              structuredData = {
+                messageType: 'discovery_results',
+                discoveryContext: discoveryResult.discoveryContext,
+                recommendedPlaces: discoveryResult.recommendedPlaces,
+              };
+            } else {
+              console.warn('🗺️ [DISCOVERY] show_places without usable tool result — falling back to empty discovery payload');
+              assistantResponse = 'No pude armar la lista de lugares ahora mismo. Decime qué ciudad querés explorar y vuelvo a intentarlo.';
+              structuredData = {
+                messageType: 'discovery_results',
+                discoveryContext: null,
+                recommendedPlaces: [],
+              };
+            }
           } else {
             setPlannerDraftPhase?.('draft_generating');
             setTypingMessage('Generando tu itinerario de viaje...', conversationIdForThisSearch);

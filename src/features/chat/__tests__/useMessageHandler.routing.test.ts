@@ -104,7 +104,7 @@ vi.mock('../services/itineraryPipeline', () => ({
 }));
 
 vi.mock('../services/discoveryService', () => ({
-  buildDiscoveryResponsePayload: vi.fn().mockResolvedValue({
+  buildDiscoveryResponseFromToolResult: vi.fn().mockReturnValue({
     text: 'discovery results',
     discoveryContext: {},
     recommendedPlaces: [],

@@ -85,7 +85,6 @@ function normalizeText(value?: string | null): string {
     .trim();
 }
 
-const DISCOVERY_PATTERN = /\b(cosas\s+para\s+hacer|que\s+ver|qué\s+ver|que\s+hacer|qué\s+hacer|imperdibles?|museos?|barrios?|restaurantes?|actividades?)\b/i;
 const SPECIALIZED_CULTURE_PATTERN = /\b(museos?|arte|galerias?|galerías|arquitectura|historia)\b/i;
 const QUOTE_CONTEXT_REFERENCE_PATTERN =
   /\b(este|esta|ese|esa|el|la)\s+(viaje|plan|itinerario|recorrido|propuesta|cotizacion|cotización|busqueda|búsqueda|resultado|opcion|opción)\b|\b(esto|eso|lo\s+(anterior|que\s+armamos|que\s+cotizamos|que\s+buscamos))\b/i;
@@ -784,7 +783,11 @@ export function resolveConversationTurn(options: {
   } = options;
 
   const hasActivePlanner = Boolean(plannerState && !plannerState.generationMeta?.isDraft);
-  const isDiscoveryIntent = DISCOVERY_PATTERN.test(parsedRequest.originalMessage || '');
+  // Discovery intent is now driven exclusively by the LLM `discover_places`
+  // tool result (surfaced as `placeDiscoveryResult` on the parser response).
+  // The legacy regex fallback and unused `placeDiscovery` parser field were
+  // removed alongside the client-side `buildDiscoveryResponsePayload` path.
+  const isDiscoveryIntent = Boolean(parsedRequest.placeDiscoveryResult?.ok);
   const isQuoteFromActivePlanner = routeResult.reason === 'quote_active_plan';
   const normalizedMissingFields = [...new Set(routeResult.missingFields.map(normalizeMissingField))];
   const collectExhausted = recentCollectCount >= maxCollectTurns;

@@ -14,11 +14,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   executeRetrievalTool,
+  extractDiscoveryCandidates,
   getRetrievalToolHandlers,
   getRetrievalToolSchemas,
   retrievalTools,
   type ToolContext,
 } from '../functionTools.ts';
+import { MAX_DISCOVERY_CANDIDATES } from '../emiliaStateTypes.ts';
 
 // ---------------------------------------------------------------------------
 // Mock Supabase — chainable query builder over an in-memory fixture map.
@@ -123,10 +125,11 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
 // ---------------------------------------------------------------------------
 
 describe('getRetrievalToolSchemas', () => {
-  it('returns exactly the 4 retrieval tools', () => {
+  it('returns exactly the 5 retrieval tools', () => {
     const schemas = getRetrievalToolSchemas();
-    expect(schemas).toHaveLength(4);
+    expect(schemas).toHaveLength(5);
     expect(schemas.map((s) => s.function.name).sort()).toEqual([
+      'discover_places',
       'get_lead_full_history',
       'get_planner_state',
       'get_quote',
@@ -447,6 +450,120 @@ describe('getRetrievalToolHandlers', () => {
     expect(Object.keys(handlers).sort()).toEqual([...names].sort());
     for (const name of names) {
       expect(typeof handlers[name]).toBe('function');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractDiscoveryCandidates — pure helper consumed by the index.ts wrapper
+// to persist the top-N place candidates into EmiliaState.discovery_candidates
+// after every successful discover_places call.
+// ---------------------------------------------------------------------------
+
+describe('extractDiscoveryCandidates', () => {
+  function makePlace(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      placeId: 'p_default',
+      name: 'Place Default',
+      category: 'restaurant',
+      lat: -34.6,
+      lng: -58.4,
+      rating: 4.5,
+      userRatingsTotal: 100,
+      photoUrl: 'https://example.com/p.jpg',
+      description: 'Av. Corrientes 123',
+      source: 'foursquare',
+      ...overrides,
+    };
+  }
+
+  it('returns null for non-ok results', () => {
+    expect(extractDiscoveryCandidates({ ok: false, error: 'no_places_found' })).toBeNull();
+    expect(extractDiscoveryCandidates(null)).toBeNull();
+    expect(extractDiscoveryCandidates({})).toBeNull();
+    expect(extractDiscoveryCandidates({ ok: true })).toBeNull();
+    expect(extractDiscoveryCandidates({ ok: true, places: [] })).toBeNull();
+  });
+
+  it('preserves order of the places array (UI-visible "the second one" must match)', () => {
+    const result = {
+      ok: true,
+      places: [
+        makePlace({ placeId: 'p1', name: 'First', category: 'sights' }),
+        makePlace({ placeId: 'p2', name: 'Second', category: 'museum' }),
+        makePlace({ placeId: 'p3', name: 'Third', category: 'restaurant' }),
+      ],
+    };
+    const candidates = extractDiscoveryCandidates(result);
+    expect(candidates).not.toBeNull();
+    expect(candidates!.map((c) => c.placeId)).toEqual(['p1', 'p2', 'p3']);
+    expect(candidates![1].name).toBe('Second');
+  });
+
+  it('caps the persisted slice at MAX_DISCOVERY_CANDIDATES', () => {
+    const places = Array.from({ length: 25 }, (_, i) =>
+      makePlace({ placeId: `p_${i}`, name: `Place ${i}` }),
+    );
+    const candidates = extractDiscoveryCandidates({ ok: true, places });
+    expect(candidates!.length).toBe(MAX_DISCOVERY_CANDIDATES);
+    expect(candidates![MAX_DISCOVERY_CANDIDATES - 1].placeId).toBe(`p_${MAX_DISCOVERY_CANDIDATES - 1}`);
+  });
+
+  it('drops entries missing required fields (placeId / name / lat / lng / category)', () => {
+    const result = {
+      ok: true,
+      places: [
+        makePlace({ placeId: 'p_ok' }),
+        makePlace({ placeId: '', name: 'no id' }), // dropped: empty placeId
+        makePlace({ placeId: 'p_no_name', name: '' }), // dropped: empty name
+        makePlace({ placeId: 'p_no_lat', lat: null }), // dropped: lat null
+        makePlace({ placeId: 'p_no_lng', lng: null }), // dropped: lng null
+        makePlace({ placeId: 'p_no_cat', category: null }), // dropped: category null
+        makePlace({ placeId: 'p_ok2' }),
+      ],
+    };
+    const candidates = extractDiscoveryCandidates(result);
+    expect(candidates!.map((c) => c.placeId)).toEqual(['p_ok', 'p_ok2']);
+  });
+
+  it('maps optional fields verbatim (rating / address / photoUrl)', () => {
+    const result = {
+      ok: true,
+      places: [
+        makePlace({
+          placeId: 'p1',
+          rating: 4.7,
+          description: 'Av. 9 de Julio 1000',
+          photoUrl: 'https://x/y.jpg',
+        }),
+        makePlace({
+          placeId: 'p2',
+          rating: undefined,
+          description: undefined,
+          photoUrl: undefined,
+        }),
+      ],
+    };
+    const [c1, c2] = extractDiscoveryCandidates(result)!;
+    expect(c1.rating).toBe(4.7);
+    expect(c1.address).toBe('Av. 9 de Julio 1000');
+    expect(c1.photoUrl).toBe('https://x/y.jpg');
+    // Optional fields stay absent when source data is missing/empty.
+    expect(c2.rating).toBeUndefined();
+    expect(c2.address).toBeUndefined();
+    expect(c2.photoUrl).toBeUndefined();
+  });
+
+  it('returns a candidate shape free of internal fields (no source, no userRatingsTotal)', () => {
+    const candidates = extractDiscoveryCandidates({
+      ok: true,
+      places: [makePlace({ placeId: 'p1' })],
+    });
+    const c = candidates![0];
+    // Allow-list of the persistable fields.
+    const allowedKeys = new Set(['placeId', 'name', 'lat', 'lng', 'category', 'rating', 'address', 'photoUrl']);
+    for (const k of Object.keys(c)) {
+      expect(allowedKeys.has(k)).toBe(true);
     }
   });
 });

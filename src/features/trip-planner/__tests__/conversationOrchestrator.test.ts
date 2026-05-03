@@ -6,7 +6,7 @@ import {
   formatDiscoveryResponse,
   resolveConversationTurn,
 } from '@/features/chat/services/conversationOrchestrator';
-import { curateDiscoveryPlaces, detectDiscoverySubtype, hasStrongPlaceIdentity, isAttractionLikePlace } from '@/features/chat/services/discoveryService';
+import { buildDiscoveryResponseFromToolResult } from '@/features/chat/services/discoveryService';
 
 describe('conversationOrchestrator', () => {
   it('builds a shorter conversational missing-info message', () => {
@@ -191,6 +191,12 @@ describe('conversationOrchestrator', () => {
         itinerary: {
           destinations: ['Roma'],
         },
+        placeDiscoveryResult: {
+          ok: true,
+          intent: 'broad',
+          destination: { city: 'Roma', country: 'Italia', lat: 41.9028, lng: 12.4964 },
+          places: [{ name: 'Coliseo', category: 'sights', lat: 41.89, lng: 12.49 }],
+        },
         confidence: 0.95,
         originalMessage: 'Cosas para hacer en Roma',
       },
@@ -220,6 +226,49 @@ describe('conversationOrchestrator', () => {
     expect(resolution.responseMode).toBe('show_places');
   });
 
+  it('uses placeDiscoveryResult tool signal for show_places even without regex match', () => {
+    const resolution = resolveConversationTurn({
+      parsedRequest: {
+        requestType: 'itinerary',
+        itinerary: {
+          destinations: ['Madrid'],
+        },
+        placeDiscoveryResult: {
+          ok: true,
+          intent: 'nightlife',
+          destination: { city: 'Madrid', country: 'España', lat: 40.4168, lng: -3.7038 },
+          categories: ['nightlife', 'restaurant'],
+          places: [{ name: 'Cafe Central', category: 'nightlife', lat: 40.41, lng: -3.71 }],
+        },
+        confidence: 0.95,
+        originalMessage: 'Quiero salir tranqui después de cenar por Madrid',
+      },
+      routeResult: {
+        route: 'PLAN',
+        score: 0.3,
+        dimensions: {
+          destination: 1,
+          dates: 0,
+          passengers: 0.5,
+          origin: 0.5,
+          complexity: 0.5,
+        },
+        missingFields: ['dates'],
+        inferredFields: [],
+        reason: 'itinerary_request',
+      },
+      plannerState: null,
+      hasPersistentContext: false,
+      hasPreviousParsedRequest: false,
+      recentCollectCount: 0,
+      maxCollectTurns: 3,
+      mode: 'passenger',
+    });
+
+    expect(resolution.responseMode).toBe('show_places');
+    expect(resolution.messageType).toBe('discovery_results');
+  });
+
   it('formats discovery responses without planner framing', () => {
     const response = formatDiscoveryResponse({
       city: 'Roma',
@@ -237,184 +286,41 @@ describe('conversationOrchestrator', () => {
     expect(response).not.toContain('hoteles');
   });
 
-  it('reranks broad discovery places toward iconic landmarks and filters weak places', () => {
-    const selected = curateDiscoveryPlaces({
-      destination: {
-        city: 'Paris',
-        lat: 48.8566,
-        lng: 2.3522,
-        confidence: 1,
-        source: 'parsed_request',
+  it('maps discover_places tool output to discoveryContext for the chat map', () => {
+    const result = buildDiscoveryResponseFromToolResult({
+      message: 'Dónde comer bien en Roma',
+      placeDiscoveryResult: {
+        ok: true,
+        intent: 'food',
+        destination: { city: 'Roma', country: 'Italia', lat: 41.9028, lng: 12.4964 },
+        categories: ['restaurant', 'cafe'],
+        places: [
+          {
+            placeId: 'p1',
+            name: 'Roscioli',
+            category: 'restaurant',
+            lat: 41.895,
+            lng: 12.474,
+            rating: 4.6,
+            photoUrl: 'https://example.com/roscioli.jpg',
+            description: 'Via dei Giubbonari',
+            source: 'foursquare',
+          },
+        ],
       },
-      queryType: 'broad_city_discovery',
-      candidates: [
-        { placeId: '1', name: 'MK2 Bibliothèque', category: 'activity', formattedAddress: 'Paris', photoUrls: [], rating: 3.8, userRatingsTotal: 10, types: ['movie_theater'] },
-        { placeId: '2', name: 'Le Louvre', category: 'museum', formattedAddress: 'Paris', photoUrls: ['photo'], rating: 4.8, userRatingsTotal: 10000, types: ['museum'] },
-        { placeId: '3', name: 'Torre Eiffel', category: 'sights', formattedAddress: 'Paris', photoUrls: ['photo'], rating: 4.8, userRatingsTotal: 15000, types: ['tourist_attraction'] },
-        { placeId: '4', name: 'Montmartre', category: 'activity', formattedAddress: 'Paris', photoUrls: ['photo'], rating: 4.7, userRatingsTotal: 8000, types: ['neighborhood'] },
-      ],
     });
 
-    const response = formatDiscoveryResponse({ city: 'Paris', requestText: 'Cosas para hacer en París', places: selected });
-
-    expect(response).toContain('Torre Eiffel');
-    expect(response).toContain('Le Louvre');
-    expect(response).toContain('Montmartre');
-    expect(response).not.toContain('MK2');
-    expect(response).toContain('- ');
+    expect(result?.discoveryContext?.destination.city).toBe('Roma');
+    expect(result?.discoveryContext?.queryType).toBe('food_discovery');
+    expect(result?.discoveryContext?.places[0].lat).toBe(41.895);
+    expect(result?.recommendedPlaces[0].bucket).toBe('gastronomia');
   });
 
-  it('builds a diverse broad discovery selection without city-specific fallback lists', () => {
-    const selected = curateDiscoveryPlaces({
-      destination: {
-        city: 'Lisboa',
-        lat: 38.7223,
-        lng: -9.1393,
-        confidence: 1,
-        source: 'parsed_request',
-      },
-      queryType: 'broad_city_discovery',
-      candidates: [
-        { placeId: '1', name: 'Torre de Belem', category: 'sights', formattedAddress: 'Lisboa', photoUrls: ['a'], rating: 4.7, userRatingsTotal: 9000, types: ['tourist_attraction'] },
-        { placeId: '2', name: 'Mosteiro dos Jeronimos', category: 'culture', formattedAddress: 'Lisboa', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 8500, types: ['church'] },
-        { placeId: '3', name: 'Museu Nacional do Azulejo', category: 'museum', formattedAddress: 'Lisboa', photoUrls: ['a'], rating: 4.7, userRatingsTotal: 4000, types: ['museum'] },
-        { placeId: '4', name: 'Alfama', category: 'activity', formattedAddress: 'Lisboa', photoUrls: ['a'], rating: 4.6, userRatingsTotal: 3000, types: ['neighborhood'] },
-        { placeId: '5', name: 'Miradouro de Santa Luzia', category: 'parks', formattedAddress: 'Lisboa', photoUrls: ['a'], rating: 4.7, userRatingsTotal: 5000, types: ['viewpoint'] },
-        { placeId: '6', name: 'Cinema Sao Jorge', category: 'activity', formattedAddress: 'Lisboa', photoUrls: ['a'], rating: 4.4, userRatingsTotal: 1200, types: ['movie_theater'] },
-      ],
-    });
-
-    expect(selected.some((place) => place.name.includes('Belem'))).toBe(true);
-    expect(selected.some((place) => place.name.includes('Alfama'))).toBe(true);
-    expect(selected.some((place) => place.name.includes('Azulejo'))).toBe(true);
-    expect(selected.some((place) => place.name.includes('Cinema'))).toBe(false);
-  });
-
-  it('detects broad city discovery by default for que ver / que hacer queries', () => {
-    expect(detectDiscoverySubtype('Qué hacer en Ámsterdam')).toBe('broad_city_discovery');
-    expect(detectDiscoverySubtype('Imperdibles de Berlín')).toBe('broad_city_discovery');
-    expect(detectDiscoverySubtype('Museos en Madrid')).toBe('museum_discovery');
-  });
-
-  it('recognizes attraction-like places and excludes commercial venues', () => {
-    expect(isAttractionLikePlace({
-      placeId: 'a1',
-      name: 'Rijksmuseum',
-      category: 'museum',
-      photoUrls: ['x'],
-      types: ['museum'],
-    })).toBe(true);
-
-    expect(isAttractionLikePlace({
-      placeId: 'a2',
-      name: 'Independent Outlet Skateboards Amsterdam',
-      category: 'activity',
-      photoUrls: [],
-      types: ['store'],
-    })).toBe(false);
-  });
-
-  it('rejects weak generic labels and keeps strong identities', () => {
-    const destination = {
-      city: 'Berlin',
-      lat: 52.52,
-      lng: 13.405,
-      confidence: 1,
-      source: 'parsed_request' as const,
-    };
-
-    expect(hasStrongPlaceIdentity({
-      placeId: 'b1',
-      name: 'Mirador de Berlin',
-      category: 'parks',
-      photoUrls: ['x'],
-      types: ['viewpoint'],
-      userRatingsTotal: 500,
-    }, destination)).toBe(false);
-
-    expect(hasStrongPlaceIdentity({
-      placeId: 'b2',
-      name: 'Berlin Cathedral (Berliner Dom)',
-      category: 'nightlife',
-      photoUrls: ['x'],
-      types: ['church'],
-      userRatingsTotal: 12000,
-    }, destination)).toBe(true);
-  });
-
-  it('derives broad badges from curated buckets instead of raw nightlife category', () => {
-    const selected = curateDiscoveryPlaces({
-      destination: {
-        city: 'Berlin',
-        lat: 52.52,
-        lng: 13.405,
-        confidence: 1,
-        source: 'parsed_request',
-      },
-      queryType: 'broad_city_discovery',
-      candidates: [
-        { placeId: '1', name: 'Berlin Cathedral (Berliner Dom)', category: 'nightlife', formattedAddress: 'Am Lustgarten 1', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 12000, types: ['church'] },
-        { placeId: '2', name: 'Mirador de Berlin', category: 'parks', formattedAddress: 'SV', photoUrls: ['a'], rating: 4.1, userRatingsTotal: 150, types: ['viewpoint'] },
-        { placeId: '3', name: 'Brandenburg Gate', category: 'sights', formattedAddress: 'Pariser Platz', photoUrls: ['a'], rating: 4.7, userRatingsTotal: 15000, types: ['tourist_attraction'] },
-        { placeId: '4', name: 'Tiergarten', category: 'parks', formattedAddress: 'Berlin', photoUrls: ['a'], rating: 4.7, userRatingsTotal: 9000, types: ['park'] },
-        { placeId: '5', name: 'Museumsinsel', category: 'culture', formattedAddress: 'Berlin', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 10000, types: ['historical_landmark'] },
-        { placeId: '6', name: 'Unter den Linden', category: 'activity', formattedAddress: 'Berlin', photoUrls: ['a'], rating: 4.6, userRatingsTotal: 6000, types: ['route'] },
-      ],
-    });
-
-    const cathedral = selected.find((place) => place.name.includes('Cathedral'));
-    expect(selected.some((place) => place.name.includes('Mirador de Berlin'))).toBe(false);
-    expect(cathedral?.bucket).toBe('historia');
-    expect(cathedral?.category).toBe('Historia');
-    expect(cathedral?.description).not.toBe('SV');
-  });
-
-  it('captures compact debug reasons for broad discovery curation', () => {
-    const debug = {
-      payload: {
-        discoverySubtype: 'broad_city_discovery' as const,
-        providerCategories: { activity: 2, parks: 1, nightlife: 1, sights: 1 },
-        selectedBuckets: [],
-        selectedPlaceIds: [],
-        candidateCountBeforeFiltering: 0,
-        candidateCountAfterFiltering: 0,
-        candidateCountAfterCuration: 0,
-        usedFallbackSelection: false,
-        destinationResolutionSource: 'parsed_request' as const,
-        destinationResolutionConfidence: 1,
-        rejectedByQualityGate: [],
-        rejectedByNoiseFilter: [],
-        rejectedByDedup: [],
-        rejectedBySelectionRules: [],
-      },
-    };
-
-    const selected = curateDiscoveryPlaces({
-      destination: {
-        city: 'Berlin',
-        lat: 52.52,
-        lng: 13.405,
-        confidence: 1,
-        source: 'parsed_request',
-      },
-      queryType: 'broad_city_discovery',
-      debug,
-      candidates: [
-        { placeId: '1', name: 'Mirador de Berlin', category: 'parks', formattedAddress: 'SV', photoUrls: ['a'], rating: 4.1, userRatingsTotal: 150, types: ['viewpoint'] },
-        { placeId: '2', name: 'Berlin Cathedral (Berliner Dom)', category: 'nightlife', formattedAddress: 'Am Lustgarten 1', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 12000, types: ['church'] },
-        { placeId: '3', name: 'Independent Outlet Berlin', category: 'activity', formattedAddress: 'Berlin', photoUrls: ['a'], rating: 4.0, userRatingsTotal: 90, types: ['store'] },
-        { placeId: '4', name: 'Brandenburg Gate', category: 'sights', formattedAddress: 'Pariser Platz', photoUrls: ['a'], rating: 4.8, userRatingsTotal: 15000, types: ['tourist_attraction'] },
-        { placeId: '4', name: 'Brandenburg Gate', category: 'sights', formattedAddress: 'Pariser Platz', photoUrls: ['a'], rating: 4.4, userRatingsTotal: 3000, types: ['tourist_attraction'] },
-      ],
-    });
-
-    expect(selected.some((place) => place.name.includes('Brandenburg Gate'))).toBe(true);
-    expect(debug.payload.candidateCountBeforeFiltering).toBe(5);
-    expect(debug.payload.rejectedByQualityGate.some((entry) => entry.reason === 'generic_city_label')).toBe(true);
-    expect(debug.payload.rejectedByNoiseFilter.some((entry) => ['noise_filter', 'chain_brand', 'commercial_venue'].includes(entry.reason))).toBe(true);
-    expect(debug.payload.rejectedByDedup.some((entry) => entry.reason === 'provider_duplicate')).toBe(true);
-    expect(debug.payload.selectedBuckets.length).toBeGreaterThan(0);
-  });
+  // Tests for the legacy regex-driven curation pipeline (curateDiscoveryPlaces,
+  // detectDiscoverySubtype, hasStrongPlaceIdentity, isAttractionLikePlace) were
+  // removed alongside `buildDiscoveryResponsePayload`. Discovery now flows
+  // exclusively through the LLM `discover_places` tool result; the active
+  // mapping is covered by `buildDiscoveryResponseFromToolResult` above.
 
   // ===========================================================================
   // PR 3 / C3 — strict agency/passenger routing + mode_bridge
@@ -759,11 +665,17 @@ describe('conversationOrchestrator', () => {
     // Carryover for C8: discovery needs its own branch before standard_itinerary
     // can be removed.
     // -------------------------------------------------------------------------
-    it('discovery bypass: passenger + PLAN + planner active + "qué ver en Roma" → standard_itinerary (legacy show_places), not planner_agent, not mode_bridge', () => {
+    it('discovery bypass: passenger + PLAN + planner active + discover_places result → standard_itinerary (show_places), not planner_agent, not mode_bridge', () => {
       const resolution = resolveConversationTurn({
         parsedRequest: {
           requestType: 'itinerary',
           itinerary: { destinations: ['Roma'] },
+          placeDiscoveryResult: {
+            ok: true,
+            intent: 'broad',
+            destination: { city: 'Roma', country: 'Italia', lat: 41.9028, lng: 12.4964 },
+            places: [{ name: 'Coliseo', category: 'sights', lat: 41.89, lng: 12.49 }],
+          },
           confidence: 0.95,
           originalMessage: 'Qué ver en Roma',
         },
@@ -783,11 +695,17 @@ describe('conversationOrchestrator', () => {
       expect(resolution.responseMode).toBe('show_places');
     });
 
-    it('discovery bypass: agency + PLAN + "qué ver en Roma" → standard_itinerary, NOT mode_bridge', () => {
+    it('discovery bypass: agency + PLAN + discover_places result → standard_itinerary, NOT mode_bridge', () => {
       const resolution = resolveConversationTurn({
         parsedRequest: {
           requestType: 'itinerary',
           itinerary: { destinations: ['Roma'] },
+          placeDiscoveryResult: {
+            ok: true,
+            intent: 'broad',
+            destination: { city: 'Roma', country: 'Italia', lat: 41.9028, lng: 12.4964 },
+            places: [{ name: 'Coliseo', category: 'sights', lat: 41.89, lng: 12.49 }],
+          },
           confidence: 0.95,
           originalMessage: 'Qué ver en Roma',
         },

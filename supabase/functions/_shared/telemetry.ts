@@ -76,7 +76,27 @@ export interface CtxMemoryEvent {
   rejection_reasons: Record<string, number>;
 }
 
-export type TelemetryEvent = CtxStateEvent | CtxToolEvent | CtxMemoryEvent;
+/**
+ * Emitted whenever the `discover_places` tool persists candidates into
+ * `EmiliaState.discovery_candidates` for cross-turn referential resolution
+ * (e.g. user later says "agregá el segundo del listado"). Fired exactly once
+ * per successful discover_places call that yielded ≥1 persistable candidate.
+ */
+export interface CtxDiscoveryPersistEvent {
+  category: 'CTX-DISCOVERY-PERSIST';
+  conversation_id: string;
+  agency_id: string;
+  /** How many candidates were written (≤ MAX_DISCOVERY_CANDIDATES). */
+  count: number;
+  /** Distinct categories represented in the persisted slice. */
+  categories: string[];
+}
+
+export type TelemetryEvent =
+  | CtxStateEvent
+  | CtxToolEvent
+  | CtxMemoryEvent
+  | CtxDiscoveryPersistEvent;
 
 // -----------------------------------------------------------------------------
 // Emitter

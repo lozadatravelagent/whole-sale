@@ -24,6 +24,7 @@
 import {
   type EmiliaState,
   type ContextRef,
+  type DiscoveryCandidateRef,
   type MemoryNote,
   type EmiliaProfile,
   type PendingAction,
@@ -145,6 +146,23 @@ function renderRefsBlock(refs: ContextRef[], now: Date): string {
 }
 
 // ---------------------------------------------------------------------------
+// Discovery candidates — emitted after the most recent discover_places call so
+// the model can resolve referential phrases like "agregá el segundo" → a
+// concrete placeId via `propose_planner_addition`. Compact one-line format;
+// slot is overwritten on each new discovery so it does not accumulate.
+// ---------------------------------------------------------------------------
+
+function renderDiscoveryCandidatesBlock(candidates: DiscoveryCandidateRef[] | undefined): string {
+  if (!candidates || candidates.length === 0) return '';
+  const lines = candidates.map((c, i) => {
+    const cat = c.category ? ` (${c.category})` : '';
+    const addr = c.address ? ` — ${c.address}` : '';
+    return `  [${i}] ${c.placeId} — ${c.name}${cat}${addr}`;
+  });
+  return `<discovery_candidates>\n${lines.join('\n')}\n</discovery_candidates>`;
+}
+
+// ---------------------------------------------------------------------------
 // Pending action block
 // ---------------------------------------------------------------------------
 
@@ -250,6 +268,9 @@ export function renderStateForSystemPrompt(
     const refsBlock = renderRefsBlock(state.active_refs ?? [], now);
     if (refsBlock) parts.push(refsBlock);
 
+    const discoveryBlock = renderDiscoveryCandidatesBlock(state.discovery_candidates);
+    if (discoveryBlock) parts.push(discoveryBlock);
+
     const pendingBlock = renderPendingActionBlock(state.pending_action ?? null, now);
     if (pendingBlock) parts.push(pendingBlock);
 
@@ -291,6 +312,7 @@ export function renderStateForSystemPrompt(
 export const __testing = {
   renderProfileYAML,
   renderRefsBlock,
+  renderDiscoveryCandidatesBlock,
   renderPendingActionBlock,
   renderMemoriesMd,
   relativeTime,

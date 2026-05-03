@@ -100,7 +100,7 @@ vi.mock('../services/itineraryPipeline', () => ({
 }));
 
 vi.mock('../services/discoveryService', () => ({
-  buildDiscoveryResponsePayload: vi.fn().mockResolvedValue({
+  buildDiscoveryResponseFromToolResult: vi.fn().mockReturnValue({
     text: 'discovery results',
     discoveryContext: {},
     recommendedPlaces: [],
@@ -143,7 +143,7 @@ import {
   handleItineraryRequest,
 } from '../services/searchHandlers';
 import { addMessageViaSupabase } from '../services/messageService';
-import { buildDiscoveryResponsePayload } from '../services/discoveryService';
+import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
 import { resolveConversationTurn } from '../services/conversationOrchestrator';
 import { routeRequest } from '../services/routeRequest';
 import { buildProps, buildParsedRequest, DEFAULT_CONV_ID } from '@/test-utils/useMessageHandlerFactory';
@@ -229,7 +229,7 @@ beforeEach(() => {
   vi.mocked(handleItineraryRequest).mockResolvedValue({ response: 'itinerary results', data: {} } as any);
   vi.mocked(hasUsableItineraryDates).mockReturnValue(false);
   vi.mocked(hasFlexibleItineraryDateSelection).mockReturnValue(false);
-  vi.mocked(buildDiscoveryResponsePayload).mockResolvedValue({
+  vi.mocked(buildDiscoveryResponseFromToolResult).mockReturnValue({
     text: 'discovery results',
     discoveryContext: {},
     recommendedPlaces: [],
@@ -510,7 +510,7 @@ describe('useMessageHandler', () => {
         await result.current.handleSendMessage('quiero ver lugares en Roma');
       });
 
-      expect(vi.mocked(buildDiscoveryResponsePayload)).toHaveBeenCalled();
+      expect(vi.mocked(buildDiscoveryResponseFromToolResult)).toHaveBeenCalled();
       expect(vi.mocked(handleItineraryRequest)).not.toHaveBeenCalled();
     });
 

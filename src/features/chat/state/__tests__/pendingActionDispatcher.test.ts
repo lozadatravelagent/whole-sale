@@ -401,3 +401,163 @@ describe('hotel_completion: sites 4 and 5 produce identical pending_action shape
     ]);
   });
 });
+
+describe('dispatchPendingAction — add_places_to_itinerary', () => {
+  function makeSegmentedPlanner(): TripPlannerState {
+    return {
+      id: 'planner-9',
+      segments: [
+        {
+          id: 'seg-1',
+          city: 'Roma',
+          days: [
+            {
+              id: 'day-1',
+              dayNumber: 1,
+              city: 'Roma',
+              title: 'Día 1',
+              morning: [],
+              afternoon: [],
+              evening: [],
+              restaurants: [],
+            },
+            {
+              id: 'day-2',
+              dayNumber: 2,
+              city: 'Roma',
+              title: 'Día 2',
+              morning: [],
+              afternoon: [],
+              evening: [],
+              restaurants: [],
+            },
+          ],
+        },
+      ],
+    } as unknown as TripPlannerState;
+  }
+
+  it('skips mutation when user declined (confirmed=false)', async () => {
+    const updatePlannerState = vi.fn();
+    await dispatchPendingAction({
+      resolution: {
+        for: 'add_places_to_itinerary',
+        kind: 'awaiting_user_confirmation',
+        applied: { confirmed: false },
+        complete: true,
+        payload: { resolved_places: [{ placeId: 'fsq1', name: 'X', category: 'restaurant' }] },
+      },
+      plannerState: makeSegmentedPlanner(),
+      updatePlannerState,
+    });
+    expect(updatePlannerState).not.toHaveBeenCalled();
+  });
+
+  it('appends a restaurant to evening of the chosen day', async () => {
+    const planner = makeSegmentedPlanner();
+    let nextState: TripPlannerState | null = null;
+    const updatePlannerState = vi.fn(async (updater: (s: TripPlannerState) => TripPlannerState) => {
+      nextState = updater(planner);
+    });
+    await dispatchPendingAction({
+      resolution: {
+        for: 'add_places_to_itinerary',
+        kind: 'awaiting_user_confirmation',
+        applied: { confirmed: true },
+        complete: true,
+        payload: {
+          resolved_places: [
+            { placeId: 'fsq-rest-1', name: 'Trattoria', category: 'restaurant', address: 'Via X', rating: 4.5 },
+          ],
+          segment_id: 'seg-1',
+          day_index: 1,
+          note: null,
+        },
+      },
+      plannerState: planner,
+      updatePlannerState,
+    });
+    expect(updatePlannerState).toHaveBeenCalledTimes(1);
+    expect(nextState).not.toBeNull();
+    const day2 = nextState!.segments[0].days[1];
+    expect(day2.evening).toHaveLength(1);
+    expect(day2.evening[0].placeId).toBe('fsq-rest-1');
+    expect(day2.evening[0].title).toBe('Trattoria');
+    // Restaurant also lands in restaurants list.
+    expect(day2.restaurants).toHaveLength(1);
+    expect(day2.restaurants[0].placeId).toBe('fsq-rest-1');
+  });
+
+  it('appends a museum to morning slot via category heuristic', async () => {
+    const planner = makeSegmentedPlanner();
+    let nextState: TripPlannerState | null = null;
+    const updatePlannerState = vi.fn(async (updater: (s: TripPlannerState) => TripPlannerState) => {
+      nextState = updater(planner);
+    });
+    await dispatchPendingAction({
+      resolution: {
+        for: 'add_places_to_itinerary',
+        kind: 'awaiting_user_confirmation',
+        applied: { confirmed: true },
+        complete: true,
+        payload: {
+          resolved_places: [{ placeId: 'fsq-mus-1', name: 'Museo', category: 'museum' }],
+          segment_id: null,
+          day_index: 0,
+          note: null,
+        },
+      },
+      plannerState: planner,
+      updatePlannerState,
+    });
+    const day1 = nextState!.segments[0].days[0];
+    expect(day1.morning).toHaveLength(1);
+    expect(day1.morning[0].placeId).toBe('fsq-mus-1');
+    expect(day1.afternoon).toHaveLength(0);
+    expect(day1.evening).toHaveLength(0);
+  });
+
+  it('clamps day_index out of range to last available day', async () => {
+    const planner = makeSegmentedPlanner();
+    let nextState: TripPlannerState | null = null;
+    const updatePlannerState = vi.fn(async (updater: (s: TripPlannerState) => TripPlannerState) => {
+      nextState = updater(planner);
+    });
+    await dispatchPendingAction({
+      resolution: {
+        for: 'add_places_to_itinerary',
+        kind: 'awaiting_user_confirmation',
+        applied: { confirmed: true },
+        complete: true,
+        payload: {
+          resolved_places: [{ placeId: 'fsq-act-1', name: 'Tour', category: 'activity' }],
+          segment_id: 'seg-1',
+          day_index: 99,
+          note: null,
+        },
+      },
+      plannerState: planner,
+      updatePlannerState,
+    });
+    // Clamped to day-2 (index 1).
+    const day2 = nextState!.segments[0].days[1];
+    expect(day2.afternoon).toHaveLength(1);
+    expect(day2.afternoon[0].placeId).toBe('fsq-act-1');
+  });
+
+  it('skips when no active planner', async () => {
+    const updatePlannerState = vi.fn();
+    await dispatchPendingAction({
+      resolution: {
+        for: 'add_places_to_itinerary',
+        kind: 'awaiting_user_confirmation',
+        applied: { confirmed: true },
+        complete: true,
+        payload: { resolved_places: [{ placeId: 'x', name: 'y', category: 'activity' }] },
+      },
+      plannerState: null,
+      updatePlannerState,
+    });
+    expect(updatePlannerState).not.toHaveBeenCalled();
+  });
+});

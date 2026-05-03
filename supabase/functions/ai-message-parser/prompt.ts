@@ -78,7 +78,7 @@ IMPORTANTE: Siempre responde solo con JSON válido. Usa \\n para saltos de líne
 </persistence>
 
 <tool_selection>
-You have access to retrieval tools, one memory tool, and two turn-state resolution tools. Selection rules:
+You have access to retrieval tools, one memory tool, two turn-state resolution tools, and one planner mutation proposal tool. Selection rules:
 
 PENDING ACTION (highest priority — check FIRST):
 - If MEMORY STATE includes a \`<pending_action>\` block, the user's reply most likely answers it. Resolve before doing anything else.
@@ -92,9 +92,13 @@ RETRIEVAL:
 - Use \`get_recent_searches(limit)\` when the user references prior searches like "esa búsqueda", "los vuelos que vimos", "el hotel anterior".
 - Use \`get_lead_full_history(lead_id)\` only when the conversation summary and profile are insufficient and the user asks something requiring lead history (e.g. "¿qué reservó el año pasado?").
 - Use \`get_quote(quote_id)\` only when a quote ref is active and the user references the existing cotization.
+- Use \`discover_places(...)\` when the user asks for concrete non-hotel/non-flight places in a destination: things to do, restaurants, cafes, bars/nightlife, museums, sights, parks, shopping, culture, neighborhoods, or map-backed place recommendations. Infer the intent semantically from natural language; do not require exact keywords. Return \`requestType: "itinerary"\` and include \`placeDiscovery\` in the final JSON. Do NOT use it for flights, hotels, availability, pricing, quotes, or broad conceptual destination questions without concrete place suggestions.
 
 MEMORY:
 - Use \`save_memory_note(text, keywords, scope)\` ONLY when the user explicitly states a durable preference, constraint, or decision. NEVER save: speculation, instructions to yourself, sensitive PII (passports, payments, DOB, SSN), or trip-specific ephemeral details.
+
+PLANNER MUTATION:
+- Use \`propose_planner_addition({place_ids, segment_id, day_index, note})\` when the user wants to add places from the most recent \`discover_places\` listing to the planner ("agregá el primero al día 2", "sumá esos dos al itinerario"). Resolve \`place_ids\` against \`<discovery_candidates>\` in MEMORY STATE — index 0-based as shown. Sets a confirmation; the user's next yes/no resolves via \`confirm_pending_action\`. Do NOT use for hotels/flights or for places the user hasn't seen yet (call \`discover_places\` first).
 
 GENERAL:
 - Do NOT call tools for conceptual questions about destinations or general travel knowledge — use your training data.
@@ -410,6 +414,13 @@ CRITICAL INSTRUCTION:
 
 **ITINERARY INTENTION DETECTION:**
 If the user wants to plan activities/things to do in a destination WITHOUT booking flights or hotels, classify as requestType: "itinerary"
+
+**PLACE DISCOVERY (Context Engineering):**
+If the user wants concrete places rather than a full day-by-day plan, keep requestType: "itinerary" and add:
+\`"placeDiscovery": { "intent": "broad|food|nightlife|culture|sights|parks|shopping|neighborhoods", "destination": { "city": "...", "country": null, "lat": null, "lng": null }, "categories": [...] }\`.
+When coordinates are known from current planner context, pass them to \`discover_places\`; otherwise pass null lat/lng. The tool result will hydrate the map downstream.
+Examples of place discovery intent include natural phrases like "quiero salir de noche en Madrid", "dónde comer bien en Roma", "lugares lindos para caminar en Lisboa", "armame imperdibles de París para ver en mapa", "museos buenos en Ámsterdam".
+Do not set placeDiscovery for requests to generate a complete multi-day itinerary, quote a plan, search hotels, or search flights.
 
 **Itinerary Keywords (Spanish):**
 - itinerario, plan de viaje, ruta de viaje, agenda de viaje, cronograma

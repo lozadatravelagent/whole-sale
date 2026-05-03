@@ -251,6 +251,131 @@ async function handleItineraryCompletion(ctx: DispatchContext): Promise<void> {
   }, 'system');
 }
 
+// ---------------------------------------------------------------------------
+// add_places_to_itinerary (mutating)
+// ---------------------------------------------------------------------------
+// Set by `propose_planner_addition` (kind=awaiting_user_confirmation). When the
+// user confirms via `confirm_pending_action`, the resolution carries:
+//   - applied.confirmed: boolean
+//   - payload.resolved_places: DiscoveryCandidateRef[] (already resolved server-side)
+//   - payload.segment_id: string | null
+//   - payload.day_index: number | null
+//   - payload.note: string | null
+// We map each candidate to a PlannerActivity and append it to the target day's
+// block (heuristic by category). Duplicates per (placeId, block) are skipped.
+async function handleAddPlacesToItinerary(ctx: DispatchContext): Promise<void> {
+  const { resolution, plannerState, updatePlannerState } = ctx;
+  const { applied, payload } = resolution;
+
+  const confirmed = applied?.confirmed === true;
+  if (!confirmed) {
+    console.log('[PENDING-ACTION] add_places_to_itinerary declined by user — no mutation');
+    return;
+  }
+  if (!plannerState) {
+    console.log('[PENDING-ACTION] add_places_to_itinerary: no active planner — observational only');
+    return;
+  }
+  if (!updatePlannerState) {
+    console.warn('[PENDING-ACTION] add_places_to_itinerary: no updatePlannerState provided');
+    return;
+  }
+
+  const resolvedPlaces = Array.isArray(payload?.resolved_places)
+    ? (payload!.resolved_places as Array<Record<string, unknown>>)
+    : [];
+  if (resolvedPlaces.length === 0) {
+    console.warn('[PENDING-ACTION] add_places_to_itinerary: empty resolved_places payload');
+    return;
+  }
+
+  const segmentIdRaw = typeof payload?.segment_id === 'string' ? payload!.segment_id.trim() : '';
+  const dayIndex = Number.isInteger(payload?.day_index) && (payload!.day_index as number) >= 0
+    ? (payload!.day_index as number)
+    : null;
+
+  // Heuristic block by category (model didn't ask for one).
+  const blockForCategory = (category: string | undefined): 'morning' | 'afternoon' | 'evening' => {
+    const c = (category ?? '').toLowerCase();
+    if (c === 'restaurant' || c === 'cafe' || c === 'nightlife') return 'evening';
+    if (c === 'museum' || c === 'sights' || c === 'culture') return 'morning';
+    return 'afternoon';
+  };
+
+  await updatePlannerState((current) => {
+    if (current.segments.length === 0) return current;
+
+    // Resolve target segment. If model gave a segment_id, use it; else default
+    // to the first segment.
+    let segmentIndex = segmentIdRaw
+      ? current.segments.findIndex((s) => s.id === segmentIdRaw)
+      : 0;
+    if (segmentIndex === -1) segmentIndex = 0;
+    const segment = current.segments[segmentIndex];
+    if (!segment || segment.days.length === 0) return current;
+
+    // Resolve target day by index, clamped to available days.
+    const dayIdx = dayIndex !== null ? Math.min(dayIndex, segment.days.length - 1) : 0;
+    const targetDayId = segment.days[dayIdx].id;
+
+    const nextSegments = current.segments.map((seg, sIdx) => {
+      if (sIdx !== segmentIndex) return seg;
+      const nextDays = seg.days.map((day) => {
+        if (day.id !== targetDayId) return day;
+        let nextDay = day;
+        for (const raw of resolvedPlaces) {
+          const placeId = typeof raw.placeId === 'string' ? raw.placeId : '';
+          const name = typeof raw.name === 'string' ? raw.name : '';
+          if (!placeId || !name) continue;
+          const category = typeof raw.category === 'string' ? raw.category : 'activity';
+          const block = blockForCategory(category);
+          // Skip duplicates already in target block or in restaurants list.
+          if (nextDay[block].some((a) => a.placeId === placeId)) continue;
+          if (nextDay.restaurants.some((r) => r.placeId === placeId)) continue;
+          const activity = {
+            id: `discovery-${placeId}-${block}`,
+            time: undefined,
+            title: name,
+            description: typeof raw.address === 'string' ? raw.address : undefined,
+            category,
+            recommendedSlot: block,
+            placeId,
+            formattedAddress: typeof raw.address === 'string' ? raw.address : undefined,
+            rating: typeof raw.rating === 'number' ? raw.rating : undefined,
+            photoUrls: typeof raw.photoUrl === 'string' ? [raw.photoUrl] : undefined,
+            source: 'google_maps' as const,
+          };
+          nextDay = {
+            ...nextDay,
+            [block]: [...nextDay[block], activity],
+          };
+          if (category === 'restaurant' || category === 'cafe') {
+            nextDay = {
+              ...nextDay,
+              restaurants: [
+                ...nextDay.restaurants,
+                {
+                  id: `discovery-restaurant-${placeId}`,
+                  name,
+                  type: category === 'cafe' ? 'Cafe' : 'Restaurante',
+                  placeId,
+                  formattedAddress: typeof raw.address === 'string' ? raw.address : undefined,
+                  rating: typeof raw.rating === 'number' ? raw.rating : undefined,
+                  source: 'google_maps' as const,
+                },
+              ],
+            };
+          }
+        }
+        return nextDay;
+      });
+      return { ...seg, days: nextDays };
+    });
+
+    return { ...current, segments: nextSegments };
+  }, 'system');
+}
+
 const handlers: Record<string, Handler> = {
   quote_completion: handleQuoteCompletion,
   collect_clarification: handleCollectClarification,
@@ -258,6 +383,7 @@ const handlers: Record<string, Handler> = {
   flight_completion: handleFlightCompletion,
   hotel_completion: handleHotelCompletion,
   itinerary_completion: handleItineraryCompletion,
+  add_places_to_itinerary: handleAddPlacesToItinerary,
 };
 
 export async function dispatchPendingAction(ctx: DispatchContext): Promise<void> {
