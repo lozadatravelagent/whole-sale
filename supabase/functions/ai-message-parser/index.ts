@@ -234,8 +234,6 @@ serve(async (req) => {
           currentDate = new Date().toISOString().split('T')[0], // Default to today's date (YYYY-MM-DD)
           previousContext,
           conversationHistory = [],
-          conversationSummary = null,
-          leadProfile = null,
           plannerContext = null,
           historyWindow = 6,
           contextMeta = null,
@@ -290,8 +288,6 @@ serve(async (req) => {
           currentDate,
           conversationHistoryText,
           previousContext,
-          conversationSummary,
-          leadProfile,
           plannerContext,
           memoryStateBlock: memoryStateBlock ?? undefined,
           language,
@@ -314,14 +310,14 @@ serve(async (req) => {
         ];
 
         // -------------------------------------------------------------
-        // Phase 3: Function-tools (tool-calling loop) — feature-flagged.
-        // Header `x-use-tool-loop: true` OR env `USE_FUNCTION_TOOLS=true`
-        // enables the new path. Legacy single-shot is preserved verbatim
-        // below; Phase 9 A/B test compares both. Spec: docs/architecture/
-        // tool-catalog-spec.md §5.
+        // Function-tools (tool-calling loop) is the only path. The legacy
+        // single-shot branch and its `USE_FUNCTION_TOOLS` / `x-use-tool-loop`
+        // feature flags were removed in Phase 4 of the Context Engineering
+        // cleanup. Spec: docs/architecture/tool-catalog-spec.md §5.
+        // The two internal `requestOpenAiChatCompletion` calls below are
+        // network-resilience fallbacks (loop produced unparseable output, or
+        // loop threw) — NOT a legacy A/B leg.
         // -------------------------------------------------------------
-        const useToolLoop = req.headers.get('x-use-tool-loop') === 'true' ||
-                            Deno.env.get('USE_FUNCTION_TOOLS') === 'true';
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let openaiData: any;
@@ -340,7 +336,7 @@ serve(async (req) => {
         }
         let pendingActionResolution: PendingActionResolutionEnvelope | null = null;
 
-        if (useToolLoop) {
+        {
           // Build a ToolContext from the same scope used by retrieval tools.
           // RLS is enforced via service-role client filtered by agency_id.
           const ctx: ToolContext = {
@@ -616,11 +612,14 @@ serve(async (req) => {
               });
             }
 
-            // If the loop produced no parseable JSON, fall back to legacy.
+            // Network-resilience fallback: the tool loop ran but its final
+            // message contained no parseable JSON. Re-issue a single-shot
+            // chat completion so the user still gets a response. NOT a
+            // legacy A/B leg — the tool loop is the only intended path.
             const looksLikeJson = aiResponse.trim().startsWith('{') ||
                                   aiResponse.trim().includes('{');
             if (!looksLikeJson) {
-              console.warn('⚠️ [CTX-TOOL] tool-loop final message did not contain JSON, falling back to single-shot');
+              console.warn('⚠️ [CTX-TOOL] tool-loop final message did not contain JSON, using single-shot resilience fallback');
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               openaiData = await requestOpenAiChatCompletion<any>({
                 apiKey: openaiApiKey,
@@ -632,36 +631,15 @@ serve(async (req) => {
               aiResponse = extractOpenAiMessageContent(openaiData);
             }
           } catch (toolLoopErr) {
-            console.error('❌ [CTX-TOOL] runToolLoop failed, falling back to single-shot:', toolLoopErr);
+            // Network-resilience fallback: the tool loop threw (timeout,
+            // upstream OpenAI 5xx, transient infra). Re-issue a single-shot
+            // chat completion so the user still gets a response. NOT a
+            // legacy A/B leg — the tool loop is the only intended path.
+            console.error('❌ [CTX-TOOL] runToolLoop failed, using single-shot resilience fallback:', toolLoopErr);
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             openaiData = await requestOpenAiChatCompletion<any>({
               apiKey: openaiApiKey,
               model: modelDecision.model,
-              messages: parserMessages,
-              temperature: 0.1,
-              maxTokens: 1800,
-            });
-            aiResponse = extractOpenAiMessageContent(openaiData);
-          }
-        } else {
-          // -------- Legacy single-shot path (Phase 9 A leg) --------
-          openaiData = await requestOpenAiChatCompletion<any>({
-            apiKey: openaiApiKey,
-            model: modelDecision.model,
-            messages: parserMessages,
-            temperature: 0.1,
-            maxTokens: 1800,
-          });
-          aiResponse = extractOpenAiMessageContent(openaiData);
-          if (!aiResponse && modelDecision.model !== 'gpt-4.1') {
-            console.warn('⚠️ Empty parser response from OpenAI, retrying with gpt-4.1', {
-              model: modelDecision.model,
-              finishReason: openaiData?.choices?.[0]?.finish_reason ?? null,
-              usage: openaiData?.usage ?? null,
-            });
-            openaiData = await requestOpenAiChatCompletion<any>({
-              apiKey: openaiApiKey,
-              model: 'gpt-4.1',
               messages: parserMessages,
               temperature: 0.1,
               maxTokens: 1800,
@@ -805,13 +783,10 @@ serve(async (req) => {
           timestamp: new Date().toISOString(),
           meta: {
             promptVersion: PROMPT_VERSION,
-            toolLoop: useToolLoop
-              ? {
-                  enabled: true,
-                  iterations: toolLoopIterations,
-                  trace: toolLoopTrace,
-                }
-              : { enabled: false },
+            toolLoop: {
+              iterations: toolLoopIterations,
+              trace: toolLoopTrace,
+            },
             // When the model invoked apply_slot_values / confirm_pending_action,
             // surface the resolution to the client so it can mutate domain
             // state (planner, quote, etc.) without re-parsing.
