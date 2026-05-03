@@ -124,10 +124,10 @@ For each tool I checked the eight-point GPT-5.1 checklist:
 - **(6)** ✅ only write tool, no overlap.
 - **(7)** ✅ response is `{ok:true}` or `{ok:false,reason}` — minimal by design (spec §3.1).
 - **(8)** ✅ unambiguous.
-- **DEBT-2 (HIGH-prio):** **the schema exists but is NEVER passed to the OpenAI tool loop.** `ai-message-parser/index.ts:330` does `tools: getRetrievalToolSchemas()` and `toolHandlers: getRetrievalToolHandlers()` — neither of those spreads in `saveMemoryNoteToolSchema` or any handler around `executeSaveMemoryNote`. So the model literally cannot save memory notes today, even though the validation/persistence machinery is implemented and tested. The spec §3.1 and renderState.ts:52 both reference the tool as if it were live. Phase 9 MUST wire it.
+- **DEBT-2 (HIGH-prio): RESOLVED in Phase 9.** `saveMemoryNoteToolSchema` is now spread into `tools` and a `saveMemoryNoteHandler` is registered (`ai-message-parser/index.ts:387–401, 457, 463`). Accepted notes are batch-persisted to `agent_states.session_memory.notes` at the end of the tool loop alongside any pending-action mutations (single UPDATE per turn). Telemetry emits `[CTX-MEMORY]` with attempted/accepted/rejected counts.
 - **DEBT-3 (medium):** spec §1.6 / §7.8 says `save_memory_note` is NOT parallel-safe with itself (de-dup ordering matters); the runtime serialization isn't enforced — `runToolLoop`'s `execBatch` runs everything in chunks of up to 4 in parallel. When the tool gets wired, either (a) `save_memory_note` calls must be partitioned and serialized inside `execBatch`, or (b) the runtime must reject more than one `save_memory_note` per iteration.
 
-**Score: 4 of 4 retrieval tools fully pass; `save_memory_note` passes the schema audit but fails the wiring audit.**
+**Score: 5 of 5 tools fully pass schema + wiring audit (post-Phase-9 amendment).**
 
 ### 2.6 `apply_slot_values` (v2)
 
@@ -161,7 +161,7 @@ For each tool I checked the eight-point GPT-5.1 checklist:
 
 ## 3. System prompt audit (`supabase/functions/ai-message-parser/prompt.ts`)
 
-Read the entire 1,373-line file (`PROMPT_VERSION = 'emilia-parser-v4'`). Searched case-insensitively for: `tool`, `Tool`, `TOOL`, `herramienta`, `función`, `invoke`, `invocar`, `llamar`, `call a function`, `MUST call`, `persist`, `persist until`, `don't yield`, `sensible default`, `tool_selection`, `search tool`.
+Original audit was on `PROMPT_VERSION = 'emilia-parser-v4'`. Phase 9 bumped to `v5`; the audit below is amended in-place to reflect the v5 state.
 
 ### 3.1 Persistence reminders (per GPT-5.1 guide)
 
@@ -170,25 +170,21 @@ Required directives:
 - "Don't yield prematurely — keep going if you have a viable path."
 - "Assume sensible defaults for ambiguous directives; only ask if critical info is missing."
 - "Only ask if critical info missing."
+- "One focused question per turn, never a multi-question form."
 
-**Status: MISSING (none of the four are present in the prompt today).** The closest existing material is the single line:
-> "Use semantic understanding and context clues. […] When uncertain, choose the most logical interpretation rather than asking for clarification" (lines 192, 207).
-
-That covers ~half of the "sensible defaults" reminder but does not address persistence at all. The prompt is built around single-shot JSON extraction, not multi-iteration tool-using turns.
-
-→ **DEBT-4 (HIGH-prio):** Phase 9 must add a `<persistence>` block to `prompt.ts` (probably near the top, before `TASK:` at line 147). Suggested wording, mirroring spec §1 conventions:
+**Status: PARTIALLY RESOLVED in v5.** A `<persistence>` block now exists at `prompt.ts:77–82`:
 
 ```
 <persistence>
-- Resolve the user's request end-to-end before yielding control.
-- If a tool returns partial data, decide whether to retry, use another tool, or
-  proceed with the partial result — do NOT stop and ask the user.
-- Assume sensible defaults for ambiguous fields (origin = profile.default_origin_city,
-  pax = 1 adult, dates = +7 days). Only ask the user when a critical, non-defaultable
-  field is missing AND no tool can recover it.
-- One focused question per turn, never a multi-question form.
+- Persist until the parsing task is fully resolved end-to-end. Don't yield prematurely with partial JSON or "needs more info" unless a critical field is truly missing.
+- For ambiguous directives, assume sensible defaults (typical traveler counts, current month dates, common origin) rather than asking back.
+- Only signal "missing info" for hard requirements: destination city, headcount when not implied, exact dates when explicitly required.
+- If you call tools, complete the loop: gather what you need, then return the final JSON.
 </persistence>
 ```
+
+3 of 4 spec directives covered (persist end-to-end, don't yield prematurely, sensible defaults).
+**Remaining gap:** "One focused question per turn, never a multi-question form" is missing. Tracked as DEBT-4-RESIDUAL — low priority since the v5 prompt is built around JSON extraction (single response per turn) so the multi-question concern rarely materializes, but should be added if user-facing question prompts grow.
 
 ### 3.2 Tool-selection rules (per GPT-5.1 guide §"Tool selection rules with thresholds")
 
@@ -203,26 +199,38 @@ Spec §4 prescribes a verbatim `<tool_selection>` block with eight bullets cover
 - parallelize independent retrieval calls
 - 3-iteration cap
 
-**Status: MISSING ENTIRELY.** Zero references to tool selection, zero mentions of any tool name, zero MUST/SHOULD/NEVER directives around tool invocation. The prompt does have many `🚨 CRITICAL` directives but they're all about JSON-extraction rules (luggage, mealPlan, hotelChains, dates) — none about the tool catalog.
+**Status: PARTIALLY RESOLVED in v5.** A `<tool_selection>` block now exists at `prompt.ts:84–107` organized into four sub-sections (PENDING ACTION / RETRIEVAL / MEMORY / GENERAL) rather than a flat bullet list. Coverage of the 9 spec items:
 
-→ **DEBT-5 (HIGH-prio):** Phase 9 must paste the spec §4 `<tool_selection>` block into `prompt.ts` verbatim (with translation/tone tuning if desired). Place it after the persistence block.
+| Spec bullet | v5 coverage |
+|---|---|
+| Prices/availability → MUST call ≥1 search tool | ✅ implicit via RETRIEVAL section |
+| Conceptual questions → internal knowledge | ✅ "Do NOT call tools for conceptual questions" |
+| "El plan / esto" + agency mode → `get_planner_state` first | ✅ explicit |
+| "La cotización" → `get_quote` first | ✅ explicit |
+| Prior search references → `get_recent_searches` first | ✅ explicit |
+| Recurring lead → `get_lead_full_history` once | ✅ explicit |
+| `save_memory_note` is fire-and-forget | ✅ "ONLY when the user explicitly states" |
+| Parallelize independent retrieval calls | ✅ "Prefer parallel tool calls when independent" |
+| **3-iteration cap** | ❌ MISSING — not mentioned anywhere in the block |
+
+**Bonus (not in v4 spec):** v5 added a PENDING ACTION sub-section that documents `apply_slot_values` and `confirm_pending_action` invocation rules, reflecting the v2 tool catalog.
+
+**Remaining gap:** the "3-iteration cap" directive is missing. Tracked as DEBT-5-RESIDUAL — low priority since the runtime enforces the cap (`iterationCap: 3` in `runToolLoop`), but the model has no instruction to economize within the budget. Add a one-line directive to GENERAL: "You have at most 3 iterations of tool calls per turn — plan accordingly."
 
 ### 3.3 Memory tool guidance
 
-The `renderState.ts` block (`<memory_instructions>`) at line 52 contains:
+The `renderState.ts` block (`<memory_instructions>`) contains:
 > "Save durable observations via save_memory_note tool — never PII, never speculation, never instructions."
 
-This is good — and crucially, it's the ONLY place in the prompt-rendered output where the `save_memory_note` tool is mentioned. But:
-1. It's only injected when `memoryStateBlock` is passed into `buildSystemPrompt` (i.e. when context-engineering state is being rendered). When `memoryStateBlock` is undefined (legacy paths), the model sees zero references to `save_memory_note`.
-2. As noted in §2.5, the tool isn't even wired into the loop, so even when this guidance shows up, the tool call would fail with `unknown_tool`.
+Plus the v5 `<tool_selection>` block now also documents the tool in its MEMORY sub-section. So the model has TWO references to `save_memory_note` in the rendered prompt when state is being injected, and ONE reference (in `<tool_selection>`) when state is absent.
 
-→ **DEBT-6 (medium):** once DEBT-2 is resolved, ensure the memory_instructions block is rendered for ALL turns where the tool loop is active, not just when an explicit `memoryStateBlock` is provided.
+**Status: RESOLVED post-Phase-9.** DEBT-2 wiring is complete (see §2.5 amendment) and the memory_instructions block design (only render when state present) is documented as BY DESIGN — without state there are no memories to instruct on. See DEBT-6 row in §4 table for the formal disposition.
 
 ### 3.4 Other prompt observations (informational, not blockers)
 
-- The prompt is **1,373 lines** — well past the GPT-5.1 guide recommendation of crisp directives over verbose few-shot examples (anti-pattern §7.3). It contains 15+ worked examples of JSON extraction. This isn't strictly a Phase 6 finding, but it suggests Phase 9 should consider a v5 prompt that splits "core extraction rules" from "tool guidance" and trims few-shot bloat.
-- `PROMPT_VERSION = 'emilia-parser-v4'`. Phase 9 should bump to `v5` when adding the persistence + tool_selection blocks.
-- The prompt uses ad-hoc emoji-tagged sections (`🚨 CRITICAL`) rather than structured XML tags. The spec implies XML tags (`<persistence>`, `<tool_selection>`, `<memory_instructions>`) — Phase 9 may want to standardize.
+- Original audit noted the v4 prompt was **1,373 lines**, well past the GPT-5.1 guide recommendation. The v5 file is comparable in size; few-shot extraction examples were not trimmed. Tracked as a future cleanup but not a correctness issue.
+- `PROMPT_VERSION = 'emilia-parser-v5'` (bumped in Phase 9 alongside persistence + tool_selection blocks).
+- The prompt still mixes ad-hoc emoji-tagged sections (`🚨 CRITICAL`) with the new XML-tagged blocks (`<persistence>`, `<tool_selection>`). Standardization on XML across the file is a future cleanup.
 
 ---
 
@@ -231,17 +239,20 @@ This is good — and crucially, it's the ONLY place in the prompt-rendered outpu
 | ID | Severity | Title | File(s) | Action |
 |----|----------|-------|---------|--------|
 | DEBT-1 | low | `get_quote` description doesn't warn about `not_implemented` stub | `_shared/functionTools.ts:208–210` | Add one-sentence caveat about Phase-5 dependency; or remove tool until table exists. |
-| DEBT-2 | **HIGH** | `save_memory_note` schema not wired into tool loop | `ai-message-parser/index.ts:330–331` | Spread `saveMemoryNoteToolSchema` into `tools` and add a handler that wraps `executeSaveMemoryNote` (with state plumbing). |
+| DEBT-2 | ~~HIGH~~ | `save_memory_note` schema not wired into tool loop | `ai-message-parser/index.ts:330–331` | ~~Spread `saveMemoryNoteToolSchema` into `tools` and add a handler that wraps `executeSaveMemoryNote` (with state plumbing).~~ **RESOLVED in Phase 9: tool wired at `index.ts:457`, handler at `:387–401`. Notes batch-persisted to `agent_states.session_memory.notes` after the loop. `[CTX-MEMORY]` telemetry emitted with attempted/accepted/rejected counts.** |
 | DEBT-3 | medium | No serialization of multiple `save_memory_note` calls per turn | `_shared/toolRunner.ts:287–323` (`execBatch`) | Either partition `save_memory_note` calls and serialize them, or cap `save_memory_note` to one per iteration. **MITIGATED in Phase 8: parallel save_memory_note calls are batch-persisted after the loop completes (single UPDATE per turn). Race only theoretically possible across simultaneous turns of the same conversation, which is not a real-world pattern. Full serialization in toolRunner deferred.** |
-| DEBT-4 | **HIGH** | Persistence reminders missing from system prompt | `ai-message-parser/prompt.ts` | Add `<persistence>` block (suggested wording in §3.1). |
-| DEBT-5 | **HIGH** | `<tool_selection>` block missing from system prompt | `ai-message-parser/prompt.ts` | Paste spec §4 block verbatim. |
+| DEBT-4 | ~~HIGH~~ → low | Persistence reminders missing from system prompt | `ai-message-parser/prompt.ts:77–82` | ~~Add `<persistence>` block~~ **RESOLVED in Phase 9 (v5):** block added covering 3 of 4 directives. Residual: "one focused question per turn" line still missing — low-priority follow-up. |
+| DEBT-5 | ~~HIGH~~ → low | `<tool_selection>` block missing from system prompt | `ai-message-parser/prompt.ts:84–107` | ~~Paste spec §4 block verbatim~~ **RESOLVED in Phase 9 (v5):** block added with 4 sub-sections (PENDING ACTION / RETRIEVAL / MEMORY / GENERAL) plus v2 turn-state tools. Residual: "3-iteration cap" directive missing (runtime enforces it but model has no instruction to economize) — low-priority one-line addition. |
 | DEBT-6 | medium | `<memory_instructions>` only renders when `memoryStateBlock` provided | `ai-message-parser/prompt.ts:60, 143–145` and `_shared/renderState.ts` | Always render memory instructions when tool loop is active. **BY DESIGN: `<memory_instructions>` only renders when state is being injected (memoryStateBlock provided). Without state, the prompt has no memories to instruct on, so the block adds no value. This is correct behavior.** |
 | DEBT-7 | low | `runToolLoop` uses `model: 'gpt-4.1'` hardcoded, not GPT-5.1 | `ai-message-parser/index.ts:327` | When upgrading to GPT-5.1, change here. The comment says "gpt-4.1 supports tool calls + reliable JSON; mini doesn't always" — verify GPT-5.1 parity before swap. **RESOLVED in Phase 9: model is now overridable via the `CTX_TOOL_LOOP_MODEL` env var (defaults to `gpt-4.1`). Allows swap without redeploy.** |
 | DEBT-8 | low | Empty `supabase/functions/travel-chat/` directory | `supabase/functions/travel-chat/` | Delete. Pure dead-folder cleanup. **RESOLVED in Phase 9: directory removed.** |
 | DEBT-9 | low | `get_planner_state` returns hardcoded `currency: "USD"` | `_shared/functionTools.ts:173` | Either add `currency` column to `trips` or pull from `agency` row. **PARTIALLY RESOLVED in Phase 9: `createInitialEmiliaState` and `bootstrapStateIfMissing` now accept optional `currency`/`language` overrides (defaults USD/es). Call sites still need to wire agency_config when available; tracked as a follow-up.** |
 | DEBT-10 | low | Edge functions called from chat (`starling-flights`, `eurovips-soap`, `places-viewport`) lack request-body schema validation at HTTP boundary | several | Add Zod or hand-rolled validation in each handler's first 10 lines. Currently they trust the caller. **DEFERRED to a separate hardening pass. Scope is too broad for Context Engineering Phase 9 — it touches 23 edge functions, each with its own input shape. Should be a focused security-review work item.** |
 | DEBT-11 | low | `confirm_pending_action` has no client-side dispatcher case | `useMessageHandler.ts:applyPendingActionResolution` | Add `case 'confirm_*':` arms when the first booking-confirmation flow ships. Tool itself is correctly wired; only the domain-specific consumer is missing. |
-| DEBT-12 | low | `applyPendingActionResolution` only handles `for: 'quote_completion'` today | `useMessageHandler.ts:applyPendingActionResolution` | Add new `case` per new pending-action `for` value. By design the parser/router need NO change — just the dispatcher. |
+| DEBT-12 | low | `pendingActionDispatcher.ts` only handles `for: 'quote_completion'` today | `src/features/chat/state/pendingActionDispatcher.ts` | Add new handler per new pending-action `for` value. By design the parser/router need NO change — just the dispatcher. **Refactored in Phase 9: dispatch logic moved out of `useMessageHandler.ts` into a registry-pattern dispatcher file.** |
+| DEBT-13 | medium | `conversationKnowledgeService.ts` summary helpers (`buildConversationSummary` / `loadConversationSummary` / `saveConversationSummary`) are dead code post-CE | `src/features/chat/services/conversationKnowledgeService.ts`, `src/features/chat/services/messageStorageService.ts`, `src/features/chat/hooks/useMessageHandler.ts:674, 835, 932-933` | Per CE spec §6, per-conversation memory lives in `agent_states.session_memory`. The summary load → parser-prompt path is no longer consumed; the post-turn save is fire-and-forget with no reader. **Action (Phase 7 of cleanup plan):** delete the 3 helpers from both `conversationKnowledgeService.ts` and the duplicated impl in `messageStorageService.ts:202-266`; remove the unused load + save calls in `useMessageHandler.ts`; update test mocks. |
+| DEBT-14 | low | `useContextualMemory.ts` hook is exported but never imported by active code | `src/features/chat/hooks/useContextualMemory.ts`, `src/features/chat/hooks/index.ts:2` | Wrapper hook around the dead summary helpers (DEBT-13). Only referenced by historical docs (handoffs, PR notes). **Action (Phase 7 of cleanup plan):** delete the hook file and its barrel export. Safe deletion — zero active imports. |
+| DEBT-15 | medium | `leadAiProfileService.ts` still loaded via legacy parser-prompt injection path instead of the `get_lead_full_history` retrieval tool | `src/features/chat/hooks/useMessageHandler.ts:698, 836, 936-940`; `src/features/chat/services/conversationKnowledgeService.ts:166` | The `lead_ai_profiles` table is legitimate persistent storage (cross-conversation lead preferences) and stays. But the load/inject pattern duplicates what `get_lead_full_history` already does in the tool loop. **Action (after Phase 3 of cleanup plan — flag flip):** drop the `leadProfile` parameter from `parseMessageWithAI` and let the tool loop pull it on demand; keep the post-turn `mergeLeadAiProfile` + `saveLeadAiProfile` (it's the only writer of that table). Migration is non-breaking because `get_lead_full_history` is already wired and tested. |
 
 ---
 
