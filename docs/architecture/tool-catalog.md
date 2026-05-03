@@ -127,7 +127,7 @@ For each tool I checked the eight-point GPT-5.1 checklist:
 - **DEBT-2 (HIGH-prio): RESOLVED in Phase 9.** `saveMemoryNoteToolSchema` is now spread into `tools` and a `saveMemoryNoteHandler` is registered (`ai-message-parser/index.ts:387–401, 457, 463`). Accepted notes are batch-persisted to `agent_states.session_memory.notes` at the end of the tool loop alongside any pending-action mutations (single UPDATE per turn). Telemetry emits `[CTX-MEMORY]` with attempted/accepted/rejected counts.
 - **DEBT-3 (medium):** spec §1.6 / §7.8 says `save_memory_note` is NOT parallel-safe with itself (de-dup ordering matters); the runtime serialization isn't enforced — `runToolLoop`'s `execBatch` runs everything in chunks of up to 4 in parallel. When the tool gets wired, either (a) `save_memory_note` calls must be partitioned and serialized inside `execBatch`, or (b) the runtime must reject more than one `save_memory_note` per iteration.
 
-**Score: 5 of 5 tools fully pass schema + wiring audit (post-Phase-9 amendment).**
+**Score: 7 of 7 tools fully pass schema + wiring audit (post-v2 amendment, per §§2.6–2.7 below).**
 
 ### 2.6 `apply_slot_values` (v2)
 
@@ -277,6 +277,10 @@ Spec §6 mapping table mentions a future `save_planner_edit` tool ("out of scope
 ---
 
 ## 6. Closing note on Phase 6 status
+
+**Status (post-v2 amendment, 2026-05-02):** 7 of 7 tools fully wired and audited. DEBT-2 (`save_memory_note` wiring), DEBT-4 (`<persistence>` block), DEBT-5 (`<tool_selection>` block) all closed in Phase 9. See §2 sections + the `Status` header at the top of this file for the current state.
+
+**Original Phase 6 finding (preserved for historical context):**
 
 **Audited:** 5 model-invocable tools (4 retrieval + 1 memory write).
 **Pass:** 4 retrieval tools pass all 8 checklist points.

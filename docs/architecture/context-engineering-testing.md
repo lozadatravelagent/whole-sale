@@ -24,7 +24,7 @@ A **per-conversation context engineering layer** following OpenAI Agents SDK / C
 | Pillar | What it does | Where it lives |
 |---|---|---|
 | **State** (Phase 1) | `EmiliaState` JSONB per `conversation_id`, with profile + memories + active refs + mode | `agent_states` table; `src/features/chat/state/*` |
-| **Tools** (Phase 3) | OpenAI function calling loop with 4 retrieval tools + 1 memory tool | `supabase/functions/_shared/{functionTools,toolRunner,memoryTools}.ts` + `ai-message-parser/index.ts` |
+| **Tools** (Phase 3 + v2 amendment) | OpenAI function calling loop with 4 retrieval tools + 1 memory tool + 2 turn-state tools (`apply_slot_values`, `confirm_pending_action`) = 7 tools total | `supabase/functions/_shared/{functionTools,toolRunner,memoryTools,pendingActionTools}.ts` + `ai-message-parser/index.ts` |
 | **Lifecycle** (Phase 2) | Distill (model → save_memory_note tool) → Consolidate (LLM dedup) → Inject (renderStateForSystemPrompt) | `_shared/{memoryTools,consolidateMemory,renderState,lifecycleHooks}.ts` |
 
 **Plus:** TrimmingSession (Phase 4), reciprocity helpers (Phase 5), tool catalog audit (Phase 6), telemetry + audit endpoint (Phase 8), docs + DEBT fixes (Phase 9).

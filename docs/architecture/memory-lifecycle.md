@@ -208,7 +208,7 @@ These are not enforced in code — the model has to learn them from `<tool_selec
 
 ## 6. Failure modes & how they degrade
 
-The whole layer is designed to **fail open**. Any breakage in the memory pipeline degrades to the legacy push-context behavior, never to a broken conversation.
+The whole layer is designed to **fail open**. Any breakage in the memory pipeline degrades gracefully — the parser still runs the tool loop without `MEMORY STATE`, and the conversation continues.
 
 | Failure | What logs | What happens to the conversation |
 |---|---|---|
@@ -216,7 +216,7 @@ The whole layer is designed to **fail open**. Any breakage in the memory pipelin
 | `saveEmiliaState` throws | `[EMILIA_STATE] save failed for {conversationId}: ...` (warn) | In-memory mutation is NOT rolled back. Next mutate or app reload retries. The current turn proceeds. |
 | Schema-version mismatch (stored > client) | `[EMILIA_STATE] Schema version mismatch for {conversationId}: stored=X, client=Y` (throw) | `loadEmiliaState` throws rather than load an unknown shape. Caller falls back to legacy. Deploy newer client to recover. |
 | `validateMemoryNote` rejection | (model-visible only — sent back as `{ ok: false, reason }`) | Model adapts in the next iteration. No persistence write. `[CTX-MEMORY]` event reports the rejection reason. |
-| `runToolLoop` throws (e.g. OpenAI 5xx after retry) | `❌ [CTX-TOOL] runToolLoop failed, falling back to single-shot: ...` (error) | Catch block re-runs the legacy `requestOpenAiChatCompletion` single-shot. User gets an answer. |
+| `runToolLoop` throws (e.g. OpenAI 5xx after retry) | `❌ [CTX-TOOL] runToolLoop failed, falling back to single-shot: ...` (error) | Catch block re-runs `requestOpenAiChatCompletion` as a network-resilience fallback (single-shot, no tools). User gets an answer. NOT a legacy A/B leg — the legacy single-shot path was removed in Phase 4. |
 | Tool loop hits iteration cap (3) or total timeout (25s) | `[CTX-TOOL] hit_cap=true` or `hit_timeout=true` in telemetry | A "force final answer" call runs without tools and a system note ("Cap de iteraciones alcanzado…" / "Tiempo agotado…"). User gets a partial answer; the tool catalog spec describes this as the bounded worst case. |
 | Per-tool 8s timeout | trace entry `error: 'timeout'`, result `{ error: 'timeout', tool }` | Loop continues. Model can retry or fall back. |
 | Bad tool arguments (model emitted invalid JSON) | trace `error: 'bad_arguments'`, result `{ error: 'bad_arguments', detail }` | Loop continues. Model corrects on next iteration. |
