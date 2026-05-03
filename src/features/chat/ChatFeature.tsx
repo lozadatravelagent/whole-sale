@@ -63,7 +63,6 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     workspaceMode,
     historyMode,
     sidebarLimit,
-    previousParsedRequest,
     isAddingToCRM,
 
     // Related data
@@ -78,7 +77,6 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     setActiveTab,
     setWorkspaceMode,
     setHistoryMode,
-    setPreviousParsedRequest,
     setIsAddingToCRM,
 
     // Actions
@@ -183,7 +181,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       return true;
     }
 
-    if (planner.plannerState || previousParsedRequest?.requestType === 'itinerary') {
+    if (planner.plannerState) {
       return true;
     }
 
@@ -209,7 +207,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
         parsedRequest?.requestType === 'itinerary'
       );
     });
-  }, [conversationScopedMessages, planner.plannerState, previousParsedRequest, selectedConversationRow]);
+  }, [conversationScopedMessages, planner.plannerState, selectedConversationRow]);
 
   const latestDiscoveryContext = useMemo(
     () => getLatestDiscoveryContext(conversationScopedMessages),
@@ -254,7 +252,6 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     isTyping,
     planner.isLoadingPlanner,
     planner.plannerState,
-    previousParsedRequest,
     selectedConversation,
     selectedConversationRow,
     setWorkspaceMode,
@@ -303,8 +300,6 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     selectedConversation,
     selectedConversationRef,
     conversationScopedMessages, // Only expose messages from the currently selected conversation
-    previousParsedRequest,
-    setPreviousParsedRequest,
     loadContextualMemory,
     saveContextualMemory,
     clearContextualMemory,
@@ -337,25 +332,17 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     user?.accountType === 'agent' ? chatMode : undefined
   );
 
-  // Phase 5 (Context Engineering) — keep state.mode in sync with chatMode for
-  // the active conversation. No-op when:
-  //   - feature flag is off
+  // Context Engineering — keep state.mode in sync with chatMode for the active
+  // conversation. No-op when:
   //   - no conversation selected
   //   - no EmiliaState loaded yet (bootstrap happens in `useMessageHandler`
   //     on the first send)
   // The mode mutation is the single source of truth for reciprocity (see
   // `applyModeChange` invariants in contextEngineeringIntegration.ts).
-  const USE_CONTEXT_ENGINEERING_FE =
-    (import.meta as { env?: { VITE_USE_CONTEXT_ENGINEERING?: string } }).env?.VITE_USE_CONTEXT_ENGINEERING === 'true';
-  const { state: emiliaState } = useEmiliaState(
-    USE_CONTEXT_ENGINEERING_FE ? selectedConversation : null,
-  );
-  const { mutate: mutateEmiliaState } = useUpdateState(
-    USE_CONTEXT_ENGINEERING_FE ? selectedConversation : null,
-  );
+  const { state: emiliaState } = useEmiliaState(selectedConversation);
+  const { mutate: mutateEmiliaState } = useUpdateState(selectedConversation);
 
   useEffect(() => {
-    if (!USE_CONTEXT_ENGINEERING_FE) return;
     if (!selectedConversation) return;
     if (!emiliaState) return;
     const desiredMode: 'agency' | 'passenger' = chatMode === 'agency' ? 'agency' : 'passenger';
@@ -365,7 +352,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     }).catch((e) => {
       console.warn('[CTX-ENG] ChatFeature mode sync failed:', e);
     });
-  }, [USE_CONTEXT_ENGINEERING_FE, chatMode, emiliaState, mutateEmiliaState, selectedConversation]);
+  }, [chatMode, emiliaState, mutateEmiliaState, selectedConversation]);
 
   // PR 3 (C5): bridge chip handlers. Wired only into the B2B (agent) branch of
   // ChatInterface below. Consumer branch doesn't pass them — the bridge never
@@ -528,43 +515,42 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
         throw new Error('Conversación no encontrada');
       }
 
-      // Get the most recent parsed request from memory or messages
-      let parsedRequest = previousParsedRequest;
+      // Get the most recent parsed request from messages.
+      // Phase 6: previousParsedRequest React state was deleted; message
+      // metadata is the canonical source for the latest parsed request.
+      let parsedRequest: ParsedTravelRequest | null = null;
 
-      // If no parsed request in memory, try to find one in recent messages
+      console.log('🔍 [ADD TO CRM] Searching for parsed request in messages...');
+
+      // First, try to find in assistant messages
+      const recentAssistantMessage = conversationScopedMessages
+        .filter(msg => msg.role === 'assistant')
+        .reverse()
+        .find(msg => {
+          const meta = msg.meta as any;
+          return meta?.originalRequest || meta?.parsedRequest;
+        });
+
+      if (recentAssistantMessage) {
+        const meta = recentAssistantMessage.meta as any;
+        parsedRequest = meta?.originalRequest || meta?.parsedRequest;
+        console.log('📊 [ADD TO CRM] Found parsed request in assistant message:', parsedRequest);
+      }
+
+      // If still no parsed request, try to find in user messages
       if (!parsedRequest) {
-        console.log('🔍 [ADD TO CRM] No parsed request in memory, searching in messages...');
-
-        // First, try to find in assistant messages
-        const recentAssistantMessage = conversationScopedMessages
-          .filter(msg => msg.role === 'assistant')
+        const recentUserMessage = conversationScopedMessages
+          .filter(msg => msg.role === 'user')
           .reverse()
           .find(msg => {
             const meta = msg.meta as any;
-            return meta?.originalRequest || meta?.parsedRequest;
+            return meta?.parsedRequest;
           });
 
-        if (recentAssistantMessage) {
-          const meta = recentAssistantMessage.meta as any;
-          parsedRequest = meta?.originalRequest || meta?.parsedRequest;
-          console.log('📊 [ADD TO CRM] Found parsed request in assistant message:', parsedRequest);
-        }
-
-        // If still no parsed request, try to find in user messages
-        if (!parsedRequest) {
-          const recentUserMessage = conversationScopedMessages
-            .filter(msg => msg.role === 'user')
-            .reverse()
-            .find(msg => {
-              const meta = msg.meta as any;
-              return meta?.parsedRequest;
-            });
-
-          if (recentUserMessage) {
-            const meta = recentUserMessage.meta as any;
-            parsedRequest = meta?.parsedRequest;
-            console.log('📊 [ADD TO CRM] Found parsed request in user message:', parsedRequest);
-          }
+        if (recentUserMessage) {
+          const meta = recentUserMessage.meta as any;
+          parsedRequest = meta?.parsedRequest;
+          console.log('📊 [ADD TO CRM] Found parsed request in user message:', parsedRequest);
         }
       }
 
@@ -664,7 +650,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     } finally {
       setIsAddingToCRM(false);
     }
-  }, [selectedConversation, conversationScopedMessages, conversations, previousParsedRequest, toast, setIsAddingToCRM, t]);
+  }, [selectedConversation, conversationScopedMessages, conversations, toast, setIsAddingToCRM, t]);
 
   // Handle PDF generated from selectors
   const handlePdfGenerated = useCallback(async (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => {

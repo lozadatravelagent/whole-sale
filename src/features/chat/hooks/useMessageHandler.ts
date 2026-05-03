@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type React from 'react';
-import { parseMessageWithAI, combineWithPreviousRequest, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
+import { parseMessageWithAI, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { normalizeFlightRequest } from '@/services/flightSegments';
 import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery, handleItineraryRequest } from '../services/searchHandlers';
@@ -23,58 +23,17 @@ import { buildCanonicalResultFromStandard, buildCanonicalMeta, persistCanonicalR
 import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { transformStarlingResults } from '../services/flightTransformer';
-import { buildConversationSummary, loadConversationSummary, resolveLeadIdForConversation, saveConversationSummary } from '../services/conversationKnowledgeService';
-import { loadLeadAiProfile, mergeLeadAiProfile, saveLeadAiProfile } from '../services/leadAiProfileService';
-import { supabase } from '@/integrations/supabase/client';
-import {
-  applyModeChange,
-  bootstrapStateIfMissing,
-  buildMemoryStateBlockFromState,
-  clearPendingAction,
-  setActiveRef,
-  setPendingAction,
-} from '@/features/chat/state/contextEngineeringIntegration';
-import { saveEmiliaState } from '@/features/chat/state/persistence';
+import { resolveLeadIdForConversation } from '../services/conversationKnowledgeService';
+import { mergeLeadAiProfile, saveLeadAiProfile } from '../services/leadAiProfileService';
 import type { EmiliaState, PendingAction } from '@/features/chat/state/emiliaState';
-import { dispatchPendingAction } from '@/features/chat/state/pendingActionDispatcher';
+import {
+  bumpTurnCount,
+  consumePendingActionResolution,
+  emitPendingAction,
+  prepareTurnContext,
+} from '@/features/chat/state/messageTurnContext';
+import { toCanonicalFields } from '@/features/chat/state/pendingActionDispatcher';
 import i18n from '@/i18n';
-
-/**
- * Phase 5 integration — Context Engineering feature flag.
- * When OFF (default), `handleSendMessage` runs the legacy code path verbatim.
- * When ON, an EmiliaState is bootstrapped and a memoryStateBlock is rendered
- * for the system prompt of `parseMessageWithAI`.
- *
- * Set `VITE_USE_CONTEXT_ENGINEERING=true` in `.env` to enable.
- */
-const USE_CONTEXT_ENGINEERING =
-  (typeof import.meta !== 'undefined'
-    && (import.meta as { env?: { VITE_USE_CONTEXT_ENGINEERING?: string } }).env?.VITE_USE_CONTEXT_ENGINEERING === 'true');
-
-/**
- * Resolve the agency_id for a conversation. Returns null when the row is
- * missing or has no agency assignment (RLS enforced — failed queries return
- * null and we fall back to the legacy path).
- *
- * Cheap one-shot select; only invoked when the Context Engineering flag is on.
- */
-async function resolveAgencyIdForConversation(conversationId: string): Promise<string | null> {
-  try {
-    const { data, error } = await supabase
-      .from('conversations')
-      .select('agency_id')
-      .eq('id', conversationId)
-      .maybeSingle();
-    if (error) {
-      console.warn('[CTX-ENG] resolveAgencyIdForConversation failed:', error.message);
-      return null;
-    }
-    return (data?.agency_id as string | null) ?? null;
-  } catch (e) {
-    console.warn('[CTX-ENG] resolveAgencyIdForConversation threw:', e);
-    return null;
-  }
-}
 
 function formatPlannerDateSelectionMessage(selection: {
   startDate?: string;
@@ -178,8 +137,6 @@ const useMessageHandler = (
   selectedConversation: string | null,
   selectedConversationRef: React.MutableRefObject<string | null>,
   messages: MessageRow[], // ✅ Pass messages directly instead of calling useMessages again
-  previousParsedRequest: ParsedTravelRequest | null,
-  setPreviousParsedRequest: (request: ParsedTravelRequest | null) => void,
   loadContextualMemory: (conversationId: string) => Promise<ParsedTravelRequest | null>,
   saveContextualMemory: (conversationId: string, request: ParsedTravelRequest) => Promise<void>,
   clearContextualMemory: (conversationId: string) => Promise<void>,
@@ -368,18 +325,7 @@ const useMessageHandler = (
       // Load persistent context state first, then fallback to other sources
       const persistentState = await loadContextState(currentConversationId) as ContextState | null;
       
-      // Try new ContextState structure first, then legacy structure, then previousParsedRequest
-      const flightCtx = persistentState?.lastSearch?.flightsParams || 
-        (persistentState as any)?.flights ||  // Legacy fallback
-        (previousParsedRequest?.flights ? {
-          origin: previousParsedRequest.flights.origin,
-          destination: previousParsedRequest.flights.destination,
-          departureDate: previousParsedRequest.flights.departureDate,
-          returnDate: previousParsedRequest.flights.returnDate,
-          adults: previousParsedRequest.flights.adults,
-          children: previousParsedRequest.flights.children || 0,
-          infants: previousParsedRequest.flights.infants || 0
-        } : null);
+      const flightCtx = persistentState?.lastSearch?.flightsParams || null;
       if (flightCtx) {
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
         console.log('🏨 [INTENT] Flight context:', flightCtx);
@@ -438,7 +384,6 @@ const useMessageHandler = (
           });
 
           // Persist context for follow-ups
-          setPreviousParsedRequest(hotelsParsed);
           await saveContextualMemory(currentConversationId, hotelsParsed);
 
           // Run HOTELS search only
@@ -463,7 +408,6 @@ const useMessageHandler = (
         console.warn('⚠️ [INTENT] Add hotel detected but no flight context found');
         console.warn('⚠️ [INTENT] Available sources:', {
           persistentState,
-          previousParsedRequest: previousParsedRequest?.flights
         });
         // Continue to normal AI parsing flow
       }
@@ -683,9 +627,7 @@ const useMessageHandler = (
         userMessage,
         contextFromDB,
         persistentState,
-        conversationSummary,
         leadId,
-        preloadedLeadProfile,
       ] = await Promise.all([
         addMessageViaSupabase({
           conversation_id: finalConversationId,
@@ -700,33 +642,19 @@ const useMessageHandler = (
           ? Promise.resolve(preloadedContext!.contextState)
           : loadContextState(finalConversationId) as Promise<ContextState | null>,
         canUsePreloaded
-          ? Promise.resolve(preloadedContext!.conversationSummary)
-          : loadConversationSummary(finalConversationId),
-        canUsePreloaded
           ? Promise.resolve(preloadedContext!.leadId)
           : resolveLeadIdForConversation(finalConversationId),
-        canUsePreloaded
-          ? Promise.resolve(preloadedContext!.leadProfile)
-          : Promise.resolve(null),
       ]);
-      let leadProfile = preloadedLeadProfile;
       logTimingStep('MESSAGE FLOW', 'save user message + load context', saveAndContextStart, {
         canUsePreloaded,
         hasContextFromDb: Boolean(contextFromDB),
         hasPersistentState: Boolean(persistentState),
-        hasConversationSummary: Boolean(conversationSummary),
         hasLeadId: Boolean(leadId),
       });
 
       console.log('✅ [MESSAGE FLOW] Step 3: User message saved + context loaded in parallel');
       console.log('🔍 [DEBUG] Context loaded from DB:', contextFromDB);
       console.log('🔍 [DEBUG] Persistent context state:', persistentState);
-      console.log('🔍 [DEBUG] Conversation summary:', conversationSummary);
-      console.log('🔍 [DEBUG] Lead profile:', leadProfile);
-
-      if (!leadProfile && leadId) {
-        leadProfile = await loadLeadAiProfile(leadId);
-      }
 
       // 🔄 ITERATION DETECTION: Check if this message is an iteration on previous search
       const iterationContext = detectIterationIntent(currentMessage, persistentState);
@@ -745,15 +673,13 @@ const useMessageHandler = (
       const hasNoStoredContext = !contextFromDB && !persistentState;
 
       if (isFirstMessage) {
-        console.log('🧹 [NEW CONVERSATION] First message detected - cleaning ALL context including React state');
-        contextToUse = null; // Start fresh for new conversations
-        // Also clear the React state to prevent cross-conversation contamination
-        setPreviousParsedRequest(null);
+        console.log('🧹 [NEW CONVERSATION] First message detected - starting fresh');
+        contextToUse = null;
       } else if (hasNoStoredContext) {
         console.log('🧹 [NEW CONVERSATION] No stored context - falling back to planner context if available');
         contextToUse = plannerContextRequest || null;
       } else {
-        contextToUse = contextFromDB || plannerContextRequest || previousParsedRequest || persistentState;
+        contextToUse = contextFromDB || plannerContextRequest || persistentState;
       }
       console.log('📝 [CONTEXT] Final context to use:', contextToUse);
 
@@ -839,64 +765,20 @@ const useMessageHandler = (
         previousContext: contextToUse ? 'Yes' : 'No'
       });
 
-      // === PHASE 5: Context Engineering bootstrap (feature-flagged) ===
-      // When VITE_USE_CONTEXT_ENGINEERING=true, bootstrap (or load) the
-      // EmiliaState for this conversation, sync mode, register the active
-      // planner ref, and render a memoryStateBlock for the parser. On any
-      // failure we silently fall back to the legacy path (memoryStateBlock
-      // stays undefined; behavior matches flag-off exactly).
-      let memoryStateBlock: string | undefined;
-      let ctxEngState: EmiliaState | null = null;
-      if (USE_CONTEXT_ENGINEERING) {
-        try {
-          const ctxAgencyId = await resolveAgencyIdForConversation(finalConversationId);
-          if (ctxAgencyId) {
-            const desiredMode: 'agency' | 'passenger' =
-              chatMode === 'agency' ? 'agency' : 'passenger';
-
-            ctxEngState = await bootstrapStateIfMissing({
-              conversationId: finalConversationId,
-              agencyId: ctxAgencyId,
-              leadId: leadId ?? undefined,
-              mode: desiredMode,
-            });
-
-            // Reciprocity: align mode without disturbing any other field.
-            if (ctxEngState.mode !== desiredMode) {
-              ctxEngState = applyModeChange(ctxEngState, desiredMode);
-              await saveEmiliaState(ctxEngState).catch((e) =>
-                console.warn('[CTX-ENG] saveEmiliaState (mode) failed:', e),
-              );
-            }
-
-            // Register the active planner ref so the model sees it.
-            const plannerId = (plannerState as TripPlannerState | null)?.id;
-            if (plannerId) {
-              const summary =
-                ((plannerState as TripPlannerState | null)?.summary
-                  || (plannerState as TripPlannerState | null)?.title
-                  || `Plan ${plannerId}`).toString().slice(0, 120);
-              ctxEngState = setActiveRef(ctxEngState, {
-                type: 'plan',
-                id: plannerId,
-                summary1Line: summary,
-                lastUpdated: new Date().toISOString(),
-              });
-              await saveEmiliaState(ctxEngState).catch((e) =>
-                console.warn('[CTX-ENG] saveEmiliaState (active_ref) failed:', e),
-              );
-            }
-
-            memoryStateBlock = buildMemoryStateBlockFromState(ctxEngState);
-          } else {
-            console.warn('[CTX-ENG] No agency_id resolved for conversation; skipping CE bootstrap');
-          }
-        } catch (e) {
-          console.warn('[CTX-ENG] Bootstrap failed; falling back to legacy path:', e);
-          memoryStateBlock = undefined;
-          ctxEngState = null;
-        }
-      }
+      // === Context Engineering bootstrap ===
+      // Bootstrap (or load) the EmiliaState for this conversation, sync mode,
+      // register the active planner ref, and render a memoryStateBlock for the
+      // parser. On bootstrap failure (e.g., agency_id resolution error) the
+      // returned ctxEngState is null — the `if (ctxEngState)` guards below are
+      // defensive against that case.
+      const turnPrep = await prepareTurnContext({
+        conversationId: finalConversationId,
+        leadId: leadId ?? null,
+        chatMode,
+        plannerState: plannerState as TripPlannerState | null,
+      });
+      let ctxEngState: EmiliaState | null = turnPrep.ctxEngState;
+      const memoryStateBlock: string | undefined = turnPrep.memoryStateBlock;
 
       // === EMILIA 5.0: PARSE + ROUTE ===
       // Always parse first, then route based on content (not workspace_mode)
@@ -905,8 +787,6 @@ const useMessageHandler = (
       const userLanguageRaw = (i18n.language || 'es').split('-')[0];
       const userLanguage: 'es' | 'en' | 'pt' = userLanguageRaw === 'en' || userLanguageRaw === 'pt' ? userLanguageRaw : 'es';
       let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory, {
-        conversationSummary,
-        leadProfile,
         plannerContext: plannerEditContext,
         contextMeta: {
           conversationId: finalConversationId,
@@ -918,16 +798,8 @@ const useMessageHandler = (
 
       // Phase 5: increment turn count after a successful parse. Failures here
       // do not break the flow.
-      if (USE_CONTEXT_ENGINEERING && ctxEngState) {
-        try {
-          const bumped: EmiliaState = {
-            ...ctxEngState,
-            meta: { ...ctxEngState.meta, turn_count: (ctxEngState.meta.turn_count ?? 0) + 1 },
-          };
-          await saveEmiliaState(bumped);
-        } catch (e) {
-          console.warn('[CTX-ENG] saveEmiliaState (turn_count) failed:', e);
-        }
+      if (ctxEngState) {
+        ctxEngState = await bumpTurnCount(ctxEngState);
       }
       logTimingStep('MESSAGE FLOW', 'parseMessageWithAI', parseStart, {
         requestType: parsedRequest.requestType,
@@ -937,35 +809,16 @@ const useMessageHandler = (
       // loop resolved this turn. This is the GENERAL mechanism: any handler
       // that previously asked for input via setPendingAction sees its prompt
       // answered here, regardless of which domain it belongs to.
-      //
-      // Concrete handling per `for` value lives in the helper below; this
-      // block just dispatches and clears the pending_action when complete.
       if (
-        USE_CONTEXT_ENGINEERING &&
         ctxEngState &&
-        parsedRequest.pendingActionResolution &&
-        parsedRequest.pendingActionResolution.kind === 'awaiting_user_input'
+        parsedRequest.pendingActionResolution?.kind === 'awaiting_user_input'
       ) {
-        const resolution = parsedRequest.pendingActionResolution;
-        try {
-          await dispatchPendingAction({
-            resolution,
-            plannerState: plannerState as TripPlannerState | null,
-            updatePlannerState,
-          });
-          // Clear pending_action now that the client has consumed it.
-          ctxEngState = clearPendingAction(ctxEngState);
-          await saveEmiliaState(ctxEngState).catch((e) =>
-            console.warn('[CTX-ENG] saveEmiliaState (clear pending_action) failed:', e),
-          );
-          console.log('✅ [PENDING-ACTION] Applied + cleared:', {
-            for: resolution.for,
-            applied: resolution.applied,
-            complete: resolution.complete,
-          });
-        } catch (e) {
-          console.warn('[PENDING-ACTION] apply failed:', e);
-        }
+        ctxEngState = await consumePendingActionResolution({
+          ctxEngState,
+          resolution: parsedRequest.pendingActionResolution,
+          plannerState: plannerState as TripPlannerState | null,
+          updatePlannerState,
+        });
       }
 
       const effectiveMode = resolveEffectiveMode(options?.mode, chatMode);
@@ -1022,18 +875,20 @@ const useMessageHandler = (
         parsedRequest,
         plannerState: plannerState as TripPlannerState | null,
         persistentState,
-        previousParsedRequest,
+        // Phase 6: previousParsedRequest React state deleted; persistentState
+        // is the only memory source.
+        previousParsedRequest: null,
       });
       if (preRouteTravelBridge.kind === 'quote_to_plan') {
         console.log('🔁 [TRAVEL BRIDGE] Reusing quote/search context to build itinerary');
         parsedRequest = preRouteTravelBridge.parsedRequest;
       }
 
-      const nextConversationSummary = buildConversationSummary(parsedRequest, parsedRequest.originalMessage || currentMessage, conversationSummary);
-      saveConversationSummary(finalConversationId, nextConversationSummary).catch((e) => console.warn('⚠️ [SUMMARY] Failed to save conversation summary:', e));
-
       if (leadId) {
-        const nextLeadProfile = mergeLeadAiProfile(leadProfile, parsedRequest, {
+        // DEBT-15: write-only path. The reader (lead profile load + prompt
+        // injection) was deleted; the model now retrieves lead history via
+        // the `get_lead_full_history` retrieval tool when needed.
+        const nextLeadProfile = mergeLeadAiProfile(null, parsedRequest, {
           leadId,
           sourceConversationId: finalConversationId,
         });
@@ -1046,7 +901,7 @@ const useMessageHandler = (
         parsedRequest,
         plannerState: plannerState as TripPlannerState | null,
         persistentState,
-        previousParsedRequest,
+        previousParsedRequest: null,
         routeResult,
       });
       const isQuoteActivePlanTurn = travelContextBridge.kind === 'plan_to_quote';
@@ -1087,17 +942,27 @@ const useMessageHandler = (
 
       // C7.1.a: options.mode wins over the closure-captured chatMode. Bridge
       // chip handlers that just called setChatMode pass it explicitly.
+      // C8 (Phase 5): orchestrator now requires `mode`. Consumer / B2C call
+      // sites still pass `chatMode === undefined` (ChatFeature gates the
+      // prop on `accountType === 'agent'`); for those we default to
+      // 'passenger' here. The legacy mode-undefined fallthrough in the
+      // orchestrator was deleted, and 'passenger' produces the same
+      // standard_itinerary-leaning behavior consumers had on the legacy
+      // path. See orchestrator JSDoc on `mode`.
       const conversationTurn = resolveConversationTurn({
         parsedRequest,
         routeResult,
         plannerState,
         hasPersistentContext: Boolean(contextToUse),
-        hasPreviousParsedRequest: Boolean(previousParsedRequest),
+        // Phase 6: previousParsedRequest React state was deleted. Persistent
+        // context (lastSearch in DB) is the only memory source now, surfaced
+        // via `hasPersistentContext` above.
+        hasPreviousParsedRequest: false,
         recentCollectCount,
         maxCollectTurns: MAX_COLLECT_TURNS,
         previousMessageType,
         forceCurrentMode: options?.forceCurrentMode,
-        mode: effectiveMode,
+        mode: effectiveMode ?? 'passenger',
         // Suppress mode_bridge while the assistant is mid-ask. ctxEngState
         // reflects the LATEST (post-resolution) pending_action; we already
         // cleared it above when the model resolved it via apply_slot_values.
@@ -1119,7 +984,6 @@ const useMessageHandler = (
 
       if (conversationTurn.shouldAskMinimalQuestion && routeResult.collectQuestion) {
         console.log('🔄 [COLLECT] Router intercepting with focused question:', routeResult.reason, `(turn ${recentCollectCount + 1}/${MAX_COLLECT_TURNS})`);
-        setPreviousParsedRequest(parsedRequest);
         await saveContextualMemory(finalConversationId, parsedRequest);
 
         const collectMessage = buildConversationalMissingInfoMessage({
@@ -1127,6 +991,23 @@ const useMessageHandler = (
           missingFields: routeResult.missingFields,
           fallbackMessage: routeResult.collectQuestion,
         });
+
+        // Phase 2: additive pending_action emit. Router COLLECT fields are
+        // already canonical (destination/dates/passengers/origin) — no rename.
+        if (ctxEngState) {
+          const plannerId = (plannerState as TripPlannerState | null)?.id;
+          ctxEngState = await emitPendingAction({
+            ctxEngState,
+            action: {
+              kind: 'awaiting_user_input',
+              for: 'collect_clarification',
+              fields: routeResult.missingFields,
+              prompt: (routeResult.collectQuestion || collectMessage).slice(0, 240),
+              ref: plannerId ? { type: 'plan', id: plannerId } : undefined,
+              issuedAt: new Date().toISOString(),
+            },
+          });
+        }
 
         await saveAndDisplayMessage({
           conversation_id: finalConversationId,
@@ -1218,7 +1099,7 @@ const useMessageHandler = (
       console.log('🎯 AI parsing result:', parsedRequest);
 
       // 🔄 ITERATION MERGE: If this is an iteration, merge with previous context
-      // This runs BEFORE combineWithPreviousRequest to properly handle hotel/flight iterations
+      // (previousParsedRequest React state was removed in Phase 6 — only persistentState now)
       if (iterationContext.isIteration && persistentState) {
         console.log('🔄 [ITERATION] Applying iteration merge');
         console.log('🔄 [ITERATION] Before merge - requestType:', parsedRequest.requestType);
@@ -1238,7 +1119,7 @@ const useMessageHandler = (
       // 🔄 LEGACY FALLBACK: "con escalas" heuristic (only if iteration system didn't handle it)
       // This is kept as a fallback for cases where the new iteration system might miss the pattern
       if (!iterationContext.isIteration && /\bcon\s+escalas\b/i.test(currentMessage)) {
-        const baseFlights = parsedRequest?.flights || previousParsedRequest?.flights || (contextToUse as any)?.flights;
+        const baseFlights = parsedRequest?.flights || (contextToUse as any)?.flights;
         if (baseFlights?.origin && baseFlights?.destination && baseFlights?.departureDate && (baseFlights?.adults ?? 0) >= 1) {
           console.log('🔀 [LEGACY FALLBACK] "con escalas" detected - forcing stops:with_stops');
           parsedRequest = {
@@ -1251,17 +1132,6 @@ const useMessageHandler = (
             originalMessage: currentMessage
           } as any;
         }
-      }
-
-      // 5. Combine with previous request if available (contextual memory)
-      // Note: This is a fallback for non-iteration cases
-      console.log('🧠 [MESSAGE FLOW] Step 10: Combining with previous request');
-      if (previousParsedRequest && !iterationContext.isIteration) {
-        console.log('🔄 [MEMORY] Combining with previous request:', {
-          previousType: previousParsedRequest.requestType,
-          newType: parsedRequest.requestType
-        });
-        parsedRequest = combineWithPreviousRequest(previousParsedRequest, currentMessage, parsedRequest);
       }
 
       // 6. Validate required fields (handle combined specially)
@@ -1402,7 +1272,6 @@ const useMessageHandler = (
         console.log('🧾 [VALIDATION] Combined results:', { flight: flightVal, hotel: hotelVal });
         if (missingAny) {
           // Persist context
-          setPreviousParsedRequest(parsedRequest);
           await saveContextualMemory(finalConversationId, parsedRequest);
 
           const missingInfoMessage = buildConversationalMissingInfoMessage({
@@ -1419,6 +1288,23 @@ const useMessageHandler = (
               'combined'
             ),
           });
+
+          // Phase 2: additive pending_action emit (combined search slot-fill).
+          if (ctxEngState) {
+            const dedupedLegacy = [
+              ...new Set([...flightVal.missingFields, ...hotelVal.missingFields]),
+            ];
+            ctxEngState = await emitPendingAction({
+              ctxEngState,
+              action: {
+                kind: 'awaiting_user_input',
+                for: 'combined_completion',
+                fields: toCanonicalFields(dedupedLegacy),
+                prompt: missingInfoMessage.slice(0, 240),
+                issuedAt: new Date().toISOString(),
+              },
+            });
+          }
 
           await saveAndDisplayMessage({
             conversation_id: finalConversationId,
@@ -1443,7 +1329,6 @@ const useMessageHandler = (
         }
 
         console.log('✅ [VALIDATION] Combined: all required fields present');
-        setPreviousParsedRequest(null);
         await clearContextualMemory(finalConversationId);
       } else if (parsedRequest.requestType === 'flights') {
         // Validate flight fields
@@ -1461,7 +1346,6 @@ const useMessageHandler = (
           console.log('⚠️ [VALIDATION] Missing required fields, requesting more info');
 
           // Store the current parsed request for future combination
-          setPreviousParsedRequest(parsedRequest);
           await saveContextualMemory(finalConversationId, parsedRequest);
 
           // ✨ CRITICAL: Also save to context state for iteration detection (e.g., "agrega X adultos")
@@ -1505,6 +1389,23 @@ const useMessageHandler = (
 
           console.log('💬 [VALIDATION] Generated missing info message');
 
+          // Phase 2: additive pending_action emit (flight slot-fill).
+          // Skip when validation.errorMessage is set — that branch is the
+          // "only_minors" terminal error, not a slot-fill ask (the user must
+          // restructure the entire request, not just supply more values).
+          if (ctxEngState && !validation.errorMessage) {
+            ctxEngState = await emitPendingAction({
+              ctxEngState,
+              action: {
+                kind: 'awaiting_user_input',
+                for: 'flight_completion',
+                fields: toCanonicalFields(validation.missingFields),
+                prompt: missingInfoMessage.slice(0, 240),
+                issuedAt: new Date().toISOString(),
+              },
+            });
+          }
+
           // Add assistant message with missing info request
           await saveAndDisplayMessage({
             conversation_id: finalConversationId,
@@ -1547,7 +1448,6 @@ const useMessageHandler = (
             console.log('⚠️ [VALIDATION] "Only minors" error detected - skipping auto-enrich');
 
             // Store context for iteration detection (enables "agrega X adultos")
-            setPreviousParsedRequest(parsedRequest);
             await saveContextualMemory(finalConversationId, parsedRequest);
 
             const contextStateForFailedSearch: ContextState = {
@@ -1592,15 +1492,7 @@ const useMessageHandler = (
           }
 
           // Attempt to auto-enrich hotel params from last flight context
-          const flightCtx = getContextFromLastFlights() || (previousParsedRequest?.flights ? {
-            origin: previousParsedRequest.flights.origin,
-            destination: previousParsedRequest.flights.destination,
-            departureDate: previousParsedRequest.flights.departureDate,
-            returnDate: previousParsedRequest.flights.returnDate,
-            adults: previousParsedRequest.flights.adults,
-            children: previousParsedRequest.flights.children || 0,
-            infants: previousParsedRequest.flights.infants || 0
-          } : null);
+          const flightCtx = getContextFromLastFlights();
 
           if (flightCtx) {
             console.log('🧩 [ENRICH] Filling missing hotel fields from flight context');
@@ -1634,7 +1526,6 @@ const useMessageHandler = (
               // proceed without asking
             } else {
               // Store the current parsed request for future combination
-              setPreviousParsedRequest(parsedRequest);
               await saveContextualMemory(finalConversationId, parsedRequest);
 
               // ✨ Use custom errorMessage if available
@@ -1646,6 +1537,20 @@ const useMessageHandler = (
                   parsedRequest.requestType
                 ),
               });
+
+              // Phase 2: additive pending_action emit (hotel slot-fill after enrich).
+              if (ctxEngState && !reval.errorMessage) {
+                ctxEngState = await emitPendingAction({
+                  ctxEngState,
+                  action: {
+                    kind: 'awaiting_user_input',
+                    for: 'hotel_completion',
+                    fields: toCanonicalFields(reval.missingFields),
+                    prompt: missingInfoMessage.slice(0, 240),
+                    issuedAt: new Date().toISOString(),
+                  },
+                });
+              }
 
               await saveAndDisplayMessage({
                 conversation_id: finalConversationId,
@@ -1670,7 +1575,6 @@ const useMessageHandler = (
           } else {
             console.log('⚠️ [VALIDATION] Missing hotel required fields and no flight context available');
             // Store the current parsed request for future combination
-            setPreviousParsedRequest(parsedRequest);
             await saveContextualMemory(finalConversationId, parsedRequest);
 
             // ✨ Use custom errorMessage if available
@@ -1682,6 +1586,20 @@ const useMessageHandler = (
                 parsedRequest.requestType
               ),
             });
+
+            // Phase 2: additive pending_action emit (hotel slot-fill, no flight ctx).
+            if (ctxEngState && !validation.errorMessage) {
+              ctxEngState = await emitPendingAction({
+                ctxEngState,
+                action: {
+                  kind: 'awaiting_user_input',
+                  for: 'hotel_completion',
+                  fields: toCanonicalFields(validation.missingFields),
+                  prompt: missingInfoMessage.slice(0, 240),
+                  issuedAt: new Date().toISOString(),
+                },
+              });
+            }
 
             await saveAndDisplayMessage({
               conversation_id: finalConversationId,
@@ -1707,7 +1625,6 @@ const useMessageHandler = (
 
         console.log('✅ [VALIDATION] All hotel required fields present, proceeding with search');
         // Clear previous request since we have all required fields
-        setPreviousParsedRequest(null);
         await clearContextualMemory(finalConversationId);
       } else if (parsedRequest.requestType === 'itinerary' && !isQuoteActivePlanTurn) {
         console.log('🗺️ [VALIDATION] Validating itinerary required fields');
@@ -1715,7 +1632,6 @@ const useMessageHandler = (
         // Hard requirement: at least 1 destination
         if (!parsedRequest.itinerary?.destinations?.length) {
           console.log('⚠️ [VALIDATION] No destinations provided, requesting more info');
-          setPreviousParsedRequest(parsedRequest);
           await saveContextualMemory(finalConversationId, parsedRequest);
 
           const missingInfoMessage = buildConversationalMissingInfoMessage({
@@ -1730,6 +1646,22 @@ const useMessageHandler = (
               }
             ),
           });
+
+          // Phase 2: additive pending_action emit (itinerary missing destinations).
+          if (ctxEngState) {
+            const plannerId = (plannerState as TripPlannerState | null)?.id;
+            ctxEngState = await emitPendingAction({
+              ctxEngState,
+              action: {
+                kind: 'awaiting_user_input',
+                for: 'itinerary_completion',
+                fields: ['destinations'],
+                prompt: missingInfoMessage.slice(0, 240),
+                ref: plannerId ? { type: 'plan', id: plannerId } : undefined,
+                issuedAt: new Date().toISOString(),
+              },
+            });
+          }
 
           await saveAndDisplayMessage({
             conversation_id: finalConversationId,
@@ -1818,7 +1750,6 @@ const useMessageHandler = (
         }
 
         console.log('✅ [VALIDATION] Itinerary proceeding with generation (smart defaults applied)');
-        setPreviousParsedRequest(null);
         await clearContextualMemory(finalConversationId);
       }
 
@@ -1914,25 +1845,26 @@ const useMessageHandler = (
             // value of `for`. The model on the next turn will see this in
             // <pending_action> and call apply_slot_values to resolve it.
             // Silent no-op when CE is off or state was never bootstrapped.
-            if (USE_CONTEXT_ENGINEERING && ctxEngState) {
-              const missingFields = (quoteResult.data as { quoteContext?: { missingQuoteFields?: string[] } })
-                ?.quoteContext?.missingQuoteFields;
-              if (Array.isArray(missingFields) && missingFields.length > 0) {
+            if (ctxEngState) {
+              // Canonical slot names — see conversationOrchestrator.getPlanQuoteMissingSlots.
+              // The model sees these in <pending_action.fields> and resolves them
+              // via apply_slot_values; the dispatcher reads the same canonical keys.
+              // The user-facing text in `assistantResponse` still uses Spanish display
+              // strings from `missingQuoteFields`, surfaced via `prompt` below.
+              const missingSlots = (quoteResult.data as { quoteContext?: { missingQuoteSlots?: string[] } })
+                ?.quoteContext?.missingQuoteSlots;
+              if (Array.isArray(missingSlots) && missingSlots.length > 0) {
                 const plannerId = (plannerState as TripPlannerState).id;
                 const action: PendingAction = {
                   kind: 'awaiting_user_input',
                   for: 'quote_completion',
-                  fields: missingFields,
+                  fields: missingSlots,
                   ref: plannerId ? { type: 'plan', id: plannerId } : undefined,
                   prompt: assistantResponse.slice(0, 240),
                   issuedAt: new Date().toISOString(),
                 };
-                const nextState = setPendingAction(ctxEngState, action);
-                ctxEngState = nextState;
-                saveEmiliaState(nextState).catch((e) =>
-                  console.warn('[CTX-ENG] saveEmiliaState (pending_action) failed:', e),
-                );
-                console.log('🎯 [PENDING-ACTION] Persisted quote_completion request:', missingFields);
+                ctxEngState = await emitPendingAction({ ctxEngState, action });
+                console.log('🎯 [PENDING-ACTION] Persisted quote_completion request:', missingSlots);
               }
             }
           } else if (conversationTurn.responseMode === 'show_places') {
@@ -1955,7 +1887,10 @@ const useMessageHandler = (
             const itineraryResult = await handleItineraryRequest(parsedRequest, plannerState || null, {
               conversationId: finalConversationId,
               leadId: leadId ?? null,
-              leadProfile,
+              // DEBT-15: prompt-injection load was removed. travel-itinerary
+              // can no longer rely on this; lead history must come through the
+              // model's retrieval tools when needed.
+              leadProfile: null,
             });
             // Wrap in canonical pipeline
             const canonicalStdResult = buildCanonicalResultFromStandard({
@@ -2010,7 +1945,6 @@ const useMessageHandler = (
         
         if (hasResults) {
           // We have usable results, clear old contextual memory
-          setPreviousParsedRequest(null);
           await clearContextualMemory(finalConversationId);
 
           if (hasPlannerData && (structuredData as any)?.source) {
@@ -2078,7 +2012,6 @@ const useMessageHandler = (
           // No results - preserve context for retry (e.g., "con escalas")
           console.log('⚠️ [STATE] No results, preserving context for potential retry');
           saveContextualMemory(finalConversationId, parsedRequest).catch((e) => console.warn('⚠️ [MEMORY] Failed to save contextual memory:', e));
-          setPreviousParsedRequest(parsedRequest);
         }
       } catch (memErr) {
         console.warn('⚠️ [MEMORY] Could not update contextual memory after search:', memErr);
@@ -2149,8 +2082,6 @@ const useMessageHandler = (
     }
   }, [
     selectedConversation,
-    previousParsedRequest,
-    setPreviousParsedRequest,
     loadContextualMemory,
     saveContextualMemory,
     clearContextualMemory,
@@ -2239,6 +2170,34 @@ const useMessageHandler = (
           ),
         });
 
+        // Phase 2: additive pending_action emit (planner date-selector revalidation).
+        // This callback runs outside the main handleSendMessage turn loop, so we
+        // bootstrap a fresh CE state via prepareTurnContext.
+        try {
+          const turnPrep = await prepareTurnContext({
+            conversationId: currentConversationId,
+            leadId: await resolveLeadIdForConversation(currentConversationId),
+            chatMode,
+            plannerState: plannerState as TripPlannerState | null,
+          });
+          if (turnPrep.ctxEngState) {
+            const plannerId = (plannerState as TripPlannerState | null)?.id;
+            await emitPendingAction({
+              ctxEngState: turnPrep.ctxEngState,
+              action: {
+                kind: 'awaiting_user_input',
+                for: 'itinerary_completion',
+                fields: toCanonicalFields(validation.missingFields),
+                prompt: missingInfoMessage.slice(0, 240),
+                ref: plannerId ? { type: 'plan', id: plannerId } : undefined,
+                issuedAt: new Date().toISOString(),
+              },
+            });
+          }
+        } catch (e) {
+          console.warn('[CTX-ENG] handlePlannerDateSelection emitPendingAction failed:', e);
+        }
+
         await saveAndDisplayMessage({
           conversation_id: currentConversationId,
           role: 'assistant',
@@ -2258,7 +2217,6 @@ const useMessageHandler = (
           }
         });
 
-        setPreviousParsedRequest(mergedRequest);
         await saveContextualMemory(currentConversationId, mergedRequest);
         setIsTyping(false, currentConversationId);
         setIsLoading(false);
@@ -2287,13 +2245,11 @@ const useMessageHandler = (
       const hasPlannerData = Boolean((structuredData as any)?.plannerData);
 
       if (hasPlannerData) {
-        setPreviousParsedRequest(null);
         await clearContextualMemory(currentConversationId);
         if (persistPlannerState) {
           await persistPlannerState((structuredData as any).plannerData, 'chat');
         }
       } else {
-        setPreviousParsedRequest(mergedRequest);
         await saveContextualMemory(currentConversationId, mergedRequest);
       }
 
@@ -2335,11 +2291,11 @@ const useMessageHandler = (
     selectedConversationRef,
     setIsLoading,
     setIsTyping,
-    setPreviousParsedRequest,
     setTypingMessage,
     toast,
     validateItineraryRequiredFields,
     saveAndDisplayMessage,
+    chatMode,
   ]);
 
   return {

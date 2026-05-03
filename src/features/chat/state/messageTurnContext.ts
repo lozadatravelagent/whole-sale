@@ -64,14 +64,13 @@ async function resolveAgencyIdForConversation(
 // ---------------------------------------------------------------------------
 
 export interface PreparedTurnContext {
-  /** Loaded/bootstrapped EmiliaState; null when CE is disabled or bootstrap failed. */
+  /** Loaded/bootstrapped EmiliaState; null when bootstrap failed (e.g., agency_id resolution error). */
   ctxEngState: EmiliaState | null;
   /** Pre-rendered memory state block for the parser; undefined when ctxEngState is null. */
   memoryStateBlock: string | undefined;
 }
 
 export interface PrepareTurnContextArgs {
-  enabled: boolean;
   conversationId: string;
   leadId: string | null;
   chatMode: 'agency' | 'passenger' | undefined;
@@ -80,21 +79,17 @@ export interface PrepareTurnContextArgs {
 
 /**
  * One-shot prep for a turn: load or bootstrap state, sync mode, register the
- * active planner ref, render the memoryStateBlock. When `enabled` is false
- * (CE flag off), returns { ctxEngState: null, memoryStateBlock: undefined }
- * synchronously (no Supabase calls).
+ * active planner ref, render the memoryStateBlock.
  *
- * On any internal error, logs `[CTX-ENG]` warn and returns the same null
- * shape — the caller falls back to the legacy path.
+ * On any internal error (failed agency_id resolve, supabase down), logs
+ * `[CTX-ENG]` warn and returns { ctxEngState: null, memoryStateBlock: undefined }
+ * — callers MUST guard on `ctxEngState` before using it (defensive guard,
+ * protects against bootstrap failure).
  */
 export async function prepareTurnContext(
   args: PrepareTurnContextArgs,
 ): Promise<PreparedTurnContext> {
-  const { enabled, conversationId, leadId, chatMode, plannerState } = args;
-
-  if (!enabled) {
-    return { ctxEngState: null, memoryStateBlock: undefined };
-  }
+  const { conversationId, leadId, chatMode, plannerState } = args;
 
   try {
     const ctxAgencyId = await resolveAgencyIdForConversation(conversationId);

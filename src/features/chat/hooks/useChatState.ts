@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ChatState, ConversationWorkspaceMode } from '../types/chat';
 import { useAuth, useConversations } from '@/hooks/useChat';
 import { useAuth as useAuthContext } from '@/contexts/AuthContext'; // ⚡ OPTIMIZATION: Use cached user data
@@ -28,7 +27,6 @@ const useChatState = (options: UseChatStateOptions = {}) => {
     // ✅ Typing state per conversation (not global)
     typingByConversation: {},
     sidebarLimit: 50,
-    previousParsedRequest: null,
     isAddingToCRM: false
   });
 
@@ -61,8 +59,6 @@ const useChatState = (options: UseChatStateOptions = {}) => {
   const setSelectedConversation = useCallback((id: string | null) => {
     updateChatState({
       selectedConversation: id,
-      // 🧹 Clear previousParsedRequest when switching conversations to prevent cross-contamination
-      previousParsedRequest: null
     });
   }, [updateChatState]);
 
@@ -126,10 +122,6 @@ const useChatState = (options: UseChatStateOptions = {}) => {
     updateChatState({ historyMode });
   }, [updateChatState]);
 
-  const setPreviousParsedRequest = useCallback((request: ParsedTravelRequest | null) => {
-    updateChatState({ previousParsedRequest: request });
-  }, [updateChatState]);
-
   const setIsAddingToCRM = useCallback((isAddingToCRM: boolean) => {
     updateChatState({ isAddingToCRM });
   }, [updateChatState]);
@@ -178,7 +170,6 @@ const useChatState = (options: UseChatStateOptions = {}) => {
         activeTab: 'active',
         workspaceMode,
         historyMode: workspaceMode,
-        previousParsedRequest: null,
       });
       console.log(`⚡ [OPTIMISTIC UI] Chat displayed instantly in ${(performance.now() - uiStartTime).toFixed(0)}ms!`);
 
@@ -211,7 +202,6 @@ const useChatState = (options: UseChatStateOptions = {}) => {
           activeTab: 'active',
           workspaceMode: newConversation.workspace_mode || workspaceMode,
           historyMode: newConversation.workspace_mode || workspaceMode,
-          previousParsedRequest: null,
         });
         console.log(`🔄 [OPTIMISTIC UI] Replaced temp ID with real ID in ${(performance.now() - replaceTime).toFixed(0)}ms`);
 
@@ -223,7 +213,6 @@ const useChatState = (options: UseChatStateOptions = {}) => {
       console.error('❌ [CHAT FLOW] Error in createNewChat process:', error);
       updateChatState({
         selectedConversation: null,
-        previousParsedRequest: null,
         isLoading: false,
       });
       toast({
@@ -304,7 +293,6 @@ const useChatState = (options: UseChatStateOptions = {}) => {
     setActiveTab,
     setWorkspaceMode,
     setHistoryMode,
-    setPreviousParsedRequest,
     setIsAddingToCRM,
     updateChatState,
     setTypingMessage,

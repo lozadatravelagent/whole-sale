@@ -1,5 +1,4 @@
 import type { Database } from '@/integrations/supabase/types';
-import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 
 export type MessageRow = Database['public']['Tables']['messages']['Row'];
 export type ConversationRow = Database['public']['Tables']['conversations']['Row'];
@@ -25,7 +24,6 @@ export interface ChatState {
   // ✅ Typing state per conversation (not global)
   typingByConversation: Record<string, { isTyping: boolean; message: string }>;
   sidebarLimit: number;
-  previousParsedRequest: ParsedTravelRequest | null;
   isAddingToCRM: boolean;
 }
 

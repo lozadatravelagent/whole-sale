@@ -3,7 +3,6 @@ import { vi } from 'vitest';
 import type { MessageRow } from '@/features/chat/types/chat';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ContextState } from '@/features/chat/types/contextState';
-import type { ConversationSummary, LeadAiProfile } from '@/features/chat/types/knowledge';
 
 export const DEFAULT_CONV_ID = 'test-conv-123';
 
@@ -36,11 +35,9 @@ function buildDefaultProps() {
     selectedConversation: DEFAULT_CONV_ID as string | null,
     selectedConversationRef: { current: DEFAULT_CONV_ID as string | null },
     messages: [] as MessageRow[],
-    previousParsedRequest: null as ParsedTravelRequest | null,
     plannerContextRequest: null as ParsedTravelRequest | null,
     plannerState: null as any,
     // Required — callback spies
-    setPreviousParsedRequest: vi.fn() as unknown as (r: ParsedTravelRequest | null) => void,
     loadContextualMemory: vi.fn().mockResolvedValue(null) as unknown as (id: string) => Promise<ParsedTravelRequest | null>,
     saveContextualMemory: vi.fn().mockResolvedValue(undefined) as unknown as (id: string, r: ParsedTravelRequest) => Promise<void>,
     clearContextualMemory: vi.fn().mockResolvedValue(undefined) as unknown as (id: string) => Promise<void>,
@@ -67,9 +64,7 @@ function buildDefaultProps() {
       conversationId: string;
       contextualMemory: ParsedTravelRequest | null;
       contextState: ContextState | null;
-      conversationSummary: ConversationSummary | null;
       leadId: string | null;
-      leadProfile: LeadAiProfile | null;
     } | null | undefined,
     workspaceMode: undefined as 'standard' | 'planner' | undefined,
     chatMode: undefined as 'agency' | 'passenger' | undefined,
