@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v5';
+export const PROMPT_VERSION = 'emilia-parser-v6';
 export const PROMPT_CONTRACT_SNIPPETS = [
   'IMPORTANTE: Siempre responde solo con JSON válido.',
   "NO roomType or mealPlan because user didn't mention them",
@@ -37,37 +37,22 @@ const LANGUAGE_NAMES: Record<NonNullable<BuildSystemPromptArgs['language']>, str
   pt: 'Portuguese',
 };
 
-export function buildSystemPrompt({
-  currentDate,
-  conversationHistoryText = '',
-  previousContext,
-  plannerContext,
-  memoryStateBlock,
-  language = 'es',
-}: BuildSystemPromptArgs): string {
-  const languageName = LANGUAGE_NAMES[language] ?? LANGUAGE_NAMES.es;
-  const languageDirective = `\nUSER LANGUAGE: ${language} (${languageName})\n- All natural-language strings in the JSON output (clarifying questions, missing-field prompts, suggestion or recommendation text shown to the user, "message" / "ask" / "explanation" fields) MUST be written in ${languageName}.\n- JSON keys, enum values, IATA / city codes, and ISO dates remain in their canonical form regardless of language.\n`;
-  // Helper vars for dynamic prompt examples
-  const [yearStr, monthStr, dayStr] = currentDate.split('-');
-  const year = parseInt(yearStr);
-  const month = parseInt(monthStr);
-  const day = parseInt(dayStr);
-  const nextYear = year + 1;
-  const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  const currentMonthName = monthNames[month - 1];
-  const futureDay = Math.min(day + 1, 28);
-  const pastDay = day > 3 ? day - 2 : 1;
-  const pastMonthName = month > 1 ? monthNames[month - 2] : monthNames[11];
-  const pastMonthNum = month > 1 ? String(month - 1).padStart(2, '0') : '12';
-  const pastYear = month > 1 ? nextYear : nextYear;
-  const futureMonthName = month < 12 ? monthNames[month] : monthNames[0];
-  const futureMonthNum = month < 12 ? String(month + 1).padStart(2, '0') : '01';
-  const futureMonthYear = month < 12 ? year : nextYear;
+// =============================================================================
+// STATIC_SYSTEM_PROMPT — byte-identical across all turns, agencies, languages.
+//
+// Why a single immutable constant: OpenAI's automatic prompt caching (gpt-4.1+)
+// matches by PREFIX, byte-for-byte. The first dynamic byte breaks the cache.
+// To maximize the cacheable prefix (~15k tokens) we keep ALL per-turn variation
+// out of this string and emit it from `buildDynamicContextBlock` AT THE END,
+// after this constant.
+//
+// Rule when editing: NO interpolations (`${...}`) in this string. If you need
+// dynamic content, add it to `buildDynamicContextBlock` instead.
+// =============================================================================
 
-  return `
+const STATIC_SYSTEM_PROMPT = `
 Eres un experto asistente de viajes que analiza solicitudes de viaje y extrae datos estructurados en JSON.
-${languageDirective}
-FECHA ACTUAL: ${currentDate}
+
 IMPORTANTE: Siempre responde solo con JSON válido. Usa \\n para saltos de línea en strings.
 
 <persistence>
@@ -105,12 +90,19 @@ GENERAL:
 - Do NOT call tools when the user message is a simple acknowledgement or chitchat.
 - Prefer parallel tool calls when independent (e.g. \`get_planner_state\` + \`get_lead_full_history\`).
 </tool_selection>
-${memoryStateBlock ? `**IMPORTANT**: a structured MEMORY STATE block is included below. Treat it as authoritative; precedence rules apply.\n` : ''}
 
-${conversationHistoryText ? `CONVERSATION HISTORY:
-${conversationHistoryText}
+<context_blocks_guide>
+The DYNAMIC CONTEXT section at the very end of this system prompt (after all the rules below) carries per-turn state. It may include any subset of:
 
-CONVERSATION CONTEXT RULES:
+- USER LANGUAGE — the BCP-47 short code + full name. ALL natural-language strings in the JSON output (clarifying questions, missing-field prompts, "message"/"ask"/"explanation" fields) MUST be written in that language. JSON keys, enum values, IATA/city codes, and ISO dates remain canonical regardless of language.
+- FECHA ACTUAL — current date in YYYY-MM-DD plus derived relative-date examples. Use this for ALL date interpretation; do not rely on training cutoff.
+- CONVERSATION HISTORY — recent prior messages. When present, follow CONVERSATION HISTORY RULES below.
+- PREVIOUS CONTEXT — last parsed travel request as JSON. When present, follow CONTEXT MERGING RULES below.
+- CURRENT PLANNER STATE — active trip planner state as JSON. When present, follow PLANNER EDITING MODE rules below.
+- MEMORY STATE — Context-Engineering structured block (profile, active_refs, discovery_candidates, pending_action, memories). When present, treat as AUTHORITATIVE per the documented precedence rules. The PENDING ACTION rules in <tool_selection> above take priority.
+</context_blocks_guide>
+
+CONVERSATION HISTORY RULES (apply when CONVERSATION HISTORY appears in DYNAMIC CONTEXT):
 - Analyze ENTIRE conversation to extract all travel details mentioned across messages
 - If user mentioned flight details earlier, include them in current parsing
 - If user mentioned hotel preferences earlier, include them in current parsing
@@ -126,12 +118,8 @@ CONVERSATION CONTEXT RULES:
 - When user requests "hotel para X adultos" → Check conversation for ANY previous flight search and auto-fill: city (from destination), checkinDate (from departureDate), checkoutDate (from returnDate), adults, children
 - ALWAYS prioritize extracting complete context from conversation history over asking for missing fields
 - If you find ANY flight details in previous messages, include them in hotels search even if user doesn't explicitly mention them
-` : ''}
 
-${previousContext ? `PREVIOUS CONTEXT:
-${JSON.stringify(previousContext, null, 2)}
-
-CONTEXT MERGING RULES:
+CONTEXT MERGING RULES (apply when PREVIOUS CONTEXT appears in DYNAMIC CONTEXT):
 1. If current message modifies preferences ("con escalas", "con valija"), merge with previous context - keep ALL existing fields, only update mentioned preference
 2. If current message adds missing info, merge with previous context
 3. If current message is completely new request (new origin/destination), ignore previous context
@@ -153,12 +141,8 @@ EXAMPLES:
 - Previous has complete flight + current "con valija" → Return complete flight with luggage: "checked"
 - Previous had "vuelo a Madrid para 2 menores" (failed, adults=0) + current "agrega 2 adultos" → Return complete flight with adults: 2, children: 2, preserving all other fields
 - Previous had search with only infants + current "con 1 adulto" → Return complete search with adults: 1, preserving infants and other fields
-` : ''}
 
-${plannerContext ? `CURRENT PLANNER STATE:
-${JSON.stringify(plannerContext, null, 2)}
-
-PLANNER EDITING MODE:
+PLANNER EDITING MODE (apply when CURRENT PLANNER STATE appears in DYNAMIC CONTEXT):
 - When CURRENT PLANNER STATE.hasActivePlan is true, interpret the user's message first as an incremental edit to the existing planner.
 - Do not treat it as a brand-new itinerary unless the user explicitly says they want to start over, discard the plan, create another plan, or begin from zero.
 - Resolve references like "esa ciudad", "la primera parte", "la ultima parada", "el tramo largo", "dia 3", or "ahi" using CURRENT PLANNER STATE.
@@ -168,11 +152,6 @@ PLANNER EDITING MODE:
 - If the user's intention is actionable but not one of those actions, use action: "custom_instruction", scope: "plan", rawInstruction: the user's exact instruction, and confidence based on how clear it is.
 - If the user explicitly asks to start over, use action: "restart_plan" and do not preserve the existing plan except as background.
 - For simple preference edits, also set the concrete itinerary fields when clear: budgetLevel, pace, travelers, interests, constraints, dates, days, or destinations.
-` : ''}
-
-${memoryStateBlock ? `MEMORY STATE (Context Engineering layer):
-${memoryStateBlock}
-` : ''}
 
 TASK: Extract structured data for flights, hotels, packages, services, combined, or itinerary requests.
 
@@ -245,18 +224,15 @@ CRITICAL INSTRUCTION:
 - preferredAirline: NEVER include unless user explicitly mentions an airline name
 
 **DATE INTERPRETATION:**
+- Use the FECHA ACTUAL value from DYNAMIC CONTEXT below as today's date. Do NOT rely on your training cutoff.
 - Month names (enero, febrero, etc.) → first day of month
 - "primer/primera semana de [mes]" → first day of month
 - **CRITICAL YEAR LOGIC:**
-  * Current date is: ${currentDate}
   * Compare the FULL DATE (month AND day), not just the month:
-    - If the specific date (month+day) is TODAY or still upcoming this year → use ${year}
-    - If the specific date (month+day) has ALREADY PASSED this year → use ${nextYear}
-  * When only a month is mentioned (no day): if the month hasn't ended yet (current or future month) → ${year}; if it already ended (past month) → ${nextYear}
-  * Examples for today (${currentDate}):
-    - "${futureDay} de ${currentMonthName}" → ${yearStr}-${monthStr}-${String(futureDay).padStart(2, '0')} (hasn't passed yet, current year)
-    - "${pastDay} de ${pastMonthName}" → ${pastYear}-${pastMonthNum}-${String(pastDay).padStart(2, '0')} (already passed, next year)
-    - "${futureMonthName}" → ${futureMonthYear}-${futureMonthNum}-01 (future month, current year)
+    - If the specific date (month+day) is TODAY or still upcoming this year → use the current year
+    - If the specific date (month+day) has ALREADY PASSED this year → use the next year
+  * When only a month is mentioned (no day): if the month hasn't ended yet (current or future month) → current year; if it already ended (past month) → next year
+  * The DYNAMIC CONTEXT block below provides concrete worked examples for today's date — apply that pattern.
 - No date mentioned → current date + 7 days
 - Round trip indicators: "vuelta", "regreso", "ida y vuelta" → require returnDate
 
@@ -1354,7 +1330,7 @@ Before setting "adultsExplicit" in your JSON response:
 
 🚨 CRITICAL FINAL INSTRUCTION:
 - The examples above show PATTERNS and STRUCTURES only
-- You MUST extract actual values from the REAL conversation history provided above, NOT from the examples
+- You MUST extract actual values from the REAL conversation history provided in DYNAMIC CONTEXT, NOT from the examples
 - NEVER use example cities (Miami, Punta Cana) or example dates unless they appear in the ACTUAL conversation
 - Always use [EXTRACT from X] placeholders as instructions to extract from REAL conversation history
 - Your response must reflect the ACTUAL user request and ACTUAL conversation context
@@ -1405,6 +1381,78 @@ Examples:
 - "hotel Riu Bambu" → specific hotel → hotelName: "Riu Bambu", hotelChains: ["Riu"] ✅
 - "Iberostar Dominicana" → specific hotel → hotelName: "Iberostar Dominicana", hotelChains: ["Iberostar"] ✅
 
-Now analyze this ACTUAL message and respond with JSON only:
+A DYNAMIC CONTEXT block follows below with per-turn state (current date, language, conversation history, previous context, planner state, memory state). After reading it, analyze the user message in the user role and respond with JSON only.
 `;
+
+// =============================================================================
+// buildDynamicContextBlock — per-turn state. ALL ${...} interpolations live
+// here. Concatenated AFTER STATIC_SYSTEM_PROMPT to maximize the cacheable
+// prefix on the OpenAI side.
+// =============================================================================
+
+export function buildDynamicContextBlock({
+  currentDate,
+  conversationHistoryText = '',
+  previousContext,
+  plannerContext,
+  memoryStateBlock,
+  language = 'es',
+}: BuildSystemPromptArgs): string {
+  const languageName = LANGUAGE_NAMES[language] ?? LANGUAGE_NAMES.es;
+
+  // Helper vars for date examples
+  const [yearStr, monthStr, dayStr] = currentDate.split('-');
+  const year = parseInt(yearStr);
+  const month = parseInt(monthStr);
+  const day = parseInt(dayStr);
+  const nextYear = year + 1;
+  const monthNames = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const currentMonthName = monthNames[month - 1];
+  const futureDay = Math.min(day + 1, 28);
+  const pastDay = day > 3 ? day - 2 : 1;
+  const pastMonthName = month > 1 ? monthNames[month - 2] : monthNames[11];
+  const pastMonthNum = month > 1 ? String(month - 1).padStart(2, '0') : '12';
+  const pastYear = month > 1 ? nextYear : nextYear;
+  const futureMonthName = month < 12 ? monthNames[month] : monthNames[0];
+  const futureMonthNum = month < 12 ? String(month + 1).padStart(2, '0') : '01';
+  const futureMonthYear = month < 12 ? year : nextYear;
+
+  const sections: string[] = [];
+
+  sections.push(`USER LANGUAGE: ${language} (${languageName})
+- All natural-language strings in the JSON output (clarifying questions, missing-field prompts, suggestion or recommendation text shown to the user, "message" / "ask" / "explanation" fields) MUST be written in ${languageName}.
+- JSON keys, enum values, IATA / city codes, and ISO dates remain in their canonical form regardless of language.`);
+
+  sections.push(`FECHA ACTUAL: ${currentDate}
+
+DATE INTERPRETATION EXAMPLES (worked for today):
+- "${futureDay} de ${currentMonthName}" → ${yearStr}-${monthStr}-${String(futureDay).padStart(2, '0')} (hasn't passed yet, current year)
+- "${pastDay} de ${pastMonthName}" → ${pastYear}-${pastMonthNum}-${String(pastDay).padStart(2, '0')} (already passed, next year)
+- "${futureMonthName}" → ${futureMonthYear}-${futureMonthNum}-01 (future month, current year)`);
+
+  if (conversationHistoryText) {
+    sections.push(`CONVERSATION HISTORY:
+${conversationHistoryText}`);
+  }
+
+  if (previousContext) {
+    sections.push(`PREVIOUS CONTEXT:
+${JSON.stringify(previousContext, null, 2)}`);
+  }
+
+  if (plannerContext) {
+    sections.push(`CURRENT PLANNER STATE:
+${JSON.stringify(plannerContext, null, 2)}`);
+  }
+
+  if (memoryStateBlock) {
+    sections.push(`MEMORY STATE (Context Engineering layer — authoritative, follow precedence rules):
+${memoryStateBlock}`);
+  }
+
+  return `\n\n=== DYNAMIC CONTEXT (per-turn state) ===\n\n${sections.join('\n\n')}\n\n=== END DYNAMIC CONTEXT ===\n\nNow analyze the user message (in the user role) and respond with JSON only.\n`;
+}
+
+export function buildSystemPrompt(args: BuildSystemPromptArgs): string {
+  return STATIC_SYSTEM_PROMPT + buildDynamicContextBlock(args);
 }
