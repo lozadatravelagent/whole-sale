@@ -1,5 +1,11 @@
 # Tool Catalog — Audit Report (Phase 6 + v2 update)
 
+**Status (2026-05-03 v3):** GREEN — discovery flow consolidated end-to-end:
+- `discover_places` retrieval tool added (semantic place search via Foursquare with internal geocoding fallback).
+- `propose_planner_addition` planner-mutation proposal tool added (sets `pending_action.payload`; resolves on user confirm via `confirm_pending_action`; client dispatcher mutates `TripPlannerState`).
+- Legacy client-side discovery curation (~700 LOC of regex / heuristic) deleted; tool path is the only path.
+- Discovery candidates persisted to `state.discovery_candidates` (top-N, overwrite-on-next-call) and rendered into `<discovery_candidates>` block of the system prompt for next-turn referential resolution.
+
 **Status (2026-05-02 v2):** GREEN — system prompt now carries `<persistence>`, `<tool_selection>`, and `<pending_action>` directives (PROMPT_VERSION=`emilia-parser-v5`). Two new turn-state tools (`apply_slot_values`, `confirm_pending_action`) shipped with the same audit pass criteria as the retrieval tools.
 
 **Status (Phase 6 baseline):** YELLOW — schemas pass GPT-5.1 checklist, but **system prompt is missing every tool-related directive**. Phase 9 closed this gap; v2 added pending_action tools.
@@ -24,11 +30,15 @@ These are the tools the LLM itself decides to call inside `runToolLoop` in `supa
 | 2 | `get_quote` | `supabase/functions/_shared/functionTools.ts:203` | ✅ true | ✅ pass | none | n/a — handler returns `not_implemented` stub | YES |
 | 3 | `get_recent_searches` | `supabase/functions/_shared/functionTools.ts:254` | ✅ true | ✅ pass | none | 8000 chars via `fitToCap` | YES |
 | 4 | `get_lead_full_history` | `supabase/functions/_shared/functionTools.ts:353` | ✅ true | ✅ pass | none | 8000 chars via `fitToCap` | YES |
-| 5 | `save_memory_note` | `supabase/functions/_shared/memoryTools.ts:37` | ✅ true | ✅ pass | none | `{ok:true}` or `{ok:false,reason}` | YES (Phase 9 wired into `runToolLoop`) |
-| 6 | `apply_slot_values` | `supabase/functions/_shared/pendingActionTools.ts` | ✅ true | ✅ pass (Use when / Don't use for) | none | `{ok, applied, remaining, complete}` | YES (v2) |
-| 7 | `confirm_pending_action` | `supabase/functions/_shared/pendingActionTools.ts` | ✅ true | ✅ pass | none | `{ok, confirmed, notes}` | YES (v2) |
+| 5 | `discover_places` | `supabase/functions/_shared/functionTools.ts:634` | ✅ true | ✅ pass (Use when / Don't use for) | none | `{ok, intent, destination, categories, places, meta}` | YES (`getRetrievalToolSchemas()`); top-N persisted to `state.discovery_candidates` via wrapper in `index.ts` |
+| 6 | `save_memory_note` | `supabase/functions/_shared/memoryTools.ts:37` | ✅ true | ✅ pass | none | `{ok:true}` or `{ok:false,reason}` | YES (Phase 9 wired into `runToolLoop`) |
+| 7 | `apply_slot_values` | `supabase/functions/_shared/pendingActionTools.ts:81` | ✅ true | ✅ pass (Use when / Don't use for) | none | `{ok, applied, remaining, complete}` | YES (v2) |
+| 8 | `confirm_pending_action` | `supabase/functions/_shared/pendingActionTools.ts:109` | ✅ true | ✅ pass | none | `{ok, confirmed, notes}` | YES (v2); forwards `pending_action.payload` to client |
+| 9 | `propose_planner_addition` | `supabase/functions/_shared/pendingActionTools.ts:338` | ✅ true | ✅ pass (Use when / Don't use for) | none | `{ok, pending_action_set, places_count, segment_id, day_index, resolved_names}` | YES (v3) — sets `pending_action.payload.resolved_places` for client dispatcher case `add_places_to_itinerary` |
 
-Total exposed to model right now: **7 tools** (4 retrieval + 1 memory write + 2 turn-state resolution). `apply_slot_values` and `confirm_pending_action` are domain-agnostic — adding new pending-action `for` flows requires NO new tool, just a `case` in `applyPendingActionResolution` (client) or in the upstream handler that calls `setPendingAction`.
+Total exposed to model right now: **9 tools** (5 retrieval + 1 memory write + 2 turn-state resolution + 1 planner-mutation proposal). The two confirmation tools (`apply_slot_values`, `confirm_pending_action`) are domain-agnostic — adding new pending-action `for` flows requires NO new tool, just a `case` in `pendingActionDispatcher` (client) or in the upstream handler that calls `setPendingAction` / `executeProposePlannerAddition`.
+
+`propose_planner_addition` is the first **domain proposal** tool (it does not mutate state directly; it stashes the resolved domain payload on `pending_action.payload` and waits for the user's yes/no via `confirm_pending_action`). When the user confirms, the server forwards `payload` in the resolution envelope and the client's `add_places_to_itinerary` dispatcher case mutates `TripPlannerState`.
 
 ### 1.2 Edge functions (code-invoked from src/, never seen by the model)
 
@@ -69,7 +79,9 @@ These are not "tools" by the spec definition; they are TypeScript helpers the ch
 
 ---
 
-## 2. Per-tool audit (the seven model-invocable tools)
+## 2. Per-tool audit (the nine model-invocable tools)
+
+> **Note (v3):** sections 2.1–2.7 below cover the original 7 tools. `discover_places` (tool #5) and `propose_planner_addition` (tool #9) ship with the same schema-audit pass criteria (`strict:true`, `additionalProperties:false`, `Use when / Don't use for` directives) but their full per-tool sub-section is deferred until a follow-up audit. See §2.8 below for the abbreviated v3 entries.
 
 For each tool I checked the eight-point GPT-5.1 checklist:
 1. Description ≥30 chars with `Use when:` and `Don't use for:`
@@ -127,7 +139,7 @@ For each tool I checked the eight-point GPT-5.1 checklist:
 - **DEBT-2 (HIGH-prio): RESOLVED in Phase 9.** `saveMemoryNoteToolSchema` is now spread into `tools` and a `saveMemoryNoteHandler` is registered (`ai-message-parser/index.ts:387–401, 457, 463`). Accepted notes are batch-persisted to `agent_states.session_memory.notes` at the end of the tool loop alongside any pending-action mutations (single UPDATE per turn). Telemetry emits `[CTX-MEMORY]` with attempted/accepted/rejected counts.
 - **DEBT-3 (medium):** multiple `save_memory_note` calls are batch-persisted after the loop, so same-turn parallel writes no longer clobber each other. Full serialization is still not enforced inside `toolRunner.execBatch`; the remaining risk is simultaneous turns on the same conversation, or future de-dup logic that depends on strict call order.
 
-**Score: 7 of 7 tools fully pass schema + wiring audit (post-v2 amendment, per §§2.6–2.7 below).**
+**Score: 9 of 9 tools shipped (7 fully audited per §§2.1–2.7, 2 abbreviated per §2.8).**
 
 ### 2.6 `apply_slot_values` (v2)
 
@@ -155,7 +167,38 @@ For each tool I checked the eight-point GPT-5.1 checklist:
 - **Wiring:** YES.
 - **DEBT-11 (low):** no client-side dispatcher case yet for `for: 'confirm_*'` flows in `applyPendingActionResolution` — the tool returns OK and the state is stamped, but no domain mutation happens. Acceptable for v2 (no flow uses it yet). Add a `case 'confirm_booking':` (and friends) when the first booking confirmation flow ships.
 
-**Score (v2 amendment): 7 of 7 tools pass schema + wiring audit.** All gaps are resolved or formally tracked as DEBT.
+**Score (v3 amendment): 9 of 9 tools pass schema + wiring audit.** Tools #5 (`discover_places`) and #9 (`propose_planner_addition`) added in v3; per-tool sections deferred (see §2.8 for abbreviated entries). All wiring verified by tests at `supabase/functions/_shared/__tests__/{functionTools,pendingActionTools}.test.ts` and `src/features/chat/state/__tests__/pendingActionDispatcher.test.ts`.
+
+### 2.8 v3 additions — abbreviated audit
+
+#### `discover_places` (v3 — semantic place search)
+
+- **(1)** ✅ description ≥30 chars, `Use when:` and `Don't use for:` present (`prompt.ts:95`).
+- **(2)** ✅ `strict: true`.
+- **(3)** ✅ `additionalProperties: false`.
+- **(4)** ✅ all properties in `required` (per strict-mode contract).
+- **(5)** ✅ parameters documented (`destination_city, destination_country, lat, lng, categories, intent, limit_per_category, radius_m`).
+- **(6)** ✅ no overlap — only place-discovery tool. Replaces former client-side regex curation (deleted in v3).
+- **(7)** ✅ response includes compact `{places: [...]}`. Top-N persisted to `state.discovery_candidates` server-side (Phase 2 wrapper in `index.ts`).
+- **(8)** ✅ unambiguous; `Use when` lists the place kinds explicitly.
+- **Wiring:** YES (`getRetrievalToolSchemas()` + persistence wrapper at `index.ts:451`).
+- **Lat/lng resolution:** internal Foursquare geocoding fallback at `_shared/places/service.ts:resolveCityCoordinates` (Phase 1C). Telemetry: `[CTX-DISCOVERY-GEOCODE]` + `meta.geocodingUsed: 'llm' | 'internal' | 'none'`.
+- **Fallback path:** when lat/lng cannot be resolved, falls back to `fetchPlaceRecommendations` which now respects `categories` (Phase 1B — `bars in {city}` etc., not the previous broad `top tourist attractions in {city}`).
+
+#### `propose_planner_addition` (v3 — planner mutation proposal)
+
+- **(1)** ✅ description ≥30 chars, `Use when:` and `Don't use for:` present.
+- **(2)** ✅ `strict: true`.
+- **(3)** ✅ `additionalProperties: false`.
+- **(4)** ✅ `["place_ids", "segment_id", "day_index", "note"]` all required (nullables per strict-mode).
+- **(5)** ✅ each field documented; cross-references `state.discovery_candidates`.
+- **(6)** ✅ no overlap — first domain-proposal tool. Distinct from `apply_slot_values` / `confirm_pending_action` (which RESOLVE existing pending_actions).
+- **(7)** ✅ response ≤200 bytes (`{ok, pending_action_set, places_count, segment_id, day_index, resolved_names}`).
+- **(8)** ✅ semantically unambiguous — explicitly says it does NOT mutate, only proposes.
+- **Wiring:** YES — schema in `tools` array, handler in `toolHandlers` (`index.ts:480-499`). Mutates `stateForTools.pending_action.payload`; persistence flushes via `hasPendingActionWrite` guard (`index.ts:543`).
+- **Resolution:** when user confirms via `confirm_pending_action`, the modified `confirmPendingActionHandler` (`index.ts:434`) forwards `pending_action.payload` in the resolution envelope. Client `pendingActionDispatcher.ts:handleAddPlacesToItinerary` reads `payload.resolved_places` + `segment_id` + `day_index` + `note` and mutates `TripPlannerState` via `updatePlannerState`.
+- **Block heuristic (client):** `restaurant`/`cafe`/`nightlife` → evening; `museum`/`sights`/`culture` → morning; otherwise afternoon. Day index clamped to available days.
+- **Token cost:** schema adds ~700 tokens to every input (charged per turn). Justified by enabling deterministic planner mutations from natural language without an extra LLM round-trip.
 
 ---
 
@@ -278,7 +321,9 @@ Spec §6 mapping table mentions a future `save_planner_edit` tool ("out of scope
 
 ## 6. Closing note on Phase 6 status
 
-**Status (post-v2 amendment, 2026-05-02):** 7 of 7 tools fully wired and audited. DEBT-2 (`save_memory_note` wiring), DEBT-4 (`<persistence>` block), DEBT-5 (`<tool_selection>` block) all closed in Phase 9. See §2 sections + the `Status` header at the top of this file for the current state.
+**Status (post-v3 amendment, 2026-05-03):** 9 of 9 tools fully wired. 7 fully audited per §§2.1–2.7; 2 abbreviated per §2.8. Discovery flow consolidated end-to-end (legacy client-side regex curation deleted). See §2 sections + the `Status` header at the top of this file for the current state.
+
+**Previous status (post-v2 amendment, 2026-05-02):** 7 of 7 tools fully wired and audited. DEBT-2 (`save_memory_note` wiring), DEBT-4 (`<persistence>` block), DEBT-5 (`<tool_selection>` block) all closed in Phase 9. See §2 sections + the `Status` header at the top of this file for the current state.
 
 **Original Phase 6 finding (preserved for historical context):**
 
