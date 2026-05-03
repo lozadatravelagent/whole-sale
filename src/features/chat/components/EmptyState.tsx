@@ -7,8 +7,6 @@ import {
   AuroraBackdrop,
   MeridianHeading,
   MeridianMono,
-  MeridianTag,
-  OrbitMark,
 } from '@/components/meridian';
 
 interface EmptyStateProps {
@@ -42,23 +40,8 @@ const EmptyState = React.memo(({ onSendNewMessage, onCreatePlanner }: EmptyState
     <div className="relative flex-1 flex items-center justify-center overflow-hidden bg-background">
       <AuroraBackdrop intensity="full" withGrid />
 
-      <div className="relative z-10 w-full max-w-xl px-6 py-12 text-center animate-meridian-fade-up">
-        <div className="relative mb-7 inline-block">
-          <OrbitMark size={88} animated />
-          <div
-            aria-hidden
-            className="absolute inset-0 -z-10 animate-meridian-glow-pulse"
-            style={{
-              background: 'radial-gradient(circle, hsl(var(--primary) / 0.3), transparent 70%)',
-            }}
-          />
-        </div>
-
-        <MeridianTag tone="lilac" className="mb-4">
-          {t('emptyState.tag')}
-        </MeridianTag>
-
-        <MeridianHeading as="h1" size="lg" gradient italic className="mb-4">
+      <div className="relative z-10 w-full max-w-3xl px-8 py-12 text-center animate-meridian-fade-up">
+        <MeridianHeading as="h1" size="lg" gradient italic className="mb-4 overflow-visible px-2">
           {t('emptyState.title')}
         </MeridianHeading>
 

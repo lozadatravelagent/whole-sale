@@ -1,5 +1,5 @@
 import React from 'react';
-import { AuroraBackdrop, MeridianHeading, MeridianMono, MeridianTag, OrbitMark } from '@/components/meridian';
+import { AuroraBackdrop, MeridianHeading, MeridianMono } from '@/components/meridian';
 import { cn } from '@/lib/utils';
 
 interface ChatEmptyStateProps {
@@ -33,23 +33,8 @@ const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
     <div className={cn('relative flex h-full min-h-[480px] flex-col items-center justify-center overflow-hidden px-6 py-12', className)}>
       <AuroraBackdrop intensity="full" withGrid />
 
-      <div className="relative z-10 flex max-w-xl flex-col items-center text-center animate-meridian-fade-up">
-        <div className="relative mb-7">
-          <OrbitMark size={88} animated />
-          <div
-            aria-hidden
-            className="absolute inset-0 -z-10 animate-meridian-glow-pulse"
-            style={{
-              background: 'radial-gradient(circle, hsl(var(--primary) / 0.3), transparent 70%)',
-            }}
-          />
-        </div>
-
-        <MeridianTag tone="lilac" className="mb-4">
-          Conversación · Emilia
-        </MeridianTag>
-
-        <MeridianHeading as="h1" size="lg" gradient italic className="mb-4">
+      <div className="relative z-10 flex max-w-3xl flex-col items-center px-2 text-center animate-meridian-fade-up">
+        <MeridianHeading as="h1" size="lg" gradient italic className="mb-4 overflow-visible px-2">
           {title ?? (
             <>
               ¿A dónde<br />vamos hoy?

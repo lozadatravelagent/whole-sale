@@ -13,7 +13,6 @@ import {
   AuroraBackdrop,
   GlassCard,
   MeridianHeading,
-  MeridianTag,
   MeridianMono,
   OrbitMark,
 } from '@/components/meridian';
@@ -29,6 +28,18 @@ const Login = () => {
   const { user, loading: authLoading } = useAuth();
 
   const sessionExpired = searchParams.get('expired') === 'true';
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    const hadDarkTheme = root.classList.contains('dark');
+    root.classList.remove('dark');
+
+    return () => {
+      if (hadDarkTheme) {
+        root.classList.add('dark');
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -85,9 +96,9 @@ const Login = () => {
 
   if (authLoading) {
     return (
-      <div className="dark relative min-h-screen overflow-hidden bg-background text-foreground">
+      <div className="relative h-screen overflow-hidden bg-background text-foreground">
         <AuroraBackdrop intensity="subtle" />
-        <div className="relative z-10 flex min-h-screen items-center justify-center p-4">
+        <div className="relative z-10 flex h-full items-center justify-center px-4 py-8 sm:px-6 sm:py-10">
           <div className="text-center">
             <OrbitMark size={80} animated />
             <MeridianMono className="mt-6 block text-muted-foreground">
@@ -100,14 +111,14 @@ const Login = () => {
   }
 
   return (
-    <div className="dark relative min-h-screen overflow-hidden bg-background text-foreground">
+    <div className="relative h-screen overflow-hidden bg-background text-foreground">
       {/* Atmospheric layer — orbs + grid + grain */}
       <AuroraBackdrop intensity="full" withGrid withGrain />
 
-      <div className="relative z-10 flex min-h-screen items-center justify-center p-4 sm:p-8">
+      <div className="relative z-10 flex h-full items-center justify-center px-4 py-8 sm:px-6 sm:py-10">
         <div className="w-full max-w-md animate-meridian-fade-up">
           {/* Brand mark above the card */}
-          <div className="mb-8 flex flex-col items-center gap-5">
+          <div className="mb-8 flex flex-col items-center">
             <div className="relative">
               <OrbitMark size={96} animated />
               {/* Glow halo behind */}
@@ -120,19 +131,6 @@ const Login = () => {
                 }}
               />
             </div>
-            <span
-              className="italic text-foreground"
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 44,
-                fontWeight: 400,
-                letterSpacing: '-0.025em',
-                lineHeight: 1,
-              }}
-            >
-              Emilia
-            </span>
-            <MeridianTag tone="lilac">Acceso · Plataforma</MeridianTag>
           </div>
 
           <GlassCard level={2} className="rounded-3xl p-8 sm:p-10">
@@ -167,7 +165,7 @@ const Login = () => {
                     placeholder="vos@agencia.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="h-12 rounded-2xl border-white/10 bg-white/[0.04] pl-11 transition-all duration-300 ease-out-expo focus-visible:border-primary/40 focus-visible:bg-white/[0.06]"
+                    className="h-12 rounded-2xl border-border/50 bg-background/60 pl-11 transition-all duration-300 ease-out-expo focus-visible:border-primary/40 focus-visible:bg-background/80"
                     required
                   />
                 </div>
@@ -185,7 +183,7 @@ const Login = () => {
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="h-12 rounded-2xl border-white/10 bg-white/[0.04] pl-11 transition-all duration-300 ease-out-expo focus-visible:border-primary/40 focus-visible:bg-white/[0.06]"
+                    className="h-12 rounded-2xl border-border/50 bg-background/60 pl-11 transition-all duration-300 ease-out-expo focus-visible:border-primary/40 focus-visible:bg-background/80"
                     required
                   />
                 </div>
@@ -204,11 +202,11 @@ const Login = () => {
 
             {/* Separator with Meridian mono label */}
             <div className="my-6 flex items-center gap-4">
-              <div className="h-px flex-1 bg-white/10" />
+              <div className="h-px flex-1 bg-border/70" />
               <MeridianMono className="text-muted-foreground/60" size="xs">
                 O CONTINUAR CON
               </MeridianMono>
-              <div className="h-px flex-1 bg-white/10" />
+              <div className="h-px flex-1 bg-border/70" />
             </div>
 
             <Button
@@ -240,13 +238,6 @@ const Login = () => {
               <LanguageSelector showLabel={false} variant="ghost" />
             </div>
           </GlassCard>
-
-          {/* Tiny brand watermark */}
-          <div className="mt-8 text-center">
-            <MeridianMono size="xs" className="text-muted-foreground/40">
-              EMILIA · MERIDIAN · 2025
-            </MeridianMono>
-          </div>
         </div>
       </div>
     </div>

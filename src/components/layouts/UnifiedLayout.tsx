@@ -115,18 +115,6 @@ export default function UnifiedLayout({
         <div className="flex min-w-0 items-center gap-2 justify-self-start">
           <Link to="/emilia/chat" aria-label={t('nav.home')} className="inline-flex items-center gap-2 transition-opacity duration-300 ease-out-expo hover:opacity-80">
             <OrbitMark size={28} />
-            <span
-              className="italic text-foreground"
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 20,
-                fontWeight: 400,
-                letterSpacing: '-0.02em',
-                lineHeight: 1,
-              }}
-            >
-              Emilia
-            </span>
           </Link>
         </div>
 
