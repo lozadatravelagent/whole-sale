@@ -239,7 +239,7 @@ serve(async (req) => {
           previousContext,
           conversationHistory = [],
           plannerContext = null,
-          historyWindow = 6,
+          historyWindow = 15,
           contextMeta = null,
           memoryStateBlock = null,
         } = requestBody;
@@ -255,7 +255,7 @@ serve(async (req) => {
         let conversationHistoryText = '';
         if (conversationHistory && conversationHistory.length > 0) {
           try {
-            const normalizedHistoryWindow = Math.max(1, Math.min(12, Number(historyWindow) || 6));
+            const normalizedHistoryWindow = Math.max(1, Math.min(20, Number(historyWindow) || 15));
             const recentHistory = conversationHistory.slice(-normalizedHistoryWindow);
 
             conversationHistoryText = recentHistory.map((msg, index) => {

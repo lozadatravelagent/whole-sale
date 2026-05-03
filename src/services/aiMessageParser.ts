@@ -1885,7 +1885,7 @@ export async function parseMessageWithAI(
                 previousContext: previousContext, // Include conversation context
                 conversationHistory: conversationHistory || [],
                 plannerContext: knowledge?.plannerContext ?? null,
-                historyWindow: knowledge?.historyWindow ?? 6,
+                historyWindow: knowledge?.historyWindow ?? 15,
                 contextMeta: knowledge?.contextMeta ?? null,
                 // Phase 5 (Context Engineering): pre-rendered state injection
                 // block. Edge function consumes this in `prompt.ts`. Undefined

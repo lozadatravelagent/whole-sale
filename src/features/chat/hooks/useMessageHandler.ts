@@ -792,7 +792,7 @@ const useMessageHandler = (
           conversationId: finalConversationId,
           leadId: leadId ?? null,
         },
-        historyWindow: 6,
+        historyWindow: 15,
         memoryStateBlock,
       }, userLanguage);
 

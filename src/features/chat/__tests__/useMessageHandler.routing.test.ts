@@ -264,7 +264,7 @@ describe('useMessageHandler', () => {
         storedMemory,
         expect.any(Array),
         expect.objectContaining({
-          historyWindow: 6,
+          historyWindow: 15,
           contextMeta: expect.objectContaining({
             conversationId: DEFAULT_CONV_ID,
             leadId: null,
