@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v6';
+export const PROMPT_VERSION = 'emilia-parser-v7';
 export const PROMPT_CONTRACT_SNIPPETS = [
   'IMPORTANTE: Siempre responde solo con JSON válido.',
   "NO roomType or mealPlan because user didn't mention them",
@@ -1168,24 +1168,6 @@ User: "quiero un vuelo desde buenos aires a cancun para dos personas desde el 5 
 ✅ roomType: "double" is included because user said "habitacion doble" (WITHOUT accent - this is OK!)
 🚨 IMPORTANT: Accept "habitacion" (no accent) as valid - users often omit accents!
 
-Example 11 - Hotel with room type but NO meal (to reinforce - WITHOUT accents):
-User: "habitacion doble en cancun para 2 personas"
-{
-  "requestType": "hotels",
-  "hotels": {
-    "city": "Cancún",
-    "checkinDate": "[DATE]",
-    "checkoutDate": "[DATE]",
-    "adults": 2,
-    "children": 0,
-    "infants": 0,
-    "roomType": "double"
-  },
-  "confidence": 0.9
-}
-❌ NO mealPlan - user mentioned "habitacion doble" but did NOT mention meals!
-✅ roomType: "double" - detected "habitacion doble" even WITHOUT accent on "habitacion"
-
 Example 12 - Hotel with CHAIN specified (NEW - hotelChains extraction):
 User: "quiero un hotel de la cadena Riu all inclusive habitacion doble"
 {
@@ -1334,52 +1316,6 @@ Before setting "adultsExplicit" in your JSON response:
 - NEVER use example cities (Miami, Punta Cana) or example dates unless they appear in the ACTUAL conversation
 - Always use [EXTRACT from X] placeholders as instructions to extract from REAL conversation history
 - Your response must reflect the ACTUAL user request and ACTUAL conversation context
-
-🚨 FINAL REMINDER - mealPlan RULE:
-Before including "mealPlan" field in your JSON response, ask yourself:
-1. Did the user type ANY of these words in the CURRENT message? "incluido", "inclusive", "desayuno", "breakfast", "pensión", "pension", "board", "comida", "alojamiento"
-2. If answer is NO → DO NOT include "mealPlan" field in JSON
-3. If answer is YES → Include "mealPlan" with appropriate value
-
-Examples to verify your understanding:
-- "hotel habitacion doble" → NO food keywords → NO mealPlan field ❌
-- "habitacion doble all inclusive" → "inclusive" keyword found → mealPlan: "all_inclusive" ✅
-- "hotel con desayuno" → "desayuno" keyword found → mealPlan: "breakfast" ✅
-
-🚨 FINAL REMINDER - roomType TOLERANCE:
-Be EXTREMELY tolerant with spelling variations for room types:
-- "habitacion doble" (no accent) = "habitación doble" (with accent) → roomType: "double" ✅
-- "hab doble" = "habitación doble" → roomType: "double" ✅
-- "doble" alone (in hotel context) → roomType: "double" ✅
-- Users OFTEN omit accents - this is NORMAL and VALID!
-
-🚨 FINAL REMINDER - hotelChains RULE (PLURAL ARRAY):
-Before including "hotelChains" field in your JSON response:
-1. Did the user mention ANY hotel chain by name? (Riu, Iberostar, Melia, Bahia Principe, Barcelo, NH, Hilton, Marriott, etc.)
-2. Did the user use patterns like "cadena [name]", "hoteles [name]", "de la cadena [name]"?
-3. Did the user mention MULTIPLE chains? (e.g., "riu y iberostar", "Melia o Barcelo")
-4. If YES to any → Include hotelChains as an ARRAY with ALL mentioned chain names
-5. If NO → DO NOT include hotelChains field
-
-Examples to verify:
-- "hotel en Cancún" → NO chain mentioned → NO hotelChains field ❌
-- "hotel Riu en Cancún" → "Riu" is a chain → hotelChains: ["Riu"] ✅
-- "cadena Iberostar" → explicit chain mention → hotelChains: ["Iberostar"] ✅
-- "un Melia todo incluido" → "Melia" is a chain → hotelChains: ["Melia"] ✅
-- "cadena riu y iberostar" → MULTIPLE chains → hotelChains: ["Riu", "Iberostar"] ✅
-- "hoteles Melia, Barcelo o NH" → MULTIPLE chains → hotelChains: ["Melia", "Barcelo", "NH"] ✅
-
-🚨 FINAL REMINDER - hotelName RULE:
-Before including "hotelName" field in your JSON response:
-1. Did the user mention a SPECIFIC hotel name (not just a chain)?
-2. Specific names include: "Riu Bambu", "Iberostar Dominicana", "Bahia Principe Grand Punta Cana", etc.
-3. If YES → Include hotelName AND also extract hotelChains from the name (as array)
-4. If user only mentions chain (e.g., "Riu") without specific hotel → ONLY hotelChains, NO hotelName
-
-Examples:
-- "hotel Riu" → only chain → hotelChains: ["Riu"], NO hotelName ❌
-- "hotel Riu Bambu" → specific hotel → hotelName: "Riu Bambu", hotelChains: ["Riu"] ✅
-- "Iberostar Dominicana" → specific hotel → hotelName: "Iberostar Dominicana", hotelChains: ["Iberostar"] ✅
 
 A DYNAMIC CONTEXT block follows below with per-turn state (current date, language, conversation history, previous context, planner state, memory state). After reading it, analyze the user message in the user role and respond with JSON only.
 `;
