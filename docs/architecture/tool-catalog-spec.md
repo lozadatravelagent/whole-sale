@@ -585,7 +585,7 @@ All paths absolute.
 | Memory rejection rules + append to `state.session_memory` | inside `_shared/functionTools.ts` (`save_memory_note` executor) | 3.2 | **NEW** |
 | State injection (consumed by tools to resolve refs) | `src/features/chat/state/runContext.ts` (Phase 1) | 1 | dependency |
 
-**Feature flag (Phase 9.1):** `USE_FUNCTION_TOOLS`. When `false`, `ai-message-parser` runs the legacy single-shot path. When `true`, the loop above is active. Both paths must remain working through the Phase 9 A/B test window.
+**Status:** the tool-calling loop is the only path. The `USE_FUNCTION_TOOLS` flag was removed in the post-Phase-9 cleanup migration; legacy single-shot fallback is gone.
 
 **Telemetry hooks (Phase 8.2 inputs):** the loop must emit one structured log per turn:
 ```

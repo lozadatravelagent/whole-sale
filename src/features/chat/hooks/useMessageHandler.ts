@@ -875,9 +875,6 @@ const useMessageHandler = (
         parsedRequest,
         plannerState: plannerState as TripPlannerState | null,
         persistentState,
-        // Phase 6: previousParsedRequest React state deleted; persistentState
-        // is the only memory source.
-        previousParsedRequest: null,
       });
       if (preRouteTravelBridge.kind === 'quote_to_plan') {
         console.log('🔁 [TRAVEL BRIDGE] Reusing quote/search context to build itinerary');
@@ -901,7 +898,6 @@ const useMessageHandler = (
         parsedRequest,
         plannerState: plannerState as TripPlannerState | null,
         persistentState,
-        previousParsedRequest: null,
         routeResult,
       });
       const isQuoteActivePlanTurn = travelContextBridge.kind === 'plan_to_quote';

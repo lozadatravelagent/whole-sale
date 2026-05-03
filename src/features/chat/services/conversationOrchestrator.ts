@@ -106,13 +106,10 @@ function calculateDaysFromDates(startDate?: string, endDate?: string): number | 
   return Math.max(1, Math.round(diff / 86400000) + 1);
 }
 
-function getSearchContext(
-  persistentState?: ContextState | null,
-  previousParsedRequest?: ParsedTravelRequest | null,
-) {
+function getSearchContext(persistentState?: ContextState | null) {
   const lastSearch = persistentState?.lastSearch;
-  const flights = lastSearch?.flightsParams || previousParsedRequest?.flights;
-  const hotels = lastSearch?.hotelsParams || previousParsedRequest?.hotels;
+  const flights = lastSearch?.flightsParams;
+  const hotels = lastSearch?.hotelsParams;
   const destination = flights?.destination || hotels?.city;
   const startDate = flights?.departureDate || hotels?.checkinDate;
   const endDate = flights?.returnDate || hotels?.checkoutDate;
@@ -234,10 +231,9 @@ export function resolveTravelContextBridge(options: {
   parsedRequest: ParsedTravelRequest;
   plannerState?: TripPlannerState | null;
   persistentState?: ContextState | null;
-  previousParsedRequest?: ParsedTravelRequest | null;
   routeResult?: RouteResult;
 }): TravelContextBridgeResolution {
-  const { message, parsedRequest, plannerState, persistentState, previousParsedRequest, routeResult } = options;
+  const { message, parsedRequest, plannerState, persistentState, routeResult } = options;
   const hasActivePlanner = Boolean(plannerState && !plannerState.generationMeta?.isDraft);
   const referencesCurrentContext = QUOTE_CONTEXT_REFERENCE_PATTERN.test(message);
 
@@ -262,7 +258,7 @@ export function resolveTravelContextBridge(options: {
     };
   }
 
-  const searchContext = getSearchContext(persistentState, previousParsedRequest);
+  const searchContext = getSearchContext(persistentState);
   if (!searchContext) {
     return {
       kind: null,

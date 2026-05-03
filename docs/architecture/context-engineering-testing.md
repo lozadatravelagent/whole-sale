@@ -17,7 +17,7 @@
 
 ## 1. What we built (recap)
 
-A **per-conversation context engineering layer** following OpenAI Agents SDK / Cookbook patterns and GPT-5.1 Prompting Guide. It sits *alongside* the legacy parser path, gated behind two feature flags so it can be enabled/disabled per surface without redeploys.
+A **per-conversation context engineering layer** following OpenAI Agents SDK / Cookbook patterns and GPT-5.1 Prompting Guide. It is the only parser path post-cleanup; the legacy single-shot path and its feature flags were removed (see `rollback-plan.md` for migration history).
 
 **Three pillars:**
 
@@ -42,8 +42,6 @@ A **per-conversation context engineering layer** following OpenAI Agents SDK / C
 User sends message
         ↓
 useMessageHandler.handleSendMessage
-        ↓
-[FLAG: VITE_USE_CONTEXT_ENGINEERING=true]
         │
         ├─ bootstrapStateIfMissing({conversationId, agencyId, leadId, mode})
         │     ├─ loadEmiliaState(conversationId) ─► supabase.from('agent_states').select()
@@ -61,7 +59,6 @@ useMessageHandler.handleSendMessage
 ┌─────────────────────────────────────────────────────────────────────┐
 │                  EDGE FUNCTION ai-message-parser                     │
 └─────────────────────────────────────────────────────────────────────┘
-[FLAG: USE_FUNCTION_TOOLS=true OR header x-use-tool-loop=true]
         │
         ├─ buildSystemPrompt({..., memoryStateBlock})
         │     → injects memory block + persistence reminders + tool selection rules
@@ -151,15 +148,10 @@ The automated tests cover the units. These four test the **deployed system** end
 
 ### Setup obligatorio (do once)
 
-1. **Server flag**: `USE_FUNCTION_TOOLS=true` in Supabase secrets ✅ (done)
-2. **Client flag**: in `.env`:
-   ```
-   VITE_USE_CONTEXT_ENGINEERING=true
-   ```
-3. **Restart dev server fully** (`Ctrl+C` → `npm run dev`). Vite does NOT hot-reload env vars.
-4. **Hard reload browser** (`Ctrl+Shift+R`) so the new env var ships.
-5. **Verify flag is active**: open browser DevTools → Console. You should see `[CTX-` logs (or `bootstrapStateIfMissing` traces) when you open a conversation. If they don't appear, the flag isn't on.
-6. **Verify on the wire**: DevTools → Network → send a message → look at body of POST to `ai-message-parser`. Body should include `memoryStateBlock` field with content starting with `<user_profile>`.
+No setup required — CE is the only path.
+
+1. **Verify flow is active**: open browser DevTools → Console. You should see `[CTX-` logs (or `bootstrapStateIfMissing` traces) when you open a conversation.
+2. **Verify on the wire**: DevTools → Network → send a message → look at body of POST to `ai-message-parser`. Body should include `memoryStateBlock` field with content starting with `<user_profile>`.
 
 ### Where to look at results
 
@@ -172,9 +164,9 @@ The automated tests cover the units. These four test the **deployed system** end
 
 ---
 
-### Test 1 — Smoke (no client flag required)
+### Test 1 — Smoke
 
-**Goal**: Deploy works; tool loop doesn't break legacy behavior when nothing to invoke.
+**Goal**: Deploy works; tool loop doesn't churn when nothing to invoke.
 
 **Steps**:
 1. Open chat (any mode)
@@ -191,20 +183,19 @@ The automated tests cover the units. These four test the **deployed system** end
 **Pass criteria**: response correct + log shows `[CTX-TOOL]` entry.
 
 **Fail signals**:
-- Log shows `runToolLoop failed, falling back to single-shot` → deploy issue or OpenAI key issue. Conversation does NOT break (fallback to legacy works).
+- Log shows `runToolLoop failed` → deploy issue or OpenAI key issue. The function falls back to an internal network-resilience path (NOT a legacy A/B leg).
 
 ---
 
-### Test 2 — Tool invocation (requires flags + plan in state)
+### Test 2 — Tool invocation (requires plan in state)
 
 **Goal**: Model invokes `get_planner_state` when message references a plan.
 
 **Setup**:
-1. Client flag on, dev server restarted
-2. New conversation in **passenger** (planner) mode
-3. Build a plan: `Quiero ir a Roma 5 días en septiembre`
-4. Wait for planner to generate
-5. Verify in Supabase Studio → `agent_states`: row exists with your `conversation_id`, `state.active_refs` contains `[{type:"plan", id:..., summary1Line:...}]`
+1. New conversation in **passenger** (planner) mode
+2. Build a plan: `Quiero ir a Roma 5 días en septiembre`
+3. Wait for planner to generate
+4. Verify in Supabase Studio → `agent_states`: row exists with your `conversation_id`, `state.active_refs` contains `[{type:"plan", id:..., summary1Line:...}]`
 
 **Steps**:
 - Send: `Cotizame este plan`
@@ -224,11 +215,11 @@ The automated tests cover the units. These four test the **deployed system** end
 - `tools_called: []` → model didn't invoke. Causes:
   - `memoryStateBlock` not sent (check Network tab)
   - `<active_refs>` empty in rendered block (check audit endpoint)
-  - System prompt doesn't include `<tool_selection>` rules (check deployed `prompt.ts` v4)
+  - System prompt doesn't include `<tool_selection>` rules (check deployed `prompt.ts` v5)
 
 ---
 
-### Test 3 — save_memory_note (requires flags)
+### Test 3 — save_memory_note
 
 **Goal**: Model saves a memory note when user states a durable preference.
 
@@ -263,7 +254,7 @@ The automated tests cover the units. These four test the **deployed system** end
 
 **This is THE test that motivated the whole plan.**
 
-**Setup**: Client flag on + brand new conversation.
+**Setup**: brand new conversation.
 
 **Steps (3 sequential messages + 1 manual UI action)**:
 
@@ -281,7 +272,7 @@ The automated tests cover the units. These four test the **deployed system** end
 | Symptom | Diagnosis |
 |---|---|
 | Step 1 fails: `[EMILIA_STATE] load failed for temp-...` 400 in browser console | `useEmiliaState` is hitting Supabase with optimistic temp ID. Was a bug — fixed in this session by adding UUID validation. If you still see it, pull latest. |
-| Step 1 ok but no `agent_states` row appears | Client flag not active. Restart dev server. Hard reload. |
+| Step 1 ok but no `agent_states` row appears | Investigate `bootstrapStateIfMissing` failures (RLS, schema mismatch). Check browser console for `[CTX-ENG]` warnings. |
 | Step 2 ok but `state.active_refs` is `[]` after toggle | Mode change handler is clearing refs (regression). Check `applyModeChange` in `contextEngineeringIntegration.ts` — should ONLY mutate `state.mode`. |
 | Step 4: response is `Este pedido funciona mejor armando un itinerario. ¿Cambiamos de modo?` | The orchestrator emitted `mode_bridge` (route `PLAN`, branch `mode_bridge`). Causes: (a) you didn't click the toggle in step 2 — system thinks you're still in passenger; (b) the bridge logic in `conversationOrchestrator.ts` fires before the tool loop has a chance. See §5 for the known limitation. |
 | Step 4: tool_called is empty | `memoryStateBlock` arrives empty or doesn't include `<active_refs>`. Use audit endpoint to inspect. |
@@ -294,7 +285,7 @@ The automated tests cover the units. These four test the **deployed system** end
 
 **This is the v2 flow that replaces the broken Test 4 sequence from the Phase 9 baseline.**
 
-**Setup**: client + server flags on, brand new conversation, mode = agency.
+**Setup**: brand new conversation, mode = agency.
 
 **Steps**:
 
@@ -315,7 +306,7 @@ The automated tests cover the units. These four test the **deployed system** end
 
 | Symptom | Diagnosis |
 |---|---|
-| Step 2: `state.pending_action` stays null | `setPendingAction` not invoked. Check `quote_active_plan` branch in `useMessageHandler.ts:~1864` — needs `USE_CONTEXT_ENGINEERING && ctxEngState && missingFields.length > 0`. Verify CE flag is on. |
+| Step 2: `state.pending_action` stays null | `setPendingAction` not invoked. Check `quote_active_plan` branch in `useMessageHandler.ts:~1864` — needs `ctxEngState && missingFields.length > 0`. |
 | Step 3: `tools_called: []` (no apply_slot_values) | (a) `<pending_action>` block missing from rendered prompt — check audit endpoint `rendered_memory_block`. (b) Model decided to ignore — check the actual prompt payload includes the `<tool_selection>` rule about pending_action (PROMPT_VERSION should be `emilia-parser-v5`). (c) User message looks too off-topic — try a more obvious slot answer. |
 | Step 3: `apply_slot_values` invoked but `meta.pendingActionResolution.applied` is empty `{}` | Server-side `intersectFields` dropped all keys. Either the model used field names that don't match `pending_action.fields` (check audit endpoint), or the values were null/empty after sanitization. |
 | Step 3: response has resolution but planner state didn't update | `applyPendingActionResolution` ran but couldn't extract recognized values. Check console for `[PENDING-ACTION] quote_completion: no recognizable values`. Likely the model returned dates in a non-ISO format AND no flexible_month — extend the dispatcher's parser. |
@@ -416,10 +407,6 @@ Before saying "Context Engineering works", confirm all of these:
 - [ ] `npm test -- --run` → 527 pass, 0 fail (v2 baseline)
 - [ ] `npm run build` → success
 - [ ] `supabase functions list` → shows `ai-message-parser` v123+ and `agent-state-audit` v4+
-- [ ] Supabase secrets includes `USE_FUNCTION_TOOLS=true`
-- [ ] `.env` includes `VITE_USE_CONTEXT_ENGINEERING=true`
-- [ ] Dev server restarted after env var change
-- [ ] Browser hard-reloaded
 - [ ] DevTools console shows `[CTX-` logs when opening a conversation
 - [ ] Network tab shows `memoryStateBlock` in POST body to `ai-message-parser`
 - [ ] Edge function logs show `promptVersion: 'emilia-parser-v5'`

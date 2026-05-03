@@ -2,7 +2,7 @@
 
 > **Audience**: SRE / on-call. The runbook for backing the Context-Engineering layer out, partially or fully, when telemetry or user reports show regression.
 >
-> **Default posture**: both feature flags ship OFF (`VITE_USE_CONTEXT_ENGINEERING=false`, `USE_FUNCTION_TOOLS=false`, no `x-use-tool-loop` header). Enabling is a deliberate staged rollout (dev → staging → 10% prod → 100%). This doc covers backing OUT after enable.
+> **Default posture**: after the cleanup migration, CE is the only path. Rollback is via `git revert` + redeploy. The flag-based rollback strategy (toggling `VITE_USE_CONTEXT_ENGINEERING` / `USE_FUNCTION_TOOLS`) no longer exists — those flags and the legacy single-shot path were removed. Migration history is in `docs/architecture/context-engineering-overview.md` §7.
 
 ---
 
@@ -12,76 +12,93 @@ Trigger a rollback when ANY of the following holds, sustained for 30+ minutes (n
 
 - **Token usage spike**: average prompt tokens per turn rises **>40%** above the pre–Context-Engineering baseline. Target was a **30% reduction**; a 40% rise inverts the value prop.
 - **Latency spike**: average end-to-end `ai-message-parser` latency rises **>25%** above baseline. Tool round-trips amortize over a window — sustained increase means the loop is thrashing.
-- **Visible quality regression**: subjective review (N≥10 conversations sampled by a human) shows worse answers vs the legacy A leg of the A/B test.
+- **Visible quality regression**: subjective review (N≥10 conversations sampled by a human) shows worse answers vs the pre-migration baseline.
 - **Tool dead-end rate**: `>30%` of `[CTX-TOOL]` events show `iterations >= 2` with no successful tool result contributing to the final answer (i.e. the model thrashed). Today this is a manual computation against the `[CTX-TOOL]` trace; Phase 9.6 will surface it as a metric.
 - **`save_memory_note` rejection rate**: `>50%` of attempted notes rejected (across `[CTX-MEMORY]` events). Means the model is repeatedly trying to save PII / instructions / speculation — either the prompt directives are not landing, or a model-version regression. Either way, the safety net is doing its job but the wasted token budget is unjustifiable.
-- **`agent_states` table growth**: > 10 MB/day of new JSONB blob per active agency. A note is ≤500 chars; sustained growth past this rate means consolidation is not running, or `session_memory.notes` is not being drained. Investigate consolidate before disabling.
+- **`agent_states` table growth**: > 10 MB/day of new JSONB blob per active agency. A note is ≤500 chars; sustained growth past this rate means consolidation is not running, or `session_memory.notes` is not being drained. Investigate consolidate before reverting.
 - **`[consolidateMemory]` error rate**: any sustained logging of `OpenAI request failed` or `failed to parse consolidate response`. Consolidation failing means `global_memory` never gets clean — only annoying, not user-breaking, but a signal.
 
-If only one signal fires and the impact is contained, prefer to **diagnose first**, rollback second. The flags are designed for fast revert; you don't need to rush.
+If only one signal fires and the impact is contained, prefer to **diagnose first**, revert second. `git revert` is fast but it produces a rebuild + redeploy cycle; you don't need to rush.
 
 ---
 
 ## 2. Rollback severity levels
 
-Pick the lowest level that addresses the symptom. Each level is independent — Level 2 does not require Level 1, etc.
+The cleanup landed as 6 sequential commits on `main`. Each level reverts a contiguous suffix of that range. Pick the lowest level that addresses the symptom.
 
-### Level 1 — Disable the function-tool loop (most common)
+The 6 commits, oldest → newest:
 
-When to use: tool-calling is the suspect (high `errors_count`, `hit_cap`, dead-end rate, or per-turn latency spike). Memory state injection is fine.
+| # | Hash | Title |
+|---|------|-------|
+| 1 | `63ac42f0` | docs(context-engineering): align tool-catalog audit with v5 prompt + add cleanup DEBT items |
+| 2 | `a0b4a8b8` | feat(context-engineering): add slot-fill handlers for 5 pending_action flows |
+| 3 | `f9c3d247` | refactor(ai-message-parser): drop legacy single-shot path, force tool loop unconditional |
+| 4 | `a0172dce` | refactor(orchestrator): make mode required, delete legacy fallback routing |
+| 5 | `586fd973` | refactor(context-engineering): make CE the only client path, drop legacy slot-fill state |
+| 6 | `10e626ed` | refactor(context-engineering): delete legacy memory shims and dead code |
 
-Action (pick one):
-- **Env**: in Supabase → Settings → Edge Function Secrets, set `USE_FUNCTION_TOOLS=false` (or unset it). Then `supabase functions deploy ai-message-parser` to pick up the change.
-- **Header-based opt-in**: confirm no client is sending `x-use-tool-loop: true`. The check is in `supabase/functions/ai-message-parser/index.ts:310-311` — both signals must be false for the loop to be skipped.
+### Level 1 — Revert Phase 4 only (NOT SAFE alone)
+
+When you'd want it: the tool-loop path is the suspect (high `errors_count`, `hit_cap`, dead-end rate, or per-turn latency spike) and you want the legacy single-shot fallback back.
+
+Action: `git revert f9c3d247` + `supabase functions deploy ai-message-parser`.
+
+**Warning**: Phase 6 client (commit `586fd973`) is still live and expects the `pending_action` tools (`apply_slot_values`, `confirm_pending_action`) to function. Reverting only Phase 4 will break the slot-fill flow. **Use Level 2 instead** — Level 1 alone is not safe.
+
+### Level 2 — Revert Phase 6 + Phase 4 (closest to "flag flip OFF")
+
+When to use: same triggers as Level 1, but you accept the loss of the CE client path to get back to a coherent legacy baseline. Closest to what the old `VITE_USE_CONTEXT_ENGINEERING=false` + `USE_FUNCTION_TOOLS=false` flag combination produced.
+
+Action:
+
+```bash
+git revert 586fd973 f9c3d247
+git push
+# Redeploy frontend (Railway) AND edge function:
+supabase functions deploy ai-message-parser
+```
 
 Effect:
-- `runToolLoop` is bypassed; the legacy single-shot `requestOpenAiChatCompletion` runs instead.
-- `memoryStateBlock` is still injected if the client passes it (parser still calls `buildSystemPrompt({ ..., memoryStateBlock })`).
+- Client: `useMessageHandler` no longer drives `bootstrapStateIfMissing` / `setActiveRef` / `memoryStateBlock`.
+- Edge: `runToolLoop` is bypassed; the legacy single-shot `requestOpenAiChatCompletion` runs instead.
 - `[CTX-TOOL]` and `[CTX-MEMORY]` log lines stop appearing.
 - `meta.toolLoop` on persisted messages is no longer populated.
+- Existing `agent_states` rows are untouched; they're just no longer read or written.
 
-Time to recover: **<5 minutes** (env var + edge function redeploy).
+Time to recover: **~10 minutes** (frontend rebuild + Railway redeploy + edge function deploy).
 
 Verify:
-- `grep '[CTX-TOOL]' edge-function-logs | tail -5` — should stop emitting new lines within ~1 minute.
+- `grep '[CTX-TOOL]' edge-function-logs | tail -5` — should stop emitting new lines within ~1 minute of the edge deploy.
+- New parser requests no longer include a `memoryStateBlock` field. Check via the parser logs or by tailing `aiMessageParser.ts` request bodies.
 - New messages in the database should NOT carry a `meta.toolLoop` field.
 
-### Level 2 — Disable client-side context engineering
+### Level 3 — Full revert (all 6 commits)
 
-When to use: the state-injection block itself is the suspect (e.g. malformed YAML breaking the parser; bad refs causing the model to chase nonexistent plans; profile values leaking from one tenant's UI render to another).
+When to use: the migration as a whole is judged unfit — the docs/audit cleanup also needs to come back, or you want to restore the orchestrator's optional `mode` parameter.
 
-Action: in Railway → Project → Variables, set `VITE_USE_CONTEXT_ENGINEERING=false` (or unset). Trigger a frontend redeploy.
+Action:
 
-Effect:
-- `useMessageHandler` skips `bootstrapStateIfMissing`, `applyModeChange`, `setActiveRef`, and `buildMemoryStateBlockFromState`.
-- `memoryStateBlock` is `undefined` in the parser request body.
-- The parser still sees `previousContext`, `conversationSummary`, `leadProfile`, `plannerContext` (legacy push-context — this is the pre–Context-Engineering behavior).
-- If the tool loop is also enabled (Level 1 not taken), the loop runs but its `memory_instructions` block has no `<user_profile>` / `<memories>` to surface — behavior is similar to legacy.
-- No new rows are written to `agent_states` (existing rows are not deleted).
+```bash
+git revert 10e626ed 586fd973 a0172dce f9c3d247 a0b4a8b8 63ac42f0
+git push
+# Redeploy everything:
+supabase functions deploy ai-message-parser
+# + Railway frontend redeploy
+```
 
-Time to recover: **<10 minutes** (Railway env var + redeploy build).
+Effect: byte-equivalent to the pre-cleanup state. All flags, all legacy fallback shims, all stale docs come back.
 
-Verify:
-- New parser requests no longer include a `memoryStateBlock` field. Check via the parser logs or by tailing `aiMessageParser.ts:1847` request bodies.
-- The `<persistence>` and `<tool_selection>` blocks are still present in the system prompt — they're constants in `prompt.ts`, not gated on `memoryStateBlock`.
-
-### Level 3 — Both flags off (full rollback)
-
-When to use: you want byte-identical pre–Context-Engineering behavior to compare baselines or to stop a cascading regression.
-
-Action: combine Level 1 + Level 2.
-
-Effect: byte-identical to pre–Context-Engineering behavior on the chat flow. No state load, no memory block, no tool loop, single-shot legacy call.
+Time to recover: **~15 minutes** (revert PR review + merge + frontend rebuild + edge deploy).
 
 Verify:
-- `[CTX-TOOL]` and `[CTX-MEMORY]` logs disappear entirely.
-- No new `agent_states` rows.
+- `[CTX-TOOL]` and `[CTX-MEMORY]` logs disappear entirely (since both flags default OFF in the restored code).
 - Existing `agent_states` rows are NOT touched (left in place for the next re-enable).
-- Compare 50 sampled conversations against a known-good legacy snapshot; outputs should be functionally equivalent.
 
-### Level 4 — Database rollback (rarely needed)
+### Level 4 — Wipe `agent_states` table (rarely needed)
 
 When to use: data corruption in `agent_states` (e.g. invalid JSONB written by a buggy migration, RLS bypass that mixed agencies). Or when reclaiming storage.
+
+**Note**: with the Phase 6 client live, `bootstrapStateIfMissing` will recreate empty rows on the next turn for each conversation — this is fine, the layer is designed to tolerate fresh state. No need to combine with Level 2 unless the corruption is suspected to come from CE itself.
 
 Action options, in increasing destructiveness:
 - **Per-conversation reset**: `DELETE FROM agent_states WHERE conversation_id = '...'`. Idempotent; the next turn from that conversation will bootstrap fresh via `createInitialEmiliaState`.
@@ -89,7 +106,7 @@ Action options, in increasing destructiveness:
 - **Full truncate**: `TRUNCATE TABLE agent_states`. Drops all CE state across all agencies.
 - **Drop the table**: `DROP TABLE agent_states CASCADE`. Removes the layer entirely. Safe because no FK constraints reference `agent_states` from `leads` or `conversations` — it is a pure audit/state side-table; business data lives elsewhere.
 
-Effect of any of these: the next turn for the affected conversation(s) will (with `VITE_USE_CONTEXT_ENGINEERING=true`) bootstrap a fresh `EmiliaState` and proceed. With the flag OFF, no state is read or written.
+Effect of any of these: the next turn for the affected conversation(s) will bootstrap a fresh `EmiliaState` and proceed.
 
 Time to recover: **<2 minutes** (single SQL statement). The schema migration is non-destructive of legacy tables, so no business data is at risk.
 
@@ -109,51 +126,40 @@ Run these BEFORE pulling the trigger to confirm the issue is what you think it i
 | `[CTX-MEMORY]` rejection_reasons distribution | Edge function logs, last hour | Heavy `pii_*` → model trying to save PII; heavy `speculation` → model overconfident; heavy `too_long` → prompt directives not landing. |
 | `agent_states` row count + size | Supabase SQL: `SELECT count(*), pg_size_pretty(pg_total_relation_size('agent_states')) FROM agent_states;` | Sanity check vs expectations. |
 | Failed tool_call rate | `grep 'errors_count' [CTX-TOOL] logs` | High persistent error count → provider issue, schema validation issue, or RLS failure. |
-| `❌ [CTX-TOOL] runToolLoop failed` logs | Edge function logs | Means the loop threw and we fell back to legacy single-shot. If frequent → loop is unstable. |
+| `[CTX-TOOL] runToolLoop` failures | Edge function logs | Internal network-resilience fallbacks fire when the loop throws or returns unparseable JSON. Frequent firing → loop is unstable, escalate to Level 2 revert. |
 | `[EMILIA_STATE] save failed` warns | Browser console / edge logs | Persistence write failures (RLS, schema mismatch, network). |
 | User support tickets / Sentry | External | Direct user reports of "Emilia forgot ...", "Emilia keeps asking the same thing", "wrong currency". |
 
-If none of these are alarming, the issue may be downstream (e.g. PDF generation, search providers) and rollback won't help.
+If none of these are alarming, the issue may be downstream (e.g. PDF generation, search providers) and a revert won't help.
 
 ---
 
 ## 4. Post-rollback
 
-After a rollback (any level), do all of the following:
+After a revert (any level), do all of the following:
 
-1. **File an incident report**. Capture: which level, trigger metric and threshold breached, time to detect, time to recover, sample failing conversations (with conversation_id).
-2. **Re-enable in dev** with the suspected fix applied. Reproduce the failing case end-to-end.
-3. **Re-run the A/B test** in staging. Use the same dataset that flagged the issue plus 50 control conversations. Don't re-enable in prod until both legs converge.
+1. **File an incident report**. Capture: which level, trigger metric and threshold breached, time to detect, time to recover, sample failing conversations (with conversation_id), the revert commit SHA(s).
+2. **Re-apply the change in dev** with the suspected fix on top. Reproduce the failing case end-to-end.
+3. **Re-run regression tests** in staging. Use the same dataset that flagged the issue plus 50 control conversations. Don't re-merge to `main` until both legs converge.
 4. **Update DEBT items in `docs/architecture/tool-catalog.md`** if the incident surfaced a new gap (e.g. a missing validation rule, a tool description that misled the model, a missing `<tool_selection>` directive).
 5. **Update this doc** if the trigger metric / threshold needs tuning. The numbers above are the spec defaults; real-world telemetry should refine them.
-6. **Re-enable in prod gradually**: 10% → monitor for 24h → 50% → monitor for 48h → 100%. The flags are per-tenant via env, so a percent-based rollout requires either a flag service or staged environment promotion.
+6. **Re-merge gradually**: land the fix as a fresh commit (do NOT `git revert <revert>`), monitor for 24h before any further changes to the parser.
 
 ---
 
 ## 5. What rollback does NOT fix
 
-Some symptoms look like CE issues but won't be cured by flipping the flags:
+Some symptoms look like CE issues but won't be cured by reverting:
 
 - **Provider outages** (Starling 5xx, EUROVIPS down): unrelated to the parser path. Check provider health.
 - **Search rate limiting** (`places-viewport` 429s): handled by the cooldown propagation contract in `usePlacesOrchestrator`. Not CE-related.
 - **PDF generation failures**: PDFMonkey / extraction issues, not CE.
-- **RLS / multi-tenant leak**: this would manifest as one tenant seeing another's data, but `agent_states` is `agency_id`-scoped via RLS. If you suspect a leak, check the RLS policies on `agent_states` (see the migration that created the table) — turning off CE just stops new writes, it doesn't recall old ones.
-- **Conversation history rendering bugs**: legacy `previousContext` / `conversationSummary` paths still run; bugs there are independent of CE.
+- **RLS / multi-tenant leak**: this would manifest as one tenant seeing another's data, but `agent_states` is `agency_id`-scoped via RLS. If you suspect a leak, check the RLS policies on `agent_states` (see the migration that created the table) — reverting the cleanup just stops new writes from the new code path, it doesn't recall old ones.
+- **Conversation history rendering bugs**: bugs in message rendering / metadata extraction are independent of CE.
 
 ---
 
-## 6. Reference: feature-flag matrix
-
-| `VITE_USE_CONTEXT_ENGINEERING` | `USE_FUNCTION_TOOLS` env or `x-use-tool-loop` header | Behavior |
-|---|---|---|
-| OFF | OFF | **Pre–Context-Engineering baseline** (Level 3 = full rollback). No state load, no memory block, single-shot completion. |
-| OFF | ON | Tool loop runs, but with no `memoryStateBlock` — `<user_profile>` / `<memories>` blocks are absent. Loop has less context to ground tool selection. Not a recommended steady state. |
-| ON | OFF | State is loaded and rendered into the prompt, but no tool loop. Single-shot completion sees the full memory block. Reasonable A/B leg for measuring state-injection value alone. |
-| ON | ON | **Full Context Engineering** (target steady state once rollout completes). |
-
----
-
-## 7. Contacts & escalation
+## 6. Contacts & escalation
 
 (Fill in for your team.)
 
