@@ -114,36 +114,6 @@ export function mergeLeadAiProfile(existing: LeadAiProfile | null, parsedRequest
   };
 }
 
-function mapProfileRow(row: any): LeadAiProfile {
-  return {
-    id: row.id,
-    leadId: row.lead_id,
-    tenantId: row.tenant_id,
-    agencyId: row.agency_id,
-    sourceConversationId: row.source_conversation_id,
-    schemaVersion: row.schema_version ?? 1,
-    profile: (row.profile_json ?? {}) as LeadAiProfile["profile"],
-    summaryText: row.summary_text ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-export async function loadLeadAiProfile(leadId: string): Promise<LeadAiProfile | null> {
-  const { data, error } = await supabase
-    .from("lead_ai_profiles")
-    .select("*")
-    .eq("lead_id", leadId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[LEAD_AI_PROFILE] load failed:", error);
-    return null;
-  }
-
-  return data ? mapProfileRow(data) : null;
-}
-
 export async function saveLeadAiProfile(profile: LeadAiProfile): Promise<void> {
   let tenantId = profile.tenantId ?? null;
   let agencyId = profile.agencyId ?? null;

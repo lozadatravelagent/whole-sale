@@ -1853,8 +1853,6 @@ export async function parseMessageWithAI(
                 currentDate: new Date().toISOString().split('T')[0],
                 previousContext: previousContext, // Include conversation context
                 conversationHistory: conversationHistory || [],
-                conversationSummary: knowledge?.conversationSummary ?? null,
-                leadProfile: knowledge?.leadProfile ?? null,
                 plannerContext: knowledge?.plannerContext ?? null,
                 historyWindow: knowledge?.historyWindow ?? 6,
                 contextMeta: knowledge?.contextMeta ?? null,

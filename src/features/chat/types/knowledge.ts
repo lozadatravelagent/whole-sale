@@ -66,9 +66,7 @@ export interface PreloadedConversationKnowledge {
   conversationId: string;
   contextualMemory: ParsedTravelRequest | null;
   contextState: any | null;
-  conversationSummary: ConversationSummary | null;
   leadId: string | null;
-  leadProfile: LeadAiProfile | null;
 }
 
 export interface PlannerEditContext {
@@ -113,8 +111,6 @@ export interface PlannerEditContext {
 }
 
 export interface ParseMessageKnowledge {
-  conversationSummary?: ConversationSummary | null;
-  leadProfile?: LeadAiProfile | null;
   plannerContext?: PlannerEditContext | null;
   contextMeta?: {
     conversationId?: string | null;

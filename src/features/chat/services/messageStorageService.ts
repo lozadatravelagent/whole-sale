@@ -1,7 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { ContextState } from '../types/contextState';
-import type { ConversationSummary } from '../types/knowledge';
 import { isValidContextState } from '../types/contextState';
 
 export async function loadContextualMemory(conversationId: string): Promise<ParsedTravelRequest | null> {
@@ -127,23 +126,6 @@ export async function loadContextState(conversationId: string): Promise<ContextS
       return state;
     }
 
-    // Handle legacy state format (old format without lastSearch structure)
-    if (state && (state.flights || state.hotels)) {
-      console.log('🔄 [STATE] Converting legacy state format to new ContextState');
-      const legacyState: ContextState = {
-        lastSearch: {
-          requestType: state.flights && state.hotels ? 'combined' : (state.flights ? 'flights' : 'hotels'),
-          timestamp: state.timestamp || new Date().toISOString(),
-          flightsParams: state.flights,
-          hotelsParams: state.hotels
-        },
-        constraintsHistory: [],
-        turnNumber: 1,
-        schemaVersion: 1
-      };
-      return legacyState;
-    }
-
     console.log('ℹ️ [STATE] No valid context state found');
     return null;
   } catch (error) {
@@ -199,68 +181,3 @@ export async function saveContextState(conversationId: string, contextState: Con
   }
 }
 
-export async function loadConversationSummary(conversationId: string): Promise<ConversationSummary | null> {
-  try {
-    console.log('🧠 [SUMMARY] Loading conversation summary for conversation:', conversationId);
-    const { data: messages, error } = await supabase
-      .from('messages')
-      .select('meta')
-      .eq('conversation_id', conversationId)
-      .eq('role', 'system')
-      .contains('meta', { messageType: 'conversation_summary' })
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (error) {
-      console.error('❌ [SUMMARY] Error loading conversation summary:', error);
-      return null;
-    }
-
-    const summary = messages?.[0]?.meta && typeof messages[0].meta === 'object'
-      ? (messages[0].meta as Record<string, unknown>).conversationSummary
-      : null;
-
-    return (summary as ConversationSummary | null) ?? null;
-  } catch (error) {
-    console.error('❌ [SUMMARY] Error in loadConversationSummary:', error);
-    return null;
-  }
-}
-
-export async function saveConversationSummary(conversationId: string, conversationSummary: ConversationSummary): Promise<void> {
-  try {
-    console.log('💾 [SUMMARY] Saving conversation summary for conversation:', conversationId);
-
-    const { error: deleteError } = await supabase
-      .from('messages')
-      .delete()
-      .eq('conversation_id', conversationId)
-      .eq('role', 'system')
-      .contains('meta', { messageType: 'conversation_summary' });
-
-    if (deleteError) {
-      console.warn('⚠️ [SUMMARY] Error deleting old conversation summary:', deleteError);
-    }
-
-    const { error } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        role: 'system',
-        content: { text: '' },
-        meta: {
-          messageType: 'conversation_summary',
-          conversationSummary,
-          timestamp: new Date().toISOString()
-        }
-      });
-
-    if (error) {
-      console.error('❌ [SUMMARY] Error saving conversation summary:', error);
-    } else {
-      console.log('✅ [SUMMARY] Conversation summary saved successfully');
-    }
-  } catch (error) {
-    console.error('❌ [SUMMARY] Error in saveConversationSummary:', error);
-  }
-}

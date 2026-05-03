@@ -14,8 +14,6 @@ interface BuildSystemPromptArgs {
   currentDate: string;
   conversationHistoryText?: string;
   previousContext?: unknown;
-  conversationSummary?: unknown;
-  leadProfile?: unknown;
   plannerContext?: unknown;
   /**
    * Pre-rendered Context-Engineering memory state block
@@ -43,8 +41,6 @@ export function buildSystemPrompt({
   currentDate,
   conversationHistoryText = '',
   previousContext,
-  conversationSummary,
-  leadProfile,
   plannerContext,
   memoryStateBlock,
   language = 'es',
@@ -128,15 +124,6 @@ CONVERSATION CONTEXT RULES:
 - If you find ANY flight details in previous messages, include them in hotels search even if user doesn't explicitly mention them
 ` : ''}
 
-${conversationSummary ? `CONVERSATION SUMMARY:
-${JSON.stringify(conversationSummary, null, 2)}
-
-SUMMARY USAGE RULES:
-- Use this summary as the primary compact memory of the conversation.
-- Prefer summary facts over older raw history when both mention the same field.
-- Keep explicit new user input above the summary if they conflict.
-` : ''}
-
 ${previousContext ? `PREVIOUS CONTEXT:
 ${JSON.stringify(previousContext, null, 2)}
 
@@ -162,15 +149,6 @@ EXAMPLES:
 - Previous has complete flight + current "con valija" → Return complete flight with luggage: "checked"
 - Previous had "vuelo a Madrid para 2 menores" (failed, adults=0) + current "agrega 2 adultos" → Return complete flight with adults: 2, children: 2, preserving all other fields
 - Previous had search with only infants + current "con 1 adulto" → Return complete search with adults: 1, preserving infants and other fields
-` : ''}
-
-${leadProfile ? `LEAD PROFILE DEFAULTS:
-${JSON.stringify(leadProfile, null, 2)}
-
-LEAD PROFILE RULES:
-- Treat this as long-term preference memory for the client or lead.
-- Use it only as a default when the current message, summary, and previousContext do not provide the value.
-- Never let lead profile preferences override explicit current user instructions.
 ` : ''}
 
 ${plannerContext ? `CURRENT PLANNER STATE:

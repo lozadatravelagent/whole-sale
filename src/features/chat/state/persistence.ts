@@ -20,10 +20,6 @@ import type { EmiliaState } from "./emiliaState";
  * Schema version this client knows how to deserialize.
  * Bump when introducing breaking shape changes to `EmiliaState`.
  * Loads of newer rows refuse rather than silently corrupt.
- *
- * v1 → v2: added optional `pending_action: PendingAction | null` and
- * bumped MAX_GLOBAL_NOTES policy unchanged. v1 rows are forward-compatible
- * (the field defaults to `null` when missing, see migration in `loadEmiliaState`).
  */
 export const EMILIA_STATE_SCHEMA_VERSION = 2;
 
@@ -88,22 +84,7 @@ export async function loadEmiliaState(conversationId: string): Promise<EmiliaSta
     );
   }
 
-  // Forward-migrate v1 rows in place: missing `pending_action` becomes null
-  // and we stamp the new schema_version so subsequent saves carry it.
-  const raw = data.state as unknown as EmiliaState & { pending_action?: unknown };
-  if (data.schema_version < EMILIA_STATE_SCHEMA_VERSION) {
-    const migrated: EmiliaState = {
-      ...raw,
-      pending_action:
-        (raw as { pending_action?: EmiliaState['pending_action'] }).pending_action ?? null,
-      meta: {
-        ...raw.meta,
-        schema_version: EMILIA_STATE_SCHEMA_VERSION,
-      },
-    };
-    return migrated;
-  }
-  return raw as EmiliaState;
+  return data.state as unknown as EmiliaState;
 }
 
 /**
