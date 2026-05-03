@@ -142,6 +142,30 @@ function getPlanQuoteMissingFields(plannerState: TripPlannerState): string[] {
   ].filter(Boolean) as string[];
 }
 
+/**
+ * Canonical slot names for the missing quote fields. Mirrors getPlanQuoteMissingFields
+ * 1:1 but emits machine-stable keys for the pending_action.fields contract.
+ *
+ * Used by the CE layer (messageTurnContext.emitPendingAction) so the model
+ * receives canonical names in <pending_action.fields> rather than display
+ * strings. The display strings (`'ciudad de salida'`, `'fechas exactas'`)
+ * remain in pending_action.prompt for the user-facing response text.
+ *
+ * Parity note: getPlanQuoteMissingFields collapses the flexible-month case
+ * into the same `'fechas exactas'` bucket as exact dates (it asks for exact
+ * dates whenever isFlexibleDates is true OR start/end are missing). This
+ * function mirrors that exact behavior — it does NOT introduce a new
+ * flexible_month/flexible_year slot pair.
+ */
+function getPlanQuoteMissingSlots(plannerState: TripPlannerState): string[] {
+  const slots: string[] = [];
+  if (!plannerState.origin) slots.push('origin');
+  if (plannerState.isFlexibleDates || !plannerState.startDate || !plannerState.endDate) {
+    slots.push('start_date', 'end_date');
+  }
+  return slots;
+}
+
 function buildQuoteRequestFromPlanner(
   message: string,
   parsedRequest: ParsedTravelRequest,
@@ -293,6 +317,7 @@ export function buildPlanToQuoteResponse(plannerState: TripPlannerState) {
       })()
     : `${plannerState.startDate || 'sin salida'}${plannerState.endDate ? ` al ${plannerState.endDate}` : ''}`;
   const missingQuoteFields = getPlanQuoteMissingFields(plannerState);
+  const missingQuoteSlots = getPlanQuoteMissingSlots(plannerState);
 
   const summary = [
     segmentLabels.length > 0 ? segmentLabels.join(' → ') : 'el plan activo',
@@ -322,6 +347,7 @@ export function buildPlanToQuoteResponse(plannerState: TripPlannerState) {
         origin: plannerState.origin || null,
         travelers: plannerState.travelers,
         missingQuoteFields,
+        missingQuoteSlots,
         segments: segments.map((segment) => ({
           city: segment.city,
           country: segment.country,
@@ -722,11 +748,15 @@ export function resolveConversationTurn(options: {
   hasPreviousParsedRequest: boolean;
   recentCollectCount: number;
   maxCollectTurns: number;
-  // PR 3 (C1): mode param reserved. When undefined, legacy routing runs
-  // unchanged (including the standard_itinerary branch). C3 wires strict
-  // agency/passenger routing when defined. C8 makes it required and removes
-  // the legacy branch.
-  mode?: 'agency' | 'passenger';
+  // PR 3 (C8 — Phase 5): `mode` is REQUIRED. The legacy fallthrough branch
+  // that ran when `mode === undefined` has been deleted; strict
+  // agency/passenger routing is the only path. Discovery intent
+  // (`isDiscoveryIntent`) is handled explicitly inside this function as a
+  // dedicated branch — it still resolves to `standard_itinerary` with
+  // `responseMode='show_places'` regardless of mode (the show_places flow is
+  // mode-agnostic). Callers that historically passed `undefined` (consumer /
+  // B2C) must now choose a mode at the call site.
+  mode: 'agency' | 'passenger';
   // PR 3 (C3): anti-loop guardrails for the mode_bridge branch. When the
   // previous turn was itself a bridge, OR when the caller signals the user
   // explicitly chose to stay in the current mode (via the "seguir" chip
@@ -772,11 +802,11 @@ export function resolveConversationTurn(options: {
       (routeResult.reason === 'quote_intent_incomplete' && !hasPreviousParsedRequest && !hasPersistentContext)
     );
 
-  // === STRICT MODE (PR 3 / C3 + C7.1.e partial revert) ======================
-  // When `mode !== undefined`, apply agency/passenger routing: agency emits
-  // only `standard_search` or `ask_minimal`; passenger emits only
-  // `standard_itinerary` or `ask_minimal`. A `mode_bridge` branch nudges the
-  // user to switch modes when intent doesn't match the active mode.
+  // === STRICT MODE (PR 3 / C3 + C7.1.e partial revert + C8 closure) =========
+  // `mode` is required. Agency emits `standard_search` or `ask_minimal`;
+  // passenger emits `standard_itinerary` or `ask_minimal`. A `mode_bridge`
+  // branch nudges the user to switch modes when intent doesn't match the
+  // active mode.
   //
   // C7.1.e history: passenger originally emitted `planner_agent` per the
   // ADR-002 strict contract, but empirically that branch never produced a
@@ -785,11 +815,12 @@ export function resolveConversationTurn(options: {
   // deleted the `planner_agent` branch, handler, and edge function; see
   // ADR-002 addendum 2026-04-18.
   //
-  // DISCOVERY BYPASS: `isDiscoveryIntent` intentionally falls through to the
-  // legacy path below so the existing show_places flow
-  // (`buildDiscoveryResponsePayload` in useMessageHandler's
-  // requestType='itinerary' case) dispatches off `standard_itinerary` with
-  // responseMode='show_places'.
+  // DISCOVERY (C8): handled as a dedicated explicit branch BEFORE the
+  // strict-mode bridge logic. The legacy fallthrough that previously served
+  // discovery has been removed. Discovery resolves to `standard_itinerary`
+  // with `responseMode='show_places'` and `messageType='discovery_results'`,
+  // mode-agnostic — the existing show_places flow in useMessageHandler's
+  // requestType='itinerary' case dispatches off `standard_itinerary`.
   //
   // BRIDGE RULES:
   //   - agency → passenger  when (requestType==='itinerary' || route==='PLAN'),
@@ -809,6 +840,12 @@ export function resolveConversationTurn(options: {
   //     nudged the user; a second consecutive bridge would loop.
   //   G2 — `forceCurrentMode === true`: the user clicked "seguir en este
   //     modo" on the bridge chip; we must respect that choice.
+  //   G3 — pending_action with active planner: the assistant is mid-ask
+  //     (slot fill / confirmation), bouncing modes would interrupt.
+  //   G4 — `previousMessageType === 'quote_active_plan'`: the previous turn
+  //     opened a quote flow against the active plan; the user's current
+  //     message is the slot fill answer, regardless of what the parser made
+  //     of it.
   //
   // HANDLER NOTE: the `standard_itinerary` branch dispatches through
   // `useMessageHandler`'s `switch (parsedRequest.requestType)` — for
@@ -816,114 +853,76 @@ export function resolveConversationTurn(options: {
   // `buildCanonicalResultFromStandard`. No draft bootstrap is required; the
   // handler tolerates `!hasActivePlanner` as the consumer flow already
   // demonstrates.
-  if (mode !== undefined && !isDiscoveryIntent) {
-    // Bridge guard composition (most → least specific):
-    //   G1 — anti-loop: previous turn was already a bridge.
-    //   G2 — explicit user choice: clicked "seguir en este modo".
-    //   G3 — pending_action with active planner: the assistant is mid-ask
-    //        (slot fill / confirmation), bouncing modes would interrupt.
-    //   G4 — quote_active_plan messageType: the previous turn opened a quote
-    //        flow against the active plan; the user's current message is the
-    //        slot fill answer, regardless of what the parser made of it.
-    const bridgeBlocked =
-      previousMessageType === 'mode_bridge' ||
-      forceCurrentMode === true ||
-      previousMessageType === 'quote_active_plan' ||
-      Boolean(hasPendingAction && hasActivePlanner);
 
-    let bridgeTarget: 'agency' | 'passenger' | null = null;
-    if (!bridgeBlocked) {
-      if (
-        mode === 'agency' &&
-        !isQuoteFromActivePlanner &&
-        (parsedRequest.requestType === 'itinerary' || routeResult.route === 'PLAN')
-      ) {
-        bridgeTarget = 'passenger';
-      } else if (
-        mode === 'passenger' &&
-        routeResult.route === 'QUOTE' &&
-        (parsedRequest.requestType === 'flights' ||
-          parsedRequest.requestType === 'hotels' ||
-          parsedRequest.requestType === 'combined') &&
-        !hasActivePlanner
-      ) {
-        bridgeTarget = 'agency';
-      }
-    }
-
-    if (bridgeTarget) {
-      return {
-        executionBranch: 'mode_bridge',
-        responseMode: 'needs_mode_switch',
-        normalizedMissingFields,
-        messageType: 'mode_bridge',
-        shouldUseStandardItinerary: false,
-        shouldAskMinimalQuestion: false,
-        uiMeta: {
-          route: routeResult.route,
-          reason: routeResult.reason,
-          firstPlanHandledAs: null,
-          suggestedMode: bridgeTarget,
-        },
-      };
-    }
-
-    if (shouldAskMinimalQuestion) {
-      return {
-        executionBranch: 'ask_minimal',
-        responseMode: 'needs_input',
-        normalizedMissingFields,
-        messageType: 'collect_question',
-        shouldUseStandardItinerary: false,
-        shouldAskMinimalQuestion: true,
-        uiMeta: {
-          route: routeResult.route,
-          reason: routeResult.reason,
-          firstPlanHandledAs: null,
-        },
-      };
-    }
-
-    if (mode === 'passenger') {
-      return {
-        executionBranch: 'standard_itinerary',
-        responseMode: 'proposal_first_plan',
-        normalizedMissingFields,
-        messageType: 'trip_planner',
-        shouldUseStandardItinerary: true,
-        shouldAskMinimalQuestion: false,
-        uiMeta: {
-          route: routeResult.route,
-          reason: routeResult.reason,
-          firstPlanHandledAs: !hasActivePlanner ? 'standard_itinerary' : null,
-        },
-      };
-    }
-
-    // mode === 'agency', default branch.
+  // Discovery intent: explicit, mode-agnostic branch. Returns before any
+  // strict-mode bridge logic runs so "qué ver en Roma" never trips the
+  // agency→passenger bridge nor depends on a deleted legacy fallthrough.
+  if (isDiscoveryIntent) {
     return {
-      executionBranch: 'standard_search',
-      responseMode: routeResult.route === 'QUOTE' ? 'quote_or_search' : 'standard',
+      executionBranch: 'standard_itinerary',
+      responseMode: 'show_places',
       normalizedMissingFields,
-      messageType: parsedRequest.requestType === 'general' ? 'general_response' : 'search_results',
+      messageType: 'discovery_results',
+      shouldUseStandardItinerary: true,
+      shouldAskMinimalQuestion: false,
+      uiMeta: {
+        route: routeResult.route,
+        reason: routeResult.reason,
+        firstPlanHandledAs: routeResult.route === 'PLAN' && !hasActivePlanner ? 'standard_itinerary' : null,
+      },
+    };
+  }
+
+  // Bridge guard composition (most → least specific):
+  //   G1 — anti-loop: previous turn was already a bridge.
+  //   G2 — explicit user choice: clicked "seguir en este modo".
+  //   G3 — pending_action with active planner: the assistant is mid-ask
+  //        (slot fill / confirmation), bouncing modes would interrupt.
+  //   G4 — quote_active_plan messageType: the previous turn opened a quote
+  //        flow against the active plan; the user's current message is the
+  //        slot fill answer, regardless of what the parser made of it.
+  const bridgeBlocked =
+    previousMessageType === 'mode_bridge' ||
+    forceCurrentMode === true ||
+    previousMessageType === 'quote_active_plan' ||
+    Boolean(hasPendingAction && hasActivePlanner);
+
+  let bridgeTarget: 'agency' | 'passenger' | null = null;
+  if (!bridgeBlocked) {
+    if (
+      mode === 'agency' &&
+      !isQuoteFromActivePlanner &&
+      (parsedRequest.requestType === 'itinerary' || routeResult.route === 'PLAN')
+    ) {
+      bridgeTarget = 'passenger';
+    } else if (
+      mode === 'passenger' &&
+      routeResult.route === 'QUOTE' &&
+      (parsedRequest.requestType === 'flights' ||
+        parsedRequest.requestType === 'hotels' ||
+        parsedRequest.requestType === 'combined') &&
+      !hasActivePlanner
+    ) {
+      bridgeTarget = 'agency';
+    }
+  }
+
+  if (bridgeTarget) {
+    return {
+      executionBranch: 'mode_bridge',
+      responseMode: 'needs_mode_switch',
+      normalizedMissingFields,
+      messageType: 'mode_bridge',
       shouldUseStandardItinerary: false,
       shouldAskMinimalQuestion: false,
       uiMeta: {
         route: routeResult.route,
         reason: routeResult.reason,
         firstPlanHandledAs: null,
+        suggestedMode: bridgeTarget,
       },
     };
   }
-
-  // === LEGACY PATH (mode === undefined OR discovery intent) =================
-  // Preserved unchanged from pre-C3, minus the planner_agent branch deleted
-  // in PR 4 (ADR-002 addendum 2026-04-18). Reached in production only when
-  // isDiscoveryIntent=true and `mode !== undefined` (strict-mode discovery
-  // bypass); the show_places flow is served by standard_itinerary below.
-
-  const shouldUseStandardItinerary =
-    parsedRequest.requestType === 'itinerary' || routeResult.route === 'PLAN';
 
   if (shouldAskMinimalQuestion) {
     return {
@@ -941,22 +940,23 @@ export function resolveConversationTurn(options: {
     };
   }
 
-  if (shouldUseStandardItinerary) {
+  if (mode === 'passenger') {
     return {
       executionBranch: 'standard_itinerary',
-      responseMode: isDiscoveryIntent ? 'show_places' : routeResult.route === 'PLAN' ? 'proposal_first_plan' : 'standard',
+      responseMode: 'proposal_first_plan',
       normalizedMissingFields,
-      messageType: isDiscoveryIntent ? 'discovery_results' : 'trip_planner',
+      messageType: 'trip_planner',
       shouldUseStandardItinerary: true,
       shouldAskMinimalQuestion: false,
       uiMeta: {
         route: routeResult.route,
         reason: routeResult.reason,
-        firstPlanHandledAs: routeResult.route === 'PLAN' && !hasActivePlanner ? 'standard_itinerary' : null,
+        firstPlanHandledAs: !hasActivePlanner ? 'standard_itinerary' : null,
       },
     };
   }
 
+  // mode === 'agency', default branch.
   return {
     executionBranch: 'standard_search',
     responseMode: routeResult.route === 'QUOTE' ? 'quote_or_search' : 'standard',

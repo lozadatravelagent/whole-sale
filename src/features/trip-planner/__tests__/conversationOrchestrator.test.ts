@@ -129,6 +129,7 @@ describe('conversationOrchestrator', () => {
       hasPreviousParsedRequest: false,
       recentCollectCount: 0,
       maxCollectTurns: 3,
+      mode: 'passenger',
     });
 
     expect(resolution.executionBranch).toBe('standard_itinerary');
@@ -176,6 +177,7 @@ describe('conversationOrchestrator', () => {
       hasPreviousParsedRequest: false,
       recentCollectCount: 0,
       maxCollectTurns: 3,
+      mode: 'agency',
     });
 
     expect(resolution.messageType).toBe('search_results');
@@ -211,6 +213,7 @@ describe('conversationOrchestrator', () => {
       hasPreviousParsedRequest: false,
       recentCollectCount: 0,
       maxCollectTurns: 3,
+      mode: 'passenger',
     });
 
     expect(resolution.executionBranch).toBe('standard_itinerary');
@@ -455,19 +458,12 @@ describe('conversationOrchestrator', () => {
     };
 
     // -------------------------------------------------------------------------
-    // Legacy preservation — mode undefined must keep pre-C3 behavior,
-    // INCLUDING the standard_itinerary branch. C8 removes this path.
+    // C8 (Phase 5) closure: the legacy `mode === undefined` fallthrough path
+    // has been deleted. `mode` is now required. The two tests previously
+    // here ("legacy: standard_itinerary" and "D14 #3 legacy:
+    // standard_search") asserted that exact path and were removed alongside
+    // the code they exercised.
     // -------------------------------------------------------------------------
-    it('legacy (mode undefined): itinerary + PLAN + no planner → standard_itinerary', () => {
-      const resolution = resolveConversationTurn({
-        parsedRequest: itineraryPlanRequest,
-        routeResult: itineraryPlanRoute,
-        plannerState: null,
-        ...baseFlags,
-      });
-      expect(resolution.executionBranch).toBe('standard_itinerary');
-      expect(resolution.uiMeta.firstPlanHandledAs).toBe('standard_itinerary');
-    });
 
     // -------------------------------------------------------------------------
     // D14 adapted tests — spec closed. See commit body for adaptation details.
@@ -498,17 +494,6 @@ describe('conversationOrchestrator', () => {
       expect(resolution.responseMode).toBe('needs_mode_switch');
       expect(resolution.messageType).toBe('mode_bridge');
       expect(resolution.uiMeta.suggestedMode).toBe('agency');
-    });
-
-    it('D14 #3 (legacy, mode undefined) → standard_search (pre-C3 behavior unchanged)', () => {
-      const resolution = resolveConversationTurn({
-        parsedRequest: combinedQuoteRequest,
-        routeResult: combinedQuoteRoute,
-        plannerState: { generationMeta: { isDraft: false } },
-        ...baseFlags,
-      });
-      expect(resolution.executionBranch).toBe('standard_search');
-      expect(resolution.responseMode).toBe('quote_or_search');
     });
 
     // -------------------------------------------------------------------------
