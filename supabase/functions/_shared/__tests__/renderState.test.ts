@@ -220,3 +220,110 @@ describe('renderStateForSystemPrompt — token cap', () => {
     expect(out).toContain('note 0');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Maximum-pressure budget enforcement
+// ---------------------------------------------------------------------------
+//
+// Stress-tests the soft-cap fallback chain when EVERY block is at or above its
+// realistic ceiling at once. Validates that the renderer:
+//   1. Never exceeds MAX_OUTPUT_CHARS (4000).
+//   2. Always emits the load-bearing scaffolding: <user_profile>, <current_mode>,
+//      and <memory_instructions>. The model needs these even when memories drop.
+//   3. Drops session memory before global memory before pending_action — i.e.
+//      the most-recent / single-slot signals survive the trim.
+// ---------------------------------------------------------------------------
+
+describe('renderStateForSystemPrompt — maximum-pressure budget', () => {
+  function maxedOutState(): EmiliaState {
+    const state = emptyState();
+    state.inject_session_memories_next_turn = true;
+
+    // 30 global notes (realistic worst case — far above MAX_GLOBAL_NOTES=6).
+    state.global_memory.notes = Array.from({ length: 30 }, (_, i) =>
+      note({
+        text: `Global preference number ${i}: traveler tends to prefer X, Y, Z and is sensitive to A, B, C details.`,
+        last_update_date: `2026-04-${String((i % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
+      }),
+    );
+
+    // 30 session notes (realistic worst case — far above MAX_SESSION_NOTES=8).
+    state.session_memory.notes = Array.from({ length: 30 }, (_, i) =>
+      note({
+        text: `Session observation ${i}: in this conversation the user has mentioned constraints around dates and party composition.`,
+        last_update_date: `2026-05-${String((i % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
+        scope: 'turn_context',
+      }),
+    );
+
+    // 8 active refs (a saturated ref list across plan/quote/lead/search types).
+    state.active_refs = Array.from({ length: 8 }, (_, i) => ({
+      type: (['plan', 'quote', 'lead', 'search'] as const)[i % 4],
+      id: `ref-${i}`,
+      summary1Line: `Reference ${i} summary text describing what was active in this turn.`,
+      lastUpdated: '2026-05-01T12:00:00.000Z',
+    }));
+
+    // 12 discovery candidates (above MAX_DISCOVERY_CANDIDATES=10, mimicking a
+    // wrapper that didn't trim — renderer should not crash, just emit them).
+    state.discovery_candidates = Array.from({ length: 12 }, (_, i) => ({
+      placeId: `fsq_${i}`,
+      name: `Place number ${i} with a longish name`,
+      category: i % 2 === 0 ? 'restaurant' : 'museum',
+      address: `Via Number ${i}, Some Long Street Name, City`,
+    }));
+
+    // Pending action with a meaningful payload (proposal-shaped).
+    state.pending_action = {
+      kind: 'awaiting_user_confirmation',
+      for: 'add_places_to_itinerary',
+      ref: { type: 'plan', id: 'plan-77' },
+      prompt:
+        '¿Confirmás agregar 3 lugares al día 2 del tramo Roma del itinerario actual? Esta acción no se puede deshacer automáticamente.',
+      issuedAt: '2026-05-02T11:00:00.000Z',
+      applied: { confirmed: false },
+      payload: {
+        resolved_places: state.discovery_candidates!.slice(0, 3),
+        segment_id: 'seg-rome',
+        day_index: 1,
+        note: null,
+      },
+    };
+
+    return state;
+  }
+
+  it('stays within MAX_OUTPUT_CHARS even with every block saturated', () => {
+    const out = renderStateForSystemPrompt(maxedOutState(), { now: FIXED_NOW });
+    expect(out.length).toBeLessThanOrEqual(__testing.MAX_OUTPUT_CHARS);
+  });
+
+  it('always emits the load-bearing scaffolding', () => {
+    const out = renderStateForSystemPrompt(maxedOutState(), { now: FIXED_NOW });
+    expect(out).toContain('<user_profile>');
+    expect(out).toContain('agency_id: ag-1');
+    expect(out).toContain('<current_mode>agency</current_mode>');
+    expect(out).toContain('<memory_instructions>');
+    expect(out).toContain('PRECEDENCE (highest to lowest):');
+  });
+
+  it('drops session memory before global memory under pressure', () => {
+    const out = renderStateForSystemPrompt(maxedOutState(), { now: FIXED_NOW });
+    // Session memory should be the first casualty.
+    expect(out).not.toContain('## Session memory (this conversation):');
+  });
+
+  it('preserves pending_action under pressure (single-slot signal must survive)', () => {
+    const out = renderStateForSystemPrompt(maxedOutState(), { now: FIXED_NOW });
+    expect(out).toContain('<pending_action>');
+    expect(out).toContain('kind: awaiting_user_confirmation');
+    expect(out).toContain('for: add_places_to_itinerary');
+  });
+
+  it('preserves discovery candidates block under pressure', () => {
+    const out = renderStateForSystemPrompt(maxedOutState(), { now: FIXED_NOW });
+    expect(out).toContain('<discovery_candidates>');
+    // The model needs at least the placeId column to reference candidates.
+    expect(out).toContain('fsq_0');
+  });
+});
