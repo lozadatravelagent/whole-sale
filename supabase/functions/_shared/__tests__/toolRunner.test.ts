@@ -135,6 +135,44 @@ describe('runToolLoop — base cases', () => {
     expect(result.hitIterationCap).toBe(false);
   });
 
+  it('executes tool_calls even when finish_reason is "stop" (forced tool_choice edge case)', async () => {
+    // Regression: with tool_choice forced to a specific function, OpenAI
+    // sometimes returns finish_reason="stop" together with a populated
+    // tool_calls array. Earlier versions of runToolLoop exited on the
+    // finish_reason check, leaving the tool unexecuted and the assistant
+    // message empty — triggering JSON-fallback downstream and showing the
+    // user a generic "no places found" message.
+    const { fetchImpl, callsSeen } = makeScriptedFetch([
+      {
+        finish_reason: 'stop', // ← non-standard combo
+        tool_calls: [{ id: 'c1', name: 'echo', args: { value: 'forced' } }],
+      },
+      { finish_reason: 'stop', content: 'echoed: forced' },
+    ]);
+
+    const result = await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 'sys',
+      userMessage: 'forced call',
+      tools: [TEST_TOOL],
+      toolHandlers: {
+        echo: (args: unknown) =>
+          Promise.resolve({ echoed: (args as { value: string }).value }),
+      },
+      ctx: makeCtx(),
+      fetchImpl,
+      toolChoice: { type: 'function', name: 'echo' },
+    });
+
+    expect(callsSeen()).toBe(2);
+    expect(result.iterationsUsed).toBe(2);
+    expect(result.toolCallsTrace).toHaveLength(1);
+    expect(result.toolCallsTrace[0].tool).toBe('echo');
+    expect((result.toolCallsTrace[0].result as { echoed: string }).echoed).toBe('forced');
+    expect(result.finalMessage.content).toBe('echoed: forced');
+  });
+
   it('executes a single tool then returns the next assistant answer', async () => {
     const { fetchImpl, callsSeen } = makeScriptedFetch([
       {

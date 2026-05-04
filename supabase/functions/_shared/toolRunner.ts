@@ -518,20 +518,28 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
         tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
       });
 
-      if (toolCalls.length === 0 || choice.finish_reason !== "tool_calls") {
-        // Diagnostic: if a forced tool was expected but not called, surface
-        // the assistant content + applied directives so we can see why the
-        // model bypassed the forced tool_choice.
-        if (forcedFunctionName !== null && iteration === 1 && toolCalls.length === 0) {
-          const contentRaw = choice.message?.content ?? '';
-          console.warn(
-            `[CTX-TOOL] forced tool_choice=${forcedFunctionName} BYPASSED on iter1. ` +
-            `finish_reason=${choice.finish_reason} ` +
-            `effective_response_format=${effectiveResponseFormat ? 'json_schema' : 'omitted'} ` +
-            `content_len=${contentRaw.length} ` +
-            `content="${contentRaw.slice(0, 300).replace(/\n/g, '\\n')}"`,
-          );
-        }
+      // Unconditional diagnostic for first iteration: surface finish_reason +
+      // tool_call count + content snippet so we can always see what the model
+      // returned, regardless of forced state.
+      if (iteration === 1) {
+        const contentRaw = choice.message?.content ?? '';
+        console.log(
+          `[CTX-TOOL-DEBUG] iter1 model response: ` +
+          `finish_reason=${choice.finish_reason} ` +
+          `tool_calls=${toolCalls.length} ` +
+          `forced=${forcedFunctionName ?? 'no'} ` +
+          `content_len=${contentRaw.length} ` +
+          `content="${contentRaw.slice(0, 400).replace(/\n/g, '\\n').replace(/"/g, '\\"')}"`,
+        );
+      }
+
+      // Exit only when there are NO tool calls to execute. tool_calls take
+      // priority over finish_reason: with forced tool_choice (and some other
+      // edge cases) OpenAI may return finish_reason="stop" together with a
+      // populated tool_calls array — exiting on the finish_reason check would
+      // leave those calls unexecuted and the loop's "final" message would be
+      // empty content, triggering the JSON fallback path downstream.
+      if (toolCalls.length === 0) {
         // Final answer — exit cleanly.
         return {
           finalMessage: lastAssistant,
@@ -542,6 +550,15 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
           hitLoopTimeout: false,
           totalUsage,
         };
+      }
+      if (choice.finish_reason !== "tool_calls") {
+        // Diagnostic only: model returned tool_calls + non-"tool_calls"
+        // finish_reason. We honor the tool_calls (execute them) but log so
+        // we can monitor frequency.
+        console.log(
+          `[CTX-TOOL] non-standard combo: finish_reason=${choice.finish_reason} ` +
+          `with tool_calls=${toolCalls.length} — executing the tools anyway.`,
+        );
       }
 
       // Emit tool_start events before execution.
