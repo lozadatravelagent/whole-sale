@@ -1695,7 +1695,16 @@ const useMessageHandler = (
         console.log('✅ [VALIDATION] All hotel required fields present, proceeding with search');
         // Clear previous request since we have all required fields
         await clearContextualMemory(finalConversationId);
-      } else if (parsedRequest.requestType === 'itinerary' && !isQuoteActivePlanTurn) {
+      } else if (
+        parsedRequest.requestType === 'itinerary' &&
+        !isQuoteActivePlanTurn &&
+        conversationTurn.responseMode !== 'show_places'
+      ) {
+        // Skip the destination check on `show_places` discovery turns: those
+        // carry their destination on `placeDiscoveryResult.destination`, not
+        // on `itinerary.destinations`, and short-circuiting here would mask
+        // a successful tool call ("Qué comer en Roma" → 10 places returned)
+        // behind a generic "decime qué destino" prompt.
         console.log('🗺️ [VALIDATION] Validating itinerary required fields');
 
         // Hard requirement: at least 1 destination
