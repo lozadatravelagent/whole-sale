@@ -237,13 +237,49 @@ serve(async (req) => {
     { action: 'message', resource: 'ai-parser' },
     async () => {
       const requestId = crypto.randomUUID();
-      // Hoisted so the catch block can access them even if an error occurs
-      // before the stream is fully set up.
-      let wantsStream = false;
+
+      // Body parsed up-front so we can decide between SSE and JSON paths
+      // BEFORE running the pipeline. Streaming MUST return its Response
+      // with a still-empty stream so the proxy gets headers immediately —
+      // events flow as work progresses. The previous code returned the
+      // Response only after the pipeline finished (~150s for cold queries),
+      // causing 504 Gateway Timeout under any non-trivial latency.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let requestBody: any;
+      try {
+        requestBody = await req.json();
+      } catch {
+        return new Response(
+          JSON.stringify({ success: false, error: 'invalid_request_body' }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        );
+      }
+
+      const wantsStream =
+        requestBody.stream === true ||
+        req.headers.get('Accept') === 'text/event-stream';
+
       let progressWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
       let streamReadable: ReadableStream<Uint8Array> | null = null;
+      if (wantsStream) {
+        const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+        streamReadable = readable;
+        progressWriter = writable.getWriter();
+      }
+
+      // Pipeline returns a discriminated result instead of a Response. The
+      // streaming wrapper writes the terminal `done`/`error` SSE event once
+      // the result is available; the non-streaming wrapper turns it into
+      // a plain JSON Response.
+      type ProcessResult =
+        | { kind: 'ok'; payload: unknown }
+        | { kind: 'error'; payload: unknown; statusCode: number };
+
+      const runPipeline = async (): Promise<ProcessResult> => {
       try {
-        const requestBody = await req.json();
         const {
           message = requestBody.prompt, // Support both 'message' and 'prompt'
           language = 'es',
@@ -266,16 +302,6 @@ serve(async (req) => {
           console.log('[CTX-TOOL] received toolChoice:', JSON.stringify(toolChoice));
         } else {
           console.log('[CTX-TOOL] no toolChoice from client (defaults to "auto")');
-        }
-
-        wantsStream =
-          requestBody.stream === true ||
-          req.headers.get('Accept') === 'text/event-stream';
-
-        if (wantsStream) {
-          const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-          streamReadable = readable;
-          progressWriter = writable.getWriter();
         }
 
         if (!message) {
@@ -929,24 +955,7 @@ serve(async (req) => {
           `places_count=${Array.isArray(pdMeta?.places) ? pdMeta!.places!.length : 'n/a'}`,
         );
 
-        if (wantsStream && progressWriter && streamReadable) {
-          await progressWriter.write(sseEvent('done', finalPayload));
-          await progressWriter.close();
-          return new Response(streamReadable, {
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'text/event-stream',
-              'Cache-Control': 'no-cache',
-            },
-          });
-        }
-
-        return new Response(JSON.stringify(finalPayload), {
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json'
-          }
-        });
+        return { kind: 'ok', payload: finalPayload };
       } catch (error) {
         console.error('❌ AI Message Parser error:', error);
         console.error('❌ Error stack:', error.stack);
@@ -976,30 +985,84 @@ serve(async (req) => {
           }
         };
 
-        if (wantsStream && progressWriter && streamReadable) {
+        return { kind: 'error', payload: errorPayload, statusCode };
+      }
+      };
+
+      if (wantsStream) {
+        const writer = progressWriter!;
+
+        // Background processing — runs the pipeline, writes the terminal
+        // SSE event, closes the writer. The Response is returned BEFORE
+        // this work starts so the proxy gets headers immediately. Events
+        // flow through the writer as work progresses (tool_start /
+        // tool_done from runToolLoop's onProgress, then the final done /
+        // error event from this wrapper).
+        const work = (async () => {
+          let result: ProcessResult;
           try {
-            await progressWriter.write(sseEvent('error', errorPayload));
-            await progressWriter.close();
-          } catch {
-            // ignore write errors on already-closed stream
+            result = await runPipeline();
+          } catch (err) {
+            // Defense in depth — runPipeline's own try/catch already turns
+            // pipeline errors into kind:'error' results. If something
+            // escapes (programming error, top-level exception), synthesize
+            // a generic error so the client always gets a terminal event.
+            console.error('❌ unexpected error escaped runPipeline:', err);
+            result = {
+              kind: 'error',
+              payload: {
+                success: false,
+                error: 'AI parsing failed. Please try again.',
+                timestamp: new Date().toISOString(),
+                meta: { promptVersion: PROMPT_VERSION },
+              },
+              statusCode: 500,
+            };
           }
-          return new Response(streamReadable, {
-            headers: {
-              ...corsHeaders,
-              'Content-Type': 'text/event-stream',
-              'Cache-Control': 'no-cache',
-            },
-          });
+          try {
+            await writer.write(
+              sseEvent(result.kind === 'ok' ? 'done' : 'error', result.payload),
+            );
+          } catch {
+            // writer might already be closed (timeout, client disconnect)
+          }
+          try {
+            await writer.close();
+          } catch {
+            // already closed
+          }
+        })();
+
+        // EdgeRuntime.waitUntil keeps the function alive past the Response
+        // return on Supabase's edge runtime. Absent in local
+        // `supabase functions serve` and tests — there the event loop holds
+        // `work` until completion on its own. Wrapped in try/catch so the
+        // missing global never breaks non-prod environments.
+        try {
+          (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+            .EdgeRuntime?.waitUntil?.(work);
+        } catch {
+          // EdgeRuntime not available — work continues via the event loop.
         }
 
-        return new Response(JSON.stringify(errorPayload), {
-          status: statusCode,
+        return new Response(streamReadable!, {
           headers: {
             ...corsHeaders,
-            'Content-Type': 'application/json'
-          }
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            // Tell intermediaries (Cloudflare, Nginx) not to buffer the
+            // stream — events must reach the client in real time.
+            'X-Accel-Buffering': 'no',
+          },
         });
       }
+
+      // Non-streaming: process inline and return JSON.
+      const result = await runPipeline();
+      return new Response(JSON.stringify(result.payload), {
+        status: result.kind === 'ok' ? 200 : result.statusCode,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
   );
 });
