@@ -283,7 +283,7 @@ describe('multi-step flow: partial apply_slot_values across two turns', () => {
 
     // Turn 1 — user replies only with origin.
     const apply1 = executeApplySlotValues(state, {
-      values: { origin: 'Buenos Aires' },
+      values_json: JSON.stringify({ origin: 'Buenos Aires' }),
     });
     expect(apply1.result.ok).toBe(true);
     expect(apply1.result.complete).toBe(false);
@@ -295,7 +295,7 @@ describe('multi-step flow: partial apply_slot_values across two turns', () => {
 
     // Turn 2 — user provides both dates.
     const apply2 = executeApplySlotValues(state, {
-      values: { start_date: '2026-12-01', end_date: '2026-12-09' },
+      values_json: JSON.stringify({ start_date: '2026-12-01', end_date: '2026-12-09' }),
     });
     expect(apply2.result.ok).toBe(true);
     expect(apply2.result.complete).toBe(true);
@@ -321,7 +321,7 @@ describe('multi-step flow: partial apply_slot_values across two turns', () => {
     });
 
     const apply = executeApplySlotValues(state, {
-      values: { origin: null, start_date: '2026-12-01', end_date: '2026-12-09' },
+      values_json: JSON.stringify({ origin: null, start_date: '2026-12-01', end_date: '2026-12-09' }),
     });
     expect(apply.result.ok).toBe(true);
     // origin survives because null gets filtered upstream by sanitizeValues.

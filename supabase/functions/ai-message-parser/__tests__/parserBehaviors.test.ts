@@ -586,7 +586,7 @@ describe('parser tool-loop dispatch — single tool round-trip', () => {
       {
         finish_reason: 'tool_calls',
         tool_calls: [
-          { id: 'c1', name: 'apply_slot_values', args: { values: { days: 7 } } },
+          { id: 'c1', name: 'apply_slot_values', args: { values_json: JSON.stringify({ days: 7 }) } },
         ],
       },
       { finish_reason: 'stop', content: '{"requestType":"itinerary","confidence":0.95}' },
@@ -606,8 +606,8 @@ describe('parser tool-loop dispatch — single tool round-trip', () => {
     });
 
     expect(result.toolCallsTrace[0].tool).toBe('apply_slot_values');
-    const args = result.toolCallsTrace[0].args as { values: { days: number } };
-    expect(args.values.days).toBe(7);
+    const args = result.toolCallsTrace[0].args as { values_json: string };
+    expect(JSON.parse(args.values_json).days).toBe(7);
   });
 
   it('dispatches confirm_pending_action for awaiting_user_confirmation flows', async () => {

@@ -67,7 +67,7 @@ You have access to retrieval tools, one memory tool, two turn-state resolution t
 
 PENDING ACTION (highest priority — check FIRST):
 - If MEMORY STATE includes a \`<pending_action>\` block, the user's reply most likely answers it. Resolve before doing anything else.
-  * kind="awaiting_user_input": parse the user's message into the listed \`fields\` and call \`apply_slot_values({values: {...}})\`. Keys SHOULD match the field names. Cities/places as strings, dates as ISO YYYY-MM-DD, integers for counts.
+  * kind="awaiting_user_input": parse the user's message into the listed \`fields\` and call \`apply_slot_values({values_json: "{...}"})\` — pass a JSON-encoded STRING (not a free-form object). Keys SHOULD match the field names. Cities/places as strings, dates as ISO YYYY-MM-DD, integers for counts.
   * kind="awaiting_user_confirmation": call \`confirm_pending_action({confirmed: true|false, notes: ...|null})\`.
   * If the user clearly changed topic (off-topic, greeting, brand-new request), do NOT call these — proceed normally.
 - After resolving pending_action, you may STILL emit the final JSON envelope; the client consumes \`apply_slot_values\` results separately and re-routes accordingly.

@@ -67,10 +67,14 @@ const CONFIRM_PA: PendingAction = {
 // ---------------------------------------------------------------------------
 
 describe('schemas', () => {
-  it('apply_slot_values is strict and requires `values`', () => {
+  it('apply_slot_values is strict and requires `values_json`', () => {
     expect(applySlotValuesToolSchema.function.strict).toBe(true);
-    expect(applySlotValuesToolSchema.function.parameters.required).toEqual(['values']);
+    expect(applySlotValuesToolSchema.function.parameters.required).toEqual(['values_json']);
     expect(applySlotValuesToolSchema.function.parameters.additionalProperties).toBe(false);
+    // values_json must be a string, not an object — strict mode forbids
+    // additionalProperties:true on nested objects.
+    const props = applySlotValuesToolSchema.function.parameters.properties as Record<string, { type: string }>;
+    expect(props.values_json.type).toBe('string');
   });
 
   it('confirm_pending_action is strict and requires `confirmed` + `notes`', () => {
@@ -98,7 +102,7 @@ describe('schemas', () => {
 describe('executeApplySlotValues', () => {
   it('rejects when no pending_action', () => {
     const { result, nextState } = executeApplySlotValues(buildState(null), {
-      values: { origin: 'BUE' },
+      values_json: JSON.stringify({ origin: 'BUE' }),
     });
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('no_pending_action');
@@ -107,21 +111,21 @@ describe('executeApplySlotValues', () => {
 
   it('rejects when wrong kind (confirmation)', () => {
     const { result } = executeApplySlotValues(buildState(CONFIRM_PA), {
-      values: { confirmed: true } as Record<string, unknown>,
+      values_json: JSON.stringify({ confirmed: true }),
     });
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('wrong_kind');
   });
 
   it('rejects empty values', () => {
-    const { result } = executeApplySlotValues(buildState(QUOTE_PA), { values: {} });
+    const { result } = executeApplySlotValues(buildState(QUOTE_PA), { values_json: '{}' });
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('empty_values');
   });
 
   it('rejects when no recognized fields (all keys outside `fields`)', () => {
     const { result } = executeApplySlotValues(buildState(QUOTE_PA), {
-      values: { random_field: 'whatever' },
+      values_json: JSON.stringify({ random_field: 'whatever' }),
     });
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('no_recognized_fields');
@@ -129,7 +133,7 @@ describe('executeApplySlotValues', () => {
 
   it('accepts partial fill, marks complete=false, lists remaining', () => {
     const { result, nextState } = executeApplySlotValues(buildState(QUOTE_PA), {
-      values: { origin: 'Buenos Aires' },
+      values_json: JSON.stringify({ origin: 'Buenos Aires' }),
     });
     expect(result.ok).toBe(true);
     expect(result.applied).toEqual({ origin: 'Buenos Aires' });
@@ -141,11 +145,11 @@ describe('executeApplySlotValues', () => {
 
   it('accepts full fill, marks complete=true', () => {
     const { result, nextState } = executeApplySlotValues(buildState(QUOTE_PA), {
-      values: {
+      values_json: JSON.stringify({
         origin: 'Buenos Aires',
         start_date: '2026-12-01',
         end_date: '2026-12-09',
-      },
+      }),
     });
     expect(result.ok).toBe(true);
     expect(result.complete).toBe(true);
@@ -155,7 +159,7 @@ describe('executeApplySlotValues', () => {
 
   it('field-name normalization (camelCase / snake_case / spaces) maps to canonical', () => {
     const { result } = executeApplySlotValues(buildState(QUOTE_PA), {
-      values: { Origin: 'BUE', startDate: '2026-12-01', 'end date': '2026-12-09' },
+      values_json: JSON.stringify({ Origin: 'BUE', startDate: '2026-12-01', 'end date': '2026-12-09' }),
     });
     expect(result.ok).toBe(true);
     expect(result.applied).toEqual({
@@ -168,11 +172,11 @@ describe('executeApplySlotValues', () => {
 
   it('drops nulls and trims string whitespace', () => {
     const { result } = executeApplySlotValues(buildState(QUOTE_PA), {
-      values: {
+      values_json: JSON.stringify({
         origin: '  Buenos Aires  ',
         start_date: null,
         end_date: undefined,
-      },
+      }),
     });
     expect(result.ok).toBe(true);
     expect(result.applied).toEqual({ origin: 'Buenos Aires' });
@@ -181,7 +185,7 @@ describe('executeApplySlotValues', () => {
   it('does NOT mutate the original state object', () => {
     const state = buildState(QUOTE_PA);
     const beforePA = JSON.stringify(state.pending_action);
-    executeApplySlotValues(state, { values: { origin: 'Buenos Aires' } });
+    executeApplySlotValues(state, { values_json: JSON.stringify({ origin: 'Buenos Aires' }) });
     expect(JSON.stringify(state.pending_action)).toBe(beforePA);
   });
 });

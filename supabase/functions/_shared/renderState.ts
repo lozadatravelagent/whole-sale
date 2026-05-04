@@ -51,7 +51,7 @@ PRECEDENCE (highest to lowest):
 6. Global memory (advisory default)
 
 When <pending_action> is present:
-- If kind="awaiting_user_input" and the user's reply plausibly contains values for any of the listed fields, call apply_slot_values with the parsed values keyed by those field names — do NOT start a fresh analysis.
+- If kind="awaiting_user_input" and the user's reply plausibly contains values for any of the listed fields, call apply_slot_values with values_json as a JSON-encoded STRING keyed by those field names — do NOT start a fresh analysis.
 - If kind="awaiting_user_confirmation", call confirm_pending_action with confirmed=true|false.
 - If the user clearly changed topic (greeting, off-topic, new request unrelated to the prompt), proceed normally — the next handler will clear pending_action.
 

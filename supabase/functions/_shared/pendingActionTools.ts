@@ -44,8 +44,13 @@ export interface OpenAIToolSchema {
 }
 
 export interface ApplySlotValuesArgs {
-  /** key→value map. Keys SHOULD be drawn from `state.pending_action.fields`. */
-  values: Record<string, unknown>;
+  /**
+   * JSON-encoded key→value map. Keys SHOULD be drawn from `state.pending_action.fields`.
+   * Encoded as a JSON string (not a free-form object) because OpenAI strict mode
+   * requires `additionalProperties: false` on every nested object — incompatible
+   * with our use case (keys vary per pending_action). The handler decodes it.
+   */
+  values_json: string;
 }
 
 export interface ConfirmPendingActionArgs {
@@ -85,23 +90,23 @@ export const applySlotValuesToolSchema: OpenAIToolSchema = {
     description:
       "Resolve a `pending_action` of kind='awaiting_user_input' by submitting parsed slot values from the user's reply. " +
       'Use when: <pending_action> is present in MEMORY STATE, kind="awaiting_user_input", and the latest user message plausibly answers any of the listed `fields`. ' +
-      'Pass `values` as an object keyed by field names (snake_case is fine). Unrecognized keys are dropped server-side. ' +
+      'Pass `values_json` as a JSON-encoded string of an object keyed by field names (snake_case is fine). Unrecognized keys are dropped server-side. ' +
       "Don't use for: greetings, off-topic messages, or replies that clearly start a new request — let the parser route normally instead.",
     strict: true,
     parameters: {
       type: 'object',
       additionalProperties: false,
       properties: {
-        values: {
-          type: 'object',
-          additionalProperties: true,
+        values_json: {
+          type: 'string',
           description:
-            'Parsed slot values keyed by the field names from `pending_action.fields`. ' +
-            'Examples: {"origin_city":"Buenos Aires","start_date":"2026-12-01","end_date":"2026-12-09"}. ' +
-            'Use string for cities/places, ISO YYYY-MM-DD for dates, integers for counts.',
+            'JSON-encoded object of parsed slot values keyed by the field names from `pending_action.fields`. ' +
+            'Example: \'{"origin_city":"Buenos Aires","start_date":"2026-12-01","end_date":"2026-12-09"}\'. ' +
+            'Use string for cities/places, ISO YYYY-MM-DD for dates, integers for counts. ' +
+            'MUST be a valid JSON string parseable into an object — not a free-form object literal.',
         },
       },
-      required: ['values'],
+      required: ['values_json'],
     },
   },
 };
@@ -208,7 +213,18 @@ export function executeApplySlotValues(
     };
   }
 
-  const cleaned = sanitizeValues(args?.values);
+  // Decode the JSON-encoded values payload. Strict-mode forces us to model
+  // free-form key/value bags as a JSON string; here we parse it back. Any
+  // failure (malformed JSON, non-object, array) collapses to empty_values.
+  let decoded: unknown = null;
+  if (typeof args?.values_json === 'string' && args.values_json.trim()) {
+    try {
+      decoded = JSON.parse(args.values_json);
+    } catch {
+      decoded = null;
+    }
+  }
+  const cleaned = sanitizeValues(decoded);
   if (Object.keys(cleaned).length === 0) {
     return {
       nextState: state,
