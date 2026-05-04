@@ -173,6 +173,98 @@ describe('runToolLoop — base cases', () => {
     expect(result.finalMessage.content).toBe('echoed: forced');
   });
 
+  it('executes tool_calls when finish_reason="length" (model truncated but tool requested)', async () => {
+    // When the model is mid-generating tool_call args and hits the token cap,
+    // OpenAI may return finish_reason="length" with a populated tool_calls
+    // array. We honor the model's intent and execute. If args are malformed
+    // the handler surfaces bad_arguments and the loop continues normally.
+    const { fetchImpl, callsSeen } = makeScriptedFetch([
+      {
+        finish_reason: 'length', // ← truncation
+        tool_calls: [{ id: 'c1', name: 'echo', args: { value: 'truncated' } }],
+      },
+      { finish_reason: 'stop', content: 'echoed: truncated' },
+    ]);
+
+    const result = await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 's',
+      userMessage: 'u',
+      tools: [TEST_TOOL],
+      toolHandlers: {
+        echo: (args: unknown) => Promise.resolve({ echoed: (args as { value: string }).value }),
+      },
+      ctx: makeCtx(),
+      fetchImpl,
+    });
+
+    expect(callsSeen()).toBe(2);
+    expect(result.toolCallsTrace).toHaveLength(1);
+    expect(result.toolCallsTrace[0].tool).toBe('echo');
+    expect(result.finalMessage.content).toBe('echoed: truncated');
+  });
+
+  it('preserves backward-compatible exit when finish_reason="stop" with NO tool_calls', async () => {
+    // Sanity check: the fix did NOT break the normal "final answer" path.
+    // Without tool_calls, finish_reason="stop" exits the loop on iteration 1.
+    const { fetchImpl, callsSeen } = makeScriptedFetch([
+      { finish_reason: 'stop', content: 'just a text answer' },
+    ]);
+
+    const result = await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 's',
+      userMessage: 'u',
+      tools: [TEST_TOOL],
+      toolHandlers: { echo: () => Promise.resolve({}) },
+      ctx: makeCtx(),
+      fetchImpl,
+    });
+
+    expect(callsSeen()).toBe(1);
+    expect(result.iterationsUsed).toBe(1);
+    expect(result.toolCallsTrace).toHaveLength(0);
+    expect(result.finalMessage.content).toBe('just a text answer');
+  });
+
+  it('executes multiple tool_calls in one assistant turn (parallel batch)', async () => {
+    // The fix should not regress parallel tool execution. When the model
+    // returns N tool_calls in one assistant message, all N execute in the
+    // same iteration before continuing the loop.
+    const { fetchImpl, callsSeen } = makeScriptedFetch([
+      {
+        finish_reason: 'tool_calls',
+        tool_calls: [
+          { id: 'c1', name: 'echo', args: { value: 'a' } },
+          { id: 'c2', name: 'echo', args: { value: 'b' } },
+          { id: 'c3', name: 'echo', args: { value: 'c' } },
+        ],
+      },
+      { finish_reason: 'stop', content: 'three echoes done' },
+    ]);
+
+    const result = await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 's',
+      userMessage: 'u',
+      tools: [TEST_TOOL],
+      toolHandlers: {
+        echo: (args: unknown) => Promise.resolve({ echoed: (args as { value: string }).value }),
+      },
+      ctx: makeCtx(),
+      fetchImpl,
+    });
+
+    expect(callsSeen()).toBe(2);
+    expect(result.iterationsUsed).toBe(2);
+    expect(result.toolCallsTrace).toHaveLength(3);
+    expect(result.toolCallsTrace.map((t) => (t.result as { echoed: string }).echoed).sort())
+      .toEqual(['a', 'b', 'c']);
+  });
+
   it('executes a single tool then returns the next assistant answer', async () => {
     const { fetchImpl, callsSeen } = makeScriptedFetch([
       {

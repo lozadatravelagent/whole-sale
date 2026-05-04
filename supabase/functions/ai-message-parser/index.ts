@@ -919,6 +919,16 @@ serve(async (req) => {
           }
         };
 
+        // Diagnostic: confirm what's actually being shipped to the client.
+        // Crucial for debugging the discovery flow when the UI doesn't show
+        // places despite the tool firing successfully.
+        const pdMeta = finalPayload.meta?.placeDiscovery as { ok?: boolean; places?: unknown[] } | null | undefined;
+        console.log(
+          `[CTX-TOOL-DEBUG] outgoing finalPayload.meta.placeDiscovery: ` +
+          `present=${pdMeta != null} ok=${pdMeta?.ok ?? 'n/a'} ` +
+          `places_count=${Array.isArray(pdMeta?.places) ? pdMeta!.places!.length : 'n/a'}`,
+        );
+
         if (wantsStream && progressWriter && streamReadable) {
           await progressWriter.write(sseEvent('done', finalPayload));
           await progressWriter.close();
