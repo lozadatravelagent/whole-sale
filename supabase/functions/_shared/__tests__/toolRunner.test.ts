@@ -417,6 +417,121 @@ describe('runToolLoop — trace + usage', () => {
     }
   });
 
+  it('normalizes forced-function tool_choice to Chat Completions wire format', async () => {
+    // Regression: OpenAI Chat Completions API requires the function name
+    // nested inside a `function` object — `{type, name}` (Responses API
+    // format) is rejected with "Missing required parameter: 'tool_choice.function'".
+    const capturedBodies: Array<Record<string, unknown>> = [];
+    const fetchImpl: typeof fetch = (_input, init) => {
+      const body = init?.body as string | undefined;
+      if (body) capturedBodies.push(JSON.parse(body));
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'cmpl-1',
+            choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'ok' } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    };
+
+    await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 's',
+      userMessage: 'u',
+      tools: [TEST_TOOL],
+      toolHandlers: { echo: () => Promise.resolve({}) },
+      ctx: makeCtx(),
+      fetchImpl,
+      toolChoice: { type: 'function', name: 'discover_places' },
+    });
+
+    expect(capturedBodies[0].tool_choice).toEqual({
+      type: 'function',
+      function: { name: 'discover_places' },
+    });
+  });
+
+  it('normalizes allowed_tools tool_choice with nested function objects', async () => {
+    const capturedBodies: Array<Record<string, unknown>> = [];
+    const fetchImpl: typeof fetch = (_input, init) => {
+      const body = init?.body as string | undefined;
+      if (body) capturedBodies.push(JSON.parse(body));
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'cmpl-1',
+            choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'ok' } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    };
+
+    await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 's',
+      userMessage: 'u',
+      tools: [TEST_TOOL],
+      toolHandlers: { echo: () => Promise.resolve({}) },
+      ctx: makeCtx(),
+      fetchImpl,
+      toolChoice: {
+        type: 'allowed_tools',
+        mode: 'auto',
+        tools: [
+          { type: 'function', name: 'discover_places' },
+          { type: 'function', name: 'get_planner_state' },
+        ],
+      },
+    });
+
+    expect(capturedBodies[0].tool_choice).toEqual({
+      type: 'allowed_tools',
+      mode: 'auto',
+      tools: [
+        { type: 'function', function: { name: 'discover_places' } },
+        { type: 'function', function: { name: 'get_planner_state' } },
+      ],
+    });
+  });
+
+  it('defaults tool_choice to "auto" when omitted', async () => {
+    const capturedBodies: Array<Record<string, unknown>> = [];
+    const fetchImpl: typeof fetch = (_input, init) => {
+      const body = init?.body as string | undefined;
+      if (body) capturedBodies.push(JSON.parse(body));
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'cmpl-1',
+            choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: 'ok' } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    };
+
+    await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 's',
+      userMessage: 'u',
+      tools: [TEST_TOOL],
+      toolHandlers: { echo: () => Promise.resolve({}) },
+      ctx: makeCtx(),
+      fetchImpl,
+    });
+
+    expect(capturedBodies[0].tool_choice).toBe('auto');
+  });
+
   it('omits `response_format` when not provided (back-compat)', async () => {
     const capturedBodies: Array<Record<string, unknown>> = [];
     const fetchImpl: typeof fetch = (_input, init) => {

@@ -178,12 +178,40 @@ interface CallOpenAiArgs {
   toolChoice?: RunToolLoopArgs["toolChoice"];
 }
 
+/**
+ * Convert our internal tool_choice format to OpenAI's Chat Completions API
+ * wire format. The Chat Completions API requires the function name to be
+ * nested inside a `function` object — the simpler `{type, name}` shape used
+ * by our policy code is the Responses API format and is REJECTED here with
+ * "Missing required parameter: 'tool_choice.function'".
+ */
+function normalizeToolChoiceForChatCompletions(
+  tc: RunToolLoopArgs["toolChoice"] | undefined,
+): unknown {
+  if (!tc) return "auto";
+  if (typeof tc === "string") return tc; // "auto" | "required" | "none"
+  if (tc.type === "function") {
+    return { type: "function", function: { name: tc.name } };
+  }
+  if (tc.type === "allowed_tools") {
+    return {
+      type: "allowed_tools",
+      mode: tc.mode,
+      tools: tc.tools.map((t) => ({
+        type: "function",
+        function: { name: t.name },
+      })),
+    };
+  }
+  return "auto";
+}
+
 async function callOpenAi(args: CallOpenAiArgs): Promise<ChatCompletionResponse> {
   const body: Record<string, unknown> = {
     model: args.model,
     messages: args.messages,
     tools: args.tools,
-    tool_choice: args.toolChoice ?? "auto",
+    tool_choice: normalizeToolChoiceForChatCompletions(args.toolChoice),
     parallel_tool_calls: args.parallelToolCalls,
   };
 
