@@ -442,9 +442,29 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
   let lastAssistant: ChatCompletionMessage = { role: "assistant", content: null };
   let iterationsUsed = 0;
 
+  // Detect a forced-function tool_choice up-front so we can apply it ONLY on
+  // iteration 1 (otherwise the model would force-call the same tool every
+  // iteration, never producing a final answer). On iter 2+ we fall back to
+  // "auto" so the model can synthesize the response after the tool result.
+  const forcedFunctionName =
+    typeof toolChoice === "object" && toolChoice !== null && toolChoice.type === "function"
+      ? toolChoice.name
+      : null;
+
   try {
     for (let iteration = 1; iteration <= iterationCap; iteration += 1) {
       iterationsUsed = iteration;
+
+      // On iter 1 with forced tool_choice, OpenAI sometimes returns text
+      // instead of calling the tool when `response_format: json_schema` is
+      // also present (the directives conflict). Skip response_format on that
+      // single call — the iteration's purpose is to call the tool, not to
+      // produce the final JSON. On iter 2+ tool_choice degrades to "auto"
+      // and response_format applies normally to the final assistant message.
+      const effectiveToolChoice =
+        forcedFunctionName !== null && iteration === 1 ? toolChoice : forcedFunctionName !== null ? "auto" : toolChoice;
+      const effectiveResponseFormat =
+        forcedFunctionName !== null && iteration === 1 ? undefined : responseFormat;
 
       let response: ChatCompletionResponse;
       try {
@@ -457,8 +477,8 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
           endpoint,
           fetchImpl,
           signal: loopController.signal,
-          responseFormat,
-          toolChoice,
+          responseFormat: effectiveResponseFormat,
+          toolChoice: effectiveToolChoice,
         });
       } catch (err) {
         if ((err as { name?: string })?.name === "AbortError") {
@@ -490,6 +510,15 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
       });
 
       if (toolCalls.length === 0 || choice.finish_reason !== "tool_calls") {
+        // Diagnostic: if a forced tool was expected but not called, surface
+        // the assistant content so we can see why the model bypassed the
+        // forced tool_choice (rare; usually a directive conflict).
+        if (forcedFunctionName !== null && iteration === 1 && toolCalls.length === 0) {
+          console.warn(
+            `[CTX-TOOL] forced tool_choice=${forcedFunctionName} but model returned text instead of tool_call. ` +
+            `finish_reason=${choice.finish_reason} content_len=${choice.message?.content?.length ?? 0}`,
+          );
+        }
         // Final answer — exit cleanly.
         return {
           finalMessage: lastAssistant,

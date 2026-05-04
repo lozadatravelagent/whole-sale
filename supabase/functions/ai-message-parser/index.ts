@@ -258,6 +258,16 @@ serve(async (req) => {
           emiliaState: clientEmiliaState = null,
         } = requestBody;
 
+        // Diagnostic: log the tool_choice received from the client so we can
+        // tell whether the FE policy is computing it. Cheap to keep in prod
+        // (one log line per turn), high value for debugging the discovery
+        // intent flow without server-side reconstruction.
+        if (toolChoice) {
+          console.log('[CTX-TOOL] received toolChoice:', JSON.stringify(toolChoice));
+        } else {
+          console.log('[CTX-TOOL] no toolChoice from client (defaults to "auto")');
+        }
+
         wantsStream =
           requestBody.stream === true ||
           req.headers.get('Accept') === 'text/event-stream';
