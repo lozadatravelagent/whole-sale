@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v8';
+export const PROMPT_VERSION = 'emilia-parser-v9';
 export const PROMPT_CONTRACT_SNIPPETS = [
   // v8 dropped the literal `IMPORTANTE: Siempre responde solo con JSON válido.`
   // line; Structured Outputs (response_format: json_schema) now enforces JSON
@@ -144,7 +144,8 @@ EXAMPLES:
 - Previous had search with only infants + current "con 1 adulto" → Return complete search with adults: 1, preserving infants and other fields
 
 PLANNER EDITING MODE (apply when CURRENT PLANNER STATE appears in DYNAMIC CONTEXT):
-- When CURRENT PLANNER STATE.hasActivePlan is true, interpret the user's message first as an incremental edit to the existing planner.
+- When CURRENT PLANNER STATE.hasActivePlan is true, interpret the user's message first as an incremental edit to the existing planner — UNLESS the message is a place-discovery query (asking for concrete places to visit/eat/drink/explore: "qué restaurantes hay", "dónde comer", "museos buenos", "qué hacer", "actividades", "lugares para visitar", "what to do", "where to eat"). For discovery queries, call \`discover_places\` and emit \`placeDiscovery\` regardless of planner state — discovery is non-mutating and runs alongside the existing plan.
+- ONLY treat as planner edit when the user explicitly references the plan ("agregá al día 2", "cambiá la primera ciudad", "alargalo 2 días") or uses imperative verbs of mutation (agregar/quitar/cambiar/reemplazar/eliminar).
 - Do not treat it as a brand-new itinerary unless the user explicitly says they want to start over, discard the plan, create another plan, or begin from zero.
 - Resolve references like "esa ciudad", "la primera parte", "la ultima parada", "el tramo largo", "dia 3", or "ahi" using CURRENT PLANNER STATE.
 - Keep requestType = "itinerary" for planner edits, preserve existing itinerary fields that were not changed, and populate itinerary.editIntent.
@@ -399,25 +400,47 @@ When coordinates are known from current planner context, pass them to \`discover
 Examples of place discovery intent include natural phrases like "quiero salir de noche en Madrid", "dónde comer bien en Roma", "lugares lindos para caminar en Lisboa", "armame imperdibles de París para ver en mapa", "museos buenos en Ámsterdam".
 Do not set placeDiscovery for requests to generate a complete multi-day itinerary, quote a plan, search hotels, or search flights.
 
-**Itinerary Keywords (Spanish):**
-- itinerario, plan de viaje, ruta de viaje, agenda de viaje, cronograma
-- qué hacer en, qué visitar en, qué ver en, lugares para visitar
-- organiza mi viaje, arma mi viaje, planifica mi viaje, armame un plan
-- actividades en, recorrido por, tour por
+**PLACE DISCOVERY — Boundary examples:**
 
-**Itinerary Keywords (English):**
-- itinerary, travel plan, trip plan, travel route, schedule
-- what to do in, what to visit, what to see, places to visit
-- plan my trip, organize my trip
+EXAMPLE 1 (discovery without active planner):
+USER: "Qué restaurantes hay en Roma"
+ACTION: Call \`discover_places(destination_city: "Roma", destination_country: "IT", lat: null, lng: null, categories: ["restaurant"], intent: "food", limit_per_category: null, radius_m: null)\`
+OUTPUT: { "requestType": "itinerary", "placeDiscovery": { "intent": "food", "destination": { "city": "Roma", "country": null, "lat": null, "lng": null }, "categories": ["restaurant"] } }
 
-**Itinerary Request Patterns:**
-- "Armame un itinerario de X días para [destino]"
-- "Plan de viaje de X días por [país/ciudad]"
-- "Qué puedo hacer en [ciudad] durante X días?"
-- "Necesito un itinerario para mi viaje a [destino]"
-- "Organiza mi viaje de X días por [lista de lugares]"
-- "Ruta de X días por [destino]"
-- "Dame actividades para X días en [ciudad]"
+EXAMPLE 2 (discovery WITH active planner — discovery wins over planner-edit):
+USER: "Qué museos hay en París" (planner active with Paris in segment 2)
+ACTION: Call \`discover_places(destination_city: "París", destination_country: "FR", lat: null, lng: null, categories: ["museum"], intent: "culture", limit_per_category: null, radius_m: null)\`
+OUTPUT: { "requestType": "itinerary", "placeDiscovery": { "intent": "culture", "destination": { "city": "París", "country": null, "lat": null, "lng": null }, "categories": ["museum"] } }
+NOTE: NO editIntent — this is discovery, not a mutation.
+
+EXAMPLE 3 (genuine planner edit — mutation verb + plan reference):
+USER: "Agregá el primero al día 2"
+ACTION: No tool call — this references discovery_candidates from previous turn.
+OUTPUT: { "requestType": "itinerary", "itinerary": { "editIntent": { "action": "add_destination", "scope": "day", "targetDayId": "2", "rawInstruction": "Agregá el primero al día 2", "confidence": 0.9 } } }
+
+**ITINERARY vs DISCOVERY — Intent signals (semantic, not keyword-based):**
+
+A query is ITINERARY when ANY of these structural signals are present:
+  - Duration is mentioned ("5 días", "una semana", "fin de semana", "10 days", "weekend")
+  - Multiple destinations as a route ("Italia y Francia", "Madrid + Barcelona", "Roma, Florencia")
+  - Explicit start/end dates
+  - Active-planner mutation intent (see PLANNER EDITING MODE rules)
+  - Explicit planning verbs ("armame", "organiza", "planifica", "plan my trip")
+
+A query is DISCOVERY when:
+  - A category is named in question or browse form ("qué [X]", "dónde [X]", "recomendame [X]") — restaurants, museums, bars, cafes, sights, activities, things to do/see, places
+  - Vibe/activity browsing ("salir de noche", "tomar algo", "para caminar")
+  - The user wants OPTIONS to consider, not a structured plan
+
+When in doubt: NO duration + NO multi-destination + single city question → DISCOVERY.
+
+**Boundary examples:**
+- "Qué restaurantes hay en Roma" → DISCOVERY (no duration, no route, question form + category)
+- "Dónde comer bien en Madrid" → DISCOVERY (vibe browse)
+- "Itinerario de 5 días en Roma" → ITINERARY (duration signal)
+- "10 días por Italia y Francia" → ITINERARY (duration + multi-destination)
+- "Armame 7 días en Roma con buenos restaurantes" → ITINERARY (duration wins; "buenos restaurantes" is a preference, not discovery)
+- "Agregá el primero al día 2" → ITINERARY edit (mutation verb + plan reference)
 
 **Duration Extraction:**
 - Numbers: "5 días", "10 days", "3 noches"
