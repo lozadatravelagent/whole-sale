@@ -9,7 +9,7 @@ import { renderHook, act } from '@testing-library/react';
 // ---------------------------------------------------------------------------
 
 vi.mock('@/services/aiMessageParser', () => ({
-  parseMessageWithAI: vi.fn(),
+  parseMessageWithAI: vi.fn(), parseMessageWithAIStreaming: vi.fn(),
   combineWithPreviousRequest: vi.fn((prev: any, _msg: string, next: any) => next),
   validateFlightRequiredFields: vi.fn().mockReturnValue([]),
   validateHotelRequiredFields: vi.fn().mockReturnValue([]),
@@ -116,7 +116,7 @@ vi.mock('../services/leadAiProfileService', () => ({
 // ---------------------------------------------------------------------------
 
 import useMessageHandler from '../hooks/useMessageHandler';
-import { parseMessageWithAI } from '@/services/aiMessageParser';
+import { parseMessageWithAI, parseMessageWithAIStreaming } from '@/services/aiMessageParser';
 import { addMessageViaSupabase } from '../services/messageService';
 import { handleItineraryRequest } from '../services/searchHandlers';
 import { buildProps, buildParsedRequest, DEFAULT_CONV_ID } from '@/test-utils/useMessageHandlerFactory';
@@ -182,7 +182,7 @@ describe('useMessageHandler', () => {
       });
 
       expect(p.setIsLoading).not.toHaveBeenCalled();
-      expect(vi.mocked(parseMessageWithAI)).not.toHaveBeenCalled();
+      expect(vi.mocked(parseMessageWithAIStreaming)).not.toHaveBeenCalled();
     });
 
     it('returns early when message is whitespace only — no setIsLoading', async () => {
@@ -194,7 +194,7 @@ describe('useMessageHandler', () => {
       });
 
       expect(p.setIsLoading).not.toHaveBeenCalled();
-      expect(vi.mocked(parseMessageWithAI)).not.toHaveBeenCalled();
+      expect(vi.mocked(parseMessageWithAIStreaming)).not.toHaveBeenCalled();
     });
 
     it('returns early when selectedConversationRef.current is null — no setIsLoading', async () => {
@@ -209,7 +209,7 @@ describe('useMessageHandler', () => {
       });
 
       expect(p.setIsLoading).not.toHaveBeenCalled();
-      expect(vi.mocked(parseMessageWithAI)).not.toHaveBeenCalled();
+      expect(vi.mocked(parseMessageWithAIStreaming)).not.toHaveBeenCalled();
     });
 
     it('cheaper flights guard — clears input and skips parseMessageWithAI', async () => {
@@ -222,7 +222,7 @@ describe('useMessageHandler', () => {
       });
 
       expect(p.setMessage).toHaveBeenCalledWith('');
-      expect(vi.mocked(parseMessageWithAI)).not.toHaveBeenCalled();
+      expect(vi.mocked(parseMessageWithAIStreaming)).not.toHaveBeenCalled();
     });
 
     it('cheaper flights guard — calls handleCheaperFlightsSearch with the original message', async () => {
@@ -248,7 +248,7 @@ describe('useMessageHandler', () => {
       });
 
       expect(p.setMessage).toHaveBeenCalledWith('');
-      expect(vi.mocked(parseMessageWithAI)).not.toHaveBeenCalled();
+      expect(vi.mocked(parseMessageWithAIStreaming)).not.toHaveBeenCalled();
     });
   });
 
@@ -257,7 +257,7 @@ describe('useMessageHandler', () => {
   // -------------------------------------------------------------------------
   describe('handleSendMessage — UI state (nominal missing_info_request path)', () => {
     function setupNominalMocks(p: ReturnType<typeof buildProps>) {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'missing_info_request',
         message: 'Por favor indicá el destino',
         missingFields: ['destination'],
@@ -322,7 +322,7 @@ describe('useMessageHandler', () => {
   describe('handleSendMessage — error handling', () => {
     it('calls toast and resets loading when parseMessageWithAI throws', async () => {
       const p = buildProps();
-      vi.mocked(parseMessageWithAI).mockRejectedValue(new Error('parse failed'));
+      vi.mocked(parseMessageWithAIStreaming).mockRejectedValue(new Error('parse failed'));
       const { result } = renderHandler(p);
 
       await act(async () => {
@@ -343,7 +343,7 @@ describe('useMessageHandler', () => {
     const MISSING_MSG = 'Necesito el destino del viaje';
 
     beforeEach(() => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'missing_info_request',
         message: MISSING_MSG,
         missingFields: ['destination'],

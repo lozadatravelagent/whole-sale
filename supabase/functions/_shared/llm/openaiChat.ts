@@ -9,7 +9,12 @@ export interface OpenAiChatCompletionInput {
   messages: OpenAiChatMessage[];
   maxTokens: number;
   temperature?: number;
-  responseFormat?: { type: "json_object" };
+  /**
+   * OpenAI `response_format` directive. Both the legacy `{ type: "json_object" }`
+   * (free-form JSON mode) and the newer `{ type: "json_schema", json_schema: {...} }`
+   * (Structured Outputs) shapes are accepted.
+   */
+  responseFormat?: Record<string, unknown>;
 }
 
 function usesMaxCompletionTokens(model: string): boolean {

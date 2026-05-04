@@ -1891,6 +1891,9 @@ export async function parseMessageWithAI(
                 // block. Edge function consumes this in `prompt.ts`. Undefined
                 // when the feature flag is off — payload key is omitted.
                 ...(knowledge?.memoryStateBlock ? { memoryStateBlock: knowledge.memoryStateBlock } : {}),
+                // Latency optimisation: forward the already-saved EmiliaState so
+                // the edge function can skip its own SELECT on agent_states.
+                ...(knowledge?.emiliaState ? { emiliaState: knowledge.emiliaState } : {}),
             }
         });
         logTimingStep('AI PARSER', 'invoke ai-message-parser', invokeStart, {
@@ -1903,102 +1906,8 @@ export async function parseMessageWithAI(
             throw new Error(`AI parsing failed: ${response.error}`);
         }
 
-        const parsedResult = response.data?.parsed;
-        if (!parsedResult) {
-            console.warn('⚠️ No parsed result from AI');
-            throw new Error('No parsed result from AI service');
-        }
-
-        console.log('🔍 [DEBUG] parsedResult from Edge Function:', parsedResult);
-        console.log('🌍 [GEO-TRACE-1] Raw Edge Function destinations:', parsedResult.requestType, parsedResult.itinerary?.destinations);
-        console.log('🔍 [DEBUG] parsedResult.hotels:', parsedResult.hotels);
-        console.log('🔍 [DEBUG] parsedResult.hotels?.roomType:', parsedResult.hotels?.roomType);
-        console.log('🔍 [DEBUG] parsedResult.hotels?.mealPlan:', parsedResult.hotels?.mealPlan);
-
-        // Merge quick pre-parse hints if AI missed them (e.g., max layover hours, stops, preferredAirline, time preferences)
-        const mergedFlights = {
-            ...(parsedResult.flights || {}),
-            ...(quick.flights?.stops && !parsedResult.flights?.stops ? { stops: quick.flights.stops } : {}),
-            ...(quick.flights?.maxLayoverHours && !parsedResult.flights?.maxLayoverHours ? { maxLayoverHours: quick.flights.maxLayoverHours } : {}),
-            ...(quick.flights?.preferredAirline && !parsedResult.flights?.preferredAirline ? { preferredAirline: quick.flights.preferredAirline } : {}),
-            // 🕐 Time preference merge - if pre-parser detected but AI missed
-            ...((quick.flights as any)?.departureTimePreference && !parsedResult.flights?.departureTimePreference ? { departureTimePreference: (quick.flights as any).departureTimePreference } : {}),
-            ...((quick.flights as any)?.arrivalTimePreference && !parsedResult.flights?.arrivalTimePreference ? { arrivalTimePreference: (quick.flights as any).arrivalTimePreference } : {})
-        } as any;
-
-        // 🏨 Merge hotel pre-parse hints if AI missed them (hotelChains, hotelName, hotelNames)
-        // PRE-PARSER acts as fallback: if AI didn't detect chains/name but pre-parser did, use pre-parser values
-        const normalizedParsedHotels = normalizeIncomingHotelsPayload(parsedResult.hotels);
-        const quickHotels = (quick as any).hotels;
-        const mergedHotels = {
-            ...(normalizedParsedHotels || {}),
-            // If AI didn't detect hotelChains but pre-parser did → use pre-parser value (array)
-            ...(quickHotels?.hotelChains && !(normalizedParsedHotels as any)?.hotelChains ? { hotelChains: quickHotels.hotelChains } : {}),
-            // If AI didn't detect hotelName but pre-parser did → use pre-parser value
-            ...(quickHotels?.hotelName && !(normalizedParsedHotels as any)?.hotelName ? { hotelName: quickHotels.hotelName } : {}),
-            // If AI didn't detect hotelNames (plural) but pre-parser did → use pre-parser value (array of specific hotel names)
-            ...(quickHotels?.hotelNames && !(normalizedParsedHotels as any)?.hotelNames ? { hotelNames: quickHotels.hotelNames } : {})
-        } as any;
-
-        // Log merge details for debugging
-        if (quickHotels?.hotelChains || quickHotels?.hotelName || quickHotels?.hotelNames) {
-            console.log(`🏨 [MERGE] Pre-parser hotel hints:`, quickHotels);
-            console.log(`🏨 [MERGE] AI detected hotels:`, parsedResult.hotels);
-            console.log(`🏨 [MERGE] Final merged hotels:`, mergedHotels);
-        }
-
         const postProcessStart = nowMs();
-        const { detectMultipleHotelChains, detectMultipleHotelNames } = await import('@/features/chat/data/hotelChainAliases');
-        const extractedHotelSegments = extractHotelSegmentsFromMessage(message, mergedHotels as HotelRequest, {
-            detectMultipleHotelChains,
-            detectMultipleHotelNames
-        });
-        const normalizedHotels = extractedHotelSegments && extractedHotelSegments.length > 1
-            ? buildHotelRequestFromSegments(extractedHotelSegments, mergedHotels as HotelRequest)
-            : mergedHotels;
-        const hasMeaningfulFlights = parsedResult.flights && Object.keys(parsedResult.flights).length > 0;
-        const normalizedRequestType =
-            extractedHotelSegments && extractedHotelSegments.length > 1 && !hasMeaningfulFlights && parsedResult.requestType === 'combined'
-                ? 'hotels'
-                : extractedHotelSegments && extractedHotelSegments.length > 1 && parsedResult.requestType === 'general'
-                    ? 'hotels'
-                    : parsedResult.requestType;
-
-        const normalizedResult = normalizeLocationsToCountryCapitals(normalizeParsedFlightRequest({
-            ...parsedResult,
-            flights: Object.keys(mergedFlights).length ? mergedFlights : parsedResult.flights,
-            // Only include hotels if there's actual data (not empty object)
-            hotels: Object.keys(normalizedHotels).length ? normalizedHotels : parsedResult.hotels,
-            requestType: normalizedRequestType,
-            originalMessage: message
-        }));
-
-        // Guardrail: restore country names if parser collapsed them to capitals
-        const mergedResult = restoreCountryDestinationsForItinerary(normalizedResult, message);
-
-        // Surface the Context-Engineering pending_action resolution from the
-        // edge function (when the model invoked apply_slot_values /
-        // confirm_pending_action). Null when no resolution happened.
-        const pendingActionResolution =
-            (response.data?.meta?.pendingActionResolution ?? null) as
-                ParsedTravelRequest['pendingActionResolution'];
-        if (pendingActionResolution) {
-            (mergedResult as ParsedTravelRequest).pendingActionResolution = pendingActionResolution;
-            console.log('🎯 [PENDING-ACTION] Resolution from tool loop:', pendingActionResolution);
-        }
-
-        const placeDiscoveryResult =
-            (response.data?.meta?.placeDiscovery ?? null) as ParsedTravelRequest['placeDiscoveryResult'];
-        if (placeDiscoveryResult) {
-            (mergedResult as ParsedTravelRequest).placeDiscoveryResult = placeDiscoveryResult;
-            console.log('🗺️ [PLACE-DISCOVERY] Result from tool loop:', {
-                places: placeDiscoveryResult.places?.length ?? 0,
-                intent: placeDiscoveryResult.intent,
-            });
-        }
-
-        console.log('🌍 [GEO-TRACE-2] After merge/post-processing destinations:', mergedResult.itinerary?.destinations);
-        console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
+        const mergedResult = await processEdgeFunctionResponse(response.data, message, quick);
         logTimingStep('AI PARSER', 'post-processing', postProcessStart, {
             requestType: mergedResult.requestType,
             hasFlights: Boolean(mergedResult.flights),
@@ -2021,6 +1930,203 @@ export async function parseMessageWithAI(
     }
 }
 
+
+/**
+ * Shared post-processing helper: takes the raw edge-function response data,
+ * the original user message, and the pre-parser hints (quick), and returns
+ * the fully merged + normalized ParsedTravelRequest. Used by both
+ * parseMessageWithAI (supabase.functions.invoke path) and
+ * parseMessageWithAIStreaming (fetch SSE path).
+ */
+async function processEdgeFunctionResponse(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: any,
+    message: string,
+    quick: Partial<ParsedTravelRequest>,
+): Promise<ParsedTravelRequest> {
+    const parsedResult = data?.parsed;
+    if (!parsedResult) {
+        console.warn('⚠️ No parsed result from AI');
+        throw new Error('No parsed result from AI service');
+    }
+
+    console.log('🔍 [DEBUG] parsedResult from Edge Function:', parsedResult);
+    console.log('🌍 [GEO-TRACE-1] Raw Edge Function destinations:', parsedResult.requestType, parsedResult.itinerary?.destinations);
+    console.log('🔍 [DEBUG] parsedResult.hotels:', parsedResult.hotels);
+    console.log('🔍 [DEBUG] parsedResult.hotels?.roomType:', parsedResult.hotels?.roomType);
+    console.log('🔍 [DEBUG] parsedResult.hotels?.mealPlan:', parsedResult.hotels?.mealPlan);
+
+    // Merge quick pre-parse hints if AI missed them
+    const mergedFlights = {
+        ...(parsedResult.flights || {}),
+        ...(quick.flights?.stops && !parsedResult.flights?.stops ? { stops: quick.flights.stops } : {}),
+        ...(quick.flights?.maxLayoverHours && !parsedResult.flights?.maxLayoverHours ? { maxLayoverHours: quick.flights.maxLayoverHours } : {}),
+        ...(quick.flights?.preferredAirline && !parsedResult.flights?.preferredAirline ? { preferredAirline: quick.flights.preferredAirline } : {}),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...((quick.flights as any)?.departureTimePreference && !parsedResult.flights?.departureTimePreference ? { departureTimePreference: (quick.flights as any).departureTimePreference } : {}),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...((quick.flights as any)?.arrivalTimePreference && !parsedResult.flights?.arrivalTimePreference ? { arrivalTimePreference: (quick.flights as any).arrivalTimePreference } : {})
+    } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    const normalizedParsedHotels = normalizeIncomingHotelsPayload(parsedResult.hotels);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const quickHotels = (quick as any).hotels;
+    const mergedHotels = {
+        ...(normalizedParsedHotels || {}),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(quickHotels?.hotelChains && !(normalizedParsedHotels as any)?.hotelChains ? { hotelChains: quickHotels.hotelChains } : {}),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(quickHotels?.hotelName && !(normalizedParsedHotels as any)?.hotelName ? { hotelName: quickHotels.hotelName } : {}),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(quickHotels?.hotelNames && !(normalizedParsedHotels as any)?.hotelNames ? { hotelNames: quickHotels.hotelNames } : {})
+    } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    if (quickHotels?.hotelChains || quickHotels?.hotelName || quickHotels?.hotelNames) {
+        console.log(`🏨 [MERGE] Pre-parser hotel hints:`, quickHotels);
+        console.log(`🏨 [MERGE] AI detected hotels:`, parsedResult.hotels);
+        console.log(`🏨 [MERGE] Final merged hotels:`, mergedHotels);
+    }
+
+    const { detectMultipleHotelChains, detectMultipleHotelNames } = await import('@/features/chat/data/hotelChainAliases');
+    const extractedHotelSegments = extractHotelSegmentsFromMessage(message, mergedHotels as HotelRequest, {
+        detectMultipleHotelChains,
+        detectMultipleHotelNames
+    });
+    const normalizedHotels = extractedHotelSegments && extractedHotelSegments.length > 1
+        ? buildHotelRequestFromSegments(extractedHotelSegments, mergedHotels as HotelRequest)
+        : mergedHotels;
+    const hasMeaningfulFlights = parsedResult.flights && Object.keys(parsedResult.flights).length > 0;
+    const normalizedRequestType =
+        extractedHotelSegments && extractedHotelSegments.length > 1 && !hasMeaningfulFlights && parsedResult.requestType === 'combined'
+            ? 'hotels'
+            : extractedHotelSegments && extractedHotelSegments.length > 1 && parsedResult.requestType === 'general'
+                ? 'hotels'
+                : parsedResult.requestType;
+
+    const normalizedResult = normalizeLocationsToCountryCapitals(normalizeParsedFlightRequest({
+        ...parsedResult,
+        flights: Object.keys(mergedFlights).length ? mergedFlights : parsedResult.flights,
+        hotels: Object.keys(normalizedHotels).length ? normalizedHotels : parsedResult.hotels,
+        requestType: normalizedRequestType,
+        originalMessage: message
+    }));
+
+    const mergedResult = restoreCountryDestinationsForItinerary(normalizedResult, message);
+
+    const pendingActionResolution =
+        (data?.meta?.pendingActionResolution ?? null) as ParsedTravelRequest['pendingActionResolution'];
+    if (pendingActionResolution) {
+        (mergedResult as ParsedTravelRequest).pendingActionResolution = pendingActionResolution;
+        console.log('🎯 [PENDING-ACTION] Resolution from tool loop:', pendingActionResolution);
+    }
+
+    const placeDiscoveryResult =
+        (data?.meta?.placeDiscovery ?? null) as ParsedTravelRequest['placeDiscoveryResult'];
+    if (placeDiscoveryResult) {
+        (mergedResult as ParsedTravelRequest).placeDiscoveryResult = placeDiscoveryResult;
+        console.log('🗺️ [PLACE-DISCOVERY] Result from tool loop:', {
+            places: placeDiscoveryResult.places?.length ?? 0,
+            intent: placeDiscoveryResult.intent,
+        });
+    }
+
+    console.log('🌍 [GEO-TRACE-2] After merge/post-processing destinations:', mergedResult.itinerary?.destinations);
+    console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
+    return mergedResult;
+}
+
+/**
+ * Streaming variant of parseMessageWithAI.
+ *
+ * In development, falls back to parseMessageWithAI immediately (the Supabase
+ * CORS proxy does not support SSE). In production, fetches the edge function
+ * directly with `stream: true`, reads SSE events, fires onProgress for each
+ * tool_start / tool_done event, and returns the parsed result when the `done`
+ * event arrives.
+ */
+export async function parseMessageWithAIStreaming(
+    message: string,
+    knowledge: ParseMessageKnowledge,
+    language: 'es' | 'en' | 'pt',
+    onProgress?: (event: { type: 'tool_start' | 'tool_done'; tool: string; iteration: number; ok: boolean }) => void,
+): Promise<ParsedTravelRequest> {
+    // Dev: CORS proxy doesn't support streaming → fall back to regular invoke
+    if (import.meta.env.DEV) {
+        return parseMessageWithAI(message, null, [], knowledge, language);
+    }
+
+    // Prod: call the edge function directly via fetch with SSE
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+        // Fall back if env vars not available
+        return parseMessageWithAI(message, null, [], knowledge, language);
+    }
+
+    const url = `${supabaseUrl}/functions/v1/ai-message-parser`;
+
+    // Build the same body as parseMessageWithAI
+    const body: Record<string, unknown> = {
+        message,
+        language,
+        stream: true,
+        currentDate: new Date().toISOString().split('T')[0],
+        plannerContext: knowledge?.plannerContext ?? null,
+        historyWindow: knowledge?.historyWindow ?? 15,
+        contextMeta: knowledge?.contextMeta ?? null,
+        ...(knowledge?.memoryStateBlock ? { memoryStateBlock: knowledge.memoryStateBlock } : {}),
+        ...(knowledge?.emiliaState ? { emiliaState: knowledge.emiliaState } : {}),
+    };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+            'apikey': supabaseAnonKey,
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok || !response.body) {
+        throw new Error(`SSE request failed: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+            const lines = part.split('\n');
+            const eventLine = lines.find(l => l.startsWith('event: '));
+            const dataLine = lines.find(l => l.startsWith('data: '));
+            if (!eventLine || !dataLine) continue;
+            const eventType = eventLine.slice(7).trim();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const data = JSON.parse(dataLine.slice(6)) as any;
+            if (eventType === 'tool_start' || eventType === 'tool_done') {
+                onProgress?.(data);
+            } else if (eventType === 'done') {
+                // The done payload IS the full JSON response — process it with
+                // the same post-processing as parseMessageWithAI. No pre-parser
+                // quick hints are available in the streaming path, so pass {}.
+                return processEdgeFunctionResponse(data, message, {});
+            } else if (eventType === 'error') {
+                throw new Error(data?.error ?? 'AI parsing failed');
+            }
+        }
+    }
+
+    throw new Error('SSE stream ended without a done event');
+}
 
 /**
  * Validates that required fields are present for each request type

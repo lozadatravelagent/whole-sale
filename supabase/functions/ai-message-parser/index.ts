@@ -19,6 +19,7 @@ import {
   type ToolContext,
 } from "../_shared/functionTools.ts";
 import { runToolLoop } from "../_shared/toolRunner.ts";
+import { buildResponseFormat } from "./responseSchema.ts";
 import {
   saveMemoryNoteToolSchema,
   validateMemoryNote,
@@ -41,6 +42,10 @@ import type {
 } from "../_shared/emiliaStateTypes.ts";
 import { countRedundantCalls, emitTelemetry } from "../_shared/telemetry.ts";
 
+function sseEvent(event: string, data: unknown): Uint8Array {
+  return new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
 function cleanLocation(value: string | undefined): string {
   return (value || '')
     .replace(/^(desde|de|hacia|a)\s+/i, '')
@@ -48,7 +53,7 @@ function cleanLocation(value: string | undefined): string {
     .trim();
 }
 
-function augmentMultiCitySegmentsFromMessage(message: string, parsed: any): any {
+export function augmentMultiCitySegmentsFromMessage(message: string, parsed: any): any {
   if (!parsed?.flights) return parsed;
 
   const normalizedFlights = normalizeFlightRequest(parsed.flights);
@@ -141,7 +146,7 @@ function extractOpenAiMessageContent(openaiData: any): string {
   return '';
 }
 
-function normalizeLocationsToCountryCapitals(parsed: any): any {
+export function normalizeLocationsToCountryCapitals(parsed: any): any {
   if (!parsed || typeof parsed !== 'object') return parsed;
 
   const nextParsed = { ...parsed };
@@ -230,6 +235,11 @@ serve(async (req) => {
     { action: 'message', resource: 'ai-parser' },
     async () => {
       const requestId = crypto.randomUUID();
+      // Hoisted so the catch block can access them even if an error occurs
+      // before the stream is fully set up.
+      let wantsStream = false;
+      let progressWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
+      let streamReadable: ReadableStream<Uint8Array> | null = null;
       try {
         const requestBody = await req.json();
         const {
@@ -242,7 +252,18 @@ serve(async (req) => {
           historyWindow = 15,
           contextMeta = null,
           memoryStateBlock = null,
+          emiliaState: clientEmiliaState = null,
         } = requestBody;
+
+        wantsStream =
+          requestBody.stream === true ||
+          req.headers.get('Accept') === 'text/event-stream';
+
+        if (wantsStream) {
+          const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+          streamReadable = readable;
+          progressWriter = writable.getWriter();
+        }
 
         if (!message) {
           throw new Error('Message or prompt is required');
@@ -356,10 +377,23 @@ serve(async (req) => {
           // pending_action handlers can read+mutate it across (potentially
           // parallel) tool calls within this turn. Final state is batch-
           // persisted after the loop along with any save_memory_note notes.
+          //
+          // Latency optimisation: if the client forwarded the state it just
+          // saved (clientEmiliaState), use it directly and skip the SELECT
+          // (~30–50 ms per turn). Fall back to SELECT when absent or when the
+          // basic shape check fails, so old clients and tests keep working.
           // -------------------------------------------------------------
           let stateForTools: EmiliaState | null = null;
           let stateLoadFailed = false;
-          if (ctx.conversationId && ctx.agencyId) {
+          const clientStateIsValid =
+            clientEmiliaState !== null &&
+            typeof clientEmiliaState === 'object' &&
+            typeof (clientEmiliaState as Record<string, unknown>).mode === 'string' &&
+            typeof (clientEmiliaState as Record<string, unknown>).meta === 'object';
+          if (clientStateIsValid) {
+            stateForTools = clientEmiliaState as unknown as EmiliaState;
+            console.log('[CTX-TOOL] state preload: using client-supplied EmiliaState (SELECT skipped)');
+          } else if (ctx.conversationId && ctx.agencyId) {
             try {
               const { data: row, error: loadErr } = await supabase
                 .from('agent_states')
@@ -533,6 +567,23 @@ serve(async (req) => {
               parallelToolCalls: true,
               perToolTimeoutMs: 8000,
               totalLoopTimeoutMs: 25000,
+              // Structured Outputs: pin the assistant's TEXT output to the
+              // ParsedTravelRequest JSON schema. tool_call arguments are
+              // unaffected — they carry their own per-tool schema.
+              responseFormat: buildResponseFormat(),
+              ...(progressWriter
+                ? {
+                    onProgress: ({ type, tool, iteration, ok }) => {
+                      progressWriter!.write(
+                        sseEvent(type === 'tool_start' ? 'tool_start' : 'tool_done', {
+                          tool,
+                          iteration,
+                          ok,
+                        }),
+                      );
+                    },
+                  }
+                : {}),
             });
 
             // Partition save_memory_note trace entries into accepted/rejected
@@ -700,6 +751,9 @@ serve(async (req) => {
                 messages: parserMessages,
                 temperature: 0.1,
                 maxTokens: 1800,
+                // Same Structured Outputs schema as the tool-loop path so the
+                // resilience fallback also returns shape-valid JSON.
+                responseFormat: buildResponseFormat(),
               });
               aiResponse = extractOpenAiMessageContent(openaiData);
             }
@@ -716,6 +770,9 @@ serve(async (req) => {
               messages: parserMessages,
               temperature: 0.1,
               maxTokens: 1800,
+              // Same Structured Outputs schema as the tool-loop path so the
+              // resilience fallback also returns shape-valid JSON.
+              responseFormat: buildResponseFormat(),
             });
             aiResponse = extractOpenAiMessageContent(openaiData);
           }
@@ -727,48 +784,19 @@ serve(async (req) => {
         console.log('🤖 Raw AI response:', aiResponse);
         console.log('🤖 AI response type:', typeof aiResponse);
         console.log('🤖 AI response length:', aiResponse?.length);
-        // Clean the AI response to handle emojis and special characters properly
-        let cleanedResponse = aiResponse.trim();
-        // Remove any potential BOM or invisible characters
-        cleanedResponse = cleanedResponse.replace(/^\uFEFF/, '');
-        // Try to fix JSON by replacing literal newlines in string values with \\n
-        // This is a more targeted approach to fix the specific issue
-        try {
-          // First, try to parse as-is
-          JSON.parse(cleanedResponse);
-        } catch (error) {
-          // If parsing fails, try to fix common issues
-          console.log('🔧 Attempting to fix JSON formatting issues...');
-          // Fix literal newlines in string values by replacing them with \\n
-          cleanedResponse = cleanedResponse.replace(/"([^"]*)\n([^"]*)"/g, (match, before, after) => {
-            return `"${before}\\n${after}"`;
-          });
-          // Fix multiple consecutive newlines
-          cleanedResponse = cleanedResponse.replace(/"([^"]*)\n\n([^"]*)"/g, (match, before, after) => {
-            return `"${before}\\n\\n${after}"`;
-          });
-        }
-        // Parse the JSON response
+        // Trim whitespace + strip BOM. With Structured Outputs (json_schema)
+        // OpenAI guarantees a valid JSON object conforming to the schema, so
+        // the legacy newline-repair and wrapped-JSON-extraction salvage paths
+        // were dropped. We still try/catch to surface a clean error if a
+        // resilience-fallback path returns non-JSON (e.g. catastrophic 5xx).
+        const cleanedResponse = aiResponse.trim().replace(/^\uFEFF/, '');
         let parsed;
         try {
           parsed = JSON.parse(cleanedResponse);
         } catch (parseError) {
           console.error('❌ Failed to parse AI response as JSON:', parseError);
           console.error('❌ AI response was:', aiResponse);
-          console.error('❌ Cleaned response was:', cleanedResponse);
-          // Try to extract JSON from the response if it's wrapped in other text
-          const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            try {
-              parsed = JSON.parse(jsonMatch[0]);
-              console.log('✅ Successfully extracted JSON from wrapped response');
-            } catch (secondParseError) {
-              console.error('❌ Failed to parse extracted JSON:', secondParseError);
-              throw new Error('Invalid JSON response from AI');
-            }
-          } else {
-            throw new Error('Invalid JSON response from AI');
-          }
+          throw new Error('Invalid JSON response from AI');
         }
         // Fix common type issues from AI response
         if (typeof parsed.confidence === 'string') {
@@ -847,7 +875,7 @@ serve(async (req) => {
             promptVersion: PROMPT_VERSION,
           },
         });
-        return new Response(JSON.stringify({
+        const finalPayload = {
           success: true,
           parsed,
           aiResponse: aiResponse,
@@ -866,7 +894,21 @@ serve(async (req) => {
             pendingActionResolution,
             placeDiscovery: placeDiscoveryResult,
           }
-        }), {
+        };
+
+        if (wantsStream && progressWriter && streamReadable) {
+          await progressWriter.write(sseEvent('done', finalPayload));
+          await progressWriter.close();
+          return new Response(streamReadable, {
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+            },
+          });
+        }
+
+        return new Response(JSON.stringify(finalPayload), {
           headers: {
             ...corsHeaders,
             'Content-Type': 'application/json'
@@ -892,14 +934,32 @@ serve(async (req) => {
           },
         });
         const statusCode = error.message?.includes('OpenAI') ? 502 : 500;
-        return new Response(JSON.stringify({
+        const errorPayload = {
           success: false,
           error: 'AI parsing failed. Please try again.',
           timestamp: new Date().toISOString(),
           meta: {
             promptVersion: PROMPT_VERSION
           }
-        }), {
+        };
+
+        if (wantsStream && progressWriter && streamReadable) {
+          try {
+            await progressWriter.write(sseEvent('error', errorPayload));
+            await progressWriter.close();
+          } catch {
+            // ignore write errors on already-closed stream
+          }
+          return new Response(streamReadable, {
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+            },
+          });
+        }
+
+        return new Response(JSON.stringify(errorPayload), {
           status: statusCode,
           headers: {
             ...corsHeaders,

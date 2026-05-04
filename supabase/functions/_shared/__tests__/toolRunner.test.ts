@@ -353,6 +353,108 @@ describe('runToolLoop — trace + usage', () => {
     expect(entry.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
+  it('forwards `responseFormat` (Structured Outputs) on every loop call', async () => {
+    // Capture every request body so we can assert response_format threads
+    // through both the tool-call iteration and the final-answer call.
+    const capturedBodies: Array<Record<string, unknown>> = [];
+    let i = 0;
+    const turns: ScriptedTurn[] = [
+      {
+        finish_reason: 'tool_calls',
+        tool_calls: [{ id: 'c1', name: 'echo', args: { value: 'x' } }],
+      },
+      { finish_reason: 'stop', content: '{"requestType":"general","confidence":0.5,"originalMessage":"u"}' },
+    ];
+    const fetchImpl: typeof fetch = (_input, init) => {
+      const body = init?.body as string | undefined;
+      if (body) capturedBodies.push(JSON.parse(body));
+      const turn = turns[i++] ?? turns[turns.length - 1];
+      const message = {
+        role: 'assistant' as const,
+        content: turn.content ?? null,
+        tool_calls: turn.tool_calls?.map((c) => ({
+          id: c.id,
+          type: 'function' as const,
+          function: { name: c.name, arguments: JSON.stringify(c.args) },
+        })),
+      };
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: `cmpl-${i}`,
+            choices: [{ index: 0, finish_reason: turn.finish_reason, message }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    };
+
+    const responseFormat = {
+      type: 'json_schema',
+      json_schema: {
+        name: 'test_schema',
+        schema: { type: 'object', properties: { ok: { type: 'boolean' } } },
+        strict: false,
+      },
+    };
+
+    await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 's',
+      userMessage: 'u',
+      tools: [TEST_TOOL],
+      toolHandlers: { echo: () => Promise.resolve({ ok: true }) },
+      ctx: makeCtx(),
+      fetchImpl,
+      responseFormat,
+    });
+
+    expect(capturedBodies.length).toBeGreaterThanOrEqual(2);
+    for (const b of capturedBodies) {
+      expect(b.response_format).toEqual(responseFormat);
+    }
+  });
+
+  it('omits `response_format` when not provided (back-compat)', async () => {
+    const capturedBodies: Array<Record<string, unknown>> = [];
+    const fetchImpl: typeof fetch = (_input, init) => {
+      const body = init?.body as string | undefined;
+      if (body) capturedBodies.push(JSON.parse(body));
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: 'cmpl-1',
+            choices: [
+              {
+                index: 0,
+                finish_reason: 'stop',
+                message: { role: 'assistant', content: 'ok' },
+              },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    };
+
+    await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 's',
+      userMessage: 'u',
+      tools: [TEST_TOOL],
+      toolHandlers: { echo: () => Promise.resolve({}) },
+      ctx: makeCtx(),
+      fetchImpl,
+    });
+
+    expect(capturedBodies.length).toBe(1);
+    expect(capturedBodies[0]).not.toHaveProperty('response_format');
+  });
+
   it('accumulates usage across iterations', async () => {
     const { fetchImpl } = makeScriptedFetch([
       {

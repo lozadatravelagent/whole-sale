@@ -90,6 +90,24 @@ export interface RunToolLoopArgs {
   endpoint?: string;
   /** Optional fetch override for testing. Defaults to global fetch. */
   fetchImpl?: typeof fetch;
+  /** Optional callback fired before/after each tool execution for SSE streaming. */
+  onProgress?: (event: {
+    type: "tool_start" | "tool_done";
+    tool: string;
+    iteration: number;
+    ok: boolean;
+  }) => void;
+  /**
+   * Optional OpenAI `response_format` directive. When provided, it is
+   * forwarded with EVERY chat-completions request in the loop AND with the
+   * forced final-answer call. Use for `{ type: "json_schema", ... }` to
+   * pin the model's text output to a JSON schema (Structured Outputs).
+   *
+   * NOTE: this only affects assistant TEXT messages — tool_call arguments
+   * always carry their own per-tool JSON schema (`tools[].function.parameters`)
+   * and are unaffected by `response_format`.
+   */
+  responseFormat?: Record<string, unknown>;
 }
 
 export interface RunToolLoopResult {
@@ -132,6 +150,7 @@ interface CallOpenAiArgs {
   endpoint: string;
   fetchImpl: typeof fetch;
   signal: AbortSignal;
+  responseFormat?: Record<string, unknown>;
 }
 
 async function callOpenAi(args: CallOpenAiArgs): Promise<ChatCompletionResponse> {
@@ -142,6 +161,13 @@ async function callOpenAi(args: CallOpenAiArgs): Promise<ChatCompletionResponse>
     tool_choice: "auto",
     parallel_tool_calls: args.parallelToolCalls,
   };
+
+  // Structured Outputs / JSON-mode pass-through. OpenAI accepts
+  // `response_format` even when `tools` are present — it only constrains
+  // assistant TEXT output, not tool_call argument JSON.
+  if (args.responseFormat) {
+    body.response_format = args.responseFormat;
+  }
 
   let lastErr: unknown = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -342,6 +368,8 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
     totalLoopTimeoutMs = DEFAULT_TOTAL_LOOP_TIMEOUT_MS,
     endpoint = OPENAI_ENDPOINT,
     fetchImpl = fetch,
+    onProgress,
+    responseFormat,
   } = args;
 
   const messages: ChatMessage[] = [
@@ -375,6 +403,7 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
           endpoint,
           fetchImpl,
           signal: loopController.signal,
+          responseFormat,
         });
       } catch (err) {
         if ((err as { name?: string })?.name === "AbortError") {
@@ -418,6 +447,16 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
         };
       }
 
+      // Emit tool_start events before execution.
+      for (const call of toolCalls) {
+        onProgress?.({
+          type: "tool_start",
+          tool: call.function.name,
+          iteration,
+          ok: false,
+        });
+      }
+
       // Execute tool calls and append results to the message log.
       const { entries, toolMessages } = await execBatch(
         toolCalls,
@@ -428,6 +467,16 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
       );
       trace.push(...entries);
       messages.push(...toolMessages);
+
+      // Emit tool_done events after execution.
+      for (const entry of entries) {
+        onProgress?.({
+          type: "tool_done",
+          tool: entry.tool,
+          iteration,
+          ok: !entry.error,
+        });
+      }
 
       if (iteration === iterationCap) {
         hitIterationCap = true;
@@ -460,6 +509,7 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
         endpoint,
         fetchImpl,
         signal: finalCtl.signal,
+        responseFormat,
       });
       const usage = forced.usage ?? {};
       totalUsage.promptTokens += usage.prompt_tokens ?? 0;

@@ -40,7 +40,9 @@ export interface ConsolidateOpenAiClient {
 // Prompt
 // ---------------------------------------------------------------------------
 
-const CONSOLIDATE_MODEL = 'gpt-4.1';
+// gpt-4.1-mini is sufficient for this deterministic dedup/conflict-resolution task
+// and is ~10x cheaper than gpt-4.1. No user-facing latency impact (background pass).
+const CONSOLIDATE_MODEL = 'gpt-4.1-mini';
 const CONSOLIDATE_TEMPERATURE = 0.1;
 const CONSOLIDATE_MAX_TOKENS = 2000;
 

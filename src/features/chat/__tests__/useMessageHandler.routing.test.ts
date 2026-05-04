@@ -9,7 +9,7 @@ import { renderHook, act } from '@testing-library/react';
 // ---------------------------------------------------------------------------
 
 vi.mock('@/services/aiMessageParser', () => ({
-  parseMessageWithAI: vi.fn(),
+  parseMessageWithAI: vi.fn(), parseMessageWithAIStreaming: vi.fn(),
   combineWithPreviousRequest: vi.fn((_prev: any, _msg: string, next: any) => next),
   validateFlightRequiredFields: vi.fn().mockReturnValue({ isValid: true, missingFields: [], missingFieldsSpanish: [] }),
   validateHotelRequiredFields: vi.fn().mockReturnValue({ isValid: true, missingFields: [], missingFieldsSpanish: [] }),
@@ -138,7 +138,7 @@ vi.mock('../services/leadAiProfileService', () => ({
 // ---------------------------------------------------------------------------
 
 import useMessageHandler from '../hooks/useMessageHandler';
-import { parseMessageWithAI } from '@/services/aiMessageParser';
+import { parseMessageWithAI, parseMessageWithAIStreaming } from '@/services/aiMessageParser';
 import { addMessageViaSupabase } from '../services/messageService';
 import { routeRequest } from '../services/routeRequest';
 import { resolveConversationTurn } from '../services/conversationOrchestrator';
@@ -207,7 +207,7 @@ describe('useMessageHandler', () => {
   describe('handleSendMessage — context loading', () => {
     it('calls loadContextualMemory when preloadedContext is undefined', async () => {
       const p = buildProps({ preloadedContext: undefined });
-      vi.mocked(parseMessageWithAI).mockResolvedValue(MISSING_INFO_PARSED);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
       const { result } = renderHandler(p);
 
       await act(async () => {
@@ -228,7 +228,7 @@ describe('useMessageHandler', () => {
           leadId: null,
         },
       });
-      vi.mocked(parseMessageWithAI).mockResolvedValue(MISSING_INFO_PARSED);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
       const { result } = renderHandler(p);
 
       await act(async () => {
@@ -252,17 +252,16 @@ describe('useMessageHandler', () => {
           leadId: null,
         },
       });
-      vi.mocked(parseMessageWithAI).mockResolvedValue(MISSING_INFO_PARSED);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
       const { result } = renderHandler(p);
 
       await act(async () => {
         await result.current.handleSendMessage('quiero volar');
       });
 
-      expect(vi.mocked(parseMessageWithAI)).toHaveBeenCalledWith(
+      // parseMessageWithAIStreaming signature: (message, knowledge, language, onProgress?)
+      expect(vi.mocked(parseMessageWithAIStreaming)).toHaveBeenCalledWith(
         'quiero volar',
-        storedMemory,
-        expect.any(Array),
         expect.objectContaining({
           historyWindow: 15,
           contextMeta: expect.objectContaining({
@@ -271,6 +270,7 @@ describe('useMessageHandler', () => {
           }),
         }),
         expect.any(String),
+        expect.any(Function),
       );
     });
   });
@@ -300,7 +300,7 @@ describe('useMessageHandler', () => {
       });
 
       const p = buildProps();
-      vi.mocked(parseMessageWithAI).mockResolvedValue(MISSING_INFO_PARSED);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
       const { result } = renderHandler(p);
 
       await act(async () => {
@@ -346,7 +346,7 @@ describe('useMessageHandler', () => {
       });
 
       const p = buildProps({ messages: [collectMsg, collectMsg, collectMsg] });
-      vi.mocked(parseMessageWithAI).mockResolvedValue(MISSING_INFO_PARSED);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
       const { result } = renderHandler(p);
 
       await act(async () => {
@@ -387,7 +387,7 @@ describe('useMessageHandler', () => {
       const p = buildProps({
         loadContextState: vi.fn().mockResolvedValue(persistentState),
       });
-      vi.mocked(parseMessageWithAI).mockResolvedValue(MISSING_INFO_PARSED);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
       const { result } = renderHandler(p);
 
       await act(async () => {
@@ -403,7 +403,7 @@ describe('useMessageHandler', () => {
 
     it('does NOT call mergeIterationContext when detectIterationIntent returns isIteration false', async () => {
       const p = buildProps();
-      vi.mocked(parseMessageWithAI).mockResolvedValue(MISSING_INFO_PARSED);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
       const { result } = renderHandler(p);
 
       await act(async () => {

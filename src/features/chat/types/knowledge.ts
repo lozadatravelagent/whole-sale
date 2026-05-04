@@ -1,5 +1,6 @@
 import type { Json } from "@/integrations/supabase/types";
 import type { ParsedTravelRequest } from "@/services/aiMessageParser";
+import type { EmiliaState } from "@/features/chat/state/emiliaState";
 
 export interface ConversationSummaryResolved {
   origin?: string;
@@ -127,6 +128,14 @@ export interface ParseMessageKnowledge {
    * Undefined when the feature flag is off.
    */
   memoryStateBlock?: string;
+  /**
+   * Phase 5 latency optimisation — the EmiliaState that was just saved by
+   * `prepareTurnContext`. When present, the edge function uses it directly and
+   * skips its own SELECT on `agent_states`, saving ~30–50 ms per turn.
+   * The edge function falls back to its own SELECT when this is absent
+   * (backward-compatible with old clients / tests that don't send it).
+   */
+  emiliaState?: EmiliaState;
 }
 
 export interface LlmUsage {

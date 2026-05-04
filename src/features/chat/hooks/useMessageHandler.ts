@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type React from 'react';
-import { parseMessageWithAI, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
+import { parseMessageWithAIStreaming, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { normalizeFlightRequest } from '@/services/flightSegments';
 import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery, handleItineraryRequest } from '../services/searchHandlers';
@@ -786,15 +786,36 @@ const useMessageHandler = (
       const plannerEditContext = buildPlannerEditContext(plannerState as TripPlannerState | null);
       const userLanguageRaw = (i18n.language || 'es').split('-')[0];
       const userLanguage: 'es' | 'en' | 'pt' = userLanguageRaw === 'en' || userLanguageRaw === 'pt' ? userLanguageRaw : 'es';
-      let parsedRequest = await parseMessageWithAI(currentMessage, contextToUse, conversationHistory, {
-        plannerContext: plannerEditContext,
-        contextMeta: {
-          conversationId: finalConversationId,
-          leadId: leadId ?? null,
+      let parsedRequest = await parseMessageWithAIStreaming(
+        currentMessage,
+        {
+          plannerContext: plannerEditContext,
+          contextMeta: {
+            conversationId: finalConversationId,
+            leadId: leadId ?? null,
+          },
+          historyWindow: 15,
+          memoryStateBlock,
+          // Pass the freshly-saved state so the edge function can skip its own
+          // SELECT on agent_states (~30–50 ms saved per turn).
+          ...(ctxEngState ? { emiliaState: ctxEngState } : {}),
         },
-        historyWindow: 15,
-        memoryStateBlock,
-      }, userLanguage);
+        userLanguage,
+        ({ type, tool }) => {
+          if (type !== 'tool_start') return;
+          const labels: Record<string, string> = {
+            discover_places: 'Buscando lugares…',
+            get_planner_state: 'Consultando el plan…',
+            get_lead_full_history: 'Revisando el historial…',
+            get_recent_searches: 'Revisando búsquedas recientes…',
+            save_memory_note: 'Guardando contexto…',
+            apply_slot_values: 'Aplicando datos…',
+            confirm_pending_action: 'Confirmando…',
+            propose_planner_addition: 'Preparando sugerencia…',
+          };
+          setTypingMessage(labels[tool] ?? 'Procesando…', conversationIdForThisSearch);
+        },
+      );
 
       // Phase 5: increment turn count after a successful parse. Failures here
       // do not break the flow.

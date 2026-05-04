@@ -6,7 +6,6 @@
 //
 // Implements the read-only retrieval/provider tools the Emilia agent can invoke:
 //   - get_planner_state         (queries `trips`)
-//   - get_quote                 (queries `quotes` — STUB until table exists)
 //   - get_recent_searches       (queries `messages.meta.searchResults`)
 //   - get_lead_full_history     (queries `lead_ai_profiles` + `trips` + `leads`)
 //   - discover_places           (queries Foursquare-backed places shared service)
@@ -164,17 +163,17 @@ function validLocation(lat: unknown, lng: unknown): PlacesLocation | null {
 }
 
 function compactPlace(place: PlannerPlaceCandidate): Record<string, unknown> {
+  const lat = place.lat ?? null;
+  const lng = place.lng ?? null;
   return {
-    placeId: place.placeId,
+    id: place.placeId,
     name: place.name,
     category: place.category,
-    lat: place.lat ?? null,
-    lng: place.lng ?? null,
     rating: place.rating ?? null,
-    userRatingsTotal: place.userRatingsTotal ?? null,
-    photoUrl: place.photoUrls?.[0] ?? null,
-    description: place.formattedAddress ?? null,
-    source: place.source ?? null,
+    address: place.formattedAddress ?? null,
+    coordinates: (Number.isFinite(lat) && Number.isFinite(lng))
+      ? { lat, lng }
+      : null,
   };
 }
 
@@ -255,18 +254,24 @@ export function extractDiscoveryCandidates(result: unknown): DiscoveryCandidateR
   for (const raw of rawPlaces) {
     if (!raw || typeof raw !== "object") continue;
     const p = raw as Record<string, unknown>;
-    const placeId = typeof p.placeId === "string" ? p.placeId : null;
+    const placeId = typeof p.id === "string" ? p.id : null;
     const name = typeof p.name === "string" ? p.name : null;
-    const lat = typeof p.lat === "number" && Number.isFinite(p.lat) ? p.lat : null;
-    const lng = typeof p.lng === "number" && Number.isFinite(p.lng) ? p.lng : null;
+    const coords = p.coordinates && typeof p.coordinates === "object"
+      ? p.coordinates as Record<string, unknown>
+      : null;
+    const lat = coords && typeof coords.lat === "number" && Number.isFinite(coords.lat)
+      ? coords.lat
+      : null;
+    const lng = coords && typeof coords.lng === "number" && Number.isFinite(coords.lng)
+      ? coords.lng
+      : null;
     const category = typeof p.category === "string" ? p.category : null;
     // All four are required to make the ref useful; drop incomplete entries.
     if (!placeId || !name || lat === null || lng === null || !category) continue;
 
     const ref: DiscoveryCandidateRef = { placeId, name, lat, lng, category };
     if (typeof p.rating === "number" && Number.isFinite(p.rating)) ref.rating = p.rating;
-    if (typeof p.description === "string" && p.description.trim()) ref.address = p.description;
-    if (typeof p.photoUrl === "string" && p.photoUrl.trim()) ref.photoUrl = p.photoUrl;
+    if (typeof p.address === "string" && p.address.trim()) ref.address = p.address;
 
     candidates.push(ref);
     if (candidates.length >= MAX_DISCOVERY_CANDIDATES) break;
@@ -381,62 +386,7 @@ async function getPlannerStateHandler(
 }
 
 // -----------------------------------------------------------------------------
-// 2. get_quote — fetch agency quote
-// -----------------------------------------------------------------------------
-//
-// TODO(Phase 5): The `quotes` table does not yet exist in the schema. Until
-// it lands, this handler returns a clear, model-friendly `not_implemented`
-// error so the agent can degrade gracefully ("aún no podemos consultar
-// cotizaciones guardadas"). The schema is finalized so the model learns the
-// trigger conditions even before the table is wired.
-
-interface GetQuoteArgs {
-  quote_id: string;
-}
-
-const getQuoteSchema: OpenAITool = {
-  type: "function",
-  function: {
-    name: "get_quote",
-    description:
-      "Fetch a previously generated agency quote (quote_id) including totals, line items, currency, validity window, and lead linkage. " +
-      "Use when: the user references 'la cotización', 'ese precio', 'la propuesta'; mode=agency and a quote ref is active; the user asks to modify, resend, or compare quotes. " +
-      "Don't use for: generating a new quote (use search tools first); accessing the underlying plan (use get_planner_state). " +
-      "NOTE: this tool currently returns {error:'not_implemented'} until the quotes table is provisioned. Don't invoke until then — it will fail.",
-    strict: true,
-    parameters: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        quote_id: {
-          type: "string",
-          description:
-            "UUID of the quote. Resolve from state.active_refs where type='quote'.",
-        },
-      },
-      required: ["quote_id"],
-    },
-  },
-};
-
-async function getQuoteHandler(
-  args: GetQuoteArgs,
-  _ctx: ToolContext,
-): Promise<unknown> {
-  if (!args?.quote_id || typeof args.quote_id !== "string") {
-    return { error: "bad_arguments", detail: "quote_id required" };
-  }
-  // TODO: replace with real query once `quotes` table exists.
-  return {
-    error: "not_implemented",
-    message: "quotes table not yet provisioned",
-    detail:
-      "quotes table not yet provisioned; tell the user the quote feature is coming and offer to rebuild from get_planner_state",
-  };
-}
-
-// -----------------------------------------------------------------------------
-// 3. get_recent_searches — last N flight/hotel/package searches
+// 2. get_recent_searches — last N flight/hotel/package searches
 // -----------------------------------------------------------------------------
 
 type SearchKind = "flights" | "hotels" | "packages";
@@ -519,18 +469,38 @@ async function getRecentSearchesHandler(
       const meta = (row.meta ?? {}) as Record<string, unknown>;
       const sr = (meta.searchResults ?? {}) as Record<string, unknown>;
       const inferredKind = (meta.searchKind ?? sr.kind ?? "unknown") as string;
-      const params = (sr.params ?? meta.searchParams ?? null) as unknown;
-      const top = Array.isArray(sr.top)
-        ? (sr.top as Array<Record<string, unknown>>).slice(0, 3)
+
+      // Trim params to search-identifying fields only; drop full provider request blobs.
+      const rawParams = (sr.params ?? meta.searchParams ?? {}) as Record<string, unknown>;
+      const params = {
+        origin: rawParams.origin ?? rawParams.from ?? null,
+        destination: rawParams.destination ?? rawParams.to ?? rawParams.city ?? null,
+        check_in: rawParams.check_in ?? rawParams.checkIn ?? rawParams.depart ?? rawParams.date_from ?? null,
+        check_out: rawParams.check_out ?? rawParams.checkOut ?? rawParams.return ?? rawParams.date_to ?? null,
+        pax: rawParams.pax ?? rawParams.adults ?? rawParams.passengers ?? null,
+      };
+
+      const rawResults = Array.isArray(sr.top)
+        ? (sr.top as Array<Record<string, unknown>>)
         : Array.isArray(sr.results)
-          ? (sr.results as Array<Record<string, unknown>>).slice(0, 3)
+          ? (sr.results as Array<Record<string, unknown>>)
           : [];
+      const result_count = typeof sr.total === "number" ? sr.total : rawResults.length;
+
+      // Trim each result to a lightweight summary; drop full provider schedules.
+      const top = rawResults.slice(0, 3).map((item) => ({
+        id: item.id ?? item.resultId ?? null,
+        summary: item.summary ?? item.label ?? item.name ?? item.title ?? null,
+        price: item.price ?? item.totalPrice ?? item.fare ?? null,
+        destination: item.destination ?? item.city ?? item.hotel ?? item.to ?? null,
+      }));
 
       return {
         id: row.id,
         kind: inferredKind,
         at: row.created_at,
         params,
+        result_count,
         top,
       };
     });
@@ -596,10 +566,7 @@ async function getLeadFullHistoryHandler(
         .maybeSingle(),
       ctx.supabase
         .from("trips")
-        .select(
-          "id, title, status, start_date, end_date, destination_cities, " +
-          "budget_level, travelers, updated_at",
-        )
+        .select("id, status, start_date, end_date, destination_cities, travelers")
         .eq("lead_id", args.lead_id)
         .eq("agency_id", ctx.agencyId)
         .order("start_date", { ascending: false })
@@ -624,13 +591,10 @@ async function getLeadFullHistoryHandler(
     ai_summary: aiProfile?.summary_text ?? null,
     trips: (trips ?? []).map((t: Record<string, unknown>) => ({
       id: t.id,
-      title: t.title,
+      destination: t.destination_cities,
+      dates: { start: t.start_date, end: t.end_date },
       status: t.status,
-      start: t.start_date,
-      end: t.end_date,
-      destinations: t.destination_cities,
-      budget: t.budget_level,
-      pax: t.travelers,
+      pax_count: t.travelers,
     })),
     trip_count: (trips ?? []).length,
   };
@@ -871,6 +835,7 @@ async function discoverPlacesHandler(
       lng: center?.lng ?? null,
     },
     categories,
+    total_found: places.length,
     places: places.map(compactPlace),
     meta: {
       provider: "foursquare",
@@ -891,10 +856,6 @@ export const retrievalTools: Record<string, RetrievalTool> = {
   get_planner_state: {
     schema: getPlannerStateSchema,
     handler: getPlannerStateHandler as RetrievalTool["handler"],
-  },
-  get_quote: {
-    schema: getQuoteSchema,
-    handler: getQuoteHandler as RetrievalTool["handler"],
   },
   get_recent_searches: {
     schema: getRecentSearchesSchema,

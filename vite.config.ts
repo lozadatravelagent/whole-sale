@@ -143,6 +143,15 @@ export default defineConfig(({ mode }) => ({
   },
   test: {
     setupFiles: ['src/test/setup.ts'],
+    alias: {
+      // Map Deno-style URL imports used by Supabase edge functions to local
+      // stubs so vitest can import those modules. The stubs are no-ops; the
+      // edge functions never `serve()` under vitest.
+      'https://deno.land/std@0.168.0/http/server.ts':
+        path.resolve(__dirname, 'supabase/functions/ai-message-parser/__tests__/__stubs__/denoServer.ts'),
+      'jsr:@supabase/supabase-js@2':
+        path.resolve(__dirname, 'supabase/functions/ai-message-parser/__tests__/__stubs__/supabaseClient.ts'),
+    },
     include: [
       'src/features/trip-planner/__tests__/*.test.ts',
       'src/features/chat/__tests__/*.test.ts',
@@ -156,6 +165,7 @@ export default defineConfig(({ mode }) => ({
       'src/services/pdf/__tests__/*.test.ts',
       'supabase/functions/_shared/__tests__/*.test.ts',
       'supabase/functions/*/__tests__/*.test.ts',
+      'tests/evals/**/*.test.ts',
     ],
     coverage: {
       provider: 'v8',

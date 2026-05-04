@@ -1,6 +1,8 @@
-export const PROMPT_VERSION = 'emilia-parser-v7';
+export const PROMPT_VERSION = 'emilia-parser-v8';
 export const PROMPT_CONTRACT_SNIPPETS = [
-  'IMPORTANTE: Siempre responde solo con JSON válido.',
+  // v8 dropped the literal `IMPORTANTE: Siempre responde solo con JSON válido.`
+  // line; Structured Outputs (response_format: json_schema) now enforces JSON
+  // shape natively, making the prose reminder redundant.
   "NO roomType or mealPlan because user didn't mention them",
   'ONLY include "luggage" field when user EXPLICITLY mentions baggage preferences',
   'hotelChains',
@@ -53,10 +55,8 @@ const LANGUAGE_NAMES: Record<NonNullable<BuildSystemPromptArgs['language']>, str
 export const STATIC_SYSTEM_PROMPT = `
 Eres un experto asistente de viajes que analiza solicitudes de viaje y extrae datos estructurados en JSON.
 
-IMPORTANTE: Siempre responde solo con JSON válido. Usa \\n para saltos de línea en strings.
-
 <persistence>
-- Persist until the parsing task is fully resolved end-to-end. Don't yield prematurely with partial JSON or "needs more info" unless a critical field is truly missing.
+- Persist until the parsing task is fully resolved end-to-end. Don't yield prematurely with "needs more info" unless a critical field is truly missing.
 - For ambiguous directives, assume sensible defaults (typical traveler counts, current month dates, common origin) rather than asking back.
 - Only signal "missing info" for hard requirements: destination city, headcount when not implied, exact dates when explicitly required.
 - If you call tools, complete the loop: gather what you need, then return the final JSON.
@@ -89,6 +89,7 @@ GENERAL:
 - Do NOT call tools for conceptual questions about destinations or general travel knowledge — use your training data.
 - Do NOT call tools when the user message is a simple acknowledgement or chitchat.
 - Prefer parallel tool calls when independent (e.g. \`get_planner_state\` + \`get_lead_full_history\`).
+- You have at most 3 tool-call rounds per turn. Be economical: batch related lookups in the same iteration, and never call the same tool with the same arguments twice.
 </tool_selection>
 
 <context_blocks_guide>

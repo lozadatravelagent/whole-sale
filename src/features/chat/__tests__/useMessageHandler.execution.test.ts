@@ -9,7 +9,7 @@ import { renderHook, act } from '@testing-library/react';
 // ---------------------------------------------------------------------------
 
 vi.mock('@/services/aiMessageParser', () => ({
-  parseMessageWithAI: vi.fn(),
+  parseMessageWithAI: vi.fn(), parseMessageWithAIStreaming: vi.fn(),
   combineWithPreviousRequest: vi.fn((prev: any, _msg: string, next: any) => next),
   // C1.c needs isValid:true so the execution switch is reachable (C1.a used [] which short-circuits)
   validateFlightRequiredFields: vi.fn().mockReturnValue({ isValid: true, missingFields: [], missingFieldsSpanish: [] }),
@@ -132,7 +132,7 @@ vi.mock('../services/leadAiProfileService', () => ({
 // ---------------------------------------------------------------------------
 
 import useMessageHandler from '../hooks/useMessageHandler';
-import { hasFlexibleItineraryDateSelection, hasUsableItineraryDates, parseMessageWithAI } from '@/services/aiMessageParser';
+import { hasFlexibleItineraryDateSelection, hasUsableItineraryDates, parseMessageWithAI, parseMessageWithAIStreaming } from '@/services/aiMessageParser';
 import {
   handleFlightSearch,
   handleHotelSearch,
@@ -243,7 +243,7 @@ describe('useMessageHandler', () => {
   describe('handleSendMessage — execution switch', () => {
 
     it('calls handleFlightSearch for requestType flights', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'flights',
         originalMessage: 'quiero vuelos a Madrid',
         flights: { origin: 'BUE', destination: 'MAD', departureDate: '2026-06-01', returnDate: '2026-06-15', adults: 2 },
@@ -262,7 +262,7 @@ describe('useMessageHandler', () => {
     });
 
     it('sends compact planner context to the parser when a planner exists', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'flights',
         originalMessage: 'buscame vuelos',
         flights: { origin: 'BUE', destination: 'MAD', departureDate: '2026-06-01', returnDate: '2026-06-15', adults: 2 },
@@ -289,7 +289,7 @@ describe('useMessageHandler', () => {
         await result.current.handleSendMessage('buscame vuelos');
       });
 
-      const parserKnowledge = vi.mocked(parseMessageWithAI).mock.calls[0][3];
+      const parserKnowledge = vi.mocked(parseMessageWithAIStreaming).mock.calls[0][1];
       expect(parserKnowledge).toEqual(expect.objectContaining({
         plannerContext: expect.objectContaining({
           hasActivePlan: true,
@@ -304,7 +304,7 @@ describe('useMessageHandler', () => {
     it('treats general planner follow-ups as custom itinerary edits', async () => {
       vi.mocked(hasUsableItineraryDates).mockReturnValue(true);
       vi.mocked(hasFlexibleItineraryDateSelection).mockReturnValue(true);
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'general',
         originalMessage: 'sacale lo mas turistico',
       }) as any);
@@ -353,7 +353,7 @@ describe('useMessageHandler', () => {
     it('applies simple planner edits directly without regenerating', async () => {
       vi.mocked(hasUsableItineraryDates).mockReturnValue(true);
       vi.mocked(hasFlexibleItineraryDateSelection).mockReturnValue(true);
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'itinerary',
         originalMessage: 'que sea mas barato',
         itinerary: {
@@ -396,7 +396,7 @@ describe('useMessageHandler', () => {
     });
 
     it('calls handleHotelSearch for requestType hotels', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'hotels',
         originalMessage: 'necesito un hotel en Barcelona',
         hotels: { city: 'BCN', checkinDate: '2026-06-01', checkoutDate: '2026-06-05', adults: 2 },
@@ -415,7 +415,7 @@ describe('useMessageHandler', () => {
     });
 
     it('calls handleCombinedSearch for requestType combined', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'combined',
         originalMessage: 'planifica mi viaje',
         flights: { origin: 'BUE', destination: 'CUN', departureDate: '2026-06-01', returnDate: '2026-06-15', adults: 2 },
@@ -435,7 +435,7 @@ describe('useMessageHandler', () => {
     });
 
     it('calls handleGeneralQuery for unrecognized requestType', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'general',
         originalMessage: 'consulta general',
       }) as any);
@@ -453,7 +453,7 @@ describe('useMessageHandler', () => {
     });
 
     it('calls handlePackageSearch for requestType packages', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'packages',
         originalMessage: 'busco un paquete de viaje',
       }) as any);
@@ -471,7 +471,7 @@ describe('useMessageHandler', () => {
     });
 
     it('calls handleServiceSearch for requestType services', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'services',
         originalMessage: 'necesito traslados',
       }) as any);
@@ -489,7 +489,7 @@ describe('useMessageHandler', () => {
     });
 
     it('routes itinerary with responseMode show_places to discovery path', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'itinerary',
         originalMessage: 'quiero ver lugares en Roma',
         itinerary: {
@@ -515,7 +515,7 @@ describe('useMessageHandler', () => {
     });
 
     it('calls handleItineraryRequest for itinerary when responseMode is not show_places', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'itinerary',
         originalMessage: 'genera mi itinerario para Roma',
         itinerary: {
@@ -544,7 +544,7 @@ describe('useMessageHandler', () => {
     });
 
     it('does not regenerate itinerary when quoting the active planner', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'itinerary',
         originalMessage: 'Cotizame este plan',
         itinerary: {
@@ -616,7 +616,7 @@ describe('useMessageHandler', () => {
     });
 
     it('builds an itinerary from the latest quote/search context', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'general',
         originalMessage: 'Armame un itinerario con esta cotización',
       }) as any);
@@ -680,7 +680,7 @@ describe('useMessageHandler', () => {
     });
 
     it('runs a combined quote search when the active planner has exact quote fields', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'itinerary',
         originalMessage: 'Cotizame este plan',
         itinerary: {
@@ -757,7 +757,7 @@ describe('useMessageHandler', () => {
     });
 
     it('calls addMessageViaSupabase with role assistant after flight search', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'flights',
         originalMessage: 'quiero vuelos a Madrid',
         flights: { origin: 'BUE', destination: 'MAD', departureDate: '2026-06-01', returnDate: '2026-06-15', adults: 2 },
@@ -778,7 +778,7 @@ describe('useMessageHandler', () => {
     });
 
     it('calls addMessageViaSupabase with role assistant after hotel search', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'hotels',
         originalMessage: 'necesito un hotel en Barcelona',
         hotels: { city: 'BCN', checkinDate: '2026-06-01', checkoutDate: '2026-06-05', adults: 2 },
@@ -805,7 +805,7 @@ describe('useMessageHandler', () => {
   describe('handleSendMessage — error handling (execution)', () => {
 
     it('calls toast when handleFlightSearch throws', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'flights',
         originalMessage: 'quiero vuelos a Madrid',
         flights: { origin: 'BUE', destination: 'MAD', departureDate: '2026-06-01', returnDate: '2026-06-15', adults: 2 },
@@ -823,7 +823,7 @@ describe('useMessageHandler', () => {
     });
 
     it('resets setIsLoading to false when handleHotelSearch throws', async () => {
-      vi.mocked(parseMessageWithAI).mockResolvedValue(buildParsedRequest({
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
         requestType: 'hotels',
         originalMessage: 'necesito un hotel en Barcelona',
         hotels: { city: 'BCN', checkinDate: '2026-06-01', checkoutDate: '2026-06-05', adults: 2 },
