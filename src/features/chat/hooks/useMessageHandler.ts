@@ -13,6 +13,7 @@ import { detectIterationIntent, mergeIterationContext, generateIterationExplanat
 import { buildConversationalMissingInfoMessage, buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTurn, resolveTravelContextBridge } from '../services/conversationOrchestrator';
 import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
+import { isDiscoveryQuery, extractCategoriesFromMessage, extractDestinationFromMessage } from '@/features/chat/services/discoveryIntentGuard';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { PlannerEditContext, PreloadedConversationKnowledge } from '../types/knowledge';
@@ -844,8 +845,10 @@ const useMessageHandler = (
 
       const effectiveMode = resolveEffectiveMode(options?.mode, chatMode);
       const hasActivePlanner = Boolean(plannerEditContext?.hasActivePlan && plannerState);
+      const discoveryGuard = isDiscoveryQuery(currentMessage);
       const shouldTreatAsPlannerEdit = hasActivePlanner
         && !isExplicitPlannerRestart(currentMessage)
+        && !discoveryGuard.isDiscovery
         && (workspaceMode === 'planner' || effectiveMode === 'passenger');
 
       if (shouldTreatAsPlannerEdit && plannerState) {
@@ -888,6 +891,37 @@ const useMessageHandler = (
               confidence: Math.max(parsedRequest.itinerary?.editIntent?.confidence || 0, 0.8),
             },
           },
+        };
+      }
+
+      // Safety net: if guard fires but the LLM didn't call discover_places, force
+      // the discovery branch with empty places. This prevents silent fallback to
+      // handleItineraryRequest (which would fabricate a 7-day plan). The UI shows
+      // a graceful "no places found, refine your query" state.
+      if (discoveryGuard.isDiscovery && !parsedRequest.placeDiscoveryResult?.ok) {
+        console.warn('[DISCOVERY-GUARD] Detected discovery intent but parser did not call discover_places — forcing show_places branch.', {
+          message: currentMessage,
+          reason: discoveryGuard.reason,
+          parsedType: parsedRequest.requestType,
+        });
+
+        const dest = extractDestinationFromMessage(currentMessage, plannerState as { destinations?: Array<{ city?: string; country?: string }> } | null);
+        const cats = extractCategoriesFromMessage(currentMessage);
+
+        parsedRequest = {
+          ...parsedRequest,
+          requestType: 'itinerary',
+          placeDiscoveryResult: {
+            ok: true,
+            intent: 'broad',
+            destination: dest,
+            categories: cats,
+            places: [], // empty — UI will surface "no places, refine query"
+          } as ParsedTravelRequest['placeDiscoveryResult'],
+          // strip any editIntent the model emitted under planner pressure
+          itinerary: parsedRequest.itinerary
+            ? { ...parsedRequest.itinerary, editIntent: undefined }
+            : undefined,
         };
       }
 
