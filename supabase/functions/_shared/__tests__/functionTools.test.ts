@@ -528,3 +528,94 @@ describe('extractDiscoveryCandidates', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// resolveKnownDiscoveryArgs — server-side arg auto-resolution
+// ---------------------------------------------------------------------------
+
+import { resolveKnownDiscoveryArgs } from '../functionTools.ts';
+import type { EmiliaState } from '../emiliaStateTypes.ts';
+
+describe('resolveKnownDiscoveryArgs', () => {
+  function makeState(candidates: Array<Record<string, unknown>>): EmiliaState {
+    return {
+      profile: { agency_id: 'a1', currency: 'USD', language: 'es', preferences: {} },
+      global_memory: { notes: [] },
+      session_memory: { notes: [] },
+      active_refs: [],
+      discovery_candidates: candidates as never,
+      mode: 'passenger',
+      trip_history: { trips: [] },
+      inject_session_memories_next_turn: false,
+      pending_action: null,
+      meta: { schema_version: 2, created_at: '2026-05-03', turn_count: 0, last_turn_at: '2026-05-03' },
+    } as unknown as EmiliaState;
+  }
+
+  const baseArgs = {
+    destination_city: 'Roma',
+    destination_country: null,
+    lat: null,
+    lng: null,
+    categories: ['restaurant'] as const,
+    intent: 'food' as const,
+    limit_per_category: null,
+    radius_m: null,
+  };
+
+  it('returns args unchanged when state is null', () => {
+    const out = resolveKnownDiscoveryArgs(baseArgs as never, null);
+    expect(out).toEqual(baseArgs);
+  });
+
+  it('returns args unchanged when state has no candidates', () => {
+    const out = resolveKnownDiscoveryArgs(baseArgs as never, makeState([]));
+    expect(out).toEqual(baseArgs);
+  });
+
+  it('fills lat/lng from a candidate matching the city by address substring', () => {
+    const state = makeState([
+      { placeId: 'p1', name: 'Trattoria', category: 'restaurant', lat: 41.9, lng: 12.5, address: 'Via del Corso, Roma' },
+    ]);
+    const out = resolveKnownDiscoveryArgs(baseArgs as never, state);
+    expect(out.lat).toBe(41.9);
+    expect(out.lng).toBe(12.5);
+    expect(out.destination_city).toBe('Roma'); // unchanged
+  });
+
+  it('returns args unchanged when no candidate address matches the city', () => {
+    const state = makeState([
+      { placeId: 'p1', name: 'Eiffel Tower', category: 'sights', lat: 48.8, lng: 2.3, address: 'Champ de Mars, Paris' },
+    ]);
+    const out = resolveKnownDiscoveryArgs(baseArgs as never, state);
+    expect(out.lat).toBeNull();
+    expect(out.lng).toBeNull();
+  });
+
+  it('case-insensitive substring match', () => {
+    const state = makeState([
+      { placeId: 'p1', name: 'X', category: 'restaurant', lat: 41.9, lng: 12.5, address: 'PIAZZA NAVONA, ROMA' },
+    ]);
+    const out = resolveKnownDiscoveryArgs({ ...baseArgs, destination_city: 'roma' } as never, state);
+    expect(out.lat).toBe(41.9);
+  });
+
+  it('preserves model-supplied lat/lng when already finite (no overwrite)', () => {
+    const state = makeState([
+      { placeId: 'p1', name: 'X', category: 'restaurant', lat: 41.9, lng: 12.5, address: 'Roma' },
+    ]);
+    const out = resolveKnownDiscoveryArgs({ ...baseArgs, lat: 99, lng: 99 } as never, state);
+    expect(out.lat).toBe(99);
+    expect(out.lng).toBe(99);
+  });
+
+  it('skips candidates with non-finite coords', () => {
+    const state = makeState([
+      { placeId: 'p1', name: 'X', category: 'restaurant', lat: null, lng: null, address: 'Roma' },
+      { placeId: 'p2', name: 'Y', category: 'restaurant', lat: 41.9, lng: 12.5, address: 'Roma centro' },
+    ]);
+    const out = resolveKnownDiscoveryArgs(baseArgs as never, state);
+    expect(out.lat).toBe(41.9);
+    expect(out.lng).toBe(12.5);
+  });
+});

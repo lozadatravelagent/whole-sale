@@ -30,7 +30,7 @@ import type {
   PlannerPlaceCategory,
   PlacesLocation,
 } from "./places/types.ts";
-import type { DiscoveryCandidateRef } from "./emiliaStateTypes.ts";
+import type { DiscoveryCandidateRef, EmiliaState } from "./emiliaStateTypes.ts";
 import { MAX_DISCOVERY_CANDIDATES } from "./emiliaStateTypes.ts";
 
 // -----------------------------------------------------------------------------
@@ -111,7 +111,7 @@ type DiscoveryIntent =
   | "shopping"
   | "neighborhoods";
 
-interface DiscoverPlacesArgs {
+export interface DiscoverPlacesArgs {
   destination_city: string;
   destination_country: string | null;
   lat: number | null;
@@ -243,6 +243,80 @@ function roundRobinByCategory(
  * order returned to the model so "the second one in the listing" resolves
  * the same place the user saw.
  */
+/**
+ * Server-side resolver for known `discover_places` args. When the model passes
+ * `null` for lat/lng but a previous discovery on the same city already
+ * surfaced coordinates, fill them in from `state.discovery_candidates`.
+ *
+ * Per OpenAI's Function Calling guide ("Don't make the model fill arguments
+ * you already know"). Reduces hallucinated coordinates and improves the
+ * downstream Foursquare query quality. Silent — never throws; returns the
+ * original args on any unexpected condition.
+ *
+ * Strategy (Option A — cheap):
+ *   - Look up the requested city by case-insensitive substring match against
+ *     each cached candidate's `address` field. Foursquare addresses include
+ *     the locality, so this is reliable.
+ *   - On first match with finite coords, fill in lat/lng. Country is NOT
+ *     resolved (DiscoveryCandidateRef has no country field).
+ *
+ * Returns args unchanged if state is null, candidates are empty, or no match.
+ */
+export function resolveKnownDiscoveryArgs(
+  args: DiscoverPlacesArgs,
+  state: EmiliaState | null,
+): DiscoverPlacesArgs {
+  try {
+    if (!state) return args;
+    const allKnown =
+      typeof args.destination_country === "string" &&
+      typeof args.lat === "number" &&
+      Number.isFinite(args.lat) &&
+      typeof args.lng === "number" &&
+      Number.isFinite(args.lng);
+    if (allKnown) return args;
+
+    const candidates = state.discovery_candidates ?? [];
+    if (candidates.length === 0) return args;
+
+    const cityNorm = (args.destination_city ?? "").trim().toLowerCase();
+    if (!cityNorm) return args;
+
+    let resolvedLat: number | null = null;
+    let resolvedLng: number | null = null;
+    for (const c of candidates) {
+      const addr = typeof c.address === "string" ? c.address.toLowerCase() : "";
+      if (!addr.includes(cityNorm)) continue;
+      if (
+        typeof c.lat === "number" &&
+        Number.isFinite(c.lat) &&
+        typeof c.lng === "number" &&
+        Number.isFinite(c.lng)
+      ) {
+        resolvedLat = c.lat;
+        resolvedLng = c.lng;
+        break;
+      }
+    }
+
+    if (resolvedLat === null || resolvedLng === null) return args;
+
+    const filledLat = typeof args.lat === "number" && Number.isFinite(args.lat) ? args.lat : resolvedLat;
+    const filledLng = typeof args.lng === "number" && Number.isFinite(args.lng) ? args.lng : resolvedLng;
+
+    if (filledLat !== args.lat || filledLng !== args.lng) {
+      console.log(
+        `[CTX-DISCOVERY-AUTORESOLVE] city=${args.destination_city} lat:${args.lat}->${filledLat} lng:${args.lng}->${filledLng}`,
+      );
+    }
+
+    return { ...args, lat: filledLat, lng: filledLng };
+  } catch (err) {
+    console.warn("[CTX-DISCOVERY-AUTORESOLVE] resolver failed silently:", err);
+    return args;
+  }
+}
+
 export function extractDiscoveryCandidates(result: unknown): DiscoveryCandidateRef[] | null {
   if (!result || typeof result !== "object") return null;
   const r = result as Record<string, unknown>;
@@ -613,7 +687,8 @@ const discoverPlacesSchema: OpenAITool = {
     description:
       "Find concrete non-hotel/non-flight places in a destination for map-backed travel discovery: things to do, restaurants, cafes, bars/nightlife, museums, sights, parks, shopping, culture, and neighborhoods. " +
       "Use when: the user asks for concrete places to visit/eat/drink/explore, wants bars/restaurants/things to do, or asks to show/hydrate places on the map. " +
-      "Don't use for: flight or hotel searches, availability/pricing/quotes, generic conceptual destination questions without concrete place suggestions, or saving places into a planner.",
+      "Don't use for: flight or hotel searches, availability/pricing/quotes, generic conceptual destination questions without concrete place suggestions, or saving places into a planner. " +
+      "When destination_country/lat/lng are unknown, pass null — the server-side resolver will auto-fill them from prior discovery_candidates if the city matches.",
     strict: true,
     parameters: {
       type: "object",
