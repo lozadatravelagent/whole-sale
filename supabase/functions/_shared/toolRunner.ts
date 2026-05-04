@@ -466,6 +466,15 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
       const effectiveResponseFormat =
         forcedFunctionName !== null && iteration === 1 ? undefined : responseFormat;
 
+      // Diagnostic: confirm what's actually being applied to the wire request.
+      if (forcedFunctionName !== null) {
+        console.log(
+          `[CTX-TOOL] iter${iteration} effective: ` +
+          `tool_choice=${typeof effectiveToolChoice === 'string' ? effectiveToolChoice : JSON.stringify(effectiveToolChoice)} ` +
+          `response_format=${effectiveResponseFormat ? 'json_schema' : 'omitted'}`,
+        );
+      }
+
       let response: ChatCompletionResponse;
       try {
         response = await callOpenAi({
@@ -511,12 +520,16 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
 
       if (toolCalls.length === 0 || choice.finish_reason !== "tool_calls") {
         // Diagnostic: if a forced tool was expected but not called, surface
-        // the assistant content so we can see why the model bypassed the
-        // forced tool_choice (rare; usually a directive conflict).
+        // the assistant content + applied directives so we can see why the
+        // model bypassed the forced tool_choice.
         if (forcedFunctionName !== null && iteration === 1 && toolCalls.length === 0) {
+          const contentRaw = choice.message?.content ?? '';
           console.warn(
-            `[CTX-TOOL] forced tool_choice=${forcedFunctionName} but model returned text instead of tool_call. ` +
-            `finish_reason=${choice.finish_reason} content_len=${choice.message?.content?.length ?? 0}`,
+            `[CTX-TOOL] forced tool_choice=${forcedFunctionName} BYPASSED on iter1. ` +
+            `finish_reason=${choice.finish_reason} ` +
+            `effective_response_format=${effectiveResponseFormat ? 'json_schema' : 'omitted'} ` +
+            `content_len=${contentRaw.length} ` +
+            `content="${contentRaw.slice(0, 300).replace(/\n/g, '\\n')}"`,
           );
         }
         // Final answer — exit cleanly.
