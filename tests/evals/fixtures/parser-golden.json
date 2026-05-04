@@ -1,0 +1,323 @@
+[
+  {
+    "id": "flights-eze-mad-001",
+    "description": "Round trip flight Buenos Aires to Madrid, 2 adults, explicit dates",
+    "input": {
+      "message": "Quiero un vuelo de Buenos Aires a Madrid para 2 personas, del 15 al 22 de marzo",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "flights",
+      "confidence_min": 0.85,
+      "route": "QUOTE",
+      "flights": {
+        "origin": "Buenos Aires",
+        "destination": "Madrid",
+        "departureDate": "2026-03-15",
+        "returnDate": "2026-03-22",
+        "adults": 2,
+        "children": 0,
+        "infants": 0
+      }
+    }
+  },
+  {
+    "id": "flights-eze-mia-oneway-001",
+    "description": "One-way flight Buenos Aires to Miami, no return date",
+    "input": {
+      "message": "Necesito un vuelo de Buenos Aires a Miami el 10 de abril para 1 adulto",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "flights",
+      "confidence_min": 0.85,
+      "route": "QUOTE",
+      "flights": {
+        "origin": "Buenos Aires",
+        "destination": "Miami",
+        "departureDate": "2026-04-10",
+        "adults": 1,
+        "children": 0,
+        "infants": 0
+      }
+    }
+  },
+  {
+    "id": "flights-vague-dates-001",
+    "description": "Flight request with vague month reference only, no explicit day — routes to COLLECT (missing exact date drops score below QUOTE threshold)",
+    "input": {
+      "message": "Quiero volar de Córdoba a Cancún para julio",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "flights",
+      "confidence_min": 0.7,
+      "route": "COLLECT",
+      "flights": {
+        "origin": "Córdoba",
+        "destination": "Cancún",
+        "adults": 1,
+        "children": 0,
+        "infants": 0
+      }
+    }
+  },
+  {
+    "id": "flights-multi-city-001",
+    "description": "Multi-city flight: BUE→MAD then ROM→BUE (return from different city)",
+    "input": {
+      "message": "Quiero un vuelo desde Buenos Aires a Madrid el 2 de marzo con vuelta el 15 desde Roma hacia Buenos Aires",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "flights",
+      "confidence_min": 0.9,
+      "route": "QUOTE",
+      "flights": {
+        "origin": "Buenos Aires",
+        "destination": "Madrid",
+        "departureDate": "2026-03-02",
+        "adults": 1,
+        "children": 0,
+        "infants": 0
+      }
+    }
+  },
+  {
+    "id": "hotels-cancun-001",
+    "description": "Basic hotel request, city only, no room or meal preferences",
+    "input": {
+      "message": "quiero un hotel en Cancún del 5 al 12 de junio para 2 adultos",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "hotels",
+      "confidence_min": 0.85,
+      "route": "QUOTE",
+      "hotels": {
+        "city": "Cancún",
+        "checkinDate": "2026-06-05",
+        "checkoutDate": "2026-06-12",
+        "adults": 2,
+        "children": 0
+      }
+    }
+  },
+  {
+    "id": "hotels-double-allinc-001",
+    "description": "Hotel with explicit double room and all-inclusive meal plan",
+    "input": {
+      "message": "habitación doble all inclusive en Cancún del 1 al 8 de julio",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "hotels",
+      "confidence_min": 0.9,
+      "route": "QUOTE",
+      "hotels": {
+        "city": "Cancún",
+        "checkinDate": "2026-07-01",
+        "checkoutDate": "2026-07-08",
+        "adults": 2,
+        "children": 0
+      }
+    }
+  },
+  {
+    "id": "hotels-chain-riu-001",
+    "description": "Hotel with chain specified (Riu), double room, all inclusive",
+    "input": {
+      "message": "quiero un hotel de la cadena Riu all inclusive habitacion doble en Punta Cana del 10 al 17 de agosto",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "hotels",
+      "confidence_min": 0.9,
+      "route": "QUOTE",
+      "hotels": {
+        "city": "Punta Cana",
+        "checkinDate": "2026-08-10",
+        "checkoutDate": "2026-08-17",
+        "adults": 2,
+        "children": 0
+      }
+    }
+  },
+  {
+    "id": "itinerary-roma-5d-001",
+    "description": "Single-city itinerary request: 5 days in Rome",
+    "input": {
+      "message": "Armame un itinerario de 5 días para Roma",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "confidence_min": 0.9,
+      "route": "PLAN",
+      "itinerary": {
+        "destinations": ["Roma"],
+        "days": 5
+      }
+    }
+  },
+  {
+    "id": "itinerary-multi-001",
+    "description": "Multi-city itinerary: Italy and France, 10 days",
+    "input": {
+      "message": "Plan de viaje de 10 días por Italia y Francia",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "confidence_min": 0.9,
+      "route": "PLAN",
+      "itinerary": {
+        "destinations": ["Italia", "Francia"],
+        "days": 10
+      }
+    }
+  },
+  {
+    "id": "itinerary-rich-001",
+    "description": "Rich itinerary request with budget, interests and pace",
+    "input": {
+      "message": "Plan 10 days through Madrid, Paris, and Rome in May with a mid-range budget, museums, food, and a relaxed pace",
+      "language": "en"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "confidence_min": 0.9,
+      "route": "PLAN",
+      "itinerary": {
+        "destinations": ["Madrid", "Paris", "Rome"],
+        "days": 10
+      }
+    }
+  },
+  {
+    "id": "ambiguous-quiero-viajar-001",
+    "description": "Extremely vague message with no destination, dates or origin — triggers missing_info_request; router scores below 0.40 so routes to PLAN (low_definition)",
+    "input": {
+      "message": "Quiero viajar",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "missing_info_request",
+      "confidence_min": 0.2,
+      "route": "PLAN"
+    }
+  },
+  {
+    "id": "ambiguous-missing-dest-001",
+    "description": "Itinerary request with days but no destination — parser asks for destination",
+    "input": {
+      "message": "Armame un plan de viaje de 7 días",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "confidence_min": 0.6,
+      "route": "PLAN",
+      "itinerary": {
+        "days": 7
+      }
+    }
+  },
+  {
+    "id": "discovery-roma-food-001",
+    "description": "Place discovery intent: food/restaurants in Rome",
+    "input": {
+      "message": "dónde comer bien en Roma",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "confidence_min": 0.8,
+      "route": "PLAN"
+    }
+  },
+  {
+    "id": "discovery-barcelona-001",
+    "description": "Discovery intent: what to do / see in Barcelona",
+    "input": {
+      "message": "qué hacer en Barcelona durante una semana",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "confidence_min": 0.85,
+      "route": "PLAN",
+      "itinerary": {
+        "destinations": ["Barcelona"],
+        "days": 7
+      }
+    }
+  },
+  {
+    "id": "combined-bue-cancun-001",
+    "description": "Combined flight + hotel request, same dates, 2 adults, double room",
+    "input": {
+      "message": "quiero un vuelo desde buenos aires a cancun para dos personas desde el 5 de enero al 15 de enero tambien quiero un hotel habitacion doble para ambas fechas",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "combined",
+      "confidence_min": 0.9,
+      "route": "QUOTE",
+      "flights": {
+        "origin": "Buenos Aires",
+        "destination": "Cancún",
+        "departureDate": "2026-01-05",
+        "returnDate": "2026-01-15",
+        "adults": 2,
+        "children": 0,
+        "infants": 0
+      },
+      "hotels": {
+        "city": "Cancún",
+        "checkinDate": "2026-01-05",
+        "checkoutDate": "2026-01-15",
+        "adults": 2,
+        "children": 0
+      }
+    }
+  },
+  {
+    "id": "route-quote-001",
+    "description": "Explicit quote intent with complete city-level destination triggers QUOTE route",
+    "input": {
+      "message": "cotizame un vuelo de Buenos Aires a Madrid el 5 de junio para 2 adultos",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "flights",
+      "confidence_min": 0.85,
+      "route": "QUOTE",
+      "flights": {
+        "origin": "Buenos Aires",
+        "destination": "Madrid",
+        "departureDate": "2026-06-05",
+        "adults": 2,
+        "children": 0,
+        "infants": 0
+      }
+    }
+  },
+  {
+    "id": "route-plan-001",
+    "description": "Planning language ('armame un itinerario') always routes to PLAN regardless of score",
+    "input": {
+      "message": "armame un itinerario de 14 días por España",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "confidence_min": 0.85,
+      "route": "PLAN",
+      "itinerary": {
+        "destinations": ["España"],
+        "days": 14
+      }
+    }
+  }
+]
