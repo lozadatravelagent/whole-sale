@@ -136,7 +136,30 @@ export interface ParseMessageKnowledge {
    * (backward-compatible with old clients / tests that don't send it).
    */
   emiliaState?: EmiliaState;
+  /**
+   * Per-turn `tool_choice` directive forwarded to OpenAI. Computed by
+   * `resolveToolChoice` in `services/toolChoicePolicy.ts` based on planner
+   * state, pending action, and discovery guard. When omitted, the edge
+   * function defaults to `"auto"` (current behavior).
+   */
+  toolChoice?: ToolChoice;
 }
+
+/**
+ * OpenAI `tool_choice` directive. Mirrors the `RunToolLoopArgs.toolChoice`
+ * type in `supabase/functions/_shared/toolRunner.ts` (intentional duplication
+ * — Deno and the Vite bundler resolve different module trees).
+ */
+export type ToolChoice =
+  | 'auto'
+  | 'required'
+  | 'none'
+  | { type: 'function'; name: string }
+  | {
+      type: 'allowed_tools';
+      mode: 'auto' | 'required';
+      tools: Array<{ type: 'function'; name: string }>;
+    };
 
 export interface LlmUsage {
   provider: string;

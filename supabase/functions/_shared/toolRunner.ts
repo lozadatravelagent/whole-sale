@@ -108,6 +108,30 @@ export interface RunToolLoopArgs {
    * and are unaffected by `response_format`.
    */
   responseFormat?: Record<string, unknown>;
+  /**
+   * Optional OpenAI `tool_choice` directive. Defaults to `"auto"` when
+   * omitted. Accepts:
+   *   - `"auto"` — model decides (current behavior)
+   *   - `"required"` — force at least one tool call
+   *   - `"none"` — disable tool calls
+   *   - `{ type: "function", name: "..." }` — force a specific function
+   *   - `{ type: "allowed_tools", mode: "auto"|"required", tools: [...] }`
+   *     — restrict the choosable subset while keeping the FULL `tools` array
+   *     (preserves prompt cache + reduces model confusion).
+   *
+   * Only applied to in-loop iterations. The forced final-answer call sends
+   * `tools: []` so OpenAI rejects `tool_choice` there — we omit it.
+   */
+  toolChoice?:
+    | "auto"
+    | "required"
+    | "none"
+    | { type: "function"; name: string }
+    | {
+        type: "allowed_tools";
+        mode: "auto" | "required";
+        tools: Array<{ type: "function"; name: string }>;
+      };
 }
 
 export interface RunToolLoopResult {
@@ -151,6 +175,7 @@ interface CallOpenAiArgs {
   fetchImpl: typeof fetch;
   signal: AbortSignal;
   responseFormat?: Record<string, unknown>;
+  toolChoice?: RunToolLoopArgs["toolChoice"];
 }
 
 async function callOpenAi(args: CallOpenAiArgs): Promise<ChatCompletionResponse> {
@@ -158,7 +183,7 @@ async function callOpenAi(args: CallOpenAiArgs): Promise<ChatCompletionResponse>
     model: args.model,
     messages: args.messages,
     tools: args.tools,
-    tool_choice: "auto",
+    tool_choice: args.toolChoice ?? "auto",
     parallel_tool_calls: args.parallelToolCalls,
   };
 
@@ -370,6 +395,7 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
     fetchImpl = fetch,
     onProgress,
     responseFormat,
+    toolChoice,
   } = args;
 
   const messages: ChatMessage[] = [
@@ -404,6 +430,7 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
           fetchImpl,
           signal: loopController.signal,
           responseFormat,
+          toolChoice,
         });
       } catch (err) {
         if ((err as { name?: string })?.name === "AbortError") {

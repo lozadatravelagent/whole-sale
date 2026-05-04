@@ -14,6 +14,7 @@ import { buildConversationalMissingInfoMessage, buildModeBridgeMessage, buildPla
 import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
 import { isDiscoveryQuery, extractCategoriesFromMessage, extractDestinationFromMessage } from '@/features/chat/services/discoveryIntentGuard';
+import { resolveToolChoice } from '@/features/chat/services/toolChoicePolicy';
 import type { MessageRow } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { PlannerEditContext, PreloadedConversationKnowledge } from '../types/knowledge';
@@ -787,6 +788,19 @@ const useMessageHandler = (
       const plannerEditContext = buildPlannerEditContext(plannerState as TripPlannerState | null);
       const userLanguageRaw = (i18n.language || 'es').split('-')[0];
       const userLanguage: 'es' | 'en' | 'pt' = userLanguageRaw === 'en' || userLanguageRaw === 'pt' ? userLanguageRaw : 'es';
+      // Pre-parse: compute the discovery guard + tool_choice policy. The
+      // guard is a pure function over `currentMessage`; we hoist it here so
+      // the resulting tool_choice can be forwarded to the edge function.
+      // The same `discoveryGuard` is reused after the parser response for
+      // the safety-net branch (lines below the parser call).
+      const preParseDiscoveryGuard = isDiscoveryQuery(currentMessage);
+      const hasActivePlannerForToolChoice = Boolean(plannerEditContext?.hasActivePlan && plannerState);
+      const toolChoiceForTurn = resolveToolChoice({
+        hasActivePlanner: hasActivePlannerForToolChoice,
+        hasPendingAction: Boolean(ctxEngState?.pending_action),
+        discoveryGuard: preParseDiscoveryGuard,
+      });
+
       let parsedRequest = await parseMessageWithAIStreaming(
         currentMessage,
         {
@@ -800,6 +814,9 @@ const useMessageHandler = (
           // Pass the freshly-saved state so the edge function can skip its own
           // SELECT on agent_states (~30–50 ms saved per turn).
           ...(ctxEngState ? { emiliaState: ctxEngState } : {}),
+          // Per-turn tool_choice: restricts the model to relevant tools or
+          // forces discover_places when the guard is high-confidence.
+          toolChoice: toolChoiceForTurn,
         },
         userLanguage,
         ({ type, tool }) => {
@@ -845,7 +862,8 @@ const useMessageHandler = (
 
       const effectiveMode = resolveEffectiveMode(options?.mode, chatMode);
       const hasActivePlanner = Boolean(plannerEditContext?.hasActivePlan && plannerState);
-      const discoveryGuard = isDiscoveryQuery(currentMessage);
+      // Reuse the guard computed pre-parse (same input, pure function).
+      const discoveryGuard = preParseDiscoveryGuard;
       const shouldTreatAsPlannerEdit = hasActivePlanner
         && !isExplicitPlannerRestart(currentMessage)
         && !discoveryGuard.isDiscovery

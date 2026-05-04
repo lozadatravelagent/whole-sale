@@ -1894,6 +1894,8 @@ export async function parseMessageWithAI(
                 // Latency optimisation: forward the already-saved EmiliaState so
                 // the edge function can skip its own SELECT on agent_states.
                 ...(knowledge?.emiliaState ? { emiliaState: knowledge.emiliaState } : {}),
+                // Per-turn tool_choice directive (allowed_tools subset / forced fn).
+                ...(knowledge?.toolChoice ? { toolChoice: knowledge.toolChoice } : {}),
             }
         });
         logTimingStep('AI PARSER', 'invoke ai-message-parser', invokeStart, {
@@ -2077,6 +2079,7 @@ export async function parseMessageWithAIStreaming(
         contextMeta: knowledge?.contextMeta ?? null,
         ...(knowledge?.memoryStateBlock ? { memoryStateBlock: knowledge.memoryStateBlock } : {}),
         ...(knowledge?.emiliaState ? { emiliaState: knowledge.emiliaState } : {}),
+        ...(knowledge?.toolChoice ? { toolChoice: knowledge.toolChoice } : {}),
     };
 
     const response = await fetch(url, {

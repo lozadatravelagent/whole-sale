@@ -13,9 +13,11 @@ import {
 } from "../_shared/countryCapitalResolver.ts";
 import { corsHeaders } from '../_shared/cors.ts';
 import {
+  type DiscoverPlacesArgs,
   extractDiscoveryCandidates,
   getRetrievalToolHandlers,
   getRetrievalToolSchemas,
+  resolveKnownDiscoveryArgs,
   type ToolContext,
 } from "../_shared/functionTools.ts";
 import { runToolLoop } from "../_shared/toolRunner.ts";
@@ -252,6 +254,7 @@ serve(async (req) => {
           historyWindow = 15,
           contextMeta = null,
           memoryStateBlock = null,
+          toolChoice = null,
           emiliaState: clientEmiliaState = null,
         } = requestBody;
 
@@ -510,7 +513,14 @@ serve(async (req) => {
           let discoveryCandidatesWritten = 0;
           const baseDiscoverPlacesHandler = getRetrievalToolHandlers().discover_places;
           const discoverPlacesHandlerWithPersist = async (args: unknown) => {
-            const result = await baseDiscoverPlacesHandler(args, ctx);
+            // Pre-resolve known args (lat/lng) from prior discovery_candidates.
+            // Per OpenAI's "Don't make the model fill arguments you already
+            // know" guidance — reduces hallucinated coordinates.
+            const resolvedArgs = resolveKnownDiscoveryArgs(
+              args as DiscoverPlacesArgs,
+              stateForTools,
+            );
+            const result = await baseDiscoverPlacesHandler(resolvedArgs, ctx);
             if (stateForTools) {
               const candidates = extractDiscoveryCandidates(result);
               if (candidates && candidates.length > 0) {
@@ -571,6 +581,9 @@ serve(async (req) => {
               // ParsedTravelRequest JSON schema. tool_call arguments are
               // unaffected — they carry their own per-tool schema.
               responseFormat: buildResponseFormat(),
+              // Per-turn tool_choice from the client (allowed_tools subset
+              // or forced function). Defaults to "auto" when omitted.
+              ...(toolChoice ? { toolChoice } : {}),
               ...(progressWriter
                 ? {
                     onProgress: ({ type, tool, iteration, ok }) => {
