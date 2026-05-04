@@ -102,6 +102,11 @@ export type TelemetryEvent =
 // Emitter
 // -----------------------------------------------------------------------------
 
+// Token budget alert threshold. Above this, we emit a CTX-TOKEN-BUDGET warning
+// so log analysis / alerts can flag regressions. Picked at ~2x steady-state
+// (~4500 tokens) so it triggers on real bloat, not noise.
+const PROMPT_TOKEN_BUDGET_WARN_THRESHOLD = 8000;
+
 /**
  * Emit a structured telemetry event.
  *
@@ -113,6 +118,11 @@ export type TelemetryEvent =
  * The category prefix is preserved as the FIRST argument to `console.log`
  * so that existing log-grep workflows (`grep '[CTX-TOOL]'`) keep working
  * during the transition.
+ *
+ * For CTX-TOOL events, additionally emits a CTX-TOKEN-BUDGET warning on
+ * `console.warn` when `prompt_tokens` exceeds
+ * `PROMPT_TOKEN_BUDGET_WARN_THRESHOLD`. This is additive — the original
+ * CTX-TOOL log line is unchanged.
  */
 export function emitTelemetry(event: TelemetryEvent): void {
   // Defensive copy so callers can mutate the input later without affecting
@@ -120,6 +130,24 @@ export function emitTelemetry(event: TelemetryEvent): void {
   const payload = { ...event };
   // Keep the bracketed category prefix outside the JSON for grepability.
   console.log(`[${event.category}]`, JSON.stringify(payload));
+
+  // CTX-TOOL only: surface a distinct warning when a single turn's prompt
+  // budget blows past the threshold so log-based alerting can flag it.
+  if (
+    event.category === 'CTX-TOOL' &&
+    typeof event.prompt_tokens === 'number' &&
+    event.prompt_tokens > PROMPT_TOKEN_BUDGET_WARN_THRESHOLD
+  ) {
+    console.warn(`[CTX-TOKEN-BUDGET] ${JSON.stringify({
+      conversation_id: event.conversation_id,
+      agency_id: event.agency_id,
+      prompt_tokens: event.prompt_tokens,
+      threshold: PROMPT_TOKEN_BUDGET_WARN_THRESHOLD,
+      iterations: event.iterations,
+      tools_called: event.tools_called,
+      cached_tokens: event.cached_tokens,
+    })}`);
+  }
 }
 
 // -----------------------------------------------------------------------------

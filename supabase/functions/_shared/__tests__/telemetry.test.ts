@@ -180,3 +180,131 @@ describe('emitTelemetry', () => {
     expect(JSON.stringify(event)).toBe(snapshot);
   });
 });
+
+// ---------------------------------------------------------------------------
+// emitTelemetry — CTX-TOKEN-BUDGET threshold warning
+// ---------------------------------------------------------------------------
+
+describe('emitTelemetry — CTX-TOKEN-BUDGET threshold', () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it('does NOT emit CTX-TOKEN-BUDGET when prompt_tokens is below threshold', () => {
+    const event: CtxToolEvent = {
+      category: 'CTX-TOOL',
+      conversation_id: 'conv-1',
+      agency_id: 'ag-1',
+      iterations: 2,
+      tools_called: ['get_planner_state'],
+      errors_count: 0,
+      hit_cap: false,
+      hit_timeout: false,
+      prompt_tokens: 4500, // typical steady-state, well below 8000
+      completion_tokens: 380,
+      cached_tokens: 3000,
+      redundant_calls: 0,
+    };
+
+    emitTelemetry(event);
+
+    // CTX-TOOL itself still fires
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy.mock.calls[0][0]).toBe('[CTX-TOOL]');
+    // No warning
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('does NOT emit CTX-TOKEN-BUDGET at exactly the threshold (boundary)', () => {
+    const event: CtxToolEvent = {
+      category: 'CTX-TOOL',
+      conversation_id: 'conv-1',
+      agency_id: 'ag-1',
+      iterations: 1,
+      tools_called: [],
+      errors_count: 0,
+      hit_cap: false,
+      hit_timeout: false,
+      prompt_tokens: 8000, // exactly threshold — strictly greater required
+      completion_tokens: 100,
+      cached_tokens: 0,
+      redundant_calls: 0,
+    };
+
+    emitTelemetry(event);
+
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('emits CTX-TOKEN-BUDGET warning when prompt_tokens exceeds threshold', () => {
+    const event: CtxToolEvent = {
+      category: 'CTX-TOOL',
+      conversation_id: 'conv-bloat',
+      agency_id: 'ag-7',
+      iterations: 4,
+      tools_called: ['get_planner_state', 'discover_places', 'get_quote'],
+      errors_count: 0,
+      hit_cap: false,
+      hit_timeout: false,
+      prompt_tokens: 12500, // bloat — above 8000
+      completion_tokens: 600,
+      cached_tokens: 4000,
+      redundant_calls: 0,
+    };
+
+    emitTelemetry(event);
+
+    // CTX-TOOL still emits, unchanged shape
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy.mock.calls[0][0]).toBe('[CTX-TOOL]');
+    expect(JSON.parse(logSpy.mock.calls[0][1] as string)).toEqual(event);
+
+    // Warning fires exactly once
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const warnArg = warnSpy.mock.calls[0][0] as string;
+    expect(warnArg).toMatch(/^\[CTX-TOKEN-BUDGET\] /);
+
+    // Parse the JSON body that follows the prefix
+    const jsonBody = warnArg.slice('[CTX-TOKEN-BUDGET] '.length);
+    const parsed = JSON.parse(jsonBody);
+    expect(parsed).toEqual({
+      conversation_id: 'conv-bloat',
+      agency_id: 'ag-7',
+      prompt_tokens: 12500,
+      threshold: 8000,
+      iterations: 4,
+      tools_called: ['get_planner_state', 'discover_places', 'get_quote'],
+      cached_tokens: 4000,
+    });
+  });
+
+  it('does NOT emit CTX-TOKEN-BUDGET for non-CTX-TOOL events even with high token-like fields', () => {
+    // CTX-STATE has profile_tokens (similar field name), but the threshold
+    // check must be CTX-TOOL only.
+    const event: CtxStateEvent = {
+      category: 'CTX-STATE',
+      conversation_id: 'conv-1',
+      agency_id: 'ag-1',
+      turn_count: 3,
+      profile_tokens: 99999, // huge but irrelevant — different field, different event
+      global_notes_count: 4,
+      session_notes_count: 1,
+      active_refs_count: 2,
+      mode: 'agency',
+    };
+
+    emitTelemetry(event);
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
