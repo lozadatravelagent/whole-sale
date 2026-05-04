@@ -154,3 +154,62 @@ describe('extractDestinationFromMessage', () => {
     expect(dest.city).toBeNull();
   });
 });
+
+describe('extended patterns — verb-question + bare-browse', () => {
+  // VERB_QUESTION
+  it('detects "qué comer en X"', () => {
+    const r = isDiscoveryQuery('qué comer en Roma');
+    expect(r.isDiscovery).toBe(true);
+    expect(r.reason).toBe('pattern_match');
+  });
+
+  it('detects "qué hacer en X"', () => {
+    expect(isDiscoveryQuery('qué hacer en Madrid').isDiscovery).toBe(true);
+  });
+
+  it('detects "qué visitar en X"', () => {
+    expect(isDiscoveryQuery('qué visitar en París').isDiscovery).toBe(true);
+  });
+
+  it('detects "qué ver en X"', () => {
+    expect(isDiscoveryQuery('qué ver en Lisboa').isDiscovery).toBe(true);
+  });
+
+  // BARE_BROWSE_LOCATION
+  it('detects "restaurantes en X"', () => {
+    const r = isDiscoveryQuery('restaurantes en Roma');
+    expect(r.isDiscovery).toBe(true);
+    expect(r.reason).toBe('pattern_match');
+  });
+
+  it('detects "actividades en X"', () => {
+    expect(isDiscoveryQuery('actividades en Madrid').isDiscovery).toBe(true);
+  });
+
+  it('detects "bares cerca de X"', () => {
+    expect(isDiscoveryQuery('bares cerca de Plaza Mayor').isDiscovery).toBe(true);
+  });
+
+  it('detects "cosas para hacer en X"', () => {
+    expect(isDiscoveryQuery('cosas para hacer en Lisboa').isDiscovery).toBe(true);
+  });
+
+  // Anti-patterns still win
+  it('does NOT trigger when duration is present (itinerary intent)', () => {
+    const r = isDiscoveryQuery('5 días en Roma con restaurantes');
+    expect(r.isDiscovery).toBe(false);
+    expect(r.reason).toBe('duration_present');
+  });
+
+  it('does NOT trigger on mutation verb + category', () => {
+    const r = isDiscoveryQuery('agregá restaurantes al día 2');
+    expect(r.isDiscovery).toBe(false);
+    expect(r.reason).toBe('mutation_verb');
+  });
+
+  it('does NOT trigger on plan verb + category', () => {
+    const r = isDiscoveryQuery('armame un plan con restaurantes en Roma');
+    expect(r.isDiscovery).toBe(false);
+    expect(r.reason).toBe('plan_verb_present');
+  });
+});

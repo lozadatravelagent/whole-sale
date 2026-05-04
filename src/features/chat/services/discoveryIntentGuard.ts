@@ -41,6 +41,28 @@ const VIBE_BROWSE = new RegExp(
   'i',
 );
 
+// Verb-form question: "qué [comer|cenar|almorzar|ver|hacer|visitar|tomar|conocer]"
+// Catches "qué comer en Roma", "qué hacer en Madrid", "qué visitar en París".
+// Conscious tradeoff: "qué comer" is technically ambiguous (could be conceptual
+// "what dishes to eat" vs locational "where to eat"). We bias toward locational
+// because in the travel-CRM context the user almost always wants places to map.
+const VERB_QUESTION = new RegExp(
+  `${LB}(qu[eé])\\s+(comer|cenar|almorzar|desayunar|ver|hacer|visitar|tomar|conocer)${LE}`,
+  'i',
+);
+
+// Bare-noun browse with explicit location: "restaurantes en Roma",
+// "actividades en Madrid", "bares cerca de Plaza Mayor". The location
+// preposition + non-empty token afterward distinguishes a browse query from
+// passing conversational mentions like "los restaurantes son caros". False
+// positives still possible (e.g. "el restaurante de Calle X estaba lleno");
+// mitigated by the safety-net's graceful degradation (empty places + UI hint
+// to refine).
+const BARE_BROWSE_LOCATION = new RegExp(
+  `${LB}(restaurantes?|museos?|bares?|caf[eé]s?|sitios?|lugares?|actividades?|cosas\\s+(?:para|que)\\s+(?:hacer|ver)|atracciones?|monumentos?|parques?|teatros?|galer[ií]as?|things\\s+to\\s+do|places\\s+to\\s+(?:visit|eat|drink))\\s+(en|in|de|cerca\\s+de|para|near)\\s+\\S+`,
+  'i',
+);
+
 const DURATION_SIGNAL = new RegExp(
   `${LB}(\\d+\\s*(?:d[ií]as?|noches?|semanas?|days?|nights?|weeks?)|fin\\s+de\\s+semana|una?\\s+semana|dos\\s+semanas)${LE}`,
   'i',
@@ -78,6 +100,14 @@ export function isDiscoveryQuery(message: string): DiscoveryGuardResult {
 
   // Positive: vibe-based browsing always wins.
   if (VIBE_BROWSE.test(m)) return { isDiscovery: true, reason: 'vibe_browse' };
+
+  // Positive (extended): high-confidence structural patterns.
+  //   VERB_QUESTION         — "qué comer/hacer/ver/visitar en X"
+  //   BARE_BROWSE_LOCATION  — "[CATEGORY] en/cerca de [LOCATION]"
+  // Both treated as `pattern_match` so toolChoicePolicy forces discover_places.
+  if (VERB_QUESTION.test(m) || BARE_BROWSE_LOCATION.test(m)) {
+    return { isDiscovery: true, reason: 'pattern_match' };
+  }
 
   // Positive: structural pattern (interrogative/browse + category noun).
   const hasInterrogativeOrBrowse = INTERROGATIVE.test(m) || BROWSE_VERB.test(m);

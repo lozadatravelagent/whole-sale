@@ -373,5 +373,41 @@
       "days": 7,
       "shouldNotHavePlaceDiscovery": true
     }
+  },
+  {
+    "id": "discovery-bare-restaurants-roma",
+    "description": "Bare-noun browse — must trigger discovery without question form",
+    "input": {
+      "message": "Restaurantes en Roma",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "shouldHavePlaceDiscovery": true
+    }
+  },
+  {
+    "id": "discovery-verb-question-comer",
+    "description": "Verb-form question — biased to locational discovery in travel context",
+    "input": {
+      "message": "Qué comer en Madrid",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "shouldHavePlaceDiscovery": true
+    }
+  },
+  {
+    "id": "discovery-cosas-para-hacer-bare",
+    "description": "Bare-noun activity browse with location",
+    "input": {
+      "message": "Cosas para hacer en Lisboa",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "shouldHavePlaceDiscovery": true
+    }
   }
 ]
