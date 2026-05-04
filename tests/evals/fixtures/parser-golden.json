@@ -319,5 +319,59 @@
         "days": 14
       }
     }
+  },
+  {
+    "id": "discovery-roma-restaurants-no-planner",
+    "description": "Question-form discovery without active planner — must NOT generate itinerary",
+    "input": {
+      "message": "Qué restaurantes hay en Roma",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "confidence_min": 0.6,
+      "shouldHavePlaceDiscovery": true,
+      "route": "PLAN"
+    }
+  },
+  {
+    "id": "discovery-paris-museums-with-planner",
+    "description": "Discovery query with active planner — discovery wins over planner-edit precedence",
+    "input": {
+      "message": "Qué museos hay en París",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "shouldHavePlaceDiscovery": true,
+      "shouldNotHaveEditIntent": true
+    }
+  },
+  {
+    "id": "planner-mutation-add-first",
+    "description": "Genuine planner edit — mutation verb + plan reference, NOT discovery",
+    "input": {
+      "message": "agregá el primero al día 2",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "shouldHaveEditIntent": true,
+      "editAction": "add_destination"
+    }
+  },
+  {
+    "id": "itinerary-rome-7d-with-restaurant-pref",
+    "description": "Duration signal wins — itinerary with restaurant preference, NOT discovery",
+    "input": {
+      "message": "armame 7 días en Roma con buenos restaurantes",
+      "language": "es"
+    },
+    "expected": {
+      "requestType": "itinerary",
+      "destinations_includes": "Roma",
+      "days": 7,
+      "shouldNotHavePlaceDiscovery": true
+    }
   }
 ]

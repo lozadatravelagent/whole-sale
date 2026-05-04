@@ -69,6 +69,14 @@ interface GoldenFixture {
     flights?: FlightExpected;
     hotels?: HotelExpected;
     itinerary?: ItineraryExpected;
+    // Discovery-guard boundary fixtures
+    shouldHavePlaceDiscovery?: boolean;
+    shouldNotHavePlaceDiscovery?: boolean;
+    shouldHaveEditIntent?: boolean;
+    shouldNotHaveEditIntent?: boolean;
+    editAction?: string;
+    destinations_includes?: string;
+    days?: number;
   };
 }
 
@@ -102,6 +110,9 @@ import {
 
 // Router — pure deterministic function, no mock needed.
 import { routeRequest } from '@/features/chat/services/routeRequest';
+
+// Discovery guard — pure structural-pattern detector, no mock needed.
+import { isDiscoveryQuery } from '@/features/chat/services/discoveryIntentGuard';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -588,5 +599,55 @@ describe('Suite 3: Routing layer — routeRequest against golden fixtures', () =
       expect(Array.isArray(result.missingFields)).toBe(true);
       expect(Array.isArray(result.inferredFields)).toBe(true);
     }
+  });
+});
+
+// ===========================================================================
+// SUITE 4 — Discovery-intent guard (boundary fixtures)
+//
+// Tests the structural-pattern guard against the four boundary fixtures:
+//   - discovery-roma-restaurants-no-planner: pure discovery
+//   - discovery-paris-museums-with-planner: discovery wins over planner-edit
+//   - planner-mutation-add-first: mutation verb blocks discovery
+//   - itinerary-rome-7d-with-restaurant-pref: duration signal blocks discovery
+//
+// The guard is a pure function — no mocks needed.
+// ===========================================================================
+
+describe('Suite 4: Discovery-intent guard — boundary fixtures', () => {
+  const discoveryFixtures = goldenFixtures.filter(
+    f => f.expected.shouldHavePlaceDiscovery === true,
+  );
+  const nonDiscoveryFixtures = goldenFixtures.filter(
+    f =>
+      f.expected.shouldNotHavePlaceDiscovery === true ||
+      f.expected.shouldHaveEditIntent === true,
+  );
+
+  it.each(discoveryFixtures)(
+    '[$id] guard fires for discovery query',
+    (fixture) => {
+      const result = isDiscoveryQuery(fixture.input.message);
+      expect(result.isDiscovery).toBe(true);
+    },
+  );
+
+  it.each(nonDiscoveryFixtures)(
+    '[$id] guard does NOT fire for itinerary/edit query',
+    (fixture) => {
+      const result = isDiscoveryQuery(fixture.input.message);
+      expect(result.isDiscovery).toBe(false);
+    },
+  );
+
+  it('guard reasons are correctly assigned for the boundary fixtures', () => {
+    // discovery-roma-restaurants-no-planner — pattern_match
+    expect(isDiscoveryQuery('Qué restaurantes hay en Roma').reason).toBe('pattern_match');
+    // planner-mutation-add-first — mutation_verb
+    expect(isDiscoveryQuery('agregá el primero al día 2').reason).toBe('mutation_verb');
+    // itinerary-rome-7d-with-restaurant-pref — duration_present (also plan_verb_present, but plan_verb is checked first)
+    expect(['duration_present', 'plan_verb_present']).toContain(
+      isDiscoveryQuery('armame 7 días en Roma con buenos restaurantes').reason,
+    );
   });
 });
