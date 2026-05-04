@@ -114,7 +114,7 @@ export default function UnifiedLayout({
       >
         <div className="flex min-w-0 items-center gap-2 justify-self-start">
           <Link to="/emilia/chat" aria-label={t('nav.home')} className="inline-flex items-center gap-2 transition-opacity duration-300 ease-out-expo hover:opacity-80">
-            <OrbitMark size={28} />
+            <OrbitMark size={36} />
           </Link>
         </div>
 

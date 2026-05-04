@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import UnifiedLayout from '@/components/layouts/UnifiedLayout';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMessages, useConversationSearch } from '@/hooks/useChat';
 import { updateLeadWithPdfData, diagnoseCRMIntegration, createComprehensiveLeadFromChat } from '@/utils/chatToLead';
@@ -830,18 +831,23 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     />
   ) : undefined;
 
-  const consumerHeaderActions = selectedConversation ? (
-    <ChatWorkspaceHeaderActions
-      accountType="consumer"
-      selectedConversation={selectedConversation}
-      messagesCount={conversationScopedMessages.length}
-      plannerState={planner.plannerState}
-      isAddingToCRM={isAddingToCRM}
-      onAddToCRM={handleAddToCRM}
-      onRequestChanges={handleRequestItineraryChanges}
-      onExportPdf={handleExportItineraryPdf}
-    />
-  ) : undefined;
+  const consumerHeaderActions = (
+    <>
+      {selectedConversation && (
+        <ChatWorkspaceHeaderActions
+          accountType="consumer"
+          selectedConversation={selectedConversation}
+          messagesCount={conversationScopedMessages.length}
+          plannerState={planner.plannerState}
+          isAddingToCRM={isAddingToCRM}
+          onAddToCRM={handleAddToCRM}
+          onRequestChanges={handleRequestItineraryChanges}
+          onExportPdf={handleExportItineraryPdf}
+        />
+      )}
+      <ThemeToggle variant="compact" />
+    </>
+  );
 
   if (mode === 'companion') {
     return (
