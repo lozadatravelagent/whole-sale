@@ -1,8 +1,7 @@
 import React, { useMemo, Suspense, lazy, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { CircleUser, Sparkle, FileText, ArrowDownToLine, Clock, Check, CheckCheck, Loader2, Wand2 } from 'lucide-react';
+import { CircleUser, Sparkle, FileText, ArrowDownToLine, Clock, Check, CheckCheck, Loader2 } from 'lucide-react';
 
 // Lazy load heavy components
 const ReactMarkdown = lazy(() => import('react-markdown'));
@@ -13,9 +12,7 @@ import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData a
 import { getMessageContent, getMessageStatusIconType, formatTime } from '../utils/messageHelpers';
 import { getCityNameFromCode } from '../utils/flightHelpers';
 import { useChatDataTranslations } from '../hooks/useChatDataTranslations';
-import type { TripPlannerState } from '@/features/trip-planner/types';
 import type { PlannerEditorialData } from '@/features/trip-planner/editorial';
-import { formatBudgetLevel, formatDateRange, formatDestinationLabel, formatFlexibleMonth, formatPaceLabel } from '@/features/trip-planner/utils';
 import { resolveRenderPolicy } from '../services/itineraryPipeline';
 import { PlannerEditorialBlock } from './PlannerEditorialBlock';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
@@ -29,7 +26,6 @@ interface LazySelectorErrorBoundaryState {
 }
 
 interface MessageMetaWithPlanner {
-  plannerData?: TripPlannerState;
   editorial?: PlannerEditorialData | null;
   conversationTurn?: {
     responseMode?: string;
@@ -99,7 +95,7 @@ const MarkdownContent = ({ content }: { content: string }) => {
 };
 
 // Memoized message component to prevent unnecessary re-renders
-const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector, onGoToPlanner }: MessageItemProps) => {
+const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector }: MessageItemProps) => {
   const { t } = useTranslation('chat');
   const { translateRoomDescription } = useChatDataTranslations();
   const messageText = getMessageContent(msg);
@@ -158,9 +154,6 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
     combinedTravelData = (msg.meta as unknown as { combinedData: LocalCombinedTravelResults }).combinedData;
   }
 
-  const plannerData = typeof msg.meta === 'object' && msg.meta && 'plannerData' in msg.meta
-    ? (msg.meta as MessageMetaWithPlanner).plannerData
-    : null;
   const editorialData = typeof msg.meta === 'object' && msg.meta && 'editorial' in msg.meta
     ? (msg.meta as MessageMetaWithPlanner).editorial
     : null;
@@ -168,7 +161,6 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
     ? ((msg.meta as MessageMetaWithPlanner).conversationTurn?.responseMode || (msg.meta as MessageMetaWithPlanner).responseMode)
     : undefined;
   const msgRenderPolicy = resolveRenderPolicy(responseMode);
-  const plannerSegments = Array.isArray(plannerData?.segments) ? plannerData.segments : [];
   const plannerDateSelectorRequest = typeof msg.meta === 'object' && msg.meta && (msg.meta as MessageMetaWithPlanner).plannerPromptAction === 'open_date_selector'
     ? (msg.meta as MessageMetaWithPlanner).originalRequest
     : undefined;
@@ -461,49 +453,6 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                 {msgRenderPolicy.showPlannerCta && editorialData && (
                   <PlannerEditorialBlock editorial={editorialData} />
                 )}
-
-                {msgRenderPolicy.showPlannerCta && plannerData && onGoToPlanner && (() => {
-                  const destLabel = plannerData.destinations.map(formatDestinationLabel).join(', ');
-                  const dateLabel = plannerData.isFlexibleDates
-                    ? formatFlexibleMonth(plannerData.flexibleMonth, plannerData.flexibleYear)
-                    : formatDateRange(plannerData.startDate, plannerData.endDate);
-                  const meta = [
-                    `${plannerData.days} días`,
-                    dateLabel,
-                    destLabel,
-                  ].filter(Boolean).join(' · ');
-
-                  return (
-                    <div className="mt-3 rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.04] to-transparent p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-base font-semibold text-foreground">{plannerData.title}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">{meta}</p>
-                        </div>
-                        {onGoToPlanner ? (
-                          <Button size="sm" className="shrink-0 gap-1.5" onClick={onGoToPlanner}>
-                            <Wand2 className="h-3.5 w-3.5" />
-                            {t('messageItem.openPlanner')}
-                          </Button>
-                        ) : (
-                          <Badge variant="secondary">{t('messageItem.plannerBadge')}</Badge>
-                        )}
-                      </div>
-                      {plannerSegments.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {plannerSegments.slice(0, 4).map((segment) => (
-                            <span key={segment.id} className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-foreground">
-                              {formatDestinationLabel(segment.city)}
-                              {segment.startDate && (
-                                <span className="text-muted-foreground">· {formatDateRange(segment.startDate, segment.endDate)}</span>
-                              )}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
 
                 {msgRenderPolicy.showPlannerCta && plannerDateSelectorRequest && onOpenPlannerDateSelector && (
                   <div className="mt-3 rounded-lg border border-primary/20 bg-background/70 p-3">

@@ -1,20 +1,11 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { MapPin, Sparkles, ArrowRight, Hotel, Plane, Gauge, Route, ChevronDown } from 'lucide-react';
-import type { PlannerEditorialData, EditorialSegment, EditorialNextAction } from '@/features/trip-planner/editorial';
+import { MapPin, Sparkles, ArrowRight, ChevronDown } from 'lucide-react';
+import type { PlannerEditorialData, EditorialSegment } from '@/features/trip-planner/editorial';
 
 interface PlannerEditorialBlockProps {
   editorial: PlannerEditorialData;
-  onActionClick?: (message: string) => void;
 }
-
-const ACTION_ICONS: Record<string, React.ReactNode> = {
-  hotel: <Hotel className="h-3.5 w-3.5" />,
-  flight: <Plane className="h-3.5 w-3.5" />,
-  pace: <Gauge className="h-3.5 w-3.5" />,
-  route: <Route className="h-3.5 w-3.5" />,
-};
 
 function SegmentHighlights({ segment }: { segment: EditorialSegment }) {
   if (segment.highlights.length === 0) return null;
@@ -124,28 +115,7 @@ function ExtraordinaryHighlights({ items }: { items: string[] }) {
   );
 }
 
-function NextActions({ actions, onActionClick }: { actions: EditorialNextAction[]; onActionClick?: (message: string) => void }) {
-  if (actions.length === 0) return null;
-
-  return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      {actions.map((action, i) => (
-        <Button
-          key={i}
-          variant="outline"
-          size="sm"
-          className="h-8 gap-1.5 text-xs"
-          onClick={() => onActionClick?.(action.message)}
-        >
-          {action.icon && ACTION_ICONS[action.icon]}
-          {action.label}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
-export function PlannerEditorialBlock({ editorial, onActionClick }: PlannerEditorialBlockProps) {
+export function PlannerEditorialBlock({ editorial }: PlannerEditorialBlockProps) {
   return (
     <div className="mt-3 space-y-3 rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.03] to-transparent p-4">
       {/* Title + Hook */}
@@ -180,8 +150,6 @@ export function PlannerEditorialBlock({ editorial, onActionClick }: PlannerEdito
       {/* Extraordinary Highlights */}
       <ExtraordinaryHighlights items={editorial.extraordinaryHighlights} />
 
-      {/* Next Actions */}
-      <NextActions actions={editorial.nextActions} onActionClick={onActionClick} />
     </div>
   );
 }
