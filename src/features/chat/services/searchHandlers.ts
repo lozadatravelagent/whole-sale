@@ -1970,40 +1970,62 @@ export const handleItineraryRequest = async (
     console.log('🌍 [GEO-TRACE-5] searchHandlers destinations AFTER expansion:', finalDestinations, 'segmentHints:', segmentHints);
     console.log(`🔄 [ITINERARY] Generating itinerary for ${finalDestinations.join(', ')} - ${finalDays} days`);
 
+    const requestedGenerationMode = editIntent && !shouldRestartPlan ? 'full' : effectiveExistingPlannerState ? 'skeleton' : 'full';
+    const baseItineraryPayload = {
+      destinations: finalDestinations,
+      days: finalDays,
+      startDate: hasExactDates ? effectiveStartDate : undefined,
+      endDate: hasExactDates ? effectiveEndDate : undefined,
+      isFlexibleDates,
+      flexibleMonth,
+      flexibleYear,
+      budgetLevel,
+      budgetAmount,
+      interests,
+      pace,
+      travelers,
+      constraints,
+      hotelCategory,
+      editIntent,
+      existingPlannerState: effectiveExistingPlannerState,
+      leadProfile: requestContext?.leadProfile || undefined,
+      contextMeta: requestContext ? {
+        conversationId: requestContext.conversationId,
+        leadId: requestContext.leadId,
+      } : undefined,
+      ...(segmentHints && { segmentHints }),
+    };
+
     // Call the travel-itinerary Edge Function
     const invokeStart = nowMs();
-    const response = await supabase.functions.invoke('travel-itinerary', {
+    let response = await supabase.functions.invoke('travel-itinerary', {
       body: {
-        destinations: finalDestinations,
-        days: finalDays,
-        startDate: hasExactDates ? effectiveStartDate : undefined,
-        endDate: hasExactDates ? effectiveEndDate : undefined,
-        isFlexibleDates,
-        flexibleMonth,
-        flexibleYear,
-        budgetLevel,
-        budgetAmount,
-        interests,
-        pace,
-        travelers,
-        constraints,
-        hotelCategory,
-        generationMode: editIntent && !shouldRestartPlan ? 'full' : effectiveExistingPlannerState ? 'skeleton' : 'full',
-        editIntent,
-        existingPlannerState: effectiveExistingPlannerState,
-        leadProfile: requestContext?.leadProfile || undefined,
-        contextMeta: requestContext ? {
-          conversationId: requestContext.conversationId,
-          leadId: requestContext.leadId,
-        } : undefined,
-        ...(segmentHints && { segmentHints }),
+        ...baseItineraryPayload,
+        generationMode: requestedGenerationMode,
       }
     });
     logTimingStep('ITINERARY', 'invoke travel-itinerary', invokeStart, {
       hasError: Boolean(response.error),
       destinations: destinations.length,
       days: derivedDays,
+      generationMode: requestedGenerationMode,
     });
+
+    if (response.error && requestedGenerationMode === 'full' && !editIntent) {
+      console.warn('⚠️ [ITINERARY] Full generation failed, retrying skeleton planner', response.error);
+      const retryStart = nowMs();
+      response = await supabase.functions.invoke('travel-itinerary', {
+        body: {
+          ...baseItineraryPayload,
+          generationMode: 'skeleton',
+        }
+      });
+      logTimingStep('ITINERARY', 'invoke travel-itinerary skeleton retry', retryStart, {
+        hasError: Boolean(response.error),
+        destinations: destinations.length,
+        days: derivedDays,
+      });
+    }
 
     if (response.error) {
       console.error('❌ [ITINERARY] Edge Function error:', response.error);

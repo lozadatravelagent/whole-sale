@@ -1295,7 +1295,9 @@ Before setting "adultsExplicit" in your JSON response:
 - The examples above show PATTERNS and STRUCTURES only
 - You MUST extract actual values from the REAL conversation history provided in DYNAMIC CONTEXT, NOT from the examples
 - NEVER use example cities (Miami, Punta Cana) or example dates unless they appear in the ACTUAL conversation
-- Always use [EXTRACT from X] placeholders as instructions to extract from REAL conversation history
+- NEVER output [EXTRACT from X], [DATE], "[EXTRACT from context]", or any placeholder string in JSON values. These markers in examples are instructions for you, not valid output.
+- If the real conversation/context contains the value, output the concrete value only.
+- If the value is not present, omit that field or return missing_info_request for the exact missing slot instead of inventing a placeholder.
 - Your response must reflect the ACTUAL user request and ACTUAL conversation context
 
 A DYNAMIC CONTEXT block follows below with per-turn state (current date, language, conversation history, previous context, planner state, memory state). After reading it, analyze the user message in the user role and respond with JSON only.

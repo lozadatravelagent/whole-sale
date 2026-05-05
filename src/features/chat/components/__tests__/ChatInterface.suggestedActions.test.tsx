@@ -33,8 +33,8 @@ const baseMessage: MessageRow = {
     suggestedActions: [
       {
         id: 'action-flight-cancun',
-        label: 'Buscar vuelos a Cancun',
-        prompt: 'Quiero buscar vuelos a Cancun, Quintana Roo, Mexico.',
+        label: 'Buscar vuelos para Cancun',
+        prompt: 'Quiero buscar vuelos para Cancun, Quintana Roo, Mexico.',
         type: 'flight',
         priority: 1,
       },
@@ -69,8 +69,8 @@ describe('ChatInterface suggested actions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /buscar vuelos a cancun/i }));
+    fireEvent.click(screen.getByRole('button', { name: /buscar vuelos para cancun/i }));
 
-    expect(onSuggestedAction).toHaveBeenCalledWith('Quiero buscar vuelos a Cancun, Quintana Roo, Mexico.');
+    expect(onSuggestedAction).toHaveBeenCalledWith('Quiero buscar vuelos para Cancun, Quintana Roo, Mexico.');
   });
 });

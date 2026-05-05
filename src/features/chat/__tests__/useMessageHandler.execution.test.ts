@@ -114,6 +114,14 @@ vi.mock('@/features/trip-planner/utils', () => ({
     enrichedItinerary: { destinations: [{ city: 'Roma', country: 'Italia', nights: 7 }], days: 7 },
     fieldProvenance: { days: 'user' },
   }),
+  expandDestinationsIfRegional: vi.fn((destinations: string[]) => ({
+    expandedDestinations: destinations[0] === 'Europa' ? ['Madrid', 'París', 'Londres'] : destinations,
+    regionalMeta: null,
+    seasonalityAlert: null,
+    suggestedDays: 20,
+    suggestedPace: null,
+    cityWeights: null,
+  })),
   normalizePlannerState: vi.fn((x: any) => x),
   applySeasonalDates: vi.fn((x: any) => x),
 }));
@@ -146,6 +154,7 @@ import { addMessageViaSupabase } from '../services/messageService';
 import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
 import { resolveConversationTurn } from '../services/conversationOrchestrator';
 import { routeRequest } from '../services/routeRequest';
+import { buildCanonicalResultFromStandard } from '../services/itineraryPipeline';
 import { buildProps, buildParsedRequest, DEFAULT_CONV_ID } from '@/test-utils/useMessageHandlerFactory';
 
 // ---------------------------------------------------------------------------
@@ -778,12 +787,81 @@ describe('useMessageHandler', () => {
       expect((assistantSave![0].meta as any).suggestedActions).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            label: 'Buscar vuelos a MAD',
-            prompt: expect.stringContaining('Quiero buscar vuelos a MAD'),
+            label: 'Buscar vuelos para MAD',
+            prompt: expect.stringContaining('Quiero buscar vuelos para MAD'),
             type: 'flight',
           }),
         ]),
       );
+    });
+
+    it('uses the first concrete planner city for suggested actions after regional itinerary expansion', async () => {
+      vi.mocked(hasUsableItineraryDates).mockReturnValue(true);
+      vi.mocked(hasFlexibleItineraryDateSelection).mockReturnValue(true);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
+        requestType: 'itinerary',
+        originalMessage: 'armame un viaje a europa 20 dias',
+        itinerary: {
+          destinations: ['Europa'],
+          days: 20,
+          isFlexibleDates: true,
+          flexibleMonth: '07',
+          flexibleYear: 2026,
+        },
+      }) as any);
+      vi.mocked(buildCanonicalResultFromStandard).mockReturnValue({
+        response: 'itinerary results',
+        plannerData: {
+          generationMeta: { isDraft: false },
+          destinations: ['Madrid', 'París', 'Londres'],
+          segments: [
+            { city: 'Madrid', order: 1, days: [], nights: 4 },
+            { city: 'París', order: 2, days: [], nights: 5 },
+          ],
+        },
+        flights: [],
+        hotels: [],
+        recommendedPlaces: [],
+        responseMode: 'standard',
+        conversationTurn: {
+          shouldAskMinimalQuestion: false,
+          executionBranch: 'standard_itinerary',
+          responseMode: 'standard',
+          messageType: 'trip_planner',
+          normalizedMissingFields: [],
+          uiMeta: {},
+          turnNumber: 1,
+        },
+        source: 'AI_PARSER + EUROVIPS',
+      } as any);
+
+      const p = buildProps();
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('armame un viaje a europa 20 dias');
+      });
+
+      const assistantSave = vi.mocked(addMessageViaSupabase).mock.calls.find(
+        call => call[0].role === 'assistant'
+      );
+      const suggestedActions = (assistantSave?.[0].meta as any)?.suggestedActions;
+
+      expect(suggestedActions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: 'Buscar vuelos para Madrid',
+            prompt: expect.stringContaining('Quiero buscar vuelos para Madrid'),
+            type: 'flight',
+          }),
+          expect.objectContaining({
+            label: 'Buscar hotel en Madrid',
+            prompt: expect.stringContaining('Quiero buscar hoteles en Madrid'),
+            type: 'hotel',
+          }),
+        ]),
+      );
+      expect(JSON.stringify(suggestedActions)).not.toContain('Europa');
     });
 
     it('calls addMessageViaSupabase with role assistant after hotel search', async () => {

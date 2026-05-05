@@ -20,7 +20,7 @@ import type { ChatSuggestedAction } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { PlannerEditContext, PreloadedConversationKnowledge } from '../types/knowledge';
 import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
-import { applySmartDefaults, normalizePlannerState } from '@/features/trip-planner/utils';
+import { applySmartDefaults, expandDestinationsIfRegional, normalizePlannerState } from '@/features/trip-planner/utils';
 import { mergePlannerFieldUpdate, normalizeLocationLabel, buildPlannerHotelSearchSignature, buildPlannerTransportSearchSignature } from '@/features/trip-planner/helpers';
 import { buildCanonicalResultFromStandard, buildCanonicalMeta, persistCanonicalResult, buildTurnContextState, type CanonicalItineraryResult } from '../services/itineraryPipeline';
 import { buildEditorialData } from '@/features/trip-planner/editorial';
@@ -147,6 +147,12 @@ function normalizeActionText(value?: unknown): string {
   return '';
 }
 
+function isUsableActionText(value?: unknown): boolean {
+  const text = normalizeActionText(value);
+  if (!text) return false;
+  return !/\[|\]|\bextract\b|\bdate\b|\bcontext\b|\bask\b/i.test(text);
+}
+
 function slugAction(value: string): string {
   return normalizeLocationLabel(value)
     .replace(/[^a-z0-9]+/g, '-')
@@ -166,31 +172,66 @@ function buildTravelerPhrase(travelers?: { adults?: number; children?: number; i
   return parts.join(', ');
 }
 
-function getPrimaryActionDestination(parsedRequest?: ParsedTravelRequest | null, plannerState?: TripPlannerState | null): string {
-  const itineraryDestination = parsedRequest?.itinerary?.destinations?.map(normalizeActionText).find(Boolean);
-  return normalizeActionText(itineraryDestination)
-    || normalizeActionText(parsedRequest?.flights?.destination)
-    || normalizeActionText(parsedRequest?.hotels?.city)
-    || normalizeActionText(parsedRequest?.packages?.destination)
-    || normalizeActionText(plannerState?.segments?.[0]?.city)
-    || normalizeActionText(plannerState?.destinations?.[0]);
+function getFirstPlannerCity(plannerState?: TripPlannerState | null): string {
+  const segmentCity = [...(plannerState?.segments || [])]
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .map((segment) => normalizeActionText(segment.city))
+    .find(Boolean);
+
+  return segmentCity || normalizeActionText(plannerState?.destinations?.[0]);
 }
 
-function isCaribbeanIntent(value: string): boolean {
-  const normalized = normalizeLocationLabel(value);
-  return /\b(caribe|caribbean|playa|playas)\b/.test(normalized);
+function getFirstExpandedItineraryCity(parsedRequest?: ParsedTravelRequest | null): string {
+  const destinations = parsedRequest?.itinerary?.destinations?.map(normalizeActionText).filter(Boolean) || [];
+  if (destinations.length === 0) return '';
+
+  const days = parsedRequest?.itinerary?.days || 10;
+  const targetMonth = parsedRequest?.itinerary?.flexibleMonth
+    ? new Date(`${parsedRequest.itinerary.flexibleMonth} 1, 2000`).getMonth() + 1
+    : parsedRequest?.itinerary?.startDate
+      ? new Date(parsedRequest.itinerary.startDate).getMonth() + 1
+      : undefined;
+  const expanded = expandDestinationsIfRegional(destinations, days, targetMonth).expandedDestinations;
+  return normalizeActionText(expanded[0]);
+}
+
+function getPrimaryActionDestination(parsedRequest?: ParsedTravelRequest | null, plannerState?: TripPlannerState | null): string {
+  const plannerCity = getFirstPlannerCity(plannerState);
+  if (plannerCity) return plannerCity;
+
+  const expandedItineraryCity = getFirstExpandedItineraryCity(parsedRequest);
+  if (expandedItineraryCity) return expandedItineraryCity;
+
+  const itineraryDestination = parsedRequest?.itinerary?.destinations?.map(normalizeActionText).find(Boolean);
+  return normalizeActionText(parsedRequest?.flights?.destination)
+    || normalizeActionText(parsedRequest?.hotels?.city)
+    || normalizeActionText(parsedRequest?.packages?.destination)
+    || normalizeActionText(itineraryDestination);
+}
+
+function getStructuredPlannerData(structuredData?: unknown): TripPlannerState | null {
+  const structured = structuredData as { plannerData?: TripPlannerState | null } | null | undefined;
+  return structured?.plannerData || null;
 }
 
 function buildSearchPrompt(kind: 'flight' | 'hotel', destination: string, parsedRequest?: ParsedTravelRequest | null, plannerState?: TripPlannerState | null): string {
-  const origin = normalizeActionText(parsedRequest?.flights?.origin) || normalizeActionText(plannerState?.origin);
-  const startDate = parsedRequest?.flights?.departureDate || parsedRequest?.hotels?.checkinDate || plannerState?.startDate;
-  const endDate = parsedRequest?.flights?.returnDate || parsedRequest?.hotels?.checkoutDate || plannerState?.endDate;
+  const origin = isUsableActionText(parsedRequest?.flights?.origin) ? normalizeActionText(parsedRequest?.flights?.origin) : normalizeActionText(plannerState?.origin);
+  const startDate = isUsableActionText(parsedRequest?.flights?.departureDate)
+    ? parsedRequest?.flights?.departureDate
+    : isUsableActionText(parsedRequest?.hotels?.checkinDate)
+      ? parsedRequest?.hotels?.checkinDate
+      : plannerState?.startDate;
+  const endDate = isUsableActionText(parsedRequest?.flights?.returnDate)
+    ? parsedRequest?.flights?.returnDate
+    : isUsableActionText(parsedRequest?.hotels?.checkoutDate)
+      ? parsedRequest?.hotels?.checkoutDate
+      : plannerState?.endDate;
   const travelers = parsedRequest?.flights || parsedRequest?.hotels || plannerState?.travelers;
   const travelerPhrase = buildTravelerPhrase(travelers);
   const datePhrase = startDate && endDate ? ` del ${startDate} al ${endDate}` : startDate ? ` desde el ${startDate}` : '';
 
   if (kind === 'flight') {
-    return `Quiero buscar vuelos a ${destination}${origin ? ` desde ${origin}` : ''}${datePhrase} para ${travelerPhrase}.`;
+    return `Quiero buscar vuelos para ${destination}${origin ? ` desde ${origin}` : ''}${datePhrase} para ${travelerPhrase}.`;
   }
 
   return `Quiero buscar hoteles en ${destination}${datePhrase} para ${travelerPhrase}.`;
@@ -212,32 +253,9 @@ function buildSuggestedActions(options: {
   };
 
   const destination = getPrimaryActionDestination(parsedRequest, plannerState);
-  const structured = structuredData as { combinedData?: { flights?: unknown[]; hotels?: unknown[] }; plannerData?: TripPlannerState } | null | undefined;
-  const plannerForActions = structured?.plannerData || plannerState || null;
-  const plannerDestination = normalizeActionText(plannerForActions?.segments?.[0]?.city) || normalizeActionText(plannerForActions?.destinations?.[0]);
-  const effectiveDestination = destination || plannerDestination;
-
-  if (effectiveDestination && isCaribbeanIntent(effectiveDestination)) {
-    add({
-      label: 'Buscar vuelos a Cancun',
-      prompt: 'Quiero buscar vuelos a Cancun, Quintana Roo, Mexico.',
-      type: 'flight',
-      priority: 1,
-    });
-    add({
-      label: 'Ver hoteles en Punta Cana',
-      prompt: 'Quiero buscar hoteles en Punta Cana, Republica Dominicana.',
-      type: 'hotel',
-      priority: 2,
-    });
-    add({
-      label: 'Armar itinerario Caribe',
-      prompt: 'Quiero armar un itinerario por el Caribe con playas, hoteles y actividades.',
-      type: 'itinerary',
-      priority: 3,
-    });
-    return actions;
-  }
+  const structured = structuredData as { combinedData?: { flights?: unknown[]; hotels?: unknown[] } } | null | undefined;
+  const plannerForActions = getStructuredPlannerData(structuredData) || plannerState || null;
+  const effectiveDestination = getPrimaryActionDestination(parsedRequest, plannerForActions) || destination;
 
   if (effectiveDestination) {
     const labelDestination = effectiveDestination;
@@ -246,7 +264,7 @@ function buildSuggestedActions(options: {
 
     if (!hasFlights) {
       add({
-        label: `Buscar vuelos a ${labelDestination}`,
+        label: `Buscar vuelos para ${labelDestination}`,
         prompt: buildSearchPrompt('flight', labelDestination, parsedRequest, plannerForActions),
         type: 'flight',
         priority: 1,
@@ -255,7 +273,7 @@ function buildSuggestedActions(options: {
 
     if (!hasHotels) {
       add({
-        label: `Ver hoteles en ${labelDestination}`,
+        label: `Buscar hotel en ${labelDestination}`,
         prompt: buildSearchPrompt('hotel', labelDestination, parsedRequest, plannerForActions),
         type: 'hotel',
         priority: 2,

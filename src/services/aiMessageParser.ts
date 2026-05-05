@@ -970,6 +970,26 @@ export interface RequiredItineraryFields {
 }
 
 // Función para validar campos requeridos de vuelos
+function isPlaceholderString(value: unknown): boolean {
+    if (typeof value !== 'string') return false;
+    return /\[|\]|\bextract\b|\bdate\b|\bcontext\b|\bask\b|invalid date/i.test(value.trim());
+}
+
+function hasUsableRequiredText(value: unknown): boolean {
+    return typeof value === 'string' && value.trim().length > 0 && !isPlaceholderString(value);
+}
+
+function isValidIsoDate(value: unknown): boolean {
+    if (!hasUsableRequiredText(value)) return false;
+    const dateText = String(value).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return false;
+
+    const date = new Date(`${dateText}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return false;
+
+    return date.toISOString().slice(0, 10) === dateText;
+}
+
 export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flights']): {
     isValid: boolean;
     missingFields: string[];
@@ -1018,35 +1038,35 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
         segments.forEach((segment, index) => {
             const segmentNumber = index + 1;
 
-            if (!segment.origin) {
+            if (!hasUsableRequiredText(segment.origin)) {
                 missingFields.push(`segment_${segmentNumber}_origin`);
                 missingFieldsSpanish.push(`origen del tramo ${segmentNumber}`);
             }
-            if (!segment.destination) {
+            if (!hasUsableRequiredText(segment.destination)) {
                 missingFields.push(`segment_${segmentNumber}_destination`);
                 missingFieldsSpanish.push(`destino del tramo ${segmentNumber}`);
             }
-            if (!segment.departureDate) {
+            if (!isValidIsoDate(segment.departureDate)) {
                 missingFields.push(`segment_${segmentNumber}_departureDate`);
                 missingFieldsSpanish.push(`fecha del tramo ${segmentNumber}`);
             }
         });
     } else {
-        if (!normalizedFlights.origin) {
+        if (!hasUsableRequiredText(normalizedFlights.origin)) {
             missingFields.push('origin');
             missingFieldsSpanish.push('origen');
         }
-        if (!normalizedFlights.destination) {
+        if (!hasUsableRequiredText(normalizedFlights.destination)) {
             missingFields.push('destination');
             missingFieldsSpanish.push('destino');
         }
-        if (!normalizedFlights.departureDate) {
+        if (!isValidIsoDate(normalizedFlights.departureDate)) {
             missingFields.push('departureDate');
             missingFieldsSpanish.push('fecha de salida');
         }
     }
 
-    if (!normalizedFlights.adults || normalizedFlights.adults < 1) {
+    if (typeof normalizedFlights.adults !== 'number' || !Number.isFinite(normalizedFlights.adults) || normalizedFlights.adults < 1) {
         missingFields.push('adults');
         missingFieldsSpanish.push('cantidad de pasajeros');
     }
@@ -1099,19 +1119,19 @@ export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels
         }
 
         // Validar campos requeridos (roomType y mealPlan son OPCIONALES)
-        if (!segment.city) {
+        if (!hasUsableRequiredText(segment.city)) {
             missingFields.push(hotelSegments.length > 1 ? `segment_${index + 1}_city` : 'city');
             missingFieldsSpanish.push(hotelSegments.length > 1 ? `destino de ${label}` : 'destino');
         }
-        if (!segment.checkinDate) {
+        if (!isValidIsoDate(segment.checkinDate)) {
             missingFields.push(hotelSegments.length > 1 ? `segment_${index + 1}_checkinDate` : 'checkinDate');
             missingFieldsSpanish.push(hotelSegments.length > 1 ? `fecha de entrada de ${label}` : 'fecha de entrada');
         }
-        if (!segment.checkoutDate) {
+        if (!isValidIsoDate(segment.checkoutDate)) {
             missingFields.push(hotelSegments.length > 1 ? `segment_${index + 1}_checkoutDate` : 'checkoutDate');
             missingFieldsSpanish.push(hotelSegments.length > 1 ? `fecha de salida de ${label}` : 'fecha de salida');
         }
-        if (!segment.adults || segment.adults < 1) {
+        if (typeof segment.adults !== 'number' || !Number.isFinite(segment.adults) || segment.adults < 1) {
             missingFields.push(hotelSegments.length > 1 ? `segment_${index + 1}_adults` : 'adults');
             missingFieldsSpanish.push(hotelSegments.length > 1 ? `cantidad de pasajeros de ${label}` : 'cantidad de pasajeros');
         }
