@@ -9,9 +9,9 @@ import { OrbitMark } from '@/components/meridian';
 import MissingFieldsInputPrompt from '@/features/trip-planner/components/MissingFieldsInputPrompt';
 import DiscoveryMapPreview from './DiscoveryMapPreview';
 import RecommendedPlacesList from './RecommendedPlacesList';
-import type { MessageRow } from '../types/chat';
+import type { ChatSuggestedAction, MessageRow } from '../types/chat';
 import type { FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
-import { ArrowUpFromLine } from 'lucide-react';
+import { ArrowUpFromLine, Hotel, Map, Plane, Search, Sparkles } from 'lucide-react';
 import { deriveConversationGaps, extractRecommendedPlacesFromMeta, getDiscoveryVisualConfig } from '../services/conversationOrchestrator';
 import { resolveRenderPolicy } from '../services/itineraryPipeline';
 import type { DiscoveryContext } from '../services/discoveryService';
@@ -55,6 +55,7 @@ interface ChatInterfaceProps {
    */
   onBridgeSwitch?: (suggestedMode: BridgeChatMode, originalText: string) => void;
   onBridgeStay?: (originalText: string) => void;
+  onSuggestedAction?: (prompt: string) => void;
   /**
    * PR 3 (C6): forwarded to ChatHeader so the ModeSwitch can render. Both
    * optional — when missing (consumer branch) the switch doesn't render.
@@ -85,6 +86,7 @@ const ChatInterface = React.memo(({
   mode,
   onBridgeSwitch,
   onBridgeStay,
+  onSuggestedAction,
   hasAgency,
   onModeChange,
   headerVisibility = 'default',
@@ -284,6 +286,12 @@ const ChatInterface = React.memo(({
   const discoveryContext = (lastMeta?.discoveryContext as DiscoveryContext | undefined) || undefined;
   const lastRecommendedPlaces = extractRecommendedPlacesFromMeta(lastMeta);
   const lastConversationGaps = deriveConversationGaps(lastMeta);
+  const suggestedActions = Array.isArray(lastMeta?.suggestedActions)
+    ? (lastMeta.suggestedActions as ChatSuggestedAction[])
+        .filter((action) => typeof action?.label === 'string' && typeof action?.prompt === 'string')
+        .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
+        .slice(0, 3)
+    : [];
   const lastMessageText = typeof lastVisibleMessage?.content === 'string'
     ? lastVisibleMessage.content
     : (lastVisibleMessage?.content as { text?: string } | undefined)?.text || '';
@@ -421,6 +429,31 @@ const ChatInterface = React.memo(({
                       <span key={gap.key}>{gap.label}</span>
                     ))}
                   </div>
+                </div>
+              )}
+              {lastVisibleMessage?.role === 'assistant' && suggestedActions.length > 0 && !isLoading && !isTyping && (
+                <div className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {suggestedActions.map((action) => {
+                    const Icon =
+                      action.type === 'flight' ? Plane :
+                      action.type === 'hotel' ? Hotel :
+                      action.type === 'itinerary' ? Map :
+                      action.type === 'quote' ? Sparkles :
+                      Search;
+
+                    return (
+                      <button
+                        key={action.id}
+                        type="button"
+                        onClick={() => onSuggestedAction?.(action.prompt)}
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                        title={action.prompt}
+                      >
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{action.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
               {/* PR 3 (C4): mode_bridge turn chips — "switch" + "stay". Handlers are optional; C5 wires them from ChatFeature. */}

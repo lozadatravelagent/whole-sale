@@ -309,6 +309,64 @@ class StarlingTvcApi {
 // CORS HEADERS
 // ============================================================================
 import { corsHeaders } from '../_shared/cors.ts';
+
+const STARLING_ACTIONS_REQUIRING_DATA = new Set([
+  'searchFlights',
+  'confirmAvailability',
+  'bookFlight',
+  'issueBooking',
+  'retrieveBooking',
+  'getFareOptions',
+  'listBookings',
+  'createSearchRequest',
+]);
+const STARLING_ALLOWED_ACTIONS = new Set([
+  ...STARLING_ACTIONS_REQUIRING_DATA,
+  'testConnection',
+]);
+
+function validationErrorResponse(error: string) {
+  return new Response(JSON.stringify({
+    success: false,
+    error: 'invalid_request_body',
+    detail: error,
+    timestamp: new Date().toISOString(),
+  }), {
+    status: 400,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
+function validateStarlingRequestBody(body: any): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return 'body must be a JSON object';
+  }
+  if (typeof body.action !== 'string' || body.action.trim() === '') {
+    return 'action is required';
+  }
+  if (!STARLING_ALLOWED_ACTIONS.has(body.action)) {
+    return `unsupported action: ${body.action}`;
+  }
+  if (body.jobId !== undefined && typeof body.jobId !== 'string') {
+    return 'jobId must be a string when provided';
+  }
+  if (STARLING_ACTIONS_REQUIRING_DATA.has(body.action)) {
+    if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) {
+      return `data object is required for ${body.action}`;
+    }
+  }
+  if (body.action === 'createSearchRequest') {
+    for (const field of ['from', 'to', 'date']) {
+      if (typeof body.data?.[field] !== 'string' || body.data[field].trim() === '') {
+        return `${field} is required for createSearchRequest`;
+      }
+    }
+  }
+  return null;
+}
 // ============================================================================
 // MAIN HANDLER
 // ============================================================================
@@ -345,7 +403,16 @@ serve(async (req) => {
         console.log(`🔐 Password configured: ${TVC_PASSWORD ? 'YES' : 'NO'}`);
 
         // Parse request body
-        const requestBody = await req.json();
+        let requestBody;
+        try {
+          requestBody = await req.json();
+        } catch {
+          return validationErrorResponse('body must be valid JSON');
+        }
+        const validationError = validateStarlingRequestBody(requestBody);
+        if (validationError) {
+          return validationErrorResponse(validationError);
+        }
         const { action, data, jobId } = requestBody;
         console.log(`📋 Action: ${action}`);
         console.log(`📥 Data:`, JSON.stringify(data, null, 2));

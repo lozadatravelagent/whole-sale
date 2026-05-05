@@ -1062,6 +1062,8 @@ MUST FOLLOW:
 - For planner edits, preserve unaffected destinations, segment order, dates, hotels, transports, activities, restaurants, and tips unless REQUEST_CONTEXT.editIntent asks to change them.
 - Apply REQUEST_CONTEXT.editIntent.rawInstruction semantically. If action is custom_instruction, still update the existing plan according to that instruction.
 - If the instruction is open-ended but actionable, make a reasonable travel-agent choice and reflect it in summary/generalTips without asking for more data.
+- Close the planning loop quickly: produce a complete usable planner draft in this response. Do not ask clarifying questions; use reasonable defaults and surface assumptions in summary/generalTips.
+- If the request names a broad region, pick representative city-level stops that fit the region and traveler profile instead of returning a vague plan.
 - Only rebuild the parts impacted by editIntent.scope/target. Regenerate one day or one segment only when that is the target.
 - If action is restart_plan, ignore the previous planner structure and create a fresh plan from the request.
 - First day of each segment after the first should feel lighter because it is a transfer day.
@@ -1173,6 +1175,8 @@ MUST FOLLOW:
 - Each segment must contain exactly the requested dayCount.
 - Respect the traveler profile "${travelerProfile}": ${profileGuidelines}
 - Use REQUEST_CONTEXT.leadProfileDefaults only as defaults when the current request omits a preference.
+- Close the first draft in this response. Do not ask for more data; make sensible travel-agent defaults and make the plan actionable.
+- If the request is broad, choose concrete city-level destinations that represent the user intent.
 - First day of each segment after the first should feel lighter because it is a transfer day.
 
 OUTPUT LIMITS:
@@ -1258,6 +1262,7 @@ IMPORTANT:
 MUST FOLLOW:
 - Respect the traveler profile "${travelerProfile}": ${profileGuidelines}
 - Use REQUEST_CONTEXT.leadProfileDefaults only as defaults when the current request omits a preference.
+- Complete this segment without asking follow-up questions. Use reasonable defaults and keep assumptions visible in tips or notes.
 - Morning, afternoon, evening: 0 to 1 activity each.
 - Restaurants: 0 to 1 item per day.
 - travelTip: optional, max 12 words.

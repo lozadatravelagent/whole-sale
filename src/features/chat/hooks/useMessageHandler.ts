@@ -16,6 +16,7 @@ import { buildDiscoveryResponseFromToolResult } from '../services/discoveryServi
 import { isDiscoveryQuery, extractCategoriesFromMessage, extractDestinationFromMessage } from '@/features/chat/services/discoveryIntentGuard';
 import { resolveToolChoice } from '@/features/chat/services/toolChoicePolicy';
 import type { MessageRow } from '../types/chat';
+import type { ChatSuggestedAction } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { PlannerEditContext, PreloadedConversationKnowledge } from '../types/knowledge';
 import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
@@ -135,6 +136,154 @@ function buildPlannerItinerarySnapshot(plannerState: TripPlannerState, rawInstru
   };
 }
 
+function normalizeActionText(value?: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const city = typeof record.city === 'string' ? record.city : '';
+    const country = typeof record.country === 'string' ? record.country : '';
+    return [city, country].filter(Boolean).join(', ').trim();
+  }
+  return '';
+}
+
+function slugAction(value: string): string {
+  return normalizeLocationLabel(value)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'accion';
+}
+
+function buildTravelerPhrase(travelers?: { adults?: number; children?: number; infants?: number } | null): string {
+  const adults = travelers?.adults ?? 1;
+  const children = travelers?.children ?? 0;
+  const infants = travelers?.infants ?? 0;
+  const parts = [
+    `${adults} adulto${adults === 1 ? '' : 's'}`,
+    children > 0 ? `${children} menor${children === 1 ? '' : 'es'}` : null,
+    infants > 0 ? `${infants} infante${infants === 1 ? '' : 's'}` : null,
+  ].filter(Boolean);
+  return parts.join(', ');
+}
+
+function getPrimaryActionDestination(parsedRequest?: ParsedTravelRequest | null, plannerState?: TripPlannerState | null): string {
+  const itineraryDestination = parsedRequest?.itinerary?.destinations?.map(normalizeActionText).find(Boolean);
+  return normalizeActionText(itineraryDestination)
+    || normalizeActionText(parsedRequest?.flights?.destination)
+    || normalizeActionText(parsedRequest?.hotels?.city)
+    || normalizeActionText(parsedRequest?.packages?.destination)
+    || normalizeActionText(plannerState?.segments?.[0]?.city)
+    || normalizeActionText(plannerState?.destinations?.[0]);
+}
+
+function isCaribbeanIntent(value: string): boolean {
+  const normalized = normalizeLocationLabel(value);
+  return /\b(caribe|caribbean|playa|playas)\b/.test(normalized);
+}
+
+function buildSearchPrompt(kind: 'flight' | 'hotel', destination: string, parsedRequest?: ParsedTravelRequest | null, plannerState?: TripPlannerState | null): string {
+  const origin = normalizeActionText(parsedRequest?.flights?.origin) || normalizeActionText(plannerState?.origin);
+  const startDate = parsedRequest?.flights?.departureDate || parsedRequest?.hotels?.checkinDate || plannerState?.startDate;
+  const endDate = parsedRequest?.flights?.returnDate || parsedRequest?.hotels?.checkoutDate || plannerState?.endDate;
+  const travelers = parsedRequest?.flights || parsedRequest?.hotels || plannerState?.travelers;
+  const travelerPhrase = buildTravelerPhrase(travelers);
+  const datePhrase = startDate && endDate ? ` del ${startDate} al ${endDate}` : startDate ? ` desde el ${startDate}` : '';
+
+  if (kind === 'flight') {
+    return `Quiero buscar vuelos a ${destination}${origin ? ` desde ${origin}` : ''}${datePhrase} para ${travelerPhrase}.`;
+  }
+
+  return `Quiero buscar hoteles en ${destination}${datePhrase} para ${travelerPhrase}.`;
+}
+
+function buildSuggestedActions(options: {
+  parsedRequest?: ParsedTravelRequest | null;
+  plannerState?: TripPlannerState | null;
+  structuredData?: unknown;
+  assistantResponseNumber: number;
+}): ChatSuggestedAction[] {
+  const { parsedRequest, plannerState, structuredData, assistantResponseNumber } = options;
+  const actions: ChatSuggestedAction[] = [];
+  const seen = new Set<string>();
+  const add = (action: Omit<ChatSuggestedAction, 'id'>) => {
+    if (!action.label || !action.prompt || seen.has(action.prompt)) return;
+    seen.add(action.prompt);
+    actions.push({ ...action, id: `action-${action.type}-${slugAction(action.label)}` });
+  };
+
+  const destination = getPrimaryActionDestination(parsedRequest, plannerState);
+  const structured = structuredData as { combinedData?: { flights?: unknown[]; hotels?: unknown[] }; plannerData?: TripPlannerState } | null | undefined;
+  const plannerForActions = structured?.plannerData || plannerState || null;
+  const plannerDestination = normalizeActionText(plannerForActions?.segments?.[0]?.city) || normalizeActionText(plannerForActions?.destinations?.[0]);
+  const effectiveDestination = destination || plannerDestination;
+
+  if (effectiveDestination && isCaribbeanIntent(effectiveDestination)) {
+    add({
+      label: 'Buscar vuelos a Cancun',
+      prompt: 'Quiero buscar vuelos a Cancun, Quintana Roo, Mexico.',
+      type: 'flight',
+      priority: 1,
+    });
+    add({
+      label: 'Ver hoteles en Punta Cana',
+      prompt: 'Quiero buscar hoteles en Punta Cana, Republica Dominicana.',
+      type: 'hotel',
+      priority: 2,
+    });
+    add({
+      label: 'Armar itinerario Caribe',
+      prompt: 'Quiero armar un itinerario por el Caribe con playas, hoteles y actividades.',
+      type: 'itinerary',
+      priority: 3,
+    });
+    return actions;
+  }
+
+  if (effectiveDestination) {
+    const labelDestination = effectiveDestination;
+    const hasFlights = (structured?.combinedData?.flights?.length ?? 0) > 0;
+    const hasHotels = (structured?.combinedData?.hotels?.length ?? 0) > 0;
+
+    if (!hasFlights) {
+      add({
+        label: `Buscar vuelos a ${labelDestination}`,
+        prompt: buildSearchPrompt('flight', labelDestination, parsedRequest, plannerForActions),
+        type: 'flight',
+        priority: 1,
+      });
+    }
+
+    if (!hasHotels) {
+      add({
+        label: `Ver hoteles en ${labelDestination}`,
+        prompt: buildSearchPrompt('hotel', labelDestination, parsedRequest, plannerForActions),
+        type: 'hotel',
+        priority: 2,
+      });
+    }
+
+    add({
+      label: `Armar itinerario en ${labelDestination}`,
+      prompt: `Quiero armar un itinerario completo para ${labelDestination}.`,
+      type: 'itinerary',
+      priority: 3,
+    });
+  }
+
+  if (plannerForActions && assistantResponseNumber >= 3) {
+    add({
+      label: 'Cotizar este plan',
+      prompt: 'Quiero cotizar vuelos y hoteles para este plan.',
+      type: 'quote',
+      priority: 0,
+    });
+  }
+
+  return actions
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, 3);
+}
+
 const useMessageHandler = (
   selectedConversation: string | null,
   selectedConversationRef: React.MutableRefObject<string | null>,
@@ -231,6 +380,14 @@ const useMessageHandler = (
       conversationId: currentConversationId,
       messageLength: currentMessage.length,
     });
+    const assistantResponseCountBeforeTurn = (messages || []).filter((m) => {
+      if (m.conversation_id !== currentConversationId || m.role !== 'assistant') return false;
+      const meta = m.meta as Record<string, unknown> | null;
+      const messageType = meta?.messageType;
+      return !['contextual_memory', 'context_state', 'trip_planner_state', 'conversation_summary'].includes(String(messageType || ''));
+    }).length;
+    const shouldPushToDelivery = assistantResponseCountBeforeTurn >= 2;
+    const shouldHardClose = assistantResponseCountBeforeTurn >= 3;
 
     if (!currentMessage.trim() || !currentConversationId) {
       flowTimer.end('stopped - invalid input', {
@@ -995,6 +1152,9 @@ const useMessageHandler = (
         )
         .slice(-MAX_COLLECT_TURNS)
         .length;
+      const recentCollectCountForTurn = shouldPushToDelivery
+        ? MAX_COLLECT_TURNS
+        : recentCollectCount;
 
       // PR 3 (C4): read the last assistant message's messageType so the
       // orchestrator can apply guardrail G1 (anti-loop for mode_bridge).
@@ -1027,7 +1187,7 @@ const useMessageHandler = (
         // context (lastSearch in DB) is the only memory source now, surfaced
         // via `hasPersistentContext` above.
         hasPreviousParsedRequest: false,
-        recentCollectCount,
+        recentCollectCount: recentCollectCountForTurn,
         maxCollectTurns: MAX_COLLECT_TURNS,
         previousMessageType,
         forceCurrentMode: options?.forceCurrentMode,
@@ -1045,13 +1205,13 @@ const useMessageHandler = (
       //   1. Passenger ambiguity ("familia" without count) — validation doesn't catch this
       //   2. Quote intent but incomplete, AND no previous context to fill gaps
       // Max 3 consecutive COLLECT turns — after that, fall through to PLAN or existing validation
-      const collectExhausted = recentCollectCount >= MAX_COLLECT_TURNS;
+      const collectExhausted = recentCollectCountForTurn >= MAX_COLLECT_TURNS;
 
       if (collectExhausted && routeResult.route === 'COLLECT') {
         console.log(`🔄 [COLLECT] ${MAX_COLLECT_TURNS} turns exhausted — falling through to standard flow`);
       }
 
-      if (conversationTurn.shouldAskMinimalQuestion && routeResult.collectQuestion) {
+      if (conversationTurn.shouldAskMinimalQuestion && routeResult.collectQuestion && !shouldPushToDelivery) {
         console.log('🔄 [COLLECT] Router intercepting with focused question:', routeResult.reason, `(turn ${recentCollectCount + 1}/${MAX_COLLECT_TURNS})`);
         await saveContextualMemory(finalConversationId, parsedRequest);
 
@@ -1093,6 +1253,11 @@ const useMessageHandler = (
             originalRequest: parsedRequest,
             requestText: parsedRequest.originalMessage || currentMessage,
             conversationTurn,
+            suggestedActions: buildSuggestedActions({
+              parsedRequest,
+              plannerState: plannerState as TripPlannerState | null,
+              assistantResponseNumber: assistantResponseCountBeforeTurn + 1,
+            }),
           }
         });
 
@@ -2111,6 +2276,12 @@ const useMessageHandler = (
 
       // 5. Save response with structured data
       console.log('📤 [MESSAGE FLOW] Step 13: About to save assistant message (Supabase INSERT)');
+      const suggestedActions = buildSuggestedActions({
+        parsedRequest,
+        plannerState: plannerState as TripPlannerState | null,
+        structuredData,
+        assistantResponseNumber: assistantResponseCountBeforeTurn + 1,
+      });
 
       // Save assistant message to database
       const saveAssistantStart = nowMs();
@@ -2119,13 +2290,19 @@ const useMessageHandler = (
         role: 'assistant' as const,
         content: { text: assistantResponse },
         meta: (structuredData as any)?.source
-          ? buildCanonicalMeta(structuredData as CanonicalItineraryResult)
+          ? {
+              ...buildCanonicalMeta(structuredData as CanonicalItineraryResult),
+              ...(suggestedActions.length > 0 ? { suggestedActions } : {}),
+              ...(shouldHardClose ? { conversationClosure: { phase: 'hard_close', assistantResponseNumber: assistantResponseCountBeforeTurn + 1 } } : {}),
+            }
           : {
               messageType: conversationTurn.messageType,
               responseMode: conversationTurn.responseMode,
               ...(conversationTurn.normalizedMissingFields.length > 0 ? { normalizedMissingFields: conversationTurn.normalizedMissingFields } : {}),
               requestText: parsedRequest.originalMessage || currentMessage,
               ...(structuredData ? { source: 'AI_PARSER + EUROVIPS', ...structuredData } : {}),
+              ...(suggestedActions.length > 0 ? { suggestedActions } : {}),
+              ...(shouldHardClose ? { conversationClosure: { phase: 'hard_close', assistantResponseNumber: assistantResponseCountBeforeTurn + 1 } } : {}),
               emiliaRoute: {
                 route: routeResult.route,
                 score: routeResult.score,

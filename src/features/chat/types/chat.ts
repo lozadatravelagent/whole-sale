@@ -4,6 +4,16 @@ export type MessageRow = Database['public']['Tables']['messages']['Row'];
 export type ConversationRow = Database['public']['Tables']['conversations']['Row'];
 export type ConversationWorkspaceMode = Database['public']['Enums']['conversation_workspace_mode'];
 
+export type ChatSuggestedActionType = 'flight' | 'hotel' | 'itinerary' | 'quote' | 'refine';
+
+export interface ChatSuggestedAction {
+  id: string;
+  label: string;
+  prompt: string;
+  type: ChatSuggestedActionType;
+  priority: number;
+}
+
 export interface ConversationWithAgency extends ConversationRow {
   agency_name?: string | null;
   tenant_name?: string | null;

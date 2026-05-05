@@ -775,6 +775,15 @@ describe('useMessageHandler', () => {
       );
       expect(assistantSave).toBeDefined();
       expect(assistantSave![0].conversation_id).toBe(DEFAULT_CONV_ID);
+      expect((assistantSave![0].meta as any).suggestedActions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: 'Buscar vuelos a MAD',
+            prompt: expect.stringContaining('Quiero buscar vuelos a MAD'),
+            type: 'flight',
+          }),
+        ]),
+      );
     });
 
     it('calls addMessageViaSupabase with role assistant after hotel search', async () => {

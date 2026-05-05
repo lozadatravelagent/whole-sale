@@ -347,6 +347,40 @@ describe('runToolLoop — error handling', () => {
     expect(result.toolCallsTrace[0].error).toBe('unknown_tool');
     expect(result.finalMessage.content).toBe('recovered');
   });
+
+  it('emits durable trace hook events for tool start and timeout result', async () => {
+    const { fetchImpl } = makeScriptedFetch([
+      {
+        finish_reason: 'tool_calls',
+        tool_calls: [{ id: 'c1', name: 'echo', args: { value: 'slow' } }],
+      },
+      { finish_reason: 'stop', content: 'ok after timeout' },
+    ]);
+    const traceEvents: unknown[] = [];
+
+    const result = await runToolLoop({
+      apiKey: 'sk-test',
+      model: 'gpt-4.1',
+      systemPrompt: 'sys',
+      userMessage: 'trigger timeout',
+      tools: [TEST_TOOL],
+      toolHandlers: {
+        echo: () => new Promise((resolve) => setTimeout(() => resolve({ late: true }), 20)),
+      },
+      ctx: makeCtx(),
+      fetchImpl,
+      perToolTimeoutMs: 1,
+      onTraceEvent: (event) => {
+        traceEvents.push(event);
+      },
+    });
+
+    expect(result.toolCallsTrace[0].error).toBe('timeout');
+    expect(traceEvents).toEqual([
+      expect.objectContaining({ type: 'tool_start', tool: 'echo', iteration: 1 }),
+      expect.objectContaining({ type: 'tool_result', tool: 'echo', iteration: 1, status: 'timeout' }),
+    ]);
+  });
 });
 
 describe('runToolLoop — iteration cap', () => {

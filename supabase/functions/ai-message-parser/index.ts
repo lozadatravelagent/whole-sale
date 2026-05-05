@@ -22,6 +22,11 @@ import {
 } from "../_shared/functionTools.ts";
 import { runToolLoop } from "../_shared/toolRunner.ts";
 import { buildResponseFormat } from "./responseSchema.ts";
+import { recordAgentRunEvent } from "../_shared/agentRunEvents.ts";
+import {
+  createLifecycleHooks,
+  shouldConsolidateNow,
+} from "../_shared/lifecycleHooks.ts";
 import {
   saveMemoryNoteToolSchema,
   validateMemoryNote,
@@ -53,6 +58,34 @@ function cleanLocation(value: string | undefined): string {
     .replace(/^(desde|de|hacia|a)\s+/i, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function summarizeTraceValue(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return { type: 'array', length: value.length };
+
+  const record = value as Record<string, unknown>;
+  const summary: Record<string, unknown> = {
+    type: 'object',
+    keys: Object.keys(record).slice(0, 20),
+  };
+  if (typeof record.ok === 'boolean') summary.ok = record.ok;
+  if (typeof record.error === 'string') summary.error = record.error;
+  if (Array.isArray(record.places)) summary.places_count = record.places.length;
+  if (Array.isArray(record.destinations)) summary.destinations_count = record.destinations.length;
+  return summary;
+}
+
+function scheduleBackgroundTask(work: Promise<unknown>): void {
+  const guarded = work.catch((err) => {
+    console.warn('[CTX-BACKGROUND] task failed:', err);
+  });
+  try {
+    (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+      .EdgeRuntime?.waitUntil?.(guarded);
+  } catch {
+    // Local runtimes may not expose EdgeRuntime; the promise has already started.
+  }
 }
 
 export function augmentMultiCitySegmentsFromMessage(message: string, parsed: any): any {
@@ -237,6 +270,7 @@ serve(async (req) => {
     { action: 'message', resource: 'ai-parser' },
     async () => {
       const requestId = crypto.randomUUID();
+      const runId = crypto.randomUUID();
 
       // Body parsed up-front so we can decide between SSE and JSON paths
       // BEFORE running the pipeline. Streaming MUST return its Response
@@ -279,7 +313,9 @@ serve(async (req) => {
         | { kind: 'error'; payload: unknown; statusCode: number };
 
       const runPipeline = async (): Promise<ProcessResult> => {
-      try {
+        let contextMetaForTrace: Record<string, unknown> | null = null;
+        const parserStartedAt = performance.now();
+        try {
         const {
           message = requestBody.prompt, // Support both 'message' and 'prompt'
           language = 'es',
@@ -293,6 +329,7 @@ serve(async (req) => {
           toolChoice = null,
           emiliaState: clientEmiliaState = null,
         } = requestBody;
+        contextMetaForTrace = contextMeta;
 
         // Diagnostic: log the tool_choice received from the client so we can
         // tell whether the FE policy is computing it. Cheap to keep in prod
@@ -410,6 +447,37 @@ serve(async (req) => {
             agencyId: contextMeta?.agencyId ?? '',
             leadId: contextMeta?.leadId ?? undefined,
           };
+          const messageId = typeof contextMeta?.messageId === 'string'
+            ? contextMeta.messageId
+            : null;
+          const recordRunEvent = (
+            eventType: string,
+            event: {
+              toolName?: string | null;
+              status?: 'ok' | 'error' | 'timeout' | 'skipped';
+              latencyMs?: number | null;
+              payload?: Record<string, unknown>;
+              error?: string | null;
+            } = {},
+          ) =>
+            recordAgentRunEvent(supabase, {
+              conversationId: ctx.conversationId,
+              agencyId: ctx.agencyId,
+              messageId,
+              runId,
+              eventType,
+              ...event,
+            });
+
+          await recordRunEvent('parser_start', {
+            payload: {
+              requestId,
+              promptVersion: PROMPT_VERSION,
+              hasPlannerContext: plannerContext !== null,
+              hasMemoryStateBlock: memoryStateBlock !== null,
+              toolChoice: toolChoice ? 'provided' : 'auto',
+            },
+          });
 
           // -------------------------------------------------------------
           // Load EmiliaState ONCE at the top of the loop so the
@@ -575,6 +643,15 @@ serve(async (req) => {
           };
 
           try {
+            const toolLoopStartedAt = performance.now();
+            await recordRunEvent('tool_loop_start', {
+              payload: {
+                model: Deno.env.get('CTX_TOOL_LOOP_MODEL') ?? 'gpt-4.1',
+                iterationCap: 3,
+                perToolTimeoutMs: 8000,
+                totalLoopTimeoutMs: 25000,
+              },
+            });
             const loopResult = await runToolLoop({
               apiKey: openaiApiKey,
               // gpt-4.1 supports tool calls + reliable JSON; mini doesn't always.
@@ -620,6 +697,18 @@ serve(async (req) => {
               // Per-turn tool_choice from the client (allowed_tools subset
               // or forced function). Defaults to "auto" when omitted.
               ...(toolChoice ? { toolChoice } : {}),
+              onTraceEvent: (event) =>
+                recordRunEvent(event.type, {
+                  toolName: event.tool,
+                  status: event.status,
+                  latencyMs: event.latencyMs ?? null,
+                  payload: {
+                    iteration: event.iteration,
+                    args: summarizeTraceValue(event.args),
+                    result: summarizeTraceValue(event.result),
+                  },
+                  error: event.error ?? null,
+                }),
               ...(progressWriter
                 ? {
                     onProgress: ({ type, tool, iteration, ok }) => {
@@ -633,6 +722,16 @@ serve(async (req) => {
                     },
                   }
                 : {}),
+            });
+            await recordRunEvent('tool_loop_done', {
+              latencyMs: Math.round(performance.now() - toolLoopStartedAt),
+              payload: {
+                iterations: loopResult.iterationsUsed,
+                hitIterationCap: loopResult.hitIterationCap,
+                hitLoopTimeout: loopResult.hitLoopTimeout,
+                toolsCalled: loopResult.toolCallsTrace.map((t) => t.tool),
+                errorsCount: loopResult.toolCallsTrace.filter((t) => t.error).length,
+              },
             });
 
             // Partition save_memory_note trace entries into accepted/rejected
@@ -660,6 +759,19 @@ serve(async (req) => {
             const memoryAttempted = memoryTraceEntries.length;
             const memoryAccepted = acceptedNotes.length;
             const memoryRejected = memoryAttempted - memoryAccepted;
+
+            if (memoryAttempted > 0) {
+              await recordRunEvent('memory_notes_validated', {
+                status: memoryRejected > 0 ? 'error' : 'ok',
+                payload: {
+                  attempted: memoryAttempted,
+                  accepted: memoryAccepted,
+                  rejected: memoryRejected,
+                  rejectionReasons: rejectedReasons,
+                },
+                error: memoryRejected > 0 ? 'memory_notes_rejected' : null,
+              });
+            }
 
             // Batch-persist BOTH accepted save_memory_note notes AND any
             // pending_action mutations from apply_slot_values /
@@ -713,10 +825,101 @@ serve(async (req) => {
                       pendingResolved: hasPendingMutation,
                       discoveryCandidates: discoveryCandidatesWritten,
                     });
+                    if (hasPendingActionWrite) {
+                      await recordRunEvent('pending_action_emitted', {
+                        payload: {
+                          pendingFor: stateForTools.pending_action?.for ?? null,
+                          pendingKind: stateForTools.pending_action?.kind ?? null,
+                        },
+                      });
+                    }
+                    if (hasPendingMutation) {
+                      await recordRunEvent('pending_action_resolved', {
+                        payload: {
+                          pendingFor: pendingActionResolution?.for ?? null,
+                          pendingKind: pendingActionResolution?.kind ?? null,
+                          complete: pendingActionResolution?.complete ?? false,
+                        },
+                      });
+                    }
                   }
                 }
               } catch (persistErr) {
                 console.warn('[CTX-TOOL] state batch persistence threw:', persistErr);
+              }
+            }
+
+            if (
+              stateForTools &&
+              ctx.conversationId &&
+              ctx.agencyId &&
+              !stateLoadFailed
+            ) {
+              const prospectiveTurnState: EmiliaState = {
+                ...stateForTools,
+                meta: {
+                  ...stateForTools.meta,
+                  turn_count: (stateForTools.meta?.turn_count ?? 0) + 1,
+                },
+              };
+              const hasAnyMemory =
+                (stateForTools.session_memory?.notes?.length ?? 0) > 0 ||
+                (stateForTools.global_memory?.notes?.length ?? 0) > 0;
+              if (hasAnyMemory && shouldConsolidateNow(prospectiveTurnState)) {
+                const stateSnapshot = stateForTools;
+                const conversationIdSnapshot = ctx.conversationId;
+                const agencyIdSnapshot = ctx.agencyId;
+                scheduleBackgroundTask((async () => {
+                  try {
+                    const hooks = createLifecycleHooks();
+                    const consolidated = await hooks.onSessionEnd(stateSnapshot, {
+                      chatCompletion: (input) =>
+                        requestOpenAiChatCompletion({
+                          apiKey: openaiApiKey,
+                          model: input.model,
+                          messages: input.messages,
+                          temperature: input.temperature,
+                          maxTokens: input.maxTokens,
+                        }),
+                    });
+                    if (consolidated !== stateSnapshot) {
+                      const { error: consolidateSaveErr } = await supabase
+                        .from('agent_states')
+                        .update({
+                          state: consolidated as unknown as Record<string, unknown>,
+                          schema_version: consolidated.meta?.schema_version ?? 1,
+                        })
+                        .eq('conversation_id', conversationIdSnapshot)
+                        .eq('agency_id', agencyIdSnapshot);
+                      if (consolidateSaveErr) {
+                        console.warn('[CTX-MEMORY] consolidation save failed:', consolidateSaveErr.message);
+                        await recordRunEvent('memory_consolidation', {
+                          status: 'error',
+                          error: consolidateSaveErr.message,
+                        });
+                      } else {
+                        await recordRunEvent('memory_consolidation', {
+                          payload: {
+                            globalNotes: consolidated.global_memory.notes.length,
+                            sessionNotes: consolidated.session_memory.notes.length,
+                            lastConsolidatedAt: consolidated.meta.last_consolidated_at ?? null,
+                          },
+                        });
+                      }
+                    } else {
+                      await recordRunEvent('memory_consolidation', {
+                        status: 'skipped',
+                        payload: { reason: 'no_changes' },
+                      });
+                    }
+                  } catch (err) {
+                    console.warn('[CTX-MEMORY] consolidation failed:', err);
+                    await recordRunEvent('memory_consolidation', {
+                      status: 'error',
+                      error: err instanceof Error ? err.message : String(err),
+                    });
+                  }
+                })());
               }
             }
 
@@ -812,6 +1015,10 @@ serve(async (req) => {
             // chat completion so the user still gets a response. NOT a
             // legacy A/B leg — the tool loop is the only intended path.
             console.error('❌ [CTX-TOOL] runToolLoop failed, using single-shot resilience fallback:', toolLoopErr);
+            await recordRunEvent('tool_loop_error', {
+              status: 'error',
+              error: toolLoopErr instanceof Error ? toolLoopErr.message : String(toolLoopErr),
+            });
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             openaiData = await requestOpenAiChatCompletion<any>({
               apiKey: openaiApiKey,
@@ -919,7 +1126,7 @@ serve(async (req) => {
             totalTokens: usage.totalTokens,
             cachedTokens: usage.cachedTokens,
           },
-          contextMeta,
+          contextMeta: contextMetaForTrace,
           metadata: {
             promptVersion: PROMPT_VERSION,
           },
@@ -944,6 +1151,22 @@ serve(async (req) => {
             placeDiscovery: placeDiscoveryResult,
           }
         };
+
+        await recordAgentRunEvent(supabase, {
+          conversationId: typeof contextMetaForTrace?.conversationId === 'string' ? contextMetaForTrace.conversationId : '',
+          agencyId: typeof contextMetaForTrace?.agencyId === 'string' ? contextMetaForTrace.agencyId : '',
+          messageId: typeof contextMetaForTrace?.messageId === 'string' ? contextMetaForTrace.messageId : null,
+          runId,
+          eventType: 'parser_done',
+          latencyMs: Math.round(performance.now() - parserStartedAt),
+          payload: {
+            requestType: parsed.requestType,
+            promptVersion: PROMPT_VERSION,
+            toolLoopIterations,
+            hasPendingActionResolution: pendingActionResolution !== null,
+            hasPlaceDiscovery: placeDiscoveryResult !== null,
+          },
+        });
 
         // Diagnostic: confirm what's actually being shipped to the client.
         // Crucial for debugging the discovery flow when the UI doesn't show
@@ -974,6 +1197,16 @@ serve(async (req) => {
             error: error instanceof Error ? error.message : String(error),
             promptVersion: PROMPT_VERSION,
           },
+        });
+        await recordAgentRunEvent(supabase, {
+          conversationId: typeof contextMetaForTrace?.conversationId === 'string' ? contextMetaForTrace.conversationId : '',
+          agencyId: typeof contextMetaForTrace?.agencyId === 'string' ? contextMetaForTrace.agencyId : '',
+          messageId: typeof contextMetaForTrace?.messageId === 'string' ? contextMetaForTrace.messageId : null,
+          runId,
+          eventType: 'parser_error',
+          status: 'error',
+          error: error instanceof Error ? error.message : String(error),
+          payload: { promptVersion: PROMPT_VERSION },
         });
         const statusCode = error.message?.includes('OpenAI') ? 502 : 500;
         const errorPayload = {
@@ -1066,4 +1299,3 @@ serve(async (req) => {
     }
   );
 });
-

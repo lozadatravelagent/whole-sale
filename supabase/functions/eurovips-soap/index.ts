@@ -4,6 +4,87 @@ import { DOMParser } from "https://deno.land/x/deno_dom@v0.1.45/deno-dom-wasm.ts
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { withRateLimit, extractIdentifiers } from "../_shared/rateLimit.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+
+const EUROVIPS_ALLOWED_ACTIONS = new Set([
+  'getCountryList',
+  'getAirlineList',
+  'searchHotels',
+  'searchFlights',
+  'searchPackages',
+  'searchServices',
+  'makeBudget',
+]);
+
+function validationErrorResponse(error: string) {
+  return new Response(JSON.stringify({
+    success: false,
+    error: 'invalid_request_body',
+    detail: error,
+    timestamp: new Date().toISOString(),
+  }), {
+    status: 400,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
+function requireString(data: any, field: string, action: string): string | null {
+  return typeof data?.[field] === 'string' && data[field].trim() !== ''
+    ? null
+    : `${field} is required for ${action}`;
+}
+
+function validateEurovipsRequestBody(body: any): string | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return 'body must be a JSON object';
+  }
+  if (typeof body.action !== 'string' || body.action.trim() === '') {
+    return 'action is required';
+  }
+  if (!EUROVIPS_ALLOWED_ACTIONS.has(body.action)) {
+    return `unsupported action: ${body.action}`;
+  }
+  if (body.jobId !== undefined && typeof body.jobId !== 'string') {
+    return 'jobId must be a string when provided';
+  }
+
+  const dataOptionalActions = new Set(['getAirlineList', 'getCountryList']);
+  if (!dataOptionalActions.has(body.action)) {
+    if (!body.data || typeof body.data !== 'object' || Array.isArray(body.data)) {
+      return `data object is required for ${body.action}`;
+    }
+  }
+
+  switch (body.action) {
+    case 'searchHotels':
+      return requireString(body.data, 'cityCode', body.action) ??
+        requireString(body.data, 'checkinDate', body.action) ??
+        requireString(body.data, 'checkoutDate', body.action);
+    case 'searchFlights':
+      return requireString(body.data, 'originCode', body.action) ??
+        requireString(body.data, 'destinationCode', body.action) ??
+        requireString(body.data, 'departureDate', body.action);
+    case 'searchPackages':
+      return requireString(body.data, 'cityCode', body.action) ??
+        requireString(body.data, 'dateFrom', body.action) ??
+        requireString(body.data, 'dateTo', body.action);
+    case 'searchServices':
+      return requireString(body.data, 'cityCode', body.action) ??
+        requireString(body.data, 'dateFrom', body.action);
+    case 'makeBudget':
+      return requireString(body.data, 'fareId', body.action) ??
+        requireString(body.data, 'fareIdBroker', body.action) ??
+        requireString(body.data, 'checkinDate', body.action) ??
+        requireString(body.data, 'checkoutDate', body.action) ??
+        (Array.isArray(body.data?.occupancies) && body.data.occupancies.length > 0
+          ? null
+          : 'occupancies array is required for makeBudget');
+    default:
+      return null;
+  }
+}
 function normalizeCategory(category: string): number {
   const match = category.match(/(\d)/);
   return match ? parseInt(match[1], 10) : 0;
@@ -1348,9 +1429,17 @@ serve(async (req) => {
       let body: { action?: string; data?: any; jobId?: string } = {};
       try {
         if (req.method !== 'POST') {
-          throw new Error('Only POST method is allowed');
+          return validationErrorResponse('Only POST method is allowed');
         }
-        body = await req.json();
+        try {
+          body = await req.json();
+        } catch {
+          return validationErrorResponse('body must be valid JSON');
+        }
+        const validationError = validateEurovipsRequestBody(body);
+        if (validationError) {
+          return validationErrorResponse(validationError);
+        }
         console.log('📦 EUROVIPS REQUEST:', body.action, body.data ? Object.keys(body.data) : 'no-data');
         const { action, data, jobId } = body;
 

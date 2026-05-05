@@ -163,6 +163,45 @@ describe('resolveConversationTurn mode bridge', () => {
     expect(turn.executionBranch).toBe('mode_bridge');
     expect(turn.uiMeta.suggestedMode).toBe('passenger');
   });
+
+  it('stops asking minimal questions once the collect cap is exhausted', () => {
+    const turn = resolveConversationTurn({
+      parsedRequest: {
+        requestType: 'flights',
+        confidence: 0.7,
+        originalMessage: 'quiero vuelos a Cancun',
+        flights: {
+          destination: 'Cancun',
+          adults: 1,
+        },
+      },
+      routeResult: {
+        route: 'COLLECT',
+        score: 0.55,
+        missingFields: ['dates'],
+        collectQuestion: '¿En qué fechas viajás?',
+        reason: 'needs_clarification',
+        dimensions: {
+          destination: 1,
+          dates: 0,
+          passengers: 0.5,
+          origin: 0,
+          complexity: 1,
+        },
+        inferredFields: [],
+      },
+      plannerState: null,
+      hasPersistentContext: false,
+      hasPreviousParsedRequest: false,
+      recentCollectCount: 3,
+      maxCollectTurns: 3,
+      mode: 'passenger',
+    });
+
+    expect(turn.executionBranch).toBe('standard_itinerary');
+    expect(turn.shouldAskMinimalQuestion).toBe(false);
+    expect(turn.messageType).toBe('trip_planner');
+  });
 });
 
 describe('routeRequest active planner quote intent', () => {

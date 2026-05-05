@@ -401,6 +401,11 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     handleSendMessageRaw(message);
   }, [message, isLoading, handleSendMessageRaw]);
 
+  const handleSuggestedAction = useCallback((prompt: string) => {
+    if (!prompt.trim() || isLoading) return;
+    handleSendMessageRaw(prompt);
+  }, [handleSendMessageRaw, isLoading]);
+
   // Handle Archive conversation
   const handleArchiveConversation = useCallback(async (conversationId: string, currentState: 'active' | 'closed') => {
     try {
@@ -887,6 +892,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                   onPdfGenerated={handlePdfGenerated}
                   onBackToList={() => setSelectedConversation(null)}
                   accountType="consumer"
+                  onSuggestedAction={handleSuggestedAction}
                   headerVisibility="mobile-only"
                 />
               </div>
@@ -1002,6 +1008,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                 onModeChange={setChatMode}
                 onBridgeSwitch={handleBridgeSwitch}
                 onBridgeStay={handleBridgeStay}
+                onSuggestedAction={handleSuggestedAction}
                 headerVisibility="mobile-only"
               />
             ) : (

@@ -70,6 +70,17 @@ export interface ToolCallTraceEntry {
   error?: string;
 }
 
+export interface ToolLoopTraceEvent {
+  type: "tool_start" | "tool_result";
+  tool: string;
+  iteration: number;
+  status: "ok" | "error" | "timeout";
+  latencyMs?: number;
+  args?: unknown;
+  result?: unknown;
+  error?: string;
+}
+
 export interface RunToolLoopArgs {
   apiKey: string;
   model: string;
@@ -97,6 +108,8 @@ export interface RunToolLoopArgs {
     iteration: number;
     ok: boolean;
   }) => void;
+  /** Optional durable trace hook. Best-effort: hook failures are swallowed. */
+  onTraceEvent?: (event: ToolLoopTraceEvent) => void | Promise<void>;
   /**
    * Optional OpenAI `response_format` directive. When provided, it is
    * forwarded with EVERY chat-completions request in the loop AND with the
@@ -259,12 +272,26 @@ async function callOpenAi(args: CallOpenAiArgs): Promise<ChatCompletionResponse>
 
 interface ExecOneArgs {
   call: ToolCall;
+  iteration: number;
   handlers: Record<
     string,
     (args: unknown, ctx: ToolContext) => Promise<unknown>
   >;
   ctx: ToolContext;
   perToolTimeoutMs: number;
+  onTraceEvent?: RunToolLoopArgs["onTraceEvent"];
+}
+
+async function emitTraceEvent(
+  onTraceEvent: RunToolLoopArgs["onTraceEvent"],
+  event: ToolLoopTraceEvent,
+): Promise<void> {
+  if (!onTraceEvent) return;
+  try {
+    await onTraceEvent(event);
+  } catch (err) {
+    console.warn("[CTX-TOOL] trace hook failed:", err);
+  }
 }
 
 async function execOne(
@@ -284,13 +311,26 @@ async function execOne(
       error: "bad_arguments",
       detail: `arguments not valid JSON: ${args.call.function.arguments?.slice(0, 200)}`,
     };
+    const entry = {
+      tool: name,
+      args: args.call.function.arguments,
+      result,
+      latencyMs: Date.now() - startedAt,
+      error: "bad_arguments",
+    };
+    await emitTraceEvent(args.onTraceEvent, {
+      type: "tool_result",
+      tool: name,
+      iteration: args.iteration,
+      status: "error",
+      latencyMs: entry.latencyMs,
+      args: entry.args,
+      result,
+      error: entry.error,
+    });
     return {
       entry: {
-        tool: name,
-        args: args.call.function.arguments,
-        result,
-        latencyMs: Date.now() - startedAt,
-        error: "bad_arguments",
+        ...entry,
       },
       toolMessage: {
         role: "tool",
@@ -301,19 +341,38 @@ async function execOne(
     };
   }
 
+  await emitTraceEvent(args.onTraceEvent, {
+    type: "tool_start",
+    tool: name,
+    iteration: args.iteration,
+    status: "ok",
+    args: parsedArgs,
+  });
+
   if (!handler) {
     const result = {
       error: "unknown_tool",
       detail: `no handler registered for '${name}'`,
     };
+    const entry = {
+      tool: name,
+      args: parsedArgs,
+      result,
+      latencyMs: Date.now() - startedAt,
+      error: "unknown_tool",
+    };
+    await emitTraceEvent(args.onTraceEvent, {
+      type: "tool_result",
+      tool: name,
+      iteration: args.iteration,
+      status: "error",
+      latencyMs: entry.latencyMs,
+      args: parsedArgs,
+      result,
+      error: entry.error,
+    });
     return {
-      entry: {
-        tool: name,
-        args: parsedArgs,
-        result,
-        latencyMs: Date.now() - startedAt,
-        error: "unknown_tool",
-      },
+      entry,
       toolMessage: {
         role: "tool",
         tool_call_id: args.call.id,
@@ -346,12 +405,24 @@ async function execOne(
     }
   }
 
+  const latencyMs = Date.now() - startedAt;
+  await emitTraceEvent(args.onTraceEvent, {
+    type: "tool_result",
+    tool: name,
+    iteration: args.iteration,
+    status: errorTag === "timeout" ? "timeout" : errorTag ? "error" : "ok",
+    latencyMs,
+    args: parsedArgs,
+    result,
+    error: errorTag,
+  });
+
   return {
     entry: {
       tool: name,
       args: parsedArgs,
       result,
-      latencyMs: Date.now() - startedAt,
+      latencyMs,
       error: errorTag,
     },
     toolMessage: {
@@ -369,6 +440,8 @@ async function execBatch(
   ctx: ToolContext,
   perToolTimeoutMs: number,
   parallel: boolean,
+  iteration: number,
+  onTraceEvent?: RunToolLoopArgs["onTraceEvent"],
 ): Promise<{ entries: ToolCallTraceEntry[]; toolMessages: ChatMessage[] }> {
   const entries: ToolCallTraceEntry[] = [];
   const toolMessages: ChatMessage[] = [];
@@ -377,9 +450,11 @@ async function execBatch(
     for (const call of calls) {
       const { entry, toolMessage } = await execOne({
         call,
+        iteration,
         handlers,
         ctx,
         perToolTimeoutMs,
+        onTraceEvent,
       });
       entries.push(entry);
       toolMessages.push(toolMessage);
@@ -391,7 +466,9 @@ async function execBatch(
   for (let i = 0; i < calls.length; i += MAX_PARALLEL_TOOL_CALLS) {
     const chunk = calls.slice(i, i + MAX_PARALLEL_TOOL_CALLS);
     const results = await Promise.all(
-      chunk.map((call) => execOne({ call, handlers, ctx, perToolTimeoutMs })),
+      chunk.map((call) =>
+        execOne({ call, iteration, handlers, ctx, perToolTimeoutMs, onTraceEvent })
+      ),
     );
     for (const r of results) {
       entries.push(r.entry);
@@ -422,6 +499,7 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
     endpoint = OPENAI_ENDPOINT,
     fetchImpl = fetch,
     onProgress,
+    onTraceEvent,
     responseFormat,
     toolChoice,
   } = args;
@@ -578,6 +656,8 @@ export async function runToolLoop(args: RunToolLoopArgs): Promise<RunToolLoopRes
         ctx,
         perToolTimeoutMs,
         parallelToolCalls,
+        iteration,
+        onTraceEvent,
       );
       trace.push(...entries);
       messages.push(...toolMessages);

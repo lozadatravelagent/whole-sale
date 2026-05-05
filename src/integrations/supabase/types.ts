@@ -181,6 +181,73 @@ export type Database = {
           },
         ]
       }
+      agent_run_events: {
+        Row: {
+          agency_id: string
+          conversation_id: string
+          created_at: string
+          error: string | null
+          event_type: string
+          id: string
+          latency_ms: number | null
+          message_id: string | null
+          payload: Json
+          run_id: string
+          status: string
+          tool_name: string | null
+        }
+        Insert: {
+          agency_id: string
+          conversation_id: string
+          created_at?: string
+          error?: string | null
+          event_type: string
+          id?: string
+          latency_ms?: number | null
+          message_id?: string | null
+          payload?: Json
+          run_id: string
+          status?: string
+          tool_name?: string | null
+        }
+        Update: {
+          agency_id?: string
+          conversation_id?: string
+          created_at?: string
+          error?: string | null
+          event_type?: string
+          id?: string
+          latency_ms?: number | null
+          message_id?: string | null
+          payload?: Json
+          run_id?: string
+          status?: string
+          tool_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_run_events_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_run_events_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_run_events_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       api_keys: {
         Row: {
           agency_id: string | null
