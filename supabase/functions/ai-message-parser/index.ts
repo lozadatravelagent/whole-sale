@@ -303,6 +303,12 @@ serve(async (req) => {
         streamReadable = readable;
         progressWriter = writable.getWriter();
       }
+      const emitStatus = (stage: string, message: string) => {
+        if (!progressWriter) return;
+        progressWriter.write(sseEvent('status', { stage, message })).catch(() => {
+          // client disconnected or stream already closed
+        });
+      };
 
       // Pipeline returns a discriminated result instead of a Response. The
       // streaming wrapper writes the terminal `done`/`error` SSE event once
@@ -316,7 +322,8 @@ serve(async (req) => {
         let contextMetaForTrace: Record<string, unknown> | null = null;
         const parserStartedAt = performance.now();
         try {
-        const {
+          emitStatus('parse', 'Analizando tu mensaje…');
+          const {
           message = requestBody.prompt, // Support both 'message' and 'prompt'
           language = 'es',
           currentDate = new Date().toISOString().split('T')[0], // Default to today's date (YYYY-MM-DD)
@@ -644,6 +651,7 @@ serve(async (req) => {
 
           try {
             const toolLoopStartedAt = performance.now();
+            emitStatus('context', 'Consultando contexto…');
             await recordRunEvent('tool_loop_start', {
               payload: {
                 model: Deno.env.get('CTX_TOOL_LOOP_MODEL') ?? 'gpt-4.1',
@@ -723,6 +731,7 @@ serve(async (req) => {
                   }
                 : {}),
             });
+            emitStatus('compose', 'Preparando respuesta…');
             await recordRunEvent('tool_loop_done', {
               latencyMs: Math.round(performance.now() - toolLoopStartedAt),
               payload: {

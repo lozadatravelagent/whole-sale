@@ -19,12 +19,14 @@ beforeAll(() => {
 
 // Dynamic import to ensure localStorage stub is in place
 let expandRegionalDestination: typeof import('@/features/trip-planner/utils').expandRegionalDestination;
+let expandDestinationsIfRegional: typeof import('@/features/trip-planner/utils').expandDestinationsIfRegional;
 let selectRegionalSubroute: typeof import('@/features/trip-planner/utils').selectRegionalSubroute;
 let summarizePlannerForChat: typeof import('@/features/trip-planner/utils').summarizePlannerForChat;
 
 beforeAll(async () => {
   const utils = await import('@/features/trip-planner/utils');
   expandRegionalDestination = utils.expandRegionalDestination;
+  expandDestinationsIfRegional = utils.expandDestinationsIfRegional;
   selectRegionalSubroute = utils.selectRegionalSubroute;
   summarizePlannerForChat = utils.summarizePlannerForChat;
 });
@@ -91,10 +93,11 @@ describe('expandRegionalDestination', () => {
     expect(sum).toBe(7);
   });
 
-  it('uses all cities for 16-day Europe request (true minimum for all cities)', () => {
+  it('uses a weighted subroute for 16-day Europe request', () => {
     const result = expandRegionalDestination('europe_classic', 16);
     expect(result.suggestedDays).toBe(16);
-    expect(result.cities.length).toBe(5);
+    expect(result.cities.length).toBeLessThanOrEqual(4);
+    expect(result.cities.map((city) => city.name)).toContain('París');
     const sum = result.cities.reduce((s, c) => s + c.days, 0);
     expect(sum).toBe(16);
   });
@@ -112,7 +115,35 @@ describe('expandRegionalDestination', () => {
     const result = expandRegionalDestination('europe_classic', 30);
     expect(result.suggestedDays).toBe(30);
     const sum = result.cities.reduce((s, c) => s + c.days, 0);
-    expect(sum).toBe(21); // maxDays for europe_classic
+    expect(sum).toBe(24); // maxDays for europe_classic
+  });
+
+  it('expands broad Asia requests to preloaded major cities', () => {
+    const result = expandRegionalDestination('asia_highlights', 18);
+    expect(result.expanded).toBe(true);
+    expect(result.regionName).toBe('Asia');
+    expect(result.cities.map((city) => city.name)).toContain('Tokio');
+  });
+
+  it('expands broad continent aliases through expandDestinationsIfRegional', () => {
+    const asia = expandDestinationsIfRegional(['Asia'], 18);
+    expect(asia.regionalMeta?.regionKey).toBe('asia_highlights');
+    expect(asia.expandedDestinations).toContain('Tokio');
+
+    const africa = expandDestinationsIfRegional(['África'], 14);
+    expect(africa.regionalMeta?.regionKey).toBe('africa_highlights');
+    expect(africa.expandedDestinations).toContain('El Cairo');
+
+    const oceania = expandDestinationsIfRegional(['Oceanía'], 14);
+    expect(oceania.regionalMeta?.regionKey).toBe('oceania_highlights');
+    expect(oceania.expandedDestinations).toContain('Sídney');
+  });
+
+  it('expands Caribe to preloaded beach and city anchors', () => {
+    const caribbean = expandDestinationsIfRegional(['Caribe'], 12);
+    expect(caribbean.regionalMeta?.regionKey).toBe('caribbean_mix');
+    expect(caribbean.expandedDestinations).toContain('Punta Cana');
+    expect(caribbean.expandedDestinations).toContain('Cancún');
   });
 
   it('returns expanded false for unknown region', () => {

@@ -55,7 +55,10 @@ const PLAN_THRESHOLD = 0.40;
 /** Regions that require city-level resolution before any search */
 const REGIONS = new Set([
   'europa', 'europe', 'asia', 'caribe', 'caribbean',
-  'sudamerica', 'norteamerica', 'centroamerica', 'oceania', 'africa',
+  'sudamerica', 'sudamérica', 'america del sur', 'américa del sur', 'south america',
+  'norteamerica', 'norteamérica', 'america del norte', 'américa del norte', 'north america',
+  'centroamerica', 'centroamérica', 'america central', 'américa central', 'central america',
+  'oceania', 'oceanía', 'africa', 'áfrica',
   'medio oriente', 'middle east', 'sudeste asiatico', 'southeast asia',
   'patagonia', 'escandinavia', 'scandinavia',
 ]);

@@ -48,12 +48,6 @@ export interface EditorialSegment {
   dayPreviews: EditorialDayPreview[];
 }
 
-export interface EditorialNextAction {
-  label: string;
-  message: string;
-  icon?: 'route' | 'hotel' | 'flight' | 'pace' | 'edit' | 'calendar';
-}
-
 export interface PlannerEditorialData {
   mode: PlannerEditorialMode;
   tripTitle: string;
@@ -65,7 +59,6 @@ export interface PlannerEditorialData {
   totalDays: number;
   totalCities: number;
   pace?: string;
-  nextActions: EditorialNextAction[];
   metadata: {
     generatedAt: string;
     sourceSegmentCount: number;
@@ -314,28 +307,6 @@ function buildTripHook(state: TripPlannerState, segments: EditorialSegment[]): s
   return `Ruta de ${days} dias por ${cities}.`;
 }
 
-function buildNextActions(state: TripPlannerState): EditorialNextAction[] {
-  const actions: EditorialNextAction[] = [];
-
-  const hasHotels = state.segments.some((s) =>
-    s.hotelPlan?.confirmedInventoryHotel || s.hotelPlan?.selectedPlaceCandidate || (s.hotelPlan?.hotelRecommendations?.length ?? 0) > 0
-  );
-  const hasFlights = state.segments.some((s) =>
-    s.transportIn?.selectedOptionId || (s.transportIn?.options?.length ?? 0) > 0
-  );
-
-  if (!hasHotels) {
-    actions.push({ label: 'Buscar hoteles', message: 'Buscame hoteles para todas las ciudades', icon: 'hotel' });
-  }
-  if (!hasFlights && state.segments.length > 1) {
-    actions.push({ label: 'Buscar vuelos', message: 'Buscame vuelos para este recorrido', icon: 'flight' });
-  }
-  actions.push({ label: 'Ajustar ritmo', message: 'Hace el ritmo mas relajado', icon: 'pace' });
-  actions.push({ label: 'Cambiar ciudades', message: 'Quiero cambiar el orden o las ciudades', icon: 'route' });
-
-  return actions.slice(0, 4);
-}
-
 // ---------------------------------------------------------------------------
 // Main builder
 // ---------------------------------------------------------------------------
@@ -375,7 +346,6 @@ export function buildEditorialData(
     totalDays,
     totalCities: segments.length,
     pace: plannerState.pace,
-    nextActions: buildNextActions(plannerState),
     metadata: {
       generatedAt: new Date().toISOString(),
       sourceSegmentCount: segments.length,

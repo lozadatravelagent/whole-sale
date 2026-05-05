@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v11';
+export const PROMPT_VERSION = 'emilia-parser-v12';
 export const PROMPT_CONTRACT_SNIPPETS = [
   // v8 dropped the literal `IMPORTANTE: Siempre responde solo con JSON válido.`
   // line; Structured Outputs (response_format: json_schema) now enforces JSON
@@ -8,6 +8,7 @@ export const PROMPT_CONTRACT_SNIPPETS = [
   'hotelChains',
   'MULTI-CITY FLIGHT SEGMENTS',
   'ITINERARY REQUEST DETECTION',
+  'PRELOADED REGION DESTINATIONS',
   'ONLY minors (children/infants) without any adults',
   'COMBINED ROUND-TRIP DATE ALIGNMENT (CRITICAL)',
 ];
@@ -463,6 +464,7 @@ When in doubt: NO duration + NO multi-destination + single city question → DIS
 - Single country (no cities mentioned): "Italia", "España", "Japón"
 - Multiple destinations: "Italia y Francia", "Madrid, Barcelona y Valencia"
 - Regions: "Europa", "Patagonia", "Caribe"
+- **PRELOADED REGION DESTINATIONS:** Broad regions/continents are valid itinerary destinations. For "Europa", "Asia", "Sudamérica", "Norteamérica", "Centroamérica", "África", "Oceanía", "Medio Oriente", "Escandinavia", "Sudeste Asiático", "Costa Oeste" or "Caribe", keep the region name in \`itinerary.destinations\` exactly as the user said. Do NOT expand it in the prompt and do NOT ask for city selection first; the deterministic planner layer expands these preloaded routes to representative major cities with day weights.
 - IMPORTANT: When the user mentions BOTH a country AND specific cities within it (e.g., "Italia visitando Roma y Florencia"), use ONLY the cities — do NOT also include the country. The country is just context, not a separate destination.
 - CRITICAL FOR ITINERARY: When the user mentions a COUNTRY name without specific cities (e.g., "España", "Italia", "Japón", "Francia"), keep the COUNTRY NAME exactly as-is in the destinations array. Do NOT resolve it to the capital city. "15 días por España" → destinations: ["España"], NOT ["Madrid"]. "10 días por Italia" → destinations: ["Italia"], NOT ["Roma"]. The planner handles country-level routing internally.
 

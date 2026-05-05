@@ -24,6 +24,7 @@ import {
   FileText,
   Loader2,
   Download,
+  ChevronLeft,
   ChevronRight,
   Users,
   Luggage,
@@ -46,6 +47,16 @@ import { supabase } from '@/integrations/supabase/client';
 
 const ensureHttps = (url: string) =>
   url.startsWith('http://') ? url.replace('http://', 'https://') : url;
+
+const scrollCarousel = (ref: React.RefObject<HTMLDivElement>, direction: 'previous' | 'next') => {
+  const element = ref.current;
+  if (!element) return;
+
+  element.scrollBy({
+    left: direction === 'next' ? element.clientWidth * 0.85 : -element.clientWidth * 0.85,
+    behavior: 'smooth'
+  });
+};
 
 interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
@@ -403,6 +414,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
   const requestedPricesRef = useRef(new Set<string>());
+  const flightsCarouselRef = useRef<HTMLDivElement>(null);
+  const hotelsCarouselRef = useRef<HTMLDivElement>(null);
 
   // Hook para cache de resultados y filtrado dinámico de vuelos
   // Pasa el searchId para cargar todos los vuelos desde localStorage
@@ -584,6 +597,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     if (!cachedFlights?.length) return [];
     return cachedFlights.map(convertCachedFlightToDisplayFormat);
   }, [cachedFlights]);
+
+  const visibleFlights = hasCache ? filteredFlights : combinedData.flights;
 
   // Debug: Log received filter preferences
   useEffect(() => {
@@ -1224,71 +1239,106 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
             )}
 
             {/* Usar vuelos filtrados (filteredFlights) cuando hay cache, sino los originales */}
-            {(hasCache ? filteredFlights : combinedData.flights).map((flight, index) => {
-              const isSelected = selectedFlights.includes(flight.id!);
-
-              return (
-                <Card
-                  key={flight.id}
-                  data-testid={`flight-card-${flight.id || index}`}
-                  className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+            {visibleFlights.length > 0 && (
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent" />
+                <div className="mb-2 flex justify-end gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    aria-label="Ver vuelos anteriores"
+                    onClick={() => scrollCarousel(flightsCarouselRef, 'previous')}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    aria-label="Ver más vuelos"
+                    onClick={() => scrollCarousel(flightsCarouselRef, 'next')}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div
+                  ref={flightsCarouselRef}
+                  className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-3"
+                  role="list"
                 >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center space-x-3">
-                        <Checkbox
-                          data-testid={`select-flight-${flight.id || index}`}
-                          checked={isSelected}
-                          onCheckedChange={() => handleFlightToggle(flight.id!)}
-                        />
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <Plane className="h-3 w-3 text-primary" />
-                            <span className="font-medium text-sm">{flight.airline.name}</span>
-                            <Badge variant="secondary" className="text-xs px-1 py-0">{flight.airline.code}</Badge>
-                            {flight.cabin?.brandName && (
-                              <Badge
-                                variant={
-                                  flight.cabin.class === 'F' ? 'destructive' :
-                                  ['C', 'J'].includes(flight.cabin.class) ? 'default' : 'secondary'
-                                }
-                                className="text-xs px-1 py-0"
-                              >
-                                {flight.cabin.brandName}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
-                            <div className="flex items-center space-x-1">
-                              <Users className="h-3 w-3" />
-                              <span>{flight.adults} adult{flight.adults > 1 ? 'os' : 'o'}</span>
-                              {flight.childrens > 0 && <span>, {flight.childrens} niño{flight.childrens > 1 ? 's' : ''}</span>}
-                              {flight.infants > 0 && <span>, {flight.infants} bebé{flight.infants > 1 ? 's' : ''}</span>}
+                  {visibleFlights.map((flight, index) => {
+                    const isSelected = selectedFlights.includes(flight.id!);
+
+                    return (
+                      <Card
+                        key={flight.id}
+                        data-testid={`flight-card-${flight.id || index}`}
+                        className={`w-[min(86vw,38rem)] shrink-0 snap-start transition-all md:w-[36rem] lg:w-[38rem] ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                        role="listitem"
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center space-x-3">
+                              <Checkbox
+                                data-testid={`select-flight-${flight.id || index}`}
+                                checked={isSelected}
+                                onCheckedChange={() => handleFlightToggle(flight.id!)}
+                              />
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <Plane className="h-3 w-3 text-primary" />
+                                  <span className="font-medium text-sm">{flight.airline.name}</span>
+                                  <Badge variant="secondary" className="text-xs px-1 py-0">{flight.airline.code}</Badge>
+                                  {flight.cabin?.brandName && (
+                                    <Badge
+                                      variant={
+                                        flight.cabin.class === 'F' ? 'destructive' :
+                                        ['C', 'J'].includes(flight.cabin.class) ? 'default' : 'secondary'
+                                      }
+                                      className="text-xs px-1 py-0"
+                                    >
+                                      {flight.cabin.brandName}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
+                                  <div className="flex items-center space-x-1">
+                                    <Users className="h-3 w-3" />
+                                    <span>{flight.adults} adult{flight.adults > 1 ? 'os' : 'o'}</span>
+                                    {flight.childrens > 0 && <span>, {flight.childrens} niño{flight.childrens > 1 ? 's' : ''}</span>}
+                                    {flight.infants > 0 && <span>, {flight.infants} bebé{flight.infants > 1 ? 's' : ''}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-lg font-bold text-primary">
+                                {formatPrice(flight.price.amount, flight.price.currency)}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {formatPassengerText(flight.adults, flight.childrens, flight.infants)}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-primary">
-                          {formatPrice(flight.price.amount, flight.price.currency)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatPassengerText(flight.adults, flight.childrens, flight.infants)}
-                        </div>
-                      </div>
-                    </div>
 
-                    <Separator className="my-2" />
+                          <Separator className="my-2" />
 
-                    {/* Visual Flight Itinerary with Connections */}
-                    <FlightItinerary
-                      flight={flight}
-                      selectedOptionPerLeg={selectedFlightOptions[flight.id!] || {}}
-                    />
-                  </CardContent>
-                </Card>
-              );
-            })}
+                          {/* Visual Flight Itinerary with Connections */}
+                          <FlightItinerary
+                            flight={flight}
+                            selectedOptionPerLeg={selectedFlightOptions[flight.id!] || {}}
+                          />
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Mensaje cuando no hay vuelos después de filtrar */}
             {hasCache && filteredFlights.length === 0 && combinedData.flights.length > 0 && (
@@ -1401,111 +1451,146 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
             )}
 
             {/* Usar hoteles filtrados cuando hay cache, sino los originales */}
-            {!activeHotelSegment?.error && activeHotels.map((hotel) => {
-              const isSelected = selectedHotels.includes(hotel.id);
-
-              return (
-                <Card
-                  key={hotel.id}
-                  data-testid={`hotel-card-${hotel.id || 'unknown'}`}
-                  className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+            {!activeHotelSegment?.error && activeHotels.length > 0 && (
+              <div className="relative">
+                <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent" />
+                <div className="mb-2 flex justify-end gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    aria-label="Ver hoteles anteriores"
+                    onClick={() => scrollCarousel(hotelsCarouselRef, 'previous')}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    aria-label="Ver más hoteles"
+                    onClick={() => scrollCarousel(hotelsCarouselRef, 'next')}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div
+                  ref={hotelsCarouselRef}
+                  className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-3"
+                  role="list"
                 >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3 mb-2">
-                      {/* Checkbox */}
-                      <Checkbox
-                        data-testid={`select-hotel-${hotel.id || 'unknown'}`}
-                        checked={isSelected}
-                        onCheckedChange={() => handleHotelToggle(hotel)}
-                        className="mt-1"
-                      />
+                  {activeHotels.map((hotel) => {
+                    const isSelected = selectedHotels.includes(hotel.id);
 
-                      {/* Hotel thumbnail */}
-                      <div
-                        className={`relative w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0 ${hotel.images?.length ? 'cursor-pointer hover:opacity-90' : ''} transition-opacity`}
-                        onClick={() => hotel.images?.length && setGalleryHotel(hotel)}
+                    return (
+                      <Card
+                        key={hotel.id}
+                        data-testid={`hotel-card-${hotel.id || 'unknown'}`}
+                        className={`w-[min(86vw,38rem)] shrink-0 snap-start transition-all md:w-[36rem] lg:w-[38rem] ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                        role="listitem"
                       >
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Hotel className="h-6 w-6 text-muted-foreground/50" />
-                        </div>
-                        {hotel.images?.[0] && (
-                          <img
-                            src={ensureHttps(hotel.images[0])}
-                            alt={hotel.name}
-                            className="absolute inset-0 w-full h-full object-cover"
-                            loading="lazy"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3 mb-2">
+                            {/* Checkbox */}
+                            <Checkbox
+                              data-testid={`select-hotel-${hotel.id || 'unknown'}`}
+                              checked={isSelected}
+                              onCheckedChange={() => handleHotelToggle(hotel)}
+                              className="mt-1"
+                            />
+
+                            {/* Hotel thumbnail */}
+                            <div
+                              className={`relative w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0 ${hotel.images?.length ? 'cursor-pointer hover:opacity-90' : ''} transition-opacity`}
+                              onClick={() => hotel.images?.length && setGalleryHotel(hotel)}
+                            >
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Hotel className="h-6 w-6 text-muted-foreground/50" />
+                              </div>
+                              {hotel.images?.[0] && (
+                                <img
+                                  src={ensureHttps(hotel.images[0])}
+                                  alt={hotel.name}
+                                  className="absolute inset-0 w-full h-full object-cover"
+                                  loading="lazy"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                />
+                              )}
+                              {hotel.images && hotel.images.length > 1 && (
+                                <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded">
+                                  +{hotel.images.length - 1}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Hotel info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <Hotel className="h-3 w-3 text-primary flex-shrink-0" />
+                                <span className="font-medium text-sm truncate">{hotel.name}</span>
+                                {hotel.category && (
+                                  <Badge variant="outline" className="text-xs px-1 py-0 flex-shrink-0">
+                                    {hotel.category}
+                                  </Badge>
+                                )}
+                              </div>
+
+                              <div className="space-y-0.5 text-xs text-muted-foreground">
+                                {hotel.city && (
+                                  <div className="flex items-center space-x-1">
+                                    <MapPin className="h-3 w-3 flex-shrink-0" />
+                                    <span className="truncate">{formatCityLabel(hotel.city).slice(0, 50)}</span>
+                                  </div>
+                                )}
+                                {hotel.address && (
+                                  <div className="text-xs truncate">{hotel.address.slice(0, 80)}</div>
+                                )}
+                                <div className="flex items-center space-x-4">
+                                  <div className="flex items-center space-x-1">
+                                    <Calendar className="h-3 w-3 flex-shrink-0" />
+                                    <span>{hotel.check_in || 'N/A'} → {hotel.check_out || 'N/A'}</span>
+                                  </div>
+                                  <span>({hotel.nights} noche{hotel.nights > 1 ? 's' : ''})</span>
+                                </div>
+                                <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
+                                  <div className="flex items-center space-x-1">
+                                    <Users className="h-3 w-3" />
+                                    <span>{hotel.search_adults || 1} adult{(hotel.search_adults || 1) > 1 ? 'os' : 'o'}</span>
+                                    {(hotel.search_children || 0) > 0 && <span>, {hotel.search_children} niño{hotel.search_children! > 1 ? 's' : ''}</span>}
+                                    {(hotel.search_infants || 0) > 0 && <span>, {hotel.search_infants} bebé{hotel.search_infants! > 1 ? 's' : ''}</span>}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <Separator className="my-3" />
+
+                          {/* Hotel rooms - Using RoomGroupSelector */}
+                          <RoomGroupSelector
+                            rooms={hotel.rooms}
+                            selectedRoomId={selectedRooms[hotel.id]}
+                            onRoomSelect={(roomId) => handleRoomSelect(hotel, roomId)}
+                            isDisabled={!isSelected}
+                            maxInitialRooms={3}
+                            requestedRoomType={activeHotelSegment?.requestedRoomType ?? combinedData.requestedRoomType}
+                            requestedMealPlan={activeHotelSegment?.requestedMealPlan ?? combinedData.requestedMealPlan}
+                            exactPrices={exactPrices}
+                            loadingPrices={loadingPrices}
+                            failedPrices={failedPrices}
+                            hotelId={hotel.id}
+                            nights={hotel.nights}
                           />
-                        )}
-                        {hotel.images && hotel.images.length > 1 && (
-                          <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded">
-                            +{hotel.images.length - 1}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Hotel info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <Hotel className="h-3 w-3 text-primary flex-shrink-0" />
-                          <span className="font-medium text-sm truncate">{hotel.name}</span>
-                          {hotel.category && (
-                            <Badge variant="outline" className="text-xs px-1 py-0 flex-shrink-0">
-                              {hotel.category}
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="space-y-0.5 text-xs text-muted-foreground">
-                          {hotel.city && (
-                            <div className="flex items-center space-x-1">
-                              <MapPin className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">{formatCityLabel(hotel.city).slice(0, 50)}</span>
-                            </div>
-                          )}
-                          {hotel.address && (
-                            <div className="text-xs truncate">{hotel.address.slice(0, 80)}</div>
-                          )}
-                          <div className="flex items-center space-x-4">
-                            <div className="flex items-center space-x-1">
-                              <Calendar className="h-3 w-3 flex-shrink-0" />
-                              <span>{hotel.check_in || 'N/A'} → {hotel.check_out || 'N/A'}</span>
-                            </div>
-                            <span>({hotel.nights} noche{hotel.nights > 1 ? 's' : ''})</span>
-                          </div>
-                          <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
-                            <div className="flex items-center space-x-1">
-                              <Users className="h-3 w-3" />
-                              <span>{hotel.search_adults || 1} adult{(hotel.search_adults || 1) > 1 ? 'os' : 'o'}</span>
-                              {(hotel.search_children || 0) > 0 && <span>, {hotel.search_children} niño{hotel.search_children! > 1 ? 's' : ''}</span>}
-                              {(hotel.search_infants || 0) > 0 && <span>, {hotel.search_infants} bebé{hotel.search_infants! > 1 ? 's' : ''}</span>}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <Separator className="my-3" />
-
-                    {/* Hotel rooms - Using RoomGroupSelector */}
-                    <RoomGroupSelector
-                      rooms={hotel.rooms}
-                      selectedRoomId={selectedRooms[hotel.id]}
-                      onRoomSelect={(roomId) => handleRoomSelect(hotel, roomId)}
-                      isDisabled={!isSelected}
-                      maxInitialRooms={3}
-                      requestedRoomType={activeHotelSegment?.requestedRoomType ?? combinedData.requestedRoomType}
-                      requestedMealPlan={activeHotelSegment?.requestedMealPlan ?? combinedData.requestedMealPlan}
-                      exactPrices={exactPrices}
-                      loadingPrices={loadingPrices}
-                      failedPrices={failedPrices}
-                      hotelId={hotel.id}
-                      nights={hotel.nights}
-                    />
-                  </CardContent>
-                </Card>
-              );
-            })}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Mensaje cuando no hay hoteles después de filtrar */}
             {!activeHotelSegment?.error && hasHotelCache && activeHotels.length === 0 && activeBaseHotels.length > 0 && (

@@ -2063,18 +2063,25 @@ async function processEdgeFunctionResponse(
  * In development, falls back to parseMessageWithAI immediately (the Supabase
  * CORS proxy does not support SSE). In production, fetches the edge function
  * directly with `stream: true`, reads SSE events, fires onProgress for each
- * tool_start / tool_done event, and returns the parsed result when the `done`
+ * status / tool_start / tool_done event, and returns the parsed result when the `done`
  * event arrives.
  */
+export type AiParserStreamEvent =
+    | { type: 'status'; message: string; stage?: string }
+    | { type: 'tool_start' | 'tool_done'; tool: string; iteration: number; ok: boolean };
+
 export async function parseMessageWithAIStreaming(
     message: string,
     knowledge: ParseMessageKnowledge,
     language: 'es' | 'en' | 'pt',
-    onProgress?: (event: { type: 'tool_start' | 'tool_done'; tool: string; iteration: number; ok: boolean }) => void,
+    onProgress?: (event: AiParserStreamEvent) => void,
 ): Promise<ParsedTravelRequest> {
     // Dev: CORS proxy doesn't support streaming → fall back to regular invoke
     if (import.meta.env.DEV) {
-        return parseMessageWithAI(message, null, [], knowledge, language);
+        onProgress?.({ type: 'status', stage: 'parse', message: 'Analizando tu mensaje…' });
+        const parsed = await parseMessageWithAI(message, null, [], knowledge, language);
+        onProgress?.({ type: 'status', stage: 'route', message: 'Preparando respuesta…' });
+        return parsed;
     }
 
     // Prod: call the edge function directly via fetch with SSE
@@ -2135,8 +2142,14 @@ export async function parseMessageWithAIStreaming(
             const eventType = eventLine.slice(7).trim();
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const data = JSON.parse(dataLine.slice(6)) as any;
-            if (eventType === 'tool_start' || eventType === 'tool_done') {
-                onProgress?.(data);
+            if (eventType === 'status') {
+                onProgress?.({
+                    type: 'status',
+                    message: typeof data?.message === 'string' ? data.message : 'Procesando…',
+                    stage: typeof data?.stage === 'string' ? data.stage : undefined,
+                });
+            } else if (eventType === 'tool_start' || eventType === 'tool_done') {
+                onProgress?.({ ...data, type: eventType });
             } else if (eventType === 'done') {
                 // The done payload IS the full JSON response — process it with
                 // the same post-processing as parseMessageWithAI. No pre-parser

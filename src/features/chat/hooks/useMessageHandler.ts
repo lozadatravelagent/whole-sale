@@ -302,6 +302,37 @@ function buildSuggestedActions(options: {
     .slice(0, 3);
 }
 
+const ASSISTANT_STREAM_CHARS_PER_CHUNK = 96;
+const ASSISTANT_STREAM_DELAY_MS = import.meta.env.MODE === 'test' ? 0 : 8;
+
+function splitAssistantStreamDeltas(text: string): string[] {
+  const deltas: string[] = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    let next = Math.min(cursor + ASSISTANT_STREAM_CHARS_PER_CHUNK, text.length);
+    const boundary = text.lastIndexOf(' ', next);
+    if (boundary > cursor + 12) {
+      next = boundary + 1;
+    }
+    deltas.push(text.slice(cursor, next));
+    cursor = next;
+  }
+
+  return deltas;
+}
+
+function waitForAssistantStreamFrame() {
+  if (ASSISTANT_STREAM_DELAY_MS <= 0) return Promise.resolve();
+  return new Promise<void>((resolve) => setTimeout(resolve, ASSISTANT_STREAM_DELAY_MS));
+}
+
+type AssistantResponseStreamDraft = {
+  id: string;
+  done: Promise<void>;
+  cancel: () => void;
+};
+
 const useMessageHandler = (
   selectedConversation: string | null,
   selectedConversationRef: React.MutableRefObject<string | null>,
@@ -346,6 +377,52 @@ const useMessageHandler = (
     }
     return saved;
   }, [addOptimisticMessage]);
+
+  const startAssistantResponseStream = useCallback((conversationId: string, finalText: string) => {
+    if (!finalText.trim()) return null;
+
+    const draftId = `assistant-stream-${conversationId}-${Date.now()}`;
+    let cancelled = false;
+    let visibleText = '';
+
+    addOptimisticMessage({
+      id: draftId,
+      conversation_id: conversationId,
+      role: 'assistant',
+      content: { text: '' },
+      meta: {
+        status: 'streaming',
+        messageType: 'assistant_streaming',
+        stream: { state: 'streaming' },
+      },
+      created_at: new Date().toISOString(),
+      client_id: draftId,
+    });
+
+    const done = (async () => {
+      for (const delta of splitAssistantStreamDeltas(finalText)) {
+        if (cancelled) return;
+        visibleText += delta;
+        updateOptimisticMessage(draftId, {
+          content: { text: visibleText },
+          meta: {
+            status: 'streaming',
+            messageType: 'assistant_streaming',
+            stream: { state: 'streaming' },
+          },
+        } as Partial<MessageRow>);
+        await waitForAssistantStreamFrame();
+      }
+    })();
+
+    return {
+      id: draftId,
+      done,
+      cancel: () => {
+        cancelled = true;
+      },
+    };
+  }, [addOptimisticMessage, updateOptimisticMessage]);
 
   // Track active domain for this conversation to avoid cross responses
   let activeDomain: 'flights' | 'hotels' | null = null;
@@ -760,6 +837,8 @@ const useMessageHandler = (
       console.log('✅ [CONVERSATION] Got real conversation ID:', finalConversationId);
     }
 
+    let assistantStreamDraft: AssistantResponseStreamDraft | null = null;
+
     try {
       // 1. Generate unique client_id for idempotency (prevents duplicates)
       // Using crypto.randomUUID() - native browser/Node API, no external deps needed
@@ -994,8 +1073,12 @@ const useMessageHandler = (
           toolChoice: toolChoiceForTurn,
         },
         userLanguage,
-        ({ type, tool }) => {
-          if (type !== 'tool_start') return;
+        (event) => {
+          if (event.type === 'status') {
+            setTypingMessage(event.message || 'Procesando...', conversationIdForThisSearch);
+            return;
+          }
+          if (event.type !== 'tool_start') return;
           const labels: Record<string, string> = {
             discover_places: 'Buscando lugares…',
             get_planner_state: 'Consultando el plan…',
@@ -1006,7 +1089,7 @@ const useMessageHandler = (
             confirm_pending_action: 'Confirmando…',
             propose_planner_addition: 'Preparando sugerencia…',
           };
-          setTypingMessage(labels[tool] ?? 'Procesando…', conversationIdForThisSearch);
+          setTypingMessage(labels[event.tool] ?? 'Procesando…', conversationIdForThisSearch);
         },
       );
 
@@ -2208,89 +2291,98 @@ const useMessageHandler = (
       console.log('💬 Response preview:', assistantResponse.substring(0, 100) + '...');
       console.log('📊 Structured data:', structuredData);
 
-      // Clear or preserve contextual memory depending on search results
-      // 🔄 ENHANCED: Save complete ContextState for iteration support
-      try {
-        const flightsCount = (structuredData as any)?.combinedData?.flights?.length ?? 0;
-        const hotelsCount = (structuredData as any)?.combinedData?.hotels?.length ?? 0;
-        const hasPlannerData = Boolean((structuredData as any)?.plannerData);
-        const hasDiscoveryContext = Boolean((structuredData as any)?.discoveryContext);
-        const hasQuoteContext = Boolean((structuredData as any)?.quoteContext);
-        const hasResults = flightsCount > 0 || hotelsCount > 0 || hasPlannerData || hasDiscoveryContext || hasQuoteContext;
-        
-        if (hasResults) {
-          // We have usable results, clear old contextual memory
-          await clearContextualMemory(finalConversationId);
-
-          if (hasPlannerData && (structuredData as any)?.source) {
-            // Canonical itinerary result — use unified persistence pipeline
-            await persistCanonicalResult(structuredData as CanonicalItineraryResult, { persistPlannerState });
-          } else if (hasPlannerData && persistPlannerState && conversationTurn.responseMode !== 'show_places') {
-            // Non-canonical (other request types) — legacy persistence
-            await persistPlannerState((structuredData as any).plannerData, 'chat');
-          }
-
-          // Extract actual dates from the first flight found (if any)
-          const firstFlight = (structuredData as any)?.combinedData?.flights?.[0];
-          const actualDepartureDate = firstFlight?.departure_date || parsedRequest.flights?.departureDate;
-          const actualReturnDate = firstFlight?.return_date || parsedRequest.flights?.returnDate;
-
-          if (parsedRequest.requestType !== 'itinerary') {
-            // Build ContextState via shared builder
-            const normalizedFlight = parsedRequest.flights ? normalizeFlightRequest(parsedRequest.flights) : null;
-            const newConstraints: Array<{ component: string; constraint: string; value: unknown }> = [];
-            if (iterationContext.isIteration && parsedRequest.hotels?.hotelChains) {
-              newConstraints.push({ component: 'hotels', constraint: 'hotelChains', value: parsedRequest.hotels.hotelChains });
-            }
-            if (iterationContext.isIteration && parsedRequest.hotels?.hotelName) {
-              newConstraints.push({ component: 'hotels', constraint: 'hotelName', value: parsedRequest.hotels.hotelName });
-            }
-
-            const newContextState = buildTurnContextState({
-              requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
-              flightsParams: normalizedFlight ? {
-                origin: normalizedFlight.origin || '',
-                destination: normalizedFlight.destination || '',
-                departureDate: actualDepartureDate || normalizedFlight.departureDate || '',
-                returnDate: actualReturnDate || normalizedFlight.returnDate,
-                tripType: normalizedFlight.tripType,
-                segments: normalizedFlight.segments,
-                adults: normalizedFlight.adults || 1,
-                children: normalizedFlight.children || 0,
-                infants: normalizedFlight.infants || 0,
-                stops: normalizedFlight.stops,
-                preferredAirline: normalizedFlight.preferredAirline,
-                luggage: normalizedFlight.luggage,
-                maxLayoverHours: normalizedFlight.maxLayoverHours,
-              } : null,
-              hotelsParams: parsedRequest.hotels ? {
-                city: parsedRequest.hotels.city,
-                checkinDate: parsedRequest.hotels.checkinDate,
-                checkoutDate: parsedRequest.hotels.checkoutDate,
-                adults: parsedRequest.hotels.adults || 1,
-                children: parsedRequest.hotels.children || 0,
-                infants: parsedRequest.hotels.infants || 0,
-                roomType: parsedRequest.hotels.roomType,
-                mealPlan: parsedRequest.hotels.mealPlan,
-                hotelChains: parsedRequest.hotels.hotelChains,
-                hotelName: parsedRequest.hotels.hotelName,
-              } : null,
-              flightsCount,
-              hotelsCount,
-              previousState: persistentState,
-              newConstraints,
-            });
-
-            saveContextState(finalConversationId, newContextState).catch((e) => console.warn('⚠️ [CONTEXT] Failed to save context state:', e));
-          }
-        } else {
-          // No results - preserve context for retry (e.g., "con escalas")
-          console.log('⚠️ [STATE] No results, preserving context for potential retry');
-          saveContextualMemory(finalConversationId, parsedRequest).catch((e) => console.warn('⚠️ [MEMORY] Failed to save contextual memory:', e));
-        }
-      } catch (memErr) {
-        console.warn('⚠️ [MEMORY] Could not update contextual memory after search:', memErr);
+      assistantStreamDraft = startAssistantResponseStream(finalConversationId, assistantResponse);
+      if (assistantStreamDraft) {
+        setIsTyping(false, conversationIdForThisSearch);
+      } else {
+        setTypingMessage('Preparando respuesta...', conversationIdForThisSearch);
       }
+
+      // Clear or preserve contextual memory depending on search results.
+      // This must not block the final assistant message from reaching the user.
+      void (async () => {
+        try {
+          const flightsCount = (structuredData as any)?.combinedData?.flights?.length ?? 0;
+          const hotelsCount = (structuredData as any)?.combinedData?.hotels?.length ?? 0;
+          const hasPlannerData = Boolean((structuredData as any)?.plannerData);
+          const hasDiscoveryContext = Boolean((structuredData as any)?.discoveryContext);
+          const hasQuoteContext = Boolean((structuredData as any)?.quoteContext);
+          const hasResults = flightsCount > 0 || hotelsCount > 0 || hasPlannerData || hasDiscoveryContext || hasQuoteContext;
+
+          if (hasResults) {
+            // We have usable results, clear old contextual memory
+            await clearContextualMemory(finalConversationId);
+
+            if (hasPlannerData && (structuredData as any)?.source) {
+              // Canonical itinerary result — use unified persistence pipeline
+              await persistCanonicalResult(structuredData as CanonicalItineraryResult, { persistPlannerState });
+            } else if (hasPlannerData && persistPlannerState && conversationTurn.responseMode !== 'show_places') {
+              // Non-canonical (other request types) — legacy persistence
+              await persistPlannerState((structuredData as any).plannerData, 'chat');
+            }
+
+            // Extract actual dates from the first flight found (if any)
+            const firstFlight = (structuredData as any)?.combinedData?.flights?.[0];
+            const actualDepartureDate = firstFlight?.departure_date || parsedRequest.flights?.departureDate;
+            const actualReturnDate = firstFlight?.return_date || parsedRequest.flights?.returnDate;
+
+            if (parsedRequest.requestType !== 'itinerary') {
+              // Build ContextState via shared builder
+              const normalizedFlight = parsedRequest.flights ? normalizeFlightRequest(parsedRequest.flights) : null;
+              const newConstraints: Array<{ component: string; constraint: string; value: unknown }> = [];
+              if (iterationContext.isIteration && parsedRequest.hotels?.hotelChains) {
+                newConstraints.push({ component: 'hotels', constraint: 'hotelChains', value: parsedRequest.hotels.hotelChains });
+              }
+              if (iterationContext.isIteration && parsedRequest.hotels?.hotelName) {
+                newConstraints.push({ component: 'hotels', constraint: 'hotelName', value: parsedRequest.hotels.hotelName });
+              }
+
+              const newContextState = buildTurnContextState({
+                requestType: parsedRequest.requestType as 'flights' | 'hotels' | 'combined',
+                flightsParams: normalizedFlight ? {
+                  origin: normalizedFlight.origin || '',
+                  destination: normalizedFlight.destination || '',
+                  departureDate: actualDepartureDate || normalizedFlight.departureDate || '',
+                  returnDate: actualReturnDate || normalizedFlight.returnDate,
+                  tripType: normalizedFlight.tripType,
+                  segments: normalizedFlight.segments,
+                  adults: normalizedFlight.adults || 1,
+                  children: normalizedFlight.children || 0,
+                  infants: normalizedFlight.infants || 0,
+                  stops: normalizedFlight.stops,
+                  preferredAirline: normalizedFlight.preferredAirline,
+                  luggage: normalizedFlight.luggage,
+                  maxLayoverHours: normalizedFlight.maxLayoverHours,
+                } : null,
+                hotelsParams: parsedRequest.hotels ? {
+                  city: parsedRequest.hotels.city,
+                  checkinDate: parsedRequest.hotels.checkinDate,
+                  checkoutDate: parsedRequest.hotels.checkoutDate,
+                  adults: parsedRequest.hotels.adults || 1,
+                  children: parsedRequest.hotels.children || 0,
+                  infants: parsedRequest.hotels.infants || 0,
+                  roomType: parsedRequest.hotels.roomType,
+                  mealPlan: parsedRequest.hotels.mealPlan,
+                  hotelChains: parsedRequest.hotels.hotelChains,
+                  hotelName: parsedRequest.hotels.hotelName,
+                } : null,
+                flightsCount,
+                hotelsCount,
+                previousState: persistentState,
+                newConstraints,
+              });
+
+              saveContextState(finalConversationId, newContextState).catch((e) => console.warn('⚠️ [CONTEXT] Failed to save context state:', e));
+            }
+          } else {
+            // No results - preserve context for retry (e.g., "con escalas")
+            console.log('⚠️ [STATE] No results, preserving context for potential retry');
+            saveContextualMemory(finalConversationId, parsedRequest).catch((e) => console.warn('⚠️ [MEMORY] Failed to save contextual memory:', e));
+          }
+        } catch (memErr) {
+          console.warn('⚠️ [MEMORY] Could not update contextual memory after search:', memErr);
+        }
+      })();
 
       // 5. Save response with structured data
       console.log('📤 [MESSAGE FLOW] Step 13: About to save assistant message (Supabase INSERT)');
@@ -2303,7 +2395,7 @@ const useMessageHandler = (
 
       // Save assistant message to database
       const saveAssistantStart = nowMs();
-      await saveAndDisplayMessage({
+      const savedAssistantMessagePromise = addMessageViaSupabase({
         conversation_id: finalConversationId,
         role: 'assistant' as const,
         content: { text: assistantResponse },
@@ -2329,12 +2421,27 @@ const useMessageHandler = (
               },
               conversationTurn,
             },
-      });
-      logTimingStep('MESSAGE FLOW', 'save assistant message', saveAssistantStart, {
-        hasStructuredData: Boolean(structuredData),
+      }).then((saved) => {
+        logTimingStep('MESSAGE FLOW', 'save assistant message', saveAssistantStart, {
+          hasStructuredData: Boolean(structuredData),
+        });
+        return saved;
       });
 
+      if (assistantStreamDraft) {
+        await assistantStreamDraft.done;
+      }
+      const savedAssistantMessage = await savedAssistantMessagePromise;
+      if (savedAssistantMessage) {
+        addOptimisticMessage(savedAssistantMessage);
+      }
+
       console.log('✅ [MESSAGE FLOW] Step 14: Assistant message saved successfully');
+
+      if (assistantStreamDraft) {
+        removeOptimisticMessage(assistantStreamDraft.id);
+        assistantStreamDraft = null;
+      }
 
       // ✅ Hide typing indicator for THIS conversation (not the current one, in case user switched)
       setIsTyping(false, conversationIdForThisSearch);
@@ -2355,6 +2462,12 @@ const useMessageHandler = (
         conversationId: currentConversationId,
       });
       console.error('❌ [MESSAGE FLOW] Error in handleSendMessage process:', error);
+
+      if (assistantStreamDraft) {
+        assistantStreamDraft.cancel();
+        removeOptimisticMessage(assistantStreamDraft.id);
+        assistantStreamDraft = null;
+      }
 
       // ✅ Hide indicators for THIS conversation (not the current one)
       setIsLoading(false);
@@ -2392,6 +2505,7 @@ const useMessageHandler = (
     updateOptimisticMessage,
     removeOptimisticMessage,
     saveAndDisplayMessage,
+    startAssistantResponseStream,
     chatMode,
   ]);
 

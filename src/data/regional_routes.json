@@ -3,39 +3,63 @@
         "region_name": "Europa Clásica",
         "suggested_duration_range": [
             15,
-            21
+            24
         ],
         "default_pace": "balanced",
         "cities": [
             {
-                "id": "MAD",
-                "name": "Madrid",
-                "weight": 0.20,
-                "min_days": 3
-            },
-            {
                 "id": "PAR",
                 "name": "París",
-                "weight": 0.25,
-                "min_days": 4
+                "weight": 0.18,
+                "min_days": 3
             },
             {
                 "id": "LON",
                 "name": "Londres",
-                "weight": 0.25,
-                "min_days": 4
-            },
-            {
-                "id": "AMS",
-                "name": "Ámsterdam",
-                "weight": 0.15,
-                "min_days": 2
+                "weight": 0.16,
+                "min_days": 3
             },
             {
                 "id": "ROM",
                 "name": "Roma",
                 "weight": 0.15,
                 "min_days": 3
+            },
+            {
+                "id": "MAD",
+                "name": "Madrid",
+                "weight": 0.13,
+                "min_days": 2
+            },
+            {
+                "id": "BCN",
+                "name": "Barcelona",
+                "weight": 0.13,
+                "min_days": 2
+            },
+            {
+                "id": "AMS",
+                "name": "Ámsterdam",
+                "weight": 0.09,
+                "min_days": 2
+            },
+            {
+                "id": "BER",
+                "name": "Berlín",
+                "weight": 0.08,
+                "min_days": 2
+            },
+            {
+                "id": "VIE",
+                "name": "Viena",
+                "weight": 0.04,
+                "min_days": 1
+            },
+            {
+                "id": "PRG",
+                "name": "Praga",
+                "weight": 0.04,
+                "min_days": 1
             }
         ],
         "seasonality": {
@@ -53,6 +77,79 @@
             "12": 6
         },
         "alert": "Julio y Agosto: Calor extremo y multitudes. Mayo, Junio y Septiembre son óptimos."
+    },
+    "asia_highlights": {
+        "region_name": "Asia",
+        "suggested_duration_range": [
+            16,
+            28
+        ],
+        "default_pace": "fast",
+        "cities": [
+            {
+                "id": "TYO",
+                "name": "Tokio",
+                "weight": 0.18,
+                "min_days": 3
+            },
+            {
+                "id": "KYO",
+                "name": "Kioto",
+                "weight": 0.14,
+                "min_days": 3
+            },
+            {
+                "id": "BKK",
+                "name": "Bangkok",
+                "weight": 0.14,
+                "min_days": 3
+            },
+            {
+                "id": "SIN",
+                "name": "Singapur",
+                "weight": 0.12,
+                "min_days": 2
+            },
+            {
+                "id": "DPS",
+                "name": "Bali",
+                "weight": 0.12,
+                "min_days": 3
+            },
+            {
+                "id": "SEL",
+                "name": "Seúl",
+                "weight": 0.10,
+                "min_days": 2
+            },
+            {
+                "id": "HKG",
+                "name": "Hong Kong",
+                "weight": 0.10,
+                "min_days": 2
+            },
+            {
+                "id": "DXB",
+                "name": "Dubái",
+                "weight": 0.10,
+                "min_days": 2
+            }
+        ],
+        "seasonality": {
+            "1": 9,
+            "2": 9,
+            "3": 8,
+            "4": 7,
+            "5": 6,
+            "6": 5,
+            "7": 5,
+            "8": 5,
+            "9": 6,
+            "10": 8,
+            "11": 9,
+            "12": 9
+        },
+        "alert": "Junio a Septiembre puede combinar calor fuerte, lluvias y tifones según país. Octubre a Marzo suele ser más estable."
     },
     "southeast_asia": {
         "region_name": "Sudeste Asiático",
@@ -102,6 +199,415 @@
             "12": 10
         },
         "alert": "Mayo a Octubre: Temporada de monzones (lluvias fuertes)."
+    },
+    "south_america": {
+        "region_name": "Sudamérica",
+        "suggested_duration_range": [
+            12,
+            22
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "BUE",
+                "name": "Buenos Aires",
+                "weight": 0.18,
+                "min_days": 3
+            },
+            {
+                "id": "RIO",
+                "name": "Río de Janeiro",
+                "weight": 0.17,
+                "min_days": 3
+            },
+            {
+                "id": "LIM",
+                "name": "Lima",
+                "weight": 0.15,
+                "min_days": 2
+            },
+            {
+                "id": "CUZ",
+                "name": "Cusco",
+                "weight": 0.17,
+                "min_days": 3
+            },
+            {
+                "id": "SCL",
+                "name": "Santiago",
+                "weight": 0.13,
+                "min_days": 2
+            },
+            {
+                "id": "CTG",
+                "name": "Cartagena",
+                "weight": 0.12,
+                "min_days": 2
+            },
+            {
+                "id": "MVD",
+                "name": "Montevideo",
+                "weight": 0.08,
+                "min_days": 1
+            }
+        ],
+        "seasonality": {
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 9,
+            "5": 8,
+            "6": 7,
+            "7": 7,
+            "8": 7,
+            "9": 9,
+            "10": 9,
+            "11": 9,
+            "12": 8
+        },
+        "alert": "La mejor época depende mucho de la combinación Andes, costa y ciudades. Abril-Mayo y Septiembre-Noviembre suelen ser meses equilibrados."
+    },
+    "north_america": {
+        "region_name": "Norteamérica",
+        "suggested_duration_range": [
+            10,
+            20
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "NYC",
+                "name": "Nueva York",
+                "weight": 0.22,
+                "min_days": 3
+            },
+            {
+                "id": "MIA",
+                "name": "Miami",
+                "weight": 0.16,
+                "min_days": 2
+            },
+            {
+                "id": "LAX",
+                "name": "Los Ángeles",
+                "weight": 0.16,
+                "min_days": 3
+            },
+            {
+                "id": "SFO",
+                "name": "San Francisco",
+                "weight": 0.14,
+                "min_days": 2
+            },
+            {
+                "id": "LAS",
+                "name": "Las Vegas",
+                "weight": 0.12,
+                "min_days": 2
+            },
+            {
+                "id": "YYZ",
+                "name": "Toronto",
+                "weight": 0.10,
+                "min_days": 2
+            },
+            {
+                "id": "YVR",
+                "name": "Vancouver",
+                "weight": 0.10,
+                "min_days": 2
+            }
+        ],
+        "seasonality": {
+            "1": 5,
+            "2": 5,
+            "3": 6,
+            "4": 8,
+            "5": 9,
+            "6": 9,
+            "7": 8,
+            "8": 8,
+            "9": 9,
+            "10": 9,
+            "11": 7,
+            "12": 6
+        },
+        "alert": "Verano es temporada alta en costa oeste y parques. Mayo-Junio y Septiembre-Octubre suelen equilibrar clima y demanda."
+    },
+    "central_america": {
+        "region_name": "Centroamérica",
+        "suggested_duration_range": [
+            10,
+            18
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "SJO",
+                "name": "San José",
+                "weight": 0.24,
+                "min_days": 2
+            },
+            {
+                "id": "PTY",
+                "name": "Ciudad de Panamá",
+                "weight": 0.22,
+                "min_days": 2
+            },
+            {
+                "id": "GUA",
+                "name": "Antigua Guatemala",
+                "weight": 0.20,
+                "min_days": 3
+            },
+            {
+                "id": "BZE",
+                "name": "Belice",
+                "weight": 0.18,
+                "min_days": 3
+            },
+            {
+                "id": "SAL",
+                "name": "San Salvador",
+                "weight": 0.16,
+                "min_days": 2
+            }
+        ],
+        "seasonality": {
+            "1": 10,
+            "2": 10,
+            "3": 9,
+            "4": 8,
+            "5": 6,
+            "6": 5,
+            "7": 5,
+            "8": 5,
+            "9": 4,
+            "10": 4,
+            "11": 8,
+            "12": 10
+        },
+        "alert": "Mayo a Octubre suele ser temporada de lluvias. Diciembre a Abril es más seco y estable."
+    },
+    "africa_highlights": {
+        "region_name": "África",
+        "suggested_duration_range": [
+            12,
+            24
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "CAI",
+                "name": "El Cairo",
+                "weight": 0.22,
+                "min_days": 3
+            },
+            {
+                "id": "RAK",
+                "name": "Marrakech",
+                "weight": 0.20,
+                "min_days": 3
+            },
+            {
+                "id": "CPT",
+                "name": "Ciudad del Cabo",
+                "weight": 0.22,
+                "min_days": 4
+            },
+            {
+                "id": "NBO",
+                "name": "Nairobi",
+                "weight": 0.18,
+                "min_days": 3
+            },
+            {
+                "id": "ZNZ",
+                "name": "Zanzíbar",
+                "weight": 0.18,
+                "min_days": 3
+            }
+        ],
+        "seasonality": {
+            "1": 8,
+            "2": 8,
+            "3": 8,
+            "4": 8,
+            "5": 9,
+            "6": 9,
+            "7": 9,
+            "8": 9,
+            "9": 9,
+            "10": 9,
+            "11": 8,
+            "12": 8
+        },
+        "alert": "África combina climas muy distintos. Para safaris y grandes ciudades, Mayo-Octubre suele ser una ventana sólida."
+    },
+    "oceania_highlights": {
+        "region_name": "Oceanía",
+        "suggested_duration_range": [
+            12,
+            22
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "SYD",
+                "name": "Sídney",
+                "weight": 0.24,
+                "min_days": 3
+            },
+            {
+                "id": "MEL",
+                "name": "Melbourne",
+                "weight": 0.20,
+                "min_days": 3
+            },
+            {
+                "id": "BNE",
+                "name": "Brisbane",
+                "weight": 0.16,
+                "min_days": 2
+            },
+            {
+                "id": "AKL",
+                "name": "Auckland",
+                "weight": 0.20,
+                "min_days": 3
+            },
+            {
+                "id": "ZQN",
+                "name": "Queenstown",
+                "weight": 0.20,
+                "min_days": 3
+            }
+        ],
+        "seasonality": {
+            "1": 10,
+            "2": 10,
+            "3": 9,
+            "4": 8,
+            "5": 6,
+            "6": 5,
+            "7": 5,
+            "8": 6,
+            "9": 8,
+            "10": 9,
+            "11": 10,
+            "12": 10
+        },
+        "alert": "Diciembre a Febrero es temporada alta de verano. Marzo-Abril y Octubre-Noviembre suelen ser más equilibrados."
+    },
+    "middle_east": {
+        "region_name": "Medio Oriente",
+        "suggested_duration_range": [
+            9,
+            16
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "DXB",
+                "name": "Dubái",
+                "weight": 0.24,
+                "min_days": 2
+            },
+            {
+                "id": "AUH",
+                "name": "Abu Dabi",
+                "weight": 0.16,
+                "min_days": 2
+            },
+            {
+                "id": "IST",
+                "name": "Estambul",
+                "weight": 0.24,
+                "min_days": 3
+            },
+            {
+                "id": "DOH",
+                "name": "Doha",
+                "weight": 0.14,
+                "min_days": 2
+            },
+            {
+                "id": "AMM",
+                "name": "Amán",
+                "weight": 0.22,
+                "min_days": 3
+            }
+        ],
+        "seasonality": {
+            "1": 9,
+            "2": 9,
+            "3": 9,
+            "4": 8,
+            "5": 6,
+            "6": 4,
+            "7": 3,
+            "8": 3,
+            "9": 5,
+            "10": 8,
+            "11": 9,
+            "12": 9
+        },
+        "alert": "Junio a Septiembre puede ser muy caluroso. Octubre-Abril suele ser la mejor ventana."
+    },
+    "scandinavia": {
+        "region_name": "Escandinavia",
+        "suggested_duration_range": [
+            10,
+            18
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "CPH",
+                "name": "Copenhague",
+                "weight": 0.24,
+                "min_days": 2
+            },
+            {
+                "id": "STO",
+                "name": "Estocolmo",
+                "weight": 0.24,
+                "min_days": 3
+            },
+            {
+                "id": "OSL",
+                "name": "Oslo",
+                "weight": 0.20,
+                "min_days": 2
+            },
+            {
+                "id": "BGO",
+                "name": "Bergen",
+                "weight": 0.18,
+                "min_days": 2
+            },
+            {
+                "id": "HEL",
+                "name": "Helsinki",
+                "weight": 0.14,
+                "min_days": 2
+            }
+        ],
+        "seasonality": {
+            "1": 4,
+            "2": 5,
+            "3": 6,
+            "4": 7,
+            "5": 9,
+            "6": 10,
+            "7": 10,
+            "8": 9,
+            "9": 8,
+            "10": 6,
+            "11": 4,
+            "12": 5
+        },
+        "alert": "Junio a Agosto es ideal para ciudades y fiordos. Invierno sirve mejor si el foco son nieve o auroras."
     },
     "us_west_coast": {
         "region_name": "Costa Oeste USA",
@@ -193,27 +699,51 @@
         "region_name": "Caribe",
         "suggested_duration_range": [
             7,
-            12
+            16
         ],
         "default_pace": "relaxed",
         "cities": [
             {
                 "id": "PUJ",
                 "name": "Punta Cana",
-                "weight": 0.35,
-                "min_days": 4
+                "weight": 0.20,
+                "min_days": 3
             },
             {
                 "id": "CUN",
-                "name": "Playa del Carmen",
-                "weight": 0.35,
-                "min_days": 4
+                "name": "Cancún",
+                "weight": 0.18,
+                "min_days": 3
             },
             {
                 "id": "CTG",
                 "name": "Cartagena",
-                "weight": 0.30,
+                "weight": 0.16,
+                "min_days": 2
+            },
+            {
+                "id": "AUA",
+                "name": "Aruba",
+                "weight": 0.14,
                 "min_days": 3
+            },
+            {
+                "id": "SJU",
+                "name": "San Juan",
+                "weight": 0.12,
+                "min_days": 2
+            },
+            {
+                "id": "MBJ",
+                "name": "Montego Bay",
+                "weight": 0.10,
+                "min_days": 3
+            },
+            {
+                "id": "HAV",
+                "name": "La Habana",
+                "weight": 0.10,
+                "min_days": 2
             }
         ],
         "seasonality": {

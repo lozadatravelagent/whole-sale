@@ -266,12 +266,6 @@ describe('buildEditorialData', () => {
     expect(result.routeOverview).toContain('\u2192');
   });
 
-  it('builds next actions with hotel suggestion when no hotels', () => {
-    const result = buildEditorialData(spainState);
-    const hotelAction = result.nextActions.find(a => a.icon === 'hotel');
-    expect(hotelAction).toBeDefined();
-  });
-
   it('includes metadata with hasFullDayContent true when days have activities', () => {
     const result = buildEditorialData(spainState);
     expect(result.metadata.hasFullDayContent).toBe(true);
