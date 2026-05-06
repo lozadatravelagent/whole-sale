@@ -589,7 +589,7 @@ export function detectMultipleHotelChains(text: string): string[] {
     // Uses lookahead to stop at service keywords (agregar, traslados, seguro, etc.)
     const chainPatterns = [
         /(?:cadena|cadenas|chain|chains)\s+([a-záéíóúñü\s,\/&y]+?)(?=\s+(?:habitacion|habitaci[oó]n|all|todo|doble|simple|triple|para|en|con|agregar|sumar|traslado|traslados|seguro|seguros|transfer|transfers|excursion|excursiones|asistencia)|[,.?!]|$)/gi,
-        /hoteles?\s+([a-záéíóúñü\s,\/&y]+?)(?:\s+(?:en|de|para|habitaci[oó]n|doble|triple|todo|all|con|desayuno)|\.|,|$)/gi
+        /hoteles?\s+([a-záéíóúñü\s,\/&y]+?)(?:\s+(?:en|de|del|para|por|desde|hasta|hacia|habitaci[oó]n|doble|triple|todo|all|con|desayuno)\b|\.|,|$)/gi
     ];
 
     for (const pattern of chainPatterns) {
@@ -609,7 +609,14 @@ export function detectMultipleHotelChains(text: string): string[] {
                 const allChainAliases = Object.values(HOTEL_CHAINS)
                     .flatMap(chain => chain.aliases);
 
+                const DESTINATION_PREFIX = /^(en|in|de|del|desde|a|al|hacia|hasta|para|por|to|at|from)(\s+|$)/i;
+
                 for (const part of parts) {
+                    if (DESTINATION_PREFIX.test(part)) {
+                        console.log(`🚫 [MULTI-CHAIN] Rejected destination/prepositional candidate: "${part}"`);
+                        continue;
+                    }
+
                     // Try to find in known chains (exact match)
                     const chainInfo = findChainByAlias(part);
                     if (chainInfo) {
