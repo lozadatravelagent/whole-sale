@@ -99,7 +99,7 @@ export function pageClose(): string {
 export function renderCustomHeader(branding: BrandingData): string {
   const logoHtml = branding.agency_logo_url
     ? `<img src="${branding.agency_logo_url}" alt="Logo" style="max-height:140px; max-width:280px; object-fit:contain;" crossorigin="anonymous" />`
-    : `<div style="width:140px;height:140px;background:${branding.agency_primary_color};border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-size:40px;">${(branding.agency_name || 'A').charAt(0)}</div>`;
+    : '';
 
   const bgColor = branding.pdf_header_bg_color || '';
   const bgStyle = bgColor ? `background:${bgColor};` : '';
