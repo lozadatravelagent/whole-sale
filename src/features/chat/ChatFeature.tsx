@@ -18,6 +18,7 @@ import ChatInterface from './components/ChatInterface';
 import ChatSidebarFrame from './components/ChatSidebarFrame';
 import EmptyState from './components/EmptyState';
 import useChatState from './hooks/useChatState';
+import useGeolocationOriginHydration from './hooks/useGeolocationOriginHydration';
 import ChatContextPanel from './components/ChatContextPanel';
 import { ChatWorkspaceHeaderActions, ChatWorkspaceHeaderContext } from './components/ChatWorkspaceHeader';
 import { getLatestDiscoveryContext, hasChatContextPanelContent } from './utils/chatContextPanel';
@@ -355,6 +356,11 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
       console.warn('[CTX-ENG] ChatFeature mode sync failed:', e);
     });
   }, [chatMode, emiliaState, mutateEmiliaState, selectedConversation]);
+
+  useGeolocationOriginHydration({
+    conversationId: selectedConversation,
+    enabled: conversationScopedMessages.length > 0,
+  });
 
   // PR 3 (C5): bridge chip handlers. Wired only into the B2B (agent) branch of
   // ChatInterface below. Consumer branch doesn't pass them — the bridge never

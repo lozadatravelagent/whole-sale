@@ -2635,7 +2635,7 @@ export async function parseMessageWithAI(
         const mergedResult = preservePendingContextIfNeeded(
             previousContext,
             message,
-            await processEdgeFunctionResponse(response.data, message, quick)
+            await processEdgeFunctionResponse(response.data, message, quick, knowledge)
         );
         logTimingStep('AI PARSER', 'post-processing', postProcessStart, {
             requestType: mergedResult.requestType,
@@ -2672,6 +2672,7 @@ async function processEdgeFunctionResponse(
     data: any,
     message: string,
     quick: Partial<ParsedTravelRequest>,
+    knowledge?: ParseMessageKnowledge | null,
 ): Promise<ParsedTravelRequest> {
     const parsedResult = data?.parsed;
     if (!parsedResult) {
@@ -2696,6 +2697,18 @@ async function processEdgeFunctionResponse(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ...((quick.flights as any)?.arrivalTimePreference && !parsedResult.flights?.arrivalTimePreference ? { arrivalTimePreference: (quick.flights as any).arrivalTimePreference } : {})
     } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    const explicitOriginPattern = /\b(desde|saliendo de|salgo de|partiendo de|from)\b/i;
+    const profileOriginCity = knowledge?.emiliaState?.profile?.default_origin_city;
+    if (
+        (parsedResult.requestType === 'flights' || parsedResult.requestType === 'combined') &&
+        !mergedFlights.origin &&
+        profileOriginCity &&
+        !explicitOriginPattern.test(message)
+    ) {
+        mergedFlights.origin = profileOriginCity;
+        console.log(`🌍 [ORIGIN-DEFAULT] Inferred from profile geolocation: "${profileOriginCity}"`);
+    }
 
     const normalizedParsedHotels = normalizeIncomingHotelsPayload(parsedResult.hotels);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3029,7 +3042,7 @@ export async function parseMessageWithAIStreaming(
                 return preservePendingContextIfNeeded(
                     knowledge?.previousContext,
                     message,
-                    await processEdgeFunctionResponse(data, message, quick)
+                    await processEdgeFunctionResponse(data, message, quick, knowledge)
                 );
             } else if (eventType === 'error') {
                 throw new Error(data?.error ?? 'AI parsing failed');
