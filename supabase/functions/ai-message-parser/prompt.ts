@@ -240,8 +240,8 @@ CRITICAL INSTRUCTION:
 
 **ORIGIN SMART DEFAULT:**
 - If the message has a flight destination but does NOT explicitly state an origin (no "desde X", "saliendo de X", "from X", "partiendo de X", "salgo de X"):
-  - Use `profile.default_origin_city` from the MEMORY STATE / `<user_profile>` block as `flights.origin`
-  - Use `profile.default_origin_country` as `flights.originCountry` if that field exists in the schema
+  - Use \`profile.default_origin_city\` from the MEMORY STATE / \`<user_profile>\` block as \`flights.origin\`
+  - Use \`profile.default_origin_country\` as \`flights.originCountry\` if that field exists in the schema
 - Explicit origin in the user message ALWAYS wins over the profile default.
 - Never invent an origin. If profile has none AND the user said none, leave origin missing (current missing-info behavior).
 
