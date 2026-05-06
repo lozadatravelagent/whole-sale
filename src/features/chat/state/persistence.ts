@@ -54,10 +54,12 @@ export async function loadEmiliaState(conversationId: string): Promise<EmiliaSta
     .from("agent_states")
     .select("conversation_id, agency_id, state, schema_version, created_at, updated_at")
     .eq("conversation_id", conversationId)
-    .single();
+    .maybeSingle();
 
   if (error) {
-    // Not found is a normal case — caller should bootstrap a fresh state.
+    // Defensive: maybeSingle() returns { data: null, error: null } for the
+    // "no rows" case (no HTTP 406 noise), so PGRST_NO_ROWS should not appear
+    // in practice. Kept as a fallback in case the Supabase JS contract shifts.
     if (error.code === PGRST_NO_ROWS) {
       return null;
     }

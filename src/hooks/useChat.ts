@@ -1101,17 +1101,24 @@ export function useMessages(conversationId: string | null) {
       return;
     }
 
+    // Debounce trailing 200ms — colapsa varios UPDATEs ráfaga (last_message_at,
+    // state, etc.) en un único SELECT. Previo: cada UPDATE disparaba un SELECT
+    // messages → ~5 SELECTs por turno (~1.2s acumulados). Con debounce, todos
+    // los UPDATEs cercanos producen un solo refresh.
+    let pendingRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
     const refreshCallback = (updatedConversationId: string) => {
-      // Only refresh if this is the currently selected conversation
-      if (updatedConversationId === conversationId) {
-        console.log('🔄 [MESSAGES] Conversation updated, refreshing messages');
+      if (updatedConversationId !== conversationId) return;
+      if (pendingRefreshTimeout) clearTimeout(pendingRefreshTimeout);
+      pendingRefreshTimeout = setTimeout(() => {
+        console.log('🔄 [MESSAGES] Conversation updated, refreshing messages (debounced)');
         loadMessages();
-      }
+      }, 200);
     };
 
     setRefreshMessagesCallback(refreshCallback);
 
     return () => {
+      if (pendingRefreshTimeout) clearTimeout(pendingRefreshTimeout);
       setRefreshMessagesCallback(null);
     };
   }, [conversationId, loadMessages]);

@@ -916,6 +916,49 @@ function expandCompactPlannerResponse(
   };
 }
 
+function buildDeterministicSkeletonPlanner(input: PlannerRequest, blueprints: SegmentBlueprint[]): RawPlannerRecord {
+  const totalDays = blueprints.reduce((sum, blueprint) => sum + blueprint.dayCount, 0);
+  const destinationsText = input.destinations.join(', ');
+
+  return {
+    title: `Viaje por ${destinationsText}`,
+    summary: input.isFlexibleDates
+      ? `Primer esquema flexible de ${totalDays} días por ${destinationsText}.`
+      : `Primer esquema de ${totalDays} días por ${destinationsText}.`,
+    destinations: input.destinations,
+    days: totalDays,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    isFlexibleDates: Boolean(input.isFlexibleDates),
+    flexibleMonth: input.flexibleMonth,
+    flexibleYear: input.flexibleYear,
+    budgetLevel: input.budgetLevel,
+    budgetAmount: input.budgetAmount,
+    interests: safeArray(input.interests),
+    pace: input.pace,
+    travelers: input.travelers,
+    constraints: safeArray(input.constraints),
+    generalTips: [
+      'Usá este primer esquema como base para ajustar ritmo, hoteles y traslados.',
+      'Podés pedirme que profundice una ciudad o regenere un tramo puntual.',
+    ],
+    segments: blueprints.map((blueprint) => ({
+      city: blueprint.city,
+      country: blueprint.existingSegment?.country,
+      summary: blueprint.existingSegment?.summary || `Base del recorrido para completar ${blueprint.city}.`,
+      highlights: safeArray<string>(blueprint.existingSegment?.highlights as string[]),
+      days: Array.from({ length: blueprint.dayCount }, (_, dayIndex) =>
+        buildFallbackCompactDay(
+          blueprint.city,
+          dayIndex,
+          blueprint.order > 0 && dayIndex === 0,
+          'skeleton',
+        )
+      ),
+    })),
+  };
+}
+
 function isCompactPlannerResponse(raw: RawPlannerRecord): boolean {
   const segments = safeArray<RawPlannerRecord>(raw?.segments as RawPlannerRecord[]);
   if (segments.length === 0) return false;
@@ -1556,8 +1599,6 @@ serve(async (req) => {
           operation: 'generate',
           generationMode,
         });
-        const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-        if (!openaiApiKey) throw new Error('OpenAI API key not configured');
         const segmentBlueprints = buildSegmentBlueprints(body);
         const targetBlueprint = generationMode === 'segment'
           ? getTargetSegmentBlueprint(body, segmentBlueprints)
@@ -1579,6 +1620,99 @@ serve(async (req) => {
           isFlexibleDates: Boolean(body.isFlexibleDates),
           generationMode,
         });
+
+        if (generationMode === 'skeleton') {
+          const deterministicStart = nowMs();
+          const rawSkeleton = buildDeterministicSkeletonPlanner(body, segmentBlueprints);
+          const buildSkeletonMs = timer.step('build deterministic skeleton', deterministicStart, {
+            destinationCount: body.destinations.length,
+            blueprintDays: segmentBlueprints.reduce((sum, blueprint) => sum + blueprint.dayCount, 0),
+            generationMode,
+          });
+
+          const normalizeStart = nowMs();
+          const normalized = normalizePlannerResponse(rawSkeleton, body, segmentBlueprints, generationMode, {
+            requestId,
+            generationMode,
+            provider: 'local',
+          });
+          const normalizePlannerMs = timer.step('normalize planner response', normalizeStart, {
+            segmentCount: safeArray<RawPlannerRecord>(normalized?.segments as RawPlannerRecord[]).length,
+            itineraryDays: safeArray<RawPlannerRecord>(normalized?.itinerary as RawPlannerRecord[]).length,
+            generationMode,
+          });
+
+          const totalMs = timer.end('total', {
+            segmentCount: safeArray<RawPlannerRecord>(normalized?.segments as RawPlannerRecord[]).length,
+            itineraryDays: safeArray<RawPlannerRecord>(normalized?.itinerary as RawPlannerRecord[]).length,
+            generationMode,
+            provider: 'local',
+          });
+
+          const timing = {
+            requestId,
+            totalMs,
+            steps: {
+              parseRequestMs,
+              validateRequestMs,
+              buildPromptMs: null,
+              callOpenAiMs: null,
+              retryOpenAiMs: null,
+              parseOpenAiPayloadMs: null,
+              extractAiContentMs: null,
+              parsePlannerJsonMs: null,
+              buildSkeletonMs,
+              normalizePlannerMs,
+            },
+            openai: null,
+          };
+          const usage = {
+            provider: 'local',
+            model: 'deterministic-skeleton',
+            promptTokens: null,
+            completionTokens: null,
+            totalTokens: null,
+            cachedTokens: null,
+            estimatedCostUsd: 0,
+            finishReason: 'deterministic',
+            repair: null,
+          };
+
+          await logLlmRequest(supabase, {
+            provider: usage.provider,
+            model: usage.model,
+            feature: 'travel-itinerary',
+            operation: 'generate',
+            requestId,
+            success: true,
+            latencyMs: totalMs,
+            finishReason: usage.finishReason,
+            usage: null,
+            contextMeta: body.contextMeta ?? null,
+            metadata: {
+              generationMode,
+              parseStrategy: 'deterministic',
+              provider: 'local',
+            },
+          });
+
+          return new Response(JSON.stringify({
+            success: true,
+            data: normalized,
+            timing,
+            usage,
+            requestId,
+            timestamp: new Date().toISOString()
+          }), {
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
+          });
+        }
+
+        const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+        if (!openaiApiKey) throw new Error('OpenAI API key not configured');
         const promptStart = nowMs();
         const systemPrompt = buildPlannerPrompt(body, segmentBlueprints, generationMode);
         const userMessage = buildPlannerUserMessage(body, segmentBlueprints, generationMode);

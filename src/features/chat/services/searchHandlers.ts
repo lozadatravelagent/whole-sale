@@ -1771,31 +1771,45 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     console.log('⚡ Running flight and hotel searches simultaneously');
     console.log('📊 [COMBINED SEARCH] Using adults:', inferredAdults, 'for both searches');
 
-    // Parallel searches with enriched adults count
-    const [flightResult, hotelResult] = await Promise.all([
+    // Parallel searches with enriched adults count. Use allSettled so one slow
+    // or failed provider does not discard the other provider's useful result.
+    const [flightSettled, hotelSettled] = await Promise.allSettled([
       handleFlightSearch(enrichedParsed),
       handleHotelSearch(enrichedParsed)
     ]);
+    const flightResult = flightSettled.status === 'fulfilled' ? flightSettled.value : null;
+    const hotelResult = hotelSettled.status === 'fulfilled' ? hotelSettled.value : null;
+    const providerErrors = {
+      ...(flightSettled.status === 'rejected' ? { flights: flightSettled.reason instanceof Error ? flightSettled.reason.message : String(flightSettled.reason) } : {}),
+      ...(hotelSettled.status === 'rejected' ? { hotels: hotelSettled.reason instanceof Error ? hotelSettled.reason.message : String(hotelSettled.reason) } : {}),
+    };
+
+    if (!flightResult && !hotelResult) {
+      throw new Error('Both combined search providers failed');
+    }
 
     console.log('✅ [COMBINED SEARCH] Step 2: Parallel searches completed');
     console.log('✈️ Flight search result:', flightResult ? 'SUCCESS' : 'FAILED');
     console.log('🏨 Hotel search result:', hotelResult ? 'SUCCESS' : 'FAILED');
-    console.log('🔍 [DEBUG] Flight result data:', flightResult.data);
-    console.log('🔍 [DEBUG] Hotel result data:', hotelResult.data);
+    console.log('🔍 [DEBUG] Flight result data:', flightResult?.data);
+    console.log('🔍 [DEBUG] Hotel result data:', hotelResult?.data);
+    if (Object.keys(providerErrors).length > 0) {
+      console.warn('⚠️ [COMBINED SEARCH] Partial provider failure:', providerErrors);
+    }
 
     console.log('🔄 [COMBINED SEARCH] Step 3: Combining search results');
 
     // Hotels are already filtered by handleHotelSearch, just extract them
     const combinedData = {
-      flights: flightResult.data?.combinedData?.flights || [],
-      hotels: hotelResult.data?.combinedData?.hotels || [], // ✅ Already filtered
-      hotelSegments: hotelResult.data?.combinedData?.hotelSegments,
+      flights: flightResult?.data?.combinedData?.flights || [],
+      hotels: hotelResult?.data?.combinedData?.hotels || [], // ✅ Already filtered
+      hotelSegments: hotelResult?.data?.combinedData?.hotelSegments,
       requestType: 'combined' as const,
-      requestedRoomType: hotelResult.data?.combinedData?.requestedRoomType,
-      requestedMealPlan: hotelResult.data?.combinedData?.requestedMealPlan,
-      flightSearchId: flightResult.data?.combinedData?.flightSearchId, // Pass through for localStorage lookup
-      hotelSearchId: hotelResult.data?.combinedData?.hotelSearchId, // Pass through for IndexedDB lookup (hotel filter chips)
-      hotelSearchIds: hotelResult.data?.combinedData?.hotelSearchIds,
+      requestedRoomType: hotelResult?.data?.combinedData?.requestedRoomType,
+      requestedMealPlan: hotelResult?.data?.combinedData?.requestedMealPlan,
+      flightSearchId: flightResult?.data?.combinedData?.flightSearchId, // Pass through for localStorage lookup
+      hotelSearchId: hotelResult?.data?.combinedData?.hotelSearchId, // Pass through for IndexedDB lookup (hotel filter chips)
+      hotelSearchIds: hotelResult?.data?.combinedData?.hotelSearchIds,
     };
 
     console.log('📊 [COMBINED SEARCH] Combined data summary:');
@@ -1803,14 +1817,18 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     console.log('🏨 Hotels found (after filtering):', combinedData.hotels.length);
 
     console.log('📝 [COMBINED SEARCH] Step 4: Formatting combined response');
-    const formattedResponse = formatCombinedResponse(combinedData);
+    const partialNotice = Object.keys(providerErrors).length > 0
+      ? '⚠️ Pude recuperar resultados parciales. Te muestro lo disponible ahora y podés reintentar el proveedor que falló.\n\n'
+      : '';
+    const formattedResponse = `${partialNotice}${formatCombinedResponse(combinedData)}`;
 
     // 📊 MERGE METADATA from both searches
-    const flightMetadata = flightResult.data?.metadata || {};
-    const hotelMetadata = hotelResult.data?.metadata || {};
+    const flightMetadata = flightResult?.data?.metadata || {};
+    const hotelMetadata = hotelResult?.data?.metadata || {};
     const combinedMetadata = {
       ...flightMetadata,
-      ...hotelMetadata
+      ...hotelMetadata,
+      ...(Object.keys(providerErrors).length > 0 ? { partial: true, providerErrors } : {})
     };
 
     const result = {
@@ -1970,7 +1988,7 @@ export const handleItineraryRequest = async (
     console.log('🌍 [GEO-TRACE-5] searchHandlers destinations AFTER expansion:', finalDestinations, 'segmentHints:', segmentHints);
     console.log(`🔄 [ITINERARY] Generating itinerary for ${finalDestinations.join(', ')} - ${finalDays} days`);
 
-    const requestedGenerationMode = editIntent && !shouldRestartPlan ? 'full' : effectiveExistingPlannerState ? 'skeleton' : 'full';
+    const requestedGenerationMode = editIntent && !shouldRestartPlan ? 'full' : 'skeleton';
     const baseItineraryPayload = {
       destinations: finalDestinations,
       days: finalDays,
@@ -1996,7 +2014,7 @@ export const handleItineraryRequest = async (
       ...(segmentHints && { segmentHints }),
     };
 
-    // Call the travel-itinerary Edge Function
+    // Call the travel-itinerary Edge Function.
     const invokeStart = nowMs();
     let response = await supabase.functions.invoke('travel-itinerary', {
       body: {

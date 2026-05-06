@@ -11,6 +11,8 @@ interface ChatContextPanelProps {
   discoveryContext?: DiscoveryContext | null;
   onRequestChanges?: () => void;
   onExportPdf?: () => Promise<void>;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export default function ChatContextPanel({
@@ -18,6 +20,8 @@ export default function ChatContextPanel({
   discoveryContext,
   onRequestChanges,
   onExportPdf,
+  isCollapsed,
+  onToggleCollapse,
 }: ChatContextPanelProps) {
   const hasMap = useMemo(
     () => hasChatMapContent(plannerState, discoveryContext),
@@ -32,6 +36,8 @@ export default function ChatContextPanel({
       <ChatMapPanel
         plannerState={plannerState}
         discoveryContext={discoveryContext}
+        isCollapsed={isCollapsed}
+        onToggleCollapse={onToggleCollapse}
       />
     );
   }
@@ -51,6 +57,8 @@ export default function ChatContextPanel({
     <ChatMapPanel
       plannerState={plannerState}
       discoveryContext={discoveryContext}
+      isCollapsed={isCollapsed}
+      onToggleCollapse={onToggleCollapse}
     />
   );
 }

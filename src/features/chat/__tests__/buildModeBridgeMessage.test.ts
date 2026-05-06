@@ -164,6 +164,92 @@ describe('resolveConversationTurn mode bridge', () => {
     expect(turn.uiMeta.suggestedMode).toBe('passenger');
   });
 
+  // G5 — high-confidence explicit itinerary intent: skip bridge to passenger
+  // when the user clearly asked for a trip in plain language. Avoids the
+  // "user has to repeat the message" UX trap that cost ~11s per first turn.
+  it('does not bridge agency to passenger for high-confidence explicit itinerary intent', () => {
+    const turn = resolveConversationTurn({
+      parsedRequest: {
+        requestType: 'itinerary',
+        confidence: 0.95,
+        originalMessage: 'armame un viaje al caribe 15 dias',
+        itinerary: {
+          destinations: ['Caribe'],
+          days: 15,
+        },
+      },
+      routeResult: {
+        route: 'PLAN',
+        score: 0.38,
+        missingFields: ['origin'],
+        collectQuestion: null,
+        reason: 'itinerary_request',
+        dimensions: {
+          destination: 0.5,
+          dates: 0.3,
+          passengers: 0.5,
+          origin: 0.5,
+          complexity: 1,
+        },
+        inferredFields: [],
+      },
+      plannerState: null,
+      hasPersistentContext: false,
+      hasPreviousParsedRequest: false,
+      recentCollectCount: 0,
+      maxCollectTurns: 3,
+      mode: 'agency',
+    });
+
+    // The crucial assertion: G5 prevents mode_bridge. The downstream branch
+    // (standard_search for agency, standard_itinerary for passenger) depends
+    // on `mode`; useMessageHandler's switch dispatches by requestType so the
+    // itinerary handler runs in either case.
+    expect(turn.executionBranch).not.toBe('mode_bridge');
+    expect(turn.uiMeta.suggestedMode).toBeUndefined();
+  });
+
+  // G5 negative case: high-confidence itinerary WITHOUT PLAN_INTENT keywords
+  // should still bridge to passenger. Guards against G5 swallowing the bridge
+  // for cases where the parser inferred itinerary from ambient context but
+  // the user didn't explicitly ask for a trip.
+  it('still bridges high-confidence itinerary that lacks explicit PLAN_INTENT keywords', () => {
+    const turn = resolveConversationTurn({
+      parsedRequest: {
+        requestType: 'itinerary',
+        confidence: 0.95,
+        originalMessage: 'el caribe es lindo',
+        itinerary: {
+          destinations: ['Caribe'],
+        },
+      },
+      routeResult: {
+        route: 'PLAN',
+        score: 0.38,
+        missingFields: ['dates'],
+        collectQuestion: null,
+        reason: 'itinerary_request',
+        dimensions: {
+          destination: 0.5,
+          dates: 0,
+          passengers: 0.5,
+          origin: 0.5,
+          complexity: 1,
+        },
+        inferredFields: [],
+      },
+      plannerState: null,
+      hasPersistentContext: false,
+      hasPreviousParsedRequest: false,
+      recentCollectCount: 0,
+      maxCollectTurns: 3,
+      mode: 'agency',
+    });
+
+    expect(turn.executionBranch).toBe('mode_bridge');
+    expect(turn.uiMeta.suggestedMode).toBe('passenger');
+  });
+
   it('stops asking minimal questions once the collect cap is exhausted', () => {
     const turn = resolveConversationTurn({
       parsedRequest: {

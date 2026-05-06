@@ -695,6 +695,61 @@
         },
         "alert": "Julio/Agosto es temporada de esquí. Noviembre a Marzo ideal para trekking."
     },
+    "europe_east": {
+        "region_name": "Europa del Este",
+        "suggested_duration_range": [
+            10,
+            18
+        ],
+        "default_pace": "balanced",
+        "cities": [
+            {
+                "id": "PRG",
+                "name": "Praga",
+                "weight": 0.28,
+                "min_days": 3
+            },
+            {
+                "id": "BUD",
+                "name": "Budapest",
+                "weight": 0.26,
+                "min_days": 3
+            },
+            {
+                "id": "VIE",
+                "name": "Viena",
+                "weight": 0.22,
+                "min_days": 2
+            },
+            {
+                "id": "WAW",
+                "name": "Varsovia",
+                "weight": 0.14,
+                "min_days": 2
+            },
+            {
+                "id": "KRK",
+                "name": "Cracovia",
+                "weight": 0.10,
+                "min_days": 2
+            }
+        ],
+        "seasonality": {
+            "1": 4,
+            "2": 5,
+            "3": 7,
+            "4": 8,
+            "5": 10,
+            "6": 10,
+            "7": 8,
+            "8": 8,
+            "9": 10,
+            "10": 9,
+            "11": 6,
+            "12": 7
+        },
+        "alert": "Mayo-Junio y Septiembre-Octubre son ideales. Diciembre es popular para mercados navideños. Enero-Febrero puede ser muy frío."
+    },
     "caribbean_mix": {
         "region_name": "Caribe",
         "suggested_duration_range": [

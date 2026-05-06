@@ -24,8 +24,6 @@ import {
   FileText,
   Loader2,
   Download,
-  ChevronLeft,
-  ChevronRight,
   Users,
   Luggage,
   Star,
@@ -43,20 +41,11 @@ import {
 import { formatTime } from '@/features/chat/utils/messageHelpers';
 import { getCityNameFromCode } from '@/features/chat/utils/flightHelpers';
 import BaggageIcon from '@/components/ui/BaggageIcon';
+import PeekCarousel from '@/components/ui/PeekCarousel';
 import { supabase } from '@/integrations/supabase/client';
 
 const ensureHttps = (url: string) =>
   url.startsWith('http://') ? url.replace('http://', 'https://') : url;
-
-const scrollCarousel = (ref: React.RefObject<HTMLDivElement>, direction: 'previous' | 'next') => {
-  const element = ref.current;
-  if (!element) return;
-
-  element.scrollBy({
-    left: direction === 'next' ? element.clientWidth * 0.85 : -element.clientWidth * 0.85,
-    behavior: 'smooth'
-  });
-};
 
 interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
@@ -257,9 +246,10 @@ const convertCachedFlightToDisplayFormat = (flight: any): FlightData => {
 interface FlightItineraryProps {
   flight: FlightData;
   selectedOptionPerLeg?: Record<number, number>;
+  compact?: boolean;
 }
 
-const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptionPerLeg = {} }) => {
+const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptionPerLeg = {}, compact = false }) => {
   const formatDate = (iso?: string) => (iso ? iso : '');
   const addDays = (iso: string, days: number) => {
     try {
@@ -271,7 +261,7 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
     }
   };
   return (
-    <div className="space-y-3">
+    <div className={compact ? "grid grid-cols-2 gap-2" : "space-y-3"}>
       {flight.legs.map((leg, legIndex) => {
         const legType = leg.flight_type === 'outbound' ? 'IDA' : 'REGRESO';
         const legIcon = leg.flight_type === 'outbound' ? <Plane className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />;
@@ -298,10 +288,10 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
         const baggageInfo = getBaggageInfoFromLeg(leg, selectedOptionIndex);
 
         return (
-          <div key={legIndex} className="meridian-glass rounded-2xl p-4">
-            <div className="flex items-center space-x-2 mb-4">
-              {React.cloneElement(legIcon, { className: "h-4 w-4 text-primary" })}
-              <span className="font-display italic text-base text-foreground tracking-tight">{legType}</span>
+          <div key={legIndex} className={`meridian-glass min-w-0 rounded-2xl ${compact ? 'p-2' : 'p-4'}`}>
+            <div className={`flex items-center space-x-2 ${compact ? 'mb-2' : 'mb-4'}`}>
+              {React.cloneElement(legIcon, { className: `${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-primary` })}
+              <span className={`font-display italic text-foreground tracking-tight ${compact ? 'text-sm' : 'text-base'}`}>{legType}</span>
               <div className="ml-auto flex items-center gap-2">
                 <BaggageIcon
                   {...baggageInfo}
@@ -309,70 +299,70 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
                   showTooltip={true}
                   className="text-foreground"
                 />
-                <span className="font-utility text-[11px] font-bold uppercase tracking-[0.08em] text-foreground">
+                <span className={`font-utility font-bold uppercase tracking-[0.08em] text-foreground ${compact ? 'max-w-[5rem] truncate text-[9px]' : 'text-[11px]'}`}>
                   {getBaggageTextFromLeg(leg, flight.airline.code, selectedOptionIndex)}
                 </span>
               </div>
             </div>
 
             {/* Vuelo summary pill — flat surface (no glass, avoids stacking with parent) */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-2xl border border-border/40 bg-foreground/[0.03] p-3">
-                <div className="flex items-center space-x-3">
-                  <div className="rounded-full bg-primary/20 p-2">
-                    <Navigation className="h-4 w-4 text-primary" />
+            <div className={compact ? "space-y-2" : "space-y-3"}>
+              <div className={`flex items-center justify-between rounded-2xl border border-border/40 bg-foreground/[0.03] ${compact ? 'p-2' : 'p-3'}`}>
+                <div className={`flex min-w-0 items-center ${compact ? 'space-x-2' : 'space-x-3'}`}>
+                  <div className={`rounded-full bg-primary/20 ${compact ? 'p-1.5' : 'p-2'}`}>
+                    <Navigation className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-primary`} />
                   </div>
-                  <div>
-                    <div className="font-display italic text-base text-foreground tracking-tight">Vuelo {legType}</div>
-                    <div className="font-mono text-[11px] tracking-[0.08em] uppercase text-muted-foreground">
+                  <div className="min-w-0">
+                    <div className={`truncate font-display italic text-foreground tracking-tight ${compact ? 'text-sm' : 'text-base'}`}>Vuelo {legType}</div>
+                    <div className={`font-mono tracking-[0.08em] uppercase text-muted-foreground ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
                       {leg.duration}
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between px-3">
-                <div className="text-center">
-                  <div className="font-display italic text-2xl text-foreground tracking-tight">{leg.departure.city_code}</div>
-                  <div className="font-mono text-sm tracking-[0.05em] text-foreground mt-1">{leg.departure.time}</div>
-                  <div className="font-mono text-[10px] tracking-[0.08em] uppercase text-muted-foreground mt-0.5">{formatDate(baseDate)}</div>
-                  <div className="font-display italic text-xs text-muted-foreground mt-1">{leg.departure.city_name}</div>
+              <div className={`flex items-center justify-between ${compact ? 'px-1' : 'px-3'}`}>
+                <div className="min-w-0 text-center">
+                  <div className={`font-display italic text-foreground tracking-tight ${compact ? 'text-xl' : 'text-2xl'}`}>{leg.departure.city_code}</div>
+                  <div className={`font-mono tracking-[0.05em] text-foreground ${compact ? 'mt-0.5 text-xs' : 'mt-1 text-sm'}`}>{leg.departure.time}</div>
+                  <div className={`font-mono tracking-[0.08em] uppercase text-muted-foreground ${compact ? 'text-[8px]' : 'mt-0.5 text-[10px]'}`}>{formatDate(baseDate)}</div>
+                  <div className={`truncate font-display italic text-muted-foreground ${compact ? 'mt-0.5 text-[10px]' : 'mt-1 text-xs'}`}>{leg.departure.city_name}</div>
                 </div>
 
-                <div className="flex-1 flex items-center justify-center px-2">
+                <div className={`flex flex-1 items-center justify-center ${compact ? 'px-1' : 'px-2'}`}>
                   <div className="h-px bg-gradient-to-r from-transparent to-primary/30 flex-1"></div>
-                  <Plane className="h-4 w-4 mx-2 text-primary" />
+                  <Plane className={`${compact ? 'mx-1 h-3.5 w-3.5' : 'mx-2 h-4 w-4'} text-primary`} />
                   <div className="h-px bg-gradient-to-r from-primary/30 to-transparent flex-1"></div>
                 </div>
 
-                <div className="text-center">
-                  <div className="font-display italic text-2xl text-foreground tracking-tight">{leg.arrival.city_code}</div>
-                  <div className="font-mono text-sm tracking-[0.05em] text-foreground mt-1 flex items-center justify-center gap-1">
+                <div className="min-w-0 text-center">
+                  <div className={`font-display italic text-foreground tracking-tight ${compact ? 'text-xl' : 'text-2xl'}`}>{leg.arrival.city_code}</div>
+                  <div className={`flex items-center justify-center gap-1 font-mono tracking-[0.05em] text-foreground ${compact ? 'mt-0.5 text-xs' : 'mt-1 text-sm'}`}>
                     <span>{formatTime(leg.arrival.time)}</span>
                     {arrivalNextDay && (
                       <span className="font-utility text-[9px] font-bold uppercase tracking-[0.1em] px-1.5 py-0.5 rounded-full bg-warning/15 text-warning border border-warning/30">+1</span>
                     )}
                   </div>
-                  <div className="font-mono text-[10px] tracking-[0.08em] uppercase text-muted-foreground mt-0.5">{formatDate(arrivalDate)}</div>
-                  <div className="font-display italic text-xs text-muted-foreground mt-1">{leg.arrival.city_name}</div>
+                  <div className={`font-mono tracking-[0.08em] uppercase text-muted-foreground ${compact ? 'text-[8px]' : 'mt-0.5 text-[10px]'}`}>{formatDate(arrivalDate)}</div>
+                  <div className={`truncate font-display italic text-muted-foreground ${compact ? 'mt-0.5 text-[10px]' : 'mt-1 text-xs'}`}>{leg.arrival.city_name}</div>
                 </div>
               </div>
 
               {/* Show layovers if present */}
               {leg.layovers && leg.layovers.length > 0 && (
-                <div className="space-y-2 pt-1">
+                <div className={compact ? "space-y-1 pt-0.5" : "space-y-2 pt-1"}>
                   {leg.layovers.map((layover, layoverIndex) => (
                     <div key={layoverIndex} className="flex justify-center">
-                      <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] px-4 py-2.5 min-w-[220px]">
+                      <div className={`rounded-2xl border border-primary/25 bg-primary/[0.06] ${compact ? 'w-full px-2 py-2' : 'min-w-[220px] px-4 py-2.5'}`}>
                         <div className="text-center">
-                          <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                          <div className={`flex items-center justify-center gap-1.5 ${compact ? 'mb-1' : 'mb-1.5'}`}>
                             <Timer className="h-3 w-3 text-primary" />
-                            <span className="font-utility text-[10px] font-bold uppercase tracking-[0.18em] text-primary">CONEXIÓN</span>
+                            <span className={`font-utility font-bold uppercase tracking-[0.18em] text-primary ${compact ? 'text-[9px]' : 'text-[10px]'}`}>CONEXIÓN</span>
                           </div>
-                          <div className="font-mono text-sm font-bold tracking-[0.08em] text-foreground">
+                          <div className={`font-mono font-bold tracking-[0.08em] text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
                             {layover.destination_code} · {layover.waiting_time}
                           </div>
-                          <div className="font-utility text-[9px] uppercase tracking-[0.18em] text-muted-foreground mt-1">Cambio de terminal/puerta</div>
+                          <div className={`font-utility uppercase tracking-[0.18em] text-muted-foreground ${compact ? 'mt-0.5 text-[7px]' : 'mt-1 text-[9px]'}`}>Cambio de terminal/puerta</div>
                         </div>
                       </div>
                     </div>
@@ -414,8 +404,6 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const { toast } = useToast();
   const hasLoggedData = useRef(false);
   const requestedPricesRef = useRef(new Set<string>());
-  const flightsCarouselRef = useRef<HTMLDivElement>(null);
-  const hotelsCarouselRef = useRef<HTMLDivElement>(null);
 
   // Hook para cache de resultados y filtrado dinámico de vuelos
   // Pasa el searchId para cargar todos los vuelos desde localStorage
@@ -1205,7 +1193,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   }, [getHotelSegmentKey, hotelUniverse, selectedHotelSnapshots, selectedHotels]);
 
   return (
-    <div className="space-y-4 w-full">
+    <div className="w-full min-w-0 space-y-4">
       {/* Tabs for flights and hotels */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
         <TabsList className="grid w-full grid-cols-2" data-testid="results-tabs">
@@ -1238,106 +1226,76 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               />
             )}
 
-            {/* Usar vuelos filtrados (filteredFlights) cuando hay cache, sino los originales */}
             {visibleFlights.length > 0 && (
-              <div className="relative">
-                <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent" />
-                <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent" />
-                <div className="mb-2 flex justify-end gap-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 rounded-full"
-                    aria-label="Ver vuelos anteriores"
-                    onClick={() => scrollCarousel(flightsCarouselRef, 'previous')}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 rounded-full"
-                    aria-label="Ver más vuelos"
-                    onClick={() => scrollCarousel(flightsCarouselRef, 'next')}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div
-                  ref={flightsCarouselRef}
-                  className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-3"
-                  role="list"
-                >
-                  {visibleFlights.map((flight, index) => {
-                    const isSelected = selectedFlights.includes(flight.id!);
-
-                    return (
-                      <Card
-                        key={flight.id}
-                        data-testid={`flight-card-${flight.id || index}`}
-                        className={`w-[min(86vw,38rem)] shrink-0 snap-start transition-all md:w-[36rem] lg:w-[38rem] ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
-                        role="listitem"
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center space-x-3">
-                              <Checkbox
-                                data-testid={`select-flight-${flight.id || index}`}
-                                checked={isSelected}
-                                onCheckedChange={() => handleFlightToggle(flight.id!)}
-                              />
-                              <div>
-                                <div className="flex items-center space-x-2">
-                                  <Plane className="h-3 w-3 text-primary" />
-                                  <span className="font-medium text-sm">{flight.airline.name}</span>
-                                  <Badge variant="secondary" className="text-xs px-1 py-0">{flight.airline.code}</Badge>
-                                  {flight.cabin?.brandName && (
-                                    <Badge
-                                      variant={
-                                        flight.cabin.class === 'F' ? 'destructive' :
-                                        ['C', 'J'].includes(flight.cabin.class) ? 'default' : 'secondary'
-                                      }
-                                      className="text-xs px-1 py-0"
-                                    >
-                                      {flight.cabin.brandName}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
-                                  <div className="flex items-center space-x-1">
-                                    <Users className="h-3 w-3" />
-                                    <span>{flight.adults} adult{flight.adults > 1 ? 'os' : 'o'}</span>
-                                    {flight.childrens > 0 && <span>, {flight.childrens} niño{flight.childrens > 1 ? 's' : ''}</span>}
-                                    {flight.infants > 0 && <span>, {flight.infants} bebé{flight.infants > 1 ? 's' : ''}</span>}
-                                  </div>
-                                </div>
+              <PeekCarousel
+                items={visibleFlights}
+                getKey={(flight, i) => flight.id ?? i}
+                prevLabel="Ver vuelo anterior"
+                nextLabel="Ver vuelo siguiente"
+                minCardWidth={320}
+                maxCardWidth={460}
+                renderItem={(flight, index) => {
+                  const isSelected = selectedFlights.includes(flight.id!);
+                  return (
+                    <Card
+                      data-testid={`flight-card-${flight.id || index}`}
+                      className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-3">
+                            <Checkbox
+                              data-testid={`select-flight-${flight.id || index}`}
+                              checked={isSelected}
+                              onCheckedChange={() => handleFlightToggle(flight.id!)}
+                            />
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <Plane className="h-3 w-3 text-primary" />
+                                <span className="font-medium text-sm">{flight.airline.name}</span>
+                                <Badge variant="secondary" className="text-xs px-1 py-0">{flight.airline.code}</Badge>
+                                {flight.cabin?.brandName && (
+                                  <Badge
+                                    variant={
+                                      flight.cabin.class === 'F' ? 'destructive' :
+                                      ['C', 'J'].includes(flight.cabin.class) ? 'default' : 'secondary'
+                                    }
+                                    className="text-xs px-1 py-0"
+                                  >
+                                    {flight.cabin.brandName}
+                                  </Badge>
+                                )}
                               </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-lg font-bold text-primary">
-                                {formatPrice(flight.price.amount, flight.price.currency)}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {formatPassengerText(flight.adults, flight.childrens, flight.infants)}
+                              <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
+                                <div className="flex items-center space-x-1">
+                                  <Users className="h-3 w-3" />
+                                  <span>{flight.adults} adult{flight.adults > 1 ? 'os' : 'o'}</span>
+                                  {flight.childrens > 0 && <span>, {flight.childrens} niño{flight.childrens > 1 ? 's' : ''}</span>}
+                                  {flight.infants > 0 && <span>, {flight.infants} bebé{flight.infants > 1 ? 's' : ''}</span>}
+                                </div>
                               </div>
                             </div>
                           </div>
-
-                          <Separator className="my-2" />
-
-                          {/* Visual Flight Itinerary with Connections */}
-                          <FlightItinerary
-                            flight={flight}
-                            selectedOptionPerLeg={selectedFlightOptions[flight.id!] || {}}
-                          />
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-primary">
+                              {formatPrice(flight.price.amount, flight.price.currency)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatPassengerText(flight.adults, flight.childrens, flight.infants)}
+                            </div>
+                          </div>
+                        </div>
+                        <Separator className="my-2" />
+                        <FlightItinerary
+                          flight={flight}
+                          selectedOptionPerLeg={selectedFlightOptions[flight.id!] || {}}
+                          compact={combinedData.requestType === 'combined'}
+                        />
+                      </CardContent>
+                    </Card>
+                  );
+                }}
+              />
             )}
 
             {/* Mensaje cuando no hay vuelos después de filtrar */}
@@ -1452,144 +1410,119 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
             {/* Usar hoteles filtrados cuando hay cache, sino los originales */}
             {!activeHotelSegment?.error && activeHotels.length > 0 && (
-              <div className="relative">
-                <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent" />
-                <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent" />
-                <div className="mb-2 flex justify-end gap-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 rounded-full"
-                    aria-label="Ver hoteles anteriores"
-                    onClick={() => scrollCarousel(hotelsCarouselRef, 'previous')}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 rounded-full"
-                    aria-label="Ver más hoteles"
-                    onClick={() => scrollCarousel(hotelsCarouselRef, 'next')}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div
-                  ref={hotelsCarouselRef}
-                  className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-3"
-                  role="list"
-                >
-                  {activeHotels.map((hotel) => {
-                    const isSelected = selectedHotels.includes(hotel.id);
+              <PeekCarousel
+                items={activeHotels}
+                getKey={(hotel) => hotel.id}
+                prevLabel="Ver hoteles anteriores"
+                nextLabel="Ver más hoteles"
+                minCardWidth={320}
+                maxCardWidth={460}
+                itemClassName="h-full"
+                renderItem={(hotel) => {
+                  const isSelected = selectedHotels.includes(hotel.id);
+                  return (
+                    <Card
+                      data-testid={`hotel-card-${hotel.id || 'unknown'}`}
+                      className={`h-[25rem] overflow-hidden transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                    >
+                      <CardContent className="flex h-full flex-col p-4">
+                        <div className="mb-2 flex min-h-[5.25rem] items-start gap-3">
+                          {/* Checkbox */}
+                          <Checkbox
+                            data-testid={`select-hotel-${hotel.id || 'unknown'}`}
+                            checked={isSelected}
+                            onCheckedChange={() => handleHotelToggle(hotel)}
+                            className="mt-1"
+                          />
 
-                    return (
-                      <Card
-                        key={hotel.id}
-                        data-testid={`hotel-card-${hotel.id || 'unknown'}`}
-                        className={`w-[min(86vw,38rem)] shrink-0 snap-start transition-all md:w-[36rem] lg:w-[38rem] ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
-                        role="listitem"
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-start gap-3 mb-2">
-                            {/* Checkbox */}
-                            <Checkbox
-                              data-testid={`select-hotel-${hotel.id || 'unknown'}`}
-                              checked={isSelected}
-                              onCheckedChange={() => handleHotelToggle(hotel)}
-                              className="mt-1"
-                            />
-
-                            {/* Hotel thumbnail */}
-                            <div
-                              className={`relative w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0 ${hotel.images?.length ? 'cursor-pointer hover:opacity-90' : ''} transition-opacity`}
-                              onClick={() => hotel.images?.length && setGalleryHotel(hotel)}
-                            >
-                              <div className="w-full h-full flex items-center justify-center">
-                                <Hotel className="h-6 w-6 text-muted-foreground/50" />
+                          {/* Hotel thumbnail */}
+                          <div
+                            className={`relative w-16 h-16 rounded-lg overflow-hidden bg-muted flex-shrink-0 ${hotel.images?.length ? 'cursor-pointer hover:opacity-90' : ''} transition-opacity`}
+                            onClick={() => hotel.images?.length && setGalleryHotel(hotel)}
+                          >
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Hotel className="h-6 w-6 text-muted-foreground/50" />
+                            </div>
+                            {hotel.images?.[0] && (
+                              <img
+                                src={ensureHttps(hotel.images[0])}
+                                alt={hotel.name}
+                                className="absolute inset-0 w-full h-full object-cover"
+                                loading="lazy"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            )}
+                            {hotel.images && hotel.images.length > 1 && (
+                              <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded">
+                                +{hotel.images.length - 1}
                               </div>
-                              {hotel.images?.[0] && (
-                                <img
-                                  src={ensureHttps(hotel.images[0])}
-                                  alt={hotel.name}
-                                  className="absolute inset-0 w-full h-full object-cover"
-                                  loading="lazy"
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                />
-                              )}
-                              {hotel.images && hotel.images.length > 1 && (
-                                <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded">
-                                  +{hotel.images.length - 1}
-                                </div>
+                            )}
+                          </div>
+
+                          {/* Hotel info */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <Hotel className="h-3 w-3 text-primary flex-shrink-0" />
+                              <span className="min-w-0 truncate text-sm font-medium">{hotel.name}</span>
+                              {hotel.category && (
+                                <Badge variant="outline" className="text-xs px-1 py-0 flex-shrink-0">
+                                  {hotel.category}
+                                </Badge>
                               )}
                             </div>
 
-                            {/* Hotel info */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <Hotel className="h-3 w-3 text-primary flex-shrink-0" />
-                                <span className="font-medium text-sm truncate">{hotel.name}</span>
-                                {hotel.category && (
-                                  <Badge variant="outline" className="text-xs px-1 py-0 flex-shrink-0">
-                                    {hotel.category}
-                                  </Badge>
-                                )}
-                              </div>
-
-                              <div className="space-y-0.5 text-xs text-muted-foreground">
-                                {hotel.city && (
-                                  <div className="flex items-center space-x-1">
-                                    <MapPin className="h-3 w-3 flex-shrink-0" />
-                                    <span className="truncate">{formatCityLabel(hotel.city).slice(0, 50)}</span>
-                                  </div>
-                                )}
-                                {hotel.address && (
-                                  <div className="text-xs truncate">{hotel.address.slice(0, 80)}</div>
-                                )}
-                                <div className="flex items-center space-x-4">
-                                  <div className="flex items-center space-x-1">
-                                    <Calendar className="h-3 w-3 flex-shrink-0" />
-                                    <span>{hotel.check_in || 'N/A'} → {hotel.check_out || 'N/A'}</span>
-                                  </div>
-                                  <span>({hotel.nights} noche{hotel.nights > 1 ? 's' : ''})</span>
+                            <div className="space-y-0.5 text-xs text-muted-foreground">
+                              {hotel.city && (
+                                <div className="flex items-center space-x-1">
+                                  <MapPin className="h-3 w-3 flex-shrink-0" />
+                                  <span className="truncate">{formatCityLabel(hotel.city).slice(0, 50)}</span>
                                 </div>
-                                <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
-                                  <div className="flex items-center space-x-1">
-                                    <Users className="h-3 w-3" />
-                                    <span>{hotel.search_adults || 1} adult{(hotel.search_adults || 1) > 1 ? 'os' : 'o'}</span>
-                                    {(hotel.search_children || 0) > 0 && <span>, {hotel.search_children} niño{hotel.search_children! > 1 ? 's' : ''}</span>}
-                                    {(hotel.search_infants || 0) > 0 && <span>, {hotel.search_infants} bebé{hotel.search_infants! > 1 ? 's' : ''}</span>}
-                                  </div>
+                              )}
+                              {hotel.address && (
+                                <div className="text-xs truncate">{hotel.address.slice(0, 80)}</div>
+                              )}
+                              <div className="flex min-w-0 items-center space-x-4">
+                                <div className="flex min-w-0 items-center space-x-1">
+                                  <Calendar className="h-3 w-3 flex-shrink-0" />
+                                  <span className="truncate">{hotel.check_in || 'N/A'} → {hotel.check_out || 'N/A'}</span>
+                                </div>
+                                <span className="shrink-0">({hotel.nights} noche{hotel.nights > 1 ? 's' : ''})</span>
+                              </div>
+                              <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
+                                <div className="flex items-center space-x-1">
+                                  <Users className="h-3 w-3" />
+                                  <span>{hotel.search_adults || 1} adult{(hotel.search_adults || 1) > 1 ? 'os' : 'o'}</span>
+                                  {(hotel.search_children || 0) > 0 && <span>, {hotel.search_children} niño{hotel.search_children! > 1 ? 's' : ''}</span>}
+                                  {(hotel.search_infants || 0) > 0 && <span>, {hotel.search_infants} bebé{hotel.search_infants! > 1 ? 's' : ''}</span>}
                                 </div>
                               </div>
                             </div>
                           </div>
+                        </div>
 
-                          <Separator className="my-3" />
+                        <Separator className="my-3" />
 
-                          {/* Hotel rooms - Using RoomGroupSelector */}
-                          <RoomGroupSelector
-                            rooms={hotel.rooms}
-                            selectedRoomId={selectedRooms[hotel.id]}
-                            onRoomSelect={(roomId) => handleRoomSelect(hotel, roomId)}
-                            isDisabled={!isSelected}
-                            maxInitialRooms={3}
-                            requestedRoomType={activeHotelSegment?.requestedRoomType ?? combinedData.requestedRoomType}
-                            requestedMealPlan={activeHotelSegment?.requestedMealPlan ?? combinedData.requestedMealPlan}
-                            exactPrices={exactPrices}
-                            loadingPrices={loadingPrices}
-                            failedPrices={failedPrices}
-                            hotelId={hotel.id}
-                            nights={hotel.nights}
-                          />
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </div>
+                        {/* Hotel rooms - Using RoomGroupSelector */}
+                        <RoomGroupSelector
+                          rooms={hotel.rooms}
+                          selectedRoomId={selectedRooms[hotel.id]}
+                          onRoomSelect={(roomId) => handleRoomSelect(hotel, roomId)}
+                          isDisabled={!isSelected}
+                          maxInitialRooms={1}
+                          compact
+                          requestedRoomType={activeHotelSegment?.requestedRoomType ?? combinedData.requestedRoomType}
+                          requestedMealPlan={activeHotelSegment?.requestedMealPlan ?? combinedData.requestedMealPlan}
+                          exactPrices={exactPrices}
+                          loadingPrices={loadingPrices}
+                          failedPrices={failedPrices}
+                          hotelId={hotel.id}
+                          nights={hotel.nights}
+                        />
+                      </CardContent>
+                    </Card>
+                  );
+                }}
+              />
             )}
 
             {/* Mensaje cuando no hay hoteles después de filtrar */}

@@ -192,7 +192,9 @@ CRITICAL INSTRUCTION:
     - If the specific date (month+day) has ALREADY PASSED this year → use the next year
   * When only a month is mentioned (no day): if the month hasn't ended yet (current or future month) → current year; if it already ended (past month) → next year
   * The DYNAMIC CONTEXT block below provides concrete worked examples for today's date — apply that pattern.
-- No date mentioned → current date + 7 days
+- No date mentioned → current date + 3 days
+- If exact dates are missing but the user gave a duration ("5 días", "una semana"), use current date + 3 days as the start/check-in/departure date and derive the end/check-out/return date from that duration.
+- If exact dates AND duration are missing, use a 3-day default window starting current date + 3 days.
 - Round trip indicators: "vuelta", "regreso", "ida y vuelta" → require returnDate
 
 ## MULTI-CITY FLIGHT SEGMENTS
@@ -230,6 +232,7 @@ CRITICAL INSTRUCTION:
 - "[número] personas" = that many adults, 0 children
 - "una persona" = 1 adult, 0 children
 - "para [número] persona(s)" = that many adults, 0 children
+- "familia", "mi familia", or "flia" without a number = 4 travelers by default. Use adults = 2, children = 2, infants = 0.
 - "X adultos y Y menores/niños" = adults = X, children = Y
 - "X adultos e Y niños" = adults = X, children = Y
 - "X adultos, Y niños y Z bebés" = adults = X, children = Y, infants = Z
@@ -488,17 +491,15 @@ User: "Qué puedo hacer en Barcelona durante una semana?"
   "confidence": 0.9
 }
 
-Example D - Missing days (ask for info):
+Example D - Missing days (default to 3 days):
 User: "Quiero un itinerario para Madrid"
 {
   "requestType": "itinerary",
   "itinerary": {
     "destinations": ["Madrid"],
-    "days": null
+    "days": 3
   },
-  "missingFields": ["days"],
-  "message": "Para armar tu itinerario de viaje a Madrid, necesito saber:\n\n**¿Cuántos días durará tu viaje?**\n\nPor ejemplo: '5 días', 'una semana', '10 días'",
-  "confidence": 0.7
+  "confidence": 0.85
 }
 
 Example E - Missing destination (ask for info):
@@ -557,6 +558,7 @@ User: "replace Paris with Lisbon and make it faster"
 - Optional: returnDate (only if round trip mentioned)
 - **adults:**
   * DEFAULT = 1 if NO passengers mentioned at all (e.g., "vuelo a Madrid")
+  * DEFAULT for "familia" / "mi familia" / "flia" without count = adults 2, children 2, infants 0
   * = 0 if ONLY children/infants mentioned (e.g., "vuelo para 2 niños" → adults = 0, "vuelo para un menor" → adults = 0, "un niño" → adults = 0). CRITICAL: "un" = 1
   * = X if user explicitly says X adults
 - **adultsExplicit:** boolean - Set to true ONLY when user explicitly mentions number of adults (e.g., "1 adulto", "2 adultos", "para mi solo", "para una persona"). Set to false when no adult count is mentioned and you use the default of 1.
@@ -568,6 +570,7 @@ User: "replace Paris with Lisbon and make it faster"
 - ⚠️ **EUROVIPS age categories (different from flights):** Adults from 12 years old, Children up to 17 years old
 - **adults:**
   * DEFAULT = 1 if NO passengers mentioned at all (e.g., "hotel en Cancún")
+  * DEFAULT for "familia" / "mi familia" / "flia" without count = adults 2, children 2, infants 0
   * = 0 if ONLY children/infants mentioned (e.g., "hotel para 2 niños" → adults = 0, "hotel para un menor" → adults = 0, "un niño" → adults = 0). CRITICAL: "un" = 1
   * = X if user explicitly says X adults
   * Adultos desde 12 años (EUROVIPS)
@@ -820,7 +823,7 @@ User: "Paquete a Cancún todo incluido con traslados y seguro de viaje"
 
 **ITINERARY:**
 - Required: destinations (array of strings, at least 1), days (number > 0)
-- If either is missing, set requestType to "itinerary" but include missingFields array and message
+- If days are missing but destination is present, set days = 3. Only ask when destination is missing.
 
 **IMPORTANT PASSENGER RULES:**
 1. If NO passenger count mentioned at all → adults = 1, children = 0, infants = 0
@@ -828,7 +831,7 @@ User: "Paquete a Cancún todo incluido con traslados y seguro de viaje"
 3. If ONLY children/infants mentioned WITHOUT adults (e.g., "1 menor", "un menor", "2 niños", "un niño", "1 bebé", "un bebé") → adults = 0, children = X, infants = Y (extract exactly what user says, do NOT assume adults). CRITICAL: "un" = 1
 4. If "con un niño" with context of adults (e.g., "para 2 adultos con un niño") → adults = 2, children = 1, infants = 0
 5. If adults AND children/infants mentioned together (e.g., "3 adultos y 1 menor", "2 adultos y 2 niños", "4 adultos e 1 niño y 1 bebé") → extract BOTH values: adults = X, children = Y, infants = Z
-6. If "familia de 4" mentioned → infer adults = 2, children = 2, infants = 0
+6. If "familia" is mentioned without count → infer adults = 2, children = 2, infants = 0. If "familia de 4" is mentioned → infer adults = 2, children = 2, infants = 0
 7. CRITICAL: When user mentions ONLY minors (children/infants) without any adults, set adults = 0. The validation layer will handle the error message.
 8. NEVER add implicit adults when user explicitly requests only children/infants
 

@@ -19,6 +19,7 @@ import type { MessageRow } from '../types/chat';
 import type { ChatSuggestedAction } from '../types/chat';
 import type { ContextState } from '../types/contextState';
 import type { PlannerEditContext, PreloadedConversationKnowledge } from '../types/knowledge';
+import { supabase } from '@/integrations/supabase/client';
 import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
 import { applySmartDefaults, expandDestinationsIfRegional, normalizePlannerState } from '@/features/trip-planner/utils';
 import { mergePlannerFieldUpdate, normalizeLocationLabel, buildPlannerHotelSearchSignature, buildPlannerTransportSearchSignature } from '@/features/trip-planner/helpers';
@@ -178,7 +179,9 @@ function getFirstPlannerCity(plannerState?: TripPlannerState | null): string {
     .map((segment) => normalizeActionText(segment.city))
     .find(Boolean);
 
-  return segmentCity || normalizeActionText(plannerState?.destinations?.[0]);
+  if (segmentCity) return segmentCity;
+  const dest = normalizeActionText(plannerState?.destinations?.[0]);
+  return resolveToConcreteCity(dest);
 }
 
 function getFirstExpandedItineraryCity(parsedRequest?: ParsedTravelRequest | null): string {
@@ -195,6 +198,12 @@ function getFirstExpandedItineraryCity(parsedRequest?: ParsedTravelRequest | nul
   return normalizeActionText(expanded[0]);
 }
 
+function resolveToConcreteCity(raw: string): string {
+  if (!raw) return raw;
+  const { expandedDestinations } = expandDestinationsIfRegional([raw], 10);
+  return normalizeActionText(expandedDestinations[0]) || raw;
+}
+
 function getPrimaryActionDestination(parsedRequest?: ParsedTravelRequest | null, plannerState?: TripPlannerState | null): string {
   const plannerCity = getFirstPlannerCity(plannerState);
   if (plannerCity) return plannerCity;
@@ -203,10 +212,20 @@ function getPrimaryActionDestination(parsedRequest?: ParsedTravelRequest | null,
   if (expandedItineraryCity) return expandedItineraryCity;
 
   const itineraryDestination = parsedRequest?.itinerary?.destinations?.map(normalizeActionText).find(Boolean);
-  return normalizeActionText(parsedRequest?.flights?.destination)
+  const raw = normalizeActionText(parsedRequest?.flights?.destination)
     || normalizeActionText(parsedRequest?.hotels?.city)
     || normalizeActionText(parsedRequest?.packages?.destination)
     || normalizeActionText(itineraryDestination);
+  return resolveToConcreteCity(raw);
+}
+
+function buildItineraryProgressMessage(parsedRequest: ParsedTravelRequest, plannerState?: TripPlannerState | null): string {
+  const destination = getPrimaryActionDestination(parsedRequest, plannerState);
+  const days = parsedRequest.itinerary?.days || plannerState?.days;
+  const destinationText = destination ? ` para ${destination}` : '';
+  const daysText = days ? ` de ${days} días` : '';
+
+  return `Ya tengo la base del viaje${destinationText}${daysText}. Estoy armando el itinerario completo y te lo muestro apenas termine.`;
 }
 
 function getStructuredPlannerData(structuredData?: unknown): TripPlannerState | null {
@@ -333,6 +352,39 @@ type AssistantResponseStreamDraft = {
   cancel: () => void;
 };
 
+type ChatLatencyEvent = {
+  stage: string;
+  latencyMs: number;
+  payload?: Record<string, unknown>;
+  status?: 'ok' | 'error';
+  error?: unknown;
+};
+
+function recordChatLatencyEvent(args: ChatLatencyEvent & {
+  conversationId: string;
+  agencyId: string | null | undefined;
+  runId: string;
+}) {
+  if (!args.agencyId || args.conversationId.startsWith('temp-')) return;
+  const payload = JSON.parse(JSON.stringify(args.payload ?? {}));
+  void supabase
+    .from('agent_run_events')
+    .insert({
+      conversation_id: args.conversationId,
+      agency_id: args.agencyId,
+      run_id: args.runId,
+      event_type: 'chat_stage',
+      tool_name: args.stage,
+      status: args.status ?? 'ok',
+      latency_ms: Math.max(0, Math.round(args.latencyMs)),
+      payload,
+      error: args.error instanceof Error ? args.error.message : args.error ? String(args.error) : null,
+    })
+    .then(({ error }) => {
+      if (error) console.warn('[LATENCY] Failed to record chat stage:', error.message);
+    });
+}
+
 const useMessageHandler = (
   selectedConversation: string | null,
   selectedConversationRef: React.MutableRefObject<string | null>,
@@ -370,9 +422,22 @@ const useMessageHandler = (
   // ✅ Messages are now passed as parameter - no need for second useMessages call
 
   // Save message to DB and immediately add assistant messages to local state (no Realtime dependency)
+  // Auto-generates client_id for assistant messages when missing — closes the
+  // 5-layer dedup gap in useChat.ts (otherwise the Realtime echo would fall
+  // through to the heuristic step and log "ADDING NEW MESSAGE TO STATE - This
+  // may cause duplication"). User messages already generate client_id at the
+  // call-site (see line ~846 in handleSendMessage).
   const saveAndDisplayMessage = useCallback(async (messageData: Parameters<typeof addMessageViaSupabase>[0]) => {
-    const saved = await addMessageViaSupabase(messageData);
-    if (saved && messageData.role === 'assistant') {
+    const needsClientId =
+      messageData.role === 'assistant' && !messageData.meta?.client_id;
+    const enriched = needsClientId
+      ? {
+          ...messageData,
+          meta: { ...(messageData.meta ?? {}), client_id: crypto.randomUUID() },
+        }
+      : messageData;
+    const saved = await addMessageViaSupabase(enriched);
+    if (saved && enriched.role === 'assistant') {
       addOptimisticMessage(saved);
     }
     return saved;
@@ -838,6 +903,101 @@ const useMessageHandler = (
     }
 
     let assistantStreamDraft: AssistantResponseStreamDraft | null = null;
+    const chatRunId = crypto.randomUUID();
+    const turnStartedAt = nowMs();
+    const queuedLatencyEvents: ChatLatencyEvent[] = [];
+    let traceAgencyId: string | null = null;
+    let firstVisibleResponseRecorded = false;
+    const emitLatency = (event: ChatLatencyEvent) => {
+      if (!traceAgencyId) {
+        queuedLatencyEvents.push(event);
+        return;
+      }
+      recordChatLatencyEvent({
+        ...event,
+        conversationId: finalConversationId,
+        agencyId: traceAgencyId,
+        runId: chatRunId,
+      });
+    };
+    const flushQueuedLatency = () => {
+      if (!traceAgencyId) return;
+      queuedLatencyEvents.splice(0).forEach((event) => emitLatency(event));
+    };
+    const persistContextualMemoryInBackground = (request: ParsedTravelRequest, stage: string) => {
+      const persistStart = nowMs();
+      void saveContextualMemory(finalConversationId, request)
+        .then(() => {
+          emitLatency({
+            stage,
+            latencyMs: nowMs() - persistStart,
+            payload: { requestType: request.requestType },
+          });
+        })
+        .catch((e) => {
+          emitLatency({
+            stage,
+            latencyMs: nowMs() - persistStart,
+            status: 'error',
+            error: e,
+            payload: { requestType: request.requestType },
+          });
+          console.warn('⚠️ [MEMORY] Failed to save contextual memory:', e);
+        });
+    };
+    const persistContextualMemoryBeforeAsk = async (request: ParsedTravelRequest, stage: string) => {
+      const persistStart = nowMs();
+      try {
+        await saveContextualMemory(finalConversationId, request);
+        emitLatency({
+          stage,
+          latencyMs: nowMs() - persistStart,
+          payload: { requestType: request.requestType, critical: true },
+        });
+      } catch (e) {
+        emitLatency({
+          stage,
+          latencyMs: nowMs() - persistStart,
+          status: 'error',
+          error: e,
+          payload: { requestType: request.requestType, critical: true },
+        });
+        console.warn('⚠️ [MEMORY] Failed to save contextual memory before asking:', e);
+      }
+    };
+    const clearContextualMemoryInBackground = (stage: string) => {
+      const clearStart = nowMs();
+      void clearContextualMemory(finalConversationId)
+        .then(() => {
+          emitLatency({ stage, latencyMs: nowMs() - clearStart });
+        })
+        .catch((e) => {
+          emitLatency({ stage, latencyMs: nowMs() - clearStart, status: 'error', error: e });
+        console.warn('⚠️ [MEMORY] Failed to clear contextual memory:', e);
+      });
+    };
+    const emitFirstVisibleResponse = (requestType: string, chars: number, phase: 'progress' | 'final') => {
+      if (firstVisibleResponseRecorded) return;
+      firstVisibleResponseRecorded = true;
+      emitLatency({
+        stage: 'first_visible_response',
+        latencyMs: nowMs() - turnStartedAt,
+        payload: { requestType, chars, phase },
+      });
+    };
+    const removeAssistantStreamDraft = () => {
+      if (!assistantStreamDraft) return;
+      assistantStreamDraft.cancel();
+      removeOptimisticMessage(assistantStreamDraft.id);
+      assistantStreamDraft = null;
+    };
+    const showProgressAssistantResponse = (text: string, requestType: string) => {
+      if (assistantStreamDraft || !text.trim()) return;
+      assistantStreamDraft = startAssistantResponseStream(finalConversationId, text);
+      if (!assistantStreamDraft) return;
+      emitFirstVisibleResponse(requestType, text.length, 'progress');
+      setIsTyping(false, conversationIdForThisSearch);
+    };
 
     try {
       // 1. Generate unique client_id for idempotency (prevents duplicates)
@@ -906,6 +1066,16 @@ const useMessageHandler = (
         hasContextFromDb: Boolean(contextFromDB),
         hasPersistentState: Boolean(persistentState),
         hasLeadId: Boolean(leadId),
+      });
+      emitLatency({
+        stage: 'db_context',
+        latencyMs: nowMs() - saveAndContextStart,
+        payload: {
+          canUsePreloaded,
+          hasContextFromDb: Boolean(contextFromDB),
+          hasPersistentState: Boolean(persistentState),
+          hasLeadId: Boolean(leadId),
+        },
       });
 
       console.log('✅ [MESSAGE FLOW] Step 3: User message saved + context loaded in parallel');
@@ -1027,6 +1197,7 @@ const useMessageHandler = (
       // parser. On bootstrap failure (e.g., agency_id resolution error) the
       // returned ctxEngState is null — the `if (ctxEngState)` guards below are
       // defensive against that case.
+      const turnPrepStart = nowMs();
       const turnPrep = await prepareTurnContext({
         conversationId: finalConversationId,
         leadId: leadId ?? null,
@@ -1035,6 +1206,17 @@ const useMessageHandler = (
       });
       let ctxEngState: EmiliaState | null = turnPrep.ctxEngState;
       const memoryStateBlock: string | undefined = turnPrep.memoryStateBlock;
+      traceAgencyId = ctxEngState?.profile.agency_id ?? null;
+      flushQueuedLatency();
+      emitLatency({
+        stage: 'context_state',
+        latencyMs: nowMs() - turnPrepStart,
+        payload: {
+          hasCtxEngState: Boolean(ctxEngState),
+          hasMemoryStateBlock: Boolean(memoryStateBlock),
+          chatMode: chatMode ?? 'passenger',
+        },
+      });
 
       // === EMILIA 5.0: PARSE + ROUTE ===
       // Always parse first, then route based on content (not workspace_mode)
@@ -1059,6 +1241,7 @@ const useMessageHandler = (
         currentMessage,
         {
           plannerContext: plannerEditContext,
+          previousContext: contextToUse,
           contextMeta: {
             conversationId: finalConversationId,
             leadId: leadId ?? null,
@@ -1100,6 +1283,15 @@ const useMessageHandler = (
       }
       logTimingStep('MESSAGE FLOW', 'parseMessageWithAI', parseStart, {
         requestType: parsedRequest.requestType,
+      });
+      emitLatency({
+        stage: 'parser_ce',
+        latencyMs: nowMs() - parseStart,
+        payload: {
+          requestType: parsedRequest.requestType,
+          hasToolResult: Boolean(parsedRequest.placeDiscoveryResult),
+          hasOrchestration: Boolean(parsedRequest.orchestration),
+        },
       });
 
       // === Phase 5: pending_action READ — apply any slot values the tool
@@ -1223,7 +1415,23 @@ const useMessageHandler = (
         saveLeadAiProfile(nextLeadProfile).catch((e) => console.warn('⚠️ [LEAD_AI_PROFILE] Failed to save lead profile:', e));
       }
 
-      const routeResult = routeRequest(parsedRequest, plannerState);
+      // Phase 2 Mirror mode: prefer the server-computed routeResult when the
+      // edge function shipped one in `parsedRequest.orchestration`. Falls back
+      // to local computation otherwise — this keeps the path resilient if the
+      // server's mirror fails or runs an older deploy.
+      const routingStart = nowMs();
+      const routeResult =
+        parsedRequest.orchestration?.routeResult
+        ?? routeRequest(parsedRequest, plannerState);
+      emitLatency({
+        stage: 'routing',
+        latencyMs: nowMs() - routingStart,
+        payload: {
+          route: routeResult.route,
+          serverComputed: Boolean(parsedRequest.orchestration?.routeResult),
+          requestType: parsedRequest.requestType,
+        },
+      });
       const travelContextBridge = resolveTravelContextBridge({
         message: currentMessage,
         parsedRequest,
@@ -1314,7 +1522,7 @@ const useMessageHandler = (
 
       if (conversationTurn.shouldAskMinimalQuestion && routeResult.collectQuestion && !shouldPushToDelivery) {
         console.log('🔄 [COLLECT] Router intercepting with focused question:', routeResult.reason, `(turn ${recentCollectCount + 1}/${MAX_COLLECT_TURNS})`);
-        await saveContextualMemory(finalConversationId, parsedRequest);
+        await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_collect');
 
         const collectMessage = buildConversationalMissingInfoMessage({
           parsedRequest,
@@ -1607,7 +1815,7 @@ const useMessageHandler = (
         console.log('🧾 [VALIDATION] Combined results:', { flight: flightVal, hotel: hotelVal });
         if (missingAny) {
           // Persist context
-          await saveContextualMemory(finalConversationId, parsedRequest);
+          await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_combined_missing');
 
           const missingInfoMessage = buildConversationalMissingInfoMessage({
             parsedRequest,
@@ -1664,7 +1872,7 @@ const useMessageHandler = (
         }
 
         console.log('✅ [VALIDATION] Combined: all required fields present');
-        await clearContextualMemory(finalConversationId);
+        clearContextualMemoryInBackground('context_memory_clear_combined_valid');
       } else if (parsedRequest.requestType === 'flights') {
         // Validate flight fields
         console.log('✈️ [VALIDATION] Validating flight required fields');
@@ -1681,7 +1889,7 @@ const useMessageHandler = (
           console.log('⚠️ [VALIDATION] Missing required fields, requesting more info');
 
           // Store the current parsed request for future combination
-          await saveContextualMemory(finalConversationId, parsedRequest);
+          await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_flight_missing');
 
           // ✨ CRITICAL: Also save to context state for iteration detection (e.g., "agrega X adultos")
           // This ensures the iteration system can access the failed search context
@@ -1783,7 +1991,7 @@ const useMessageHandler = (
             console.log('⚠️ [VALIDATION] "Only minors" error detected - skipping auto-enrich');
 
             // Store context for iteration detection (enables "agrega X adultos")
-            await saveContextualMemory(finalConversationId, parsedRequest);
+            await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_hotel_minors');
 
             const contextStateForFailedSearch: ContextState = {
               lastSearch: {
@@ -1861,7 +2069,7 @@ const useMessageHandler = (
               // proceed without asking
             } else {
               // Store the current parsed request for future combination
-              await saveContextualMemory(finalConversationId, parsedRequest);
+              await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_hotel_revalidation');
 
               // ✨ Use custom errorMessage if available
               const missingInfoMessage = reval.errorMessage || buildConversationalMissingInfoMessage({
@@ -1910,7 +2118,7 @@ const useMessageHandler = (
           } else {
             console.log('⚠️ [VALIDATION] Missing hotel required fields and no flight context available');
             // Store the current parsed request for future combination
-            await saveContextualMemory(finalConversationId, parsedRequest);
+            await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_hotel_missing');
 
             // ✨ Use custom errorMessage if available
             const missingInfoMessage = validation.errorMessage || buildConversationalMissingInfoMessage({
@@ -1960,7 +2168,7 @@ const useMessageHandler = (
 
         console.log('✅ [VALIDATION] All hotel required fields present, proceeding with search');
         // Clear previous request since we have all required fields
-        await clearContextualMemory(finalConversationId);
+        clearContextualMemoryInBackground('context_memory_clear_hotel_valid');
       } else if (
         parsedRequest.requestType === 'itinerary' &&
         !isQuoteActivePlanTurn &&
@@ -1976,7 +2184,7 @@ const useMessageHandler = (
         // Hard requirement: at least 1 destination
         if (!parsedRequest.itinerary?.destinations?.length) {
           console.log('⚠️ [VALIDATION] No destinations provided, requesting more info');
-          await saveContextualMemory(finalConversationId, parsedRequest);
+          await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_itinerary_missing');
 
           const missingInfoMessage = buildConversationalMissingInfoMessage({
             parsedRequest,
@@ -2094,7 +2302,7 @@ const useMessageHandler = (
         }
 
         console.log('✅ [VALIDATION] Itinerary proceeding with generation (smart defaults applied)');
-        await clearContextualMemory(finalConversationId);
+        clearContextualMemoryInBackground('context_memory_clear_itinerary_valid');
       }
 
       // 6. Execute searches based on type
@@ -2219,10 +2427,14 @@ const useMessageHandler = (
             // `show_places` when the tool returned ok=true, so this build should
             // succeed; the null branch is a defensive fallback for malformed
             // tool payloads (no city, no places, or no usable coordinates).
-            const discoveryResult = buildDiscoveryResponseFromToolResult({
-              message: discoveryMessage,
-              placeDiscoveryResult: parsedRequest.placeDiscoveryResult,
-            });
+            // Phase 2 Mirror mode: prefer the server-computed discovery
+            // mapping when present. Falls back to local computation otherwise.
+            const discoveryResult =
+              parsedRequest.orchestration?.discoveryResult
+              ?? buildDiscoveryResponseFromToolResult({
+                message: discoveryMessage,
+                placeDiscoveryResult: parsedRequest.placeDiscoveryResult,
+              });
             if (discoveryResult) {
               assistantResponse = discoveryResult.text;
               structuredData = {
@@ -2241,7 +2453,10 @@ const useMessageHandler = (
             }
           } else {
             setPlannerDraftPhase?.('draft_generating');
-            setTypingMessage('Generando tu itinerario de viaje...', conversationIdForThisSearch);
+            showProgressAssistantResponse(
+              buildItineraryProgressMessage(parsedRequest, plannerState as TripPlannerState | null),
+              parsedRequest.requestType,
+            );
             const itineraryResult = await handleItineraryRequest(parsedRequest, plannerState || null, {
               conversationId: finalConversationId,
               leadId: leadId ?? null,
@@ -2274,6 +2489,22 @@ const useMessageHandler = (
       logTimingStep('MESSAGE FLOW', `search handler (${parsedRequest.requestType})`, searchStart, {
         hasStructuredData: Boolean(structuredData),
       });
+      emitLatency({
+        stage: parsedRequest.requestType === 'combined'
+          ? 'providers_combined'
+          : parsedRequest.requestType === 'flights'
+            ? 'provider_flights'
+            : parsedRequest.requestType === 'hotels'
+              ? 'provider_hotels'
+              : parsedRequest.requestType === 'itinerary'
+                ? 'itinerary'
+                : 'response_builder',
+        latencyMs: nowMs() - searchStart,
+        payload: {
+          requestType: parsedRequest.requestType,
+          hasStructuredData: Boolean(structuredData),
+        },
+      });
 
       // === EMILIA: Prepend inferred-field summary when defaults were applied ===
       if (routeResult.inferredFields.length > 0 && assistantResponse && conversationTurn.responseMode !== 'show_places') {
@@ -2291,8 +2522,10 @@ const useMessageHandler = (
       console.log('💬 Response preview:', assistantResponse.substring(0, 100) + '...');
       console.log('📊 Structured data:', structuredData);
 
+      removeAssistantStreamDraft();
       assistantStreamDraft = startAssistantResponseStream(finalConversationId, assistantResponse);
       if (assistantStreamDraft) {
+        emitFirstVisibleResponse(parsedRequest.requestType, assistantResponse.length, 'final');
         setIsTyping(false, conversationIdForThisSearch);
       } else {
         setTypingMessage('Preparando respuesta...', conversationIdForThisSearch);
@@ -2393,6 +2626,13 @@ const useMessageHandler = (
         assistantResponseNumber: assistantResponseCountBeforeTurn + 1,
       });
 
+      // Generate client_id for the assistant message so the 5-layer dedup in
+      // useChat.ts can match the Realtime echo against the optimistic insert
+      // by client_id (instead of falling through to the heuristic at STEP 4
+      // which logs "ADDING NEW MESSAGE TO STATE - This may cause duplication").
+      const assistantClientId = crypto.randomUUID();
+      console.log('🔑 [IDEMPOTENCY] Generated assistant client_id:', assistantClientId);
+
       // Save assistant message to database
       const saveAssistantStart = nowMs();
       const savedAssistantMessagePromise = addMessageViaSupabase({
@@ -2404,6 +2644,7 @@ const useMessageHandler = (
               ...buildCanonicalMeta(structuredData as CanonicalItineraryResult),
               ...(suggestedActions.length > 0 ? { suggestedActions } : {}),
               ...(shouldHardClose ? { conversationClosure: { phase: 'hard_close', assistantResponseNumber: assistantResponseCountBeforeTurn + 1 } } : {}),
+              client_id: assistantClientId,
             }
           : {
               messageType: conversationTurn.messageType,
@@ -2420,10 +2661,16 @@ const useMessageHandler = (
                 inferredFields: routeResult.inferredFields,
               },
               conversationTurn,
+              client_id: assistantClientId,
             },
       }).then((saved) => {
         logTimingStep('MESSAGE FLOW', 'save assistant message', saveAssistantStart, {
           hasStructuredData: Boolean(structuredData),
+        });
+        emitLatency({
+          stage: 'assistant_save',
+          latencyMs: nowMs() - saveAssistantStart,
+          payload: { saved: Boolean(saved), hasStructuredData: Boolean(structuredData) },
         });
         return saved;
       });
@@ -2452,21 +2699,33 @@ const useMessageHandler = (
       console.log('📋 [MESSAGE FLOW] Step 15: Automatic lead generation disabled - only manual creation available');
 
       console.log('🎉 [MESSAGE FLOW] Message processing completed successfully');
+      emitLatency({
+        stage: 'turn_total',
+        latencyMs: nowMs() - turnStartedAt,
+        payload: {
+          requestType: parsedRequest.requestType,
+          hasStructuredData: Boolean(structuredData),
+        },
+      });
       flowTimer.end('total', {
         requestType: parsedRequest.requestType,
         hasStructuredData: Boolean(structuredData),
       });
 
     } catch (error) {
+      emitLatency({
+        stage: 'turn_total',
+        latencyMs: nowMs() - turnStartedAt,
+        status: 'error',
+        error,
+      });
       flowTimer.fail('failed', error, {
         conversationId: currentConversationId,
       });
       console.error('❌ [MESSAGE FLOW] Error in handleSendMessage process:', error);
 
       if (assistantStreamDraft) {
-        assistantStreamDraft.cancel();
-        removeOptimisticMessage(assistantStreamDraft.id);
-        assistantStreamDraft = null;
+        removeAssistantStreamDraft();
       }
 
       // ✅ Hide indicators for THIS conversation (not the current one)

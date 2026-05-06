@@ -48,6 +48,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   // passed to `useMessageHandler` only when accountType === 'agent'.
   const [chatMode, setChatMode] = useState<ChatMode>(() => deriveDefaultMode(user));
   const [isHistoryCollapsed, setIsHistoryCollapsed] = useState(false);
+  const [isContextPanelCollapsed, setIsContextPanelCollapsed] = useState(false);
   // PR 3 (C6): reactive derivation of agency availability. Inline expression
   // (no useMemo) — the bool is cheap and re-derives on every ChatFeature
   // render. Reactivity comes from AuthContext re-rendering this component
@@ -818,14 +819,22 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     onCollapseSidebar: handleCollapseSidebar,
   };
 
-  const chatContextPanel = selectedConversation && hasChatContextPanelContent(planner.plannerState, latestDiscoveryContext) ? (
+  const hasContextPanelContent = !!(selectedConversation && hasChatContextPanelContent(planner.plannerState, latestDiscoveryContext));
+
+  const chatContextPanel = hasContextPanelContent ? (
     <ChatContextPanel
       plannerState={planner.plannerState}
       discoveryContext={latestDiscoveryContext}
       onRequestChanges={handleRequestItineraryChanges}
       onExportPdf={handleExportItineraryPdf}
+      isCollapsed={isContextPanelCollapsed}
+      onToggleCollapse={() => setIsContextPanelCollapsed(v => !v)}
     />
   ) : undefined;
+
+  const contextPanelWidth = hasContextPanelContent
+    ? (isContextPanelCollapsed ? '52px' : 'clamp(420px, 42vw, 640px)')
+    : undefined;
 
   const headerContext = selectedConversation ? (
     <ChatWorkspaceHeaderContext
@@ -858,7 +867,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     return (
       <UnifiedLayout
         rightPanel={chatContextPanel}
-        rightPanelWidth="clamp(420px, 42vw, 640px)"
+        rightPanelWidth={contextPanelWidth}
         headerContext={headerContext}
         headerActions={consumerHeaderActions}
       >
@@ -925,7 +934,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
   return (
     <UnifiedLayout
       rightPanel={agentRightPanel}
-      rightPanelWidth="clamp(420px, 42vw, 640px)"
+      rightPanelWidth={contextPanelWidth}
       headerContext={headerContext}
       headerActions={agentHeaderActions}
     >

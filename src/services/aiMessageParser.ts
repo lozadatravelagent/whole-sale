@@ -245,6 +245,40 @@ export interface ParsedTravelRequest {
          */
         payload?: Record<string, unknown>;
     } | null;
+    /**
+     * Phase 2 Mirror mode: server-side orchestration mirror. The edge
+     * function computes routing + discovery mapping post-parse and ships
+     * the results here. The frontend prefers these when present and falls
+     * back to local computation otherwise (no breaking change).
+     *
+     * Permissive shape to keep this module decoupled from the orchestrator
+     * service typings; concrete types live in
+     * `src/features/chat/services/{routeRequest, discoveryService}.ts`.
+     */
+    orchestration?: {
+        routeResult?: {
+            route: 'QUOTE' | 'COLLECT' | 'PLAN';
+            score: number;
+            dimensions: {
+                destination: number;
+                dates: number;
+                passengers: number;
+                origin: number;
+                complexity: number;
+            };
+            missingFields: string[];
+            inferredFields: string[];
+            collectQuestion?: string;
+            reason: string;
+        } | null;
+        discoveryResult?: {
+            text: string;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            discoveryContext: any;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            recommendedPlaces: any[];
+        } | null;
+    } | null;
 }
 
 // Interfaz para campos requeridos de vuelos
@@ -420,6 +454,10 @@ function toIsoDate(date: Date): string {
     return date.toISOString().split('T')[0];
 }
 
+const DEFAULT_SEARCH_START_OFFSET_DAYS = 3;
+const DEFAULT_SEARCH_DURATION_DAYS = 3;
+const DEFAULT_FAMILY_TRAVELERS = 4;
+
 function addDaysToIsoDate(dateString: string, daysToAdd: number): string {
     const date = new Date(`${dateString}T00:00:00`);
     if (Number.isNaN(date.getTime())) return dateString;
@@ -479,6 +517,648 @@ function getMonthNameFromNumber(monthNum: string): string {
     };
 
     return monthNames[monthNum] || monthNum;
+}
+
+function cleanSimpleItineraryDestination(value: string): string {
+    return value
+        .replace(/\b(?:de|por|durante)?\s*\d{1,2}\s*(?:dias|dia|días|día|noches?)\b/gi, ' ')
+        .replace(/\ben\s+(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+de?\s*20\d{2})?\b/gi, ' ')
+        .replace(/\bpara\s+\d+\s*(?:personas|pasajeros|adultos)\b/gi, ' ')
+        .replace(/\b(?:con|sin)\b.*$/i, ' ')
+        .replace(/[¿?¡!;:.]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^(?:un|una|el|la|los|las)\s+/i, '');
+}
+
+function splitSimpleItineraryDestinations(destination: string): string[] {
+    const destinations = destination
+        .split(/\s*,\s*|\s+\+\s+|\s+y\s+/i)
+        .map((item) => cleanSimpleItineraryDestination(item))
+        .filter((item) => item.length >= 2 && /[a-záéíóúñü]/i.test(item));
+
+    return destinations.length > 0 ? destinations : [destination];
+}
+
+function extractDurationDays(message: string): number | undefined {
+    const normalized = normalizeHotelText(message);
+    const numericDuration = normalized.match(/\b(\d{1,2})\s*(?:dias|dia|noches?)\b/);
+    if (numericDuration) {
+        const value = parseInt(numericDuration[1], 10);
+        return Number.isFinite(value) && value > 0 ? value : undefined;
+    }
+
+    const wordDurations: Array<[RegExp, number]> = [
+        [/\b(?:un|una)\s+semana\b/, 7],
+        [/\bdos\s+semanas\b/, 14],
+        [/\btres\s+semanas\b/, 21],
+        [/\b(?:fin de semana largo|puente)\b/, 3],
+        [/\bfin de semana\b/, 2],
+    ];
+
+    for (const [pattern, days] of wordDurations) {
+        if (pattern.test(normalized)) return days;
+    }
+
+    return undefined;
+}
+
+function getDefaultSearchStartDate(referenceDate: Date = new Date()): string {
+    const start = new Date(referenceDate);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() + DEFAULT_SEARCH_START_OFFSET_DAYS);
+    return toIsoDate(start);
+}
+
+function resolveDefaultSearchDates(
+    message: string,
+    referenceDate: Date = new Date()
+): { startDate: string; endDate: string; durationDays: number } {
+    const dateInfo = extractSimpleDateInfo(message, referenceDate);
+    const fallbackStartDate = getDefaultSearchStartDate(referenceDate);
+    let startDate = dateInfo.startDate;
+
+    if (!startDate && dateInfo.flexibleMonth) {
+        const monthStart = `${dateInfo.flexibleYear || referenceDate.getFullYear()}-${dateInfo.flexibleMonth}-01`;
+        startDate = new Date(`${monthStart}T00:00:00`) < new Date(`${fallbackStartDate}T00:00:00`)
+            ? fallbackStartDate
+            : monthStart;
+    }
+
+    startDate = startDate || fallbackStartDate;
+
+    const durationDays = extractDurationDays(message) || DEFAULT_SEARCH_DURATION_DAYS;
+    return {
+        startDate,
+        endDate: dateInfo.endDate || addDaysToIsoDate(startDate, Math.max(1, durationDays)),
+        durationDays,
+    };
+}
+
+function inferFamilyTravelersFromText(message: string): {
+    adults: number;
+    children: number;
+    infants: number;
+    childrenAges?: number[];
+} | null {
+    const normalized = normalizeHotelText(message);
+    const familyMatch = normalized.match(/\b(?:familia|familias|familiar|flia)(?:\s+de\s+(\d{1,2}))?\b/);
+    if (!familyMatch) return null;
+
+    const total = familyMatch[1]
+        ? Math.max(1, parseInt(familyMatch[1], 10))
+        : DEFAULT_FAMILY_TRAVELERS;
+    const adults = total >= 3 ? 2 : total;
+    const children = Math.max(0, total - adults);
+
+    return {
+        adults,
+        children,
+        infants: 0,
+        childrenAges: children > 0 ? Array(children).fill(8) : undefined,
+    };
+}
+
+function inferSimpleItineraryBudget(message: string): NonNullable<ParsedTravelRequest['itinerary']>['budgetLevel'] | undefined {
+    const normalized = normalizeHotelText(message);
+    if (/\b(?:lujo|luxury|premium|alta gama|5 estrellas|cinco estrellas)\b/.test(normalized)) return 'luxury';
+    if (/\b(?:alto|comodo|cómodo|4 estrellas|cuatro estrellas)\b/.test(normalized)) return 'high';
+    if (/\b(?:medio|moderado|standard|estandar|estándar)\b/.test(normalized)) return 'mid';
+    if (/\b(?:economico|económico|barato|low cost|bajo)\b/.test(normalized)) return 'low';
+    return undefined;
+}
+
+function inferSimpleItineraryPace(message: string): NonNullable<ParsedTravelRequest['itinerary']>['pace'] | undefined {
+    const normalized = normalizeHotelText(message);
+    if (/\b(?:tranquilo|relajado|relax|sin correr|slow)\b/.test(normalized)) return 'relaxed';
+    if (/\b(?:intenso|rapido|rápido|mucho ritmo|apretado)\b/.test(normalized)) return 'fast';
+    return undefined;
+}
+
+function inferSimpleItineraryInterests(message: string): string[] | undefined {
+    const normalized = normalizeHotelText(message);
+    const interests: string[] = [];
+    const rules: Array<[RegExp, string]> = [
+        [/\b(?:gastronomia|gastronomía|comida|restaurantes|food)\b/, 'gastronomia'],
+        [/\b(?:playa|playas|mar|beach)\b/, 'playa'],
+        [/\b(?:museos?|arte|galerias|galerías)\b/, 'arte'],
+        [/\b(?:historia|historico|histórico|cultura|cultural)\b/, 'cultura'],
+        [/\b(?:naturaleza|montana|montaña|parques?|senderismo|trekking)\b/, 'naturaleza'],
+        [/\b(?:compras|shopping)\b/, 'compras'],
+        [/\b(?:noche|bares|vida nocturna)\b/, 'vida nocturna'],
+    ];
+
+    for (const [pattern, interest] of rules) {
+        if (pattern.test(normalized)) interests.push(interest);
+    }
+
+    return interests.length > 0 ? interests : undefined;
+}
+
+function shouldSkipSimpleItineraryFastPath(message: string, knowledge?: ParseMessageKnowledge | null): boolean {
+    const normalized = normalizeHotelText(message);
+    if (knowledge?.previousContext) return true;
+    const hasActivePlan = Boolean(knowledge?.plannerContext?.hasActivePlan);
+    const hasPendingAction = Boolean((knowledge?.emiliaState as any)?.pending_action);
+    const toolChoice = knowledge?.toolChoice;
+    const hasForcedToolChoice = Boolean(
+        toolChoice &&
+        toolChoice !== 'auto' &&
+        toolChoice !== 'none' &&
+        (toolChoice === 'required' || (typeof toolChoice === 'object' && 'type' in toolChoice && toolChoice.type === 'function'))
+    );
+
+    if (hasActivePlan || hasPendingAction || hasForcedToolChoice) return true;
+
+    return /\b(?:cotiz|precio|tarifa|presupuesto|vuelo|vuelos|volar|avion|avión|aereo|aéreo|pasaje|pasajes|hotel|hoteles|alojamiento|habitacion|habitación|resort|transfer|traslado|asistencia|seguro|paquete)\b/.test(normalized);
+}
+
+function stripFlightSlotAnswerDecorations(message: string): string {
+    const monthPattern = Object.keys(ITINERARY_MONTHS)
+        .sort((a, b) => b.length - a.length)
+        .join('|');
+
+    return message
+        .replace(new RegExp(`\\ben\\s+(?:${monthPattern})(?:\\s+de?\\s*20\\d{2})?\\b`, 'giu'), ' ')
+        .replace(/\b(?:del?|desde)\s+\d{1,2}\s+(?:de\s+)?[\p{L}\p{M}]+(?:\s+al\s+\d{1,2}(?:\s+de\s+[\p{L}\p{M}]+)?)?/giu, ' ')
+        .replace(/\bpara\s+\d{1,2}\s*(?:personas|pasajeros|adultos)\b/giu, ' ')
+        .replace(/\bpara\s+(?:mi\s+)?(?:familia|flia)\b/giu, ' ')
+        .replace(/\b(?:con|sin)\b.*$/iu, ' ')
+        .replace(/[¿?¡!;:.]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function isMissingRequiredField(missingFields: string[], field: string): boolean {
+    return missingFields.includes(field) ||
+        missingFields.some((missingField) => missingField.endsWith(`_${field}`));
+}
+
+function getPendingRequiredFields(request?: ParsedTravelRequest | null): string[] {
+    if (!request) return [];
+
+    if (request.requestType === 'flights') {
+        return validateFlightRequiredFields(request.flights).missingFields;
+    }
+
+    if (request.requestType === 'hotels') {
+        return validateHotelRequiredFields(request.hotels).missingFields;
+    }
+
+    if (request.requestType === 'itinerary') {
+        return validateItineraryRequiredFields(request.itinerary).missingFields;
+    }
+
+    if (request.requestType === 'combined') {
+        return [
+            ...validateFlightRequiredFields(request.flights).missingFields.map((field) => `flight.${field}`),
+            ...validateHotelRequiredFields(request.hotels).missingFields.map((field) => `hotel.${field}`),
+        ];
+    }
+
+    return [];
+}
+
+function hasPendingRequiredFields(request?: ParsedTravelRequest | null): boolean {
+    return getPendingRequiredFields(request).length > 0;
+}
+
+function hasExplicitContextSwitch(message: string, previousType?: ParsedTravelRequest['requestType']): boolean {
+    const normalized = normalizeHotelText(message);
+    if (/\b(?:nuevo|nueva|otra busqueda|otra búsqueda|empecemos de cero|cambiemos de tema|olvidate|descarta|descartá|cancelar|cancelá)\b/.test(normalized)) {
+        return true;
+    }
+
+    const wantsFlights = /\b(?:vuelo|vuelos|volar|avion|avión|aereo|aéreo|pasaje|pasajes)\b/.test(normalized);
+    const wantsHotels = /\b(?:hotel|hoteles|alojamiento|habitacion|habitación|resort|hospedaje)\b/.test(normalized);
+    const wantsItinerary = /\b(?:itinerario|viaje|ruta|recorrido|planificar|armame|armá|organizame|organízame)\b/.test(normalized);
+    const wantsQuote = /\b(?:cotiz|precio|tarifa|presupuesto|paquete)\b/.test(normalized);
+
+    if (previousType === 'flights') return wantsHotels || wantsItinerary || wantsQuote;
+    if (previousType === 'hotels') return wantsFlights || wantsItinerary || wantsQuote;
+    if (previousType === 'itinerary') return wantsFlights || wantsHotels || wantsQuote;
+    if (previousType === 'combined') return wantsItinerary;
+
+    return false;
+}
+
+function extractSimpleDateInfo(message: string, referenceDate: Date = new Date()): {
+    startDate?: string;
+    endDate?: string;
+    flexibleMonth?: string;
+    flexibleYear?: number;
+} {
+    const normalized = normalizeHotelText(message);
+    const isoDates = normalized.match(/\b20\d{2}-\d{2}-\d{2}\b/g) || [];
+    if (isoDates.length > 0) {
+        return {
+            startDate: isoDates[0],
+            endDate: isoDates[1],
+        };
+    }
+
+    const monthPattern = Object.keys(ITINERARY_MONTHS)
+        .sort((a, b) => b.length - a.length)
+        .join('|');
+    const rangeMatch = normalized.match(new RegExp(`\\b(?:del?|desde)\\s+(\\d{1,2})(?:\\s+de\\s+(${monthPattern}))?\\s+(?:al|hasta)\\s+(\\d{1,2})\\s+de\\s+(${monthPattern})(?:\\s+de?\\s*(20\\d{2}))?\\b`, 'i'));
+    if (rangeMatch) {
+        const startDay = rangeMatch[1].padStart(2, '0');
+        const endDay = rangeMatch[3].padStart(2, '0');
+        const startMonth = ITINERARY_MONTHS[(rangeMatch[2] || rangeMatch[4]).toLowerCase()];
+        const endMonth = ITINERARY_MONTHS[rangeMatch[4].toLowerCase()];
+        const targetYear = getTargetYearForMonthHint({
+            monthNum: startMonth,
+            explicitYear: rangeMatch[5] ? parseInt(rangeMatch[5], 10) : undefined,
+        }, referenceDate);
+
+        return {
+            startDate: `${targetYear}-${startMonth}-${startDay}`,
+            endDate: `${targetYear}-${endMonth}-${endDay}`,
+        };
+    }
+
+    const singleDateMatch = normalized.match(new RegExp(`\\b(\\d{1,2})\\s+de\\s+(${monthPattern})(?:\\s+de?\\s*(20\\d{2}))?\\b`, 'i'));
+    if (singleDateMatch) {
+        const monthNum = ITINERARY_MONTHS[singleDateMatch[2].toLowerCase()];
+        const targetYear = getTargetYearForMonthHint({
+            monthNum,
+            explicitYear: singleDateMatch[3] ? parseInt(singleDateMatch[3], 10) : undefined,
+        }, referenceDate);
+
+        return {
+            startDate: `${targetYear}-${monthNum}-${singleDateMatch[1].padStart(2, '0')}`,
+        };
+    }
+
+    const monthHint = extractItineraryMonthHint(message);
+    if (monthHint) {
+        return {
+            flexibleMonth: monthHint.monthNum,
+            flexibleYear: getTargetYearForMonthHint(monthHint, referenceDate),
+        };
+    }
+
+    return {};
+}
+
+function completePendingRequestFromAnswer(
+    message: string,
+    previousContext?: ParsedTravelRequest | null,
+): ParsedTravelRequest | null {
+    if (!previousContext || !hasPendingRequiredFields(previousContext)) return null;
+    if (hasExplicitContextSwitch(message, previousContext.requestType)) return null;
+
+    const normalized = normalizeHotelText(message);
+    const dateInfo = extractSimpleDateInfo(message);
+    const defaultDates = resolveDefaultSearchDates(message);
+    const familyTravelers = inferFamilyTravelersFromText(message);
+    const slotAnswer = stripFlightSlotAnswerDecorations(message);
+    const paxMatch = normalized.match(/\b(\d{1,2})\s*(?:personas|pasajeros|adultos)\b/);
+    const durationMatch = normalized.match(/\b(\d{1,2})\s*(?:dias|dia|días|día|noches?)\b/);
+    let changed = false;
+    const next: ParsedTravelRequest = {
+        ...previousContext,
+        originalMessage: message,
+    };
+
+    const maybeTextSlot = slotAnswer.length >= 2 && /[a-záéíóúñü]/i.test(slotAnswer)
+        ? slotAnswer
+        : undefined;
+
+    if ((previousContext.requestType === 'flights' || previousContext.requestType === 'combined') && previousContext.flights) {
+        const validation = validateFlightRequiredFields(previousContext.flights);
+        const flights = { ...previousContext.flights };
+        if (isMissingRequiredField(validation.missingFields, 'origin') && maybeTextSlot) {
+            flights.origin = maybeTextSlot;
+            changed = true;
+        } else if (isMissingRequiredField(validation.missingFields, 'destination') && maybeTextSlot) {
+            flights.destination = maybeTextSlot;
+            changed = true;
+        }
+        if (isMissingRequiredField(validation.missingFields, 'departureDate') && dateInfo.startDate) {
+            flights.departureDate = dateInfo.startDate;
+            changed = true;
+        } else if (isMissingRequiredField(validation.missingFields, 'departureDate')) {
+            flights.departureDate = defaultDates.startDate;
+            changed = true;
+        }
+        if (isMissingRequiredField(validation.missingFields, 'adults') && paxMatch) {
+            flights.adults = Math.max(1, parseInt(paxMatch[1], 10));
+            flights.children = flights.children ?? 0;
+            changed = true;
+        } else if (isMissingRequiredField(validation.missingFields, 'adults') && familyTravelers) {
+            flights.adults = familyTravelers.adults;
+            flights.adultsExplicit = true;
+            flights.children = familyTravelers.children;
+            flights.infants = familyTravelers.infants;
+            changed = true;
+        } else if (familyTravelers && !flights.adultsExplicit) {
+            flights.adults = familyTravelers.adults;
+            flights.adultsExplicit = true;
+            flights.children = familyTravelers.children;
+            flights.infants = familyTravelers.infants;
+            changed = true;
+        }
+        next.flights = normalizeFlightRequest(flights);
+    }
+
+    if ((previousContext.requestType === 'hotels' || previousContext.requestType === 'combined') && previousContext.hotels) {
+        const validation = validateHotelRequiredFields(previousContext.hotels);
+        const hotels = { ...previousContext.hotels };
+        if (isMissingRequiredField(validation.missingFields, 'city') && maybeTextSlot) {
+            hotels.city = maybeTextSlot;
+            changed = true;
+        }
+        if (isMissingRequiredField(validation.missingFields, 'checkinDate') && dateInfo.startDate) {
+            hotels.checkinDate = dateInfo.startDate;
+            changed = true;
+        } else if (isMissingRequiredField(validation.missingFields, 'checkinDate')) {
+            hotels.checkinDate = defaultDates.startDate;
+            changed = true;
+        }
+        if (isMissingRequiredField(validation.missingFields, 'checkoutDate') && dateInfo.endDate) {
+            hotels.checkoutDate = dateInfo.endDate;
+            changed = true;
+        } else if (isMissingRequiredField(validation.missingFields, 'checkoutDate')) {
+            hotels.checkoutDate = defaultDates.endDate;
+            changed = true;
+        }
+        if (isMissingRequiredField(validation.missingFields, 'adults') && paxMatch) {
+            hotels.adults = Math.max(1, parseInt(paxMatch[1], 10));
+            hotels.children = hotels.children ?? 0;
+            changed = true;
+        } else if (isMissingRequiredField(validation.missingFields, 'adults') && familyTravelers) {
+            hotels.adults = familyTravelers.adults;
+            hotels.adultsExplicit = true;
+            hotels.children = familyTravelers.children;
+            hotels.childrenAges = familyTravelers.childrenAges;
+            hotels.infants = familyTravelers.infants;
+            changed = true;
+        } else if (familyTravelers && !hotels.adultsExplicit) {
+            hotels.adults = familyTravelers.adults;
+            hotels.adultsExplicit = true;
+            hotels.children = familyTravelers.children;
+            hotels.childrenAges = familyTravelers.childrenAges;
+            hotels.infants = familyTravelers.infants;
+            changed = true;
+        }
+        next.hotels = hotels;
+    }
+
+    if (previousContext.requestType === 'itinerary' && previousContext.itinerary) {
+        const validation = validateItineraryRequiredFields(previousContext.itinerary);
+        const itinerary = { ...previousContext.itinerary };
+        if (isMissingRequiredField(validation.missingFields, 'destinations') && maybeTextSlot) {
+            itinerary.destinations = splitSimpleItineraryDestinations(maybeTextSlot);
+            changed = true;
+        }
+        if (isMissingRequiredField(validation.missingFields, 'days') && durationMatch) {
+            itinerary.days = Math.max(1, parseInt(durationMatch[1], 10));
+            changed = true;
+        } else if (isMissingRequiredField(validation.missingFields, 'days')) {
+            itinerary.days = DEFAULT_SEARCH_DURATION_DAYS;
+            changed = true;
+        }
+        if (isMissingRequiredField(validation.missingFields, 'exact_dates')) {
+            if (dateInfo.startDate && dateInfo.endDate) {
+                itinerary.startDate = dateInfo.startDate;
+                itinerary.endDate = dateInfo.endDate;
+                itinerary.isFlexibleDates = false;
+                changed = true;
+            } else if (dateInfo.flexibleMonth) {
+                itinerary.isFlexibleDates = true;
+                itinerary.flexibleMonth = dateInfo.flexibleMonth;
+                itinerary.flexibleYear = dateInfo.flexibleYear;
+                itinerary.dateSelectionSource = 'message';
+                changed = true;
+            }
+        }
+        next.itinerary = itinerary;
+    }
+
+    if (!changed) return null;
+
+    return {
+        ...next,
+        confidence: 0.9,
+    };
+}
+
+function preservePendingContextIfNeeded(
+    previousContext: ParsedTravelRequest | null | undefined,
+    message: string,
+    parsedRequest: ParsedTravelRequest,
+): ParsedTravelRequest {
+    if (!previousContext || !hasPendingRequiredFields(previousContext)) return parsedRequest;
+    if (hasExplicitContextSwitch(message, previousContext.requestType)) return parsedRequest;
+
+    const completed = completePendingRequestFromAnswer(message, previousContext);
+    if (completed) {
+        return completed.requestType === parsedRequest.requestType
+            ? combineWithPreviousRequest(completed, message, parsedRequest)
+            : completed;
+    }
+
+    if (parsedRequest.requestType === previousContext.requestType) {
+        return combineWithPreviousRequest(previousContext, message, parsedRequest);
+    }
+
+    console.log('🧭 [PENDING-CONTEXT] Preserving pending request type over parser reclassification', {
+        previousType: previousContext.requestType,
+        parsedType: parsedRequest.requestType,
+        pendingFields: getPendingRequiredFields(previousContext),
+    });
+
+    return {
+        ...previousContext,
+        originalMessage: message,
+        confidence: Math.min(parsedRequest.confidence ?? 0.8, 0.85),
+    };
+}
+
+function applyDefaultSearchAssumptions(
+    request: ParsedTravelRequest,
+    message: string,
+    referenceDate: Date = new Date()
+): ParsedTravelRequest {
+    const defaultDates = resolveDefaultSearchDates(message, referenceDate);
+    const durationDays = extractDurationDays(message) || DEFAULT_SEARCH_DURATION_DAYS;
+    const familyTravelers = inferFamilyTravelersFromText(message);
+    const next = normalizeParsedFlightRequest({ ...request });
+
+    if ((next.requestType === 'flights' || next.requestType === 'combined') && next.flights) {
+        const flights = { ...next.flights };
+        if (flights.segments?.length) {
+            flights.segments = flights.segments.map((segment, index) => ({
+                ...segment,
+                departureDate: isValidIsoDate(segment.departureDate)
+                    ? segment.departureDate
+                    : addDaysToIsoDate(defaultDates.startDate, index * Math.max(1, durationDays)),
+            }));
+        }
+        if (!isValidIsoDate(flights.departureDate)) {
+            flights.departureDate = flights.segments?.[0]?.departureDate || defaultDates.startDate;
+        }
+        if (next.requestType === 'combined' && !isValidIsoDate(flights.returnDate)) {
+            flights.returnDate = defaultDates.endDate;
+        }
+        if (familyTravelers && !flights.adultsExplicit) {
+            flights.adults = familyTravelers.adults;
+            flights.adultsExplicit = true;
+            flights.children = familyTravelers.children;
+            flights.infants = familyTravelers.infants;
+        } else if (typeof flights.adults !== 'number' || flights.adults < 1) {
+            flights.adults = 1;
+            flights.children = flights.children ?? 0;
+            flights.infants = flights.infants ?? 0;
+        }
+        next.flights = normalizeFlightRequest(flights);
+    }
+
+    if ((next.requestType === 'hotels' || next.requestType === 'combined') && next.hotels) {
+        const hotels = { ...next.hotels };
+        if (hotels.segments?.length) {
+            let nextSegmentStart = defaultDates.startDate;
+            hotels.segments = hotels.segments.map((segment) => {
+                const checkinDate = isValidIsoDate(segment.checkinDate)
+                    ? segment.checkinDate
+                    : nextSegmentStart;
+                const checkoutDate = isValidIsoDate(segment.checkoutDate)
+                    ? segment.checkoutDate
+                    : addDaysToIsoDate(checkinDate, Math.max(1, durationDays));
+                nextSegmentStart = checkoutDate;
+                return {
+                    ...segment,
+                    checkinDate,
+                    checkoutDate,
+                    adults: familyTravelers && !segment.adultsExplicit
+                        ? familyTravelers.adults
+                        : (segment.adults && segment.adults > 0 ? segment.adults : hotels.adults),
+                    adultsExplicit: familyTravelers && !segment.adultsExplicit ? true : segment.adultsExplicit,
+                    children: familyTravelers && !segment.adultsExplicit ? familyTravelers.children : (segment.children ?? hotels.children ?? 0),
+                    childrenAges: familyTravelers && !segment.adultsExplicit ? familyTravelers.childrenAges : segment.childrenAges,
+                    infants: familyTravelers && !segment.adultsExplicit ? familyTravelers.infants : (segment.infants ?? hotels.infants),
+                };
+            });
+        }
+        if (!isValidIsoDate(hotels.checkinDate)) {
+            hotels.checkinDate = hotels.segments?.[0]?.checkinDate || defaultDates.startDate;
+        }
+        if (!isValidIsoDate(hotels.checkoutDate)) {
+            hotels.checkoutDate = hotels.segments?.[0]?.checkoutDate || defaultDates.endDate || addDaysToIsoDate(hotels.checkinDate, Math.max(1, durationDays));
+        }
+        if (familyTravelers && !hotels.adultsExplicit) {
+            hotels.adults = familyTravelers.adults;
+            hotels.adultsExplicit = true;
+            hotels.children = familyTravelers.children;
+            hotels.childrenAges = familyTravelers.childrenAges;
+            hotels.infants = familyTravelers.infants;
+        } else if (typeof hotels.adults !== 'number' || hotels.adults < 1) {
+            hotels.adults = 1;
+            hotels.children = hotels.children ?? 0;
+            hotels.infants = hotels.infants ?? 0;
+        }
+        next.hotels = hotels;
+    }
+
+    if (next.requestType === 'itinerary' && next.itinerary) {
+        const itinerary = { ...next.itinerary };
+        if (!itinerary.days || itinerary.days < 1) {
+            itinerary.days = DEFAULT_SEARCH_DURATION_DAYS;
+        }
+        if (familyTravelers && !itinerary.travelers?.adults) {
+            itinerary.travelers = {
+                adults: familyTravelers.adults,
+                children: familyTravelers.children,
+                infants: familyTravelers.infants,
+            };
+        }
+        next.itinerary = itinerary;
+    }
+
+    return next;
+}
+
+export function tryParseSimpleItineraryDeterministically(
+    message: string,
+    knowledge?: ParseMessageKnowledge | null,
+    referenceDate: Date = new Date()
+): ParsedTravelRequest | null {
+    if (shouldSkipSimpleItineraryFastPath(message, knowledge)) return null;
+
+    const normalized = message.replace(/\s+/g, ' ').trim();
+    const normalizedText = normalizeHotelText(normalized);
+    const hasItineraryIntent = /\b(?:itinerario|viaje|ruta|recorrido|planificar|planificame|planificá|armame|arma|armá|organizame|organízame|organizar|planner)\b/.test(normalizedText);
+    if (!hasItineraryIntent) return null;
+
+    const durationMatch = normalizedText.match(/\b(\d{1,2})\s*(dias|dia|noches?)\b/);
+    const rawDuration = durationMatch
+        ? parseInt(durationMatch[1], 10)
+        : DEFAULT_SEARCH_DURATION_DAYS;
+    if (!Number.isFinite(rawDuration) || rawDuration < 2 || rawDuration > 45) return null;
+
+    const days = durationMatch?.[2]?.startsWith('noche') ? rawDuration + 1 : rawDuration;
+    const monthPattern = Object.keys(ITINERARY_MONTHS)
+        .sort((a, b) => b.length - a.length)
+        .join('|');
+    const destinationMatch = normalized.match(
+        new RegExp(`\\b(?:a|en|por|hacia|para)\\s+([\\p{L}\\p{M} .,'-]{2,90}?)(?=\\s+(?:de\\s+|por\\s+|durante\\s+)?\\d{1,2}\\s*(?:d[ií]as?|noches?)\\b|\\s+en\\s+(?:${monthPattern})\\b|\\s+para\\s+\\d+\\s*(?:personas|adultos|pasajeros)\\b|\\s+(?:con|sin)\\b|[.,;!?]|$)`, 'iu')
+    );
+    const rawDestination = destinationMatch?.[1] ? cleanSimpleItineraryDestination(destinationMatch[1]) : '';
+
+    if (
+        rawDestination.length < 2 ||
+        /\d/.test(rawDestination) ||
+        /\b(?:dias|dia|noches|personas|pasajeros|adultos|itinerario|viaje|ruta|recorrido)\b/i.test(rawDestination)
+    ) {
+        return null;
+    }
+
+    const monthHint = extractItineraryMonthHint(message);
+    const travelersMatch = normalizedText.match(/\b(\d{1,2})\s*(?:personas|pasajeros|adultos)\b/);
+    const familyTravelers = inferFamilyTravelersFromText(message);
+    const adults = travelersMatch ? Math.max(1, parseInt(travelersMatch[1], 10)) : undefined;
+    const itinerary: NonNullable<ParsedTravelRequest['itinerary']> = {
+        destinations: splitSimpleItineraryDestinations(rawDestination),
+        days,
+    };
+
+    if (monthHint) {
+        itinerary.isFlexibleDates = true;
+        itinerary.flexibleMonth = monthHint.monthNum;
+        itinerary.flexibleYear = getTargetYearForMonthHint(monthHint, referenceDate);
+        itinerary.dateSelectionSource = 'message';
+    }
+
+    const budgetLevel = inferSimpleItineraryBudget(message);
+    if (budgetLevel) itinerary.budgetLevel = budgetLevel;
+
+    const pace = inferSimpleItineraryPace(message);
+    if (pace) itinerary.pace = pace;
+
+    const interests = inferSimpleItineraryInterests(message);
+    if (interests) itinerary.interests = interests;
+
+    if (familyTravelers) {
+        itinerary.travelers = {
+            adults: familyTravelers.adults,
+            children: familyTravelers.children,
+            infants: familyTravelers.infants,
+        };
+    } else if (adults) {
+        itinerary.travelers = {
+            adults,
+            children: 0,
+            infants: 0,
+        };
+    }
+
+    return {
+        requestType: 'itinerary',
+        itinerary,
+        confidence: 0.86,
+        originalMessage: message,
+    };
 }
 
 function formatSpanishDate(dateString: string): string {
@@ -1575,6 +2255,29 @@ export async function parseMessageWithAI(
     console.log('🤖 Starting AI message parsing for:', message);
     console.log('✅ OpenAI parsing is ENABLED - fallback has been removed, will always use OpenAI');
 
+    const deterministicPendingCompletion = previousContext
+        ? completePendingRequestFromAnswer(message, previousContext)
+        : null;
+    if (deterministicPendingCompletion) {
+        timer.end('deterministic pending context completion', {
+            requestType: deterministicPendingCompletion.requestType,
+            pendingFields: getPendingRequiredFields(deterministicPendingCompletion),
+        });
+        return deterministicPendingCompletion;
+    }
+
+    const simpleItinerary = !previousContext && !conversationHistory?.length
+        ? tryParseSimpleItineraryDeterministically(message, knowledge)
+        : null;
+    if (simpleItinerary) {
+        timer.end('deterministic itinerary fast-path', {
+            requestType: simpleItinerary.requestType,
+            destinations: simpleItinerary.itinerary?.destinations,
+            days: simpleItinerary.itinerary?.days,
+        });
+        return simpleItinerary;
+    }
+
     // Pre-parser rápido: captura patrones comunes tipo
     // "Ezeiza - Punta Cana, con valija para 2 personas"
     // para mejorar el contexto antes de llamar al parser de IA.
@@ -1929,7 +2632,11 @@ export async function parseMessageWithAI(
         }
 
         const postProcessStart = nowMs();
-        const mergedResult = await processEdgeFunctionResponse(response.data, message, quick);
+        const mergedResult = preservePendingContextIfNeeded(
+            previousContext,
+            message,
+            await processEdgeFunctionResponse(response.data, message, quick)
+        );
         logTimingStep('AI PARSER', 'post-processing', postProcessStart, {
             requestType: mergedResult.requestType,
             hasFlights: Boolean(mergedResult.flights),
@@ -2052,9 +2759,160 @@ async function processEdgeFunctionResponse(
         });
     }
 
-    console.log('🌍 [GEO-TRACE-2] After merge/post-processing destinations:', mergedResult.itinerary?.destinations);
-    console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
-    return mergedResult;
+    // Phase 2 Mirror mode: server-computed orchestration. Frontend prefers
+    // these results when present, otherwise falls back to local computation
+    // in useMessageHandler. Logged for telemetry parity-check during rollout.
+    const orchestration =
+        (data?.meta?.orchestration ?? null) as ParsedTravelRequest['orchestration'];
+    if (orchestration) {
+        (mergedResult as ParsedTravelRequest).orchestration = orchestration;
+        console.log('🧭 [ORCHESTRATION] Server-computed mirror:', {
+            hasRouteResult: Boolean(orchestration.routeResult),
+            hasDiscoveryResult: Boolean(orchestration.discoveryResult),
+            route: orchestration.routeResult?.route,
+        });
+    }
+
+    const resultWithDefaults = applyDefaultSearchAssumptions(mergedResult, message);
+
+    console.log('🌍 [GEO-TRACE-2] After merge/post-processing destinations:', resultWithDefaults.itinerary?.destinations);
+    console.log('✅ AI parsing successful (merged with quick hints when missing):', resultWithDefaults);
+    return resultWithDefaults;
+}
+
+async function buildStreamingQuickPreParserHints(message: string): Promise<Partial<ParsedTravelRequest>> {
+    const quick: Partial<ParsedTravelRequest> = {} as any;
+    try {
+        const normalized = message.replace(/\s+/g, ' ').trim();
+        const normalizedLower = normalized.toLowerCase();
+        const hasHotelKeywords = ['hotel', 'hoteles', 'habitacion', 'habitación', 'alojamiento', 'all inclusive', 'todo incluido', 'media pension', 'media pensión', 'cadena', 'resort', 'hostal', 'hospedaje', 'posada']
+            .some((kw) => normalizedLower.includes(kw));
+        const hasFlightKeywords = ['vuelo', 'vuelos', 'volar', 'avion', 'avión', 'aereo', 'aéreo', 'pasaje', 'pasajes', 'boleto', 'boletos', 'flight', 'flights']
+            .some((kw) => normalizedLower.includes(kw));
+
+        const setFlightRoute = (origin: string, destination: string) => {
+            if (hasHotelKeywords && !hasFlightKeywords) return;
+            quick.requestType = hasHotelKeywords && hasFlightKeywords ? 'combined' as any : 'flights' as any;
+            quick.flights = {
+                ...(quick.flights || ({} as any)),
+                origin,
+                destination,
+                departureDate: '',
+                adults: 1,
+                children: 0,
+            } as any;
+        };
+
+        const desdeMatch = normalized.match(/desde\s+([^a]+?)\s+a\s+([^a]+?)(?=\s+desde|\s+para|\s+con|$)/i);
+        if (desdeMatch?.[1] && desdeMatch?.[2]) {
+            setFlightRoute(desdeMatch[1].trim(), desdeMatch[2].trim());
+        }
+        const odMatch = normalized.match(/([\p{L} .]+)\s*-\s*([\p{L} .]+)/u);
+        if (odMatch?.[1] && odMatch?.[2] && !quick.flights) {
+            setFlightRoute(odMatch[1].trim(), odMatch[2].split(',')[0].trim());
+        }
+
+        const meses: Record<string, string> = {
+            enero: '01', febrero: '02', marzo: '03', abril: '04', mayo: '05', junio: '06',
+            julio: '07', agosto: '08', septiembre: '09', octubre: '10', noviembre: '11', diciembre: '12',
+        };
+        const fechaMatch = normalized.match(/(\d{1,2})\s+de\s+([a-záéíóú]+)(?:\s+al\s+(\d{1,2})(?:\s+de\s+([a-záéíóú]+))?)?/i);
+        const fechaAltMatch = !fechaMatch ? normalized.match(/del?\s+(\d{1,2})\s+al\s+(\d{1,2})\s+de\s+([a-záéíóú]+)/i) : null;
+        if (quick.flights && (fechaMatch || fechaAltMatch)) {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1;
+            const currentDay = now.getDate();
+            if (fechaMatch) {
+                const mes = fechaMatch[2].toLowerCase();
+                const mesNum = meses[mes] || '10';
+                const requestedMonth = parseInt(mesNum, 10);
+                const requestedDay = parseInt(fechaMatch[1], 10);
+                const year = requestedMonth < currentMonth || (requestedMonth === currentMonth && requestedDay < currentDay)
+                    ? currentYear + 1
+                    : currentYear;
+                quick.flights.departureDate = `${year}-${mesNum}-${fechaMatch[1].padStart(2, '0')}`;
+                if (fechaMatch[3]) {
+                    const mes2 = fechaMatch[4]?.toLowerCase() || mes;
+                    const mes2Num = meses[mes2] || mesNum;
+                    const requestedMonth2 = parseInt(mes2Num, 10);
+                    const requestedDay2 = parseInt(fechaMatch[3], 10);
+                    const year2 = requestedMonth2 < currentMonth || (requestedMonth2 === currentMonth && requestedDay2 < currentDay)
+                        ? currentYear + 1
+                        : (requestedMonth2 < requestedMonth ? year + 1 : year);
+                    quick.flights.returnDate = `${year2}-${mes2Num}-${fechaMatch[3].padStart(2, '0')}`;
+                }
+            } else if (fechaAltMatch) {
+                const mesNum = meses[fechaAltMatch[3].toLowerCase()] || '10';
+                const requestedMonth = parseInt(mesNum, 10);
+                const requestedDay = parseInt(fechaAltMatch[1], 10);
+                const year = requestedMonth < currentMonth || (requestedMonth === currentMonth && requestedDay < currentDay)
+                    ? currentYear + 1
+                    : currentYear;
+                quick.flights.departureDate = `${year}-${mesNum}-${fechaAltMatch[1].padStart(2, '0')}`;
+                quick.flights.returnDate = `${year}-${mesNum}-${fechaAltMatch[2].padStart(2, '0')}`;
+            }
+        }
+
+        if (/con valija|equipaje facturado/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), luggage: 'checked' as any } as any;
+        } else if (/solo equipaje de mano|equipaje de mano|carry on|sin valija/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), luggage: 'carry_on' as any } as any;
+        }
+        const escalasNumMatch = normalized.match(/(?:con\s+)?(\d+)\s+escala(?:s)?/i);
+        if (escalasNumMatch) {
+            const num = parseInt(escalasNumMatch[1], 10);
+            quick.flights = { ...(quick.flights || ({} as any)), stops: num === 0 ? 'direct' : num === 1 ? 'one_stop' : num === 2 ? 'two_stops' : 'any' } as any;
+        } else if (/directo/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), stops: 'direct' as any } as any;
+        } else if (/con\s+escalas\b/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), stops: 'with_stops' as any } as any;
+        } else if (/con\s+escala\b|\buna\s+escala\b/i.test(normalized)) {
+            quick.flights = { ...(quick.flights || ({} as any)), stops: 'one_stop' as any } as any;
+        }
+
+        const layoverMatch = normalized.match(/no\s+m[áa]s\s+de\s+(\d{1,2})\s*(?:h|hs|hora|horas)\b|<=\s*(\d{1,2})\s*h/i);
+        if (layoverMatch) {
+            const hours = parseInt(layoverMatch[1] || layoverMatch[2], 10);
+            if (!Number.isNaN(hours)) {
+                quick.flights = { ...(quick.flights || ({} as any)), maxLayoverHours: hours as any } as any;
+            }
+        }
+        const paxMatch = normalized.match(/(\d+)\s*(personas|pasajeros|adultos)/i);
+        if (paxMatch) {
+            quick.flights = { ...(quick.flights || ({} as any)), adults: Math.max(1, parseInt(paxMatch[1], 10)), children: 0 } as any;
+        }
+
+        const { detectAirlineInText } = await import('@/features/chat/data/airlineAliases');
+        const airlineDetection = detectAirlineInText(normalized);
+        if (airlineDetection) {
+            quick.flights = { ...(quick.flights || ({} as any)), preferredAirline: airlineDetection.name } as any;
+        }
+
+        const { detectMultipleHotelChains, detectMultipleHotelNames } = await import('@/features/chat/data/hotelChainAliases');
+        const detectedNames = detectMultipleHotelNames(message);
+        if (detectedNames.length > 0) {
+            (quick as any).hotels = { ...((quick as any).hotels || {}), hotelNames: detectedNames };
+        } else {
+            const detectedChains = detectMultipleHotelChains(message);
+            if (detectedChains.length > 0) {
+                (quick as any).hotels = { ...((quick as any).hotels || {}), hotelChains: detectedChains };
+            }
+        }
+
+        const { timePreferenceToRange } = await import('@/features/chat/utils/timeSlotMapper');
+        const departureTimeMatch = normalized.match(/\b(?:que\s+)?(?:salga|sal[íi]|vuele)\s+(?:de\s+)?(?:la\s+)?([a-záéíóúñü]+)\b/i);
+        const arrivalTimeMatch = normalized.match(/\b(?:que\s+)?(?:llegue|llegu[eé]|vuelva)\s+(?:de\s+)?(?:la\s+)?([a-záéíóúñü]+)\b/i);
+        if (departureTimeMatch && timePreferenceToRange(departureTimeMatch[1])) {
+            quick.flights = { ...(quick.flights || ({} as any)), departureTimePreference: departureTimeMatch[1] } as any;
+        }
+        if (arrivalTimeMatch && timePreferenceToRange(arrivalTimeMatch[1])) {
+            quick.flights = { ...(quick.flights || ({} as any)), arrivalTimePreference: arrivalTimeMatch[1] } as any;
+        }
+    } catch (e) {
+        console.warn('Streaming quick pre-parse failed:', e);
+    }
+    return quick;
 }
 
 /**
@@ -2076,13 +2934,27 @@ export async function parseMessageWithAIStreaming(
     language: 'es' | 'en' | 'pt',
     onProgress?: (event: AiParserStreamEvent) => void,
 ): Promise<ParsedTravelRequest> {
+    const deterministicPendingCompletion = completePendingRequestFromAnswer(message, knowledge?.previousContext);
+    if (deterministicPendingCompletion) {
+        onProgress?.({ type: 'status', stage: 'route', message: 'Preparando respuesta…' });
+        return deterministicPendingCompletion;
+    }
+
+    const simpleItinerary = tryParseSimpleItineraryDeterministically(message, knowledge);
+    if (simpleItinerary) {
+        onProgress?.({ type: 'status', stage: 'route', message: 'Preparando respuesta…' });
+        return simpleItinerary;
+    }
+
     // Dev: CORS proxy doesn't support streaming → fall back to regular invoke
     if (import.meta.env.DEV) {
         onProgress?.({ type: 'status', stage: 'parse', message: 'Analizando tu mensaje…' });
-        const parsed = await parseMessageWithAI(message, null, [], knowledge, language);
+        const parsed = await parseMessageWithAI(message, knowledge?.previousContext ?? null, [], knowledge, language);
         onProgress?.({ type: 'status', stage: 'route', message: 'Preparando respuesta…' });
         return parsed;
     }
+
+    const quick = await buildStreamingQuickPreParserHints(message);
 
     // Prod: call the edge function directly via fetch with SSE
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
@@ -2090,7 +2962,7 @@ export async function parseMessageWithAIStreaming(
 
     if (!supabaseUrl || !supabaseAnonKey) {
         // Fall back if env vars not available
-        return parseMessageWithAI(message, null, [], knowledge, language);
+        return parseMessageWithAI(message, knowledge?.previousContext ?? null, [], knowledge, language);
     }
 
     const url = `${supabaseUrl}/functions/v1/ai-message-parser`;
@@ -2101,6 +2973,7 @@ export async function parseMessageWithAIStreaming(
         language,
         stream: true,
         currentDate: new Date().toISOString().split('T')[0],
+        previousContext: knowledge?.previousContext ?? null,
         plannerContext: knowledge?.plannerContext ?? null,
         historyWindow: knowledge?.historyWindow ?? 15,
         contextMeta: knowledge?.contextMeta ?? null,
@@ -2152,9 +3025,12 @@ export async function parseMessageWithAIStreaming(
                 onProgress?.({ ...data, type: eventType });
             } else if (eventType === 'done') {
                 // The done payload IS the full JSON response — process it with
-                // the same post-processing as parseMessageWithAI. No pre-parser
-                // quick hints are available in the streaming path, so pass {}.
-                return processEdgeFunctionResponse(data, message, {});
+                // the same post-processing as parseMessageWithAI.
+                return preservePendingContextIfNeeded(
+                    knowledge?.previousContext,
+                    message,
+                    await processEdgeFunctionResponse(data, message, quick)
+                );
             } else if (eventType === 'error') {
                 throw new Error(data?.error ?? 'AI parsing failed');
             }

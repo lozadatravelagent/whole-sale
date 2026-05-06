@@ -1,8 +1,14 @@
-import type { ParsedTravelRequest } from '@/services/aiMessageParser';
-import type { TripPlannerState, PlannerActivity, PlannerRestaurant } from '@/features/trip-planner/types';
-import type { ContextState } from '../types/contextState';
-import type { RouteResult } from './routeRequest';
-import { isGenericPlaceholder } from './itineraryPipeline';
+/**
+ * Conversation Orchestrator (backend port)
+ *
+ * NOTE: Backend port of src/features/chat/services/conversationOrchestrator.ts.
+ * Logic is identical; only imports were redirected to ./types.ts,
+ * ./routeRequest.ts and ./itineraryPipelinePure.ts.
+ */
+
+import type { ParsedTravelRequest, TripPlannerState, PlannerActivity, PlannerRestaurant, ContextState } from './types.ts';
+import type { RouteResult } from './routeRequest.ts';
+import { isGenericPlaceholder } from './itineraryPipelinePure.ts';
 
 export interface ChatRecommendedPlace {
   placeId?: string;
@@ -80,7 +86,7 @@ function normalizeText(value?: string | null): string {
   return (value || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
@@ -246,7 +252,7 @@ export function resolveTravelContextBridge(options: {
   if (routeResult?.reason === 'quote_active_plan' && hasActivePlanner) {
     return {
       kind: 'plan_to_quote',
-      parsedRequest: buildQuoteRequestFromPlanner(message, parsedRequest, plannerState) || parsedRequest,
+      parsedRequest: buildQuoteRequestFromPlanner(message, parsedRequest, plannerState!) || parsedRequest,
       reason: 'quote_active_plan',
     };
   }
@@ -550,7 +556,9 @@ function restaurantToPlace(city: string, restaurant: PlannerRestaurant): ChatRec
 export function extractRecommendedPlacesFromMeta(meta?: Record<string, unknown> | null): ChatRecommendedPlace[] {
   if (!meta) return [];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const discoveryPlaces = Array.isArray((meta as any).discoveryContext?.places)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ? (((meta as any).discoveryContext.places as Array<ChatRecommendedPlace>).slice(0, 6))
     : [];
   if (discoveryPlaces.length > 0) {

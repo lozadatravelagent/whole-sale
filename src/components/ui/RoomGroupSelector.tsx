@@ -42,6 +42,7 @@ interface RoomGroupSelectorProps {
     failedPrices?: Record<string, boolean>; // Rooms where makeBudget failed
     hotelId?: string;
     nights?: number; // Number of nights for per-night price calculation
+    compact?: boolean;
 }
 
 const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
@@ -56,7 +57,8 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     loadingPrices = {},
     failedPrices = {},
     hotelId = '',
-    nights
+    nights,
+    compact = false
 }) => {
     const [showAllRooms, setShowAllRooms] = useState(false);
     const { translateRoomDescription } = useChatDataTranslations();
@@ -266,13 +268,13 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     }
 
     return (
-        <div className="space-y-3">
-            <h4 className="text-sm font-medium">Habitaciones disponibles:</h4>
+        <div className={compact ? 'space-y-2' : 'space-y-3'}>
+            <h4 className={compact ? 'text-xs font-medium' : 'text-sm font-medium'}>Habitaciones disponibles:</h4>
 
-            <div className="space-y-3">
+            <div className={compact ? 'space-y-2' : 'space-y-3'}>
                 {Object.entries(roomsToShow).map(([roomType, roomsInType]) => (
                     <div key={roomType} className="space-y-2">
-                        <div className="grid gap-2 sm:grid-cols-1 lg:grid-cols-2">
+                        <div className={compact ? 'grid grid-cols-1 gap-2' : 'grid gap-2 sm:grid-cols-1 lg:grid-cols-2'}>
                             {roomsInType.map((room) => {
                                 const availabilityStatus = getAvailabilityStatus(room.availability);
                                 const AvailabilityIcon = availabilityStatus.icon;
@@ -373,7 +375,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                 )}
 
                                                 {room.description && room.description !== room.type && (
-                                                    <p className="text-xs text-muted-foreground">
+                                                    <p className={`text-xs text-muted-foreground ${compact ? 'line-clamp-2' : ''}`}>
                                                         {translateRoomDescription(room.description)}
                                                     </p>
                                                 )}

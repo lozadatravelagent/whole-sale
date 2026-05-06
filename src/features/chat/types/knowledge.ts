@@ -112,6 +112,7 @@ export interface PlannerEditContext {
 }
 
 export interface ParseMessageKnowledge {
+  previousContext?: ParsedTravelRequest | null;
   plannerContext?: PlannerEditContext | null;
   contextMeta?: {
     conversationId?: string | null;

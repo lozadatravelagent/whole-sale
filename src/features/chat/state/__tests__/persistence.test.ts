@@ -12,14 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mock supabase client
 // ---------------------------------------------------------------------------
 
-const { mockSingle, mockSelect, mockEq, mockUpsert, mockDelete, mockFrom } = vi.hoisted(() => {
-  const mockSingle = vi.fn();
+const { mockMaybeSingle, mockSelect, mockEq, mockUpsert, mockDelete, mockFrom } = vi.hoisted(() => {
+  const mockMaybeSingle = vi.fn();
   const mockSelect = vi.fn();
   const mockEq = vi.fn();
   const mockUpsert = vi.fn();
   const mockDelete = vi.fn();
   const mockFrom = vi.fn();
-  return { mockSingle, mockSelect, mockEq, mockUpsert, mockDelete, mockFrom };
+  return { mockMaybeSingle, mockSelect, mockEq, mockUpsert, mockDelete, mockFrom };
 });
 
 vi.mock("@/integrations/supabase/client", () => ({
@@ -71,8 +71,8 @@ function buildState(overrides?: Partial<EmiliaState>): EmiliaState {
 // ---------------------------------------------------------------------------
 
 function configureSelectChain(result: { data: unknown; error: unknown }) {
-  mockSingle.mockResolvedValue(result);
-  mockEq.mockReturnValue({ single: mockSingle });
+  mockMaybeSingle.mockResolvedValue(result);
+  mockEq.mockReturnValue({ maybeSingle: mockMaybeSingle });
   mockSelect.mockReturnValue({ eq: mockEq });
   mockFrom.mockReturnValue({ select: mockSelect });
 }

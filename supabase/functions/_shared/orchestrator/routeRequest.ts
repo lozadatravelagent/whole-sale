@@ -5,9 +5,12 @@
  * the next action: QUOTE (search), COLLECT (ask 1-2 fields), or PLAN (propose trip structure).
  *
  * This is a deterministic function — no LLM calls. Runs in <1ms after the AI parser.
+ *
+ * NOTE: Backend port of src/features/chat/services/routeRequest.ts. Logic is
+ * identical; only the ParsedTravelRequest import was redirected to ./types.ts.
  */
 
-import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { ParsedTravelRequest } from './types.ts';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,7 +120,7 @@ const COLLECT_QUESTIONS: Record<string, string> = {
 function norm(text: string): string {
   return text
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .trim();
 }
@@ -184,13 +187,8 @@ function scoreDates(p: ParsedTravelRequest): number {
 
 function scorePassengers(p: ParsedTravelRequest): number {
   const msg = norm(p.originalMessage || '');
-  const flightPax = (p.flights?.adults || 0) + (p.flights?.children || 0) + (p.flights?.infants || 0);
-  const hotelPax = (p.hotels?.adults || 0) + (p.hotels?.children || 0) + (p.hotels?.infants || 0);
-  const itineraryPax = (p.itinerary?.travelers?.adults || 0) + (p.itinerary?.travelers?.children || 0) + (p.itinerary?.travelers?.infants || 0);
-
-  // "Familia" defaults to 4 travelers in the parser, so it is actionable.
+  // "Familia" without explicit count → ambiguous
   if (FAMILY_WORDS.test(msg)) {
-    if (flightPax >= 4 || hotelPax >= 4 || itineraryPax >= 4) return 1.0;
     if (!p.flights?.adultsExplicit && !p.hotels?.adultsExplicit) return 0;
   }
   if (p.flights?.adultsExplicit || p.hotels?.adultsExplicit) return 1.0;

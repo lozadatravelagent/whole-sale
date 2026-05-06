@@ -22,6 +22,9 @@ import {
 } from "../_shared/functionTools.ts";
 import { runToolLoop } from "../_shared/toolRunner.ts";
 import { buildResponseFormat } from "./responseSchema.ts";
+import { routeRequest } from "../_shared/orchestrator/routeRequest.ts";
+import { buildDiscoveryResponseFromToolResult } from "../_shared/orchestrator/discoveryService.ts";
+import type { ParsedTravelRequest } from "../_shared/orchestrator/types.ts";
 import { recordAgentRunEvent } from "../_shared/agentRunEvents.ts";
 import {
   createLifecycleHooks,
@@ -1105,6 +1108,63 @@ serve(async (req) => {
           throw new Error(`Invalid response structure from AI - requestType: ${parsed.requestType}, confidence: ${parsed.confidence} (${typeof parsed.confidence})`);
         }
         console.log('✅ AI parsing successful:', parsed);
+
+        // -------------------------------------------------------------
+        // Phase 2 Mirror mode: server-side orchestration mirror.
+        // The server computes routeRequest + discovery mapping post-parse
+        // and ships them in `meta.orchestration`. The frontend prefers
+        // these when present and falls back to local computation otherwise
+        // (no breaking change). Other orchestrator steps (conversationTurn,
+        // travelContextBridge) stay client-side until the server receives
+        // mode/recentCollectCount/previousMessageType in the request body.
+        //
+        // Divergence guard for routeRequest: the body ships `plannerContext`
+        // as a PlannerEditContext (a prompt-shaped subset that drops
+        // `generationMeta.isDraft`). routeRequest's hasActivePlannerState
+        // check would diverge from the frontend's call against the full
+        // TripPlannerState whenever `isDraft === true`. To stay safe, we
+        // only mirror routeRequest when there is NO active planner — that
+        // covers the common new-conversation case. With an active planner,
+        // the frontend's local routeRequest still runs (Mirror mode falls
+        // back) and parity is preserved. The full mirror requires shipping
+        // `isDraft` in a future request body extension.
+        //
+        // Discovery mirror sources from the same `placeDiscoveryResult`
+        // variable that feeds `meta.placeDiscovery` (the tool-loop trace).
+        // Using `parsed.placeDiscoveryResult` would be wrong: the LLM's
+        // JSON schema declares the field as `placeDiscovery` (no `Result`
+        // suffix) so `parsed.placeDiscoveryResult` is always undefined.
+        // -------------------------------------------------------------
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const plannerContextHasActivePlan = Boolean(
+          plannerContext &&
+          typeof plannerContext === 'object' &&
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (plannerContext as any).hasActivePlan === true,
+        );
+        let mirrorRouteResult: ReturnType<typeof routeRequest> | null = null;
+        let mirrorDiscoveryResult: ReturnType<typeof buildDiscoveryResponseFromToolResult> = null;
+        if (!plannerContextHasActivePlan) {
+          try {
+            mirrorRouteResult = routeRequest(parsed as ParsedTravelRequest, null);
+          } catch (err) {
+            console.warn('[CTX-ORCHESTRATOR] routeRequest mirror failed:', err);
+          }
+        }
+        try {
+          mirrorDiscoveryResult = buildDiscoveryResponseFromToolResult({
+            message,
+            // Use the tool-loop variable (same source as meta.placeDiscovery),
+            // not parsed.placeDiscoveryResult — the JSON schema field is
+            // `placeDiscovery`, so parsed.placeDiscoveryResult is undefined.
+            placeDiscoveryResult: placeDiscoveryResult as
+              | ParsedTravelRequest['placeDiscoveryResult']
+              | null,
+          });
+        } catch (err) {
+          console.warn('[CTX-ORCHESTRATOR] discovery mapping mirror failed:', err);
+        }
+
         const usage = {
           provider: modelDecision.provider,
           model: openaiData?.model ?? modelDecision.model,
@@ -1158,6 +1218,12 @@ serve(async (req) => {
             // state (planner, quote, etc.) without re-parsing.
             pendingActionResolution,
             placeDiscovery: placeDiscoveryResult,
+            // Phase 2 Mirror mode: server-computed orchestration. Frontend
+            // reads these and skips its local computation when present.
+            orchestration: {
+              routeResult: mirrorRouteResult,
+              discoveryResult: mirrorDiscoveryResult,
+            },
           }
         };
 
