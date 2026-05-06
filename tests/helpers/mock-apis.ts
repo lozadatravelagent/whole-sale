@@ -104,23 +104,9 @@ export async function mockEurovipsHotels(page: Page, overrides?: Record<string, 
   });
 }
 
-/** Mock PDFMonkey document generation */
-export async function mockPDFMonkey(page: Page, overrides?: Record<string, unknown>) {
-  const fixture = { ...loadFixture('pdfmonkey-document.json'), ...overrides };
-
-  await page.route('**/api.pdfmonkey.io/**', (route) => {
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(fixture),
-    });
-  });
-}
-
 /** Mock only external service APIs (uses real Supabase auth & data) */
 export async function mockExternalAPIs(page: Page) {
   await mockAIParser(page);
   await mockStarlingFlights(page);
   await mockEurovipsHotels(page);
-  await mockPDFMonkey(page);
 }

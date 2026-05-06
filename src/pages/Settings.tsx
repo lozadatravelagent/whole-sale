@@ -37,8 +37,6 @@ import {
 } from 'lucide-react';
 import { useSettings } from '@/hooks/useSettings';
 import { useAuth } from '@/contexts/AuthContext';
-import SimplePdfTemplateManager from '@/components/settings/SimplePdfTemplateManager';
-import PdfTemplateManager from '@/components/settings/PdfTemplateManager';
 
 const Settings = () => {
   const { t } = useTranslation('settings');
@@ -471,31 +469,6 @@ const Settings = () => {
               </CardContent>
             </Card>
 
-            {/* PDF TEMPLATES SECTION */}
-            {selectedAgencyId && agency ? (
-              agency.pdf_provider === 'pdfmonkey' ? (
-                <PdfTemplateManager
-                  agencyId={selectedAgencyId}
-                  agencyName={agency.name}
-                />
-              ) : (
-                <SimplePdfTemplateManager
-                  agencyId={selectedAgencyId}
-                  agencyName={agency.name}
-                />
-              )
-            ) : (
-              <Card className="shadow-card">
-                <CardContent className="p-8 text-center">
-                  <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground">
-                    {needsAgencySelector
-                      ? t('branding.selectAgencyForTemplates')
-                      : t('branding.loadingAgency')}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
           </TabsContent>
 
           {/* CONTACT INFO TAB */}

@@ -1,5 +1,5 @@
 import type { TripPlannerState } from '@/features/trip-planner/types';
-import { fetchAgencyBranding } from '@/services/pdfMonkey';
+import { fetchAgencyBranding } from './pdfData';
 import { renderHtmlToPdfBlob } from './customPdfGenerator';
 import { renderItineraryHtml } from './itineraryPdfTemplate';
 

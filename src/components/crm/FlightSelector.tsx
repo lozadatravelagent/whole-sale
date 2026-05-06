@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { FlightData } from '@/types';
-import { generateFlightPdf } from '@/services/pdfMonkey';
+import { generateFlightPdf } from '@/services/pdf/customPdfGenerator';
 import {
   Plane,
   Clock,

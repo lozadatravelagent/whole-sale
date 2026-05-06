@@ -5,7 +5,7 @@ Guidance for Claude Code on **WholeSale Connect AI** — multi-tenant travel CRM
 ## Stack
 - **Frontend**: React 18 + TS, Vite, shadcn/ui, Tailwind. State: custom hooks + Supabase Realtime + AuthContext.
 - **Backend**: Supabase (Postgres, Edge Functions), Fastify API Gateway (Node 20, Railway).
-- **Integrations**: Starling (flights), EUROVIPS (hotels), Foursquare (places), Mapbox GL, Wikipedia (photos), PDFMonkey, OpenAI.
+- **Integrations**: Starling (flights), EUROVIPS (hotels), Foursquare (places), Mapbox GL, Wikipedia (photos), OpenAI. PDFs are generated client-side via jsPDF + html2canvas (`src/services/pdf/customPdfGenerator.ts`).
 - **Caching**: Redis (rate limits, idempotency), IndexedDB (places, planner state — 7d TTL), in-memory LRU.
 
 ## Commands

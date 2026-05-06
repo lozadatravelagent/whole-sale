@@ -29,7 +29,7 @@ export async function generateModifiedPdfWithIndividualPrices(
         console.log('🔄 Generating modified PDF with individual prices:', priceChanges);
 
         const agencyId = await resolveAgencyId(conversationId);
-        const { generateCombinedTravelPdf, generateFlightPdf } = await import('../pdfMonkey');
+        const { generateCombinedTravelPdf, generateFlightPdf } = await import('./customPdfGenerator');
 
         if (!analysis.content) {
             throw new Error('No content available from PDF analysis');
@@ -161,7 +161,7 @@ export async function generateModifiedPdfWithHotelPrice(
         console.log('🏨 Generating modified PDF with new hotel price:', newHotelPrice);
 
         const agencyId = await resolveAgencyId(conversationId);
-        const { generateCombinedTravelPdf } = await import('../pdfMonkey');
+        const { generateCombinedTravelPdf } = await import('./customPdfGenerator');
 
         if (!analysis.content) {
             throw new Error('No content available from PDF analysis');
@@ -318,7 +318,7 @@ export async function generateModifiedPdfWithMultipleHotelPrices(
         console.log('🏨🏨 Generating modified PDF with multiple hotel price changes:', hotelChanges);
 
         const agencyId = await resolveAgencyId(conversationId);
-        const { generateCombinedTravelPdf } = await import('../pdfMonkey');
+        const { generateCombinedTravelPdf } = await import('./customPdfGenerator');
 
         if (!analysis.content) {
             throw new Error('No content available from PDF analysis');
@@ -513,7 +513,7 @@ export async function generateModifiedPdf(
         console.log('🎯 PDF source:', analysis.content?.extractedFromPdfMonkey ? 'PdfMonkey Template' : 'External PDF');
 
         const agencyId = await resolveAgencyId(conversationId);
-        const { generateCombinedTravelPdf, generateFlightPdf } = await import('../pdfMonkey');
+        const { generateCombinedTravelPdf, generateFlightPdf } = await import('./customPdfGenerator');
 
         if (!analysis.content) {
             throw new Error('No content available from PDF analysis');

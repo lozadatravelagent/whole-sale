@@ -1,26 +1,21 @@
 /**
- * Custom PDF Generator — Orchestrates HTML → PDF blob → Supabase Storage URL
- * Returns PdfMonkeyResponse so all consumers work without changes.
+ * Custom PDF Generator — Orchestrates HTML → PDF blob → Supabase Storage URL.
  *
  * Strategy: each template emits one <div data-pdf-page> per logical page, each
  * containing its own header + body + footer.  The renderer captures every page
  * div as a separate A4-sized canvas and assembles them into a single jsPDF doc.
  */
 
-import type { FlightData, HotelData, HotelDataWithSelectedRoom, PdfMonkeyResponse } from '@/types';
+import type { FlightData, HotelData, HotelDataWithSelectedRoom, PdfGenerationResponse } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { renderFlightsSimpleHtml, renderFlightsMultipleHtml, renderCombinedHtml } from './customPdfTemplates';
-
-interface AgencyBrandingData {
-  agency_name: string;
-  agency_logo_url: string;
-  agency_primary_color: string;
-  agency_secondary_color: string;
-  agency_contact_name: string;
-  agency_contact_email: string;
-  agency_contact_phone: string;
-  pdf_footer_text?: string;
-}
+import {
+  analyzeFlightStructure,
+  fetchAgencyBranding,
+  preparePdfData,
+  prepareCombinedPdfData,
+  type AgencyBrandingData
+} from './pdfData';
 
 // A4 at 96 DPI
 const A4_WIDTH_PX = 794;
@@ -33,11 +28,9 @@ const A4_HEIGHT_MM = 297;
 export async function generateCustomFlightPdf(
   selectedFlights: FlightData[],
   brandingData: AgencyBrandingData
-): Promise<PdfMonkeyResponse> {
+): Promise<PdfGenerationResponse> {
   try {
     console.log('[CUSTOM PDF] Generating flight PDF for', selectedFlights.length, 'flights');
-
-    const { analyzeFlightStructure, preparePdfData } = await import('../pdfMonkey');
 
     const flightAnalysis = analyzeFlightStructure(selectedFlights);
     const pdfData = preparePdfData(selectedFlights, null);
@@ -68,14 +61,12 @@ export async function generateCustomCombinedPdf(
   selectedHotels: HotelData[] | HotelDataWithSelectedRoom[],
   brandingData: AgencyBrandingData,
   isPriceModified?: boolean
-): Promise<PdfMonkeyResponse> {
+): Promise<PdfGenerationResponse> {
   try {
     console.log('[CUSTOM PDF] Generating combined PDF:', selectedFlights.length, 'flights,', selectedHotels.length, 'hotels');
     console.log('[CUSTOM PDF] Hotel names received:', selectedHotels.map((h, i) => ({
       index: i, id: h.id, name: h.name, city: h.city
     })));
-
-    const { prepareCombinedPdfData } = await import('../pdfMonkey');
 
     const pdfData = prepareCombinedPdfData(selectedFlights, selectedHotels, isPriceModified, null);
     console.log('[CUSTOM PDF] Template hotel data:', {
@@ -197,4 +188,42 @@ async function uploadPdfToStorage(blob: Blob, filename: string): Promise<string>
 
   console.warn('[CUSTOM PDF] All storage buckets failed, using blob URL fallback');
   return URL.createObjectURL(blob);
+}
+
+// ─── PUBLIC ENTRYPOINTS (replace former pdfMonkey.ts wrappers) ───
+
+function emptyBranding(): AgencyBrandingData {
+  return {
+    agency_name: '',
+    agency_logo_url: '',
+    agency_primary_color: '#333333',
+    agency_secondary_color: '#666666',
+    agency_contact_name: '',
+    agency_contact_email: '',
+    agency_contact_phone: ''
+  };
+}
+
+export async function generateFlightPdf(
+  selectedFlights: FlightData[],
+  agencyId?: string
+): Promise<PdfGenerationResponse> {
+  if (selectedFlights.length === 0) {
+    return { success: false, error: 'No flights selected for PDF generation' };
+  }
+  const branding = (await fetchAgencyBranding(agencyId)) || emptyBranding();
+  return generateCustomFlightPdf(selectedFlights, branding);
+}
+
+export async function generateCombinedTravelPdf(
+  selectedFlights: FlightData[],
+  selectedHotels: HotelData[] | HotelDataWithSelectedRoom[],
+  agencyId?: string,
+  isPriceModified?: boolean
+): Promise<PdfGenerationResponse> {
+  if (selectedFlights.length === 0 && selectedHotels.length === 0) {
+    return { success: false, error: 'No flights or hotels selected for PDF generation' };
+  }
+  const branding = (await fetchAgencyBranding(agencyId)) || emptyBranding();
+  return generateCustomCombinedPdf(selectedFlights, selectedHotels, branding, isPriceModified);
 }

@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { FlightData, HotelData, HotelDataWithSelectedRoom, CombinedTravelResults } from '@/types';
-import { generateFlightPdf, generateCombinedTravelPdf } from '@/services/pdfMonkey';
+import { generateFlightPdf, generateCombinedTravelPdf } from '@/services/pdf/customPdfGenerator';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import { useSearchResultsCache } from '@/features/chat/hooks/useSearchResultsCache';
 import { useHotelResultsCache } from '@/features/chat/hooks/useHotelResultsCache';
