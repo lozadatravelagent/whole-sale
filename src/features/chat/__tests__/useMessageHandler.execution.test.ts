@@ -157,7 +157,7 @@ import { buildDiscoveryResponseFromToolResult } from '../services/discoveryServi
 import { resolveConversationTurn } from '../services/conversationOrchestrator';
 import { routeRequest } from '../services/routeRequest';
 import { buildCanonicalResultFromStandard } from '../services/itineraryPipeline';
-import { buildProps, buildParsedRequest, DEFAULT_CONV_ID } from '@/test-utils/useMessageHandlerFactory';
+import { buildProps, buildMessageRow, buildParsedRequest, DEFAULT_CONV_ID } from '@/test-utils/useMessageHandlerFactory';
 
 // ---------------------------------------------------------------------------
 // Local render helper — spreads props in the hook's positional order
@@ -422,6 +422,130 @@ describe('useMessageHandler', () => {
 
       expect(vi.mocked(handleHotelSearch)).toHaveBeenCalledWith(
         expect.objectContaining({ requestType: 'hotels' })
+      );
+    });
+
+    it('reuses last flight context for English add-hotel follow-ups', async () => {
+      const p = buildProps({
+        loadContextState: vi.fn().mockResolvedValue({
+          lastSearch: {
+            requestType: 'flights',
+            timestamp: '2026-01-01T00:00:00Z',
+            flightsParams: {
+              origin: 'EZE',
+              destination: 'CUN',
+              departureDate: '2026-07-01',
+              adults: 2,
+              children: 0,
+              infants: 0,
+            },
+          },
+          constraintsHistory: [],
+          turnNumber: 1,
+          schemaVersion: 1,
+        }) as any,
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('I also want a Hotel all inclusive, Iberostar y Riu');
+      });
+
+      expect(vi.mocked(parseMessageWithAIStreaming)).not.toHaveBeenCalled();
+      expect(vi.mocked(handleHotelSearch)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestType: 'hotels',
+          hotels: expect.objectContaining({
+            city: 'CUN',
+            checkinDate: '2026-07-01',
+            adults: 2,
+            mealPlan: 'all_inclusive',
+            hotelChains: expect.arrayContaining(['Iberostar', 'RIU']),
+          }),
+        }),
+      );
+    });
+
+    it('enriches incomplete hotel follow-ups from flight context before routing', async () => {
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
+        requestType: 'hotels',
+        originalMessage: 'Hotel all inclusive with Iberostar and Riu',
+        hotels: {
+          adults: 1,
+          adultsExplicit: false,
+          children: 0,
+          infants: 0,
+          mealPlan: 'all_inclusive',
+          hotelChains: ['Iberostar', 'RIU'],
+        },
+        orchestration: {
+          routeResult: {
+            route: 'PLAN',
+            score: 0.38,
+            missingFields: ['destination', 'dates'],
+            reason: 'stale_server_route',
+            dimensions: { destination: 0, dates: 0, passengers: 0.5, origin: 1, complexity: 0.3 },
+            inferredFields: [],
+          },
+        },
+      } as any));
+
+      const p = buildProps({
+        messages: [buildMessageRow()],
+        preloadedContext: {
+          conversationId: DEFAULT_CONV_ID,
+          contextualMemory: null,
+          contextState: null,
+          leadId: null,
+        },
+        loadContextState: vi.fn().mockResolvedValue({
+          lastSearch: {
+            requestType: 'flights',
+            timestamp: '2026-01-01T00:00:00Z',
+            flightsParams: {
+              origin: 'EZE',
+              destination: 'CUN',
+              departureDate: '2026-07-01',
+              adults: 2,
+              children: 0,
+              infants: 0,
+            },
+          },
+          constraintsHistory: [],
+          turnNumber: 1,
+          schemaVersion: 1,
+        }) as any,
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Hotel all inclusive with Iberostar and Riu');
+      });
+
+      expect(vi.mocked(routeRequest)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestType: 'hotels',
+          orchestration: undefined,
+          hotels: expect.objectContaining({
+            city: 'CUN',
+            checkinDate: '2026-07-01',
+            adults: 2,
+            adultsExplicit: true,
+            mealPlan: 'all_inclusive',
+            hotelChains: ['Iberostar', 'RIU'],
+          }),
+        }),
+        null,
+      );
+      expect(vi.mocked(resolveConversationTurn)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          routeResult: expect.objectContaining({ route: 'QUOTE' }),
+        }),
+      );
+      expect(vi.mocked(handleHotelSearch)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hotels: expect.objectContaining({ city: 'CUN', adults: 2 }),
+        }),
       );
     });
 

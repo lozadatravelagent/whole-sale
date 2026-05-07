@@ -11,6 +11,7 @@ import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from 
 import { routeRequest, buildSearchSummary, getInferredFieldDetails } from '../services/routeRequest';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
 import { buildConversationalMissingInfoMessage, buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTurn, resolveTravelContextBridge } from '../services/conversationOrchestrator';
+import { detectHotelPreferencesFromMessage, resolveTurnIntent } from '../services/turnIntentResolver';
 import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
 import { isDiscoveryQuery, extractCategoriesFromMessage, extractDestinationFromMessage } from '@/features/chat/services/discoveryIntentGuard';
@@ -654,6 +655,7 @@ const useMessageHandler = (
       
       const flightCtx = persistentState?.lastSearch?.flightsParams || null;
       if (flightCtx) {
+        const hotelPreferences = detectHotelPreferencesFromMessage(currentMessage);
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
         console.log('🏨 [INTENT] Flight context:', flightCtx);
         console.log('🏨 [INTENT] Persistent state:', persistentState);
@@ -695,8 +697,9 @@ const useMessageHandler = (
               adults: flightCtx.adults,
               children: flightCtx.children,
               infants: flightCtx.infants,
-              roomType: 'doble',
-              mealPlan: 'desayuno'
+              ...(hotelPreferences.roomType ? { roomType: hotelPreferences.roomType } : {}),
+              ...(hotelPreferences.mealPlan ? { mealPlan: hotelPreferences.mealPlan } : {}),
+              ...(hotelPreferences.hotelChains.length > 0 ? { hotelChains: hotelPreferences.hotelChains } : {})
             },
             confidence: 0.9,
             originalMessage: currentMessage
@@ -1049,9 +1052,9 @@ const useMessageHandler = (
       const saveAndContextStart = nowMs();
       const [
         userMessage,
-        contextFromDB,
-        persistentState,
-        leadId,
+        loadedContextFromDB,
+        loadedPersistentState,
+        loadedLeadId,
       ] = await Promise.all([
         addMessageViaSupabase({
           conversation_id: finalConversationId,
@@ -1069,6 +1072,23 @@ const useMessageHandler = (
           ? Promise.resolve(preloadedContext!.leadId)
           : resolveLeadIdForConversation(finalConversationId),
       ]);
+
+      let contextFromDB = loadedContextFromDB;
+      let persistentState = loadedPersistentState;
+      let leadId = loadedLeadId;
+
+      if (canUsePreloaded && (!contextFromDB || !persistentState || !leadId)) {
+        const [freshContextFromDB, freshPersistentState, freshLeadId] = await Promise.all([
+          contextFromDB ? Promise.resolve(contextFromDB) : loadContextualMemory(finalConversationId),
+          persistentState ? Promise.resolve(persistentState) : loadContextState(finalConversationId) as Promise<ContextState | null>,
+          leadId ? Promise.resolve(leadId) : resolveLeadIdForConversation(finalConversationId),
+        ]);
+
+        contextFromDB = freshContextFromDB;
+        persistentState = freshPersistentState;
+        leadId = freshLeadId;
+      }
+
       logTimingStep('MESSAGE FLOW', 'save user message + load context', saveAndContextStart, {
         canUsePreloaded,
         hasContextFromDb: Boolean(contextFromDB),
@@ -1399,6 +1419,22 @@ const useMessageHandler = (
       if (preRouteTravelBridge.kind === 'quote_to_plan') {
         console.log('🔁 [TRAVEL BRIDGE] Reusing quote/search context to build itinerary');
         parsedRequest = preRouteTravelBridge.parsedRequest;
+      }
+
+      const turnIntentResolution = resolveTurnIntent({
+        message: currentMessage,
+        parsedRequest,
+        persistentState,
+      });
+      if (turnIntentResolution.resolvedRequest !== parsedRequest) {
+        parsedRequest = turnIntentResolution.resolvedRequest;
+        console.log('🧠 [INTENT] Resolved turn intent before routing', {
+          resolvedIntent: turnIntentResolution.resolvedIntent,
+          contextUsed: turnIntentResolution.contextUsed,
+          invalidatedServerRoute: turnIntentResolution.invalidatedServerRoute,
+          reason: turnIntentResolution.reason,
+          requestType: parsedRequest.requestType,
+        });
       }
 
       if (leadId) {

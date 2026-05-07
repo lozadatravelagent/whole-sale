@@ -419,6 +419,8 @@ function normalizeMissingField(field: string): string {
   if (normalized.includes('origin')) return 'origin';
   if (normalized.includes('destino')) return 'destination';
   if (normalized.includes('destination')) return 'destination';
+  if (normalized.includes('city')) return 'destination';
+  if (normalized.includes('segment')) return 'destination';
   if (normalized.includes('fecha') || normalized.includes('date')) return 'dates';
   if (normalized.includes('passenger') || normalized.includes('adult') || normalized.includes('traveler') || normalized.includes('cantidad de pasajeros')) return 'passengers';
   if (normalized.includes('duration') || normalized.includes('dias')) return 'duration';
@@ -470,6 +472,7 @@ function buildAskLine(requestType: ParsedTravelRequest['requestType'] | 'general
       ? 'Para dejarte la propuesta bien armada, decime en qué fechas te gustaría viajar.'
       : 'Para afinarte la búsqueda, decime las fechas exactas que querés usar.';
   }
+  if (has('duration')) return 'Decime cuántos días querés viajar y armo la propuesta sobre eso.';
   if (has('passengers')) return 'Para ajustarlo bien, decime cuántos viajan en total y si hay chicos.';
   if (has('budget')) return 'Si querés, decime en qué rango de presupuesto te gustaría moverte y te curó mejor la propuesta.';
   if (has('destination')) return 'Decime qué destino o combinación de ciudades querés priorizar y te lo encamino.';

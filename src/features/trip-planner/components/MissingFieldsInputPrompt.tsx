@@ -1,7 +1,7 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Calendar, Check, DollarSign, Minus, Plus, Send, Users, X } from 'lucide-react';
+import { Calendar, Check, DollarSign, Minus, Plus, Users, X } from 'lucide-react';
 
 interface MissingFieldsInputPromptProps {
   missingFields: string[];
@@ -16,7 +16,7 @@ export default function MissingFieldsInputPrompt({
   onSubmit,
   onOpenDateSelector,
 }: MissingFieldsInputPromptProps) {
-  const [textValue, setTextValue] = useState('');
+  const { t } = useTranslation('chat');
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
 
@@ -24,7 +24,9 @@ export default function MissingFieldsInputPrompt({
 
   const primaryField = missingFields[0];
 
-  // Confirmation buttons (for regional expansion or destructive changes)
+  // Confirmation buttons (for regional expansion or destructive changes).
+  // The values passed to onSubmit stay in Spanish — they are signals consumed by
+  // the AI parser, not user-facing copy.
   if (primaryField === 'confirmation') {
     const isItinerary = pendingAction === 'generate_itinerary';
     return (
@@ -35,7 +37,9 @@ export default function MissingFieldsInputPrompt({
           className="gap-1.5"
         >
           <Check className="h-3.5 w-3.5" />
-          {isItinerary ? 'Sí, armá este itinerario' : 'Confirmar'}
+          {isItinerary
+            ? t('missingFieldsPrompt.confirm.itinerary')
+            : t('missingFieldsPrompt.confirm.generic')}
         </Button>
         <Button
           variant="outline"
@@ -44,7 +48,7 @@ export default function MissingFieldsInputPrompt({
           className="gap-1.5"
         >
           <X className="h-3.5 w-3.5" />
-          Cambiar
+          {t('missingFieldsPrompt.confirm.cancel')}
         </Button>
       </div>
     );
@@ -53,10 +57,10 @@ export default function MissingFieldsInputPrompt({
   // Budget selector
   if (primaryField === 'budget') {
     const options = [
-      { label: 'Económico', value: 'Budget económico' },
-      { label: 'Confort', value: 'Budget confort' },
-      { label: 'Superior', value: 'Budget superior' },
-      { label: 'Lujo', value: 'Budget lujo' },
+      { label: t('missingFieldsPrompt.budget.economy'), value: 'Budget económico' },
+      { label: t('missingFieldsPrompt.budget.comfort'), value: 'Budget confort' },
+      { label: t('missingFieldsPrompt.budget.superior'), value: 'Budget superior' },
+      { label: t('missingFieldsPrompt.budget.luxury'), value: 'Budget lujo' },
     ];
     return (
       <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -87,7 +91,7 @@ export default function MissingFieldsInputPrompt({
           className="gap-1.5"
         >
           <Calendar className="h-3.5 w-3.5" />
-          Seleccionar fechas
+          {t('missingFieldsPrompt.dates.cta')}
         </Button>
       </div>
     );
@@ -99,7 +103,7 @@ export default function MissingFieldsInputPrompt({
       <div className="flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="flex items-center gap-1.5">
           <Users className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Adultos</span>
+          <span className="text-xs text-muted-foreground">{t('missingFieldsPrompt.passengers.adults')}</span>
           <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => setAdults(Math.max(1, adults - 1))}>
             <Minus className="h-3 w-3" />
           </Button>
@@ -109,7 +113,7 @@ export default function MissingFieldsInputPrompt({
           </Button>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Niños</span>
+          <span className="text-xs text-muted-foreground">{t('missingFieldsPrompt.passengers.children')}</span>
           <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => setChildren(Math.max(0, children - 1))}>
             <Minus className="h-3 w-3" />
           </Button>
@@ -122,42 +126,11 @@ export default function MissingFieldsInputPrompt({
           size="sm"
           onClick={() => onSubmit(`${adults} adulto${adults !== 1 ? 's' : ''}${children > 0 ? ` y ${children} niño${children !== 1 ? 's' : ''}` : ''}`)}
         >
-          Listo
+          {t('missingFieldsPrompt.passengers.submit')}
         </Button>
       </div>
     );
   }
 
-  // Fallback: text input
-  const placeholder = primaryField === 'origin'
-    ? '¿Desde qué ciudad viajás?'
-    : primaryField === 'destinations'
-      ? '¿A qué ciudades querés ir?'
-      : primaryField === 'duration'
-        ? '¿Cuántos días de viaje?'
-        : 'Escribí tu respuesta...';
-
-  return (
-    <form
-      className="flex gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (textValue.trim()) {
-          onSubmit(textValue.trim());
-          setTextValue('');
-        }
-      }}
-    >
-      <Input
-        value={textValue}
-        onChange={(e) => setTextValue(e.target.value)}
-        placeholder={placeholder}
-        className="h-8 text-sm"
-        autoFocus
-      />
-      <Button type="submit" size="sm" disabled={!textValue.trim()} className="gap-1.5">
-        <Send className="h-3.5 w-3.5" />
-      </Button>
-    </form>
-  );
+  return null;
 }

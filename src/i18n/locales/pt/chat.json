@@ -231,5 +231,26 @@
       "notAvailable": "não disponível",
       "onRequest": "sob consulta"
     }
+  },
+  "missingFieldsPrompt": {
+    "confirm": {
+      "itinerary": "Sim, monte este roteiro",
+      "generic": "Confirmar",
+      "cancel": "Mudar"
+    },
+    "budget": {
+      "economy": "Econômico",
+      "comfort": "Conforto",
+      "superior": "Superior",
+      "luxury": "Luxo"
+    },
+    "dates": {
+      "cta": "Selecionar datas"
+    },
+    "passengers": {
+      "adults": "Adultos",
+      "children": "Crianças",
+      "submit": "Pronto"
+    }
   }
 }

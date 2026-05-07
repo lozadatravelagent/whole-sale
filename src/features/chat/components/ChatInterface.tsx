@@ -373,7 +373,9 @@ const ChatInterface = React.memo(({
                 />
               ))}
               {/* Guided input for any turn that surfaces missing fields (validation
-                  fallbacks emit 'missing_info_request'; ask_minimal emits 'collect_question'). */}
+                  fallbacks emit 'missing_info_request'; ask_minimal emits 'collect_question').
+                  Only renders for fields with a specialized control (chips/stepper/calendar/buttons)
+                  to avoid duplicating the bottom ChatInput for plain text answers. */}
               {(() => {
                 const meta = lastMeta;
                 const conversationTurn = meta?.conversationTurn as Record<string, unknown> | undefined;
@@ -384,9 +386,12 @@ const ChatInterface = React.memo(({
                   conversationTurn?.normalizedMissingFields ||
                   []
                 ) as string[];
+                const GUIDED_FIELDS = new Set(['confirmation', 'budget', 'dates', 'passengers']);
+                const primaryField = resolvedMissingFields[0];
                 const needsGuidedInput = !isShowPlacesTurn
                   && (resolvedMessageType === 'missing_info_request' || resolvedMessageType === 'collect_question')
-                  && resolvedMissingFields.length > 0;
+                  && resolvedMissingFields.length > 0
+                  && GUIDED_FIELDS.has(primaryField);
                 if (needsGuidedInput && !isLoading) {
                   return (
                     <div className="px-4 py-2">

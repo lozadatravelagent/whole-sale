@@ -423,6 +423,8 @@ function normalizeMissingField(field: string): string {
   if (normalized.includes('origin')) return 'origin';
   if (normalized.includes('destino')) return 'destination';
   if (normalized.includes('destination')) return 'destination';
+  if (normalized.includes('city')) return 'destination';
+  if (normalized.includes('segment')) return 'destination';
   if (normalized.includes('fecha') || normalized.includes('date')) return 'dates';
   if (normalized.includes('passenger') || normalized.includes('adult') || normalized.includes('traveler') || normalized.includes('cantidad de pasajeros')) return 'passengers';
   if (normalized.includes('duration') || normalized.includes('dias')) return 'duration';
@@ -476,6 +478,7 @@ function buildAskLine(requestType: ParsedTravelRequest['requestType'] | 'general
       ? copy.datesItinerary
       : copy.datesSearch;
   }
+  if (has('duration')) return copy.duration;
   if (has('passengers')) return copy.passengers;
   if (has('budget')) return copy.budget;
   if (has('destination')) return copy.destination;

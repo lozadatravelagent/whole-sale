@@ -60,7 +60,9 @@ export const isAddHotelRequest = (text: string): boolean => {
   const addHotelKeywords = [
     'agrega un hotel', 'agregale un hotel', 'agregar un hotel', 'sumale un hotel', 'añade un hotel',
     'agrega hotel', 'agregale hotel', 'sumale hotel', 'añade hotel', 'agregar hotel', 'agregame un hotel',
-    'incluir hotel', 'incluime hotel', 'con hotel tambien', 'con hotel también'
+    'incluir hotel', 'incluime hotel', 'con hotel tambien', 'con hotel también',
+    'add a hotel', 'add hotel', 'include hotel', 'include a hotel', 'with hotel too',
+    'also want a hotel', 'i also want a hotel', 'i want a hotel too'
   ];
   
   if (addHotelKeywords.some(k => norm.includes(k))) {

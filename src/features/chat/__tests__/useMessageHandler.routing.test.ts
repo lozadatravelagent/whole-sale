@@ -219,8 +219,7 @@ describe('useMessageHandler', () => {
       expect(p.loadContextualMemory).toHaveBeenCalledWith(DEFAULT_CONV_ID);
     });
 
-    it('skips loadContextualMemory when preloadedContext matches conversation and messages exist', async () => {
-      // canUsePreloaded requires messages.length > 0 in addition to a matching preloadedContext
+    it('falls back to DB context when matching preloadedContext is empty', async () => {
       const p = buildProps({
         messages: [buildMessageRow()],
         preloadedContext: {
@@ -237,7 +236,45 @@ describe('useMessageHandler', () => {
         await result.current.handleSendMessage('quiero volar');
       });
 
+      expect(p.loadContextualMemory).toHaveBeenCalledWith(DEFAULT_CONV_ID);
+      expect(p.loadContextState).toHaveBeenCalledWith(DEFAULT_CONV_ID);
+    });
+
+    it('skips DB context loading when matching preloadedContext has state', async () => {
+      const p = buildProps({
+        messages: [buildMessageRow()],
+        preloadedContext: {
+          conversationId: DEFAULT_CONV_ID,
+          contextualMemory: buildParsedRequest({ requestType: 'flights' }),
+          contextState: {
+            lastSearch: {
+              requestType: 'flights',
+              timestamp: '2026-01-01T00:00:00Z',
+              flightsParams: {
+                origin: 'EZE',
+                destination: 'CUN',
+                departureDate: '2026-07-01',
+                adults: 2,
+                children: 0,
+                infants: 0,
+              },
+            },
+            constraintsHistory: [],
+            turnNumber: 1,
+            schemaVersion: 1,
+          },
+          leadId: 'lead-1',
+        },
+      });
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('quiero volar');
+      });
+
       expect(p.loadContextualMemory).not.toHaveBeenCalled();
+      expect(p.loadContextState).not.toHaveBeenCalled();
     });
 
     it('passes preloadedContext.contextualMemory as context arg to parseMessageWithAI', async () => {

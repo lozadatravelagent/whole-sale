@@ -231,5 +231,26 @@
       "notAvailable": "not available",
       "onRequest": "on request"
     }
+  },
+  "missingFieldsPrompt": {
+    "confirm": {
+      "itinerary": "Yes, build this itinerary",
+      "generic": "Confirm",
+      "cancel": "Change"
+    },
+    "budget": {
+      "economy": "Economy",
+      "comfort": "Comfort",
+      "superior": "Superior",
+      "luxury": "Luxury"
+    },
+    "dates": {
+      "cta": "Pick dates"
+    },
+    "passengers": {
+      "adults": "Adults",
+      "children": "Children",
+      "submit": "Done"
+    }
   }
 }

@@ -588,8 +588,8 @@ export function detectMultipleHotelChains(text: string): string[] {
     // Pattern 1: "cadena X y Y" or "cadenas X, Y, Z"
     // Uses lookahead to stop at service keywords (agregar, traslados, seguro, etc.)
     const chainPatterns = [
-        /(?:cadena|cadenas|chain|chains)\s+([a-záéíóúñü\s,\/&y]+?)(?=\s+(?:habitacion|habitaci[oó]n|all|todo|doble|simple|triple|para|en|con|agregar|sumar|traslado|traslados|seguro|seguros|transfer|transfers|excursion|excursiones|asistencia)|[,.?!]|$)/gi,
-        /hoteles?\s+([a-záéíóúñü\s,\/&y]+?)(?:\s+(?:en|de|del|para|por|desde|hasta|hacia|habitaci[oó]n|doble|triple|todo|all|con|desayuno)\b|\.|,|$)/gi
+        /(?:cadena|cadenas|chain|chains)\s+([a-záéíóúñü\s,/&y]+?)(?=\s+(?:habitacion|habitaci[oó]n|all|todo|doble|simple|triple|para|en|con|agregar|sumar|traslado|traslados|seguro|seguros|transfer|transfers|excursion|excursiones|asistencia)|[,.?!]|$)/gi,
+        /hoteles?\s+([a-záéíóúñü\s,/&y]+?)(?:\s+(?:en|de|del|para|por|desde|hasta|hacia|habitaci[oó]n|doble|triple|todo|all|con|desayuno)\b|\.|,|$)/gi
     ];
 
     for (const pattern of chainPatterns) {
@@ -656,13 +656,23 @@ export function detectMultipleHotelChains(text: string): string[] {
         }
     }
 
-    // Pattern 2: Direct chain mentions without "cadena" keyword
-    // Only if no chains detected yet (to avoid false positives)
-    if (detectedChains.length === 0) {
-        const detection = detectHotelChainInText(text);
-        if (detection && detection.name) {
-            detectedChains.push(detection.name);
-            console.log(`✅ [MULTI-CHAIN] Fallback detection: ${detection.name}`);
+    // Pattern 2: Direct chain mentions without "cadena" keyword, gated by hotel context.
+    if (/\b(hotel|hotels|hoteles|resort|resorts|cadena|cadenas|chain|chains)\b/i.test(normalizedText)) {
+        const allAliases: { alias: string; chain: HotelChainInfo }[] = [];
+        for (const chain of Object.values(HOTEL_CHAINS)) {
+            for (const alias of chain.aliases) {
+                allAliases.push({ alias, chain });
+            }
+        }
+
+        allAliases.sort((a, b) => b.alias.length - a.alias.length);
+
+        for (const { alias, chain } of allAliases) {
+            const aliasRegex = new RegExp(`\\b${escapeRegex(normalizeText(alias))}\\b`, 'i');
+            if (aliasRegex.test(normalizedText) && !detectedChains.includes(chain.name)) {
+                detectedChains.push(chain.name);
+                console.log(`✅ [MULTI-CHAIN] Direct mention: "${alias}" → ${chain.name}`);
+            }
         }
     }
 
