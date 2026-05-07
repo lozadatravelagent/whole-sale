@@ -910,11 +910,14 @@ describe('useMessageHandler', () => {
       );
       expect(assistantSave).toBeDefined();
       expect(assistantSave![0].conversation_id).toBe(DEFAULT_CONV_ID);
+      // Chips display human-readable city names ('Madrid'), and the resulting
+      // prompt also feeds the parser a city name. The parser re-applies IATA
+      // (MAD) inside formatForStarling for flights; hotels stay as city names.
       expect((assistantSave![0].meta as any).suggestedActions).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            label: 'Buscar vuelos para MAD',
-            prompt: expect.stringContaining('Quiero buscar vuelos para MAD'),
+            label: 'Buscar vuelos para Madrid',
+            prompt: expect.stringContaining('Quiero buscar vuelos para Madrid'),
             type: 'flight',
           }),
         ]),

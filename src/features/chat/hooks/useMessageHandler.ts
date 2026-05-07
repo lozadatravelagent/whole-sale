@@ -39,6 +39,7 @@ import {
 } from '@/features/chat/state/messageTurnContext';
 import { toCanonicalFields } from '@/features/chat/state/pendingActionDispatcher';
 import { getTypingStatusCopy, getSuggestedActionCopy, formatTravelerPhrase, formatDateRangePhrase, type UserLanguage as I18nUserLanguage } from '@/features/chat/i18n/chatResultCopy';
+import { getCityNameFromIATA } from '@/services/cityCodeService';
 import i18n from '@/i18n';
 
 function formatPlannerDateSelectionMessage(selection: {
@@ -201,19 +202,36 @@ function resolveToConcreteCity(raw: string): string {
   return normalizeActionText(expandedDestinations[0]) || raw;
 }
 
+// Suggested action chips display destinations as city names. The parser may
+// surface a 3-letter IATA code (e.g. flights.destination = 'CDG'); we translate
+// it back to the human label ('París') so the chip reads naturally and the
+// resulting prompt feeds the parser a city name. The parser then re-applies
+// IATA via formatForStarling for flights, and EUROVIPS keeps city names for
+// hotels/packages — see formatForEurovips in aiMessageParser.ts.
+function iataCodeToCityName(input: string): string {
+  if (!input) return input;
+  const trimmed = input.trim();
+  if (/^[a-zA-Z]{3}$/.test(trimmed)) {
+    const upper = trimmed.toUpperCase();
+    const cityName = getCityNameFromIATA(upper);
+    if (cityName !== upper) return cityName;
+  }
+  return input;
+}
+
 function getPrimaryActionDestination(parsedRequest?: ParsedTravelRequest | null, plannerState?: TripPlannerState | null): string {
   const plannerCity = getFirstPlannerCity(plannerState);
-  if (plannerCity) return plannerCity;
+  if (plannerCity) return iataCodeToCityName(plannerCity);
 
   const expandedItineraryCity = getFirstExpandedItineraryCity(parsedRequest);
-  if (expandedItineraryCity) return expandedItineraryCity;
+  if (expandedItineraryCity) return iataCodeToCityName(expandedItineraryCity);
 
   const itineraryDestination = parsedRequest?.itinerary?.destinations?.map(normalizeActionText).find(Boolean);
   const raw = normalizeActionText(parsedRequest?.flights?.destination)
     || normalizeActionText(parsedRequest?.hotels?.city)
     || normalizeActionText(parsedRequest?.packages?.destination)
     || normalizeActionText(itineraryDestination);
-  return resolveToConcreteCity(raw);
+  return iataCodeToCityName(resolveToConcreteCity(raw));
 }
 
 function buildItineraryProgressMessage(parsedRequest: ParsedTravelRequest, plannerState?: TripPlannerState | null): string {
@@ -237,7 +255,8 @@ function buildSearchPrompt(
   plannerState?: TripPlannerState | null,
   language: I18nUserLanguage = 'es',
 ): string {
-  const origin = isUsableActionText(parsedRequest?.flights?.origin) ? normalizeActionText(parsedRequest?.flights?.origin) : normalizeActionText(plannerState?.origin);
+  const rawOrigin = isUsableActionText(parsedRequest?.flights?.origin) ? normalizeActionText(parsedRequest?.flights?.origin) : normalizeActionText(plannerState?.origin);
+  const origin = iataCodeToCityName(rawOrigin);
   const startDate = isUsableActionText(parsedRequest?.flights?.departureDate)
     ? parsedRequest?.flights?.departureDate
     : isUsableActionText(parsedRequest?.hotels?.checkinDate)
