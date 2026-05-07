@@ -1800,9 +1800,9 @@ const useMessageHandler = (
         );
 
         const flightVal = hasFlightData
-          ? validateFlightRequiredFields(parsedRequest.flights)
+          ? validateFlightRequiredFields(parsedRequest.flights, userLanguage)
           : { isValid: true, missingFields: [], missingFieldsSpanish: [] }; // Skip flight validation if no flight data
-        const hotelVal = validateHotelRequiredFields(parsedRequest.hotels);
+        const hotelVal = validateHotelRequiredFields(parsedRequest.hotels, userLanguage);
 
         console.log(`📊 [VALIDATION] hasFlightData: ${hasFlightData}, flightVal.isValid: ${flightVal.isValid}, hotelVal.isValid: ${hotelVal.isValid}`);
 
@@ -1874,7 +1874,7 @@ const useMessageHandler = (
       } else if (parsedRequest.requestType === 'flights') {
         // Validate flight fields
         console.log('✈️ [VALIDATION] Validating flight required fields');
-        const validation = validateFlightRequiredFields(parsedRequest.flights);
+        const validation = validateFlightRequiredFields(parsedRequest.flights, userLanguage);
 
         console.log('📋 [VALIDATION] Validation result:', {
           isValid: validation.isValid,
@@ -1977,7 +1977,7 @@ const useMessageHandler = (
         // Do NOT clear contextual memory yet. We will clear it after search only if we find results.
       } else if (parsedRequest.requestType === 'hotels') {
         console.log('🏨 [VALIDATION] Validating hotel required fields');
-        const validation = validateHotelRequiredFields(parsedRequest.hotels);
+        const validation = validateHotelRequiredFields(parsedRequest.hotels, userLanguage);
 
         console.log('📋 [VALIDATION] Hotel validation result:', {
           isValid: validation.isValid,
@@ -2058,7 +2058,7 @@ const useMessageHandler = (
               mealPlan: parsedRequest.hotels?.mealPlan
             });
 
-            const reval = validateHotelRequiredFields(parsedRequest.hotels);
+            const reval = validateHotelRequiredFields(parsedRequest.hotels, userLanguage);
             console.log('📋 [REVALIDATION] After enrichment:', reval);
             if (!reval.isValid) {
               console.log('⚠️ [VALIDATION] Still missing hotel required fields, requesting more info');
@@ -2397,7 +2397,7 @@ const useMessageHandler = (
           console.log('🗺️ [MESSAGE FLOW] Step 12g: Processing itinerary request');
           if (isQuoteActivePlanTurn && plannerState) {
             console.log('💬 [QUOTE ACTIVE PLAN] Responding from active planner context');
-            const quoteResult = buildPlanToQuoteResponse(plannerState as TripPlannerState);
+            const quoteResult = buildPlanToQuoteResponse(plannerState as TripPlannerState, userLanguage);
             assistantResponse = quoteResult.response;
             structuredData = quoteResult.data as any;
 

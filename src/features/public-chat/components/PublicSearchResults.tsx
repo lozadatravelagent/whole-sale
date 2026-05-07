@@ -1,13 +1,17 @@
 import type { LocalCombinedTravelResults } from '@/types/external';
 import { PublicFlightCard } from './PublicFlightCard';
 import { PublicHotelCard } from './PublicHotelCard';
+import { getPublicChatCopy, normalizeSupportedLanguage, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 interface PublicSearchResultsProps {
   combinedData: LocalCombinedTravelResults;
+  responseLanguage?: UserLanguage | string;
 }
 
-export function PublicSearchResults({ combinedData }: PublicSearchResultsProps) {
+export function PublicSearchResults({ combinedData, responseLanguage }: PublicSearchResultsProps) {
   const { flights, hotels, hotelSegments, requestType } = combinedData;
+  const language = normalizeSupportedLanguage(responseLanguage);
+  const copy = getPublicChatCopy(language);
   const showFlights = requestType === 'flights-only' || requestType === 'combined';
   const showHotels = requestType === 'hotels-only' || requestType === 'combined';
   const hasGroupedHotels = Boolean(hotelSegments && hotelSegments.length > 0);
@@ -17,10 +21,10 @@ export function PublicSearchResults({ combinedData }: PublicSearchResultsProps) 
       {showFlights && flights.length > 0 && (
         <div className="space-y-2">
           <div className="text-xs font-semibold text-gray-400 tracking-wider uppercase">
-            {flights.length} Vuelo{flights.length !== 1 ? 's' : ''} Disponible{flights.length !== 1 ? 's' : ''}
+            {copy.availableFlights(flights.length)}
           </div>
           {flights.map((flight) => (
-            <PublicFlightCard key={flight.id} flight={flight} />
+            <PublicFlightCard key={flight.id} flight={flight} responseLanguage={language} />
           ))}
         </div>
       )}
@@ -28,7 +32,7 @@ export function PublicSearchResults({ combinedData }: PublicSearchResultsProps) 
       {showHotels && hasGroupedHotels && (
         <div className="space-y-3">
           <div className="text-xs font-semibold text-gray-400 tracking-wider uppercase">
-            {hotelSegments!.length} Tramo{hotelSegments!.length !== 1 ? 's' : ''} de hotel
+            {copy.hotelSegments(hotelSegments!.length)}
           </div>
           {hotelSegments!.map((segment) => (
             <div
@@ -43,7 +47,7 @@ export function PublicSearchResults({ combinedData }: PublicSearchResultsProps) 
                   </div>
                 </div>
                 <div className="text-xs text-gray-400">
-                  {segment.hotels.length} hotel{segment.hotels.length !== 1 ? 'es' : ''}
+                  {copy.hotelCount(segment.hotels.length)}
                 </div>
               </div>
 
@@ -54,7 +58,7 @@ export function PublicSearchResults({ combinedData }: PublicSearchResultsProps) 
               ) : (
                 <div className="space-y-2">
                   {segment.hotels.map((hotel, i) => (
-                    <PublicHotelCard key={`${segment.segmentId}-${hotel.name}-${i}`} hotel={hotel} />
+                    <PublicHotelCard key={`${segment.segmentId}-${hotel.name}-${i}`} hotel={hotel} responseLanguage={language} />
                   ))}
                 </div>
               )}
@@ -66,10 +70,10 @@ export function PublicSearchResults({ combinedData }: PublicSearchResultsProps) 
       {showHotels && !hasGroupedHotels && hotels.length > 0 && (
         <div className="space-y-2">
           <div className="text-xs font-semibold text-gray-400 tracking-wider uppercase">
-            {hotels.length} Hotel{hotels.length !== 1 ? 'es' : ''} Disponible{hotels.length !== 1 ? 's' : ''}
+            {copy.availableHotels(hotels.length)}
           </div>
           {hotels.map((hotel, i) => (
-            <PublicHotelCard key={`${hotel.name}-${i}`} hotel={hotel} />
+            <PublicHotelCard key={`${hotel.name}-${i}`} hotel={hotel} responseLanguage={language} />
           ))}
         </div>
       )}

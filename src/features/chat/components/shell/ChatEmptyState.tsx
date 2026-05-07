@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { AuroraBackdrop, MeridianHeading, MeridianMono } from '@/components/meridian';
 import { cn } from '@/lib/utils';
 
@@ -11,44 +12,37 @@ interface ChatEmptyStateProps {
   className?: string;
 }
 
-const DEFAULT_SUGGESTIONS = [
-  'Quiero 7 días en Italia con mi pareja',
-  'Buscame vuelos a Cancún para julio',
-  'Cotizame París para una familia',
-  'Hotel boutique en Buenos Aires',
-];
-
 /**
  * Meridian chat empty-state. Aurora atmosphere + animated orbit mark +
  * gradient title + suggestion chips.
  */
 const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
-  suggestions = DEFAULT_SUGGESTIONS,
+  suggestions,
   onSuggestionClick,
   title,
   subtitle,
   className,
 }) => {
+  const { t } = useTranslation('chat');
+  const translatedSuggestions = t('emptyState.suggestions', { returnObjects: true }) as string[];
+  const defaultSuggestions = Array.isArray(translatedSuggestions) ? translatedSuggestions : [];
+
   return (
     <div className={cn('relative flex h-full min-h-[480px] flex-col items-center justify-center overflow-hidden px-6 py-12', className)}>
       <AuroraBackdrop intensity="full" withGrid />
 
       <div className="relative z-10 flex max-w-3xl flex-col items-center px-2 text-center animate-meridian-fade-up">
         <MeridianHeading as="h1" size="lg" gradient italic className="mb-4 overflow-visible px-2">
-          {title ?? (
-            <>
-              ¿A dónde<br />vamos hoy?
-            </>
-          )}
+          {title ?? t('emptyState.title')}
         </MeridianHeading>
 
         <p className="mb-9 max-w-md text-sm font-light leading-relaxed text-muted-foreground">
-          {subtitle ?? 'Contame qué buscás. Yo arranco la conversación con vuelos, hoteles y un itinerario listo para enviar.'}
+          {subtitle ?? t('emptyState.detailedSubtitle')}
         </p>
 
-        {suggestions.length > 0 && (
+        {(suggestions ?? defaultSuggestions).length > 0 && (
           <div className="flex flex-wrap justify-center gap-2">
-            {suggestions.map((suggestion) => (
+            {(suggestions ?? defaultSuggestions).map((suggestion) => (
               <button
                 key={suggestion}
                 type="button"

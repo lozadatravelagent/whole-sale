@@ -2,18 +2,17 @@ import { FormEvent, useEffect, useRef, useState, useCallback } from 'react';
 import { motion, useScroll, useSpring, useTransform } from 'framer-motion';
 import { Bot, Send, MessageSquare, Sparkles } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { useTranslation } from 'react-i18next';
 import { usePublicMessageHandler } from './usePublicMessageHandler';
 import { usePublicSearchLimit } from '@/hooks/usePublicSearchLimit';
 import { PaywallModal } from './PaywallModal';
 import { PublicSearchResults } from './components/PublicSearchResults';
-
-const quickPrompts = [
-  'Vuelos Buenos Aires a Cancun, 15 al 22 de marzo, 2 adultos con valija',
-  'Hotel all inclusive en Punta Cana, 10 al 17 de abril, 2 adultos',
-  'Vuelo + hotel a Bariloche, julio, 1 semana, 2 personas',
-];
+import { getPublicChatCopy, normalizeSupportedLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 export function PublicChat() {
+  const { i18n } = useTranslation();
+  const language = normalizeSupportedLanguage(i18n.language);
+  const copy = getPublicChatCopy(language);
   const { messages, isProcessing, sendMessage } = usePublicMessageHandler();
   const { searchesUsed, canSearch, incrementSearch, isLimitReached, maxSearches } = usePublicSearchLimit();
   const [inputValue, setInputValue] = useState('');
@@ -86,13 +85,13 @@ export function PublicChat() {
           className="absolute left-[6%] top-[30%] hidden rounded-full border border-sky-300/[0.12] bg-slate-950/55 px-4 py-2 text-xs uppercase tracking-[0.28em] text-sky-100 lg:block"
           style={{ y: orbitLeftY }}
         >
-          Search to quote
+          {copy.searchToQuote}
         </motion.div>
         <motion.div
           className="absolute right-[7%] top-[24%] hidden rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs uppercase tracking-[0.28em] text-slate-200 lg:block"
           style={{ y: orbitRightY }}
         >
-          CRM sync
+          {copy.crmSync}
         </motion.div>
       </div>
 
@@ -103,17 +102,16 @@ export function PublicChat() {
         >
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-400/20 bg-sky-400/10 px-4 py-2">
             <Sparkles className="h-4 w-4 text-sky-200" />
-            <span className="text-sm text-sky-100">Demo en vivo</span>
+            <span className="text-sm text-sky-100">{copy.liveDemo}</span>
           </div>
           <h2 className="mb-3 text-3xl font-bold text-white md:text-4xl lg:text-5xl">
-            Probá cómo responde{' '}
+            {copy.demoTitle}{' '}
             <span className="bg-gradient-to-r from-sky-300 via-cyan-300 to-amber-200 bg-clip-text text-transparent">
               Emilia
             </span>
           </h2>
           <p className="mx-auto max-w-2xl text-base text-slate-300 md:text-lg">
-            Hacé una consulta real de vuelos, hoteles o paquetes y mirá cómo Vibook la convierte en
-            una respuesta operativa para tu equipo.
+            {copy.demoDescription}
           </p>
         </motion.div>
 
@@ -135,17 +133,16 @@ export function PublicChat() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-white">Emilia</p>
-                <p className="text-xs text-emerald-400">En linea</p>
+                <p className="text-xs text-emerald-400">{copy.online}</p>
               </div>
               {searchesUsed > 0 && (
                 <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-                  {searchesUsed}/{maxSearches} busquedas
+                  {copy.searchCount(searchesUsed, maxSearches)}
                 </div>
               )}
             </div>
             <p className="mt-3 text-sm text-slate-400">
-              Consultá un itinerario y revisá cómo combina búsqueda, contexto comercial y respuesta
-              asistida.
+              {copy.panelDescription}
             </p>
             <a
               href="https://emilia.vibook.ai"
@@ -153,7 +150,7 @@ export function PublicChat() {
               rel="noopener noreferrer"
               className="mt-3 inline-block rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-amber-400 px-4 py-1.5 text-xs font-semibold text-slate-950 transition-opacity hover:opacity-90"
             >
-              Saber Más
+              {copy.learnMore}
             </a>
           </div>
 
@@ -182,7 +179,10 @@ export function PublicChat() {
                   >
                     {message.role === 'assistant' ? (
                       hasCards ? (
-                        <PublicSearchResults combinedData={message.data!.combinedData!} />
+                        <PublicSearchResults
+                          combinedData={message.data!.combinedData!}
+                          responseLanguage={message.data?.responseLanguage}
+                        />
                       ) : (
                         <div className="prose prose-invert prose-sm max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
                           <ReactMarkdown>{message.text}</ReactMarkdown>
@@ -213,7 +213,7 @@ export function PublicChat() {
           <div className="px-4 md:px-5 pb-4 pt-2 border-t border-white/10 shrink-0 space-y-3">
             {!hasUserMessages && (
               <div className="flex flex-wrap gap-2">
-                {quickPrompts.map(prompt => (
+                {copy.quickPrompts.map(prompt => (
                   <button
                     key={prompt}
                     type="button"
@@ -234,7 +234,7 @@ export function PublicChat() {
                   ref={inputRef}
                   value={inputValue}
                   onChange={e => setInputValue(e.target.value)}
-                  placeholder="Ej: Vuelos a Miami para 2 personas en marzo..."
+                  placeholder={copy.inputPlaceholder}
                   disabled={isProcessing}
                   className="w-full h-11 rounded-xl border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-400/40 disabled:opacity-50"
                 />
@@ -251,8 +251,8 @@ export function PublicChat() {
             {searchesUsed > 0 && (
               <p className="text-center text-xs text-gray-500">
                 {isLimitReached
-                  ? 'Alcanzaste el limite de busquedas gratis'
-                  : `${searchesUsed}/${maxSearches} busquedas gratis usadas`}
+                  ? copy.freeLimitReached
+                  : copy.freeSearchesUsed(searchesUsed, maxSearches)}
               </p>
             )}
           </div>

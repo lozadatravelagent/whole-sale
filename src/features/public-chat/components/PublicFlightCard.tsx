@@ -1,19 +1,24 @@
 import { Plane, Users, Timer, Luggage } from 'lucide-react';
 import type { FlightData } from '@/types/external';
 import { getCityNameFromCode, formatDuration } from '@/features/chat/utils/flightHelpers';
+import { getPublicChatCopy, LOCALE_BY_LANGUAGE, normalizeSupportedLanguage, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 interface PublicFlightCardProps {
   flight: FlightData;
+  responseLanguage?: UserLanguage | string;
 }
 
-export function PublicFlightCard({ flight }: PublicFlightCardProps) {
+export function PublicFlightCard({ flight, responseLanguage }: PublicFlightCardProps) {
   const { airline, price, legs, cabin, adults, childrens, infants } = flight;
+  const language = normalizeSupportedLanguage(responseLanguage);
+  const copy = getPublicChatCopy(language);
+  const locale = LOCALE_BY_LANGUAGE[language];
 
   // Build passenger label
   const paxParts: string[] = [];
-  if (adults > 0) paxParts.push(`${adults} adulto${adults > 1 ? 's' : ''}`);
-  if (childrens > 0) paxParts.push(`${childrens} niño${childrens > 1 ? 's' : ''}`);
-  if (infants > 0) paxParts.push(`${infants} infante${infants > 1 ? 's' : ''}`);
+  if (adults > 0) paxParts.push(copy.adult(adults));
+  if (childrens > 0) paxParts.push(copy.child(childrens));
+  if (infants > 0) paxParts.push(copy.infant(infants));
 
   // Extract baggage from first segment
   const firstSegment = legs[0]?.options[0]?.segments[0];
@@ -31,7 +36,7 @@ export function PublicFlightCard({ flight }: PublicFlightCardProps) {
           )}
         </div>
         <span className="text-lg font-bold text-cyan-400">
-          {price.currency} {price.amount.toLocaleString('es-AR', { minimumFractionDigits: 0 })}
+          {price.currency} {price.amount.toLocaleString(locale, { minimumFractionDigits: 0 })}
         </span>
       </div>
 
@@ -52,7 +57,7 @@ export function PublicFlightCard({ flight }: PublicFlightCardProps) {
 
         const firstSeg = segments[0];
         const lastSeg = segments[segments.length - 1];
-        const legLabel = leg.legNumber === 1 ? 'IDA' : 'REGRESO';
+        const legLabel = leg.legNumber === 1 ? copy.outbound : copy.return;
 
         // Check if arrival is next day
         const isNextDay = lastSeg.arrival.date !== firstSeg.departure.date;
@@ -79,7 +84,7 @@ export function PublicFlightCard({ flight }: PublicFlightCardProps) {
                   <div className="h-px flex-1 bg-gradient-to-r from-cyan-500/60 to-blue-500/60" />
                 </div>
                 {segments.length > 1 && (
-                  <div className="text-[10px] text-orange-400">{segments.length - 1} escala{segments.length > 2 ? 's' : ''}</div>
+                  <div className="text-[10px] text-orange-400">{copy.stops(segments.length - 1)}</div>
                 )}
               </div>
 

@@ -3,6 +3,13 @@
     "tag": "Conversation · Emilia",
     "title": "Where are we going today?",
     "subtitle": "Search flights, hotels or request a complete quote.",
+    "detailedSubtitle": "Tell me what you're looking for. I'll start the conversation with flights, hotels and an itinerary ready to send.",
+    "suggestions": [
+      "I want 7 days in Italy with my partner",
+      "Find me flights to Cancun for July",
+      "Quote Paris for a family",
+      "Boutique hotel in Buenos Aires"
+    ],
     "placeholder": "Ask Emilia anything…",
     "planTripLabel": "Plan a trip",
     "planTripDescription": "Build a day-by-day itinerary with destinations, hotels and flights",

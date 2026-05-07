@@ -1,12 +1,17 @@
 import { Hotel, MapPin, Calendar } from 'lucide-react';
 import type { LocalHotelData } from '@/types/external';
+import { getPublicChatCopy, LOCALE_BY_LANGUAGE, normalizeSupportedLanguage, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 interface PublicHotelCardProps {
   hotel: LocalHotelData;
+  responseLanguage?: UserLanguage | string;
 }
 
-export function PublicHotelCard({ hotel }: PublicHotelCardProps) {
+export function PublicHotelCard({ hotel, responseLanguage }: PublicHotelCardProps) {
   const { name, city, category, check_in, check_out, nights, rooms } = hotel;
+  const language = normalizeSupportedLanguage(responseLanguage);
+  const copy = getPublicChatCopy(language);
+  const locale = LOCALE_BY_LANGUAGE[language];
 
   // Find cheapest room
   const sortedRooms = [...rooms].sort((a, b) => a.total_price - b.total_price);
@@ -47,14 +52,14 @@ export function PublicHotelCard({ hotel }: PublicHotelCardProps) {
         <span className="flex items-center gap-1">
           <Calendar className="w-3 h-3" />
           {formatDate(check_in)} → {formatDate(check_out)}
-          <span className="text-gray-500">({nights} noche{nights !== 1 ? 's' : ''})</span>
+          <span className="text-gray-500">({copy.nights(nights)})</span>
         </span>
       </div>
 
       {/* Price */}
       {cheapestPrice != null && (
         <div className="text-lg font-bold text-cyan-400">
-          Desde {currency} {cheapestPrice.toLocaleString('es-AR', { minimumFractionDigits: 0 })}
+          {copy.from} {currency} {cheapestPrice.toLocaleString(locale, { minimumFractionDigits: 0 })}
         </div>
       )}
 
@@ -63,9 +68,9 @@ export function PublicHotelCard({ hotel }: PublicHotelCardProps) {
         <div className="space-y-1 pt-1 border-t border-white/5">
           {topRooms.map((room, i) => (
             <div key={i} className="flex items-center justify-between text-xs gap-2">
-              <span className="text-gray-300 truncate">{room.description || room.type || 'Habitación'}</span>
+              <span className="text-gray-300 truncate">{room.description || room.type || copy.room}</span>
               <span className="text-gray-400 shrink-0 font-mono">
-                {room.currency} {room.total_price.toLocaleString('es-AR', { minimumFractionDigits: 0 })}
+                {room.currency} {room.total_price.toLocaleString(locale, { minimumFractionDigits: 0 })}
               </span>
             </div>
           ))}

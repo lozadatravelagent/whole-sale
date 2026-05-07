@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -25,16 +26,23 @@ import {
   AlertCircle,
   Clock
 } from 'lucide-react';
+import { getResultSelectorCopy, LOCALE_BY_LANGUAGE, normalizeSupportedLanguage, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 interface HotelSelectorProps {
   hotels: HotelData[];
   onPdfGenerated?: (pdfUrl: string) => void;
+  responseLanguage?: UserLanguage | string;
 }
 
 const HotelSelector: React.FC<HotelSelectorProps> = ({
   hotels,
-  onPdfGenerated
+  onPdfGenerated,
+  responseLanguage
 }) => {
+  const { i18n } = useTranslation('chat');
+  const language = normalizeSupportedLanguage(responseLanguage || i18n.language);
+  const locale = LOCALE_BY_LANGUAGE[language];
+  const copy = getResultSelectorCopy(language);
   const [selectedHotels, setSelectedHotels] = useState<string[]>([]);
   const [selectedRooms, setSelectedRooms] = useState<Record<string, string>>({});
   const [isGenerating, setIsGenerating] = useState(false);
@@ -61,8 +69,8 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
       // Limit to maximum 3 hotels
       if (prev.length >= 3) {
         toast({
-          title: "Límite alcanzado",
-          description: "Solo puedes seleccionar máximo 3 hoteles para el PDF.",
+          title: copy.limitReached,
+          description: copy.maxHotels,
           variant: "destructive",
         });
         return prev;
@@ -186,8 +194,8 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
   const handleGeneratePdf = async () => {
     if (selectedHotels.length === 0) {
       toast({
-        title: "Sin selección",
-        description: "Selecciona al menos un hotel para generar el PDF.",
+        title: copy.selectionRequired,
+        description: copy.noHotelSelection,
         variant: "destructive",
       });
       return;
@@ -198,8 +206,8 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
     try {
       // For now, show success message - PDF generation would be implemented later
       toast({
-        title: "PDF En Desarrollo",
-        description: `Funcionalidad de PDF para ${selectedHotels.length} hotel${selectedHotels.length > 1 ? 'es' : ''} en desarrollo.`,
+        title: copy.pdfInDevelopment,
+        description: copy.pdfDevelopmentDescription(selectedHotels.length),
       });
 
       // Mock PDF URL for testing
@@ -211,7 +219,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
 
       toast({
         title: "Error",
-        description: "No se pudo generar el PDF. Inténtalo de nuevo.",
+        description: copy.pdfError,
         variant: "destructive",
       });
     } finally {
@@ -220,8 +228,8 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
   };
 
   const formatPrice = (amount: number, currency: string) => {
-    if (!amount || !currency) return 'Precio no disponible';
-    return `${amount.toLocaleString()} ${currency}`;
+    if (!amount || !currency) return copy.noPrice;
+    return `${amount.toLocaleString(locale)} ${currency}`;
   };
 
   const getAvailabilityIcon = (availability: number) => {
@@ -231,9 +239,9 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
   };
 
   const getAvailabilityText = (availability: number) => {
-    if (availability >= 3) return "Disponible";
-    if (availability >= 2) return "Consultar";
-    return "No disponible";
+    if (availability >= 3) return copy.availability.available;
+    if (availability >= 2) return copy.availability.consult;
+    return copy.availability.unavailable;
   };
 
   const renderStars = (category: string) => {
@@ -248,7 +256,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
   };
 
   const safeHotelName = (hotel: HotelData) => {
-    return hotel.name || 'Hotel sin nombre';
+    return hotel.name || copy.hotelNoName;
   };
 
   const getSelectedRoom = (hotel: HotelData) => {
@@ -265,10 +273,10 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center text-lg">
           <Hotel className="h-5 w-5 mr-2 text-primary" />
-          Cotizador de Hoteles
+          {copy.quoteBuilder(copy.hotels)}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Selecciona hasta 3 hoteles para generar tu cotización en PDF
+          {copy.selectUpToHotels(3)}
         </p>
       </CardHeader>
 
@@ -295,7 +303,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                     />
                     <div className="flex-1">
                       <div className="font-medium text-lg flex items-center space-x-2">
-                        <span>Opción {index + 1} - {safeHotelName(hotel)}</span>
+                        <span>{copy.option(index + 1)} - {safeHotelName(hotel)}</span>
                         {hotel.category && (
                           <Badge variant="outline" className="text-xs">
                             {renderStars(hotel.category)}
@@ -313,7 +321,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                         {hotel.nights > 0 && (
                           <span className="flex items-center">
                             <Calendar className="h-3 w-3 mr-1" />
-                            {hotel.nights} noche{hotel.nights > 1 ? 's' : ''}
+                            {copy.nights(hotel.nights)}
                           </span>
                         )}
                       </div>
@@ -338,7 +346,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                     </div>
                     <div className="text-sm text-muted-foreground">
                       {selectedRoom?.total_price && (
-                        <div>{formatPrice(selectedRoom.total_price, selectedRoom.currency)} total</div>
+                        <div>{formatPrice(selectedRoom.total_price, selectedRoom.currency)} {copy.total}</div>
                       )}
                     </div>
                   </div>
@@ -363,6 +371,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                     failedPrices={failedPrices}
                     hotelId={hotel.id}
                     nights={hotel.nights}
+                    language={language}
                   />
                 )}
 
@@ -392,12 +401,12 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
               {isGenerating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generando PDF...
+                  {copy.generatingPdf}
                 </>
               ) : (
                 <>
                   <FileText className="h-4 w-4 mr-2" />
-                  Generar PDF ({selectedHotels.length} hotel{selectedHotels.length > 1 ? 'es' : ''})
+                  {copy.generatePdfWithCount(selectedHotels.length, copy.hotelsKind)}
                 </>
               )}
             </Button>

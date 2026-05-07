@@ -3,6 +3,13 @@
     "tag": "Conversación · Emilia",
     "title": "¿A dónde vamos hoy?",
     "subtitle": "Buscá vuelos, hoteles o pedí una cotización completa.",
+    "detailedSubtitle": "Contame qué buscás. Yo arranco la conversación con vuelos, hoteles y un itinerario listo para enviar.",
+    "suggestions": [
+      "Quiero 7 días en Italia con mi pareja",
+      "Buscame vuelos a Cancún para julio",
+      "Cotizame París para una familia",
+      "Hotel boutique en Buenos Aires"
+    ],
     "placeholder": "Preguntale algo a Emilia…",
     "planTripLabel": "Planificá un viaje",
     "planTripDescription": "Armá un itinerario día a día con destinos, hoteles y vuelos",

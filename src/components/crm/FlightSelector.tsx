@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,11 +23,13 @@ import {
 import BaggageIcon from '@/components/ui/BaggageIcon';
 import { supabase } from '@/integrations/supabase/client';
 import { airlineResolver } from '@/features/chat/services/airlineResolver';
+import { getResultSelectorCopy, LOCALE_BY_LANGUAGE, normalizeSupportedLanguage, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 interface FlightSelectorProps {
   flights: FlightData[];
   conversationId?: string; // Add conversation ID to get agency_id
   onPdfGenerated?: (pdfUrl: string) => void;
+  responseLanguage?: UserLanguage | string;
 }
 
 // Función para obtener información de equipaje del primer segmento de un leg
@@ -67,8 +70,13 @@ const getBaggageInfoFromLeg = (leg: any) => {
 const FlightSelector: React.FC<FlightSelectorProps> = ({
   flights,
   conversationId,
-  onPdfGenerated
+  onPdfGenerated,
+  responseLanguage
 }) => {
+  const { i18n } = useTranslation('chat');
+  const language = normalizeSupportedLanguage(responseLanguage || i18n.language);
+  const locale = LOCALE_BY_LANGUAGE[language];
+  const copy = getResultSelectorCopy(language);
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [agencyId, setAgencyId] = useState<string | undefined>(undefined);
@@ -113,10 +121,10 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
             resolved[flight.id] = airlineInfo.name;
           } catch (error) {
             console.warn(`Failed to resolve airline for ${flight.airline.code}:`, error);
-            resolved[flight.id] = 'Aerolínea no especificada';
+            resolved[flight.id] = copy.unspecifiedAirline;
           }
         } else {
-          resolved[flight.id] = 'Aerolínea no especificada';
+          resolved[flight.id] = copy.unspecifiedAirline;
         }
       }
 
@@ -126,7 +134,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
     if (flights.length > 0) {
       resolveAirlineNames();
     }
-  }, [flights]);
+  }, [copy.unspecifiedAirline, flights]);
 
 
 
@@ -139,8 +147,8 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
       // Limit to maximum 4 flights
       if (prev.length >= 4) {
         toast({
-          title: "Límite alcanzado",
-          description: "Solo puedes seleccionar máximo 4 vuelos para el PDF.",
+          title: copy.limitReached,
+          description: copy.maxFlights,
           variant: "destructive",
         });
         return prev;
@@ -153,8 +161,8 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
   const handleGeneratePdf = async () => {
     if (selectedFlights.length === 0) {
       toast({
-        title: "Sin selección",
-        description: "Selecciona al menos un vuelo para generar el PDF.",
+        title: copy.selectionRequired,
+        description: copy.noFlightSelection,
         variant: "destructive",
       });
       return;
@@ -172,8 +180,8 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
 
       if (result.success && result.document_url) {
         toast({
-          title: "PDF Generado",
-          description: "Tu cotización de vuelos ha sido generada exitosamente.",
+          title: copy.pdfGenerated,
+          description: copy.pdfFlightsReady,
         });
 
         onPdfGenerated?.(result.document_url);
@@ -183,13 +191,13 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
     } catch (error) {
       console.error('Error generating PDF:', error);
 
-      let errorMessage = "No se pudo generar el PDF. Inténtalo de nuevo.";
+      let errorMessage = copy.pdfError;
 
       if (error instanceof Error) {
         if (error.message.includes('PDFMONKEY_API_KEY')) {
-          errorMessage = "Configuración de API incompleta. Contacta al administrador.";
+          errorMessage = copy.apiIncomplete;
         } else if (error.message.includes('401')) {
-          errorMessage = "API key inválida. Verifica la configuración.";
+          errorMessage = copy.invalidApiKey;
         }
       }
 
@@ -204,8 +212,8 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
   };
 
   const formatPrice = (amount: number, currency: string) => {
-    if (!amount || !currency) return 'Precio no disponible';
-    return `${amount.toLocaleString()} ${currency}`;
+    if (!amount || !currency) return copy.noPrice;
+    return `${amount.toLocaleString(locale)} ${currency}`;
   };
 
   const formatDuration = (duration: string) => {
@@ -219,7 +227,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
       return resolvedAirlineNames[flight.id];
     }
     // Fallback to original name if exists
-    return flight.airline?.name || 'Aerolínea no especificada';
+    return flight.airline?.name || copy.unspecifiedAirline;
   };
 
   const safePrice = (flight: FlightData) => {
@@ -239,10 +247,10 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center text-lg">
           <Plane className="h-5 w-5 mr-2 text-primary" />
-          Cotizador de Vuelos
+          {copy.quoteBuilder(copy.flights)}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Selecciona hasta 2 vuelos para generar tu cotización en PDF
+          {copy.selectUpToFlights(2)}
         </p>
       </CardHeader>
 
@@ -265,17 +273,17 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                   />
                   <div>
                     <div className="font-medium text-lg">
-                      Opción {index + 1} - {safeAirlineName(flight)}
+                      {copy.option(index + 1)} - {safeAirlineName(flight)}
                     </div>
                     <div className="flex items-center text-sm text-muted-foreground space-x-4 mt-1">
                       <span className="flex items-center">
                         <Users className="h-3 w-3 mr-1" />
-                        {flight.adults || 1} adultos{(flight.childrens || 0) > 0 ? `, ${flight.childrens} niños` : ''}{(flight.infants || 0) > 0 ? `, ${flight.infants} bebés` : ''}
+                        {copy.adult(flight.adults || 1)}{(flight.childrens || 0) > 0 ? `, ${copy.child(flight.childrens)}` : ''}{(flight.infants || 0) > 0 ? `, ${copy.infant(flight.infants)}` : ''}
                       </span>
                       {flight.luggage && (
                         <span className="flex items-center">
                           <Luggage className="h-3 w-3 mr-1" />
-                          Equipaje incluido
+                          {copy.includedBaggage}
                         </span>
                       )}
                     </div>
@@ -287,7 +295,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                     {formatPrice(safePrice(flight), safeCurrency(flight))}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    Precio total
+                    {copy.totalPrice}
                   </div>
                 </div>
               </div>
@@ -301,7 +309,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2">
                         <Badge variant="outline" className="text-xs">
-                          {leg.flight_type === 'outbound' ? 'Ida' : 'Regreso'} - {
+                          {leg.flight_type === 'outbound' ? copy.outbound : copy.return} - {
                             leg.flight_type === 'outbound' ? flight.departure_date : flight.return_date
                           }
                         </Badge>
@@ -343,7 +351,7 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                         {leg.layovers.map((layover, layoverIndex) => (
                           <div key={layoverIndex} className="text-xs text-warning flex items-center">
                             <MapPin className="h-3 w-3 mr-1" />
-                            Escala en {layover.destination_city} ({layover.destination_code}) - {layover.waiting_time}
+                            {copy.layoverIn(layover.destination_city, layover.destination_code, layover.waiting_time)}
                           </div>
                         ))}
                       </div>
@@ -358,12 +366,12 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
                 <div className="mt-3 pt-3 border-t border-border/50 space-y-1">
                   {flight.travel_assistance && flight.travel_assistance > 0 && (
                     <div className="text-xs text-muted-foreground">
-                      • Asistencia médica: USD {flight.travel_assistance} por pasajero (opcional)
+                      • {copy.medicalAssistance(flight.travel_assistance)}
                     </div>
                   )}
                   {flight.transfers && flight.transfers > 0 && (
                     <div className="text-xs text-muted-foreground">
-                      • Traslados: USD {flight.transfers} por pasajero (opcional)
+                      • {copy.transfers(flight.transfers)}
                     </div>
                   )}
                 </div>
@@ -384,12 +392,12 @@ const FlightSelector: React.FC<FlightSelectorProps> = ({
               {isGenerating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Generando PDF...
+                  {copy.generatingPdf}
                 </>
               ) : (
                 <>
                   <FileText className="h-4 w-4 mr-2" />
-                  Generar PDF ({selectedFlights.length} vuelo{selectedFlights.length > 1 ? 's' : ''})
+                  {copy.generatePdfWithCount(selectedFlights.length, copy.flightsKind)}
                 </>
               )}
             </Button>

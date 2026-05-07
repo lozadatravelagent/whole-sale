@@ -1717,12 +1717,13 @@ function isValidIsoDate(value: unknown): boolean {
     return date.toISOString().slice(0, 10) === dateText;
 }
 
-export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flights']): {
+export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flights'], language: UserLanguage = 'es'): {
     isValid: boolean;
     missingFields: string[];
     missingFieldsSpanish: string[];
     errorMessage?: string;
 } {
+    const copy = getMissingInfoCopy(language);
     const normalizedFlights = normalizeFlightRequest(flights);
 
     if (!normalizedFlights) {
@@ -1746,7 +1747,7 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
             isValid: false,
             missingFields: ['adults'],
             missingFieldsSpanish: ['adulto acompañante'],
-            errorMessage: '⚠️ **Los menores no pueden viajar solos**\n\nPor normativa de las aerolíneas, los niños y bebés deben viajar acompañados por al menos un adulto.\n\n**¿Cuántos adultos los acompañarán?**\n\nPor ejemplo: "agrega 1 adulto", "con 2 adultos"'
+            errorMessage: copy.validation.minorsFlight
         };
     }
 
@@ -1757,7 +1758,7 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
             isValid: false,
             missingFields: ['segments'],
             missingFieldsSpanish: ['máximo 3 tramos'],
-            errorMessage: 'Para vuelos multi-city puedo procesar hasta 3 tramos por búsqueda.'
+            errorMessage: copy.validation.maxMultiCitySegments
         };
     }
 
@@ -1806,12 +1807,13 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
 }
 
 // Función para validar campos requeridos de hoteles
-export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels']): {
+export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels'], language: UserLanguage = 'es'): {
     isValid: boolean;
     missingFields: string[];
     missingFieldsSpanish: string[];
     errorMessage?: string;
 } {
+    const copy = getMissingInfoCopy(language);
     if (!hotels) {
         return {
             isValid: false,
@@ -1841,7 +1843,7 @@ export function validateHotelRequiredFields(hotels?: ParsedTravelRequest['hotels
                 isValid: false,
                 missingFields: ['adults'],
                 missingFieldsSpanish: ['adulto acompañante'],
-                errorMessage: `⚠️ **Los menores no pueden hospedarse solos**\n\nLos niños y bebés deben estar acompañados por al menos un adulto responsable${label ? ` en ${label}` : ''}.\n\n**¿Cuántos adultos los acompañarán?**\n\nPor ejemplo: "agrega 1 adulto", "con 2 adultos"`
+                errorMessage: copy.validation.minorsHotel(label)
             };
         }
 
@@ -3117,10 +3119,16 @@ export async function parseMessageWithAIStreaming(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const data = JSON.parse(dataLine.slice(6)) as any;
             if (eventType === 'status') {
+                const stage = typeof data?.stage === 'string' ? data.stage : undefined;
+                const localizedMessage = stage === 'parse'
+                    ? typingCopy.analyzingMessage
+                    : stage === 'route'
+                        ? typingCopy.preparingResponse
+                        : typingCopy.processing;
                 onProgress?.({
                     type: 'status',
-                    message: typeof data?.message === 'string' ? data.message : typingCopy.processing,
-                    stage: typeof data?.stage === 'string' ? data.stage : undefined,
+                    message: localizedMessage,
+                    stage,
                 });
             } else if (eventType === 'tool_start' || eventType === 'tool_done') {
                 onProgress?.({ ...data, type: eventType });

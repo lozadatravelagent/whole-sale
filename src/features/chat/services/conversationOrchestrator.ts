@@ -3,7 +3,7 @@ import type { TripPlannerState, PlannerActivity, PlannerRestaurant } from '@/fea
 import type { ContextState } from '../types/contextState';
 import type { RouteResult } from './routeRequest';
 import { isGenericPlaceholder } from './itineraryPipeline';
-import { getConversationalMissingInfoCopy } from '@/features/chat/i18n/chatResultCopy';
+import { getConversationalMissingInfoCopy, getPlanToQuoteCopy, LOCALE_BY_LANGUAGE } from '@/features/chat/i18n/chatResultCopy';
 
 export interface ChatRecommendedPlace {
   placeId?: string;
@@ -296,42 +296,43 @@ export function resolveTravelContextBridge(options: {
   };
 }
 
-export function buildPlanToQuoteResponse(plannerState: TripPlannerState) {
+export function buildPlanToQuoteResponse(plannerState: TripPlannerState, language: UserLanguage = 'es') {
+  const copy = getPlanToQuoteCopy(language);
   const segments = (plannerState.segments || [])
     .slice()
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const segmentLabels = segments.length > 0
-    ? segments.map((segment) => `${segment.city}${segment.nights ? ` (${segment.nights} noches)` : ''}`)
+    ? segments.map((segment) => `${segment.city}${segment.nights ? ` (${copy.night(segment.nights)})` : ''}`)
     : (plannerState.destinations || []);
   const days = plannerState.days || segments.reduce((total, segment) => total + (segment.nights || 0), 0);
   const travelers = plannerState.travelers;
   const travelerLabel = [
-    `${travelers?.adults || 1} adulto${(travelers?.adults || 1) === 1 ? '' : 's'}`,
-    travelers?.children ? `${travelers.children} menor${travelers.children === 1 ? '' : 'es'}` : null,
-    travelers?.infants ? `${travelers.infants} infante${travelers.infants === 1 ? '' : 's'}` : null,
+    copy.adult(travelers?.adults || 1),
+    travelers?.children ? copy.child(travelers.children) : null,
+    travelers?.infants ? copy.infant(travelers.infants) : null,
   ].filter(Boolean).join(', ');
   const dateLabel = plannerState.isFlexibleDates
     ? (() => {
         const flexibleLabel = plannerState.flexibleMonth
           ? new Date(`${plannerState.flexibleYear || new Date().getFullYear()}-${plannerState.flexibleMonth}-01T00:00:00`)
-            .toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
-          : 'mes flexible';
-        return `${flexibleLabel}${days ? ` (${days} días)` : ''}`;
+            .toLocaleDateString(LOCALE_BY_LANGUAGE[language], { month: 'long', year: 'numeric' })
+          : copy.flexibleMonth;
+        return `${flexibleLabel}${days ? ` (${copy.day(days)})` : ''}`;
       })()
-    : `${plannerState.startDate || 'sin salida'}${plannerState.endDate ? ` al ${plannerState.endDate}` : ''}`;
+    : `${plannerState.startDate || copy.noStartDate}${plannerState.endDate ? ` ${copy.to} ${plannerState.endDate}` : ''}`;
   const missingQuoteFields = getPlanQuoteMissingFields(plannerState);
   const missingQuoteSlots = getPlanQuoteMissingSlots(plannerState);
 
   const summary = [
-    segmentLabels.length > 0 ? segmentLabels.join(' → ') : 'el plan activo',
-    days ? `${days} días` : null,
+    segmentLabels.length > 0 ? segmentLabels.join(' → ') : copy.activePlan,
+    days ? copy.day(days) : null,
     travelerLabel,
     dateLabel,
   ].filter(Boolean).join(' · ');
 
   const response = missingQuoteFields.length > 0
-    ? `Tengo el plan activo para cotizar: ${summary}.\n\nPara avanzar con precios reales necesito cerrar: ${missingQuoteFields.join(' y ')}. Con eso puedo buscar vuelos y hoteles sobre este mismo itinerario, sin volver a armar el viaje.`
-    : `Tengo el plan activo para cotizar: ${summary}.\n\nYa puedo usar este itinerario como base para buscar vuelos y hoteles, sin volver a armar el viaje.`;
+    ? copy.missing(summary, missingQuoteFields.join(language === 'en' ? ' and ' : language === 'pt' ? ' e ' : ' y '))
+    : copy.ready(summary);
 
   return {
     response,

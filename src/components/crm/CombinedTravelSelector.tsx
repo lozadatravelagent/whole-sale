@@ -365,7 +365,7 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
                             <span className={`font-utility font-bold uppercase tracking-[0.18em] text-primary ${compact ? 'text-[9px]' : 'text-[10px]'}`}>{copy.connection}</span>
                           </div>
                           <div className={`font-mono font-bold tracking-[0.08em] text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
-                            {layover.destination_code} · {layover.waiting_time}
+                            {layover.destination_code} · {layover.waiting_time === 'Escala técnica' ? copy.technicalStop : layover.waiting_time}
                           </div>
                           <div className={`font-utility uppercase tracking-[0.18em] text-muted-foreground ${compact ? 'mt-0.5 text-[7px]' : 'mt-1 text-[9px]'}`}>{copy.terminalChange}</div>
                         </div>

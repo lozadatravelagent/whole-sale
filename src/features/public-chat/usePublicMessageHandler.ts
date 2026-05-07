@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import i18n from '@/i18n';
 import { parseMessageWithAI, combineWithPreviousRequest, detectMessageLanguage, normalizeSupportedLanguage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import { getPublicChatCopy, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 import {
   handleFlightSearch,
   handleHotelSearch,
@@ -24,18 +25,20 @@ export interface PublicMessage {
   role: 'user' | 'assistant';
   text: string;
   timestamp: string;
-  data?: { combinedData?: LocalCombinedTravelResults };
+  data?: { combinedData?: LocalCombinedTravelResults; responseLanguage?: UserLanguage };
 }
 
 const SEARCH_TYPES = new Set(['flights', 'hotels', 'combined', 'packages', 'services', 'itinerary']);
 
 export function usePublicMessageHandler() {
+  const initialLanguage = normalizeSupportedLanguage(i18n.language);
   const [messages, setMessages] = useState<PublicMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
-      text: 'Hola, soy **Emilia**, tu asistente de viajes con IA. Contame que viaje buscas y te ayudo a encontrar las mejores opciones.\n\nPuedo buscar **vuelos**, **hoteles**, **paquetes** y mas.',
+      text: getPublicChatCopy(initialLanguage).welcome,
       timestamp: new Date().toISOString(),
+      data: { responseLanguage: initialLanguage },
     },
   ]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -103,8 +106,10 @@ export function usePublicMessageHandler() {
         }
 
         // Validate required fields for search types
+        const publicCopy = getPublicChatCopy(userLanguage);
+
         if (parsed.requestType === 'flights' || parsed.requestType === 'combined') {
-          const validation = validateFlightRequiredFields(parsed.flights);
+          const validation = validateFlightRequiredFields(parsed.flights, userLanguage);
           if (!validation.isValid) {
             if (validation.errorMessage) {
               addMessage('assistant', validation.errorMessage);
@@ -118,7 +123,7 @@ export function usePublicMessageHandler() {
         }
 
         if (parsed.requestType === 'hotels' || parsed.requestType === 'combined') {
-          const validation = validateHotelRequiredFields(parsed.hotels);
+          const validation = validateHotelRequiredFields(parsed.hotels, userLanguage);
           if (!validation.isValid) {
             if (validation.errorMessage) {
               addMessage('assistant', validation.errorMessage);
@@ -152,19 +157,19 @@ export function usePublicMessageHandler() {
           case 'flights': {
             const result = await handleFlightSearch(parsed);
             responseText = result.response;
-            resultData = result.data?.combinedData ? { combinedData: result.data.combinedData } : undefined;
+            resultData = result.data?.combinedData ? { combinedData: result.data.combinedData, responseLanguage: userLanguage } : undefined;
             break;
           }
           case 'hotels': {
             const result = await handleHotelSearch(parsed);
             responseText = result.response;
-            resultData = result.data?.combinedData ? { combinedData: result.data.combinedData } : undefined;
+            resultData = result.data?.combinedData ? { combinedData: result.data.combinedData, responseLanguage: userLanguage } : undefined;
             break;
           }
           case 'combined': {
             const result = await handleCombinedSearch(parsed);
             responseText = result.response;
-            resultData = result.data?.combinedData ? { combinedData: result.data.combinedData } : undefined;
+            resultData = result.data?.combinedData ? { combinedData: result.data.combinedData, responseLanguage: userLanguage } : undefined;
             break;
           }
           case 'packages': {
@@ -183,7 +188,7 @@ export function usePublicMessageHandler() {
             break;
           }
           case 'missing_info_request': {
-            responseText = parsed.message || 'Necesito mas informacion para ayudarte. ¿Podrias darme mas detalles?';
+            responseText = parsed.message || publicCopy.missingInfoFallback;
             previousContext.current = parsed;
             setIsProcessing(false);
             addMessage('assistant', responseText);
@@ -209,7 +214,7 @@ export function usePublicMessageHandler() {
         console.error('[PublicChat] Error processing message:', error);
         addMessage(
           'assistant',
-          'Lo siento, hubo un error procesando tu consulta. Por favor, intenta nuevamente.'
+          getPublicChatCopy(normalizeSupportedLanguage(i18n.language)).processingError
         );
       } finally {
         setIsProcessing(false);
