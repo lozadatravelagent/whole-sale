@@ -4,6 +4,7 @@ import type { FlightData } from '../types/chat';
 import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime, getAirlineNameFromCode, getAirlineCodeFromName } from '../utils/flightHelpers';
 import { translateFlightInfo, translateBaggage } from '../utils/translations';
 import { airlineResolver } from './airlineResolver';
+import { getFlightItineraryCopy } from '@/features/chat/i18n/chatResultCopy';
 
 // Starling CabinClass codes (NOT BookingClass tariff codes)
 // Y = Economy, W = Premium Economy, C/J = Business, F = First
@@ -884,86 +885,11 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
   return transformedFlights;
 };
 
-// Helper function to generate visual flight itinerary
-const FLIGHT_ITINERARY_COPY: Record<UserLanguage, {
-  outbound: string;
-  return: string;
-  noSegments: string;
-  flightWithConnections: (count: number) => string;
-  directFlight: string;
-  duration: string;
-  cabinClass: string;
-  aircraft: string;
-  connection: string;
-  in: string;
-  layoverTime: string;
-  date: string;
-  refueling: string;
-  segment: string;
-  connectionTime: string;
-  terminalChange: string;
-}> = {
-  es: {
-    outbound: 'IDA',
-    return: 'REGRESO',
-    noSegments: 'Sin información de segmentos',
-    flightWithConnections: (count) => `Vuelo con ${count} Conexión(es)`,
-    directFlight: 'Vuelo Directo',
-    duration: 'Duración',
-    cabinClass: 'Clase',
-    aircraft: 'Equipo',
-    connection: 'Conexión',
-    in: 'en',
-    layoverTime: 'Tiempo de escala',
-    date: 'Fecha',
-    refueling: 'Reabastecimiento de combustible',
-    segment: 'Segmento',
-    connectionTime: 'Tiempo de conexión',
-    terminalChange: 'Cambio de terminal/puerta',
-  },
-  en: {
-    outbound: 'OUTBOUND',
-    return: 'RETURN',
-    noSegments: 'No segment information',
-    flightWithConnections: (count) => `Flight with ${count} connection(s)`,
-    directFlight: 'Direct Flight',
-    duration: 'Duration',
-    cabinClass: 'Cabin',
-    aircraft: 'Aircraft',
-    connection: 'Connection',
-    in: 'in',
-    layoverTime: 'Layover time',
-    date: 'Date',
-    refueling: 'Fuel stop',
-    segment: 'Segment',
-    connectionTime: 'Connection time',
-    terminalChange: 'Terminal/gate change',
-  },
-  pt: {
-    outbound: 'IDA',
-    return: 'VOLTA',
-    noSegments: 'Sem informações de trechos',
-    flightWithConnections: (count) => `Voo com ${count} conexão(ões)`,
-    directFlight: 'Voo Direto',
-    duration: 'Duração',
-    cabinClass: 'Classe',
-    aircraft: 'Aeronave',
-    connection: 'Conexão',
-    in: 'em',
-    layoverTime: 'Tempo de escala',
-    date: 'Data',
-    refueling: 'Parada para reabastecimento',
-    segment: 'Trecho',
-    connectionTime: 'Tempo de conexão',
-    terminalChange: 'Troca de terminal/portão',
-  },
-};
-
 const formatFlightInfoByLanguage = (text: string, language: UserLanguage) =>
   language === 'es' ? translateFlightInfo(text) : text;
 
 export const generateFlightItinerary = (flight: FlightData, language: UserLanguage = 'es'): string => {
-  const copy = FLIGHT_ITINERARY_COPY[language] || FLIGHT_ITINERARY_COPY.es;
+  const copy = getFlightItineraryCopy(language);
   let itinerary = '';
 
   flight.legs.forEach((leg, legIndex) => {

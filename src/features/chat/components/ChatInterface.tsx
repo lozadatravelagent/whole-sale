@@ -16,6 +16,7 @@ import { deriveConversationGaps, extractRecommendedPlacesFromMeta, getDiscoveryV
 import { resolveRenderPolicy } from '../services/itineraryPipeline';
 import type { DiscoveryContext } from '../services/discoveryService';
 import { extractBridgeTurnProps, type BridgeChatMode } from '../utils/extractBridgeTurnProps';
+import { getTypingStatusCopy, normalizeSupportedLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 interface ChatInterfaceProps {
   selectedConversation: string | null;
@@ -91,7 +92,8 @@ const ChatInterface = React.memo(({
   onModeChange,
   headerVisibility = 'default',
 }: ChatInterfaceProps) => {
-  const { t } = useTranslation('chat');
+  const { t, i18n } = useTranslation('chat');
+  const typingCopy = getTypingStatusCopy(normalizeSupportedLanguage(i18n.language));
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
@@ -495,7 +497,7 @@ const ChatInterface = React.memo(({
                     <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '0.6s' }}></div>
                   </div>
                   <span className="font-utility text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground animate-pulse">
-                    {typingMessage || 'Pensando…'}
+                    {typingMessage || typingCopy.thinking}
                   </span>
                 </div>
               </div>

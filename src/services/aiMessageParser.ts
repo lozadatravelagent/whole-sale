@@ -12,6 +12,10 @@ import {
     normalizeDestinationToCapitalIfCountry,
     findCountryInMessageForCapital,
 } from '@/services/countryCapitalResolver';
+import { getMissingInfoCopy, getTypingStatusCopy, normalizeSupportedLanguage, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
+
+export { normalizeSupportedLanguage };
+export type { UserLanguage };
 
 export interface HotelStaySegment {
     id?: string;
@@ -300,13 +304,6 @@ export interface RequiredHotelFields {
     adults: boolean;
     roomType: boolean;
     mealPlan: boolean;
-}
-
-export type UserLanguage = 'es' | 'en' | 'pt';
-
-export function normalizeSupportedLanguage(language?: string | null): UserLanguage {
-    const normalized = (language || 'es').split('-')[0]?.toLowerCase();
-    return normalized === 'en' || normalized === 'pt' ? normalized : 'es';
 }
 
 export function detectMessageLanguage(message: string, fallbackLanguage: UserLanguage = 'es'): UserLanguage {
@@ -1969,31 +1966,8 @@ export function generateMissingInfoMessage(
         );
     }
 
-    const baseMessages: Record<UserLanguage, Record<string, string>> = {
-        es: {
-            flights: '¡Me encanta! Para encontrarte los mejores vuelos necesito que me cuentes un poquito más:',
-            hotels: '¡Genial! Para buscar los hoteles ideales necesito algunos datos más:',
-            itinerary: '¡Me encanta la idea del viaje! Para armar un itinerario a tu medida, necesito que me cuentes:',
-            default: '¡Buenísimo! Para buscar las mejores opciones necesito un poco más de info:',
-            closing: 'Contame y me pongo a buscar.',
-        },
-        en: {
-            flights: 'Great. To find the best flights, I need a bit more information:',
-            hotels: 'Great. To search for the right hotels, I need a few more details:',
-            itinerary: 'I like the trip idea. To build a tailored itinerary, I need:',
-            default: 'Great. To search for the best options, I need a bit more information:',
-            closing: 'Send me that and I will start searching.',
-        },
-        pt: {
-            flights: 'Perfeito. Para encontrar os melhores voos, preciso de mais algumas informações:',
-            hotels: 'Perfeito. Para buscar os hotéis ideais, preciso de alguns dados:',
-            itinerary: 'Gostei da ideia da viagem. Para montar um roteiro sob medida, preciso de:',
-            default: 'Perfeito. Para buscar as melhores opções, preciso de um pouco mais de informação:',
-            closing: 'Me conte isso e começo a buscar.',
-        },
-    };
-    const baseCopy = baseMessages[language] || baseMessages.es;
-    const baseMessage = baseCopy[requestType] || baseCopy.default;
+    const copy = getMissingInfoCopy(language);
+    const baseMessage = copy.base[requestType as keyof typeof copy.base] || copy.base.default;
 
     const fieldsList = missingFieldsSpanish.map((field, index) =>
         `${index + 1}. **${capitalize(localizeMissingField(field, language))}**`
@@ -2007,7 +1981,7 @@ ${fieldsList}
 
 ${examples}
 
-${baseCopy.closing}`;
+${copy.closing}`;
 }
 
 // Función para generar ejemplos de los campos faltantes
@@ -2018,35 +1992,20 @@ function capitalize(value: string): string {
 function localizeMissingField(field: string, language: UserLanguage): string {
     if (language === 'es') return field;
     const normalized = normalizeHotelText(field);
-    const dictionaries: Record<Exclude<UserLanguage, 'es'>, Record<string, string>> = {
-        en: {
-            'origen': 'origin',
-            'destino': 'destination',
-            'fecha de salida': 'departure date',
-            'fecha de entrada': 'check-in date',
-            'fecha de salida hotel': 'check-out date',
-            'cantidad de pasajeros': 'number of passengers',
-            'adulto acompanante': 'accompanying adult',
-            'maximo 3 tramos': 'maximum 3 segments',
-            'destino(s)': 'destination(s)',
-            'fechas exactas del viaje': 'exact travel dates',
-            'cantidad de dias': 'number of days',
-            'cantidad de dias o fechas del viaje': 'number of days or travel dates',
-        },
-        pt: {
-            'origen': 'origem',
-            'destino': 'destino',
-            'fecha de salida': 'data de saída',
-            'fecha de entrada': 'data de entrada',
-            'fecha de salida hotel': 'data de saída do hotel',
-            'cantidad de pasajeros': 'quantidade de passageiros',
-            'adulto acompanante': 'adulto acompanhante',
-            'maximo 3 tramos': 'máximo de 3 trechos',
-            'destino(s)': 'destino(s)',
-            'fechas exactas del viaje': 'datas exatas da viagem',
-            'cantidad de dias': 'quantidade de dias',
-            'cantidad de dias o fechas del viaje': 'quantidade de dias ou datas da viagem',
-        },
+    const fields = getMissingInfoCopy(language).fields as Record<string, string>;
+    const dictionary: Record<string, string> = {
+        origen: fields.origen,
+        destino: fields.destino,
+        'fecha de salida': fields.fechaSalida,
+        'fecha de entrada': fields.fechaEntrada,
+        'fecha de salida hotel': fields.checkout,
+        'cantidad de pasajeros': fields.pasajeros,
+        'adulto acompanante': fields.adultoAcompanante,
+        'maximo 3 tramos': fields.maximoTramos,
+        'destino(s)': fields.destinos,
+        'fechas exactas del viaje': fields.fechasExactas,
+        'cantidad de dias': fields.dias,
+        'cantidad de dias o fechas del viaje': fields.duracionFechas,
     };
 
     if (normalized.includes('fecha de salida') && normalized !== 'fecha de salida') {
@@ -2058,60 +2017,62 @@ function localizeMissingField(field: string, language: UserLanguage): string {
     if (normalized.includes('fecha de salida de')) return language === 'en' ? field.replace(/fecha de salida de/i, 'check-out date for') : field.replace(/fecha de salida de/i, 'data de saída de');
     if (normalized.includes('cantidad de pasajeros de')) return language === 'en' ? field.replace(/cantidad de pasajeros de/i, 'passenger count for') : field.replace(/cantidad de pasajeros de/i, 'quantidade de passageiros de');
 
-    return dictionaries[language][normalized] || field;
+    return dictionary[normalized] || field;
 }
 
 function generateFieldExamples(missingFieldsSpanish: string[], language: UserLanguage = 'es'): string {
     const examples: string[] = [];
-    const title = language === 'en' ? '**Examples:**' : language === 'pt' ? '**Exemplos:**' : '**Ejemplos:**';
+    const copy = getMissingInfoCopy(language);
+    const title = copy.examplesTitle;
+    const copyExamples = copy.examples as Record<string, string>;
 
     missingFieldsSpanish.forEach(field => {
         const normalized = normalizeHotelText(field);
         switch (field) {
             case 'origen':
-                examples.push(language === 'en' ? '📍 **Origin:** For example: "Buenos Aires", "Madrid", "Ezeiza"' : language === 'pt' ? '📍 **Origem:** Por exemplo: "Buenos Aires", "Madrid", "Ezeiza"' : '📍 **Origen:** Por ejemplo: "Buenos Aires", "Madrid", "Ezeiza"');
+                examples.push(copyExamples.origen);
                 break;
             case 'destino':
-                examples.push(language === 'en' ? '🎯 **Destination:** For example: "Punta Cana", "Barcelona", "Miami"' : language === 'pt' ? '🎯 **Destino:** Por exemplo: "Punta Cana", "Barcelona", "Miami"' : '🎯 **Destino:** Por ejemplo: "Punta Cana", "Barcelona", "Miami"');
+                examples.push(copyExamples.destino);
                 break;
             case 'fecha de salida':
-                examples.push(language === 'en' ? '📅 **Departure date:** For example: "December 15", "2025-12-15"' : language === 'pt' ? '📅 **Data de saída:** Por exemplo: "15 de dezembro", "2025-12-15"' : '📅 **Fecha de salida:** Por ejemplo: "15 de diciembre", "2025-12-15"');
+                examples.push(copyExamples.fechaSalida);
                 break;
             case 'cantidad de pasajeros':
-                examples.push(language === 'en' ? '👥 **Passengers:** For example: "2 adults", "1 person", "3 adults"' : language === 'pt' ? '👥 **Passageiros:** Por exemplo: "2 adultos", "1 pessoa", "3 adultos"' : '👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 persona", "3 adultos"');
+                examples.push(copyExamples.pasajeros);
                 break;
             case 'equipaje (con o sin valija)':
-                examples.push('🧳 **Equipaje:** Por ejemplo: "con valija", "solo equipaje de mano", "sin equipaje"');
+                if (copyExamples.equipaje) examples.push(copyExamples.equipaje);
                 break;
             case 'tipo de vuelo (directo o con escalas)':
-                examples.push('✈️ **Tipo de vuelo:** Por ejemplo: "vuelo directo", "con una escala", "cualquier vuelo"');
+                if (copyExamples.tipoVuelo) examples.push(copyExamples.tipoVuelo);
                 break;
             case 'fecha de entrada':
-                examples.push('📅 **Fecha de entrada:** Por ejemplo: "15 de diciembre", "2025-12-15"');
+                if (copyExamples.fechaEntrada) examples.push(copyExamples.fechaEntrada);
                 break;
             case 'tipo de habitación (single, double, triple)':
-                examples.push('🛏️ **Tipo de habitación:** Por ejemplo: "single", "double", "triple"');
+                if (copyExamples.habitacion) examples.push(copyExamples.habitacion);
                 break;
             case 'modalidad de alimentación (all inclusive, desayuno, media pensión)':
-                examples.push('🍽️ **Modalidad:** Por ejemplo: "all inclusive", "con desayuno", "media pensión"');
+                if (copyExamples.alimentacion) examples.push(copyExamples.alimentacion);
                 break;
             // Ejemplos para itinerarios
             case 'destino(s)':
-                examples.push('🌍 **Destino(s):** Por ejemplo: "Roma", "Italia y Francia", "Barcelona, Madrid y París"');
+                if (copyExamples.destinos) examples.push(copyExamples.destinos);
                 break;
             case 'cantidad de días':
-                examples.push('📅 **Días:** Por ejemplo: "5 días", "una semana", "10 días"');
+                if (copyExamples.dias) examples.push(copyExamples.dias);
                 break;
             case 'cantidad de días o fechas del viaje':
-                examples.push('📅 **Duración o fechas:** Por ejemplo: "5 días", "del 2 al 10 de marzo", "del 2027-03-02 al 2027-03-10"');
+                if (copyExamples.duracionFechas) examples.push(copyExamples.duracionFechas);
                 break;
             case 'fechas exactas del viaje':
-                examples.push(language === 'en' ? '📅 **Exact dates:** For example: "March 2 to March 10, 2027", "I leave on May 5 and return on May 14"' : language === 'pt' ? '📅 **Datas exatas:** Por exemplo: "de 2 a 10 de março de 2027", "saio em 5 de maio e volto em 14 de maio"' : '📅 **Fechas exactas:** Por ejemplo: "del 2 al 10 de marzo de 2027", "salgo el 5 de mayo y vuelvo el 14 de mayo"');
+                examples.push(copyExamples.fechasExactas);
                 break;
         }
 
         if (!examples.length && normalized.includes('fecha de salida de')) {
-            examples.push(language === 'en' ? '📅 **Check-out date:** For example: "December 20", "2025-12-20"' : language === 'pt' ? '📅 **Data de saída:** Por exemplo: "20 de dezembro", "2025-12-20"' : '📅 **Fecha de salida:** Por ejemplo: "20 de diciembre", "2025-12-20"');
+            examples.push(copyExamples.checkout);
         }
     });
 
@@ -3073,23 +3034,24 @@ export async function parseMessageWithAIStreaming(
     language: 'es' | 'en' | 'pt',
     onProgress?: (event: AiParserStreamEvent) => void,
 ): Promise<ParsedTravelRequest> {
+    const typingCopy = getTypingStatusCopy(language);
     const deterministicPendingCompletion = completePendingRequestFromAnswer(message, knowledge?.previousContext);
     if (deterministicPendingCompletion) {
-        onProgress?.({ type: 'status', stage: 'route', message: 'Preparando respuesta…' });
+        onProgress?.({ type: 'status', stage: 'route', message: typingCopy.preparingResponse });
         return deterministicPendingCompletion;
     }
 
     const simpleItinerary = tryParseSimpleItineraryDeterministically(message, knowledge);
     if (simpleItinerary) {
-        onProgress?.({ type: 'status', stage: 'route', message: 'Preparando respuesta…' });
+        onProgress?.({ type: 'status', stage: 'route', message: typingCopy.preparingResponse });
         return simpleItinerary;
     }
 
     // Dev: CORS proxy doesn't support streaming → fall back to regular invoke
     if (import.meta.env.DEV) {
-        onProgress?.({ type: 'status', stage: 'parse', message: 'Analizando tu mensaje…' });
+        onProgress?.({ type: 'status', stage: 'parse', message: typingCopy.analyzingMessage });
         const parsed = await parseMessageWithAI(message, knowledge?.previousContext ?? null, [], knowledge, language);
-        onProgress?.({ type: 'status', stage: 'route', message: 'Preparando respuesta…' });
+        onProgress?.({ type: 'status', stage: 'route', message: typingCopy.preparingResponse });
         return parsed;
     }
 
@@ -3157,7 +3119,7 @@ export async function parseMessageWithAIStreaming(
             if (eventType === 'status') {
                 onProgress?.({
                     type: 'status',
-                    message: typeof data?.message === 'string' ? data.message : 'Procesando…',
+                    message: typeof data?.message === 'string' ? data.message : typingCopy.processing,
                     stage: typeof data?.stage === 'string' ? data.stage : undefined,
                 });
             } else if (eventType === 'tool_start' || eventType === 'tool_done') {

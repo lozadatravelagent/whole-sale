@@ -27,6 +27,7 @@ import type { TripPlannerState } from '@/features/trip-planner/types';
 import { expandDestinationsIfRegional, getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '@/features/trip-planner';
 import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
+import { getSearchHandlerCopy } from '@/features/chat/i18n/chatResultCopy';
 
 /**
  * @internal SHARED SERVICE
@@ -754,13 +755,10 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
     console.log('✈️ Flights found:', flights.length);
 
     console.log('📝 [FLIGHT SEARCH] Step 6: Formatting response text');
+    const searchCopy = getSearchHandlerCopy(responseLanguage);
     const formattedResponse = formatFlightResponse(flights, responseLanguage);
     const responseWithWarnings = checkedLuggageRelaxedFallback
-      ? responseLanguage === 'en'
-        ? `⚠️ **Checked baggage**\n\nI could not find options with checked baggage included on every segment. I am showing alternatives that match the rest of your filters so baggage can be added to the fare.\n\n${formattedResponse}`
-        : responseLanguage === 'pt'
-          ? `⚠️ **Bagagem despachada**\n\nNão encontrei opções com bagagem despachada incluída em todos os trechos. Estou mostrando alternativas que cumprem o restante dos filtros para que a bagagem seja adicionada à tarifa.\n\n${formattedResponse}`
-          : `⚠️ **Equipaje de bodega**\n\nNo encontré opciones con equipaje de bodega incluido en todos los tramos. Te muestro alternativas que cumplen el resto de tus filtros para que puedas agregar bodega en la tarifa.\n\n${formattedResponse}`
+      ? `${searchCopy.checkedBaggageWarning}${formattedResponse}`
       : formattedResponse;
 
     // 📊 BUILD EXTENDED METADATA for API responses
@@ -1824,12 +1822,9 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
     console.log('🏨 Hotels found (after filtering):', combinedData.hotels.length);
 
     console.log('📝 [COMBINED SEARCH] Step 4: Formatting combined response');
+    const searchCopy = getSearchHandlerCopy(responseLanguage);
     const partialNotice = Object.keys(providerErrors).length > 0
-      ? responseLanguage === 'en'
-        ? '⚠️ I could recover partial results. I am showing what is available now, and you can retry the provider that failed.\n\n'
-        : responseLanguage === 'pt'
-          ? '⚠️ Consegui recuperar resultados parciais. Estou mostrando o que está disponível agora, e você pode tentar novamente o provedor que falhou.\n\n'
-          : '⚠️ Pude recuperar resultados parciales. Te muestro lo disponible ahora y podés reintentar el proveedor que falló.\n\n'
+      ? searchCopy.partialResultsNotice
       : '';
     const formattedResponse = `${partialNotice}${formatCombinedResponse(combinedData, responseLanguage)}`;
 
@@ -1864,34 +1859,7 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
 };
 
 export const handleGeneralQuery = async (parsed: ParsedTravelRequest): Promise<string> => {
-  if (parsed.responseLanguage === 'en') {
-    return 'Hi. I am Emilia, your AI travel assistant. I can help you with:\n\n' +
-      '✈️ **Flight searches**\n' +
-      '🏨 **Hotel searches**\n' +
-      '🎒 **Packages**\n' +
-      '🚌 **Services and transfers**\n' +
-      '🗺️ **Travel itineraries**\n\n' +
-      'Tell me what you need with specific dates and destinations.';
-  }
-
-  if (parsed.responseLanguage === 'pt') {
-    return 'Olá. Sou Emilia, sua assistente de viagens com IA. Posso ajudar com:\n\n' +
-      '✈️ **Busca de voos**\n' +
-      '🏨 **Busca de hotéis**\n' +
-      '🎒 **Pacotes**\n' +
-      '🚌 **Serviços e traslados**\n' +
-      '🗺️ **Roteiros de viagem**\n\n' +
-      'Me diga o que precisa com datas e destinos específicos.';
-  }
-
-  // General response
-  return '¡Hola! Soy Emilia, tu asistente de viajes. Puedo ayudarte con:\n\n' +
-    '✈️ **Búsqueda de vuelos**\n' +
-    '🏨 **Búsqueda de hoteles**\n' +
-    '🎒 **Búsqueda de paquetes**\n' +
-    '🚌 **Servicios y transfers**\n' +
-    '🗺️ **Itinerarios de viaje**\n\n' +
-    'Dime qué necesitas con fechas y destinos específicos.';
+  return getSearchHandlerCopy(parsed.responseLanguage || 'es').generalQuery;
 };
 
 // =====================================================================

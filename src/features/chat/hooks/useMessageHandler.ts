@@ -37,6 +37,7 @@ import {
   prepareTurnContext,
 } from '@/features/chat/state/messageTurnContext';
 import { toCanonicalFields } from '@/features/chat/state/pendingActionDispatcher';
+import { getTypingStatusCopy } from '@/features/chat/i18n/chatResultCopy';
 import i18n from '@/i18n';
 
 function formatPlannerDateSelectionMessage(selection: {
@@ -548,6 +549,9 @@ const useMessageHandler = (
     }).length;
     const shouldPushToDelivery = assistantResponseCountBeforeTurn >= 2;
     const shouldHardClose = assistantResponseCountBeforeTurn >= 3;
+    const uiLanguage = normalizeSupportedLanguage(i18n.language);
+    const userLanguage = detectMessageLanguage(currentMessage, uiLanguage);
+    const typingCopy = getTypingStatusCopy(userLanguage);
 
     if (!currentMessage.trim() || !currentConversationId) {
       flowTimer.end('stopped - invalid input', {
@@ -762,7 +766,7 @@ const useMessageHandler = (
 
           // Show typing indicator while processing price change
           setIsTyping(true, currentConversationId);
-          setTypingMessage('Cambiando el precio...', currentConversationId);
+          setTypingMessage(typingCopy.changingPrice, currentConversationId);
 
           // Add user message to database (in background)
           await saveAndDisplayMessage({
@@ -773,7 +777,7 @@ const useMessageHandler = (
           });
 
           // Update typing message while generating PDF
-          setTypingMessage('Generando nuevo PDF...', currentConversationId);
+          setTypingMessage(typingCopy.generatingPdf, currentConversationId);
 
           const result = await handlePriceChangeRequest(currentMessage);
 
@@ -868,7 +872,7 @@ const useMessageHandler = (
     const conversationIdForThisSearch = currentConversationId;
 
     setIsTyping(true, conversationIdForThisSearch);
-    setTypingMessage('Chequeando tu pedido...', conversationIdForThisSearch);
+    setTypingMessage(typingCopy.checkingRequest, conversationIdForThisSearch);
 
     console.log('✅ [MESSAGE FLOW] Step 1: Message validation passed');
     console.log('📨 Processing message:', currentMessage);
@@ -1114,7 +1118,7 @@ const useMessageHandler = (
       console.log('📤 [MESSAGE FLOW] About to call AI message parser (Supabase Edge Function)');
       console.log('🧠 Message to parse:', currentMessage);
 
-      setTypingMessage('Analizando tu mensaje...', conversationIdForThisSearch);
+      setTypingMessage(typingCopy.analyzingMessage, conversationIdForThisSearch);
 
       // ✅ Helper to get client_id from message (checks direct column first, then meta)
       const getClientId = (msg: any): string | null | undefined => {
@@ -1222,8 +1226,6 @@ const useMessageHandler = (
       // Always parse first, then route based on content (not workspace_mode)
       const parseStart = nowMs();
       const plannerEditContext = buildPlannerEditContext(plannerState as TripPlannerState | null);
-      const uiLanguage = normalizeSupportedLanguage(i18n.language);
-      const userLanguage = detectMessageLanguage(currentMessage, uiLanguage);
       // Pre-parse: compute the discovery guard + tool_choice policy. The
       // guard is a pure function over `currentMessage`; we hoist it here so
       // the resulting tool_choice can be forwarded to the edge function.
@@ -1258,21 +1260,11 @@ const useMessageHandler = (
         userLanguage,
         (event) => {
           if (event.type === 'status') {
-            setTypingMessage(event.message || 'Procesando...', conversationIdForThisSearch);
+            setTypingMessage(event.message || typingCopy.processing, conversationIdForThisSearch);
             return;
           }
           if (event.type !== 'tool_start') return;
-          const labels: Record<string, string> = {
-            discover_places: 'Buscando lugares…',
-            get_planner_state: 'Consultando el plan…',
-            get_lead_full_history: 'Revisando el historial…',
-            get_recent_searches: 'Revisando búsquedas recientes…',
-            save_memory_note: 'Guardando contexto…',
-            apply_slot_values: 'Aplicando datos…',
-            confirm_pending_action: 'Confirmando…',
-            propose_planner_addition: 'Preparando sugerencia…',
-          };
-          setTypingMessage(labels[event.tool] ?? 'Procesando…', conversationIdForThisSearch);
+          setTypingMessage(typingCopy.toolLabels[event.tool as keyof typeof typingCopy.toolLabels] ?? typingCopy.processing, conversationIdForThisSearch);
         },
       );
       parsedRequest.responseLanguage = userLanguage;
@@ -2349,7 +2341,7 @@ const useMessageHandler = (
         }
         case 'flights': {
           console.log('✈️ [MESSAGE FLOW] Step 12b: Processing flight search');
-          setTypingMessage('Buscando los mejores vuelos...', conversationIdForThisSearch);
+          setTypingMessage(typingCopy.searchingFlights, conversationIdForThisSearch);
           const flightResult = await handleFlightSearch(parsedRequest);
           assistantResponse = flightResult.response;
           structuredData = flightResult.data;
@@ -2358,7 +2350,7 @@ const useMessageHandler = (
         }
         case 'hotels': {
           console.log('🏨 [MESSAGE FLOW] Step 12c: Processing hotel search');
-          setTypingMessage('Buscando los mejores hoteles...', conversationIdForThisSearch);
+          setTypingMessage(typingCopy.searchingHotels, conversationIdForThisSearch);
           const hotelResult = await handleHotelSearch(parsedRequest);
           assistantResponse = hotelResult.response;
           structuredData = hotelResult.data;
@@ -2384,7 +2376,7 @@ const useMessageHandler = (
           // Respect domain lock: if user intent was hotel-only turn, prioritize hotels; else run combined
           if (activeDomain === 'hotels') {
             console.log('🏨 [MESSAGE FLOW] Step 12f: Domain locked to hotels, skipping flights');
-            setTypingMessage('Buscando los mejores hoteles...', conversationIdForThisSearch);
+            setTypingMessage(typingCopy.searchingHotels, conversationIdForThisSearch);
             const hotelResult = await handleHotelSearch({
               ...parsedRequest,
               requestType: 'hotels'
@@ -2393,7 +2385,7 @@ const useMessageHandler = (
             structuredData = hotelResult.data;
           } else {
             console.log('🌟 [MESSAGE FLOW] Step 12f: Processing combined search');
-            setTypingMessage('Buscando las mejores opciones de viaje...', conversationIdForThisSearch);
+            setTypingMessage(typingCopy.searchingTravelOptions, conversationIdForThisSearch);
             const combinedResult = await handleCombinedSearch(parsedRequest);
             assistantResponse = combinedResult.response;
             structuredData = combinedResult.data;
@@ -2437,7 +2429,7 @@ const useMessageHandler = (
               }
             }
           } else if (conversationTurn.responseMode === 'show_places') {
-            setTypingMessage('Buscando los lugares más representativos...', conversationIdForThisSearch);
+            setTypingMessage(typingCopy.searchingPlaces, conversationIdForThisSearch);
             const discoveryMessage = parsedRequest.originalMessage || currentMessage;
             // Discovery is now sourced exclusively from the LLM `discover_places`
             // tool result (`placeDiscoveryResult`). The orchestrator only emits
@@ -2545,7 +2537,7 @@ const useMessageHandler = (
         emitFirstVisibleResponse(parsedRequest.requestType, assistantResponse.length, 'final');
         setIsTyping(false, conversationIdForThisSearch);
       } else {
-        setTypingMessage('Preparando respuesta...', conversationIdForThisSearch);
+        setTypingMessage(typingCopy.preparingResponse, conversationIdForThisSearch);
       }
 
       // Clear or preserve contextual memory depending on search results.
@@ -2808,7 +2800,8 @@ const useMessageHandler = (
 
     setIsLoading(true);
     setIsTyping(true, currentConversationId);
-    setTypingMessage('Generando tu itinerario de viaje...', currentConversationId);
+    const typingCopy = getTypingStatusCopy(normalizeSupportedLanguage(i18n.language));
+    setTypingMessage(typingCopy.generatingItinerary, currentConversationId);
 
     try {
       const computedDays = selection.isFlexibleDates
