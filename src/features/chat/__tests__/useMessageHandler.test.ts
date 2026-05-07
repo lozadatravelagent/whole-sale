@@ -28,6 +28,8 @@ vi.mock('@/services/aiMessageParser', () => ({
   resolveItineraryDateRange: vi.fn().mockReturnValue(null),
   normalizeDestinationListToCapitals: vi.fn((x: any) => x),
   normalizeParsedFlightRequest: vi.fn((x: any) => x),
+  normalizeSupportedLanguage: vi.fn().mockReturnValue('es'),
+  detectMessageLanguage: vi.fn().mockReturnValue('es'),
 }));
 
 vi.mock('../services/searchHandlers', () => ({

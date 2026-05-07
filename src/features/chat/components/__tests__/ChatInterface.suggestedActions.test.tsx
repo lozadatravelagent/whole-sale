@@ -17,6 +17,7 @@ vi.mock('react-i18next', () => ({
       if (key === 'mode.bridgeStay') return 'Seguir en este modo';
       return key;
     },
+    i18n: { language: 'es' },
   }),
 }));
 
