@@ -27,7 +27,7 @@ import type { TripPlannerState } from '@/features/trip-planner/types';
 import { expandDestinationsIfRegional, getInclusiveDateRangeDays, normalizePlannerState, summarizePlannerForChat } from '@/features/trip-planner';
 import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
-import { getSearchHandlerCopy } from '@/features/chat/i18n/chatResultCopy';
+import { getSearchHandlerCopy, getResponseFormatterCopy, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 /**
  * @internal SHARED SERVICE
@@ -838,8 +838,9 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       destination: parsed.flights?.destination,
     });
     console.error('❌ [FLIGHT SEARCH] Error in flight search process:', error);
+    const errorLanguage = (parsed.responseLanguage || 'es') as UserLanguage;
     return {
-      response: '❌ **Servicio de vuelos temporalmente no disponible**\n\nNuestros servicios de búsqueda de vuelos están siendo actualizados. Mientras tanto:\n\n✈️ **Puedo ayudarte con:**\n- Información general sobre destinos\n- Consultas sobre hoteles\n- Paquetes turísticos\n\n📞 **Para búsquedas de vuelos inmediatas:**\nContacta a nuestro equipo directamente para asistencia personalizada.',
+      response: getResponseFormatterCopy(errorLanguage).flightServiceUnavailable,
       data: null
     };
   }
@@ -1634,16 +1635,18 @@ export const handleHotelSearch = async (
     console.error('❌ [HOTEL SEARCH] Error in hotel search process:', error);
 
     // Handle city not found error specifically
-    const requestedCity = parsed.hotels?.city || parsed.flights?.destination || 'desconocida';
+    const errorLanguage = (parsed.responseLanguage || 'es') as UserLanguage;
+    const handlerCopy = getSearchHandlerCopy(errorLanguage);
+    const requestedCity = parsed.hotels?.city || parsed.flights?.destination || handlerCopy.unknownCity;
     if (error instanceof Error && error.message.includes('Ciudad no encontrada')) {
       return {
-        response: `❌ **Ciudad no encontrada**\n\nNo pude encontrar "${requestedCity}" en la base de datos de EUROVIPS.\n\n🔍 **Verifica que el nombre esté bien escrito:**\n- Ejemplos: "Punta Cana", "Cancún", "Madrid", "Barcelona"\n- Puedes escribir con o sin acentos\n\n💡 **¿Buscabas otra ciudad cercana?**\nIntenta con el nombre de la ciudad principal del destino.`,
+        response: handlerCopy.cityNotFound(requestedCity),
         data: null
       };
     }
 
     return {
-      response: '❌ **Servicio de hoteles temporalmente no disponible**\n\nNuestros servicios de búsqueda de hoteles están siendo configurados. Mientras tanto:\n\n🏨 **Puedo ayudarte con:**\n- Recomendaciones generales de destinos\n- Información sobre ciudades\n- Planificación de viajes\n\n📞 **Para reservas de hoteles:**\nNuestro equipo puede asistirte con cotizaciones personalizadas.',
+      response: getResponseFormatterCopy(errorLanguage).hotelServiceUnavailable,
       data: null
     };
   }
@@ -1671,12 +1674,12 @@ export const handlePackageSearch = async (parsed: ParsedTravelRequest): Promise<
       .slice(0, 5);
 
     return {
-      response: formatPackageResponse(packages),
+      response: formatPackageResponse(packages, (parsed.responseLanguage || 'es') as UserLanguage),
       data: null
     };
   } catch (error) {
     return {
-      response: '❌ Error buscando paquetes. Intenta con un destino específico.',
+      response: getSearchHandlerCopy((parsed.responseLanguage || 'es') as UserLanguage).packageError,
       data: null
     };
   }
@@ -1704,12 +1707,12 @@ export const handleServiceSearch = async (parsed: ParsedTravelRequest): Promise<
       .slice(0, 5);
 
     return {
-      response: formatServiceResponse(services),
+      response: formatServiceResponse(services, (parsed.responseLanguage || 'es') as UserLanguage),
       data: null
     };
   } catch (error) {
     return {
-      response: '❌ Error buscando servicios. Verifica la ciudad y fechas.',
+      response: getSearchHandlerCopy((parsed.responseLanguage || 'es') as UserLanguage).serviceError,
       data: null
     };
   }

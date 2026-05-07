@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { MapPin, Sparkles, ArrowRight, ChevronDown } from 'lucide-react';
 import type { PlannerEditorialData, EditorialSegment } from '@/features/trip-planner/editorial';
+import { getPlannerBlockCopy, normalizeSupportedLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 interface PlannerEditorialBlockProps {
   editorial: PlannerEditorialData;
@@ -26,13 +28,15 @@ function SegmentHighlights({ segment }: { segment: EditorialSegment }) {
 }
 
 function DayPreviews({ segment }: { segment: EditorialSegment }) {
+  const { i18n } = useTranslation();
+  const copy = getPlannerBlockCopy(normalizeSupportedLanguage(i18n.language));
   if (segment.dayPreviews.length === 0) return null;
 
   return (
     <div className="mt-2 space-y-1">
       {segment.dayPreviews.map((day) => (
         <div key={day.dayNumber} className="text-sm">
-          <span className="font-medium text-foreground">Dia {day.dayNumber}: {day.title}</span>
+          <span className="font-medium text-foreground">{copy.dayPrefix(day.dayNumber)}: {day.title}</span>
           {day.oneLiner && (
             <span className="text-muted-foreground"> — {day.oneLiner}</span>
           )}
@@ -44,6 +48,8 @@ function DayPreviews({ segment }: { segment: EditorialSegment }) {
 
 function SegmentCard({ segment }: { segment: EditorialSegment }) {
   const [showDays, setShowDays] = useState(false);
+  const { i18n } = useTranslation();
+  const copy = getPlannerBlockCopy(normalizeSupportedLanguage(i18n.language));
   const dayCount = segment.dayPreviews.length;
 
   return (
@@ -51,7 +57,7 @@ function SegmentCard({ segment }: { segment: EditorialSegment }) {
       <div className="flex items-baseline gap-2">
         <span className="text-sm font-semibold text-foreground">{segment.city}</span>
         <span className="text-xs text-muted-foreground">
-          {segment.nights} {segment.nights === 1 ? 'noche' : 'noches'}
+          {copy.nightsLabel(segment.nights)}
         </span>
       </div>
       {segment.summary && (
@@ -69,7 +75,7 @@ function SegmentCard({ segment }: { segment: EditorialSegment }) {
             <ChevronDown
               className={`h-3.5 w-3.5 transition-transform ${showDays ? 'rotate-180' : ''}`}
             />
-            {showDays ? 'Ocultar' : 'Ver'} día por día ({dayCount} {dayCount === 1 ? 'día' : 'días'})
+            {showDays ? copy.hide : copy.show} {copy.dayByDay} ({copy.daysLabel(dayCount)})
           </button>
           {showDays && <DayPreviews segment={segment} />}
         </>
@@ -96,13 +102,15 @@ function RouteFlow({ overview }: { overview: string }) {
 }
 
 function ExtraordinaryHighlights({ items }: { items: string[] }) {
+  const { i18n } = useTranslation();
+  const copy = getPlannerBlockCopy(normalizeSupportedLanguage(i18n.language));
   if (items.length === 0) return null;
 
   return (
     <div className="mt-3 rounded-lg border border-amber-200/50 bg-amber-50/30 p-3 dark:border-amber-400/30 dark:bg-amber-400/10">
       <div className="flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-200">
         <Sparkles className="h-4 w-4" />
-        <span>Experiencias destacadas</span>
+        <span>{copy.featuredExperiences}</span>
       </div>
       <ul className="mt-2 space-y-1">
         {items.map((item, i) => (

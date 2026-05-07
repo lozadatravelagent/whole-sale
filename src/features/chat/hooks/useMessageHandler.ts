@@ -37,7 +37,7 @@ import {
   prepareTurnContext,
 } from '@/features/chat/state/messageTurnContext';
 import { toCanonicalFields } from '@/features/chat/state/pendingActionDispatcher';
-import { getTypingStatusCopy } from '@/features/chat/i18n/chatResultCopy';
+import { getTypingStatusCopy, getSuggestedActionCopy, formatTravelerPhrase, formatDateRangePhrase, type UserLanguage as I18nUserLanguage } from '@/features/chat/i18n/chatResultCopy';
 import i18n from '@/i18n';
 
 function formatPlannerDateSelectionMessage(selection: {
@@ -162,16 +162,11 @@ function slugAction(value: string): string {
     .slice(0, 40) || 'accion';
 }
 
-function buildTravelerPhrase(travelers?: { adults?: number; children?: number; infants?: number } | null): string {
-  const adults = travelers?.adults ?? 1;
-  const children = travelers?.children ?? 0;
-  const infants = travelers?.infants ?? 0;
-  const parts = [
-    `${adults} adulto${adults === 1 ? '' : 's'}`,
-    children > 0 ? `${children} menor${children === 1 ? '' : 'es'}` : null,
-    infants > 0 ? `${infants} infante${infants === 1 ? '' : 's'}` : null,
-  ].filter(Boolean);
-  return parts.join(', ');
+function buildTravelerPhrase(
+  travelers?: { adults?: number; children?: number; infants?: number } | null,
+  language: I18nUserLanguage = 'es',
+): string {
+  return formatTravelerPhrase(travelers, language);
 }
 
 function getFirstPlannerCity(plannerState?: TripPlannerState | null): string {
@@ -234,7 +229,13 @@ function getStructuredPlannerData(structuredData?: unknown): TripPlannerState | 
   return structured?.plannerData || null;
 }
 
-function buildSearchPrompt(kind: 'flight' | 'hotel', destination: string, parsedRequest?: ParsedTravelRequest | null, plannerState?: TripPlannerState | null): string {
+function buildSearchPrompt(
+  kind: 'flight' | 'hotel',
+  destination: string,
+  parsedRequest?: ParsedTravelRequest | null,
+  plannerState?: TripPlannerState | null,
+  language: I18nUserLanguage = 'es',
+): string {
   const origin = isUsableActionText(parsedRequest?.flights?.origin) ? normalizeActionText(parsedRequest?.flights?.origin) : normalizeActionText(plannerState?.origin);
   const startDate = isUsableActionText(parsedRequest?.flights?.departureDate)
     ? parsedRequest?.flights?.departureDate
@@ -247,14 +248,15 @@ function buildSearchPrompt(kind: 'flight' | 'hotel', destination: string, parsed
       ? parsedRequest?.hotels?.checkoutDate
       : plannerState?.endDate;
   const travelers = parsedRequest?.flights || parsedRequest?.hotels || plannerState?.travelers;
-  const travelerPhrase = buildTravelerPhrase(travelers);
-  const datePhrase = startDate && endDate ? ` del ${startDate} al ${endDate}` : startDate ? ` desde el ${startDate}` : '';
+  const travelerPhrase = buildTravelerPhrase(travelers, language);
+  const datePhrase = formatDateRangePhrase(startDate, endDate, language);
+  const copy = getSuggestedActionCopy(language);
 
   if (kind === 'flight') {
-    return `Quiero buscar vuelos para ${destination}${origin ? ` desde ${origin}` : ''}${datePhrase} para ${travelerPhrase}.`;
+    return copy.searchFlightsPrompt(destination, origin || '', datePhrase, travelerPhrase);
   }
 
-  return `Quiero buscar hoteles en ${destination}${datePhrase} para ${travelerPhrase}.`;
+  return copy.searchHotelPrompt(destination, datePhrase, travelerPhrase);
 }
 
 function buildSuggestedActions(options: {
@@ -262,8 +264,10 @@ function buildSuggestedActions(options: {
   plannerState?: TripPlannerState | null;
   structuredData?: unknown;
   assistantResponseNumber: number;
+  language?: I18nUserLanguage;
 }): ChatSuggestedAction[] {
-  const { parsedRequest, plannerState, structuredData, assistantResponseNumber } = options;
+  const { parsedRequest, plannerState, structuredData, assistantResponseNumber, language = 'es' } = options;
+  const copy = getSuggestedActionCopy(language);
   const actions: ChatSuggestedAction[] = [];
   const seen = new Set<string>();
   const add = (action: Omit<ChatSuggestedAction, 'id'>) => {
@@ -284,8 +288,8 @@ function buildSuggestedActions(options: {
 
     if (!hasFlights) {
       add({
-        label: `Buscar vuelos para ${labelDestination}`,
-        prompt: buildSearchPrompt('flight', labelDestination, parsedRequest, plannerForActions),
+        label: copy.searchFlights(labelDestination),
+        prompt: buildSearchPrompt('flight', labelDestination, parsedRequest, plannerForActions, language),
         type: 'flight',
         priority: 1,
       });
@@ -293,16 +297,16 @@ function buildSuggestedActions(options: {
 
     if (!hasHotels) {
       add({
-        label: `Buscar hotel en ${labelDestination}`,
-        prompt: buildSearchPrompt('hotel', labelDestination, parsedRequest, plannerForActions),
+        label: copy.searchHotel(labelDestination),
+        prompt: buildSearchPrompt('hotel', labelDestination, parsedRequest, plannerForActions, language),
         type: 'hotel',
         priority: 2,
       });
     }
 
     add({
-      label: `Armar itinerario en ${labelDestination}`,
-      prompt: `Quiero armar un itinerario completo para ${labelDestination}.`,
+      label: copy.buildItinerary(labelDestination),
+      prompt: copy.buildItineraryPrompt(labelDestination),
       type: 'itinerary',
       priority: 3,
     });
@@ -310,8 +314,8 @@ function buildSuggestedActions(options: {
 
   if (plannerForActions && assistantResponseNumber >= 3) {
     add({
-      label: 'Cotizar este plan',
-      prompt: 'Quiero cotizar vuelos y hoteles para este plan.',
+      label: copy.quotePlan,
+      prompt: copy.quotePlanPrompt,
       type: 'quote',
       priority: 0,
     });
@@ -1560,6 +1564,7 @@ const useMessageHandler = (
               parsedRequest,
               plannerState: plannerState as TripPlannerState | null,
               assistantResponseNumber: assistantResponseCountBeforeTurn + 1,
+              language: userLanguage,
             }),
           }
         });
@@ -2443,6 +2448,7 @@ const useMessageHandler = (
               ?? buildDiscoveryResponseFromToolResult({
                 message: discoveryMessage,
                 placeDiscoveryResult: parsedRequest.placeDiscoveryResult,
+                language: userLanguage,
               });
             if (discoveryResult) {
               assistantResponse = discoveryResult.text;
@@ -2633,6 +2639,7 @@ const useMessageHandler = (
         plannerState: plannerState as TripPlannerState | null,
         structuredData,
         assistantResponseNumber: assistantResponseCountBeforeTurn + 1,
+        language: userLanguage,
       });
 
       // Generate client_id for the assistant message so the 5-layer dedup in

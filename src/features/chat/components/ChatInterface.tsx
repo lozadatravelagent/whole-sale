@@ -287,7 +287,7 @@ const ChatInterface = React.memo(({
   const isFirstPlanProposal = renderPolicy.showPlannerCta && !renderPolicy.showCombinedCards;
   const discoveryContext = (lastMeta?.discoveryContext as DiscoveryContext | undefined) || undefined;
   const lastRecommendedPlaces = extractRecommendedPlacesFromMeta(lastMeta);
-  const lastConversationGaps = deriveConversationGaps(lastMeta);
+  const lastConversationGaps = deriveConversationGaps(lastMeta, normalizeSupportedLanguage(i18n.language));
   const suggestedActions = Array.isArray(lastMeta?.suggestedActions)
     ? (lastMeta.suggestedActions as ChatSuggestedAction[])
         .filter((action) => typeof action?.label === 'string' && typeof action?.prompt === 'string')
@@ -298,7 +298,11 @@ const ChatInterface = React.memo(({
     ? lastVisibleMessage.content
     : (lastVisibleMessage?.content as { text?: string } | undefined)?.text || '';
   const discoveryVisual = isShowPlacesTurn
-    ? getDiscoveryVisualConfig((lastMeta?.requestText as string | undefined) || lastMessageText, lastRecommendedPlaces[0]?.city)
+    ? getDiscoveryVisualConfig(
+        (lastMeta?.requestText as string | undefined) || lastMessageText,
+        lastRecommendedPlaces[0]?.city,
+        normalizeSupportedLanguage(i18n.language),
+      )
     : null;
 
   return (

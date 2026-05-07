@@ -1,4 +1,4 @@
-import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { ParsedTravelRequest, UserLanguage } from '@/services/aiMessageParser';
 import type { ChatRecommendedPlace } from './conversationOrchestrator';
 import { formatDiscoveryResponse } from './conversationOrchestrator';
 
@@ -78,6 +78,7 @@ function queryTypeFromDiscoveryIntent(intent?: string): DiscoveryContext['queryT
 export function buildDiscoveryResponseFromToolResult(options: {
   message: string;
   placeDiscoveryResult: ParsedTravelRequest['placeDiscoveryResult'];
+  language?: UserLanguage;
 }): {
   text: string;
   discoveryContext: DiscoveryContext | null;
@@ -142,6 +143,7 @@ export function buildDiscoveryResponseFromToolResult(options: {
       city: destination.city,
       requestText: options.message,
       places,
+      language: options.language,
     }),
     discoveryContext,
     recommendedPlaces: places,

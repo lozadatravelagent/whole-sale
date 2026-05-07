@@ -1,6 +1,12 @@
 import { Calendar, Download, Loader2, MapPin, Plus, Route, Users } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  getPlannerBlockCopy,
+  getTravelerCopy,
+  normalizeSupportedLanguage,
+  type UserLanguage,
+} from '@/features/chat/i18n/chatResultCopy';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -42,16 +48,17 @@ interface ChatWorkspaceHeaderActionsProps {
   onExportPdf?: () => Promise<void>;
 }
 
-function formatTravelersText(travelers: TripPlannerState['travelers']): string | null {
+function formatTravelersText(travelers: TripPlannerState['travelers'], language: UserLanguage): string | null {
   const adults = travelers?.adults ?? 0;
   const children = travelers?.children ?? 0;
   const infants = travelers?.infants ?? 0;
   if (adults + children + infants === 0) return null;
 
+  const tCopy = getTravelerCopy(language);
   const parts: string[] = [];
-  if (adults > 0) parts.push(`${adults} ${adults === 1 ? 'adulto' : 'adultos'}`);
-  if (children > 0) parts.push(`${children} ${children === 1 ? 'menor' : 'menores'}`);
-  if (infants > 0) parts.push(`${infants} ${infants === 1 ? 'bebé' : 'bebés'}`);
+  if (adults > 0) parts.push(tCopy.adult(adults));
+  if (children > 0) parts.push(tCopy.child(children));
+  if (infants > 0) parts.push(tCopy.infant(infants));
   return parts.join(' · ');
 }
 
@@ -95,15 +102,18 @@ export function ChatWorkspaceHeaderContext({
   plannerState,
   discoveryContext,
 }: ChatWorkspaceHeaderContextProps) {
-  const { t } = useTranslation('chat');
+  const { t, i18n } = useTranslation('chat');
+  const language = normalizeSupportedLanguage(i18n.language);
+  const headerCopy = getPlannerBlockCopy(language);
+  const tCopy = getTravelerCopy(language);
   if (!selectedConversation) return null;
 
   const destinations = getDestinations(plannerState, discoveryContext);
   const visibleDestinations = destinations.slice(0, 3);
   const extraDestinationCount = Math.max(0, destinations.length - visibleDestinations.length);
   const dateLabel = getDateLabel(plannerState);
-  const travelersLabel = plannerState ? formatTravelersText(plannerState.travelers) : null;
-  const daysLabel = plannerState?.days ? `${plannerState.days} días` : null;
+  const travelersLabel = plannerState ? formatTravelersText(plannerState.travelers, language) : null;
+  const daysLabel = plannerState?.days ? tCopy.day(plannerState.days) : null;
   const budgetLabel = plannerState?.budgetLevel ? formatBudgetLevel(plannerState.budgetLevel) : null;
   const paceLabel = plannerState?.pace ? formatPaceLabel(plannerState.pace) : null;
   const title = getConversationTitle(conversation, plannerState, t('sidebar.newConversation'));
@@ -130,7 +140,7 @@ export function ChatWorkspaceHeaderContext({
               )}
             </>
           ) : (
-            <span className="truncate text-xs text-muted-foreground">Chat de viaje</span>
+            <span className="truncate text-xs text-muted-foreground">{headerCopy.travelChat}</span>
           )}
           {daysLabel && (
             <span className="flex-shrink-0 text-xs text-muted-foreground">· {daysLabel}</span>
@@ -172,6 +182,8 @@ export function ChatWorkspaceHeaderActions({
   onRequestChanges,
   onExportPdf,
 }: ChatWorkspaceHeaderActionsProps) {
+  const { i18n } = useTranslation('chat');
+  const headerCopy = getPlannerBlockCopy(normalizeSupportedLanguage(i18n.language));
   const [isExporting, setIsExporting] = useState(false);
   const hasItinerary = hasItineraryContent(plannerState);
   const canExport = hasItinerary && canExportPdf(plannerState);
@@ -202,11 +214,11 @@ export function ChatWorkspaceHeaderActions({
           <DialogTrigger asChild>
             <Button size="sm" variant="outline" className="h-8 gap-1.5 px-3 text-xs">
               <Route className="h-3.5 w-3.5" />
-              Itinerario
+              {headerCopy.itineraryButton}
             </Button>
           </DialogTrigger>
           <DialogContent className="h-[min(760px,86vh)] max-w-md overflow-hidden p-0">
-            <DialogTitle className="sr-only">Itinerario del viaje</DialogTitle>
+            <DialogTitle className="sr-only">{headerCopy.itineraryDialogTitle}</DialogTitle>
             {itineraryPanel}
           </DialogContent>
         </Dialog>
@@ -240,7 +252,7 @@ export function ChatWorkspaceHeaderActions({
             size="sm"
             variant="outline"
             className="h-8 gap-1.5 px-3 text-xs"
-            title="Agregar conversación al CRM"
+            title={headerCopy.addToCrm}
           >
             {isAddingToCRM ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
             CRM

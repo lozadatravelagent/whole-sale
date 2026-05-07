@@ -3,7 +3,14 @@ import type { TripPlannerState, PlannerActivity, PlannerRestaurant } from '@/fea
 import type { ContextState } from '../types/contextState';
 import type { RouteResult } from './routeRequest';
 import { isGenericPlaceholder } from './itineraryPipeline';
-import { getConversationalMissingInfoCopy, getPlanToQuoteCopy, LOCALE_BY_LANGUAGE } from '@/features/chat/i18n/chatResultCopy';
+import {
+  getConversationalMissingInfoCopy,
+  getPlanToQuoteCopy,
+  getPlannerBlockCopy,
+  getTravelerCopy,
+  joinCitiesPhrase,
+  LOCALE_BY_LANGUAGE,
+} from '@/features/chat/i18n/chatResultCopy';
 
 export interface ChatRecommendedPlace {
   placeId?: string;
@@ -388,13 +395,13 @@ function getKnownDestination(parsed?: ParsedTravelRequest | null): string | unde
   return undefined;
 }
 
-function getKnownDuration(parsed?: ParsedTravelRequest | null): string | undefined {
+function getKnownDuration(parsed?: ParsedTravelRequest | null, language: UserLanguage = 'es'): string | undefined {
   const days = parsed?.itinerary?.days;
   if (!days) return undefined;
-  return `${days} día${days !== 1 ? 's' : ''}`;
+  return getTravelerCopy(language).day(days);
 }
 
-function getKnownTravelers(parsed?: ParsedTravelRequest | null): string | undefined {
+function getKnownTravelers(parsed?: ParsedTravelRequest | null, language: UserLanguage = 'es'): string | undefined {
   if (!parsed) return undefined;
   const itineraryTravelers = parsed.itinerary?.travelers;
   const adults = itineraryTravelers?.adults ?? parsed.hotels?.adults ?? parsed.flights?.adults;
@@ -402,11 +409,12 @@ function getKnownTravelers(parsed?: ParsedTravelRequest | null): string | undefi
   const infants = itineraryTravelers?.infants ?? parsed.hotels?.infants ?? parsed.flights?.infants ?? 0;
   if (!adults && !children && !infants) return undefined;
 
+  const copy = getTravelerCopy(language);
   const parts: string[] = [];
-  if (adults && adults > 0) parts.push(`${adults} adulto${adults > 1 ? 's' : ''}`);
-  if (children && children > 0) parts.push(`${children} niño${children > 1 ? 's' : ''}`);
-  if (infants && infants > 0) parts.push(`${infants} bebé${infants > 1 ? 's' : ''}`);
-  return parts.join(', ');
+  if (adults && adults > 0) parts.push(copy.adult(adults));
+  if (children && children > 0) parts.push(copy.child(children));
+  if (infants && infants > 0) parts.push(copy.infant(infants));
+  return parts.join(copy.join);
 }
 
 function normalizeMissingField(field: string): string {
@@ -426,8 +434,8 @@ function normalizeMissingField(field: string): string {
 function buildKnownContextLead(parsed?: ParsedTravelRequest | null, language: UserLanguage = 'es'): string {
   const requestType = getRequestTypeFromParsed(parsed);
   const destination = getKnownDestination(parsed);
-  const duration = getKnownDuration(parsed);
-  const travelers = getKnownTravelers(parsed);
+  const duration = getKnownDuration(parsed, language);
+  const travelers = getKnownTravelers(parsed, language);
   const copy = getConversationalMissingInfoCopy(language).contextLead;
 
   if (requestType === 'itinerary' && destination) {
@@ -607,56 +615,59 @@ export function extractRecommendedPlacesFromMeta(meta?: Record<string, unknown> 
   return places.slice(0, 6);
 }
 
-export function getDiscoveryVisualConfig(requestText: string, city?: string): DiscoveryVisualConfig {
-  const place = city || 'ese destino';
+export function getDiscoveryVisualConfig(requestText: string, city?: string, language: UserLanguage = 'es'): DiscoveryVisualConfig {
+  const copy = getPlannerBlockCopy(language);
+  const place = city || copy.fallbackPlace;
   if (SPECIALIZED_CULTURE_PATTERN.test(requestText)) {
     return {
-      title: `Museos y cultura en ${place}`,
-      subtitle: 'Arrancá por lo más representativo antes de ir a lugares más nicho.',
-      primaryCtaLabel: 'Ordenarlo por días',
-      secondaryCtaLabel: 'Ver más',
+      title: copy.museumsCulture(place),
+      subtitle: copy.cultureSubtitle,
+      primaryCtaLabel: copy.primaryCtaOrderByDays,
+      secondaryCtaLabel: copy.secondaryCtaSeeMore,
     };
   }
   return {
-    title: `Imperdibles en ${place}`,
-    subtitle: `Lugares clave para arrancar bien en ${place}.`,
-    primaryCtaLabel: 'Guardar imperdible',
-    secondaryCtaLabel: 'Ver más',
+    title: copy.mustSee(place),
+    subtitle: copy.mustSeeSubtitle(place),
+    primaryCtaLabel: copy.primaryCtaSaveMustSee,
+    secondaryCtaLabel: copy.secondaryCtaSeeMore,
   };
 }
 
-function buildDiscoveryHeading(requestText: string, city: string): string {
+function buildDiscoveryHeading(requestText: string, city: string, language: UserLanguage = 'es'): string {
+  const copy = getPlannerBlockCopy(language);
   if (SPECIALIZED_CULTURE_PATTERN.test(requestText)) {
-    return `Si querés foco en cultura en ${city}, yo arrancaría por estos lugares:`;
+    return copy.discoveryHeadingCulture(city);
   }
   if (FOOD_PATTERN.test(requestText)) {
-    return `Para disfrutar ${city} desde lo gastronómico, te recomendaría empezar por acá:`;
+    return copy.discoveryHeadingFood(city);
   }
   if (NEIGHBORHOOD_PATTERN.test(requestText)) {
-    return `Para entender bien el espíritu de ${city}, estas zonas valen mucho la pena:`;
+    return copy.discoveryHeadingNeighborhood(city);
   }
-  return `Para ${city}, estos son los lugares que más vale la pena priorizar:`;
+  return copy.discoveryHeadingDefault(city);
 }
 
 export function formatDiscoveryResponse(options: {
   city?: string;
   requestText: string;
   places: ChatRecommendedPlace[];
+  language?: UserLanguage;
 }): string {
-  const city = options.city || 'ese destino';
+  const language = options.language || 'es';
+  const copy = getPlannerBlockCopy(language);
+  const city = options.city || copy.fallbackPlace;
   const finalPlaces = options.places.slice(0, 6);
 
   if (finalPlaces.length === 0) {
-    return `Para ${city}, te dejo una base clara de imperdibles, barrios y algún museo fuerte apenas tenga mejores candidatos del destino.`;
+    return copy.discoveryEmpty(city);
   }
 
   const lines = finalPlaces.slice(0, 6).map((place) => `- ${place.name} — ${place.description || place.category}`);
   const hasDays = /\b(1|2|3|4|5|6|7|8|9|10)\s+dias?\b/i.test(options.requestText);
-  const cta = hasDays
-    ? `Si querés, te los ordeno en un recorrido por días para aprovechar mejor ${city}.`
-    : `Si querés, te los agrupo por imperdibles, museos, barrios o te digo en qué zona conviene alojarte cerca.`;
+  const cta = hasDays ? copy.discoveryCtaWithDays(city) : copy.discoveryCtaDefault();
 
-  return `${buildDiscoveryHeading(options.requestText, city)}\n${lines.join('\n')}\n${cta}`;
+  return `${buildDiscoveryHeading(options.requestText, city, language)}\n${lines.join('\n')}\n${cta}`;
 }
 
 function hasHotelCoverage(segment: TripPlannerState['segments'][number]): boolean {
@@ -680,18 +691,15 @@ function hasTransportCoverage(transport: TripPlannerState['segments'][number]['t
   );
 }
 
-function joinCities(cities: string[]): string {
-  if (cities.length === 0) return '';
-  if (cities.length === 1) return cities[0];
-  if (cities.length === 2) return `${cities[0]} y ${cities[1]}`;
-  return `${cities.slice(0, -1).join(', ')} y ${cities[cities.length - 1]}`;
-}
-
-export function deriveConversationGaps(meta?: Record<string, unknown> | null): ConversationGap[] {
+export function deriveConversationGaps(
+  meta?: Record<string, unknown> | null,
+  language: UserLanguage = 'es',
+): ConversationGap[] {
   if (!meta) return [];
   const conversationTurn = meta.conversationTurn as ConversationTurnResolution | undefined;
   if (conversationTurn?.responseMode === 'show_places') return [];
 
+  const copy = getPlannerBlockCopy(language);
   const gaps: ConversationGap[] = [];
   const plannerData = meta.plannerData as TripPlannerState | undefined;
 
@@ -702,7 +710,7 @@ export function deriveConversationGaps(meta?: Record<string, unknown> | null): C
     if (hotelCities.length > 0) {
       gaps.push({
         key: 'hotels',
-        label: `Hoteles por definir en ${joinCities(hotelCities)}`,
+        label: copy.gapHotelsIn(joinCitiesPhrase(hotelCities, language)),
       });
     }
 
@@ -712,7 +720,7 @@ export function deriveConversationGaps(meta?: Record<string, unknown> | null): C
     if (inboundCities.length > 0) {
       gaps.push({
         key: 'flights',
-        label: `Vuelos o traslados por definir para ${joinCities(inboundCities)}`,
+        label: copy.gapFlightsTo(joinCitiesPhrase(inboundCities, language)),
       });
     }
 
@@ -720,14 +728,14 @@ export function deriveConversationGaps(meta?: Record<string, unknown> | null): C
     if (plannerData.origin && lastSegment && !hasTransportCoverage(lastSegment.transportOut)) {
       gaps.push({
         key: 'return_flight',
-        label: `Regreso a ${plannerData.origin} todavía sin cerrar`,
+        label: copy.gapReturnTo(plannerData.origin),
       });
     }
 
     if (!plannerData.isFlexibleDates && (!plannerData.startDate || !plannerData.endDate)) {
       gaps.push({
         key: 'dates',
-        label: 'Falta definir las fechas exactas del viaje',
+        label: copy.gapDates,
       });
     }
 
@@ -738,10 +746,10 @@ export function deriveConversationGaps(meta?: Record<string, unknown> | null): C
   const flightsCount = combinedData?.flights?.length ?? 0;
   const hotelsCount = combinedData?.hotels?.length ?? 0;
   if (flightsCount > 0 && hotelsCount === 0) {
-    gaps.push({ key: 'hotels', label: 'Todavía falta sumar la base de hoteles' });
+    gaps.push({ key: 'hotels', label: copy.gapHotelsBase });
   }
   if (hotelsCount > 0 && flightsCount === 0) {
-    gaps.push({ key: 'flights', label: 'Todavía falta cerrar la parte aérea' });
+    gaps.push({ key: 'flights', label: copy.gapFlightsBase });
   }
 
   return gaps;

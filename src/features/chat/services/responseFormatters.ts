@@ -9,7 +9,7 @@ import type { LocalPackageData, LocalServiceData } from '@/types/external';
 import { generateFlightItinerary } from './flightTransformer';
 import { formatDuration } from '../utils/flightHelpers';
 import { translateRoomDescription, translateRoomTypeTitle, translateFlightInfo, translateBaggage } from '../utils/translations';
-import { LOCALE_BY_LANGUAGE, getChatResultCopy, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
+import { LOCALE_BY_LANGUAGE, getChatResultCopy, getResponseFormatterCopy, getTravelerCopy, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 const formatDateByLanguage = (date: string, language: UserLanguage) =>
   new Date(date).toLocaleDateString(LOCALE_BY_LANGUAGE[language] || LOCALE_BY_LANGUAGE.es);
@@ -447,64 +447,70 @@ export const formatMultiSegmentHotelResponse = (
   return response;
 };
 
-export const formatPackageResponse = (packages: LocalPackageData[]) => {
+export const formatPackageResponse = (packages: LocalPackageData[], language: UserLanguage = 'es') => {
+  const copy = getResponseFormatterCopy(language);
   if (packages.length === 0) {
-    return '🎒 **Búsqueda de Paquetes**\n\nNo encontré paquetes disponibles. Intenta con otro destino o fechas.';
+    return copy.noPackages;
   }
 
-  let response = `🎒 **${packages.length} Paquetes Disponibles**\n\n`;
+  let response = copy.packagesAvailable(packages.length);
 
   packages.slice(0, 5).forEach((pkg) => {
     response += `---\n\n`;
     response += `🎒 **${pkg.name}**\n`;
     response += `📍 ${pkg.destination}\n`;
-    response += `💰 **Precio:** ${pkg.price} ${pkg.currency}\n`;
-    response += `📅 **Duración:** ${pkg.duration} días\n\n`;
+    response += `💰 **${copy.packagePrice}:** ${pkg.price} ${pkg.currency}\n`;
+    response += `${copy.packageDuration(pkg.duration)}\n\n`;
   });
 
-  response += '\n📋 Selecciona los paquetes que prefieras para tu cotización.';
+  response += copy.selectPackages;
   return response;
 };
 
-export const formatServiceResponse = (services: LocalServiceData[]) => {
+export const formatServiceResponse = (services: LocalServiceData[], language: UserLanguage = 'es') => {
+  const copy = getResponseFormatterCopy(language);
   if (services.length === 0) {
-    return '🚌 **Búsqueda de Servicios**\n\nNo encontré servicios disponibles. Verifica la ciudad y fechas.';
+    return copy.noServices;
   }
 
-  let response = `🚌 **${services.length} Servicios Disponibles**\n\n`;
+  let response = copy.servicesAvailable(services.length);
 
   services.slice(0, 5).forEach((service) => {
     response += `---\n\n`;
     response += `🚌 **${service.name}**\n`;
     response += `📍 ${service.city}\n`;
-    response += `💰 **Precio:** ${service.price} ${service.currency}\n`;
-    response += `⏰ **Duración:** ${service.duration}\n\n`;
+    response += `💰 **${copy.servicePrice}:** ${service.price} ${service.currency}\n`;
+    response += `⏰ **${copy.serviceDuration}:** ${service.duration}\n\n`;
   });
 
-  response += '\n📋 Selecciona los servicios que prefieras para tu cotización.';
+  response += copy.selectServices;
   return response;
 };
 
-export const formatActivityResponse = (activities: Array<{
-  name: string;
-  city: string;
-  price: { amount: number; currency: string; priceFrom?: boolean };
-  duration?: string;
-  description?: string;
-  categories?: string[];
-  cancellationPolicy?: string;
-}>) => {
+export const formatActivityResponse = (
+  activities: Array<{
+    name: string;
+    city: string;
+    price: { amount: number; currency: string; priceFrom?: boolean };
+    duration?: string;
+    description?: string;
+    categories?: string[];
+    cancellationPolicy?: string;
+  }>,
+  language: UserLanguage = 'es',
+) => {
+  const copy = getResponseFormatterCopy(language);
   if (activities.length === 0) {
-    return '🎭 **Actividades**\n\nNo encontré actividades disponibles para ese destino y fechas.';
+    return copy.noActivities;
   }
 
-  let response = `🎭 **${activities.length} Actividades Disponibles**\n\n`;
+  let response = copy.activitiesAvailable(activities.length);
 
   activities.slice(0, 10).forEach((activity, index) => {
     response += `---\n\n`;
     response += `🎭 **${index + 1}. ${activity.name}**\n`;
     response += `📍 ${activity.city}\n`;
-    response += `💰 ${activity.price.priceFrom ? 'Desde ' : ''}${activity.price.amount} ${activity.price.currency}\n`;
+    response += `💰 ${activity.price.priceFrom ? copy.activityPriceFrom : ''}${activity.price.amount} ${activity.price.currency}\n`;
     if (activity.duration) {
       response += `⏱️ ${activity.duration}\n`;
     }
@@ -520,26 +526,30 @@ export const formatActivityResponse = (activities: Array<{
   return response;
 };
 
-export const formatTransferResponse = (transfers: Array<{
-  type: string;
-  direction: string;
-  vehicle: string;
-  maxPassengers: number;
-  price: { amount: number; currency: string };
-  pickup: { location: string; time?: string };
-  dropoff: { location: string };
-  cancellationPolicy?: string;
-}>) => {
+export const formatTransferResponse = (
+  transfers: Array<{
+    type: string;
+    direction: string;
+    vehicle: string;
+    maxPassengers: number;
+    price: { amount: number; currency: string };
+    pickup: { location: string; time?: string };
+    dropoff: { location: string };
+    cancellationPolicy?: string;
+  }>,
+  language: UserLanguage = 'es',
+) => {
+  const copy = getResponseFormatterCopy(language);
   if (transfers.length === 0) {
-    return '🚐 **Traslados**\n\nNo encontré traslados disponibles para esa ruta.';
+    return copy.noTransfers;
   }
 
-  let response = `🚐 **${transfers.length} Traslados Disponibles**\n\n`;
+  let response = copy.transfersAvailable(transfers.length);
 
   transfers.slice(0, 10).forEach((transfer, index) => {
     response += `---\n\n`;
-    response += `🚐 **Opción ${index + 1}** - ${transfer.type}\n`;
-    response += `🚗 ${transfer.vehicle} (max ${transfer.maxPassengers} pax)\n`;
+    response += `🚐 **${copy.transferOption(index + 1)}** - ${transfer.type}\n`;
+    response += `🚗 ${transfer.vehicle} (${copy.transferMaxPax(transfer.maxPassengers)})\n`;
     response += `📍 ${transfer.pickup.location} → ${transfer.dropoff.location}\n`;
     response += `💰 ${transfer.price.amount} ${transfer.price.currency}\n`;
     response += `🔄 ${transfer.direction.replace('_', ' ')}\n`;
@@ -617,14 +627,16 @@ interface ItineraryData {
   generalTips: string[];
 }
 
-export const formatItineraryResponse = (data: ItineraryData): string => {
+export const formatItineraryResponse = (data: ItineraryData, language: UserLanguage = 'es'): string => {
+  const copy = getResponseFormatterCopy(language);
+  const travelerCopy = getTravelerCopy(language);
   if (!data || !data.itinerary || data.itinerary.length === 0) {
-    return '🗺️ No se pudo generar el itinerario. Por favor, intenta nuevamente.';
+    return copy.itineraryFallback;
   }
 
   let response = `🗺️ **${data.title}**\n\n`;
-  response += `📍 **Destinos:** ${data.destinations.join(', ')}\n`;
-  response += `📅 **Duración:** ${data.days} días\n\n`;
+  response += `📍 **${copy.itineraryDestinations}:** ${data.destinations.join(', ')}\n`;
+  response += `📅 **${copy.itineraryDuration}:** ${travelerCopy.day(data.days)}\n\n`;
 
   if (data.introduction) {
     response += `${data.introduction}\n\n`;
@@ -634,11 +646,11 @@ export const formatItineraryResponse = (data: ItineraryData): string => {
 
   // Format each day
   data.itinerary.forEach((day) => {
-    response += `## 📅 **Día ${day.day}: ${day.title}**\n\n`;
+    response += copy.itineraryDayLabel(day.day, day.title);
 
     // Morning activities
     if (day.morning && day.morning.length > 0) {
-      response += '☀️ **Mañana:**\n';
+      response += `${copy.itineraryMorning}\n`;
       day.morning.forEach((activity) => {
         response += `• **${activity.time}** - ${activity.activity}`;
         if (activity.tip) {
@@ -651,7 +663,7 @@ export const formatItineraryResponse = (data: ItineraryData): string => {
 
     // Afternoon activities
     if (day.afternoon && day.afternoon.length > 0) {
-      response += '🌤️ **Tarde:**\n';
+      response += `${copy.itineraryAfternoon}\n`;
       day.afternoon.forEach((activity) => {
         response += `• **${activity.time}** - ${activity.activity}`;
         if (activity.tip) {
@@ -664,7 +676,7 @@ export const formatItineraryResponse = (data: ItineraryData): string => {
 
     // Evening activities
     if (day.evening && day.evening.length > 0) {
-      response += '🌙 **Noche:**\n';
+      response += `${copy.itineraryEvening}\n`;
       day.evening.forEach((activity) => {
         response += `• **${activity.time}** - ${activity.activity}`;
         if (activity.tip) {
@@ -677,7 +689,7 @@ export const formatItineraryResponse = (data: ItineraryData): string => {
 
     // Restaurants
     if (day.restaurants && day.restaurants.length > 0) {
-      response += '🍽️ **Restaurantes recomendados:**\n';
+      response += `${copy.itineraryRestaurants}\n`;
       day.restaurants.forEach((restaurant) => {
         response += `• **${restaurant.name}** - ${restaurant.type} (${restaurant.priceRange})\n`;
       });
@@ -686,7 +698,7 @@ export const formatItineraryResponse = (data: ItineraryData): string => {
 
     // Daily travel tip
     if (day.travelTip) {
-      response += `💡 **Tip del día:** ${day.travelTip}\n`;
+      response += `💡 **${copy.itineraryDailyTip}:** ${day.travelTip}\n`;
     }
 
     response += '\n---\n\n';
@@ -694,7 +706,7 @@ export const formatItineraryResponse = (data: ItineraryData): string => {
 
   // General tips
   if (data.generalTips && data.generalTips.length > 0) {
-    response += '## 📝 **Tips Generales**\n\n';
+    response += copy.itineraryGeneralTips;
     data.generalTips.forEach((tip, index) => {
       response += `${index + 1}. ${tip}\n`;
     });
@@ -702,7 +714,7 @@ export const formatItineraryResponse = (data: ItineraryData): string => {
   }
 
   response += '---\n\n';
-  response += '✨ ¿Te gustaría que busque vuelos u hoteles para este viaje? Solo dímelo y te ayudo a cotizar.';
+  response += copy.itineraryClosingPrompt;
 
   return response;
 };

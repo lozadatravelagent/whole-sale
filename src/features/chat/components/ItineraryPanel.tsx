@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   MapPin,
   Calendar,
@@ -24,6 +25,12 @@ import {
 } from '@/features/trip-planner/utils';
 import { hasItineraryContent } from '../utils/hasItineraryContent';
 import { canExportPdf } from '@/services/pdf/itineraryPdfTemplate';
+import {
+  getPlannerBlockCopy,
+  getTravelerCopy,
+  normalizeSupportedLanguage,
+  type UserLanguage,
+} from '@/features/chat/i18n/chatResultCopy';
 
 interface ItineraryPanelProps {
   plannerState: TripPlannerState | null;
@@ -50,16 +57,17 @@ function Block({ icon, label, children }: BlockProps) {
   );
 }
 
-function formatTravelersText(travelers: TripPlannerState['travelers']): string | null {
+function formatTravelersText(travelers: TripPlannerState['travelers'], language: UserLanguage): string | null {
   const adults = travelers?.adults ?? 0;
   const children = travelers?.children ?? 0;
   const infants = travelers?.infants ?? 0;
   if (adults + children + infants === 0) return null;
 
+  const tCopy = getTravelerCopy(language);
   const parts: string[] = [];
-  if (adults > 0) parts.push(`${adults} ${adults === 1 ? 'adulto' : 'adultos'}`);
-  if (children > 0) parts.push(`${children} ${children === 1 ? 'menor' : 'menores'}`);
-  if (infants > 0) parts.push(`${infants} ${infants === 1 ? 'bebé' : 'bebés'}`);
+  if (adults > 0) parts.push(tCopy.adult(adults));
+  if (children > 0) parts.push(tCopy.child(children));
+  if (infants > 0) parts.push(tCopy.infant(infants));
   return parts.join(' · ');
 }
 
@@ -69,6 +77,10 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
   onExportPdf,
   className,
 }: ItineraryPanelProps) {
+  const { i18n } = useTranslation();
+  const language = normalizeSupportedLanguage(i18n.language);
+  const copy = getPlannerBlockCopy(language);
+  const travelerCopy = getTravelerCopy(language);
   const [isExporting, setIsExporting] = useState(false);
 
   const handleExport = useCallback(async () => {
@@ -111,7 +123,7 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
       ? formatFlexibleMonth(plannerState.flexibleMonth, plannerState.flexibleYear)
       : null;
 
-  const travelersLabel = formatTravelersText(plannerState.travelers);
+  const travelersLabel = formatTravelersText(plannerState.travelers, language);
 
   const paceLabel = plannerState.pace ? formatPaceLabel(plannerState.pace) : null;
   const budgetLabelText = plannerState.budgetLevel ? formatBudgetLevel(plannerState.budgetLevel) : null;
@@ -128,18 +140,18 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
       <div className="flex flex-col gap-1 border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">Tu viaje</h2>
+          <h2 className="text-sm font-semibold text-foreground">{copy.yourTrip}</h2>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           {isBuilding ? (
             <>
               <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Construyéndose…</span>
+              <span>{copy.building}</span>
             </>
           ) : primaryDestination ? (
             <span>{formatDestinationLabel(primaryDestination)}</span>
           ) : (
-            <span>En progreso</span>
+            <span>{copy.inProgress}</span>
           )}
         </div>
       </div>
@@ -147,7 +159,7 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="flex flex-col gap-4">
           {destinations.length > 0 && (
-            <Block icon={<MapPin className="h-3.5 w-3.5" />} label="Destino">
+            <Block icon={<MapPin className="h-3.5 w-3.5" />} label={copy.blockDestination}>
               <div className="flex flex-col gap-1">
                 <span className="font-medium">{formatDestinationLabel(primaryDestination)}</span>
                 {extraDestinations.length > 0 && (
@@ -164,19 +176,19 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
           )}
 
           {dateLabel && (
-            <Block icon={<Calendar className="h-3.5 w-3.5" />} label="Fechas">
+            <Block icon={<Calendar className="h-3.5 w-3.5" />} label={copy.blockDates}>
               <span>{dateLabel}</span>
             </Block>
           )}
 
           {travelersLabel && (
-            <Block icon={<Users className="h-3.5 w-3.5" />} label="Viajeros">
+            <Block icon={<Users className="h-3.5 w-3.5" />} label={copy.blockTravelers}>
               <span>{travelersLabel}</span>
             </Block>
           )}
 
           {segmentsWithCity.length > 0 && (
-            <Block icon={<Route className="h-3.5 w-3.5" />} label="Itinerario">
+            <Block icon={<Route className="h-3.5 w-3.5" />} label={copy.blockItinerary}>
               <ul className="flex flex-col gap-1.5">
                 {segmentsWithCity.map((segment) => {
                   const nights = segment.nights ?? segment.days?.length ?? 0;
@@ -185,7 +197,7 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
                       <span className="truncate">{formatDestinationLabel(segment.city)}</span>
                       {nights > 0 && (
                         <span className="text-xs text-muted-foreground">
-                          {nights} {nights === 1 ? 'noche' : 'noches'}
+                          {travelerCopy.night(nights)}
                         </span>
                       )}
                     </li>
@@ -196,7 +208,7 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
           )}
 
           {paceLabel && (
-            <Block icon={<Sparkles className="h-3.5 w-3.5" />} label="Estilo de viaje">
+            <Block icon={<Sparkles className="h-3.5 w-3.5" />} label={copy.blockTravelStyle}>
               <Badge variant="secondary" className="font-normal">
                 {paceLabel}
               </Badge>
@@ -204,7 +216,7 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
           )}
 
           {budgetLabelText && (
-            <Block icon={<DollarSign className="h-3.5 w-3.5" />} label="Presupuesto">
+            <Block icon={<DollarSign className="h-3.5 w-3.5" />} label={copy.blockBudget}>
               <Badge variant="secondary" className="font-normal">
                 {budgetLabelText}
               </Badge>
@@ -212,7 +224,7 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
           )}
 
           {notes.length > 0 && (
-            <Block icon={<FileText className="h-3.5 w-3.5" />} label="Notas">
+            <Block icon={<FileText className="h-3.5 w-3.5" />} label={copy.blockNotes}>
               <ul className="flex flex-col gap-1">
                 {notes.map((note, idx) => (
                   <li key={idx} className="text-sm text-muted-foreground">
@@ -240,12 +252,12 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
                 {isExporting ? (
                   <>
                     <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                    Generando PDF…
+                    {copy.generatingPdf}
                   </>
                 ) : (
                   <>
                     <Download className="mr-2 h-3 w-3" />
-                    Descargar itinerario
+                    {copy.downloadItinerary}
                   </>
                 )}
               </Button>
@@ -257,7 +269,7 @@ const ItineraryPanel = React.memo(function ItineraryPanel({
                 className="w-full"
                 onClick={onRequestChanges}
               >
-                ¿Querés ajustar algo?
+                {copy.askAdjustments}
               </Button>
             )}
           </div>
