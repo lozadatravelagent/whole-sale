@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { Luggage, X } from 'lucide-react';
+import { normalizeSupportedLanguage, type UserLanguage } from '../../i18n/chatResultCopy';
 
 interface BaggageChipProps {
   /** Si el filtro está activo (true) o no (null/false) */
@@ -10,10 +11,12 @@ interface BaggageChipProps {
   count?: number;
   /** Callback cuando cambia el filtro */
   onChange: (value: boolean | null) => void;
+  language?: UserLanguage | string;
 }
 
-export function BaggageChip({ value, count = 0, onChange }: BaggageChipProps) {
-  const { t } = useTranslation('chat');
+export function BaggageChip({ value, count = 0, onChange, language }: BaggageChipProps) {
+  const { i18n } = useTranslation('chat');
+  const t = i18n.getFixedT(normalizeSupportedLanguage(language), 'chat');
   const hasFilter = value === true;
 
   const handleClick = () => {

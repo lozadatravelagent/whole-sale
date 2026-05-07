@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { CheckCircle, AlertCircle, Bed, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { useChatDataTranslations } from '@/features/chat/hooks/useChatDataTranslations';
+import { getResultSelectorCopy, LOCALE_BY_LANGUAGE, normalizeSupportedLanguage, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 
 interface Room {
     occupancy_id: string;
@@ -43,6 +44,7 @@ interface RoomGroupSelectorProps {
     hotelId?: string;
     nights?: number; // Number of nights for per-night price calculation
     compact?: boolean;
+    language?: UserLanguage | string;
 }
 
 const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
@@ -58,10 +60,14 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     failedPrices = {},
     hotelId = '',
     nights,
-    compact = false
+    compact = false,
+    language
 }) => {
     const [showAllRooms, setShowAllRooms] = useState(false);
     const { translateRoomDescription } = useChatDataTranslations();
+    const normalizedLanguage = normalizeSupportedLanguage(language);
+    const copy = getResultSelectorCopy(normalizedLanguage);
+    const locale = LOCALE_BY_LANGUAGE[normalizedLanguage];
 
     // Helper to get exact price for a room
     const getExactPrice = (roomId: string): ExactPriceData | null => {
@@ -148,13 +154,13 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     }, [rooms]);
 
     const getAvailabilityStatus = (availability: number) => {
-        if (availability >= 3) return { text: 'Disponible', icon: CheckCircle, color: 'bg-green-500' };
-        if (availability >= 2) return { text: 'Consultar', icon: AlertCircle, color: 'bg-yellow-500' };
-        return { text: 'No disponible', icon: AlertCircle, color: 'bg-red-500' };
+        if (availability >= 3) return { text: copy.availability.available, icon: CheckCircle, color: 'bg-green-500' };
+        if (availability >= 2) return { text: copy.availability.consult, icon: AlertCircle, color: 'bg-yellow-500' };
+        return { text: copy.availability.unavailable, icon: AlertCircle, color: 'bg-red-500' };
     };
 
     const formatPrice = (price: number, currency: string) => {
-        return new Intl.NumberFormat('es-AR', {
+        return new Intl.NumberFormat(locale, {
             style: 'currency',
             currency: currency === 'USD' ? 'USD' : 'ARS',
             minimumFractionDigits: 0,
@@ -177,7 +183,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
         const description = (room.description || '').toLowerCase();
 
         if (isCheapest) {
-            reasons.push("Mejor precio");
+            reasons.push(copy.bestPrice);
             badgeVariant = "default";
         } else if (isMostExpensive) {
             badgeVariant = "secondary";
@@ -214,7 +220,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
 
         // Si no hay razones específicas, usar diferencias de precio
         if (reasons.length === 0 && priceDifference > 0) {
-            reasons.push(`+${formatPrice(priceDifference, room.currency)} vs. opción básica`);
+            reasons.push(copy.vsBasicOption(`+${formatPrice(priceDifference, room.currency)}`));
         }
 
         return {
@@ -262,14 +268,14 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
         return (
             <div className="text-center py-4 text-muted-foreground">
                 <Bed className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>No hay habitaciones disponibles</p>
+                <p>{copy.noRooms}</p>
             </div>
         );
     }
 
     return (
         <div className={compact ? 'space-y-2' : 'space-y-3'}>
-            <h4 className={compact ? 'text-xs font-medium' : 'text-sm font-medium'}>Habitaciones disponibles:</h4>
+            <h4 className={compact ? 'text-xs font-medium' : 'text-sm font-medium'}>{copy.availableRooms}</h4>
 
             <div className={compact ? 'space-y-2' : 'space-y-3'}>
                 {Object.entries(roomsToShow).map(([roomType, roomsInType]) => (
@@ -299,7 +305,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                         {isLoadingPrice(room.occupancy_id) ? (
                                                             <div className="flex items-center space-x-1">
                                                                 <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                                                                <span className="text-xs text-muted-foreground">Calculando...</span>
+                                                                <span className="text-xs text-muted-foreground">{copy.calculating}</span>
                                                             </div>
                                                         ) : (() => {
                                                             const exactPrice = getExactPrice(room.occupancy_id);
@@ -313,7 +319,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                                             {formatPrice(exactPricePerNight, exactPrice!.currency)}
                                                                         </span>
                                                                         <Badge variant="outline" className="text-[10px] px-1 py-0 bg-green-50 text-green-700 border-green-200">
-                                                                            Exacto
+                                                                            {copy.exact}
                                                                         </Badge>
                                                                     </div>
                                                                 );
@@ -328,12 +334,12 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                                     </span>
                                                                     {isPriceFailed(room.occupancy_id) ? (
                                                                         <Badge variant="outline" className="text-[10px] px-1 py-0 bg-yellow-50 text-yellow-700 border-yellow-200">
-                                                                            Consultar disponibilidad
+                                                                            {copy.checkAvailability}
                                                                         </Badge>
                                                                     ) : exactPrice ? (
-                                                                        <span className="text-[10px] text-muted-foreground">(aprox. por noche)</span>
+                                                                        <span className="text-[10px] text-muted-foreground">{copy.approxPerNight}</span>
                                                                     ) : room.fare_id_broker ? (
-                                                                        <span className="text-[10px] text-muted-foreground">(aprox.)</span>
+                                                                        <span className="text-[10px] text-muted-foreground">{copy.approx}</span>
                                                                     ) : null}
                                                                 </div>
                                                             );
@@ -342,12 +348,12 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
 
                                                     {priceInfo.isCheapest && !getExactPrice(room.occupancy_id) && (
                                                         <Badge variant={priceInfo.badgeVariant} className="text-xs">
-                                                            💰 Mejor precio
+                                                            {copy.bestPrice}
                                                         </Badge>
                                                     )}
                                                     {getExactPrice(room.occupancy_id) && priceInfo.isCheapest && (
                                                         <Badge variant="default" className="text-xs bg-green-600">
-                                                            ✓ Precio verificado
+                                                            {copy.verifiedPrice}
                                                         </Badge>
                                                     )}
                                                 </div>
@@ -355,7 +361,7 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                 {/* Mostrar diferencia de precio */}
                                                 {priceInfo.priceDifference > 0 && !priceInfo.isCheapest && (
                                                     <div className="text-xs text-orange-600 font-medium">
-                                                        +{formatPrice(priceInfo.priceDifference, room.currency)} vs. opción básica
+                                                        {copy.vsBasicOption(`+${formatPrice(priceInfo.priceDifference, room.currency)}`)}
                                                     </div>
                                                 )}
 
@@ -395,11 +401,11 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                     <div className="text-xs text-muted-foreground">
                                                         {getExactPrice(room.occupancy_id) ? (
                                                             <span className="text-green-700 font-medium">
-                                                                {formatPrice(getExactPrice(room.occupancy_id)!.price, getExactPrice(room.occupancy_id)!.currency)} total
+                                                                {formatPrice(getExactPrice(room.occupancy_id)!.price, getExactPrice(room.occupancy_id)!.currency)} {copy.total}
                                                             </span>
                                                         ) : (
                                                             <span>
-                                                                {formatPrice(room.total_price, room.currency)} total {room.fare_id_broker && <span className="text-[10px]">(aprox.)</span>}
+                                                                {formatPrice(room.total_price, room.currency)} {copy.total} {room.fare_id_broker && <span className="text-[10px]">{copy.approx}</span>}
                                                             </span>
                                                         )}
                                                     </div>
@@ -425,12 +431,12 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                         {showAllRooms ? (
                             <>
                                 <ChevronUp className="h-4 w-4" />
-                                <span>Ver menos</span>
+                                <span>{copy.showLess}</span>
                             </>
                         ) : (
                             <>
                                 <ChevronDown className="h-4 w-4" />
-                                <span>Ver más opciones ({totalRooms - Object.keys(roomsToShow).length} más)</span>
+                                <span>{copy.showMoreOptions(totalRooms - Object.keys(roomsToShow).length)}</span>
                             </>
                         )}
                     </Button>

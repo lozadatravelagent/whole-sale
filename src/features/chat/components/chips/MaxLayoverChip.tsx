@@ -9,12 +9,14 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Timer, X } from 'lucide-react';
 import { useState } from 'react';
+import { normalizeSupportedLanguage, type UserLanguage } from '../../i18n/chatResultCopy';
 
 interface MaxLayoverChipProps {
   /** Valor actual del filtro (horas) o null */
   value: number | null;
   /** Callback cuando cambia el filtro */
   onChange: (hours: number | null) => void;
+  language?: UserLanguage | string;
 }
 
 const LAYOVER_OPTIONS = [
@@ -24,8 +26,9 @@ const LAYOVER_OPTIONS = [
   { hours: 8, label: '≤8h' },
 ] as const;
 
-export function MaxLayoverChip({ value, onChange }: MaxLayoverChipProps) {
-  const { t } = useTranslation('chat');
+export function MaxLayoverChip({ value, onChange, language }: MaxLayoverChipProps) {
+  const { i18n } = useTranslation('chat');
+  const t = i18n.getFixedT(normalizeSupportedLanguage(language), 'chat');
   const [open, setOpen] = useState(false);
 
   const hasFilter = value !== null;

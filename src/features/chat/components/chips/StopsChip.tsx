@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { normalizeSupportedLanguage, type UserLanguage } from '../../i18n/chatResultCopy';
 
 interface StopsChipProps {
   /** Distribución de escalas: { 0: 5, 1: 22, 2: 10 } */
@@ -9,10 +10,12 @@ interface StopsChipProps {
   value: number | null;
   /** Callback cuando cambia el filtro */
   onChange: (maxStops: number | null) => void;
+  language?: UserLanguage | string;
 }
 
-export function StopsChip({ distribution, value, onChange }: StopsChipProps) {
-  const { t } = useTranslation('chat');
+export function StopsChip({ distribution, value, onChange, language }: StopsChipProps) {
+  const { i18n } = useTranslation('chat');
+  const t = i18n.getFixedT(normalizeSupportedLanguage(language), 'chat');
   const STOPS_OPTIONS = [
     { value: 0, label: t('chips.stopsDirect') },
     { value: 1, label: t('chips.stopsOne') },

@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
 import type { MealPlanType } from '@/utils/roomFilters';
+import { getResultSelectorCopy, normalizeSupportedLanguage, type UserLanguage } from '../i18n/chatResultCopy';
 
 interface MealPlanDistribution {
   all_inclusive: number;
@@ -21,14 +22,8 @@ interface HotelFilterChipsProps {
   filteredCount: number;
   /** Callback cuando cambia el filtro */
   onMealPlanChange: (mealPlan: MealPlanType | null) => void;
+  language?: UserLanguage | string;
 }
-
-const MEAL_PLAN_OPTIONS: { value: MealPlanType; label: string }[] = [
-  { value: 'all_inclusive', label: 'Todo Incluido' },
-  { value: 'breakfast', label: 'Desayuno' },
-  { value: 'half_board', label: 'Media Pensión' },
-  { value: 'room_only', label: 'Solo Habitación' },
-];
 
 export function HotelFilterChips({
   distribution,
@@ -36,8 +31,16 @@ export function HotelFilterChips({
   totalCount,
   filteredCount,
   onMealPlanChange,
+  language,
 }: HotelFilterChipsProps) {
+  const copy = getResultSelectorCopy(normalizeSupportedLanguage(language));
   const hasActiveFilter = activeMealPlan !== null;
+  const mealPlanOptions: { value: MealPlanType; label: string }[] = [
+    { value: 'all_inclusive', label: copy.mealPlans.all_inclusive },
+    { value: 'breakfast', label: copy.mealPlans.breakfast },
+    { value: 'half_board', label: copy.mealPlans.half_board },
+    { value: 'room_only', label: copy.mealPlans.room_only },
+  ];
 
   const handleClick = (mealPlan: MealPlanType) => {
     if (activeMealPlan === mealPlan) {
@@ -51,7 +54,7 @@ export function HotelFilterChips({
   return (
     <div className="flex flex-wrap items-center gap-2 py-2 px-1 border-b border-border/50 mb-2">
       {/* Chips de planes de comida */}
-      {MEAL_PLAN_OPTIONS.map(({ value: mealPlan, label }) => {
+      {mealPlanOptions.map(({ value: mealPlan, label }) => {
         const count = distribution[mealPlan] || 0;
         const isSelected = activeMealPlan === mealPlan;
         const isDisabled = count === 0;
@@ -78,7 +81,7 @@ export function HotelFilterChips({
         <>
           <div className="h-4 w-px bg-border mx-1" />
           <Badge variant="secondary" className="text-xs">
-            {filteredCount} de {totalCount}
+            {filteredCount} / {totalCount}
           </Badge>
           <Button
             variant="ghost"
@@ -87,7 +90,7 @@ export function HotelFilterChips({
             onClick={() => onMealPlanChange(null)}
           >
             <X className="h-3 w-3 mr-1" />
-            Limpiar
+            {copy.clearFilter}
           </Button>
         </>
       )}

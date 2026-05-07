@@ -16,6 +16,7 @@ import type { PlannerEditorialData } from '@/features/trip-planner/editorial';
 import { resolveRenderPolicy } from '../services/itineraryPipeline';
 import { PlannerEditorialBlock } from './PlannerEditorialBlock';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import { normalizeSupportedLanguage } from '../i18n/chatResultCopy';
 
 interface LazySelectorErrorBoundaryProps {
   children: React.ReactNode;
@@ -96,7 +97,7 @@ const MarkdownContent = ({ content }: { content: string }) => {
 
 // Memoized message component to prevent unnecessary re-renders
 const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector }: MessageItemProps) => {
-  const { t } = useTranslation('chat');
+  const { t, i18n } = useTranslation('chat');
   const { translateRoomDescription } = useChatDataTranslations();
   const messageText = getMessageContent(msg);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -412,6 +413,12 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
     return combinedTravelData ? convertToGlobalCombinedData(combinedTravelData) : null;
   }, [combinedTravelData]);
 
+  const responseLanguage = normalizeSupportedLanguage(
+    (typeof msg.meta === 'object' && msg.meta
+      ? (msg.meta as { responseLanguage?: string }).responseLanguage
+      : undefined) || i18n.language
+  );
+
   return (
     <div key={msg.id}>
       <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -434,6 +441,7 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                       combinedData={memoizedCombinedData!}
                       conversationId={msg.conversation_id}
                       onPdfGenerated={onPdfGenerated}
+                      responseLanguage={responseLanguage}
                     />
                   </Suspense>
                 </LazySelectorErrorBoundary>

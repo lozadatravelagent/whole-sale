@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { formatTime } from '@/features/chat/utils/messageHelpers';
 import { getCityNameFromCode } from '@/features/chat/utils/flightHelpers';
+import { getResultSelectorCopy, LOCALE_BY_LANGUAGE, normalizeSupportedLanguage, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 import BaggageIcon from '@/components/ui/BaggageIcon';
 import PeekCarousel from '@/components/ui/PeekCarousel';
 import { supabase } from '@/integrations/supabase/client';
@@ -51,6 +52,7 @@ interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
   conversationId?: string; // Add conversation ID to get agency_id
   onPdfGenerated?: (pdfUrl: string, selectedFlights: FlightData[], selectedHotels: HotelData[]) => Promise<void>;
+  responseLanguage?: UserLanguage | string;
 }
 
 type GroupedHotelSegment = NonNullable<CombinedTravelResults['hotelSegments']>[number] & {
@@ -73,7 +75,8 @@ const getBaggageInfoFromLeg = (leg: any, optionIndex: number = 0) => {
 };
 
 // Función para obtener texto corto del equipaje para mostrar al lado de IDA/REGRESO
-const getBaggageTextFromLeg = (leg: any, airlineCode?: string, optionIndex: number = 0): string => {
+const getBaggageTextFromLeg = (leg: any, airlineCode?: string, optionIndex: number = 0, language: UserLanguage = 'es'): string => {
+  const copy = getResultSelectorCopy(language);
   const baggageInfo = getBaggageInfoFromLeg(leg, optionIndex);
 
   if (!baggageInfo.baggage && !baggageInfo.carryOnBagInfo) {
@@ -100,11 +103,11 @@ const getBaggageTextFromLeg = (leg: any, airlineCode?: string, optionIndex: numb
   const parts = [];
 
   if (checkedPieces > 0) {
-    parts.push(`${checkedPieces} despachada${checkedPieces > 1 ? 's' : ''}`);
+    parts.push(copy.checked(checkedPieces));
   }
 
   if (hasCarryOn) {
-    parts.push('1 de mano');
+    parts.push(`1 ${copy.carryOn}`);
   }
 
   // Si no hay equipaje despachado ni carry-on, decidir según aerolínea
@@ -113,10 +116,10 @@ const getBaggageTextFromLeg = (leg: any, airlineCode?: string, optionIndex: numb
     const lightTarifAirlines = ['LA', 'H2', 'AV', 'AM', 'JA', 'AR'];
 
     if (airlineCode && lightTarifAirlines.includes(airlineCode)) {
-      return '1 Mochila';
+      return `1 ${copy.backpack}`;
     } else {
       // Para otras aerolíneas, consideramos que incluye carry-on básico
-      return '(1 de mano)';
+      return `(${copy.baggageFallback})`;
     }
   }
 
@@ -247,9 +250,11 @@ interface FlightItineraryProps {
   flight: FlightData;
   selectedOptionPerLeg?: Record<number, number>;
   compact?: boolean;
+  language?: UserLanguage;
 }
 
-const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptionPerLeg = {}, compact = false }) => {
+const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptionPerLeg = {}, compact = false, language = 'es' }) => {
+  const copy = getResultSelectorCopy(language);
   const formatDate = (iso?: string) => (iso ? iso : '');
   const addDays = (iso: string, days: number) => {
     try {
@@ -263,7 +268,7 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
   return (
     <div className={compact ? "grid grid-cols-2 gap-2" : "space-y-3"}>
       {flight.legs.map((leg, legIndex) => {
-        const legType = leg.flight_type === 'outbound' ? 'IDA' : 'REGRESO';
+        const legType = leg.flight_type === 'outbound' ? copy.outbound : copy.return;
         const legIcon = leg.flight_type === 'outbound' ? <Plane className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />;
         const baseDate = leg.flight_type === 'outbound' ? flight.departure_date : (flight.return_date || flight.departure_date);
 
@@ -300,7 +305,7 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
                   className="text-foreground"
                 />
                 <span className={`font-utility font-bold uppercase tracking-[0.08em] text-foreground ${compact ? 'max-w-[5rem] truncate text-[9px]' : 'text-[11px]'}`}>
-                  {getBaggageTextFromLeg(leg, flight.airline.code, selectedOptionIndex)}
+                  {getBaggageTextFromLeg(leg, flight.airline.code, selectedOptionIndex, language)}
                 </span>
               </div>
             </div>
@@ -313,7 +318,7 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
                     <Navigation className={`${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} text-primary`} />
                   </div>
                   <div className="min-w-0">
-                    <div className={`truncate font-display italic text-foreground tracking-tight ${compact ? 'text-sm' : 'text-base'}`}>Vuelo {legType}</div>
+                    <div className={`truncate font-display italic text-foreground tracking-tight ${compact ? 'text-sm' : 'text-base'}`}>{copy.flightLeg(legType)}</div>
                     <div className={`font-mono tracking-[0.08em] uppercase text-muted-foreground ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
                       {leg.duration}
                     </div>
@@ -357,12 +362,12 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
                         <div className="text-center">
                           <div className={`flex items-center justify-center gap-1.5 ${compact ? 'mb-1' : 'mb-1.5'}`}>
                             <Timer className="h-3 w-3 text-primary" />
-                            <span className={`font-utility font-bold uppercase tracking-[0.18em] text-primary ${compact ? 'text-[9px]' : 'text-[10px]'}`}>CONEXIÓN</span>
+                            <span className={`font-utility font-bold uppercase tracking-[0.18em] text-primary ${compact ? 'text-[9px]' : 'text-[10px]'}`}>{copy.connection}</span>
                           </div>
                           <div className={`font-mono font-bold tracking-[0.08em] text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
                             {layover.destination_code} · {layover.waiting_time}
                           </div>
-                          <div className={`font-utility uppercase tracking-[0.18em] text-muted-foreground ${compact ? 'mt-0.5 text-[7px]' : 'mt-1 text-[9px]'}`}>Cambio de terminal/puerta</div>
+                          <div className={`font-utility uppercase tracking-[0.18em] text-muted-foreground ${compact ? 'mt-0.5 text-[7px]' : 'mt-1 text-[9px]'}`}>{copy.terminalChange}</div>
                         </div>
                       </div>
                     </div>
@@ -380,8 +385,12 @@ const FlightItinerary: React.FC<FlightItineraryProps> = ({ flight, selectedOptio
 const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   combinedData,
   conversationId,
-  onPdfGenerated
+  onPdfGenerated,
+  responseLanguage
 }) => {
+  const language = normalizeSupportedLanguage(responseLanguage);
+  const locale = LOCALE_BY_LANGUAGE[language];
+  const copy = getResultSelectorCopy(language);
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [selectedHotels, setSelectedHotels] = useState<string[]>([]);
   const [selectedHotelSnapshots, setSelectedHotelSnapshots] = useState<Record<string, HotelData>>({});
@@ -629,8 +638,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       // Limit to maximum 4 flights
       if (prev.length >= 4) {
         toast({
-          title: "Límite alcanzado",
-          description: "Solo puedes seleccionar máximo 4 vuelos para el PDF.",
+          title: copy.limitReached,
+          description: copy.maxFlights,
           variant: "destructive",
         });
         return prev;
@@ -664,16 +673,16 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
         if (selectedInSegment >= 2) {
           toast({
-            title: "Límite alcanzado",
-            description: `Solo puedes seleccionar hasta 2 hoteles para ${formatCityLabel(hotel.segmentCity || hotel.city)}.`,
+            title: copy.limitReached,
+            description: copy.maxHotelsForCity(formatCityLabel(hotel.segmentCity || hotel.city)),
             variant: "destructive",
           });
           return prev;
         }
       } else if (prev.length >= 3) {
         toast({
-          title: "Límite alcanzado",
-          description: "Solo puedes seleccionar máximo 3 hoteles para el PDF.",
+          title: copy.limitReached,
+          description: copy.maxHotels,
           variant: "destructive",
         });
         return prev;
@@ -810,8 +819,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     // Validate selections
     if (selectedFlights.length === 0 && selectedHotels.length === 0) {
       toast({
-        title: "Selección requerida",
-        description: "Selecciona al menos un vuelo o un hotel para generar el PDF.",
+        title: copy.selectionRequired,
+        description: copy.selectOne,
         variant: "destructive",
       });
       return;
@@ -824,8 +833,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     });
     if (hasLoadingPrices) {
       toast({
-        title: "Esperando precios exactos...",
-        description: "Los precios se están actualizando. Intenta nuevamente en unos segundos.",
+        title: copy.waitingExactPrices,
+        description: copy.pricesUpdating,
       });
       return;
     }
@@ -1049,9 +1058,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       }
 
       if (pdfUrl?.success) {
+        const quoteKind = selectedFlightData.length > 0 && selectedHotelData.length > 0
+          ? copy.combinedTrip
+          : selectedFlightData.length > 0
+            ? copy.flightsKind
+            : copy.hotelsKind;
         toast({
-          title: "PDF Generado",
-          description: `Tu cotización de ${selectedFlightData.length > 0 && selectedHotelData.length > 0 ? 'viaje combinado' : selectedFlightData.length > 0 ? 'vuelos' : 'hoteles'} está lista para descargar.`,
+          title: copy.pdfGenerated,
+          description: copy.pdfReady(quoteKind),
         });
       } else {
         throw new Error(pdfUrl?.error || 'Error desconocido');
@@ -1061,7 +1075,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       console.error('Error generating PDF:', error);
       toast({
         title: "Error",
-        description: "No se pudo generar el PDF. Inténtalo nuevamente.",
+        description: copy.pdfError,
         variant: "destructive",
       });
     } finally {
@@ -1080,7 +1094,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   };
 
   const formatPrice = (price: number, currency: string) => {
-    return new Intl.NumberFormat('es-AR', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: currency === 'USD' ? 'USD' : 'ARS',
       minimumFractionDigits: 0,
@@ -1092,34 +1106,42 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     const parts = [];
 
     if (adults > 0) {
-      parts.push(`${adults} adult${adults > 1 ? 'os' : 'o'}`);
+      parts.push(copy.adult(adults));
     }
 
     if (children > 0) {
-      parts.push(`${children} niñ${children > 1 ? 'os' : 'o'}`);
+      parts.push(copy.child(children));
     }
 
     if (infants > 0) {
-      parts.push(`${infants} bebé${infants > 1 ? 's' : ''}`);
+      parts.push(copy.infant(infants));
     }
 
     if (parts.length === 0) {
-      return 'por persona';
+      return copy.perPerson;
     }
 
     const totalPassengers = adults + children + infants;
     const passengerText = parts.join(' + ');
 
-    return `para ${passengerText} (${totalPassengers} ${totalPassengers > 1 ? 'personas' : 'persona'})`;
+    return copy.passengerSummary(passengerText, totalPassengers);
+  };
+
+  const formatTravelersInline = (adults: number = 0, children: number = 0, infants: number = 0) => {
+    const parts = [];
+    if (adults > 0) parts.push(copy.adult(adults));
+    if (children > 0) parts.push(copy.child(children));
+    if (infants > 0) parts.push(copy.infant(infants));
+    return parts.join(', ');
   };
 
   const formatSegmentTabLabel = (checkIn?: string, checkOut?: string) => {
-    if (!checkIn || !checkOut) return 'Fechas sin definir';
+    if (!checkIn || !checkOut) return copy.datesUndefined;
 
     try {
       const formatOptions: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
-      const start = new Date(`${checkIn}T00:00:00`).toLocaleDateString('es-AR', formatOptions).replace('.', '');
-      const end = new Date(`${checkOut}T00:00:00`).toLocaleDateString('es-AR', formatOptions).replace('.', '');
+      const start = new Date(`${checkIn}T00:00:00`).toLocaleDateString(locale, formatOptions).replace('.', '');
+      const end = new Date(`${checkOut}T00:00:00`).toLocaleDateString(locale, formatOptions).replace('.', '');
       return `${start} - ${end}`;
     } catch {
       return `${checkIn} - ${checkOut}`;
@@ -1127,7 +1149,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   };
 
   const formatCityLabel = (city?: string) => {
-    if (!city) return 'Destino';
+    if (!city) return copy.destination;
 
     const lowerJoiners = new Set(['de', 'del', 'la', 'las', 'los', 'y']);
 
@@ -1144,31 +1166,20 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   };
 
   const formatMealPlanLabel = (mealPlan?: string) => {
-    switch (mealPlan) {
-      case 'all_inclusive':
-        return 'All Inclusive';
-      case 'breakfast':
-        return 'Desayuno';
-      case 'half_board':
-        return 'Media pensión';
-      case 'room_only':
-        return 'Solo habitación';
-      default:
-        return mealPlan ? mealPlan.replace(/_/g, ' ') : '';
-    }
+    return mealPlan && mealPlan in copy.mealPlans
+      ? copy.mealPlans[mealPlan as keyof typeof copy.mealPlans]
+      : mealPlan ? mealPlan.replace(/_/g, ' ') : '';
   };
 
   const formatRoomTypeLabel = (roomType?: string) => {
-    switch (roomType) {
-      case 'single':
-        return 'Single';
-      case 'double':
-        return 'Doble';
-      case 'triple':
-        return 'Triple';
-      default:
-        return roomType ? roomType.replace(/_/g, ' ') : '';
-    }
+    return roomType && roomType in copy.roomTypes
+      ? copy.roomTypes[roomType as keyof typeof copy.roomTypes]
+      : roomType ? roomType.replace(/_/g, ' ') : '';
+  };
+
+  const formatCabinBrand = (brandName?: string) => {
+    if (!brandName || language !== 'en') return brandName;
+    return brandName.replace(/^Econ[oó]mica\b/i, 'Economy');
   };
 
   const selectedHotelsBySegment = useMemo(() => {
@@ -1179,7 +1190,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       if (!hotel) return;
 
       const segmentKey = getHotelSegmentKey(hotel);
-      const segmentLabel = hotel.segmentCity || hotel.city || 'Hoteles';
+      const segmentLabel = hotel.segmentCity || hotel.city || copy.hotels;
       const current = counts.get(segmentKey);
 
       counts.set(segmentKey, {
@@ -1200,13 +1211,13 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           {(combinedData.requestType === 'combined' || combinedData.requestType === 'flights-only') && (
             <TabsTrigger value="flights" className="flex items-center space-x-2" data-testid="results-tab-flights">
               <Plane className="h-4 w-4" />
-              <span>Vuelos ({hasCache ? filteredFlights.length : combinedData.flights.length})</span>
+              <span>{copy.flights} ({hasCache ? filteredFlights.length : combinedData.flights.length})</span>
             </TabsTrigger>
           )}
           {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
             <TabsTrigger value="hotels" className="flex items-center space-x-2" data-testid="results-tab-hotels">
               <Hotel className="h-4 w-4" />
-              <span>Hoteles ({hotelTabCount})</span>
+              <span>{copy.hotels} ({hotelTabCount})</span>
             </TabsTrigger>
           )}
         </TabsList>
@@ -1223,6 +1234,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                 onFilterChange={applyFilter}
                 onClearAll={clearAllFilters}
                 onToggleAirline={toggleAirline}
+                language={language}
               />
             )}
 
@@ -1230,8 +1242,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               <PeekCarousel
                 items={visibleFlights}
                 getKey={(flight, i) => flight.id ?? i}
-                prevLabel="Ver vuelo anterior"
-                nextLabel="Ver vuelo siguiente"
+                prevLabel={copy.previousFlight}
+                nextLabel={copy.nextFlight}
                 minCardWidth={320}
                 maxCardWidth={460}
                 renderItem={(flight, index) => {
@@ -1262,16 +1274,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                                     }
                                     className="text-xs px-1 py-0"
                                   >
-                                    {flight.cabin.brandName}
+                                    {formatCabinBrand(flight.cabin.brandName)}
                                   </Badge>
                                 )}
                               </div>
                               <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
                                 <div className="flex items-center space-x-1">
                                   <Users className="h-3 w-3" />
-                                  <span>{flight.adults} adult{flight.adults > 1 ? 'os' : 'o'}</span>
-                                  {flight.childrens > 0 && <span>, {flight.childrens} niño{flight.childrens > 1 ? 's' : ''}</span>}
-                                  {flight.infants > 0 && <span>, {flight.infants} bebé{flight.infants > 1 ? 's' : ''}</span>}
+                                  <span>{formatTravelersInline(flight.adults, flight.childrens, flight.infants)}</span>
                                 </div>
                               </div>
                             </div>
@@ -1290,6 +1300,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                           flight={flight}
                           selectedOptionPerLeg={selectedFlightOptions[flight.id!] || {}}
                           compact={combinedData.requestType === 'combined'}
+                          language={language}
                         />
                       </CardContent>
                     </Card>
@@ -1303,11 +1314,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               <Card data-testid="flights-empty-state">
                 <CardContent className="p-6 text-center">
                   <Plane className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground">No hay vuelos con los filtros seleccionados</p>
-                  <p className="text-sm text-muted-foreground mt-1">Prueba cambiando o limpiando los filtros</p>
+                  <p className="text-muted-foreground">{copy.noFilteredFlights}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{copy.tryChangingFilters}</p>
                   <div className="mt-3">
                     <Button variant="outline" onClick={clearAllFilters}>
-                      Limpiar filtros
+                      {copy.clearFilters}
                     </Button>
                   </div>
                 </CardContent>
@@ -1319,8 +1330,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               <Card data-testid="flights-empty-state">
                 <CardContent className="p-6 text-center">
                   <Plane className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground">No se encontraron vuelos directos para este itinerario</p>
-                  <p className="text-sm text-muted-foreground mt-1">¿Quieres repetir la búsqueda permitiendo escalas?</p>
+                  <p className="text-muted-foreground">{copy.noDirectFlights}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{copy.retryWithStopsQuestion}</p>
                   <div className="mt-3">
                     <Button
                       onClick={() => {
@@ -1329,7 +1340,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                         } catch (e) { }
                       }}
                     >
-                      Repetir búsqueda con escalas
+                      {copy.retryWithStops}
                     </Button>
                   </div>
                 </CardContent>
@@ -1369,18 +1380,18 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       {formatSegmentTabLabel(activeHotelSegment.checkinDate, activeHotelSegment.checkoutDate)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {activeSegmentSelectionCount} de 2 hoteles seleccionados
+                      {copy.segmentSelectionCount(activeSegmentSelectionCount)}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 text-xs">
                     {activeHotelSegment.requestedMealPlan && (
                       <Badge variant="secondary" className="px-2 py-1">
-                        Plan: {formatMealPlanLabel(activeHotelSegment.requestedMealPlan)}
+                        {copy.mealPlan}: {formatMealPlanLabel(activeHotelSegment.requestedMealPlan)}
                       </Badge>
                     )}
                     {activeHotelSegment.requestedRoomType && (
                       <Badge variant="outline" className="px-2 py-1">
-                        Habitación: {formatRoomTypeLabel(activeHotelSegment.requestedRoomType)}
+                        {copy.room}: {formatRoomTypeLabel(activeHotelSegment.requestedRoomType)}
                       </Badge>
                     )}
                   </div>
@@ -1405,6 +1416,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                 totalCount={hotelTotalCount}
                 filteredCount={hotelFilteredCount}
                 onMealPlanChange={setMealPlan}
+                language={language}
               />
             )}
 
@@ -1413,8 +1425,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               <PeekCarousel
                 items={activeHotels}
                 getKey={(hotel) => hotel.id}
-                prevLabel="Ver hoteles anteriores"
-                nextLabel="Ver más hoteles"
+                prevLabel={copy.previousHotels}
+                nextLabel={copy.nextHotels}
                 minCardWidth={320}
                 maxCardWidth={460}
                 itemClassName="h-full"
@@ -1486,14 +1498,12 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                                   <Calendar className="h-3 w-3 flex-shrink-0" />
                                   <span className="truncate">{hotel.check_in || 'N/A'} → {hotel.check_out || 'N/A'}</span>
                                 </div>
-                                <span className="shrink-0">({hotel.nights} noche{hotel.nights > 1 ? 's' : ''})</span>
+                                <span className="shrink-0">({copy.nights(hotel.nights)})</span>
                               </div>
                               <div className="flex items-center space-x-3 mt-0.5 text-xs text-muted-foreground">
                                 <div className="flex items-center space-x-1">
                                   <Users className="h-3 w-3" />
-                                  <span>{hotel.search_adults || 1} adult{(hotel.search_adults || 1) > 1 ? 'os' : 'o'}</span>
-                                  {(hotel.search_children || 0) > 0 && <span>, {hotel.search_children} niño{hotel.search_children! > 1 ? 's' : ''}</span>}
-                                  {(hotel.search_infants || 0) > 0 && <span>, {hotel.search_infants} bebé{hotel.search_infants! > 1 ? 's' : ''}</span>}
+                                  <span>{formatTravelersInline(hotel.search_adults || 1, hotel.search_children || 0, hotel.search_infants || 0)}</span>
                                 </div>
                               </div>
                             </div>
@@ -1517,6 +1527,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                           failedPrices={failedPrices}
                           hotelId={hotel.id}
                           nights={hotel.nights}
+                          language={language}
                         />
                       </CardContent>
                     </Card>
@@ -1530,11 +1541,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               <Card data-testid="hotels-empty-state">
                 <CardContent className="p-6 text-center">
                   <Hotel className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground">No hay hoteles con el plan de comidas seleccionado</p>
-                  <p className="text-sm text-muted-foreground mt-1">Prueba seleccionando otro plan de comidas</p>
+                  <p className="text-muted-foreground">{copy.noFilteredHotels}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{copy.tryAnotherMealPlan}</p>
                   <div className="mt-3">
                     <Button variant="outline" onClick={() => setMealPlan(null)}>
-                      Limpiar filtro
+                      {copy.clearFilter}
                     </Button>
                   </div>
                 </CardContent>
@@ -1547,9 +1558,9 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                 <CardContent className="p-6 text-center">
                   <Hotel className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
                   <p className="text-muted-foreground">
-                    {activeHotelSegment ? `No se encontraron hoteles disponibles en ${activeHotelSegment.city}` : 'No se encontraron hoteles disponibles'}
+                    {activeHotelSegment ? copy.noHotelsIn(activeHotelSegment.city) : copy.noHotels}
                   </p>
-                  <p className="text-sm text-muted-foreground mt-1">Verificando códigos de destino en EUROVIPS</p>
+                  <p className="text-sm text-muted-foreground mt-1">{copy.checkingEurovips}</p>
                 </CardContent>
               </Card>
             )}
@@ -1563,17 +1574,17 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
           <CardContent className="p-4">
             <div className="flex items-center justify-between gap-6">
               <div className="flex-1">
-                <h3 className="font-medium">Generar Cotización</h3>
+                <h3 className="font-medium">{copy.generateQuote}</h3>
                 <p className="text-sm text-muted-foreground">
-                  {selectedFlights.length > 0 && `${selectedFlights.length} vuelo(s)`}
-                  {selectedFlights.length > 0 && selectedHotels.length > 0 && ' y '}
-                  {selectedHotels.length > 0 && `${selectedHotels.length} hotel(es)`} seleccionado(s)
+                  {selectedFlights.length > 0 && copy.flightCount(selectedFlights.length)}
+                  {selectedFlights.length > 0 && selectedHotels.length > 0 && copy.selectedJoin}
+                  {selectedHotels.length > 0 && copy.hotelCount(selectedHotels.length)} {(selectedFlights.length > 0 || selectedHotels.length > 0) && copy.selected}
                 </p>
                 {selectedHotelsBySegment.length > 0 && (
                   <div className="mt-2 space-y-1 text-xs text-muted-foreground">
                     {selectedHotelsBySegment.map(segment => (
                       <p key={segment.label}>
-                        {segment.label}: {segment.count} hotel(es) seleccionado(s)
+                        {segment.label}: {copy.hotelSelectionCount(segment.count)}
                       </p>
                     ))}
                   </div>
@@ -1590,7 +1601,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                 ) : (
                   <FileText className="h-4 w-4" />
                 )}
-                <span>{isGenerating ? 'Generando...' : 'Generar PDF'}</span>
+                <span>{isGenerating ? copy.generating : copy.generatePdf}</span>
               </Button>
             </div>
           </CardContent>

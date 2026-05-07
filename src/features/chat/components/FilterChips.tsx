@@ -10,6 +10,7 @@ import {
   BaggageChip,
   MaxLayoverChip,
 } from './chips';
+import { getResultSelectorCopy, normalizeSupportedLanguage, type UserLanguage } from '../i18n/chatResultCopy';
 
 interface FilterChipsProps {
   /** Distribución de resultados para mostrar conteos */
@@ -24,6 +25,7 @@ interface FilterChipsProps {
   onClearAll: () => void;
   /** Callback para toggle de aerolínea */
   onToggleAirline: (code: string) => void;
+  language?: UserLanguage | string;
 }
 
 const MAX_AIRLINES_SHOWN = 4;
@@ -35,7 +37,10 @@ export function FilterChips({
   onFilterChange,
   onClearAll,
   onToggleAirline,
+  language,
 }: FilterChipsProps) {
+  const normalizedLanguage = normalizeSupportedLanguage(language);
+  const copy = getResultSelectorCopy(normalizedLanguage);
   // Ordenar aerolíneas por cantidad de vuelos (mayor primero)
   const sortedAirlines = Object.entries(distribution.airlines)
     .sort((a, b) => b[1] - a[1])
@@ -48,6 +53,7 @@ export function FilterChips({
         distribution={distribution.stops}
         value={activeFilters.maxStops}
         onChange={(value) => onFilterChange('maxStops', value)}
+        language={normalizedLanguage}
       />
 
       {/* Separador visual */}
@@ -72,6 +78,7 @@ export function FilterChips({
         value={activeFilters.departureTimeRange}
         distribution={distribution.departureTimeSlots}
         onChange={(value) => onFilterChange('departureTimeRange', value)}
+        language={normalizedLanguage}
       />
 
       {/* Separador visual */}
@@ -82,6 +89,7 @@ export function FilterChips({
         value={activeFilters.arrivalTimeRange}
         distribution={distribution.arrivalTimeSlots}
         onChange={(value) => onFilterChange('arrivalTimeRange', value)}
+        language={normalizedLanguage}
       />
 
       {/* Separador visual */}
@@ -92,6 +100,7 @@ export function FilterChips({
         value={activeFilters.includeBaggage}
         count={distribution.withBaggage}
         onChange={(value) => onFilterChange('includeBaggage', value)}
+        language={normalizedLanguage}
       />
 
       {/* Separador visual */}
@@ -101,6 +110,7 @@ export function FilterChips({
       <MaxLayoverChip
         value={activeFilters.maxLayoverHours}
         onChange={(value) => onFilterChange('maxLayoverHours', value)}
+        language={normalizedLanguage}
       />
 
       {/* Indicador de filtros activos + botón limpiar */}
@@ -108,7 +118,7 @@ export function FilterChips({
         <>
           <div className="h-4 w-px bg-border mx-1" />
           <Badge variant="secondary" className="text-xs">
-            {filterStats.filteredCount} de {filterStats.totalResults}
+            {filterStats.filteredCount} / {filterStats.totalResults}
           </Badge>
           <Button
             variant="ghost"
@@ -117,7 +127,7 @@ export function FilterChips({
             onClick={onClearAll}
           >
             <X className="h-3 w-3 mr-1" />
-            Limpiar
+            {copy.clearFilter}
           </Button>
         </>
       )}

@@ -716,7 +716,7 @@ const useMessageHandler = (
             conversation_id: currentConversationId,
             role: 'assistant' as const,
             content: { text: hotelResult.response },
-            meta: hotelResult.data ? { ...hotelResult.data } : {}
+            meta: hotelResult.data ? { ...hotelResult.data, responseLanguage: userLanguage } : { responseLanguage: userLanguage }
           });
 
           setMessage('');
@@ -2653,6 +2653,7 @@ const useMessageHandler = (
               ...buildCanonicalMeta(structuredData as CanonicalItineraryResult),
               ...(suggestedActions.length > 0 ? { suggestedActions } : {}),
               ...(shouldHardClose ? { conversationClosure: { phase: 'hard_close', assistantResponseNumber: assistantResponseCountBeforeTurn + 1 } } : {}),
+              responseLanguage: userLanguage,
               client_id: assistantClientId,
             }
           : {
@@ -2670,6 +2671,7 @@ const useMessageHandler = (
                 inferredFields: routeResult.inferredFields,
               },
               conversationTurn,
+              responseLanguage: userLanguage,
               client_id: assistantClientId,
             },
       }).then((saved) => {

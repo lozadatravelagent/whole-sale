@@ -11,6 +11,7 @@ import { Clock, X } from 'lucide-react';
 import { useState } from 'react';
 import type { Distribution } from '../../types/searchCache';
 import { timeNumberToString } from '../../utils/filterPipeline';
+import { normalizeSupportedLanguage, type UserLanguage } from '../../i18n/chatResultCopy';
 
 interface ArrivalTimeRangeChipProps {
   /** Valor actual del filtro [minHHMM, maxHHMM] o null */
@@ -19,6 +20,7 @@ interface ArrivalTimeRangeChipProps {
   distribution?: Distribution['arrivalTimeSlots'];
   /** Callback cuando cambia el filtro */
   onChange: (range: [number, number] | null) => void;
+  language?: UserLanguage | string;
 }
 
 const TIME_SLOTS = [
@@ -28,8 +30,9 @@ const TIME_SLOTS = [
   { key: 'night', i18nKey: 'earlyMorning', range: [2200, 559] as [number, number], icon: '🌙' },
 ] as const;
 
-export function ArrivalTimeRangeChip({ value, distribution, onChange }: ArrivalTimeRangeChipProps) {
-  const { t } = useTranslation('chat');
+export function ArrivalTimeRangeChip({ value, distribution, onChange, language }: ArrivalTimeRangeChipProps) {
+  const { i18n } = useTranslation('chat');
+  const t = i18n.getFixedT(normalizeSupportedLanguage(language), 'chat');
   const [open, setOpen] = useState(false);
 
   const hasFilter = value !== null;
