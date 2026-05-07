@@ -1,4 +1,4 @@
-import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { ParsedTravelRequest, UserLanguage } from '@/services/aiMessageParser';
 import { inferTripTypeFromSegments } from '@/services/flightSegments';
 import type { FlightData } from '../types/chat';
 import { formatDuration, getCityNameFromCode, getTaxDescription, calculateConnectionTime, getAirlineNameFromCode, getAirlineCodeFromName } from '../utils/flightHelpers';
@@ -885,18 +885,96 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
 };
 
 // Helper function to generate visual flight itinerary
-export const generateFlightItinerary = (flight: FlightData): string => {
+const FLIGHT_ITINERARY_COPY: Record<UserLanguage, {
+  outbound: string;
+  return: string;
+  noSegments: string;
+  flightWithConnections: (count: number) => string;
+  directFlight: string;
+  duration: string;
+  cabinClass: string;
+  aircraft: string;
+  connection: string;
+  in: string;
+  layoverTime: string;
+  date: string;
+  refueling: string;
+  segment: string;
+  connectionTime: string;
+  terminalChange: string;
+}> = {
+  es: {
+    outbound: 'IDA',
+    return: 'REGRESO',
+    noSegments: 'Sin información de segmentos',
+    flightWithConnections: (count) => `Vuelo con ${count} Conexión(es)`,
+    directFlight: 'Vuelo Directo',
+    duration: 'Duración',
+    cabinClass: 'Clase',
+    aircraft: 'Equipo',
+    connection: 'Conexión',
+    in: 'en',
+    layoverTime: 'Tiempo de escala',
+    date: 'Fecha',
+    refueling: 'Reabastecimiento de combustible',
+    segment: 'Segmento',
+    connectionTime: 'Tiempo de conexión',
+    terminalChange: 'Cambio de terminal/puerta',
+  },
+  en: {
+    outbound: 'OUTBOUND',
+    return: 'RETURN',
+    noSegments: 'No segment information',
+    flightWithConnections: (count) => `Flight with ${count} connection(s)`,
+    directFlight: 'Direct Flight',
+    duration: 'Duration',
+    cabinClass: 'Cabin',
+    aircraft: 'Aircraft',
+    connection: 'Connection',
+    in: 'in',
+    layoverTime: 'Layover time',
+    date: 'Date',
+    refueling: 'Fuel stop',
+    segment: 'Segment',
+    connectionTime: 'Connection time',
+    terminalChange: 'Terminal/gate change',
+  },
+  pt: {
+    outbound: 'IDA',
+    return: 'VOLTA',
+    noSegments: 'Sem informações de trechos',
+    flightWithConnections: (count) => `Voo com ${count} conexão(ões)`,
+    directFlight: 'Voo Direto',
+    duration: 'Duração',
+    cabinClass: 'Classe',
+    aircraft: 'Aeronave',
+    connection: 'Conexão',
+    in: 'em',
+    layoverTime: 'Tempo de escala',
+    date: 'Data',
+    refueling: 'Parada para reabastecimento',
+    segment: 'Trecho',
+    connectionTime: 'Tempo de conexão',
+    terminalChange: 'Troca de terminal/portão',
+  },
+};
+
+const formatFlightInfoByLanguage = (text: string, language: UserLanguage) =>
+  language === 'es' ? translateFlightInfo(text) : text;
+
+export const generateFlightItinerary = (flight: FlightData, language: UserLanguage = 'es'): string => {
+  const copy = FLIGHT_ITINERARY_COPY[language] || FLIGHT_ITINERARY_COPY.es;
   let itinerary = '';
 
   flight.legs.forEach((leg, legIndex) => {
-    const legType = legIndex === 0 ? 'IDA' : 'REGRESO';
+    const legType = legIndex === 0 ? copy.outbound : copy.return;
     itinerary += `\n🛫 **${legType}:**\n`;
 
     leg.options.forEach((option, optionIndex) => {
       const segments = option.segments || [];
 
       if (segments.length === 0) {
-        itinerary += '   ❌ Sin información de segmentos\n';
+        itinerary += `   ❌ ${copy.noSegments}\n`;
         return;
       }
 
@@ -906,34 +984,34 @@ export const generateFlightItinerary = (flight: FlightData): string => {
         const hasTechnicalStops = segment.stops && segment.stops.length > 0;
 
         if (hasTechnicalStops) {
-          itinerary += `   🔄 **Vuelo con ${segment.stops.length} Conexión(es):**\n\n`;
+          itinerary += `   🔄 **${copy.flightWithConnections(segment.stops.length)}:**\n\n`;
         } else {
-          itinerary += `   ✈️ **Vuelo Directo:** ${segment.airline}${segment.flightNumber}\n`;
+          itinerary += `   ✈️ **${copy.directFlight}:** ${segment.airline}${segment.flightNumber}\n`;
         }
 
         itinerary += `   📍 ${segment.departure.airportCode} ${segment.departure.time} → ${segment.arrival.airportCode} ${segment.arrival.time}\n`;
-        itinerary += `   ⏱️ Duración: ${formatDuration(segment.duration)}\n`;
-        itinerary += `   💺 Clase: ${translateFlightInfo(segment.cabinClass)} (${translateFlightInfo(segment.brandName)})\n`;
-        itinerary += `   ✈️ Equipo: ${segment.equipment}\n`;
+        itinerary += `   ⏱️ ${copy.duration}: ${formatDuration(segment.duration)}\n`;
+        itinerary += `   💺 ${copy.cabinClass}: ${formatFlightInfoByLanguage(segment.cabinClass, language)} (${formatFlightInfoByLanguage(segment.brandName, language)})\n`;
+        itinerary += `   ✈️ ${copy.aircraft}: ${segment.equipment}\n`;
 
         // Mostrar escalas técnicas si las hay
         if (hasTechnicalStops) {
           segment.stops.forEach((stop: any, stopIndex: number) => {
             const stopCity = getCityNameFromCode(stop.airportCode);
-            itinerary += `\n   🔄 **Conexión ${stopIndex + 1} en ${stopCity} (${stop.airportCode}):**\n`;
-            itinerary += `   ⏰ Tiempo de escala: ${stop.duration || 'N/A'}\n`;
-            itinerary += `   📅 Fecha: ${stop.date || 'N/A'}\n`;
-            itinerary += `   🚶 Reabastecimiento de combustible\n\n`;
+            itinerary += `\n   🔄 **${copy.connection} ${stopIndex + 1} ${copy.in} ${stopCity} (${stop.airportCode}):**\n`;
+            itinerary += `   ⏰ ${copy.layoverTime}: ${stop.duration || 'N/A'}\n`;
+            itinerary += `   📅 ${copy.date}: ${stop.date || 'N/A'}\n`;
+            itinerary += `   🚶 ${copy.refueling}\n\n`;
           });
         }
       } else {
         // Vuelo con conexiones
-        itinerary += `   🔄 **Vuelo con ${segments.length - 1} Conexión(es):**\n\n`;
+        itinerary += `   🔄 **${copy.flightWithConnections(segments.length - 1)}:**\n\n`;
 
         segments.forEach((segment, segIndex) => {
-          itinerary += `   **Segmento ${segIndex + 1}:** ${segment.airline}${segment.flightNumber}\n`;
+          itinerary += `   **${copy.segment} ${segIndex + 1}:** ${segment.airline}${segment.flightNumber}\n`;
           itinerary += `   📍 ${segment.departure.airportCode} ${segment.departure.time} → ${segment.arrival.airportCode} ${segment.arrival.time}\n`;
-          itinerary += `   ⏱️ ${formatDuration(segment.duration)} | 💺 ${translateFlightInfo(segment.cabinClass)} | ✈️ ${segment.equipment}\n`;
+          itinerary += `   ⏱️ ${formatDuration(segment.duration)} | 💺 ${formatFlightInfoByLanguage(segment.cabinClass, language)} | ✈️ ${segment.equipment}\n`;
 
           // Mostrar conexión si no es el último segmento
           if (segIndex < segments.length - 1) {
@@ -943,9 +1021,9 @@ export const generateFlightItinerary = (flight: FlightData): string => {
             const connectionCity = getCityNameFromCode(connectionAirport);
             const layoverHours = calculateLayoverHours(segment, nextSegment);
 
-            itinerary += `\n   🔄 **Conexión en ${connectionCity} (${connectionAirport}):**\n`;
-            itinerary += `   ⏰ Tiempo de conexión: ${connectionTime} (${layoverHours.toFixed(1)}h)\n`;
-            itinerary += `   🚶 Cambio de terminal/puerta\n\n`;
+            itinerary += `\n   🔄 **${copy.connection} ${copy.in} ${connectionCity} (${connectionAirport}):**\n`;
+            itinerary += `   ⏰ ${copy.connectionTime}: ${connectionTime} (${layoverHours.toFixed(1)}h)\n`;
+            itinerary += `   🚶 ${copy.terminalChange}\n\n`;
           }
         });
       }

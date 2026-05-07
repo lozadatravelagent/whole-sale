@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import i18n from '@/i18n';
-import { parseMessageWithAI, combineWithPreviousRequest } from '@/services/aiMessageParser';
+import { parseMessageWithAI, combineWithPreviousRequest, detectMessageLanguage, normalizeSupportedLanguage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import {
   handleFlightSearch,
@@ -83,14 +83,15 @@ export function usePublicMessageHandler() {
       try {
         // Parse the message with AI
         const conversationHistory = buildConversationHistory();
-        const langRaw = (i18n.language || 'es').split('-')[0];
-        const userLanguage: 'es' | 'en' | 'pt' = langRaw === 'en' || langRaw === 'pt' ? langRaw : 'es';
+        const userLanguage = detectMessageLanguage(trimmed, normalizeSupportedLanguage(i18n.language));
         let parsed = await parseMessageWithAI(trimmed, previousContext.current, conversationHistory, undefined, userLanguage);
+        parsed.responseLanguage = userLanguage;
 
         // Combine with previous context for follow-up questions
         if (previousContext.current) {
           parsed = combineWithPreviousRequest(previousContext.current, trimmed, parsed);
         }
+        parsed.responseLanguage = userLanguage;
 
         const isSearchIntent = SEARCH_TYPES.has(parsed.requestType);
 
@@ -108,7 +109,7 @@ export function usePublicMessageHandler() {
             if (validation.errorMessage) {
               addMessage('assistant', validation.errorMessage);
             } else {
-              addMessage('assistant', generateMissingInfoMessage(validation.missingFieldsSpanish, 'flights'));
+              addMessage('assistant', generateMissingInfoMessage(validation.missingFieldsSpanish, 'flights', undefined, userLanguage));
             }
             previousContext.current = parsed;
             setIsProcessing(false);
@@ -122,7 +123,7 @@ export function usePublicMessageHandler() {
             if (validation.errorMessage) {
               addMessage('assistant', validation.errorMessage);
             } else {
-              addMessage('assistant', generateMissingInfoMessage(validation.missingFieldsSpanish, 'hotels'));
+              addMessage('assistant', generateMissingInfoMessage(validation.missingFieldsSpanish, 'hotels', undefined, userLanguage));
             }
             previousContext.current = parsed;
             setIsProcessing(false);
@@ -136,7 +137,7 @@ export function usePublicMessageHandler() {
             addMessage('assistant', generateMissingInfoMessage(validation.missingFieldsSpanish, 'itinerary', {
               itinerary: parsed.itinerary,
               originalMessage: parsed.originalMessage,
-            }));
+            }, userLanguage));
             previousContext.current = parsed;
             setIsProcessing(false);
             return;

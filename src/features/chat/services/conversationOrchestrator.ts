@@ -1,4 +1,4 @@
-import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { ParsedTravelRequest, UserLanguage } from '@/services/aiMessageParser';
 import type { TripPlannerState, PlannerActivity, PlannerRestaurant } from '@/features/trip-planner/types';
 import type { ContextState } from '../types/contextState';
 import type { RouteResult } from './routeRequest';
@@ -421,11 +421,33 @@ function normalizeMissingField(field: string): string {
   return normalized.replace(/\s+/g, '_');
 }
 
-function buildKnownContextLead(parsed?: ParsedTravelRequest | null): string {
+function buildKnownContextLead(parsed?: ParsedTravelRequest | null, language: UserLanguage = 'es'): string {
   const requestType = getRequestTypeFromParsed(parsed);
   const destination = getKnownDestination(parsed);
   const duration = getKnownDuration(parsed);
   const travelers = getKnownTravelers(parsed);
+
+  if (language === 'en') {
+    if (requestType === 'itinerary' && destination) {
+      const detail = [duration, travelers].filter(Boolean).join(' · ');
+      return `I already have a base${detail ? ` for ${detail}` : ''} in ${destination}.`;
+    }
+    if (requestType === 'flights' && destination) return `I already have the flight to ${destination} started.`;
+    if (requestType === 'hotels' && destination) return `I already have the stay in ${destination} located.`;
+    if (requestType === 'combined' && destination) return `I already have enough to build a trip base to ${destination}.`;
+    return 'I already have enough context to guide you well.';
+  }
+
+  if (language === 'pt') {
+    if (requestType === 'itinerary' && destination) {
+      const detail = [duration, travelers].filter(Boolean).join(' · ');
+      return `Já tenho uma base${detail ? ` para ${detail}` : ''} em ${destination}.`;
+    }
+    if (requestType === 'flights' && destination) return `Já tenho encaminhado o voo para ${destination}.`;
+    if (requestType === 'hotels' && destination) return `Já tenho localizada a estadia em ${destination}.`;
+    if (requestType === 'combined' && destination) return `Já tenho bastante para montar uma base de viagem para ${destination}.`;
+    return 'Já tenho contexto suficiente para te orientar bem.';
+  }
 
   if (requestType === 'itinerary' && destination) {
     const detail = [duration, travelers].filter(Boolean).join(' · ');
@@ -447,8 +469,38 @@ function buildKnownContextLead(parsed?: ParsedTravelRequest | null): string {
   return 'Ya tengo bastante contexto para orientarte bien.';
 }
 
-function buildAskLine(requestType: ParsedTravelRequest['requestType'] | 'general', fields: string[]): string {
+function buildAskLine(requestType: ParsedTravelRequest['requestType'] | 'general', fields: string[], language: UserLanguage = 'es'): string {
   const has = (field: string) => fields.includes(field);
+
+  if (language === 'en') {
+    if (has('origin') && has('dates')) return 'To close a concrete proposal, tell me the departure city and the travel dates.';
+    if (has('passengers') && has('dates')) return requestType === 'itinerary'
+      ? 'To finish shaping the proposal, tell me how many people are traveling and when you would like to go.'
+      : 'To show concrete options, tell me how many people are traveling and the dates.';
+    if (has('origin')) return 'To move forward with a concrete proposal, tell me the departure city.';
+    if (has('dates')) return requestType === 'itinerary'
+      ? 'To build the proposal properly, tell me when you would like to travel.'
+      : 'To refine the search, tell me the exact dates you want to use.';
+    if (has('passengers')) return 'To adjust it properly, tell me how many people are traveling in total and whether there are children.';
+    if (has('budget')) return 'Tell me the budget range you would like to stay within and I will curate the proposal better.';
+    if (has('destination')) return 'Tell me which destination or city combination you want to prioritize and I will move it forward.';
+    return 'Send me one more key detail and I will keep closing it.';
+  }
+
+  if (language === 'pt') {
+    if (has('origin') && has('dates')) return 'Para fechar uma proposta concreta, me diga de qual cidade saem e em quais datas querem viajar.';
+    if (has('passengers') && has('dates')) return requestType === 'itinerary'
+      ? 'Para terminar de ajustar a proposta, me diga quantas pessoas viajam e em quais datas gostariam de ir.'
+      : 'Para mostrar opções concretas, me diga quantas pessoas viajam e em quais datas.';
+    if (has('origin')) return 'Para avançar com uma proposta concreta, me diga de qual cidade saem.';
+    if (has('dates')) return requestType === 'itinerary'
+      ? 'Para montar bem a proposta, me diga em quais datas gostaria de viajar.'
+      : 'Para refinar a busca, me diga as datas exatas que quer usar.';
+    if (has('passengers')) return 'Para ajustar bem, me diga quantas pessoas viajam no total e se há crianças.';
+    if (has('budget')) return 'Me diga a faixa de orçamento em que gostaria de se mover e eu curo melhor a proposta.';
+    if (has('destination')) return 'Me diga qual destino ou combinação de cidades quer priorizar e eu encaminho.';
+    return 'Me envie mais um dado importante e continuo fechando isso.';
+  }
 
   if (has('origin') && has('dates')) {
     return 'Para cerrarte una propuesta concreta, decime desde qué ciudad salen y en qué fechas quieren viajar.';
@@ -491,8 +543,9 @@ export function buildConversationalMissingInfoMessage(options: {
   parsedRequest?: ParsedTravelRequest | null;
   missingFields?: string[];
   fallbackMessage?: string;
+  language?: UserLanguage;
 }): string {
-  const { parsedRequest, missingFields = [], fallbackMessage } = options;
+  const { parsedRequest, missingFields = [], fallbackMessage, language = 'es' } = options;
   const requestType = getRequestTypeFromParsed(parsedRequest);
   const normalizedFields = [...new Set(missingFields.map(normalizeMissingField))].slice(0, 2);
 
@@ -501,11 +554,14 @@ export function buildConversationalMissingInfoMessage(options: {
   }
 
   if (normalizedFields.length === 0) {
-    return fallbackMessage || 'Contame un dato clave más y te dejo una propuesta más concreta.';
+    if (fallbackMessage) return fallbackMessage;
+    if (language === 'en') return 'Send me one more key detail and I will make the proposal more concrete.';
+    if (language === 'pt') return 'Me envie mais um dado importante e deixo a proposta mais concreta.';
+    return 'Contame un dato clave más y te dejo una propuesta más concreta.';
   }
 
-  const lead = buildKnownContextLead(parsedRequest);
-  const askLine = buildAskLine(requestType, normalizedFields);
+  const lead = buildKnownContextLead(parsedRequest, language);
+  const askLine = buildAskLine(requestType, normalizedFields, language);
 
   return `${lead} ${askLine}`;
 }

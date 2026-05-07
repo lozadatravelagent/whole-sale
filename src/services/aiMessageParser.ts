@@ -217,6 +217,7 @@ export interface ParsedTravelRequest {
     } | null;
     confidence: number; // 0-1 score of parsing confidence
     originalMessage: string;
+    responseLanguage?: UserLanguage;
     // Fields for missing_info_request
     message?: string;
     missingFields?: string[];
@@ -299,6 +300,55 @@ export interface RequiredHotelFields {
     adults: boolean;
     roomType: boolean;
     mealPlan: boolean;
+}
+
+export type UserLanguage = 'es' | 'en' | 'pt';
+
+export function normalizeSupportedLanguage(language?: string | null): UserLanguage {
+    const normalized = (language || 'es').split('-')[0]?.toLowerCase();
+    return normalized === 'en' || normalized === 'pt' ? normalized : 'es';
+}
+
+export function detectMessageLanguage(message: string, fallbackLanguage: UserLanguage = 'es'): UserLanguage {
+    const normalized = normalizeHotelText(message);
+    if (!normalized) return fallbackLanguage;
+
+    const explicitLanguage: Array<[UserLanguage, RegExp]> = [
+        ['en', /\b(?:respond|reply|answer|speak|write|contesta|responde|habla|escrib[ei])\b.{0,40}\b(?:english|ingles|ingl[eé]s)\b/i],
+        ['pt', /\b(?:respond|reply|answer|speak|write|contesta|responde|habla|escrib[ei])\b.{0,40}\b(?:portuguese|portugues|portugu[eé]s)\b/i],
+        ['es', /\b(?:respond|reply|answer|speak|write|contesta|responde|habla|escrib[ei])\b.{0,40}\b(?:spanish|espanol|espa[nñ]ol)\b/i],
+    ];
+    const explicit = explicitLanguage.find(([, pattern]) => pattern.test(normalized));
+    if (explicit) return explicit[0];
+
+    const scores: Record<UserLanguage, number> = { es: 0, en: 0, pt: 0 };
+    const rules: Record<UserLanguage, RegExp[]> = {
+        en: [
+            /\b(?:i|we)\s+(?:need|want|am looking|are looking|would like)\b/i,
+            /\b(?:need|want|looking for|search for|find me|book|quote)\b/i,
+            /\b(?:flight|flights|hotel|hotels|trip|travel|departure|return|round trip|one way|adults|children|room|breakfast|baggage|luggage|carry on|checked bag|direct flight|layover|stopover)\b/i,
+            /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i,
+        ],
+        pt: [
+            /\b(?:eu|nos|n[oó]s)\s+(?:preciso|quero|queremos|gostaria|gostar[ií]amos)\b/i,
+            /\b(?:preciso|quero|queremos|gostaria|buscar|procurar|cotacao|cota[cç][aã]o)\b/i,
+            /\b(?:voo|voos|hotel|hoteis|hot[eé]is|viagem|passagem|passagens|ida e volta|adultos|criancas|crian[cç]as|quarto|caf[eé] da manh[aã]|bagagem|mala|direto|escala)\b/i,
+            /\b(?:janeiro|fevereiro|marco|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/i,
+        ],
+        es: [
+            /\b(?:yo|nosotros|nosotras)\s+(?:necesito|quiero|queremos|busco|estoy buscando)\b/i,
+            /\b(?:necesito|quiero|queremos|busco|buscame|búscame|cotiz|presupuesto)\b/i,
+            /\b(?:vuelo|vuelos|hotel|hoteles|viaje|pasaje|pasajes|ida y vuelta|adultos|ni[nñ]os|menores|habitacion|habitaci[oó]n|desayuno|equipaje|valija|directo|escala)\b/i,
+            /\b(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\b/i,
+        ],
+    };
+
+    (Object.keys(rules) as UserLanguage[]).forEach((language) => {
+        scores[language] = rules[language].reduce((total, pattern) => total + (pattern.test(normalized) ? 1 : 0), 0);
+    });
+
+    const best = (Object.keys(scores) as UserLanguage[]).sort((a, b) => scores[b] - scores[a])[0];
+    return scores[best] >= 2 && scores[best] > scores[fallbackLanguage] ? best : fallbackLanguage;
 }
 
 function normalizeLocationsToCountryCapitals(parsed: ParsedTravelRequest): ParsedTravelRequest {
@@ -1902,9 +1952,11 @@ export function generateMissingInfoMessage(
         itinerary?: ParsedTravelRequest['itinerary'];
         originalMessage?: string;
         referenceDate?: Date;
-    }
+    },
+    language: UserLanguage = 'es'
 ): string {
     if (
+        language === 'es' &&
         requestType === 'itinerary' &&
         missingFieldsSpanish.includes('fechas exactas del viaje') &&
         context?.itinerary?.destinations &&
@@ -1917,19 +1969,37 @@ export function generateMissingInfoMessage(
         );
     }
 
-    const baseMessage = requestType === 'flights'
-        ? '¡Me encanta! Para encontrarte los mejores vuelos necesito que me cuentes un poquito más:'
-        : requestType === 'hotels'
-            ? '¡Genial! Para buscar los hoteles ideales necesito algunos datos más:'
-            : requestType === 'itinerary'
-                ? '¡Me encanta la idea del viaje! Para armar un itinerario a tu medida, necesito que me cuentes:'
-                : '¡Buenísimo! Para buscar las mejores opciones necesito un poco más de info:';
+    const baseMessages: Record<UserLanguage, Record<string, string>> = {
+        es: {
+            flights: '¡Me encanta! Para encontrarte los mejores vuelos necesito que me cuentes un poquito más:',
+            hotels: '¡Genial! Para buscar los hoteles ideales necesito algunos datos más:',
+            itinerary: '¡Me encanta la idea del viaje! Para armar un itinerario a tu medida, necesito que me cuentes:',
+            default: '¡Buenísimo! Para buscar las mejores opciones necesito un poco más de info:',
+            closing: 'Contame y me pongo a buscar.',
+        },
+        en: {
+            flights: 'Great. To find the best flights, I need a bit more information:',
+            hotels: 'Great. To search for the right hotels, I need a few more details:',
+            itinerary: 'I like the trip idea. To build a tailored itinerary, I need:',
+            default: 'Great. To search for the best options, I need a bit more information:',
+            closing: 'Send me that and I will start searching.',
+        },
+        pt: {
+            flights: 'Perfeito. Para encontrar os melhores voos, preciso de mais algumas informações:',
+            hotels: 'Perfeito. Para buscar os hotéis ideais, preciso de alguns dados:',
+            itinerary: 'Gostei da ideia da viagem. Para montar um roteiro sob medida, preciso de:',
+            default: 'Perfeito. Para buscar as melhores opções, preciso de um pouco mais de informação:',
+            closing: 'Me conte isso e começo a buscar.',
+        },
+    };
+    const baseCopy = baseMessages[language] || baseMessages.es;
+    const baseMessage = baseCopy[requestType] || baseCopy.default;
 
     const fieldsList = missingFieldsSpanish.map((field, index) =>
-        `${index + 1}. **${field.charAt(0).toUpperCase() + field.slice(1)}**`
+        `${index + 1}. **${capitalize(localizeMissingField(field, language))}**`
     ).join('\n');
 
-    const examples = generateFieldExamples(missingFieldsSpanish);
+    const examples = generateFieldExamples(missingFieldsSpanish, language);
 
     return `${baseMessage}
 
@@ -1937,26 +2007,78 @@ ${fieldsList}
 
 ${examples}
 
-Contame y me pongo a buscar.`;
+${baseCopy.closing}`;
 }
 
 // Función para generar ejemplos de los campos faltantes
-function generateFieldExamples(missingFieldsSpanish: string[]): string {
+function capitalize(value: string): string {
+    return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function localizeMissingField(field: string, language: UserLanguage): string {
+    if (language === 'es') return field;
+    const normalized = normalizeHotelText(field);
+    const dictionaries: Record<Exclude<UserLanguage, 'es'>, Record<string, string>> = {
+        en: {
+            'origen': 'origin',
+            'destino': 'destination',
+            'fecha de salida': 'departure date',
+            'fecha de entrada': 'check-in date',
+            'fecha de salida hotel': 'check-out date',
+            'cantidad de pasajeros': 'number of passengers',
+            'adulto acompanante': 'accompanying adult',
+            'maximo 3 tramos': 'maximum 3 segments',
+            'destino(s)': 'destination(s)',
+            'fechas exactas del viaje': 'exact travel dates',
+            'cantidad de dias': 'number of days',
+            'cantidad de dias o fechas del viaje': 'number of days or travel dates',
+        },
+        pt: {
+            'origen': 'origem',
+            'destino': 'destino',
+            'fecha de salida': 'data de saída',
+            'fecha de entrada': 'data de entrada',
+            'fecha de salida hotel': 'data de saída do hotel',
+            'cantidad de pasajeros': 'quantidade de passageiros',
+            'adulto acompanante': 'adulto acompanhante',
+            'maximo 3 tramos': 'máximo de 3 trechos',
+            'destino(s)': 'destino(s)',
+            'fechas exactas del viaje': 'datas exatas da viagem',
+            'cantidad de dias': 'quantidade de dias',
+            'cantidad de dias o fechas del viaje': 'quantidade de dias ou datas da viagem',
+        },
+    };
+
+    if (normalized.includes('fecha de salida') && normalized !== 'fecha de salida') {
+        return language === 'en' ? 'check-out date' : 'data de saída do hotel';
+    }
+    if (normalized.includes('origen del tramo')) return language === 'en' ? field.replace(/origen del tramo/i, 'origin for segment') : field.replace(/origen del tramo/i, 'origem do trecho');
+    if (normalized.includes('destino de')) return language === 'en' ? field.replace(/destino de/i, 'destination for') : field.replace(/destino de/i, 'destino de');
+    if (normalized.includes('fecha de entrada de')) return language === 'en' ? field.replace(/fecha de entrada de/i, 'check-in date for') : field.replace(/fecha de entrada de/i, 'data de entrada de');
+    if (normalized.includes('fecha de salida de')) return language === 'en' ? field.replace(/fecha de salida de/i, 'check-out date for') : field.replace(/fecha de salida de/i, 'data de saída de');
+    if (normalized.includes('cantidad de pasajeros de')) return language === 'en' ? field.replace(/cantidad de pasajeros de/i, 'passenger count for') : field.replace(/cantidad de pasajeros de/i, 'quantidade de passageiros de');
+
+    return dictionaries[language][normalized] || field;
+}
+
+function generateFieldExamples(missingFieldsSpanish: string[], language: UserLanguage = 'es'): string {
     const examples: string[] = [];
+    const title = language === 'en' ? '**Examples:**' : language === 'pt' ? '**Exemplos:**' : '**Ejemplos:**';
 
     missingFieldsSpanish.forEach(field => {
+        const normalized = normalizeHotelText(field);
         switch (field) {
             case 'origen':
-                examples.push('📍 **Origen:** Por ejemplo: "Buenos Aires", "Madrid", "Ezeiza"');
+                examples.push(language === 'en' ? '📍 **Origin:** For example: "Buenos Aires", "Madrid", "Ezeiza"' : language === 'pt' ? '📍 **Origem:** Por exemplo: "Buenos Aires", "Madrid", "Ezeiza"' : '📍 **Origen:** Por ejemplo: "Buenos Aires", "Madrid", "Ezeiza"');
                 break;
             case 'destino':
-                examples.push('🎯 **Destino:** Por ejemplo: "Punta Cana", "Barcelona", "Miami"');
+                examples.push(language === 'en' ? '🎯 **Destination:** For example: "Punta Cana", "Barcelona", "Miami"' : language === 'pt' ? '🎯 **Destino:** Por exemplo: "Punta Cana", "Barcelona", "Miami"' : '🎯 **Destino:** Por ejemplo: "Punta Cana", "Barcelona", "Miami"');
                 break;
             case 'fecha de salida':
-                examples.push('📅 **Fecha de salida:** Por ejemplo: "15 de diciembre", "2025-12-15"');
+                examples.push(language === 'en' ? '📅 **Departure date:** For example: "December 15", "2025-12-15"' : language === 'pt' ? '📅 **Data de saída:** Por exemplo: "15 de dezembro", "2025-12-15"' : '📅 **Fecha de salida:** Por ejemplo: "15 de diciembre", "2025-12-15"');
                 break;
             case 'cantidad de pasajeros':
-                examples.push('👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 persona", "3 adultos"');
+                examples.push(language === 'en' ? '👥 **Passengers:** For example: "2 adults", "1 person", "3 adults"' : language === 'pt' ? '👥 **Passageiros:** Por exemplo: "2 adultos", "1 pessoa", "3 adultos"' : '👥 **Pasajeros:** Por ejemplo: "2 adultos", "1 persona", "3 adultos"');
                 break;
             case 'equipaje (con o sin valija)':
                 examples.push('🧳 **Equipaje:** Por ejemplo: "con valija", "solo equipaje de mano", "sin equipaje"');
@@ -1984,13 +2106,17 @@ function generateFieldExamples(missingFieldsSpanish: string[]): string {
                 examples.push('📅 **Duración o fechas:** Por ejemplo: "5 días", "del 2 al 10 de marzo", "del 2027-03-02 al 2027-03-10"');
                 break;
             case 'fechas exactas del viaje':
-                examples.push('📅 **Fechas exactas:** Por ejemplo: "del 2 al 10 de marzo de 2027", "salgo el 5 de mayo y vuelvo el 14 de mayo"');
+                examples.push(language === 'en' ? '📅 **Exact dates:** For example: "March 2 to March 10, 2027", "I leave on May 5 and return on May 14"' : language === 'pt' ? '📅 **Datas exatas:** Por exemplo: "de 2 a 10 de março de 2027", "saio em 5 de maio e volto em 14 de maio"' : '📅 **Fechas exactas:** Por ejemplo: "del 2 al 10 de marzo de 2027", "salgo el 5 de mayo y vuelvo el 14 de mayo"');
                 break;
+        }
+
+        if (!examples.length && normalized.includes('fecha de salida de')) {
+            examples.push(language === 'en' ? '📅 **Check-out date:** For example: "December 20", "2025-12-20"' : language === 'pt' ? '📅 **Data de saída:** Por exemplo: "20 de dezembro", "2025-12-20"' : '📅 **Fecha de salida:** Por ejemplo: "20 de diciembre", "2025-12-20"');
         }
     });
 
     if (examples.length > 0) {
-        return '**Ejemplos:**\n\n' + examples.join('\n\n');
+        return `${title}\n\n` + examples.join('\n\n');
     }
 
     return '';

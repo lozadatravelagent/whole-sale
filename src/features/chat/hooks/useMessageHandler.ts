@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type React from 'react';
-import { parseMessageWithAIStreaming, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage } from '@/services/aiMessageParser';
+import { parseMessageWithAIStreaming, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage, detectMessageLanguage, normalizeSupportedLanguage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { normalizeFlightRequest } from '@/services/flightSegments';
 import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery, handleItineraryRequest } from '../services/searchHandlers';
@@ -1222,8 +1222,8 @@ const useMessageHandler = (
       // Always parse first, then route based on content (not workspace_mode)
       const parseStart = nowMs();
       const plannerEditContext = buildPlannerEditContext(plannerState as TripPlannerState | null);
-      const userLanguageRaw = (i18n.language || 'es').split('-')[0];
-      const userLanguage: 'es' | 'en' | 'pt' = userLanguageRaw === 'en' || userLanguageRaw === 'pt' ? userLanguageRaw : 'es';
+      const uiLanguage = normalizeSupportedLanguage(i18n.language);
+      const userLanguage = detectMessageLanguage(currentMessage, uiLanguage);
       // Pre-parse: compute the discovery guard + tool_choice policy. The
       // guard is a pure function over `currentMessage`; we hoist it here so
       // the resulting tool_choice can be forwarded to the edge function.
@@ -1275,6 +1275,7 @@ const useMessageHandler = (
           setTypingMessage(labels[event.tool] ?? 'Procesando…', conversationIdForThisSearch);
         },
       );
+      parsedRequest.responseLanguage = userLanguage;
 
       // Phase 5: increment turn count after a successful parse. Failures here
       // do not break the flow.
@@ -1528,6 +1529,7 @@ const useMessageHandler = (
           parsedRequest,
           missingFields: routeResult.missingFields,
           fallbackMessage: routeResult.collectQuestion,
+          language: userLanguage,
         });
 
         // Phase 2: additive pending_action emit. Router COLLECT fields are
@@ -1676,6 +1678,7 @@ const useMessageHandler = (
           } as any;
         }
       }
+      parsedRequest.responseLanguage = userLanguage;
 
       // 6. Validate required fields (handle combined specially)
       console.log('🔍 [MESSAGE FLOW] Step 11: Validating required fields');
@@ -1828,8 +1831,11 @@ const useMessageHandler = (
                 ...flightVal.missingFieldsSpanish,
                 ...hotelVal.missingFieldsSpanish,
               ],
-              'combined'
+              'combined',
+              undefined,
+              userLanguage
             ),
+            language: userLanguage,
           });
 
           // Phase 2: additive pending_action emit (combined search slot-fill).
@@ -1926,8 +1932,11 @@ const useMessageHandler = (
             missingFields: validation.missingFields,
             fallbackMessage: generateMissingInfoMessage(
               validation.missingFieldsSpanish,
-              parsedRequest.requestType
+              parsedRequest.requestType,
+              undefined,
+              userLanguage
             ),
+            language: userLanguage,
           });
 
           console.log('💬 [VALIDATION] Generated missing info message');
@@ -2077,8 +2086,11 @@ const useMessageHandler = (
                 missingFields: reval.missingFields,
                 fallbackMessage: generateMissingInfoMessage(
                   reval.missingFieldsSpanish,
-                  parsedRequest.requestType
+                  parsedRequest.requestType,
+                  undefined,
+                  userLanguage
                 ),
+                language: userLanguage,
               });
 
               // Phase 2: additive pending_action emit (hotel slot-fill after enrich).
@@ -2126,8 +2138,11 @@ const useMessageHandler = (
               missingFields: validation.missingFields,
               fallbackMessage: generateMissingInfoMessage(
                 validation.missingFieldsSpanish,
-                parsedRequest.requestType
+                parsedRequest.requestType,
+                undefined,
+                userLanguage
               ),
+              language: userLanguage,
             });
 
             // Phase 2: additive pending_action emit (hotel slot-fill, no flight ctx).
@@ -2195,8 +2210,10 @@ const useMessageHandler = (
               {
                 itinerary: parsedRequest.itinerary,
                 originalMessage: parsedRequest.originalMessage,
-              }
+              },
+              userLanguage
             ),
+            language: userLanguage,
           });
 
           // Phase 2: additive pending_action emit (itinerary missing destinations).
@@ -2826,8 +2843,10 @@ const useMessageHandler = (
             {
               itinerary: mergedRequest.itinerary,
               originalMessage: mergedRequest.originalMessage,
-            }
+            },
+            userLanguage
           ),
+          language: userLanguage,
         });
 
         // Phase 2: additive pending_action emit (planner date-selector revalidation).

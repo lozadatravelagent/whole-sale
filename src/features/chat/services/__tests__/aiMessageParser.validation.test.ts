@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseMessageWithAI,
+  detectMessageLanguage,
+  generateMissingInfoMessage,
   tryParseSimpleItineraryDeterministically,
   validateFlightRequiredFields,
   validateHotelRequiredFields,
@@ -70,6 +72,18 @@ describe('aiMessageParser validation', () => {
     );
 
     expect(result).toBeNull();
+  });
+
+  it('detects English travel requests independently from the UI language', () => {
+    expect(detectMessageLanguage('I need a flight from Madrid to Miami in July for 2 adults', 'es')).toBe('en');
+  });
+
+  it('localizes deterministic missing-info prompts', () => {
+    const result = generateMissingInfoMessage(['origen', 'fecha de salida'], 'flights', undefined, 'en');
+
+    expect(result).toContain('To find the best flights');
+    expect(result).toContain('Origin');
+    expect(result).toContain('Departure date');
   });
 
   it('completes a pending flight context without switching back to itinerary', async () => {

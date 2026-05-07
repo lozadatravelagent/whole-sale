@@ -9,49 +9,233 @@ import type { LocalPackageData, LocalServiceData } from '@/types/external';
 import { generateFlightItinerary } from './flightTransformer';
 import { formatDuration } from '../utils/flightHelpers';
 import { translateRoomDescription, translateRoomTypeTitle, translateFlightInfo, translateBaggage } from '../utils/translations';
+import type { UserLanguage } from '@/services/aiMessageParser';
+
+const LOCALE_BY_LANGUAGE: Record<UserLanguage, string> = {
+  es: 'es-ES',
+  en: 'en-US',
+  pt: 'pt-BR',
+};
+
+const COPY = {
+  es: {
+    noFlights: '✈️ **Búsqueda de Vuelos**\n\nNo encontré vuelos disponibles para esas fechas y destino. Intenta con fechas alternativas.',
+    flightsAvailable: (displayCount: number, total: number) => `✈️ **${displayCount} Vuelos Disponibles** ${total > 5 ? `(los ${displayCount} más económicos de ${total})` : '(ordenados por precio)'}\n\n`,
+    option: 'Opción',
+    totalPrice: 'Precio Total',
+    baseFare: 'Tarifa Base',
+    taxes: 'Tasas',
+    services: 'Servicios',
+    commission: 'Comisión',
+    departure: 'Salida',
+    arrival: 'Llegada',
+    return: 'Regreso',
+    type: 'Tipo',
+    duration: 'Duración',
+    directFlight: 'Vuelo directo',
+    withConnections: (count: number) => `Con ${count} conexión(es)`,
+    checkedBaggage: 'Equipaje despachado',
+    carryOn: 'Equipaje de mano',
+    included: 'incluida(s)',
+    notIncluded: 'No incluido',
+    cabinClass: 'Clase',
+    validUntil: 'Válido hasta',
+    fareId: 'ID de Tarifa',
+    selectFlights: '📋 Selecciona las opciones que prefieras para generar tu cotización.',
+    noHotels: '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.',
+    hotelsAvailable: (displayCount: number, total: number) => `🏨 **${displayCount} Hoteles Disponibles** ${total > 5 ? `(los ${displayCount} más económicos de ${total})` : '(ordenados por precio)'}\n\n`,
+    standardRoom: 'Habitación estándar',
+    from: 'Desde',
+    nights: (count: number) => `${count} noches`,
+    additionalRooms: (count: number) => `${count} habitaci${count === 1 ? 'ón adicional' : 'ones adicionales'} disponibles`,
+    chainDistribution: 'Distribución por cadena',
+    chainBalance: 'Balance por cadena',
+    missingChain: (chain: string) => `No encontré opciones válidas de ${chain} para este tramo.`,
+    partialChain: (chain: string, selected: number, requested: number) => `${chain} solo cubrió ${selected} de ${requested} lugar${requested !== 1 ? 'es' : ''} previsto${requested !== 1 ? 's' : ''}.`,
+    multiSegmentHotels: '🏨 **Búsqueda de Hoteles Multi-Destino**\n\n',
+    segmentNoHotels: 'No encontré hoteles disponibles para este tramo.\n\n',
+    segmentFound: (count: number) => `Encontré ${count} hotel${count !== 1 ? 'es' : ''} para este tramo.\n\n`,
+    reviewSegments: '📋 Revisa cada tramo por separado para armar la cotización completa.',
+    selectHotels: '📋 Selecciona los hoteles que prefieras para tu cotización.',
+    combinedBase: 'Ya te dejé una base bastante concreta para este viaje:',
+    flightFallback: 'tramo aéreo listo',
+    flightComfort: 'por comodidad',
+    flightBalanced: 'por equilibrio entre precio y horario',
+    recommendedFlight: (route: string, airline: string, amount: number, currency: string, reason: string) => `- vuelo recomendado: ${route} con ${airline} desde ${amount} ${currency} (${reason})`,
+    wellLocated: 'bien ubicado',
+    recommendedHotel: (name: string, nightly: number | null, currency: string, reason: string) => `- hotel recomendado: ${name} ${nightly ? `desde ${nightly} ${currency}/noche` : 'con tarifa para revisar'} (${reason})`,
+    compareNext: 'Si querés, ahora comparo una opción más económica contra una más equilibrada y te digo cuál conviene más.',
+  },
+  en: {
+    noFlights: '✈️ **Flight Search**\n\nI could not find available flights for those dates and destination. Try alternative dates.',
+    flightsAvailable: (displayCount: number, total: number) => `✈️ **${displayCount} Available Flights** ${total > 5 ? `(the ${displayCount} cheapest of ${total})` : '(sorted by price)'}\n\n`,
+    option: 'Option',
+    totalPrice: 'Total Price',
+    baseFare: 'Base Fare',
+    taxes: 'Taxes',
+    services: 'Services',
+    commission: 'Commission',
+    departure: 'Departure',
+    arrival: 'Arrival',
+    return: 'Return',
+    type: 'Type',
+    duration: 'Duration',
+    directFlight: 'Direct flight',
+    withConnections: (count: number) => `With ${count} connection(s)`,
+    checkedBaggage: 'Checked baggage',
+    carryOn: 'Carry-on baggage',
+    included: 'included',
+    notIncluded: 'Not included',
+    cabinClass: 'Cabin class',
+    validUntil: 'Valid until',
+    fareId: 'Fare ID',
+    selectFlights: '📋 Select the options you prefer to generate your quote.',
+    noHotels: '🏨 **Hotel Search**\n\nI could not find available hotels. Check the city and dates.',
+    hotelsAvailable: (displayCount: number, total: number) => `🏨 **${displayCount} Available Hotels** ${total > 5 ? `(the ${displayCount} cheapest of ${total})` : '(sorted by price)'}\n\n`,
+    standardRoom: 'Standard room',
+    from: 'From',
+    nights: (count: number) => `${count} night${count === 1 ? '' : 's'}`,
+    additionalRooms: (count: number) => `${count} additional room${count === 1 ? '' : 's'} available`,
+    chainDistribution: 'Chain distribution',
+    chainBalance: 'Chain balance',
+    missingChain: (chain: string) => `I could not find valid ${chain} options for this segment.`,
+    partialChain: (chain: string, selected: number, requested: number) => `${chain} covered only ${selected} of ${requested} planned slot${requested === 1 ? '' : 's'}.`,
+    multiSegmentHotels: '🏨 **Multi-Destination Hotel Search**\n\n',
+    segmentNoHotels: 'I could not find available hotels for this segment.\n\n',
+    segmentFound: (count: number) => `I found ${count} hotel${count === 1 ? '' : 's'} for this segment.\n\n`,
+    reviewSegments: '📋 Review each segment separately to build the complete quote.',
+    selectHotels: '📋 Select the hotels you prefer for your quote.',
+    combinedBase: 'I put together a concrete starting point for this trip:',
+    flightFallback: 'flight segment ready',
+    flightComfort: 'for convenience',
+    flightBalanced: 'for a balance between price and schedule',
+    recommendedFlight: (route: string, airline: string, amount: number, currency: string, reason: string) => `- recommended flight: ${route} with ${airline} from ${amount} ${currency} (${reason})`,
+    wellLocated: 'well located',
+    recommendedHotel: (name: string, nightly: number | null, currency: string, reason: string) => `- recommended hotel: ${name} ${nightly ? `from ${nightly} ${currency}/night` : 'with a rate to review'} (${reason})`,
+    compareNext: 'I can now compare a cheaper option against a more balanced one and tell you which is better.',
+  },
+  pt: {
+    noFlights: '✈️ **Busca de Voos**\n\nNão encontrei voos disponíveis para essas datas e destino. Tente datas alternativas.',
+    flightsAvailable: (displayCount: number, total: number) => `✈️ **${displayCount} Voos Disponíveis** ${total > 5 ? `(os ${displayCount} mais econômicos de ${total})` : '(ordenados por preço)'}\n\n`,
+    option: 'Opção',
+    totalPrice: 'Preço Total',
+    baseFare: 'Tarifa Base',
+    taxes: 'Taxas',
+    services: 'Serviços',
+    commission: 'Comissão',
+    departure: 'Saída',
+    arrival: 'Chegada',
+    return: 'Volta',
+    type: 'Tipo',
+    duration: 'Duração',
+    directFlight: 'Voo direto',
+    withConnections: (count: number) => `Com ${count} conexão(ões)`,
+    checkedBaggage: 'Bagagem despachada',
+    carryOn: 'Bagagem de mão',
+    included: 'incluída(s)',
+    notIncluded: 'Não incluído',
+    cabinClass: 'Classe',
+    validUntil: 'Válido até',
+    fareId: 'ID da Tarifa',
+    selectFlights: '📋 Selecione as opções que prefere para gerar sua cotação.',
+    noHotels: '🏨 **Busca de Hotéis**\n\nNão encontrei hotéis disponíveis. Verifique a cidade e as datas.',
+    hotelsAvailable: (displayCount: number, total: number) => `🏨 **${displayCount} Hotéis Disponíveis** ${total > 5 ? `(os ${displayCount} mais econômicos de ${total})` : '(ordenados por preço)'}\n\n`,
+    standardRoom: 'Quarto padrão',
+    from: 'Desde',
+    nights: (count: number) => `${count} noite${count === 1 ? '' : 's'}`,
+    additionalRooms: (count: number) => `${count} quarto${count === 1 ? ' adicional disponível' : 's adicionais disponíveis'}`,
+    chainDistribution: 'Distribuição por rede',
+    chainBalance: 'Balanço por rede',
+    missingChain: (chain: string) => `Não encontrei opções válidas de ${chain} para este trecho.`,
+    partialChain: (chain: string, selected: number, requested: number) => `${chain} cobriu apenas ${selected} de ${requested} lugar${requested !== 1 ? 'es' : ''} previsto${requested !== 1 ? 's' : ''}.`,
+    multiSegmentHotels: '🏨 **Busca de Hotéis Multi-Destino**\n\n',
+    segmentNoHotels: 'Não encontrei hotéis disponíveis para este trecho.\n\n',
+    segmentFound: (count: number) => `Encontrei ${count} hotel${count !== 1 ? 'is' : ''} para este trecho.\n\n`,
+    reviewSegments: '📋 Revise cada trecho separadamente para montar a cotação completa.',
+    selectHotels: '📋 Selecione os hotéis que prefere para sua cotação.',
+    combinedBase: 'Deixei uma base bem concreta para esta viagem:',
+    flightFallback: 'trecho aéreo pronto',
+    flightComfort: 'por comodidade',
+    flightBalanced: 'por equilíbrio entre preço e horário',
+    recommendedFlight: (route: string, airline: string, amount: number, currency: string, reason: string) => `- voo recomendado: ${route} com ${airline} desde ${amount} ${currency} (${reason})`,
+    wellLocated: 'bem localizado',
+    recommendedHotel: (name: string, nightly: number | null, currency: string, reason: string) => `- hotel recomendado: ${name} ${nightly ? `desde ${nightly} ${currency}/noite` : 'com tarifa para revisar'} (${reason})`,
+    compareNext: 'Agora posso comparar uma opção mais econômica com uma mais equilibrada e dizer qual convém mais.',
+  },
+} satisfies Record<UserLanguage, Record<string, unknown>>;
+
+const getCopy = (language: UserLanguage = 'es') => COPY[language] || COPY.es;
+
+const formatDateByLanguage = (date: string, language: UserLanguage) =>
+  new Date(date).toLocaleDateString(LOCALE_BY_LANGUAGE[language] || LOCALE_BY_LANGUAGE.es);
+
+const formatBaggageDetails = (baggageType: string, language: UserLanguage): string => {
+  if (language === 'es') return translateBaggage(baggageType);
+  if (baggageType.includes('PC') || baggageType.includes('KG')) {
+    const match = baggageType.match(/(\d+)PC|(\d+)KG/);
+    if (match) {
+      const quantity = parseInt(match[1] || match[2]);
+      if (quantity > 0) {
+        const unit = baggageType.includes('PC')
+          ? (language === 'pt' ? 'peça(s)' : 'piece(s)')
+          : 'kg';
+        return `✅ ${quantity}${baggageType.includes('PC') ? ` ${unit}` : unit} ${getCopy(language).included}`;
+      }
+      return `❌ ${getCopy(language).notIncluded}`;
+    }
+  }
+  return baggageType;
+};
+
+const formatFlightText = (text: string, language: UserLanguage) =>
+  language === 'es' ? translateFlightInfo(text) : text;
+
+const formatRoomText = (text: string, language: UserLanguage) =>
+  language === 'es' ? translateRoomDescription(text) : text;
 
 // Response formatters - using the main FlightData interface
-export const formatFlightResponse = (flights: FlightData[]) => {
+export const formatFlightResponse = (flights: FlightData[], language: UserLanguage = 'es') => {
+  const copy = getCopy(language);
   if (flights.length === 0) {
-    return '✈️ **Búsqueda de Vuelos**\n\nNo encontré vuelos disponibles para esas fechas y destino. Intenta con fechas alternativas.';
+    return copy.noFlights as string;
   }
 
   const displayCount = Math.min(flights.length, 5);
-  let response = `✈️ **${displayCount} Vuelos Disponibles** ${flights.length > 5 ? `(los ${displayCount} más económicos de ${flights.length})` : '(ordenados por precio)'}\n\n`;
+  let response = (copy.flightsAvailable as (displayCount: number, total: number) => string)(displayCount, flights.length);
 
   flights.slice(0, 5).forEach((flight, index) => {
     response += `---\n\n`;
-    response += `✈️ **Opción ${index + 1}** - ${flight.airline.name} (${flight.airline.code})\n`;
+    response += `✈️ **${copy.option as string} ${index + 1}** - ${flight.airline.name} (${flight.airline.code})\n`;
 
     // Información de precio detallada
-    response += `💰 **Precio Total:** ${flight.price.amount} ${flight.price.currency}\n`;
+    response += `💰 **${copy.totalPrice as string}:** ${flight.price.amount} ${flight.price.currency}\n`;
     if (flight.price.breakdown) {
-      response += `   • Tarifa Base: ${flight.price.breakdown.fareAmount} ${flight.price.currency}\n`;
-      response += `   • Tasas: ${flight.price.breakdown.taxAmount} ${flight.price.currency}\n`;
+      response += `   • ${copy.baseFare as string}: ${flight.price.breakdown.fareAmount} ${flight.price.currency}\n`;
+      response += `   • ${copy.taxes as string}: ${flight.price.breakdown.taxAmount} ${flight.price.currency}\n`;
       if (flight.price.breakdown.serviceAmount > 0) {
-        response += `   • Servicios: ${flight.price.breakdown.serviceAmount} ${flight.price.currency}\n`;
+        response += `   • ${copy.services as string}: ${flight.price.breakdown.serviceAmount} ${flight.price.currency}\n`;
       }
       if (flight.price.breakdown.commissionAmount > 0) {
-        response += `   • Comisión: ${flight.price.breakdown.commissionAmount} ${flight.price.currency}\n`;
+        response += `   • ${copy.commission as string}: ${flight.price.breakdown.commissionAmount} ${flight.price.currency}\n`;
       }
     }
 
     // Información de fechas y horarios
-    response += `🛫 **Salida:** ${flight.departure_date} ${flight.departure_time || ''}\n`;
-    response += `🛬 **Llegada:** ${flight.arrival_date} ${flight.arrival_time || ''}\n`;
+    response += `🛫 **${copy.departure as string}:** ${flight.departure_date} ${flight.departure_time || ''}\n`;
+    response += `🛬 **${copy.arrival as string}:** ${flight.arrival_date} ${flight.arrival_time || ''}\n`;
     if (flight.return_date && flight.trip_type !== 'multi_city') {
-      response += `🔄 **Regreso:** ${flight.return_date}\n`;
+      response += `🔄 **${copy.return as string}:** ${flight.return_date}\n`;
     } else if (flight.trip_type === 'multi_city') {
-      response += `🗺️ **Tipo:** Multi-city (${flight.legs?.length || 0} tramos)\n`;
+      response += `🗺️ **${copy.type as string}:** Multi-city (${flight.legs?.length || 0})\n`;
     }
 
     // Duración y escalas
-    response += `⏱️ **Duración:** ${flight.duration?.formatted || 'N/A'}\n`;
-    response += `🛑 **Tipo:** ${flight.stops?.direct ? 'Vuelo directo' : `Con ${flight.stops?.count || 0} conexión(es)`}\n`;
+    response += `⏱️ **${copy.duration as string}:** ${flight.duration?.formatted || 'N/A'}\n`;
+    response += `🛑 **${copy.type as string}:** ${flight.stops?.direct ? copy.directFlight as string : (copy.withConnections as (count: number) => string)(flight.stops?.count || 0)}\n`;
 
     // Información de equipaje mejorada
-    const baggageDetails = flight.baggage?.details ? translateBaggage(flight.baggage.details) : 'N/A';
-    response += `🧳 **Equipaje despachado:** ${baggageDetails}\n`;
+    const baggageDetails = flight.baggage?.details ? formatBaggageDetails(flight.baggage.details, language) : 'N/A';
+    response += `🧳 **${copy.checkedBaggage as string}:** ${baggageDetails}\n`;
 
     // Información de carry-on - detectar inconsistencias en los datos
     let carryOnQuantity = parseInt(flight.baggage?.carryOnQuantity || '0');
@@ -65,35 +249,35 @@ export const formatFlightResponse = (flights: FlightData[]) => {
     }
 
     if (carryOnQuantity > 0) {
-      response += `🎒 **Equipaje de mano:** ✅ ${carryOnQuantity} pieza(s) incluida(s)`;
+      response += `🎒 **${copy.carryOn as string}:** ✅ ${carryOnQuantity} ${language === 'en' ? 'piece(s)' : language === 'pt' ? 'peça(s)' : 'pieza(s)'} ${copy.included as string}`;
       if (flight.baggage?.carryOnWeight) {
         response += ` (${flight.baggage.carryOnWeight})`;
       }
       response += '\n';
     } else {
-      response += `🎒 **Equipaje de mano:** ❌ No incluido\n`;
+      response += `🎒 **${copy.carryOn as string}:** ❌ ${copy.notIncluded as string}\n`;
     }
 
     // Clase de cabina
     const cabinClass = flight.cabin?.brandName || flight.cabin?.class || 'Economy';
-    const translatedCabinClass = translateFlightInfo(cabinClass);
-    response += `💺 **Clase:** ${translatedCabinClass}\n`;
+    const translatedCabinClass = formatFlightText(cabinClass, language);
+    response += `💺 **${copy.cabinClass as string}:** ${translatedCabinClass}\n`;
 
     // Información de reserva
     if (flight.booking?.lastTicketingDate) {
-      const ticketingDate = new Date(flight.booking.lastTicketingDate).toLocaleDateString('es-ES');
-      response += `📅 **Válido hasta:** ${ticketingDate}\n`;
+      const ticketingDate = formatDateByLanguage(flight.booking.lastTicketingDate, language);
+      response += `📅 **${copy.validUntil as string}:** ${ticketingDate}\n`;
     }
 
     // Itinerario detallado visual
-    const itinerary = generateFlightItinerary(flight);
+    const itinerary = generateFlightItinerary(flight, language);
     response += itinerary;
 
     // FareID para referencia
-    response += `\n🆔 **ID de Tarifa:** ${flight.id}\n\n`;
+    response += `\n🆔 **${copy.fareId as string}:** ${flight.id}\n\n`;
   });
 
-  response += '\n📋 Selecciona las opciones que prefieras para generar tu cotización.';
+  response += `\n${copy.selectFlights as string}`;
   return response;
 };
 
@@ -285,13 +469,14 @@ const formatRoomAvailability = (room?: LocalHotelData['rooms'][number]) => {
   return `⚠️ ${room.availability}`;
 };
 
-const formatPrimaryRoomLine = (room?: LocalHotelData['rooms'][number]) => {
+const formatPrimaryRoomLine = (room?: LocalHotelData['rooms'][number], language: UserLanguage = 'es') => {
   if (!room) {
     return '';
   }
 
-  const rawDescription = room.description || room.type || 'Habitación estándar';
-  const translatedDescription = translateRoomDescription(rawDescription);
+  const copy = getCopy(language);
+  const rawDescription = room.description || room.type || copy.standardRoom as string;
+  const translatedDescription = formatRoomText(rawDescription, language);
   const breakfast = rawDescription.toLowerCase().includes('breakfast') ||
     rawDescription.toLowerCase().includes('desayuno') ? ' 🍳' : '';
   const availability = formatRoomAvailability(room);
@@ -299,7 +484,7 @@ const formatPrimaryRoomLine = (room?: LocalHotelData['rooms'][number]) => {
   return `🛏️ ${translatedDescription}${breakfast} - ${room.total_price} ${room.currency} ${availability}`;
 };
 
-export const formatChainBalanceSummary = (chainBalance?: LocalHotelChainBalance) => {
+export const formatChainBalanceSummary = (chainBalance?: LocalHotelChainBalance, language: UserLanguage = 'es') => {
   if (!chainBalance || chainBalance.requestedChains.length <= 1) {
     return '';
   }
@@ -312,18 +497,20 @@ export const formatChainBalanceSummary = (chainBalance?: LocalHotelChainBalance)
     return '';
   }
 
-  return `⚖️ **Distribución por cadena:** ${visibleQuotas.join(', ')}`;
+  return `⚖️ **${getCopy(language).chainDistribution as string}:** ${visibleQuotas.join(', ')}`;
 };
 
 export const formatHotelResponse = (
-  hotels: LocalHotelData[]
+  hotels: LocalHotelData[],
+  language: UserLanguage = 'es'
 ) => {
+  const copy = getCopy(language);
   if (hotels.length === 0) {
-    return '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.';
+    return copy.noHotels as string;
   }
 
   const displayCount = Math.min(hotels.length, 5);
-  let response = `🏨 **${displayCount} Hoteles Disponibles** ${hotels.length > 5 ? `(los ${displayCount} más económicos de ${hotels.length})` : '(ordenados por precio)'}\n\n`;
+  let response = (copy.hotelsAvailable as (displayCount: number, total: number) => string)(displayCount, hotels.length);
 
   hotels.slice(0, 5).forEach((hotel, index) => {
     const minPrice = Math.min(...hotel.rooms.map((r) => r.total_price));
@@ -333,26 +520,26 @@ export const formatHotelResponse = (
     response += `---\n\n`;
     response += `🏨 **${hotel.name}**\n`;
     response += `📍 ${hotel.city}\n`;
-    response += `💰 Desde ${minPrice} ${hotel.rooms[0].currency}\n`;
-    response += `🌙 ${hotel.nights} noches\n`;
+    response += `💰 ${copy.from as string} ${minPrice} ${hotel.rooms[0].currency}\n`;
+    response += `🌙 ${(copy.nights as (count: number) => string)(hotel.nights)}\n`;
     response += `📅 ${hotel.check_in} → ${hotel.check_out}\n`;
 
     if (primaryRoom) {
-      response += `${formatPrimaryRoomLine(primaryRoom)}\n`;
+      response += `${formatPrimaryRoomLine(primaryRoom, language)}\n`;
     }
 
     if (extraRooms > 0) {
-      response += `➕ ${extraRooms} habitaci${extraRooms === 1 ? 'ón adicional' : 'ones adicionales'} disponibles\n`;
+      response += `➕ ${(copy.additionalRooms as (count: number) => string)(extraRooms)}\n`;
     }
 
     response += '\n';
   });
 
-  response += '\n📋 Selecciona los hoteles que prefieras para tu cotización.';
+  response += `\n${copy.selectHotels as string}`;
   return response;
 };
 
-export const formatChainBalanceNote = (chainBalance?: LocalHotelChainBalance) => {
+export const formatChainBalanceNote = (chainBalance?: LocalHotelChainBalance, language: UserLanguage = 'es') => {
   if (!chainBalance || chainBalance.requestedChains.length <= 1) {
     return '';
   }
@@ -364,23 +551,25 @@ export const formatChainBalanceNote = (chainBalance?: LocalHotelChainBalance) =>
 
   const notes = impactedChains.map((quota) => {
     if (quota.status === 'missing') {
-      return `No encontré opciones válidas de ${quota.chain} para este tramo.`;
+      return (getCopy(language).missingChain as (chain: string) => string)(quota.chain);
     }
 
-    return `${quota.chain} solo cubrió ${quota.selectedHotels} de ${quota.requestedQuota} lugar${quota.requestedQuota !== 1 ? 'es' : ''} previsto${quota.requestedQuota !== 1 ? 's' : ''}.`;
+    return (getCopy(language).partialChain as (chain: string, selected: number, requested: number) => string)(quota.chain, quota.selectedHotels, quota.requestedQuota);
   });
 
-  return `ℹ️ **Balance por cadena:** ${notes.join(' ')}`;
+  return `ℹ️ **${getCopy(language).chainBalance as string}:** ${notes.join(' ')}`;
 };
 
 export const formatMultiSegmentHotelResponse = (
-  segments: LocalHotelSegmentResult[]
+  segments: LocalHotelSegmentResult[],
+  language: UserLanguage = 'es'
 ) => {
+  const copy = getCopy(language);
   if (segments.length === 0) {
-    return '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.';
+    return copy.noHotels as string;
   }
 
-  let response = '🏨 **Búsqueda de Hoteles Multi-Destino**\n\n';
+  let response = copy.multiSegmentHotels as string;
 
   segments.forEach((segment, index) => {
     response += `### ${index + 1}. ${segment.city} (${segment.checkinDate} → ${segment.checkoutDate})\n\n`;
@@ -391,25 +580,25 @@ export const formatMultiSegmentHotelResponse = (
     }
 
     if (segment.hotels.length === 0) {
-      response += 'No encontré hoteles disponibles para este tramo.\n\n';
+      response += copy.segmentNoHotels as string;
       return;
     }
 
     const hotelCount = Math.min(segment.hotels.length, 5);
-    response += `Encontré ${hotelCount} hotel${hotelCount !== 1 ? 'es' : ''} para este tramo.\n\n`;
-    const chainBalanceSummary = formatChainBalanceSummary(segment.chainBalance);
+    response += (copy.segmentFound as (count: number) => string)(hotelCount);
+    const chainBalanceSummary = formatChainBalanceSummary(segment.chainBalance, language);
     if (chainBalanceSummary) {
       response += `${chainBalanceSummary}\n\n`;
     }
-    const chainBalanceNote = formatChainBalanceNote(segment.chainBalance);
+    const chainBalanceNote = formatChainBalanceNote(segment.chainBalance, language);
     if (chainBalanceNote) {
       response += `${chainBalanceNote}\n\n`;
     }
-    response += formatHotelResponse(segment.hotels.slice(0, 5));
+    response += formatHotelResponse(segment.hotels.slice(0, 5), language);
     response += '\n\n';
   });
 
-  response += '📋 Revisa cada tramo por separado para armar la cotización completa.';
+  response += copy.reviewSegments as string;
   return response;
 };
 
@@ -518,10 +707,11 @@ export const formatTransferResponse = (transfers: Array<{
   return response;
 };
 
-export const formatCombinedResponse = (combinedData: LocalCombinedTravelResults) => {
+export const formatCombinedResponse = (combinedData: LocalCombinedTravelResults, language: UserLanguage = 'es') => {
+  const copy = getCopy(language);
   const bestFlight = combinedData.flights[0];
   const bestHotel = combinedData.hotels[0];
-  const parts: string[] = ['Ya te dejé una base bastante concreta para este viaje:'];
+  const parts: string[] = [copy.combinedBase as string];
 
   if (bestFlight) {
     const firstLeg = bestFlight.legs?.[0];
@@ -530,19 +720,20 @@ export const formatCombinedResponse = (combinedData: LocalCombinedTravelResults)
     const lastSegment = firstOption?.segments?.[firstOption.segments.length - 1];
     const route = firstSegment && lastSegment
       ? `${firstSegment.departure?.airportCode || '?'} → ${lastSegment.arrival?.airportCode || '?'}`
-      : 'tramo aéreo listo';
-    const flightReason = bestFlight.stops?.count === 0 ? 'por comodidad' : 'por equilibrio entre precio y horario';
-    parts.push(`- vuelo recomendado: ${route} con ${bestFlight.airline?.name || 'la aerolínea principal'} desde ${bestFlight.price?.amount || 0} ${bestFlight.price?.currency || 'USD'} (${flightReason})`);
+      : copy.flightFallback as string;
+    const flightReason = bestFlight.stops?.count === 0 ? copy.flightComfort as string : copy.flightBalanced as string;
+    const airline = bestFlight.airline?.name || (language === 'en' ? 'the main airline' : language === 'pt' ? 'a companhia principal' : 'la aerolínea principal');
+    parts.push((copy.recommendedFlight as (route: string, airline: string, amount: number, currency: string, reason: string) => string)(route, airline, bestFlight.price?.amount || 0, bestFlight.price?.currency || 'USD', flightReason));
   }
 
   if (bestHotel) {
     const room = bestHotel.rooms?.[0];
     const nightly = room?.price_per_night || (room?.total_price && bestHotel.nights > 0 ? Math.round(room.total_price / bestHotel.nights) : null);
-    const hotelReason = bestHotel.category ? `${bestHotel.category}★ bien ubicado` : 'bien ubicado';
-    parts.push(`- hotel recomendado: ${bestHotel.name} ${nightly ? `desde ${nightly} ${room?.currency || 'USD'}/noche` : 'con tarifa para revisar'} (${hotelReason})`);
+    const hotelReason = bestHotel.category ? `${bestHotel.category}★ ${copy.wellLocated as string}` : copy.wellLocated as string;
+    parts.push((copy.recommendedHotel as (name: string, nightly: number | null, currency: string, reason: string) => string)(bestHotel.name, nightly, room?.currency || 'USD', hotelReason));
   }
 
-  parts.push('Si querés, ahora comparo una opción más económica contra una más equilibrada y te digo cuál conviene más.');
+  parts.push(copy.compareNext as string);
   return parts.join('\n');
 };
 
