@@ -357,9 +357,13 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     });
   }, [chatMode, emiliaState, mutateEmiliaState, selectedConversation]);
 
+  // Fire as soon as a conversation is selected (not waiting for the first
+  // message) so the FIRST user turn can already benefit from a geo-derived
+  // default origin. The browser handles permission UX; on denial / error the
+  // hook caches the null and never retries within the session.
   useGeolocationOriginHydration({
     conversationId: selectedConversation,
-    enabled: conversationScopedMessages.length > 0,
+    enabled: Boolean(selectedConversation),
   });
 
   // PR 3 (C5): bridge chip handlers. Wired only into the B2B (agent) branch of
