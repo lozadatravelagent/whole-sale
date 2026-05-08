@@ -1539,25 +1539,33 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
 
                         <Separator className="my-3" />
 
-                        {/* Hotel rooms - Using RoomGroupSelector */}
-                        <RoomGroupSelector
-                          rooms={hotel.rooms}
-                          selectedRoomId={selectedRooms[hotel.id]}
-                          onRoomSelect={(roomId) => handleRoomSelect(hotel, roomId)}
-                          isDisabled={!isCartMode && !isSelected}
-                          maxInitialRooms={1}
-                          compact
-                          requestedRoomType={activeHotelSegment?.requestedRoomType ?? combinedData.requestedRoomType}
-                          requestedMealPlan={activeHotelSegment?.requestedMealPlan ?? combinedData.requestedMealPlan}
-                          exactPrices={exactPrices}
-                          loadingPrices={loadingPrices}
-                          failedPrices={failedPrices}
-                          hotelId={hotel.id}
-                          nights={hotel.nights}
-                          language={language}
-                        />
+                        {/* Hotel rooms — scrolls vertically inside the card when room
+                            options expand (e.g. "Show more options"). The flex-1 + min-h-0
+                            combo keeps the scroll scoped here so the header and the
+                            "Add to itinerary" button stay fixed. */}
+                        <div
+                          className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1"
+                          style={{ scrollbarWidth: 'thin' }}
+                        >
+                          <RoomGroupSelector
+                            rooms={hotel.rooms}
+                            selectedRoomId={selectedRooms[hotel.id]}
+                            onRoomSelect={(roomId) => handleRoomSelect(hotel, roomId)}
+                            isDisabled={!isCartMode && !isSelected}
+                            maxInitialRooms={1}
+                            compact
+                            requestedRoomType={activeHotelSegment?.requestedRoomType ?? combinedData.requestedRoomType}
+                            requestedMealPlan={activeHotelSegment?.requestedMealPlan ?? combinedData.requestedMealPlan}
+                            exactPrices={exactPrices}
+                            loadingPrices={loadingPrices}
+                            failedPrices={failedPrices}
+                            hotelId={hotel.id}
+                            nights={hotel.nights}
+                            language={language}
+                          />
+                        </div>
                         {isCartMode && onAddHotel && (
-                          <div className="mt-auto pt-3 flex justify-end shrink-0">
+                          <div className="pt-3 flex justify-end shrink-0">
                             <Button
                               size="sm"
                               data-testid={`add-hotel-${hotel.id || 'unknown'}`}
