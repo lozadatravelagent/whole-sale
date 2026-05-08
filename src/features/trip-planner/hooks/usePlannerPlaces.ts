@@ -2,7 +2,12 @@ import { useCallback } from 'react';
 import { createDebugTimer } from '@/utils/debugTiming';
 import { normalizePlannerDayScheduling } from '../scheduling';
 import type { PlannerPlaceCandidate } from '../types';
-import { formatDestinationLabel } from '../utils';
+import {
+  buildEmptyPlannerState,
+  createSegmentFromCity,
+  findSegmentByCity,
+  formatDestinationLabel,
+} from '../utils';
 import { getPlannerPlaceCategoryLabel, isFoodLikePlannerPlace } from '../services/plannerPlaceMapper';
 import { isDraftPlannerState } from '../helpers';
 import {
@@ -24,6 +29,7 @@ export default function usePlannerPlaces(state: PlannerStateAPI) {
     conversationId,
     plannerState,
     updatePlannerState,
+    ensureAndUpdatePlannerState,
     pendingRealPlacesHydrationRef,
     toast,
   } = state;
@@ -418,9 +424,176 @@ export default function usePlannerPlaces(state: PlannerStateAPI) {
     }
   }, [conversationId, plannerState, updatePlannerState, pendingRealPlacesHydrationRef]);
 
+  // "Add to itinerary" entry point for discovery places in the chat.
+  // Bootstraps empty state, creates segment for the city if missing, ensures a day exists,
+  // and pushes the place into the suggested slot.
+  const addRecommendedPlaceFromChat = useCallback(async (place: {
+    name: string;
+    description?: string;
+    category: string;
+    suggestedSlot: 'morning' | 'afternoon' | 'evening';
+    segmentCity: string;
+    placeId?: string;
+    formattedAddress?: string;
+    photoUrls?: string[];
+    rating?: number;
+    userRatingsTotal?: number;
+  }) => {
+    const targetCity = place.segmentCity?.trim();
+    if (!targetCity) {
+      toast({
+        title: 'Falta la ciudad del lugar',
+        description: 'No pudimos determinar el destino para sumarlo al itinerario.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const mapCategory = (cat: string): PlannerPlaceCandidate['category'] => {
+      const lower = cat.toLowerCase();
+      if (/museo|museum/.test(lower)) return 'museum';
+      if (/restaurante|gastronom|cena|almuerzo/.test(lower)) return 'restaurant';
+      if (/cafe|cafeter/.test(lower)) return 'cafe';
+      return 'activity';
+    };
+
+    const placeCandidate: PlannerPlaceCandidate = {
+      placeId: place.placeId || `recommended-${place.name.toLowerCase().replace(/\s+/g, '-')}`,
+      name: place.name,
+      description: place.description,
+      photoUrls: place.photoUrls || [],
+      formattedAddress: place.formattedAddress,
+      rating: place.rating,
+      userRatingsTotal: place.userRatingsTotal,
+      category: mapCategory(place.category),
+    };
+
+    await ensureAndUpdatePlannerState(
+      () => buildEmptyPlannerState(conversationId || undefined),
+      (current) => {
+        const existing = findSegmentByCity(current, targetCity);
+
+        // Build segment if missing (default 2 nights, single empty day)
+        let segments = current.segments;
+        if (!existing) {
+          const newSegment = createSegmentFromCity(targetCity, { order: current.segments.length });
+          const dayId = `${newSegment.id}-day-1`;
+          segments = [
+            ...current.segments,
+            {
+              ...newSegment,
+              days: [
+                {
+                  id: dayId,
+                  dayNumber: 1,
+                  city: targetCity,
+                  title: `Día 1`,
+                  morning: [],
+                  afternoon: [],
+                  evening: [],
+                  restaurants: [],
+                },
+              ],
+            },
+          ];
+        }
+
+        const segmentId = existing?.id ?? segments[segments.length - 1].id;
+
+        return {
+          ...current,
+          segments: segments.map((segment, segmentIndex) => {
+            if (segment.id !== segmentId) return segment;
+
+            // Ensure at least one day exists
+            const days = segment.days.length > 0
+              ? segment.days
+              : [{
+                  id: `${segment.id}-day-1`,
+                  dayNumber: 1,
+                  city: segment.city,
+                  title: 'Día 1',
+                  morning: [],
+                  afternoon: [],
+                  evening: [],
+                  restaurants: [],
+                }];
+
+            // Pick first day with a free slot at the suggested block; fall back to day 0
+            const targetDayIndex = Math.max(
+              0,
+              days.findIndex((d) => d[place.suggestedSlot].length === 0),
+            );
+            const targetDay = days[targetDayIndex] || days[0];
+
+            const duplicate = targetDay[place.suggestedSlot].some(
+              (a) => a.placeId === placeCandidate.placeId,
+            );
+            if (duplicate) return segment;
+
+            const activityId = `gmaps-${placeCandidate.placeId}-${place.suggestedSlot}-${Date.now().toString(36)}`;
+            const nextActivity = {
+              id: activityId,
+              title: placeCandidate.name,
+              description: placeCandidate.description,
+              category: getPlannerPlaceCategoryLabel(placeCandidate.category),
+              recommendedSlot: place.suggestedSlot,
+              neighborhood: placeCandidate.formattedAddress,
+              placeId: placeCandidate.placeId,
+              formattedAddress: placeCandidate.formattedAddress,
+              rating: placeCandidate.rating,
+              userRatingsTotal: placeCandidate.userRatingsTotal,
+              photoUrls: placeCandidate.photoUrls,
+              source: 'google_maps' as const,
+            };
+
+            const nextDays = days.map((day, dayIndex) => {
+              if (day.id !== targetDay.id) return day;
+
+              const updatedDay = {
+                ...day,
+                [place.suggestedSlot]: [...day[place.suggestedSlot], nextActivity],
+                restaurants: isFoodLikePlannerPlace(placeCandidate)
+                  && !day.restaurants.some((r) => r.placeId === placeCandidate.placeId)
+                  ? [
+                      ...day.restaurants,
+                      {
+                        id: `gmaps-restaurant-${placeCandidate.placeId}`,
+                        name: placeCandidate.name,
+                        type: placeCandidate.category === 'cafe' ? 'Cafe' : 'Restaurante',
+                        placeId: placeCandidate.placeId,
+                        formattedAddress: placeCandidate.formattedAddress,
+                        rating: placeCandidate.rating,
+                        userRatingsTotal: placeCandidate.userRatingsTotal,
+                        source: 'google_maps' as const,
+                      },
+                    ]
+                  : day.restaurants,
+              };
+
+              return normalizePlannerDayScheduling(updatedDay, {
+                pace: current.pace,
+                travelers: current.travelers,
+                isTransferDay: segmentIndex > 0 && dayIndex === 0 && Boolean(segment.transportIn),
+              });
+            });
+
+            return { ...segment, days: nextDays };
+          }),
+        };
+      },
+    );
+
+    toast({
+      title: 'Lugar agregado al itinerario',
+      description: `${place.name} en ${formatDestinationLabel(targetCity)}.`,
+    });
+  }, [conversationId, ensureAndUpdatePlannerState, toast]);
+
   return {
     addPlaceToPlanner,
     addPlaceToFirstAvailableSlot,
+    addRecommendedPlaceFromChat,
     autoFillSegmentWithRealPlaces,
   };
 }

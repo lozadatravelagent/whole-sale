@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -36,7 +37,8 @@ import {
   ArrowRight,
   RotateCcw,
   Timer,
-  Navigation
+  Navigation,
+  Plus
 } from 'lucide-react';
 import { formatTime } from '@/features/chat/utils/messageHelpers';
 import { getCityNameFromCode } from '@/features/chat/utils/flightHelpers';
@@ -52,6 +54,10 @@ interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
   conversationId?: string; // Add conversation ID to get agency_id
   onPdfGenerated?: (pdfUrl: string, selectedFlights: FlightData[], selectedHotels: HotelData[]) => Promise<void>;
+  // "Agregar al itinerario" handlers — when present, the selector switches to cart mode:
+  // each card shows an "Agregar al itinerario" button and the inline PDF flow is hidden.
+  onAddFlight?: (flight: FlightData) => void;
+  onAddHotel?: (hotel: HotelData) => void;
   responseLanguage?: UserLanguage | string;
 }
 
@@ -386,11 +392,15 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   combinedData,
   conversationId,
   onPdfGenerated,
+  onAddFlight,
+  onAddHotel,
   responseLanguage
 }) => {
   const language = normalizeSupportedLanguage(responseLanguage);
   const locale = LOCALE_BY_LANGUAGE[language];
   const copy = getResultSelectorCopy(language);
+  const { t: tChat } = useTranslation('chat');
+  const isCartMode = Boolean(onAddFlight || onAddHotel);
   const [selectedFlights, setSelectedFlights] = useState<string[]>([]);
   const [selectedHotels, setSelectedHotels] = useState<string[]>([]);
   const [selectedHotelSnapshots, setSelectedHotelSnapshots] = useState<Record<string, HotelData>>({});
@@ -1256,11 +1266,13 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       <CardContent className="p-3">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center space-x-3">
-                            <Checkbox
-                              data-testid={`select-flight-${flight.id || index}`}
-                              checked={isSelected}
-                              onCheckedChange={() => handleFlightToggle(flight.id!)}
-                            />
+                            {!isCartMode && (
+                              <Checkbox
+                                data-testid={`select-flight-${flight.id || index}`}
+                                checked={isSelected}
+                                onCheckedChange={() => handleFlightToggle(flight.id!)}
+                              />
+                            )}
                             <div>
                               <div className="flex items-center space-x-2">
                                 <Plane className="h-3 w-3 text-primary" />
@@ -1302,6 +1314,19 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                           compact={combinedData.requestType === 'combined'}
                           language={language}
                         />
+                        {isCartMode && onAddFlight && (
+                          <div className="mt-3 flex justify-end">
+                            <Button
+                              size="sm"
+                              data-testid={`add-flight-${flight.id || index}`}
+                              onClick={() => onAddFlight(flight)}
+                              className="h-8"
+                            >
+                              <Plus className="h-3.5 w-3.5 mr-1.5" />
+                              {tChat('cart.addFlight')}
+                            </Button>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   );
@@ -1440,12 +1465,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       <CardContent className="flex h-full flex-col p-4">
                         <div className="mb-2 flex min-h-[5.25rem] items-start gap-3">
                           {/* Checkbox */}
-                          <Checkbox
-                            data-testid={`select-hotel-${hotel.id || 'unknown'}`}
-                            checked={isSelected}
-                            onCheckedChange={() => handleHotelToggle(hotel)}
-                            className="mt-1"
-                          />
+                          {!isCartMode && (
+                            <Checkbox
+                              data-testid={`select-hotel-${hotel.id || 'unknown'}`}
+                              checked={isSelected}
+                              onCheckedChange={() => handleHotelToggle(hotel)}
+                              className="mt-1"
+                            />
+                          )}
 
                           {/* Hotel thumbnail */}
                           <div
@@ -1517,7 +1544,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                           rooms={hotel.rooms}
                           selectedRoomId={selectedRooms[hotel.id]}
                           onRoomSelect={(roomId) => handleRoomSelect(hotel, roomId)}
-                          isDisabled={!isSelected}
+                          isDisabled={!isCartMode && !isSelected}
                           maxInitialRooms={1}
                           compact
                           requestedRoomType={activeHotelSegment?.requestedRoomType ?? combinedData.requestedRoomType}
@@ -1529,6 +1556,19 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                           nights={hotel.nights}
                           language={language}
                         />
+                        {isCartMode && onAddHotel && (
+                          <div className="mt-3 flex justify-end">
+                            <Button
+                              size="sm"
+                              data-testid={`add-hotel-${hotel.id || 'unknown'}`}
+                              onClick={() => onAddHotel(hotel)}
+                              className="h-8"
+                            >
+                              <Plus className="h-3.5 w-3.5 mr-1.5" />
+                              {tChat('cart.addHotel')}
+                            </Button>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   );
@@ -1568,8 +1608,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
         )}
       </Tabs>
 
-      {/* Generate PDF Button */}
-      {((combinedData.flights && combinedData.flights.length > 0) || (combinedData.hotels && combinedData.hotels.length > 0)) && (
+      {/* Generate PDF Button — hidden in cart mode (PDF lives in TripPlannerWorkspace) */}
+      {!isCartMode && ((combinedData.flights && combinedData.flights.length > 0) || (combinedData.hotels && combinedData.hotels.length > 0)) && (
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between gap-6">

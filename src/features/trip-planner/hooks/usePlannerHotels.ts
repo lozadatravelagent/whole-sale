@@ -2,11 +2,16 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { runWithConcurrency, type CancelToken } from '@/utils/concurrencyPool';
 import { handleHotelSearch } from '@/features/chat/services/searchHandlers';
 import { makeBudget } from '@/services/hotelSearch';
+import type { HotelData } from '@/types';
 import type { LocalHotelData } from '@/types/external';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import type { PlannerPlaceHotelCandidate, TripPlannerState } from '../types';
 import {
+  buildEmptyPlannerState,
   buildMakeBudgetOccupancies,
+  createSegmentFromCity,
+  findSegmentByCity,
+  formatDestinationLabel,
   getPlannerHotelDisplayId,
 } from '../utils';
 import { rankInventoryHotelsForPlace } from '../services/plannerHotelMatcher';
@@ -23,6 +28,9 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
   const {
     plannerState,
     updatePlannerState,
+    ensureAndUpdatePlannerState,
+    conversationId,
+    toast,
   } = state;
 
   const isAutoLoadingHotelsRef = useRef(false);
@@ -1090,6 +1098,81 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
     }
   }, [getSegmentHotelSearchInput, plannerState, updatePlannerState]);
 
+  // "Add to itinerary" entry point for hotel cards in the chat.
+  // Resolves segment by city, creates one if missing, and replaces the confirmed hotel.
+  const addHotelToSegment = useCallback(async (hotel: HotelData | LocalHotelData) => {
+    const targetCity = hotel.city || (hotel as HotelData).segmentCity;
+    if (!targetCity) {
+      toast({
+        title: 'Falta la ciudad del hotel',
+        description: 'No pudimos determinar el destino para sumarlo al itinerario.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const checkin = hotel.check_in || (hotel as HotelData).segmentCheckIn || undefined;
+    const checkout = hotel.check_out || (hotel as HotelData).segmentCheckOut || undefined;
+    const inventoryHotel = hotel as LocalHotelData;
+    const displayId = getPlannerHotelDisplayId(inventoryHotel);
+
+    await ensureAndUpdatePlannerState(
+      () => buildEmptyPlannerState(conversationId || undefined),
+      (current) => {
+        const existing = findSegmentByCity(current, targetCity);
+        const segments = existing
+          ? current.segments
+          : [
+              ...current.segments,
+              {
+                ...createSegmentFromCity(targetCity, {
+                  checkinDate: checkin,
+                  checkoutDate: checkout,
+                  order: current.segments.length,
+                }),
+              },
+            ];
+
+        const segmentId = existing?.id ?? segments[segments.length - 1].id;
+
+        return {
+          ...current,
+          segments: segments.map((segment) =>
+            segment.id !== segmentId
+              ? segment
+              : {
+                  ...segment,
+                  hotelPlan: {
+                    ...segment.hotelPlan,
+                    city: segment.hotelPlan.city || targetCity,
+                    checkinDate: checkin || segment.hotelPlan.checkinDate,
+                    checkoutDate: checkout || segment.hotelPlan.checkoutDate,
+                    searchStatus: 'ready',
+                    matchStatus: 'quoted',
+                    selectedHotelId: displayId,
+                    confirmedInventoryHotel: inventoryHotel,
+                    hotelRecommendations: [
+                      inventoryHotel,
+                      ...segment.hotelPlan.hotelRecommendations.filter(
+                        (existingHotel) => getPlannerHotelDisplayId(existingHotel) !== displayId,
+                      ),
+                    ],
+                    quoteLastValidatedAt: new Date().toISOString(),
+                    quoteError: undefined,
+                    error: undefined,
+                  },
+                }
+          ),
+        };
+      },
+    );
+
+    toast({
+      title: 'Hotel agregado al itinerario',
+      description: `${inventoryHotel.name} en ${formatDestinationLabel(targetCity)}.`,
+    });
+  }, [conversationId, ensureAndUpdatePlannerState, toast]);
+
   return {
     loadHotelsForSegment,
     selectHotel,
@@ -1097,5 +1180,6 @@ export default function usePlannerHotels(state: PlannerStateAPI) {
     resolveInventoryMatchForSegment,
     confirmInventoryHotelMatch,
     refreshQuotedHotel,
+    addHotelToSegment,
   };
 }

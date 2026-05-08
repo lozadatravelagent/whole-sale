@@ -36,6 +36,25 @@ interface ChatInterfaceProps {
   onBackToList?: () => void;
   onGoToPlanner?: () => void;
   /**
+   * "Agregar al itinerario" handlers wired from ChatFeature → useTripPlanner.
+   * When passed down to MessageItem and RecommendedPlacesList, the chat
+   * switches the cards to cart mode (button per card, no inline PDF).
+   */
+  onAddFlight?: (flight: GlobalFlightData) => void;
+  onAddHotel?: (hotel: GlobalHotelData) => void;
+  onAddPlace?: (place: {
+    name: string;
+    description?: string;
+    category: string;
+    suggestedSlot: 'morning' | 'afternoon' | 'evening';
+    segmentCity: string;
+    placeId?: string;
+    formattedAddress?: string;
+    photoUrls?: string[];
+    rating?: number;
+    userRatingsTotal?: number;
+  }) => void;
+  /**
    * PR 3 (C5): account type gates the agent-only chrome in ChatHeader and
    * (post-C6) the ModeSwitch. Replaces the pre-C5 `mode: 'companion' |
    * 'standard'` prop. `accountType === 'consumer'` is the former `companion`;
@@ -83,6 +102,9 @@ const ChatInterface = React.memo(({
   onPdfGenerated,
   onBackToList,
   onGoToPlanner,
+  onAddFlight,
+  onAddHotel,
+  onAddPlace,
   accountType,
   mode,
   onBridgeSwitch,
@@ -368,8 +390,10 @@ const ChatInterface = React.memo(({
                 <MessageItem
                   key={msg.id}
                   msg={msg}
-                  onPdfGenerated={onPdfGenerated}
+                  onPdfGenerated={onAddFlight || onAddHotel ? undefined : onPdfGenerated}
                   onGoToPlanner={onGoToPlanner}
+                  onAddFlight={onAddFlight}
+                  onAddHotel={onAddHotel}
                 />
               ))}
               {/* Guided input for any turn that surfaces missing fields (validation
@@ -416,6 +440,19 @@ const ChatInterface = React.memo(({
                   addLabel={discoveryVisual?.primaryCtaLabel}
                   exploreLabel={discoveryVisual?.secondaryCtaLabel}
                   onAdd={(place) => {
+                    if (onAddPlace) {
+                      onAddPlace({
+                        name: place.name,
+                        description: place.description,
+                        category: place.category,
+                        suggestedSlot: place.suggestedSlot ?? 'morning',
+                        segmentCity: place.city,
+                        placeId: place.placeId,
+                        photoUrls: place.photoUrl ? [place.photoUrl] : undefined,
+                      });
+                      return;
+                    }
+                    // Legacy fallback: send a chat message asking to add the place
                     onMessageChange(isShowPlacesTurn
                       ? t('recommendedPlaces.saveAsHighlight', { name: place.name, city: place.city })
                       : t('recommendedPlaces.addToItinerary', { name: place.name, city: place.city }));

@@ -232,6 +232,13 @@
       "onRequest": "sob consulta"
     }
   },
+  "cart": {
+    "addFlight": "Adicionar ao roteiro",
+    "addHotel": "Adicionar ao roteiro",
+    "added": "Adicionado ao seu roteiro",
+    "generatePdf": "Gerar PDF da viagem",
+    "generating": "Gerando..."
+  },
   "missingFieldsPrompt": {
     "confirm": {
       "itinerary": "Sim, monte este roteiro",

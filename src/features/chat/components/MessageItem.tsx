@@ -70,9 +70,11 @@ class LazySelectorErrorBoundary extends React.Component<LazySelectorErrorBoundar
 
 interface MessageItemProps {
   msg: MessageRow;
-  onPdfGenerated: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
+  onPdfGenerated?: (pdfUrl: string, selectedFlights: GlobalFlightData[], selectedHotels: GlobalHotelData[]) => Promise<void>;
   onOpenPlannerDateSelector?: (request: ParsedTravelRequest) => void;
   onGoToPlanner?: () => void;
+  onAddFlight?: (flight: GlobalFlightData) => void;
+  onAddHotel?: (hotel: GlobalHotelData) => void;
 }
 
 // Markdown wrapper component that lazy loads remarkGfm
@@ -96,7 +98,7 @@ const MarkdownContent = ({ content }: { content: string }) => {
 };
 
 // Memoized message component to prevent unnecessary re-renders
-const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector }: MessageItemProps) => {
+const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector, onAddFlight, onAddHotel }: MessageItemProps) => {
   const { t, i18n } = useTranslation('chat');
   const { translateRoomDescription } = useChatDataTranslations();
   const messageText = getMessageContent(msg);
@@ -441,6 +443,8 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
                       combinedData={memoizedCombinedData!}
                       conversationId={msg.conversation_id}
                       onPdfGenerated={onPdfGenerated}
+                      onAddFlight={onAddFlight}
+                      onAddHotel={onAddHotel}
                       responseLanguage={responseLanguage}
                     />
                   </Suspense>

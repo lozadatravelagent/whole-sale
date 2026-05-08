@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { runWithConcurrency, type CancelToken } from '@/utils/concurrencyPool';
 import { handleFlightSearch } from '@/features/chat/services/searchHandlers';
+import type { FlightData as ExternalFlightData } from '@/types/external';
+import type { FlightData } from '@/types';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
-import { formatDestinationLabel } from '../utils';
+import {
+  buildEmptyPlannerState,
+  createSegmentFromCity,
+  findSegmentByCity,
+  formatDestinationLabel,
+} from '../utils';
 import { buildPlannerTransportSearchSignature, isDraftPlannerState } from '../helpers';
 import type { PlannerStateAPI } from './usePlannerState';
 
@@ -10,6 +17,9 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
   const {
     plannerState,
     updatePlannerState,
+    ensureAndUpdatePlannerState,
+    conversationId,
+    toast,
   } = state;
 
   const isAutoLoadingTransportRef = useRef(false);
@@ -393,8 +403,100 @@ export default function usePlannerTransport(state: PlannerStateAPI) {
     }));
   }, [updatePlannerState]);
 
+  // "Add to itinerary" entry point for flight cards in the chat.
+  // Resolves segment by destination city (last leg arrival), creates one if missing,
+  // and replaces transportIn (and transportOut for round-trip flights) on that segment.
+  const addFlightToSegment = useCallback(async (flight: FlightData) => {
+    const lastLeg = flight.legs?.[flight.legs.length - 1];
+    const firstLeg = flight.legs?.[0];
+    const destinationCity = lastLeg?.arrival?.city_name || lastLeg?.arrival?.city_code;
+    const originCity = firstLeg?.departure?.city_name || firstLeg?.departure?.city_code;
+
+    if (!destinationCity) {
+      toast({
+        title: 'Falta el destino del vuelo',
+        description: 'No pudimos determinar la ciudad de llegada para sumarlo al itinerario.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const flightOption = flight as unknown as ExternalFlightData;
+    const flightId = flight.id || `flight-${Date.now().toString(36)}`;
+
+    await ensureAndUpdatePlannerState(
+      () => buildEmptyPlannerState(conversationId || undefined),
+      (current) => {
+        const existing = findSegmentByCity(current, destinationCity);
+        const segments = existing
+          ? current.segments
+          : [
+              ...current.segments,
+              createSegmentFromCity(destinationCity, {
+                checkinDate: flight.departure_date,
+                checkoutDate: flight.return_date,
+                order: current.segments.length,
+              }),
+            ];
+
+        const segmentId = existing?.id ?? segments[segments.length - 1].id;
+        const summary = originCity
+          ? `${formatDestinationLabel(originCity)} a ${formatDestinationLabel(destinationCity)}`
+          : `Vuelo a ${formatDestinationLabel(destinationCity)}`;
+
+        return {
+          ...current,
+          origin: current.origin || originCity,
+          segments: segments.map((segment) =>
+            segment.id !== segmentId
+              ? segment
+              : {
+                  ...segment,
+                  transportIn: {
+                    type: 'flight',
+                    summary,
+                    origin: originCity,
+                    destination: destinationCity,
+                    date: flight.departure_date,
+                    searchStatus: 'ready',
+                    selectedOptionId: flightId,
+                    options: [{ ...flightOption, id: flightId }],
+                    error: undefined,
+                  },
+                  // For round-trip flights, also drop the return leg into transportOut.
+                  ...(flight.return_date
+                    ? {
+                        transportOut: {
+                          type: 'flight' as const,
+                          summary: originCity
+                            ? `${formatDestinationLabel(destinationCity)} a ${formatDestinationLabel(originCity)}`
+                            : `Vuelo de regreso desde ${formatDestinationLabel(destinationCity)}`,
+                          origin: destinationCity,
+                          destination: originCity,
+                          date: flight.return_date,
+                          searchStatus: 'ready' as const,
+                          selectedOptionId: flightId,
+                          options: [{ ...flightOption, id: flightId }],
+                        },
+                      }
+                    : {}),
+                }
+          ),
+        };
+      },
+    );
+
+    toast({
+      title: 'Vuelo agregado al itinerario',
+      description: originCity
+        ? `${formatDestinationLabel(originCity)} → ${formatDestinationLabel(destinationCity)}`
+        : `Vuelo a ${formatDestinationLabel(destinationCity)}`,
+    });
+  }, [conversationId, ensureAndUpdatePlannerState, toast]);
+
   return {
     loadTransportForSegment,
     selectTransportOption,
+    addFlightToSegment,
   };
 }

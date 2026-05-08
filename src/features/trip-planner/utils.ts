@@ -1935,3 +1935,79 @@ ${tipsHtml}
 </body>
 </html>`;
 }
+
+// ---------------------------------------------------------------------------
+// Cart / "Add to itinerary" helpers
+// ---------------------------------------------------------------------------
+
+function normalizeCityKey(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+export function findSegmentByCity(
+  state: TripPlannerState | null | undefined,
+  city: string,
+): PlannerSegment | null {
+  if (!state || !city) return null;
+  const target = normalizeCityKey(city);
+  if (!target) return null;
+  return state.segments.find((segment) => {
+    const segCity = normalizeCityKey(segment.city);
+    if (!segCity) return false;
+    return segCity === target || segCity.includes(target) || target.includes(segCity);
+  }) || null;
+}
+
+export function createSegmentFromCity(
+  city: string,
+  options?: { country?: string; nights?: number; checkinDate?: string; checkoutDate?: string; order?: number },
+): PlannerSegment {
+  const trimmedCity = city.trim() || 'Destino';
+  const order = options?.order ?? 0;
+  const nights = Math.max(1, options?.nights ?? 2);
+  const segmentId = `segment-${slugify(trimmedCity) || 'destination'}-cart-${Date.now().toString(36)}`;
+  return {
+    id: segmentId,
+    city: trimmedCity,
+    country: options?.country,
+    order,
+    summary: `Tramo agregado al itinerario en ${formatDestinationLabel(trimmedCity)}.`,
+    contentStatus: 'ready',
+    realPlacesStatus: 'idle',
+    startDate: options?.checkinDate,
+    endDate: options?.checkoutDate,
+    nights,
+    hotelPlan: {
+      city: trimmedCity,
+      checkinDate: options?.checkinDate,
+      checkoutDate: options?.checkoutDate,
+      searchStatus: 'idle',
+      matchStatus: 'idle',
+      hotelRecommendations: [],
+    },
+    transportIn: null,
+    transportOut: null,
+    days: [],
+  };
+}
+
+export function buildEmptyPlannerState(conversationId?: string): TripPlannerState {
+  return {
+    id: `planner-cart-${Date.now().toString(36)}`,
+    conversationId,
+    title: 'Itinerario en armado',
+    summary: 'Itinerario armado a medida desde el chat. Sumá vuelos, hoteles y lugares para completarlo.',
+    days: 0,
+    travelers: { adults: 2, children: 0, infants: 0 },
+    interests: [],
+    constraints: [],
+    destinations: [],
+    segments: [],
+    generalTips: [],
+    generationMeta: buildPlannerMeta('ui_edit', { uiPhase: 'ready', isDraft: false }),
+  };
+}

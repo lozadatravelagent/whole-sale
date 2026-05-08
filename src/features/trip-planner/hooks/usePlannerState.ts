@@ -269,6 +269,28 @@ export default function usePlannerState(
     });
   }, [conversationId, isCurrentPlannerConversation, persistPlannerState]);
 
+  // Same as updatePlannerState but bootstraps an empty state when none exists yet.
+  // Used by the "Agregar al itinerario" flow so the first add creates the trip draft.
+  const ensureAndUpdatePlannerState = useCallback(async (
+    buildInitial: () => TripPlannerState,
+    updater: (current: TripPlannerState) => TripPlannerState,
+    source: 'ui_edit' | 'system' = 'ui_edit'
+  ) => {
+    if (!isCurrentPlannerConversation(conversationId)) {
+      return;
+    }
+
+    setPlannerState((current) => {
+      if (!isCurrentPlannerConversation(conversationId)) {
+        return current;
+      }
+      const base = current ?? buildInitial();
+      const next = updater(base);
+      void persistPlannerState(next, source);
+      return next;
+    });
+  }, [conversationId, isCurrentPlannerConversation, persistPlannerState]);
+
   const setDraftPlannerFromRequest = useCallback((request: ParsedTravelRequest, fieldProvenance?: PlannerFieldProvenance) => {
     const draftState = createDraftPlannerFromRequest(request, conversationId || undefined, fieldProvenance);
     if (!draftState) {
@@ -335,6 +357,7 @@ export default function usePlannerState(
     persistPlannerState,
     loadPersistedPlannerState,
     updatePlannerState,
+    ensureAndUpdatePlannerState,
     setDraftPlannerFromRequest,
     setPlannerDraftPhase,
     conversationId,

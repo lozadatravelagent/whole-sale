@@ -98,6 +98,7 @@ export default function useTripPlanner(
     regenerateDay: generation.regenerateDay,
     addPlaceToPlanner: places.addPlaceToPlanner,
     addPlaceToFirstAvailableSlot: places.addPlaceToFirstAvailableSlot,
+    addRecommendedPlaceFromChat: places.addRecommendedPlaceFromChat,
     autoFillSegmentWithRealPlaces: places.autoFillSegmentWithRealPlaces,
     loadHotelsForSegment: hotels.loadHotelsForSegment,
     selectHotel: hotels.selectHotel,
@@ -105,7 +106,9 @@ export default function useTripPlanner(
     resolveInventoryMatchForSegment: hotels.resolveInventoryMatchForSegment,
     confirmInventoryHotelMatch: hotels.confirmInventoryHotelMatch,
     refreshQuotedHotel: hotels.refreshQuotedHotel,
+    addHotelToSegment: hotels.addHotelToSegment,
     loadTransportForSegment: transport.loadTransportForSegment,
     selectTransportOption: transport.selectTransportOption,
+    addFlightToSegment: transport.addFlightToSegment,
   };
 }

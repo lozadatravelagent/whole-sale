@@ -232,6 +232,13 @@
       "onRequest": "bajo consulta"
     }
   },
+  "cart": {
+    "addFlight": "Agregar al itinerario",
+    "addHotel": "Agregar al itinerario",
+    "added": "Agregado a tu itinerario",
+    "generatePdf": "Generar PDF de la trip",
+    "generating": "Generando..."
+  },
   "missingFieldsPrompt": {
     "confirm": {
       "itinerary": "Sí, armá este itinerario",

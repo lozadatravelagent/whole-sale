@@ -506,6 +506,29 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     await generateItineraryPdf(planner.plannerState, user?.agency_id ?? undefined);
   }, [planner.plannerState, user?.agency_id]);
 
+  // "Agregar al itinerario" handlers — wired from CombinedTravelSelector and RecommendedPlacesList.
+  // Each delegates to a useTripPlanner hook that bootstraps the trip if needed and persists.
+  const handleAddFlightToCart = useCallback(
+    (flight: Parameters<typeof planner.addFlightToSegment>[0]) => {
+      void planner.addFlightToSegment(flight);
+    },
+    [planner],
+  );
+
+  const handleAddHotelToCart = useCallback(
+    (hotel: Parameters<typeof planner.addHotelToSegment>[0]) => {
+      void planner.addHotelToSegment(hotel);
+    },
+    [planner],
+  );
+
+  const handleAddPlaceToCart = useCallback(
+    (place: Parameters<typeof planner.addRecommendedPlaceFromChat>[0]) => {
+      void planner.addRecommendedPlaceFromChat(place);
+    },
+    [planner],
+  );
+
   // Handle Add to CRM button click
   const handleAddToCRM = useCallback(async () => {
     if (!selectedConversation || !conversationScopedMessages.length) {
@@ -906,6 +929,9 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                   onAddToCRM={handleAddToCRM}
                   onPdfGenerated={handlePdfGenerated}
                   onBackToList={() => setSelectedConversation(null)}
+                  onAddFlight={handleAddFlightToCart}
+                  onAddHotel={handleAddHotelToCart}
+                  onAddPlace={handleAddPlaceToCart}
                   accountType="consumer"
                   onSuggestedAction={handleSuggestedAction}
                   headerVisibility="mobile-only"
@@ -1017,6 +1043,9 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                   setWorkspaceMode('planner');
                   setHistoryMode('planner');
                 } : undefined}
+                onAddFlight={handleAddFlightToCart}
+                onAddHotel={handleAddHotelToCart}
+                onAddPlace={handleAddPlaceToCart}
                 accountType="agent"
                 mode={chatMode}
                 hasAgency={hasAgency}

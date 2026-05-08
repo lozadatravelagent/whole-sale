@@ -232,6 +232,13 @@
       "onRequest": "on request"
     }
   },
+  "cart": {
+    "addFlight": "Add to itinerary",
+    "addHotel": "Add to itinerary",
+    "added": "Added to your itinerary",
+    "generatePdf": "Generate trip PDF",
+    "generating": "Generating..."
+  },
   "missingFieldsPrompt": {
     "confirm": {
       "itinerary": "Yes, build this itinerary",
