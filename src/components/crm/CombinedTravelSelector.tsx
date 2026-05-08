@@ -1460,7 +1460,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                   return (
                     <Card
                       data-testid={`hotel-card-${hotel.id || 'unknown'}`}
-                      className={`h-[25rem] overflow-hidden transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                      className={`${isCartMode ? 'h-[28rem]' : 'h-[25rem]'} overflow-hidden transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
                     >
                       <CardContent className="flex h-full flex-col p-4">
                         <div className="mb-2 flex min-h-[5.25rem] items-start gap-3">
@@ -1557,7 +1557,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                           language={language}
                         />
                         {isCartMode && onAddHotel && (
-                          <div className="mt-3 flex justify-end">
+                          <div className="mt-auto pt-3 flex justify-end shrink-0">
                             <Button
                               size="sm"
                               data-testid={`add-hotel-${hotel.id || 'unknown'}`}
