@@ -1866,10 +1866,127 @@ const useMessageHandler = (
 
         console.log(`📊 [VALIDATION] hasFlightData: ${hasFlightData}, flightVal.isValid: ${flightVal.isValid}, hotelVal.isValid: ${hotelVal.isValid}`);
 
-        const missingAny = !flightVal.isValid || !hotelVal.isValid;
+        const flightOk = flightVal.isValid;
+        const hotelOk = hotelVal.isValid;
         console.log('🧾 [VALIDATION] Combined results:', { flight: flightVal, hotel: hotelVal });
-        if (missingAny) {
-          // Persist context
+
+        // Per-product partial advance (spec §9.4): if one product has all its
+        // required fields and the other doesn't, run the valid one and ask
+        // only for the missing product's slots — do NOT block both.
+        if (!flightOk && hotelOk) {
+          console.log('🟡 [VALIDATION] Partial: hotel valid, flight missing — running hotel search alone');
+          setTypingMessage(typingCopy.searchingHotels, conversationIdForThisSearch);
+
+          const hotelResult = await handleHotelSearch({
+            ...parsedRequest,
+            requestType: 'hotels',
+          } as any);
+
+          const flightAskMessage = buildConversationalMissingInfoMessage({
+            parsedRequest,
+            missingFields: flightVal.missingFields,
+            fallbackMessage: generateMissingInfoMessage(
+              flightVal.missingFieldsSpanish,
+              'flights',
+              undefined,
+              userLanguage,
+            ),
+            language: userLanguage,
+          });
+
+          if (ctxEngState) {
+            ctxEngState = await emitPendingAction({
+              ctxEngState,
+              action: {
+                kind: 'awaiting_user_input',
+                for: 'flight_completion',
+                fields: toCanonicalFields(flightVal.missingFields),
+                prompt: flightAskMessage.slice(0, 240),
+                issuedAt: new Date().toISOString(),
+              },
+            });
+          }
+
+          const combinedResponseText = `${hotelResult.response}\n\n${flightAskMessage}`;
+          await saveAndDisplayMessage({
+            conversation_id: finalConversationId,
+            role: 'assistant' as const,
+            content: { text: combinedResponseText },
+            meta: {
+              status: 'sent',
+              messageType: 'search_results',
+              combinedData: (hotelResult.data as { combinedData?: unknown })?.combinedData,
+              missingFlightFields: flightVal.missingFields,
+              originalRequest: parsedRequest,
+            },
+          });
+
+          console.log('✅ [VALIDATION] Partial flow: hotel rendered, pending_action=flight_completion');
+          flowTimer.end('stopped - combined partial hotel-only', {
+            requestType: parsedRequest.requestType,
+            missingFlightFields: flightVal.missingFields,
+          });
+          return;
+        }
+
+        if (flightOk && !hotelOk) {
+          console.log('🟡 [VALIDATION] Partial: flight valid, hotel missing — running flight search alone');
+          setTypingMessage(typingCopy.searchingFlights, conversationIdForThisSearch);
+
+          const flightResult = await handleFlightSearch({
+            ...parsedRequest,
+            requestType: 'flights',
+          } as any);
+
+          const hotelAskMessage = buildConversationalMissingInfoMessage({
+            parsedRequest,
+            missingFields: hotelVal.missingFields,
+            fallbackMessage: generateMissingInfoMessage(
+              hotelVal.missingFieldsSpanish,
+              'hotels',
+              undefined,
+              userLanguage,
+            ),
+            language: userLanguage,
+          });
+
+          if (ctxEngState) {
+            ctxEngState = await emitPendingAction({
+              ctxEngState,
+              action: {
+                kind: 'awaiting_user_input',
+                for: 'hotel_completion',
+                fields: toCanonicalFields(hotelVal.missingFields),
+                prompt: hotelAskMessage.slice(0, 240),
+                issuedAt: new Date().toISOString(),
+              },
+            });
+          }
+
+          const combinedResponseText = `${flightResult.response}\n\n${hotelAskMessage}`;
+          await saveAndDisplayMessage({
+            conversation_id: finalConversationId,
+            role: 'assistant' as const,
+            content: { text: combinedResponseText },
+            meta: {
+              status: 'sent',
+              messageType: 'search_results',
+              combinedData: (flightResult.data as { combinedData?: unknown })?.combinedData,
+              missingHotelFields: hotelVal.missingFields,
+              originalRequest: parsedRequest,
+            },
+          });
+
+          console.log('✅ [VALIDATION] Partial flow: flight rendered, pending_action=hotel_completion');
+          flowTimer.end('stopped - combined partial flight-only', {
+            requestType: parsedRequest.requestType,
+            missingHotelFields: hotelVal.missingFields,
+          });
+          return;
+        }
+
+        if (!flightOk && !hotelOk) {
+          // Neither side has enough info — fall back to the aggregated ask.
           await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_combined_missing');
 
           const missingInfoMessage = buildConversationalMissingInfoMessage({
@@ -1890,7 +2007,6 @@ const useMessageHandler = (
             language: userLanguage,
           });
 
-          // Phase 2: additive pending_action emit (combined search slot-fill).
           if (ctxEngState) {
             const dedupedLegacy = [
               ...new Set([...flightVal.missingFields, ...hotelVal.missingFields]),
