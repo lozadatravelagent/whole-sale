@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import MapGL, { Layer, Marker, NavigationControl, Popup, Source, useMap } from 'react-map-gl/mapbox';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { AlertCircle, Calendar, Clock, ExternalLink, Lightbulb, Loader2, MapPin, MapPinned, Star } from 'lucide-react';
+import { AlertCircle, Calendar, Clock, ExternalLink, Lightbulb, Loader2, MapPin, MapPinned, Plane, Star } from 'lucide-react';
 import { HAS_MAP, MAPBOX_TOKEN } from '../map';
 import type {
   PlannerActivity,
@@ -85,6 +85,8 @@ interface TripPlannerMapProps {
   segments: PlannerSegment[];
   days: number;
   selectedSegmentId?: string | null;
+  /** Geocoded origin (state.originLocation). When set, drives the origin→first-destination polyline. */
+  originLocation?: { lat: number; lng: number; city: string; country?: string } | null;
   activeCategories: Record<PlannerPlaceCategory, boolean>;
   placesByCategory?: Record<string, PlannerPlaceCandidate[]>;
   placesLoading?: boolean;
@@ -198,16 +200,39 @@ function dedupeVisiblePlaces(places: PlannerPlaceCandidate[]): PlannerPlaceCandi
 
 // ── Route GeoJSON ───────────────────────────────────────────────────────────
 
-function buildRouteGeoJSON(segments: SegmentWithLocation[]): GeoJSON.FeatureCollection {
+// Lat/lng tolerance to detect "origin = first segment" (~5km at the equator).
+const SAME_PLACE_TOLERANCE = 0.05;
+
+function isOriginDistinctFromFirstSegment(
+  origin: { lat: number; lng: number } | null | undefined,
+  firstSegment: SegmentWithLocation | undefined,
+): boolean {
+  if (!origin || !firstSegment) return false;
+  return (
+    Math.abs(origin.lat - firstSegment.location.lat) > SAME_PLACE_TOLERANCE
+    || Math.abs(origin.lng - firstSegment.location.lng) > SAME_PLACE_TOLERANCE
+  );
+}
+
+function buildRouteGeoJSON(
+  segments: SegmentWithLocation[],
+  origin?: { lat: number; lng: number } | null,
+): GeoJSON.FeatureCollection {
+  const segmentCoords = segments.map((s): [number, number] => [s.location.lng, s.location.lat]);
+  const includeOrigin = isOriginDistinctFromFirstSegment(origin, segments[0]);
+  const coordinates = includeOrigin
+    ? [[origin!.lng, origin!.lat] as [number, number], ...segmentCoords]
+    : segmentCoords;
+
   return {
     type: 'FeatureCollection',
-    features: segments.length >= 2
+    features: coordinates.length >= 2
       ? [{
           type: 'Feature',
           properties: {},
           geometry: {
             type: 'LineString',
-            coordinates: segments.map((s) => [s.location.lng, s.location.lat]),
+            coordinates,
           },
         }]
       : [],
@@ -254,6 +279,7 @@ function usePlannerViewport(
 function PlannerMapScene({
   segments,
   selectedSegmentId,
+  originLocation,
   activeCategories,
   placesByCategory,
   placesLoading: placesLoadingProp,
@@ -268,6 +294,7 @@ function PlannerMapScene({
 }: {
   segments: SegmentWithLocation[];
   selectedSegmentId: string | null;
+  originLocation?: { lat: number; lng: number; city: string; country?: string } | null;
   activeCategories: Record<PlannerPlaceCategory, boolean>;
   placesByCategory?: Record<string, PlannerPlaceCandidate[]>;
   placesLoading?: boolean;
@@ -636,7 +663,25 @@ function PlannerMapScene({
   }, [onOpenPlaceDetail, selectedSegment]);
 
 
-  const routeGeoJSON = useMemo(() => buildRouteGeoJSON(segments), [segments]);
+  const showOriginMarker = useMemo(
+    () => isOriginDistinctFromFirstSegment(
+      originLocation && Number.isFinite(originLocation.lat) && Number.isFinite(originLocation.lng)
+        ? { lat: originLocation.lat, lng: originLocation.lng }
+        : null,
+      segments[0],
+    ),
+    [originLocation, segments],
+  );
+
+  const routeGeoJSON = useMemo(
+    () => buildRouteGeoJSON(
+      segments,
+      showOriginMarker && originLocation
+        ? { lat: originLocation.lat, lng: originLocation.lng }
+        : null,
+    ),
+    [segments, showOriginMarker, originLocation],
+  );
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -677,6 +722,24 @@ function PlannerMapScene({
             layout={{ 'line-cap': 'round', 'line-join': 'round' }}
           />
         </Source>
+
+        {/* Origin marker — drives the origin→destination polyline. Unnumbered to differentiate from segments. */}
+        {showOriginMarker && originLocation && (
+          <Marker
+            key="origin-marker"
+            longitude={originLocation.lng}
+            latitude={originLocation.lat}
+            anchor="center"
+            style={{ zIndex: 0 }}
+          >
+            <div
+              className="flex items-center justify-center rounded-full w-8 h-8 cursor-default select-none shadow-md bg-slate-100 text-slate-600 border-2 border-slate-300"
+              title={`Origen: ${originLocation.city}`}
+            >
+              <Plane className="h-4 w-4" />
+            </div>
+          </Marker>
+        )}
 
         {/* City markers */}
         {segments.map((segment, index) => {
@@ -925,6 +988,7 @@ export default function TripPlannerMap({
   segments,
   days,
   selectedSegmentId: controlledSelectedSegmentId,
+  originLocation,
   activeCategories,
   placesByCategory,
   placesLoading,
@@ -992,6 +1056,7 @@ export default function TripPlannerMap({
             <PlannerMapScene
               segments={mappedSegments}
               selectedSegmentId={selectedSegmentId}
+              originLocation={originLocation ?? null}
               activeCategories={activeCategories}
               placesByCategory={placesByCategory}
               placesLoading={placesLoading}

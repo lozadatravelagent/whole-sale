@@ -302,6 +302,7 @@ export interface TripPlannerState {
   destinations: string[];
   origin?: string;        // Detected or user-provided departure city
   originCountry?: string; // Country of origin (for context)
+  originLocation?: PlannerLocation; // Geocoded coords of origin — drives origin→destination polyline on maps
   segments: PlannerSegment[];
   notes?: string[];
   generalTips: string[];

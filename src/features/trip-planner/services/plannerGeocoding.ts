@@ -523,6 +523,12 @@ export async function detectUserOriginCity(): Promise<{ city: string; country: s
   }
 }
 
+function needsOriginResolution(state: TripPlannerState): boolean {
+  if (!state.origin) return false;
+  if (!state.originLocation) return true;
+  return normalizeLocationKey(state.originLocation.city) !== normalizeLocationKey(state.origin);
+}
+
 export async function enrichPlannerWithLocations(plannerState: TripPlannerState): Promise<EnrichedPlannerLocations> {
   const unresolvedCities: string[] = [];
   let changed = false;
@@ -551,11 +557,27 @@ export async function enrichPlannerWithLocations(plannerState: TripPlannerState)
     }),
   );
 
+  // Origin → drives the origin→destination polyline on the maps. Same provider/cache as segments.
+  let nextOriginLocation = plannerState.originLocation;
+  if (needsOriginResolution(plannerState)) {
+    const resolved = await resolvePlannerSegmentLocation({
+      city: plannerState.origin!,
+      country: plannerState.originCountry,
+    });
+    if (resolved) {
+      nextOriginLocation = resolved;
+      changed = true;
+    } else {
+      unresolvedCities.push(formatDestinationLabel(plannerState.origin!));
+    }
+  }
+
   return {
     plannerState: changed
       ? {
           ...plannerState,
           segments: nextSegments,
+          originLocation: nextOriginLocation,
         }
       : plannerState,
     changed,

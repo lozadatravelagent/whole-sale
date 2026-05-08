@@ -30,13 +30,26 @@ export default function usePlannerLocations(state: PlannerStateAPI) {
       return normalizeLocationLabel(segment.location.city) !== normalizeLocationLabel(segment.city);
     });
 
-    if (pendingSegments.length === 0) {
+    // Origin → drives the origin→destination polyline on the maps. If origin is
+    // set but originLocation is missing or stale, fire the same geocoder pass.
+    const originPending = Boolean(
+      plannerState.origin
+      && (
+        !plannerState.originLocation
+        || normalizeLocationLabel(plannerState.originLocation.city) !== normalizeLocationLabel(plannerState.origin)
+      )
+    );
+
+    if (pendingSegments.length === 0 && !originPending) {
       setIsResolvingLocations(false);
       setPlannerLocationWarning(null);
       return;
     }
 
-    const signature = pendingSegments.map((segment) => `${segment.id}:${segment.city}:${segment.country || ''}`).join('|');
+    const signature = [
+      ...pendingSegments.map((segment) => `${segment.id}:${segment.city}:${segment.country || ''}`),
+      originPending ? `origin:${plannerState.origin}:${plannerState.originCountry || ''}` : '',
+    ].filter(Boolean).join('|');
     if (resolvingSignatureRef.current === signature) {
       return;
     }

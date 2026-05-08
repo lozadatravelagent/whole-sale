@@ -6,6 +6,7 @@ import {
   renderCustomHeader,
   renderCustomFooter,
 } from './customPdfTemplates';
+import { renderCartPage, segmentHasCartContent } from './cartPdfSections';
 
 export interface ItineraryBrandingData {
   agency_name: string;
@@ -26,7 +27,10 @@ export function canExportPdf(state: TripPlannerState | null): boolean {
   if (!state) return false;
   if (state.generationMeta?.isDraft) return false;
   if (!state.segments || state.segments.length === 0) return false;
-  return state.segments.some(s => s.days && s.days.length > 0);
+  // Allow export when there is at least one day OR any cart-added flight/hotel.
+  return state.segments.some(s =>
+    (s.days && s.days.length > 0) || segmentHasCartContent(s)
+  );
 }
 
 export function renderItineraryHtml(
@@ -40,6 +44,13 @@ export function renderItineraryHtml(
 
   let pages = '';
   pages += renderSummaryPage(stableState, branding);
+
+  // Cart section (flights + hotels added via "Agregar al itinerario") — between
+  // summary and day pages. Renders only segments with cart content; empty otherwise.
+  const cartHtml = renderCartPage(stableState.segments);
+  if (cartHtml) {
+    pages += `${pageOpen()}${renderCustomHeader(branding)}<div style="flex:1;padding-top:16px;overflow:hidden;">${cartHtml}</div>${renderCustomFooter(branding)}${pageClose()}`;
+  }
 
   for (const segment of stableState.segments) {
     // Use segment.days only — never bufferedDays

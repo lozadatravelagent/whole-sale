@@ -1514,6 +1514,7 @@ export default function TripPlannerWorkspace({
       segments={visibleMapPlannerState.segments}
       days={visibleMapPlannerState.days}
       selectedSegmentId={activeMapSegmentId}
+      originLocation={visibleMapPlannerState.originLocation ?? null}
       activeCategories={mapActiveCategories}
       placesByCategory={mapPlacesByCategory}
       placesLoading={mapPlacesLoading}

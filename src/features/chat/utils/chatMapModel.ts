@@ -1,7 +1,7 @@
 import type { TripPlannerState } from '@/features/trip-planner/types';
 import type { DiscoveryContext } from '../services/discoveryService';
 
-export type ChatMapMarkerKind = 'destination' | 'place';
+export type ChatMapMarkerKind = 'destination' | 'place' | 'origin';
 
 export interface ChatMapMarker {
   id: string;
@@ -12,6 +12,13 @@ export interface ChatMapMarker {
   kind: ChatMapMarkerKind;
   order?: number;
   rating?: number;
+}
+
+// Lat/lng tolerance to detect "origin = first segment" (~5km at the equator).
+const SAME_PLACE_TOLERANCE = 0.05;
+
+function isSamePlace(a: { lat: number; lng: number }, b: { lat: number; lng: number }): boolean {
+  return Math.abs(a.lat - b.lat) <= SAME_PLACE_TOLERANCE && Math.abs(a.lng - b.lng) <= SAME_PLACE_TOLERANCE;
 }
 
 export interface ChatMapModel {
@@ -68,7 +75,7 @@ function buildPlannerModel(plannerState: TripPlannerState | null): ChatMapModel 
 
   if (segments.length === 0) return null;
 
-  const markers = segments.map((segment, index): ChatMapMarker => ({
+  const destinationMarkers = segments.map((segment, index): ChatMapMarker => ({
     id: segment.id || `${segment.city}-${index}`,
     name: segment.city,
     subtitle: segment.country,
@@ -77,6 +84,32 @@ function buildPlannerModel(plannerState: TripPlannerState | null): ChatMapModel 
     kind: 'destination',
     order: index + 1,
   }));
+
+  // Origin marker → drives the origin→first-destination polyline on the map.
+  // Skipped when origin city overlaps with the first segment (avoids stacked markers).
+  const originLocation = plannerState?.originLocation;
+  const firstDest = destinationMarkers[0];
+  const showOrigin = Boolean(
+    originLocation
+    && isFiniteCoord(originLocation.lat, originLocation.lng)
+    && !isSamePlace(originLocation, firstDest)
+  );
+
+  const originMarker: ChatMapMarker | null = showOrigin
+    ? {
+        id: 'origin',
+        name: originLocation!.city,
+        subtitle: originLocation!.country,
+        lat: originLocation!.lat,
+        lng: originLocation!.lng,
+        kind: 'origin',
+        order: 0,
+      }
+    : null;
+
+  const markers: ChatMapMarker[] = originMarker
+    ? [originMarker, ...destinationMarkers]
+    : destinationMarkers;
 
   return {
     title: 'Mapa del viaje',

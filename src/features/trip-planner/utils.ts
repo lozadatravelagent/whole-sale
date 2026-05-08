@@ -1128,6 +1128,24 @@ export function normalizePlannerState(raw: Record<string, unknown>, conversation
     interests: safeArray(source?.interests),
     constraints: safeArray(source?.constraints),
     destinations,
+    origin: source?.origin as string | undefined,
+    originCountry: source?.originCountry as string | undefined,
+    originLocation: (() => {
+      const raw = source?.originLocation as Record<string, unknown> | undefined;
+      if (!raw) return undefined;
+      const lat = typeof raw.lat === 'number' ? raw.lat : undefined;
+      const lng = typeof raw.lng === 'number' ? raw.lng : undefined;
+      const city = typeof raw.city === 'string' ? raw.city : undefined;
+      if (lat === undefined || lng === undefined || !Number.isFinite(lat) || !Number.isFinite(lng) || !city) return undefined;
+      return {
+        city,
+        country: typeof raw.country === 'string' ? raw.country : undefined,
+        lat,
+        lng,
+        placeLabel: typeof raw.placeLabel === 'string' ? raw.placeLabel : undefined,
+        source: (raw.source === 'provider' || raw.source === 'fallback') ? raw.source : undefined,
+      };
+    })(),
     segments,
     notes: safeArray(source?.notes),
     generalTips: safeArray(source?.generalTips),

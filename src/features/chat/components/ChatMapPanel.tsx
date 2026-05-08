@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import MapGL, { Layer, Marker, NavigationControl, Popup, Source } from 'react-map-gl/mapbox';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { MapPin, Star, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { MapPin, Star, PanelRightClose, PanelRightOpen, Plane } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { HAS_MAP, MAPBOX_TOKEN } from '@/features/trip-planner/map';
 import type { TripPlannerState } from '@/features/trip-planner/types';
@@ -172,11 +172,16 @@ export default function ChatMapPanel({
                       'flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-background px-2 text-xs font-semibold shadow-md transition-transform hover:scale-105',
                       marker.kind === 'place'
                         ? 'bg-warning text-warning-foreground'
-                        : 'bg-primary text-primary-foreground'
+                        : marker.kind === 'origin'
+                          ? 'bg-muted text-muted-foreground'
+                          : 'bg-primary text-primary-foreground'
                     )}
                     aria-label={marker.name}
+                    title={marker.kind === 'origin' ? `Origen: ${marker.name}` : marker.name}
                   >
-                    {marker.order ?? <MapPin className="h-3.5 w-3.5" />}
+                    {marker.kind === 'origin'
+                      ? <Plane className="h-3.5 w-3.5" />
+                      : marker.order ?? <MapPin className="h-3.5 w-3.5" />}
                   </button>
                 </Marker>
               ))}
