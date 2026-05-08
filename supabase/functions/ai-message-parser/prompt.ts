@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v13';
+export const PROMPT_VERSION = 'emilia-parser-v14';
 export const PROMPT_CONTRACT_SNIPPETS = [
   // v8 dropped the literal `IMPORTANTE: Siempre responde solo con JSON válido.`
   // line; Structured Outputs (response_format: json_schema) now enforces JSON
@@ -12,6 +12,7 @@ export const PROMPT_CONTRACT_SNIPPETS = [
   'ONLY minors (children/infants) without any adults',
   'COMBINED ROUND-TRIP DATE ALIGNMENT (CRITICAL)',
   'DEFAULT MISSING DATES AND FAMILY TRAVELERS',
+  'OPERATIONAL ORDER',
 ];
 
 interface BuildSystemPromptArgs {
@@ -613,6 +614,41 @@ User: "replace Paris with Lisbon and make it faster"
   },
   "confidence": 0.9
 }
+
+## OPERATIONAL ORDER — RESPECT WHAT THE USER SAID FIRST
+
+When the user mentions MORE THAN ONE travel product (e.g., flight + hotel, hotel + transfer, transfer + hotel + flight), DO NOT assume the classic order flight → hotel → transfer. Respect the order the user expressed.
+
+Emit \`productOrder\` as an array listing the products in the same sequence the user mentioned them.
+
+When to emit:
+- 2 or more products mentioned in a clear sequence ("hotel, después vuelos" / "vuelos y hotel" / "traslado, hotel y vuelo") → emit \`productOrder\` with the exact order.
+- Only 1 product mentioned, OR the user said "paquete"/"package"/"viaje completo" without expressing order → DO NOT emit \`productOrder\` (downstream handler uses default).
+
+The order matters for two reasons:
+1. The downstream UI renders product blocks in this order (the user perceives the order).
+2. The natural-language confirmation should say "Busco primero {p1} y después sumo {p2}" using this order.
+
+Treat all mentioned products as part of the SAME intent. If a single product is missing one critical field, ask only for that field — do not block the whole multi-product request.
+
+Allowed values inside \`productOrder\`: "flight", "hotel", "transfer".
+
+EXAMPLES:
+
+User: "Quiero hotel en Cancún, seguro necesito vuelos"
+→ productOrder: ["hotel", "flight"]
+
+User: "Vuelos a Cancún en julio y después hotel all inclusive"
+→ productOrder: ["flight", "hotel"]
+
+User: "Quiero un traslado del aeropuerto al hotel, y también hotel y vuelos"
+→ productOrder: ["transfer", "hotel", "flight"]
+
+User: "Paquete a Punta Cana con vuelo, hotel y traslados"
+→ DO NOT emit productOrder (paquete sin orden expresado por el usuario)
+
+User: "Hotel Riu en Cancún"
+→ DO NOT emit productOrder (solo un producto)
 
 ## REQUIRED FIELDS AND DEFAULTS
 

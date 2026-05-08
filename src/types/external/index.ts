@@ -283,6 +283,8 @@ export interface LocalCombinedTravelResults {
   // Hotel search ID for IndexedDB lookup (dynamic filtering)
   hotelSearchId?: string;
   hotelSearchIds?: string[];
+  // Order expressed by the user; UI honors this when rendering combined cards.
+  productOrder?: Array<'flight' | 'hotel' | 'transfer'>;
 }
 
 export interface LocalPackageData {

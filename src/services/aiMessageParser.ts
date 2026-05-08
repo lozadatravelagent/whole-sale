@@ -119,8 +119,17 @@ export interface PlannerEditIntent {
     confidence?: number;
 }
 
+export type ProductKind = 'flight' | 'hotel' | 'transfer';
+
 export interface ParsedTravelRequest {
     requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
+    /**
+     * Order in which the user mentioned the products. Emitted by the LLM parser
+     * only when 2+ products were mentioned in an explicit sequence (see prompt
+     * "OPERATIONAL ORDER" rules). Single-product requests and unordered "paquete"
+     * leave this undefined; the handler/UI then fall back to their default order.
+     */
+    productOrder?: ProductKind[];
     flights?: {
         origin: string;
         destination: string;

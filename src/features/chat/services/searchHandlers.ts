@@ -1818,6 +1818,9 @@ export const handleCombinedSearch = async (parsed: ParsedTravelRequest): Promise
       flightSearchId: flightResult?.data?.combinedData?.flightSearchId, // Pass through for localStorage lookup
       hotelSearchId: hotelResult?.data?.combinedData?.hotelSearchId, // Pass through for IndexedDB lookup (hotel filter chips)
       hotelSearchIds: hotelResult?.data?.combinedData?.hotelSearchIds,
+      // Order expressed by the user (parser fills it when 2+ products in sequence).
+      // Undefined when single product or unordered "paquete" — UI uses default order.
+      productOrder: parsed.productOrder,
     };
 
     console.log('📊 [COMBINED SEARCH] Combined data summary:');

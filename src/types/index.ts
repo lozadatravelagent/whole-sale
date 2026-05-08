@@ -541,6 +541,10 @@ export interface CombinedTravelResults {
   // Hotel search ID for IndexedDB lookup (dynamic filtering)
   hotelSearchId?: string;
   hotelSearchIds?: string[];
+  // Order in which the user mentioned the products. Drives UI render order
+  // and the natural-language confirmation. Undefined for single-product or
+  // unordered package requests — UI uses default ['flight','hotel','transfer'].
+  productOrder?: Array<'flight' | 'hotel' | 'transfer'>;
 }
 
 // EUROVIPS WebService types

@@ -141,6 +141,14 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
         "Place-discovery hint emitted alongside requestType=itinerary when " +
         "the user asks for concrete places to map.",
     },
+    productOrder: {
+      type: ["array", "null"],
+      items: { type: "string", enum: ["flight", "hotel", "transfer"] },
+      description:
+        "Order in which the user mentioned the products. Emit ONLY when 2+ " +
+        "products were mentioned in a clear sequence. Omit (null) for single " +
+        "product or when user said 'paquete' without an explicit order.",
+    },
     // ---------------------------------------------------------------------
     // Missing-info / clarifying-question fields.
     // ---------------------------------------------------------------------

@@ -409,10 +409,15 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   const [selectedFlightOptions, setSelectedFlightOptions] = useState<Record<string, Record<number, number>>>({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [agencyId, setAgencyId] = useState<string | undefined>(undefined);
-  const [activeTab, setActiveTab] = useState(
-    combinedData.requestType === 'combined' ? 'flights' :
-      combinedData.requestType === 'flights-only' ? 'flights' : 'hotels'
-  );
+  // Default tab honors the order the user expressed (combinedData.productOrder).
+  // When user said "hotel, después vuelo" → productOrder[0]==='hotel' → open hotels tab.
+  // Falls back to 'flights' for combined/flights-only when no order was expressed.
+  const [activeTab, setActiveTab] = useState(() => {
+    if (combinedData.requestType === 'hotels-only') return 'hotels';
+    const firstFromOrder = combinedData.productOrder?.find(p => p === 'flight' || p === 'hotel');
+    if (firstFromOrder === 'hotel') return 'hotels';
+    return 'flights';
+  });
   const [activeHotelSegmentId, setActiveHotelSegmentId] = useState<string | null>(null);
   // Exact price states for makeBudget integration
   const [exactPrices, setExactPrices] = useState<Record<string, { price: number; currency: string; budgetId: string }>>({});
@@ -1218,18 +1223,35 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       {/* Tabs for flights and hotels */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
         <TabsList className="grid w-full grid-cols-2" data-testid="results-tabs">
-          {(combinedData.requestType === 'combined' || combinedData.requestType === 'flights-only') && (
-            <TabsTrigger value="flights" className="flex items-center space-x-2" data-testid="results-tab-flights">
-              <Plane className="h-4 w-4" />
-              <span>{copy.flights} ({hasCache ? filteredFlights.length : combinedData.flights.length})</span>
-            </TabsTrigger>
-          )}
-          {(combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only') && (
-            <TabsTrigger value="hotels" className="flex items-center space-x-2" data-testid="results-tab-hotels">
-              <Hotel className="h-4 w-4" />
-              <span>{copy.hotels} ({hotelTabCount})</span>
-            </TabsTrigger>
-          )}
+          {(() => {
+            const showFlights = combinedData.requestType === 'combined' || combinedData.requestType === 'flights-only';
+            const showHotels = combinedData.requestType === 'combined' || combinedData.requestType === 'hotels-only';
+            // Trigger order honors what the user said first when productOrder is present.
+            const order: Array<'flight' | 'hotel'> = (() => {
+              if (combinedData.productOrder?.[0] === 'hotel') return ['hotel', 'flight'];
+              if (combinedData.productOrder?.[0] === 'flight') return ['flight', 'hotel'];
+              return ['flight', 'hotel'];
+            })();
+            return order.map(kind => {
+              if (kind === 'flight' && showFlights) {
+                return (
+                  <TabsTrigger key="flights" value="flights" className="flex items-center space-x-2" data-testid="results-tab-flights">
+                    <Plane className="h-4 w-4" />
+                    <span>{copy.flights} ({hasCache ? filteredFlights.length : combinedData.flights.length})</span>
+                  </TabsTrigger>
+                );
+              }
+              if (kind === 'hotel' && showHotels) {
+                return (
+                  <TabsTrigger key="hotels" value="hotels" className="flex items-center space-x-2" data-testid="results-tab-hotels">
+                    <Hotel className="h-4 w-4" />
+                    <span>{copy.hotels} ({hotelTabCount})</span>
+                  </TabsTrigger>
+                );
+              }
+              return null;
+            });
+          })()}
         </TabsList>
 
         {/* Flights Tab */}
