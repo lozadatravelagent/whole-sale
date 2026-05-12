@@ -264,11 +264,22 @@ function buildSearchPrompt(
     : isUsableActionText(parsedRequest?.hotels?.checkinDate)
       ? parsedRequest?.hotels?.checkinDate
       : plannerState?.startDate;
-  const endDate = isUsableActionText(parsedRequest?.flights?.returnDate)
+  let endDate = isUsableActionText(parsedRequest?.flights?.returnDate)
     ? parsedRequest?.flights?.returnDate
     : isUsableActionText(parsedRequest?.hotels?.checkoutDate)
       ? parsedRequest?.hotels?.checkoutDate
       : plannerState?.endDate;
+  // Hotel chip: when only checkin is known, default to a 3-night stay.
+  // Why: EUROVIPS/SOFTUR times out on open-ended date ranges. A "desde el X"
+  // prompt round-trips through the parser, which inflates the stay and times
+  // out the SOAP. The +3 default keeps the chip executable in one shot.
+  if (kind === 'hotel' && startDate && !endDate) {
+    const base = new Date(`${startDate}T00:00:00Z`);
+    if (!Number.isNaN(base.getTime())) {
+      base.setUTCDate(base.getUTCDate() + 3);
+      endDate = base.toISOString().slice(0, 10);
+    }
+  }
   const travelers = parsedRequest?.flights || parsedRequest?.hotels || plannerState?.travelers;
   const travelerPhrase = buildTravelerPhrase(travelers, language);
   const datePhrase = formatDateRangePhrase(startDate, endDate, language);
