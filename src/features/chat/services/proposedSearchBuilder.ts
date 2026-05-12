@@ -593,8 +593,9 @@ export function buildProposedSearch(
     });
   }
 
-  // Cap at 3 alternatives — keep UI compact.
-  const cappedAlternatives = alternativeChips.slice(0, 3);
+  // Cap at 4 alternatives — high-context cases (romantic + premium + flight+hotel)
+  // legitimately surface 4 distinct quick actions; UI can wrap.
+  const cappedAlternatives = alternativeChips.slice(0, 4);
 
   // ---- 4. Narrative segments -------------------------------------------
   const lead = buildOccasionLead(seeds.occasionHint, seeds.travelerType, destination, copy);

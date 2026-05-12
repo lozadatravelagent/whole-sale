@@ -153,13 +153,13 @@ describe('buildProposedSearch — canonical anniversary case', () => {
     expect(econ!.submitText).toContain('económico');
   });
 
-  it('caps alternative chips at 3', () => {
+  it('caps alternative chips at 4', () => {
     const result = buildProposedSearch(makeParsed(seeds), {
       profile: PROFILE_WITH_GEO,
       now: FROZEN_NOW,
       language: 'es',
     });
-    expect(result!.alternativeChips.length).toBeLessThanOrEqual(3);
+    expect(result!.alternativeChips.length).toBeLessThanOrEqual(4);
   });
 
   it('renders narrative segments with anniversary lead', () => {

@@ -781,6 +781,32 @@ export function resolveConversationTurn(options: {
     };
   }
 
+  // Phase 5 / sub-task C — exploratory-but-actionable in agency mode.
+  // Renders a one-click search proposal via chips instead of asking another
+  // clarification question. Agency-only: passenger users have planner UX
+  // for exploratory intent.
+  if (
+    mode === 'agency' &&
+    routeResult.reason === 'exploratory_with_seeds' &&
+    parsedRequest.searchSeeds &&
+    !isQuoteFromActivePlanner &&
+    !hasPendingAction
+  ) {
+    return {
+      executionBranch: 'proposal_chip',
+      responseMode: 'proposal_first_search',
+      normalizedMissingFields,
+      messageType: 'search_proposal',
+      shouldUseStandardItinerary: false,
+      shouldAskMinimalQuestion: false,
+      uiMeta: {
+        route: routeResult.route,
+        reason: routeResult.reason,
+        firstPlanHandledAs: null,
+      },
+    };
+  }
+
   // Bridge guard composition (most → least specific):
   //   G1 — anti-loop: previous turn was already a bridge.
   //   G2 — explicit user choice: clicked "seguir en este modo".

@@ -13,6 +13,7 @@ import { normalizeSearchIntent } from '../services/searchIntentNormalizer';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
 import { buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTurn, resolveTravelContextBridge } from '../services/conversationOrchestrator';
 import { buildEmiliaSearchNarrative, type NarrativeChip } from '../services/emiliaNarrative';
+import { buildProposedSearch } from '../services/proposedSearchBuilder';
 import { detectHotelPreferencesFromMessage, resolveTurnIntent } from '../services/turnIntentResolver';
 import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
@@ -1690,6 +1691,70 @@ const useMessageHandler = (
         flowTimer.end('mode_bridge emitted', {
           suggestedMode,
           route: routeResult.route,
+        });
+        return;
+      }
+
+      // === PROPOSAL_CHIP BRANCH (Phase 5 / sub-task C) ===
+      // Exploratory-but-actionable agency turn — render a one-click search
+      // proposal (principal chip + 2-3 alternatives) instead of asking another
+      // clarification question. Defensive: NO setPendingAction — exploratory
+      // proposals must NOT lock state. The user can ignore the chip and type a
+      // totally different message; that next turn re-parses normally.
+      if (conversationTurn.executionBranch === 'proposal_chip') {
+        console.log('🎯 [PROPOSAL CHIP] Building exploratory search proposal');
+        const proposed = buildProposedSearch(parsedRequest, {
+          profile: ctxEngState?.profile ?? null,
+          now: new Date(),
+          language: userLanguage,
+        });
+
+        let proposalText: string;
+        let proposalChips: NarrativeChip[] | undefined;
+        if (!proposed) {
+          // Defensive: if builder returns null (insufficient seeds), degrade
+          // to the focused-collect copy. The router gate should have prevented
+          // this case but we handle it gracefully.
+          console.log('⚠️ [PROPOSAL CHIP] buildProposedSearch returned null; falling back to collect');
+          proposalText = buildEmiliaSearchNarrative({
+            mode: 'collect',
+            normalized: parsedRequest,
+            missingFields: routeResult.missingFields,
+            fallbackMessage: routeResult.collectQuestion ?? '',
+            language: userLanguage,
+          }).text;
+        } else {
+          const narrative = buildEmiliaSearchNarrative({
+            mode: 'search_proposal',
+            proposedSearch: proposed,
+            language: userLanguage,
+          });
+          proposalText = narrative.text;
+          proposalChips = narrative.chips;
+        }
+
+        await saveAndDisplayMessage({
+          conversation_id: finalConversationId,
+          role: 'assistant' as const,
+          content: { text: proposalText },
+          meta: {
+            status: 'sent',
+            messageType: conversationTurn.messageType,
+            responseMode: conversationTurn.responseMode,
+            originalRequest: parsedRequest,
+            requestText: parsedRequest.originalMessage || currentMessage,
+            conversationTurn,
+            ...(proposalChips && proposalChips.length > 0
+              ? { emiliaNarrative: { chips: proposalChips } }
+              : {}),
+          },
+        });
+
+        setIsTyping(false, conversationIdForThisSearch);
+        setIsLoading(false);
+        flowTimer.end('proposal_chip emitted', {
+          route: routeResult.route,
+          chipCount: proposalChips?.length ?? 0,
         });
         return;
       }
