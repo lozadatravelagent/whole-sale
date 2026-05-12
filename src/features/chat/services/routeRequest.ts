@@ -41,7 +41,13 @@ export type RouterReason =
   | 'ordered_products_ready'
   | 'hotel_exact_ready'
   | 'origin_missing_no_geo'
-  | 'minor_ages_needed';
+  | 'minor_ages_needed'
+  // Phase 5 / sub-task C: exploratory-but-actionable. The user named a
+  // destination + traveler context but the request didn't cleanly map to a
+  // QUOTE-ready payload. The orchestrator routes this to a one-click search
+  // proposal (`proposal_chip` branch) instead of asking another clarification
+  // question.
+  | 'exploratory_with_seeds';
 
 export interface RouteResult {
   route: EmiliaRoute;
@@ -436,6 +442,22 @@ function pickCollectReason(
   parsed: ParsedTravelRequest,
   missingFields: string[],
 ): RouterReason {
+  // Phase 5 / sub-task C — exploratory-but-actionable.
+  // When the parser emits `searchSeeds` with a concrete destination AND
+  // either explicit traveler context (travelerType) OR adults > 0, we have
+  // enough to PROPOSE a search via chips instead of asking another
+  // clarification question. The route stays COLLECT (the orchestrator
+  // branches on the reason code), keeping a clean separation between the
+  // deterministic router and the proposal-chip rendering layer.
+  const seeds = parsed.searchSeeds;
+  if (
+    seeds &&
+    seeds.destination &&
+    (seeds.travelerType || (typeof seeds.adults === 'number' && seeds.adults > 0))
+  ) {
+    return 'exploratory_with_seeds';
+  }
+
   // children mentioned but ages not provided — need ages for accurate quoting
   const hasChildrenWithoutAges =
     ((parsed.flights?.children ?? 0) > 0 &&

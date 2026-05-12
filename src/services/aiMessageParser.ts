@@ -216,6 +216,33 @@ export interface ParsedTravelRequest {
      * "cotizame este viaje").
      */
     referencesCurrentPlan?: boolean | null;
+    /**
+     * Exploratory-but-actionable hints emitted by the LLM parser when the
+     * user names a destination AND at least one of {travelerType, budgetHint,
+     * occasionHint, adults}, but the request does NOT cleanly map to a
+     * precise QUOTE-ready flights/hotels/combined payload (so `requestType`
+     * resolves to `'general'` or `'missing_info_request'`). Consumed by the
+     * orchestrator + voice layer to synthesize a one-click search proposal.
+     * See parser prompt section "SEARCH SEEDS — EXPLORATORY INTENT" for
+     * emission rules. `productsImplied` is required when the object is
+     * present (always ≥1 entry).
+     *
+     * TODO(premium-categorization): `budgetHint` is a semantic label only
+     * (budget|mid|premium|luxury). Concrete chain mappings (e.g. which hotel
+     * chains count as "premium" in Riviera Maya) are intentionally deferred
+     * — downstream uses the hint as user-visible copy without forcing
+     * concrete `hotelChains` choices. This is an open product decision that
+     * applies to BOTH agency and passenger flows.
+     */
+    searchSeeds?: {
+        destination?: string | null;
+        travelerType?: 'solo' | 'couple' | 'family' | 'group' | null;
+        budgetHint?: 'budget' | 'mid' | 'premium' | 'luxury' | null;
+        occasionHint?: 'anniversary' | 'honeymoon' | 'birthday' | 'business' | 'leisure' | null;
+        productsImplied: ('flight' | 'hotel' | 'transfer' | 'package')[];
+        adults?: number | null;
+        children?: number | null;
+    } | null;
     flights?: {
         origin: string;
         destination: string;

@@ -80,6 +80,23 @@ vi.mock('../services/emiliaNarrative', () => ({
   }),
 }));
 
+vi.mock('../services/proposedSearchBuilder', () => ({
+  buildProposedSearch: vi.fn().mockReturnValue({
+    principalChipLabel: 'Buscar vuelo + hotel premium a Riviera Maya',
+    principalSubmitText: 'Buscar vuelo y hotel premium a Riviera Maya del 2026-05-14 al 2026-05-21 para 2 adultos en habitación doble, saliendo desde EZE',
+    alternativeChips: [
+      { id: 'alt-adults-only', label: 'Adults-only', submitText: '...adults-only' },
+      { id: 'alt-only-hotel', label: 'Solo hotel', submitText: '...hotel' },
+    ],
+    segments: {
+      lead: 'Para tu aniversario en Riviera Maya',
+      proposal: 'propongo buscar vuelo y hotel premium para 2 adultos',
+      dates: 'del 2026-05-14 al 2026-05-21',
+      callToAction: '¿Buscamos esto?',
+    },
+  }),
+}));
+
 vi.mock('../services/conversationOrchestrator', () => ({
   resolveConversationTurn: vi.fn().mockReturnValue({
     shouldAskMinimalQuestion: false,
@@ -152,6 +169,7 @@ import { routeRequest } from '../services/routeRequest';
 import { resolveConversationTurn } from '../services/conversationOrchestrator';
 import { detectIterationIntent, mergeIterationContext } from '../utils/iterationDetection';
 import { buildEmiliaSearchNarrative } from '../services/emiliaNarrative';
+import { buildProposedSearch } from '../services/proposedSearchBuilder';
 import { buildProps, buildMessageRow, buildParsedRequest, DEFAULT_CONV_ID } from '@/test-utils/useMessageHandlerFactory';
 
 // ---------------------------------------------------------------------------
@@ -449,6 +467,138 @@ describe('useMessageHandler', () => {
         (c) => c[0].role === 'assistant'
       );
       expect(anyAssistantCall).toBeDefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 5 / sub-task C — proposal_chip branch (exploratory_with_seeds)
+  // -------------------------------------------------------------------------
+  describe('handleSendMessage — proposal_chip branch', () => {
+    const PROPOSAL_TURN = {
+      shouldAskMinimalQuestion: false,
+      shouldUseStandardItinerary: false,
+      executionBranch: 'proposal_chip' as const,
+      responseMode: 'proposal_first_search' as const,
+      messageType: 'search_proposal' as const,
+      normalizedMissingFields: [],
+      uiMeta: { route: 'COLLECT', reason: 'exploratory_with_seeds', firstPlanHandledAs: null },
+    };
+
+    const EXPLORATORY_PARSED = buildParsedRequest({
+      requestType: 'general',
+      originalMessage: 'Quiero algo premium en Riviera Maya para aniversario, dos personas',
+    });
+    // Stamp searchSeeds onto the parsed request so the handler can pass it to
+    // buildProposedSearch (the mock ignores its content but the call shape
+    // matters).
+    (EXPLORATORY_PARSED as any).searchSeeds = {
+      destination: 'Riviera Maya',
+      travelerType: 'couple',
+      budgetHint: 'premium',
+      occasionHint: 'anniversary',
+      productsImplied: ['flight', 'hotel'],
+      adults: 2,
+    };
+
+    it('proposal_chip branch invokes buildProposedSearch with parsedRequest + profile + language', async () => {
+      vi.mocked(resolveConversationTurn).mockReturnValueOnce(PROPOSAL_TURN as any);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(EXPLORATORY_PARSED as any);
+
+      const p = buildProps();
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Quiero algo premium en Riviera Maya para aniversario, dos personas');
+      });
+
+      expect(vi.mocked(buildProposedSearch)).toHaveBeenCalledTimes(1);
+      const [parsedArg, optionsArg] = vi.mocked(buildProposedSearch).mock.calls[0];
+      expect(parsedArg).toMatchObject({
+        searchSeeds: expect.objectContaining({ destination: 'Riviera Maya' }),
+      });
+      expect(optionsArg).toMatchObject({
+        language: 'es',
+      });
+      // profile may be null (no ctxEngState) — the option key still exists.
+      expect(optionsArg).toHaveProperty('profile');
+      expect(optionsArg).toHaveProperty('now');
+    });
+
+    it('proposal_chip branch produces narrative.text and chips with kind=submit and persists them to meta.emiliaNarrative', async () => {
+      vi.mocked(resolveConversationTurn).mockReturnValueOnce(PROPOSAL_TURN as any);
+      // Override the narrative mock for this test to return chips with kind:submit.
+      vi.mocked(buildEmiliaSearchNarrative).mockReturnValueOnce({
+        text: 'Para tu aniversario en Riviera Maya propongo... ¿Buscamos esto?',
+        chips: [
+          {
+            id: 'proposed-search-principal',
+            label: 'Buscar vuelo + hotel premium a Riviera Maya',
+            action: { kind: 'submit', text: 'Buscar vuelo y hotel premium a Riviera Maya del 2026-05-14 al 2026-05-21 para 2 adultos en habitación doble' },
+          },
+          {
+            id: 'alt-adults-only',
+            label: 'Adults-only',
+            action: { kind: 'submit', text: '...adults-only' },
+          },
+        ],
+        meta: { inferredFields: [], voice: { mode: 'search_proposal', tone: 'summary' } },
+      } as any);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(EXPLORATORY_PARSED as any);
+
+      const p = buildProps();
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Quiero algo premium en Riviera Maya para aniversario, dos personas');
+      });
+
+      const assistantCall = vi.mocked(addMessageViaSupabase).mock.calls.find(
+        (c) => c[0].role === 'assistant'
+      );
+      expect(assistantCall).toBeDefined();
+      const meta = (assistantCall![0].meta as any);
+      expect(meta.messageType).toBe('search_proposal');
+      expect(meta.responseMode).toBe('proposal_first_search');
+      expect(meta.emiliaNarrative).toBeDefined();
+      expect(meta.emiliaNarrative.chips).toHaveLength(2);
+      expect(meta.emiliaNarrative.chips[0].action.kind).toBe('submit');
+      expect(meta.emiliaNarrative.chips[0].id).toBe('proposed-search-principal');
+      expect(assistantCall![0].content).toEqual({ text: expect.stringContaining('Riviera Maya') });
+    });
+
+    it('proposal_chip with builder returning null falls back to collect narrative copy', async () => {
+      vi.mocked(resolveConversationTurn).mockReturnValueOnce(PROPOSAL_TURN as any);
+      vi.mocked(buildProposedSearch).mockReturnValueOnce(null);
+      vi.mocked(buildEmiliaSearchNarrative).mockReturnValueOnce({
+        text: 'fallback collect message',
+        chips: [],
+        meta: { inferredFields: [], voice: { mode: 'collect', tone: 'empathic' } },
+      } as any);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(EXPLORATORY_PARSED as any);
+
+      const p = buildProps();
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Quiero algo premium en Riviera Maya');
+      });
+
+      // The narrative was invoked with mode:collect (fallback path), not search_proposal.
+      const narrativeCalls = vi.mocked(buildEmiliaSearchNarrative).mock.calls;
+      const collectCall = narrativeCalls.find((c) => (c[0] as any).mode === 'collect');
+      expect(collectCall).toBeDefined();
+
+      const assistantCall = vi.mocked(addMessageViaSupabase).mock.calls.find(
+        (c) => c[0].role === 'assistant'
+      );
+      expect(assistantCall).toBeDefined();
+      const meta = (assistantCall![0].meta as any);
+      // Still emits messageType='search_proposal' (the orchestrator's classification)
+      // even though the narrative degraded to collect copy. emiliaNarrative.chips
+      // is omitted since the fallback path doesn't capture chips.
+      expect(meta.messageType).toBe('search_proposal');
+      expect(meta.emiliaNarrative).toBeUndefined();
+      expect(assistantCall![0].content).toEqual({ text: 'fallback collect message' });
     });
   });
 

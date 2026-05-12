@@ -238,6 +238,69 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
         "quoteIntent and planIntent (e.g. 'cotizame este viaje').",
     },
     // ---------------------------------------------------------------------
+    // Search seeds — exploratory-but-actionable hints. Emitted when the
+    // user names a destination AND at least one of: traveler type, budget
+    // hint, occasion hint, OR an adult count, but the request does not
+    // cleanly map to a precise QUOTE-ready flights/hotels/combined payload.
+    // Downstream orchestration (router + voice layer) consumes these to
+    // synthesize a one-click search proposal. See prompt section
+    // "SEARCH SEEDS — EXPLORATORY INTENT" for emission rules.
+    //
+    // TODO(premium-categorization): `budgetHint` is a semantic label only
+    // (budget|mid|premium|luxury). Concrete chain mappings (e.g. which
+    // hotel chains count as "premium" in Riviera Maya) are intentionally
+    // deferred — the downstream layer surfaces the hint as user-visible
+    // copy without forcing concrete `hotelChains` choices. This is an open
+    // product decision that applies to BOTH agency and passenger flows.
+    // ---------------------------------------------------------------------
+    searchSeeds: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        destination: {
+          type: ["string", "null"],
+          description:
+            "City or region the user mentioned, even when requestType is " +
+            "'general'. Verbatim — no IATA normalization here; downstream " +
+            "handles it.",
+        },
+        travelerType: {
+          type: ["string", "null"],
+          enum: ["solo", "couple", "family", "group", null],
+        },
+        budgetHint: {
+          type: ["string", "null"],
+          enum: ["budget", "mid", "premium", "luxury", null],
+        },
+        occasionHint: {
+          type: ["string", "null"],
+          enum: [
+            "anniversary",
+            "honeymoon",
+            "birthday",
+            "business",
+            "leisure",
+            null,
+          ],
+        },
+        productsImplied: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["flight", "hotel", "transfer", "package"],
+          },
+        },
+        adults: { type: ["number", "null"] },
+        children: { type: ["number", "null"] },
+      },
+      required: ["productsImplied"],
+      description:
+        "Exploratory-but-actionable hints. Emit when the user names a " +
+        "destination AND at least one of {travelerType, budgetHint, " +
+        "occasionHint, adults}, even if requestType resolves to 'general' " +
+        "or 'missing_info_request'. Always include `productsImplied` (≥1).",
+    },
+    // ---------------------------------------------------------------------
     // Missing-info / clarifying-question fields.
     // ---------------------------------------------------------------------
     message: {

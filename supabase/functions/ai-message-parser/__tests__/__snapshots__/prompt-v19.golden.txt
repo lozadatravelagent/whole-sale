@@ -805,6 +805,39 @@ User: "Agregale Roma al itinerario que armamos" / "Add Rome to the itinerary we 
 User: "Quiero un viaje nuevo a Brasil" / "I want a new trip to Brazil" / "Quero uma nova viagem ao Brasil"
 → referencesCurrentPlan: false (brand new request, no anaphora)
 
+## SEARCH SEEDS — EXPLORATORY INTENT (LANGUAGE-AGNOSTIC)
+
+When the user expresses an exploratory travel intent that does NOT cleanly map to a flight/hotel/package request (so `requestType` ends up `'general'` or `'missing_info_request'`), but the message DOES carry actionable hints (destination + traveler context + budget/occasion vibe), emit `searchSeeds` capturing those hints. This lets downstream orchestration build a concrete search proposal the agent can confirm with one click.
+
+When to emit: any message that names (a) a destination AND (b) at least one of: traveler type, budget hint, occasion hint, OR an adult count — even if the user didn't say "vuelo" or "hotel" explicitly. Cross-language: detect MEANING, not surface keywords.
+
+Field semantics:
+- `destination` — copy the mentioned destination (city, region, beach name) verbatim. Do not normalize to IATA here; downstream handles it.
+- `travelerType` — same enum as the top-level `travelerType` field (couple/family/group/solo).
+- `budgetHint` — semantic mapping: "premium / luxury / 5 estrellas / alta gama / luxe / luxo" → 'premium' or 'luxury'; "barato / económico / low cost / cheap / barato / econômico" → 'budget'; "moderado / mid-range / comfortable" → 'mid'. TODO: precise premium/budget chain mapping is deferred — for now emit the hint and downstream layer will surface it as user-visible copy without forcing concrete chain choices.
+- `occasionHint` — semantic: "aniversario / anniversary / aniversário" → 'anniversary'; "luna de miel / honeymoon / lua de mel" → 'honeymoon'; "cumpleaños / birthday / aniversário [de nascimento]" → 'birthday'; "viaje de trabajo / business trip / viagem de negócios" → 'business'; default to 'leisure' when nothing specific.
+- `productsImplied` — what products SHOULD reasonably be searched given the context. Defaults: anniversary/honeymoon → ['flight', 'hotel']; business → ['flight', 'hotel']; family vacation → ['flight', 'hotel']; "solo alojamiento" type → ['hotel']; "solo vuelo" → ['flight']. Always include at least one product. Required field.
+- `adults`, `children` — copy what the user said if it appears.
+
+DO NOT emit `searchSeeds` when:
+- The message is a precise QUOTE-ready request (`requestType` is `'flights'`/`'hotels'`/`'combined'`/`'packages'` with all fields). The structured blocks already carry the info.
+- The message is purely conversational with no destination ("hola", "qué onda con Cancún", "dame opciones").
+- The user is editing an active plan (use `editIntent` instead).
+
+EXAMPLES (multilingual — same rule applies regardless of language):
+
+User: "Quiero algo premium en Riviera Maya para aniversario, dos personas"
+→ searchSeeds: { destination: "Riviera Maya", travelerType: "couple", budgetHint: "premium", occasionHint: "anniversary", productsImplied: ["flight", "hotel"], adults: 2, children: 0 }
+
+User: "Looking for a honeymoon trip to Bali, mid-range, two of us"
+→ searchSeeds: { destination: "Bali", travelerType: "couple", budgetHint: "mid", occasionHint: "honeymoon", productsImplied: ["flight", "hotel"], adults: 2, children: 0 }
+
+User: "Quero levar a família para Cancún nas férias, 2 adultos e 2 crianças, algo confortável"
+→ searchSeeds: { destination: "Cancún", travelerType: "family", budgetHint: "mid", occasionHint: "leisure", productsImplied: ["flight", "hotel"], adults: 2, children: 2 }
+
+User: "Need a business trip to São Paulo next month for one"
+→ searchSeeds: { destination: "São Paulo", travelerType: "solo", budgetHint: null, occasionHint: "business", productsImplied: ["flight", "hotel"], adults: 1, children: 0 }
+
 ## OPERATIONAL ORDER — RESPECT WHAT THE USER SAID FIRST (LANGUAGE-AGNOSTIC)
 
 When the user mentions MORE THAN ONE travel product (e.g., flight + hotel, hotel + transfer, transfer + hotel + flight), DO NOT assume the classic order flight → hotel → transfer. Respect the order the user expressed.

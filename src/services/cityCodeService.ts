@@ -848,6 +848,29 @@ export function getCityNameFromIATA(iataCode: string): string {
 }
 
 /**
+ * Resolve a city-or-IATA input to a human-readable city name for display.
+ *
+ * - "CDG" → "París"
+ * - "EZE" → "Buenos Aires"
+ * - "Paris" → "Paris" (passthrough)
+ * - "buenos aires" → "buenos aires" (passthrough; case is left to the caller / formatter)
+ *
+ * Only matches inputs shaped like an IATA code (3 letters, A-Z). Anything else
+ * is returned verbatim so the caller's formatter (e.g. title-casing) still wins.
+ *
+ * This is the single source of truth for chip / label / toast display
+ * normalization. Use it BEFORE any title-casing utility.
+ */
+export function resolveDisplayCity(input: string): string {
+  if (!input) return input;
+  const trimmed = input.trim();
+  if (!/^[A-Za-z]{3}$/.test(trimmed)) return input;
+  const upper = trimmed.toUpperCase();
+  const mapped = IATA_TO_CITY[upper];
+  return mapped || input;
+}
+
+/**
  * ⭐ UNIFIED AIRPORT CODE RESOLVER - SINGLE SOURCE OF TRUTH ⭐
  *
  * Combines ALL city code sources with intelligent 4-layer fallback.

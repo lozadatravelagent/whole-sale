@@ -730,5 +730,81 @@ describe('conversationOrchestrator', () => {
       expect(resolution.executionBranch).toBe('standard_itinerary');
       expect(resolution.responseMode).toBe('show_places');
     });
+
+    // ---------------------------------------------------------------------
+    // Phase 5 / sub-task C — proposal_chip branch (exploratory_with_seeds)
+    // ---------------------------------------------------------------------
+    describe('proposal_chip branch (Phase 5 / sub-task C)', () => {
+      const exploratoryRequest = {
+        requestType: 'general' as const,
+        confidence: 0.4,
+        originalMessage: 'Quiero algo premium en Riviera Maya para aniversario, dos personas',
+        searchSeeds: {
+          destination: 'Riviera Maya',
+          travelerType: 'couple' as const,
+          budgetHint: 'premium' as const,
+          occasionHint: 'anniversary' as const,
+          productsImplied: ['flight' as const, 'hotel' as const],
+          adults: 2,
+        },
+      };
+      const exploratoryRoute = {
+        route: 'COLLECT' as const,
+        score: 0.4,
+        dimensions: { destination: 1, dates: 0, passengers: 0.5, origin: 0.5, complexity: 0.5 },
+        missingFields: ['dates'],
+        inferredFields: [],
+        reason: 'exploratory_with_seeds' as const,
+      };
+
+      it('agency mode + exploratory_with_seeds reason → executionBranch=proposal_chip', () => {
+        const resolution = resolveConversationTurn({
+          parsedRequest: exploratoryRequest,
+          routeResult: exploratoryRoute,
+          plannerState: null,
+          mode: 'agency',
+          ...baseFlags,
+        });
+        expect(resolution.executionBranch).toBe('proposal_chip');
+        expect(resolution.responseMode).toBe('proposal_first_search');
+        expect(resolution.messageType).toBe('search_proposal');
+        expect(resolution.shouldUseStandardItinerary).toBe(false);
+        expect(resolution.shouldAskMinimalQuestion).toBe(false);
+      });
+
+      it('passenger mode + exploratory_with_seeds reason → does NOT enter proposal_chip branch', () => {
+        const resolution = resolveConversationTurn({
+          parsedRequest: exploratoryRequest,
+          routeResult: exploratoryRoute,
+          plannerState: null,
+          mode: 'passenger',
+          ...baseFlags,
+        });
+        expect(resolution.executionBranch).not.toBe('proposal_chip');
+      });
+
+      it('agency mode + exploratory_with_seeds + hasPendingAction → does NOT enter proposal_chip', () => {
+        const resolution = resolveConversationTurn({
+          parsedRequest: exploratoryRequest,
+          routeResult: exploratoryRoute,
+          plannerState: null,
+          mode: 'agency',
+          hasPendingAction: true,
+          ...baseFlags,
+        });
+        expect(resolution.executionBranch).not.toBe('proposal_chip');
+      });
+
+      it('agency mode + exploratory_with_seeds + isQuoteFromActivePlanner (reason=quote_active_plan) → does NOT enter proposal_chip', () => {
+        const resolution = resolveConversationTurn({
+          parsedRequest: exploratoryRequest,
+          routeResult: { ...exploratoryRoute, reason: 'quote_active_plan' as const },
+          plannerState: { generationMeta: { isDraft: false } },
+          mode: 'agency',
+          ...baseFlags,
+        });
+        expect(resolution.executionBranch).not.toBe('proposal_chip');
+      });
+    });
   });
 });
