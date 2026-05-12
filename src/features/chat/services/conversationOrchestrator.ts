@@ -33,14 +33,21 @@ export type ConversationExecutionBranch =
   | 'ask_minimal'
   | 'standard_itinerary'
   | 'standard_search'
-  | 'mode_bridge';
+  | 'mode_bridge'
+  // Phase 5 / sub-task C — exploratory-but-actionable in agency mode.
+  // Renders a one-click search proposal (chips) built by
+  // `proposedSearchBuilder` from `parsed.searchSeeds`, so the agent can
+  // confirm and dispatch a search instead of having to type another turn.
+  | 'proposal_chip';
 export type ConversationResponseMode =
   | 'proposal_first_plan'
   | 'show_places'
   | 'needs_input'
   | 'quote_or_search'
   | 'standard'
-  | 'needs_mode_switch';
+  | 'needs_mode_switch'
+  // Phase 5 / sub-task C — paired with `executionBranch='proposal_chip'`.
+  | 'proposal_first_search';
 
 export interface ConversationTurnResolution {
   executionBranch: ConversationExecutionBranch;
@@ -53,7 +60,9 @@ export interface ConversationTurnResolution {
     | 'search_results'
     | 'general_response'
     | 'discovery_results'
-    | 'mode_bridge';
+    | 'mode_bridge'
+    // Phase 5 / sub-task C — paired with `executionBranch='proposal_chip'`.
+    | 'search_proposal';
   shouldUseStandardItinerary: boolean;
   shouldAskMinimalQuestion: boolean;
   uiMeta: {

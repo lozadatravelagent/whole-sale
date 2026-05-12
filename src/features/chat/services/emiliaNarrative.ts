@@ -25,6 +25,7 @@
 
 import type { ParsedTravelRequest, UserLanguage } from '@/services/aiMessageParser';
 import type { TripPlannerState } from '@/features/trip-planner/types';
+import type { ProposedSearch } from './proposedSearchBuilder';
 import {
   getCollectQuestionsCopy,
   getConversationalMissingInfoCopy,
@@ -67,7 +68,8 @@ export type NarrativeMode =
   | 'plan_to_quote'
   | 'mode_bridge'
   | 'progress'
-  | 'discovery';
+  | 'discovery'
+  | 'search_proposal';
 
 export type NarrativeTone =
   | 'casual'
@@ -119,6 +121,13 @@ export interface NarrativeInput {
     requestText: string;
     places: NarrativeRecommendedPlace[];
   };
+  /**
+   * Phase 5 / sub-task B — payload for the `search_proposal` mode. Built by
+   * `buildProposedSearch` (proposedSearchBuilder.ts) when an exploratory but
+   * actionable agency-mode prompt arrives. Contains the principal chip, 2-3
+   * dynamic alternative chips, and pre-rendered narrative segments.
+   */
+  proposedSearch?: ProposedSearch;
   /** Optional fallback string if upstream already produced a tailored message. */
   fallbackMessage?: string;
   /**
@@ -167,6 +176,8 @@ export function buildEmiliaSearchNarrative(input: NarrativeInput): NarrativeOutp
       return buildProgressNarrative(input);
     case 'discovery':
       return buildDiscoveryNarrative(input);
+    case 'search_proposal':
+      return buildSearchProposalNarrative(input);
     default: {
       const exhaustive: never = input.mode;
       void exhaustive;
@@ -704,5 +715,49 @@ function buildDiscoveryNarrative(input: NarrativeInput): NarrativeOutput {
     text,
     segments: { lead: heading, cta },
     meta: { inferredFields: [], voice: { mode: 'discovery', tone: 'editorial' } },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Mode: search_proposal (Phase 5 / sub-task B)
+// ---------------------------------------------------------------------------
+// Renders the Voice Layer output for an exploratory-but-actionable agency
+// prompt. The narrative is fully pre-built by `buildProposedSearch`; this
+// mode only assembles segments → text and maps chips → NarrativeChip[].
+
+function buildSearchProposalNarrative(input: NarrativeInput): NarrativeOutput {
+  const { proposedSearch } = input;
+  if (!proposedSearch) {
+    return {
+      text: input.fallbackMessage ?? '',
+      meta: { inferredFields: [], voice: { mode: 'search_proposal', tone: 'summary' } },
+    };
+  }
+
+  const { segments, principalChipLabel, principalSubmitText, alternativeChips } = proposedSearch;
+  const text = `${segments.lead} ${segments.proposal}. ${segments.dates}. ${segments.callToAction}`;
+
+  const chips: NarrativeChip[] = [
+    {
+      id: 'proposed-search-principal',
+      label: principalChipLabel,
+      action: { kind: 'submit', text: principalSubmitText },
+    },
+    ...alternativeChips.map((alt) => ({
+      id: alt.id,
+      label: alt.label,
+      action: { kind: 'submit' as const, text: alt.submitText },
+    })),
+  ];
+
+  return {
+    text,
+    segments: {
+      lead: segments.lead,
+      ask: segments.proposal,
+      cta: segments.callToAction,
+    },
+    chips,
+    meta: { inferredFields: [], voice: { mode: 'search_proposal', tone: 'summary' } },
   };
 }

@@ -22,6 +22,7 @@ import type {
 import regionalRoutesData from '@/data/regional_routes.json';
 import countryRoutesData from '@/data/country_routes.json';
 import { resolveCountryToCapital } from '@/services/countryCapitalResolver';
+import { resolveDisplayCity } from '@/services/cityCodeService';
 import { classifyPlannerActivityType, normalizePlannerSegmentsScheduling } from './scheduling';
 import { FALLBACK_CITY_COORDINATES_FLAT } from './services/plannerGeocoding';
 
@@ -1203,7 +1204,8 @@ export function formatDayBlockLabel(value: 'morning' | 'afternoon' | 'evening'):
 
 export function formatDestinationLabel(value: string): string {
   if (!value) return '';
-  return value
+  const display = resolveDisplayCity(value);
+  return display
     .split(' ')
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())

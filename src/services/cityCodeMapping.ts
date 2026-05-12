@@ -1,4 +1,5 @@
 import citiesData from '@/data/eurovips-cities.json';
+import { getCityNameFromIATA } from '@/services/cityCodeService';
 
 interface CityRecord {
   cityCode: string;
@@ -162,6 +163,20 @@ export async function getCityCode(
 ): Promise<string> {
   if (!cityName) {
     throw new Error('City name is required');
+  }
+
+  // Layer 0: IATA airport code → city name passthrough.
+  // EUROVIPS expects city names (or city codes), never IATA airport codes.
+  // If an upstream caller leaks an IATA like "CDG" or "EZE", we resolve it to
+  // its city ("París", "Buenos Aires") and continue the normal lookup. The
+  // EUROVIPS city code (PAR, BUE) is produced by the alias / exact match below.
+  const upperInput = cityName.trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(upperInput)) {
+    const resolved = getCityNameFromIATA(upperInput);
+    if (resolved && resolved.toUpperCase() !== upperInput) {
+      console.log(`✈️ [IATA→CITY] EUROVIPS lookup remapped "${upperInput}" → "${resolved}"`);
+      cityName = resolved;
+    }
   }
 
   const normalizedCity = normalizeString(cityName);
