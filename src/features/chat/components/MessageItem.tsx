@@ -424,11 +424,13 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
   return (
     <div key={msg.id}>
       <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-        <div className={`${hasCombinedTravel ? 'w-full min-w-0 max-w-full md:max-w-4xl' : 'max-w-[85%] md:max-w-lg'} flex items-start space-x-1.5 md:space-x-2 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-          <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-primary/20' : 'bg-secondary'}`}>
-            {msg.role === 'user' ? <CircleUser className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" /> : <Sparkle className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />}
-          </div>
-          <div className={`${hasCombinedTravel ? 'min-w-0 flex-1' : ''} rounded-2xl p-3 md:p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground shadow-cta' : 'text-foreground'} text-sm md:text-base`}>
+        <div className={`${hasCombinedTravel ? 'w-full min-w-0 max-w-full' : 'max-w-[85%] md:max-w-lg flex items-start space-x-1.5 md:space-x-2'} ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+          {!hasCombinedTravel && (
+            <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${msg.role === 'user' ? 'bg-primary/20' : 'bg-secondary'}`}>
+              {msg.role === 'user' ? <CircleUser className="h-3.5 md:h-4 w-3.5 md:w-4 text-primary" /> : <Sparkle className="h-3.5 md:h-4 w-3.5 md:w-4 text-accent" />}
+            </div>
+          )}
+          <div className={`${hasCombinedTravel ? 'min-w-0 w-full text-foreground' : `rounded-2xl p-3 md:p-4 ${msg.role === 'user' ? 'bg-primary text-primary-foreground shadow-cta' : 'text-foreground'}`} text-sm md:text-base`}>
 
             {/* Interactive selectors */}
             {hasCombinedTravel && combinedTravelData ? (

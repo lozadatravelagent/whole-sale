@@ -64,7 +64,7 @@ export default function PeekCarousel<T>({
   return (
     <div
       className={cn(
-        'w-full min-w-0 max-w-2xl space-y-3',
+        'w-full min-w-0 space-y-3',
         className,
       )}
     >
