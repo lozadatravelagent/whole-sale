@@ -60,8 +60,15 @@ vi.mock('../services/routeRequest', () => ({
     dimensions: {},
     inferredFields: {},
   }),
-  buildSearchSummary: vi.fn().mockReturnValue(''),
   getInferredFieldDetails: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock('../services/emiliaNarrative', () => ({
+  buildEmiliaSearchNarrative: vi.fn().mockReturnValue({
+    text: 'missing info message',
+    chips: [],
+    meta: { inferredFields: [], voice: { mode: 'collect', tone: 'empathic' } },
+  }),
 }));
 
 vi.mock('../services/conversationOrchestrator', () => ({
@@ -74,7 +81,6 @@ vi.mock('../services/conversationOrchestrator', () => ({
     uiMeta: {},
     turnNumber: 1,
   }),
-  buildConversationalMissingInfoMessage: vi.fn().mockReturnValue('missing info message'),
   buildModeBridgeMessage: vi.fn().mockReturnValue('bridge message'),
   resolveTravelContextBridge: vi.fn(({ parsedRequest }: any) => ({
     kind: null,

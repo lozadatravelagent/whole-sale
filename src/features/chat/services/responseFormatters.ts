@@ -345,17 +345,83 @@ export const formatChainBalanceSummary = (chainBalance?: LocalHotelChainBalance,
   return `⚖️ **${getChatResultCopy(language).chainDistribution}:** ${visibleQuotas.join(', ')}`;
 };
 
+/**
+ * Hotel response copy modes — Phase 2 / sub-task C (exact-match-first flow).
+ *
+ * - `exact_match`: user named a specific hotel and EUROVIPS returned it.
+ * - `alternatives_no_availability`: user named a specific hotel, 0 hits → city-broad fallback returned options.
+ * - `hotel_not_in_destination`: user named a specific hotel; both exact-name and city-broad fallback returned 0.
+ * - `generic_search`: no specific hotel requested (chain only / multi-name / city-only).
+ */
+export type HotelResponseMode =
+  | 'exact_match'
+  | 'alternatives_no_availability'
+  | 'hotel_not_in_destination'
+  | 'generic_search';
+
+interface FormatHotelResponseOptions {
+  /**
+   * Branching copy mode. Defaults to `'generic_search'` for backward compat
+   * with all existing call sites (multi-segment hotel formatter, etc.).
+   */
+  responseMode?: HotelResponseMode;
+  /**
+   * The hotel name the user requested (only meaningful for the three
+   * non-generic modes). Used to render the differentiated heading.
+   */
+  requestedHotelName?: string;
+  /**
+   * Fallback city used in the heading when the user requested a specific
+   * hotel. If absent, derived from the first hotel's `city` field.
+   */
+  requestedCity?: string;
+}
+
 export const formatHotelResponse = (
   hotels: LocalHotelData[],
-  language: UserLanguage = 'es'
+  language: UserLanguage = 'es',
+  options: FormatHotelResponseOptions = {}
 ) => {
   const copy = getChatResultCopy(language);
+  const responseMode: HotelResponseMode = options.responseMode || 'generic_search';
+  const requestedHotelName = (options.requestedHotelName || '').trim();
+  const cityForCopy = (options.requestedCity || hotels[0]?.city || '').trim();
+
+  // Mode: hotel_not_in_destination — empty list, dedicated copy with recovery prompt.
+  if (responseMode === 'hotel_not_in_destination' && requestedHotelName) {
+    return (copy.hotelNotInDestination as (hotel: string, city: string) => string)(
+      requestedHotelName,
+      cityForCopy || requestedHotelName,
+    );
+  }
+
   if (hotels.length === 0) {
     return copy.noHotels as string;
   }
 
   const displayCount = Math.min(hotels.length, 5);
-  let response = (copy.hotelsAvailable as (displayCount: number, total: number) => string)(displayCount, hotels.length);
+  let response: string;
+
+  if (responseMode === 'exact_match' && requestedHotelName) {
+    if (hotels.length === 1) {
+      response = (copy.hotelExactMatchSingle as (hotel: string) => string)(requestedHotelName);
+    } else {
+      const extra = hotels.length - 1;
+      response = (copy.hotelExactMatchMulti as (hotel: string, extra: number, city: string) => string)(
+        requestedHotelName,
+        extra,
+        cityForCopy,
+      );
+    }
+  } else if (responseMode === 'alternatives_no_availability' && requestedHotelName) {
+    response = (copy.hotelAlternativesNoAvailability as (hotel: string, count: number, city: string) => string)(
+      requestedHotelName,
+      displayCount,
+      cityForCopy,
+    );
+  } else {
+    response = (copy.hotelsAvailable as (displayCount: number, total: number) => string)(displayCount, hotels.length);
+  }
 
   hotels.slice(0, 5).forEach((hotel, index) => {
     const minPrice = Math.min(...hotel.rooms.map((r) => r.total_price));

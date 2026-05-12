@@ -38,6 +38,11 @@ export const CHAT_RESULT_COPY = {
     selectFlights: '📋 Selecciona las opciones que prefieras para generar tu cotización.',
     noHotels: '🏨 **Búsqueda de Hoteles**\n\nNo encontré hoteles disponibles. Verifica la ciudad y fechas.',
     hotelsAvailable: (displayCount: number, total: number) => `🏨 **${displayCount} Hoteles Disponibles** ${total > 5 ? `(los ${displayCount} más económicos de ${total})` : '(ordenados por precio)'}\n\n`,
+    // Hotel exact-match flow (Phase 2 / sub-task C)
+    hotelExactMatchSingle: (hotelName: string) => `🏨 **Encontré ${hotelName}** que pediste.\n\n`,
+    hotelExactMatchMulti: (hotelName: string, extraCount: number, city: string) => `🏨 **Encontré ${hotelName}** y ${extraCount} ${extraCount === 1 ? 'opción más' : 'opciones más'} en ${city}.\n\n`,
+    hotelAlternativesNoAvailability: (hotelName: string, count: number, city: string) => `🏨 **No había disponibilidad para ${hotelName}** en esas fechas. Te muestro ${count} ${count === 1 ? 'alternativa similar' : 'alternativas similares'} en ${city}.\n\n`,
+    hotelNotInDestination: (hotelName: string, city: string) => `🏨 **No encontré ${hotelName}** en ${city} para esas fechas. ¿Querés que busque otro hotel o cambiar el destino?`,
     standardRoom: 'Habitación estándar',
     from: 'Desde',
     nights: (count: number) => `${count} noches`,
@@ -86,6 +91,11 @@ export const CHAT_RESULT_COPY = {
     selectFlights: '📋 Select the options you prefer to generate your quote.',
     noHotels: '🏨 **Hotel Search**\n\nI could not find available hotels. Check the city and dates.',
     hotelsAvailable: (displayCount: number, total: number) => `🏨 **${displayCount} Available Hotels** ${total > 5 ? `(the ${displayCount} cheapest of ${total})` : '(sorted by price)'}\n\n`,
+    // Hotel exact-match flow (Phase 2 / sub-task C)
+    hotelExactMatchSingle: (hotelName: string) => `🏨 **I found ${hotelName}** as you requested.\n\n`,
+    hotelExactMatchMulti: (hotelName: string, extraCount: number, city: string) => `🏨 **I found ${hotelName}** plus ${extraCount} ${extraCount === 1 ? 'more option' : 'more options'} in ${city}.\n\n`,
+    hotelAlternativesNoAvailability: (hotelName: string, count: number, city: string) => `🏨 **No availability for ${hotelName}** on those dates. Showing ${count} similar ${count === 1 ? 'alternative' : 'alternatives'} in ${city}.\n\n`,
+    hotelNotInDestination: (hotelName: string, city: string) => `🏨 **I could not find ${hotelName}** in ${city} for those dates. Would you like to try another hotel or change the destination?`,
     standardRoom: 'Standard room',
     from: 'From',
     nights: (count: number) => `${count} night${count === 1 ? '' : 's'}`,
@@ -134,6 +144,11 @@ export const CHAT_RESULT_COPY = {
     selectFlights: '📋 Selecione as opções que prefere para gerar sua cotação.',
     noHotels: '🏨 **Busca de Hotéis**\n\nNão encontrei hotéis disponíveis. Verifique a cidade e as datas.',
     hotelsAvailable: (displayCount: number, total: number) => `🏨 **${displayCount} Hotéis Disponíveis** ${total > 5 ? `(os ${displayCount} mais econômicos de ${total})` : '(ordenados por preço)'}\n\n`,
+    // Hotel exact-match flow (Phase 2 / sub-task C)
+    hotelExactMatchSingle: (hotelName: string) => `🏨 **Encontrei ${hotelName}** que você pediu.\n\n`,
+    hotelExactMatchMulti: (hotelName: string, extraCount: number, city: string) => `🏨 **Encontrei ${hotelName}** e mais ${extraCount} ${extraCount === 1 ? 'opção' : 'opções'} em ${city}.\n\n`,
+    hotelAlternativesNoAvailability: (hotelName: string, count: number, city: string) => `🏨 **Sem disponibilidade para ${hotelName}** nessas datas. Mostro ${count} ${count === 1 ? 'alternativa similar' : 'alternativas similares'} em ${city}.\n\n`,
+    hotelNotInDestination: (hotelName: string, city: string) => `🏨 **Não encontrei ${hotelName}** em ${city} para essas datas. Quer que eu busque outro hotel ou mude o destino?`,
     standardRoom: 'Quarto padrão',
     from: 'Desde',
     nights: (count: number) => `${count} noite${count === 1 ? '' : 's'}`,
@@ -316,6 +331,93 @@ export const CONVERSATIONAL_MISSING_INFO_COPY = {
       destination: 'Me diga qual destino ou combinação de cidades quer priorizar e eu encaminho.',
       duration: 'Me diga quantos dias você quer viajar e monto a proposta sobre isso.',
       fallback: 'Me envie mais um dado importante e continuo fechando isso.',
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Voice Layer (Phase 2 / sub-task D) — single source of truth for
+// `buildEmiliaSearchNarrative`. The mode_bridge strings used to live in the
+// react-i18next JSON catalogues (chat.json:bridgeTitle.*); after Phase 2/D
+// the narrative reads them from here so it has ONE i18n surface. The legacy
+// JSON keys are intentionally NOT deleted yet — they can be removed in a
+// follow-up release once no consumer remains.
+// ---------------------------------------------------------------------------
+export const MODE_BRIDGE_COPY = {
+  es: {
+    toAgency: 'Este pedido se resuelve mejor cotizando vuelos y hoteles. ¿Cambiamos de modo?',
+    toPassenger: 'Este pedido funciona mejor armando un itinerario. ¿Cambiamos de modo?',
+  },
+  en: {
+    toAgency: 'This request is best handled by quoting flights and hotels. Switch mode?',
+    toPassenger: 'This request works better by building an itinerary. Switch mode?',
+  },
+  pt: {
+    toAgency: 'Este pedido é melhor resolvido cotando voos e hotéis. Trocamos de modo?',
+    toPassenger: 'Este pedido funciona melhor montando um itinerário. Trocamos de modo?',
+  },
+};
+
+// Itinerary "progress" / draft-generating placeholder (was hardcoded ES in
+// useMessageHandler.ts:buildItineraryProgressMessage). Now centralized so
+// `buildEmiliaSearchNarrative({mode:'progress'})` can localize it.
+// Focused-question registry for the deterministic router's COLLECT branch
+// (`buildCollectQuestion` in `routeRequest.ts`). Mirrors the legacy
+// `COLLECT_QUESTIONS` map keys verbatim in `es` (zero drift) and adds en/pt
+// translations so the Voice Layer can localize the focused ask.
+export const COLLECT_QUESTIONS_COPY = {
+  es: {
+    passengers: '¿Cuántas personas viajan? Por ejemplo: 2 adultos, o 2 adultos y 2 niños.',
+    passengers_and_dates: '¿Cuántas personas viajan y en qué fechas?',
+    dates: '¿En qué fechas viajás? Por ejemplo: del 15 al 22 de enero.',
+    dates_hotel: '¿Qué fechas de check-in y check-out necesitás?',
+    origin: '¿Desde qué ciudad salís?',
+    origin_and_dates: '¿Desde dónde viajás y en qué fechas?',
+    duration: '¿Cuántas noches te quedás?',
+    fallback: '¿Podés darme más detalles sobre tu viaje?',
+  },
+  en: {
+    passengers: 'How many people are traveling? For example: 2 adults, or 2 adults and 2 children.',
+    passengers_and_dates: 'How many people are traveling and on what dates?',
+    dates: 'On what dates are you traveling? For example: from January 15 to 22.',
+    dates_hotel: 'What check-in and check-out dates do you need?',
+    origin: 'From which city are you departing?',
+    origin_and_dates: 'From where are you traveling and on what dates?',
+    duration: 'How many nights are you staying?',
+    fallback: 'Could you give me more details about your trip?',
+  },
+  pt: {
+    passengers: 'Quantas pessoas viajam? Por exemplo: 2 adultos, ou 2 adultos e 2 crianças.',
+    passengers_and_dates: 'Quantas pessoas viajam e em quais datas?',
+    dates: 'Em quais datas você viaja? Por exemplo: de 15 a 22 de janeiro.',
+    dates_hotel: 'Quais datas de check-in e check-out você precisa?',
+    origin: 'De qual cidade você sai?',
+    origin_and_dates: 'De onde você viaja e em quais datas?',
+    duration: 'Quantas noites você fica?',
+    fallback: 'Você pode me dar mais detalhes sobre a sua viagem?',
+  },
+};
+
+export const PROGRESS_COPY = {
+  es: {
+    itinerary: (destination: string, days: number | undefined) => {
+      const destinationText = destination ? ` para ${destination}` : '';
+      const daysText = days ? ` de ${days} días` : '';
+      return `Ya tengo la base del viaje${destinationText}${daysText}. Estoy armando el itinerario completo y te lo muestro apenas termine.`;
+    },
+  },
+  en: {
+    itinerary: (destination: string, days: number | undefined) => {
+      const destinationText = destination ? ` for ${destination}` : '';
+      const daysText = days ? ` (${days} days)` : '';
+      return `I already have the base of the trip${destinationText}${daysText}. I am building the full itinerary and will show it as soon as it is ready.`;
+    },
+  },
+  pt: {
+    itinerary: (destination: string, days: number | undefined) => {
+      const destinationText = destination ? ` para ${destination}` : '';
+      const daysText = days ? ` (${days} dias)` : '';
+      return `Já tenho a base da viagem${destinationText}${daysText}. Estou montando o roteiro completo e te mostro assim que estiver pronto.`;
     },
   },
 };
@@ -1407,6 +1509,9 @@ export const getFlightItineraryCopy = (language: UserLanguage = 'es') => FLIGHT_
 export const getSearchHandlerCopy = (language: UserLanguage = 'es') => SEARCH_HANDLER_COPY[language] || SEARCH_HANDLER_COPY.es;
 export const getConversationalMissingInfoCopy = (language: UserLanguage = 'es') => CONVERSATIONAL_MISSING_INFO_COPY[language] || CONVERSATIONAL_MISSING_INFO_COPY.es;
 export const getPlanToQuoteCopy = (language: UserLanguage = 'es') => PLAN_TO_QUOTE_COPY[language] || PLAN_TO_QUOTE_COPY.es;
+export const getModeBridgeCopy = (language: UserLanguage = 'es') => MODE_BRIDGE_COPY[language] || MODE_BRIDGE_COPY.es;
+export const getProgressCopy = (language: UserLanguage = 'es') => PROGRESS_COPY[language] || PROGRESS_COPY.es;
+export const getCollectQuestionsCopy = (language: UserLanguage = 'es') => COLLECT_QUESTIONS_COPY[language] || COLLECT_QUESTIONS_COPY.es;
 export const getMissingInfoCopy = (language: UserLanguage = 'es') => MISSING_INFO_COPY[language] || MISSING_INFO_COPY.es;
 export const getResultSelectorCopy = (language: UserLanguage = 'es') => RESULT_SELECTOR_COPY[language] || RESULT_SELECTOR_COPY.es;
 export const getTypingStatusCopy = (language: UserLanguage = 'es') => TYPING_STATUS_COPY[language] || TYPING_STATUS_COPY.es;

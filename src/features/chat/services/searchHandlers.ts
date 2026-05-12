@@ -15,7 +15,7 @@ import {
 import type { LocalHotelData, LocalHotelSegmentResult, FlightData, LocalHotelChainBalance, LocalHotelChainQuota, LocalPackageData, LocalServiceData } from '@/types/external';
 import type { SearchResult } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
-import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatChainBalanceNote } from './responseFormatters';
+import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatChainBalanceNote, type HotelResponseMode } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
@@ -1079,31 +1079,112 @@ export const handleHotelSearch = async (
     let allHotels: LocalHotelData[] = [];
 
     // =====================================================================
-    // COMBINED SEARCH: Search by specific names AND chains (not exclusive)
-    // When user says "cadena iberostar y riu lupita":
-    // - hotelNames = ["RIU Lupita"] → search for this specific hotel
-    // - hotelChains = ["Iberostar", "Riu"] → but "Riu" is covered by "RIU Lupita"
-    // - So we search: Iberostar (chain) + RIU Lupita (specific name)
+    // EXACT-MATCH MODE — Phase 2 / sub-task C
+    // When the user names a SPECIFIC single hotel (hotelName, OR hotelNames
+    // with exactly one entry, AND no chain-only multi-search), we run a
+    // dedicated 1-or-2 SOAP-call flow:
+    //   1. SOAP with <name> filter → if hits > 0 → 'exact_match' (boost
+    //      exact-name matches to top of price-sort).
+    //   2. If 0 hits → SOAP city-only fallback → if hits > 0 →
+    //      'alternatives_no_availability' (no name post-filter — show alts).
+    //   3. If both 0 → 'hotel_not_in_destination' (empty list, copy prompts
+    //      user to change destination/hotel).
+    // The `uncoveredChains` filter is INTENTIONALLY skipped here so the
+    // fallback path can still surface chain alternatives.
     // =====================================================================
+    let responseMode: HotelResponseMode = 'generic_search';
+    const singleHotelNameFromArray = hotelNames.length === 1 ? hotelNames[0] : '';
+    const isSpecificHotelRequest = Boolean(hotelName) || (hotelNames.length === 1 && hotelChains.length === 0);
+    const requestedHotelNameForCopy = (hotelName || singleHotelNameFromArray || '').trim();
 
     // Determine which chains are NOT covered by specific hotel names
-    // A chain is "covered" if there's a specific hotel name starting with that chain
-    const uncoveredChains = hotelChains.filter(chain => {
-      const chainLower = chain.toLowerCase();
-      const isCovered = hotelNames.some(name => name.toLowerCase().startsWith(chainLower));
-      if (isCovered) {
-        console.log(`🔗 [CHAIN COVERAGE] Chain "${chain}" is covered by a specific hotel name - will search by name instead`);
-      }
-      return !isCovered;
-    });
+    // A chain is "covered" if there's a specific hotel name starting with that chain.
+    // EXACT-MATCH BYPASS: when in single-hotel exact-match mode, we do NOT compute
+    // uncoveredChains so chain alternatives remain available for the fallback path.
+    const uncoveredChains = isSpecificHotelRequest
+      ? []
+      : hotelChains.filter(chain => {
+          const chainLower = chain.toLowerCase();
+          const isCovered = hotelNames.some(name => name.toLowerCase().startsWith(chainLower));
+          if (isCovered) {
+            console.log(`🔗 [CHAIN COVERAGE] Chain "${chain}" is covered by a specific hotel name - will search by name instead`);
+          }
+          return !isCovered;
+        });
 
-    console.log(`🔍 [SEARCH STRATEGY] hotelNames: ${hotelNames.length}, hotelChains: ${hotelChains.length}, uncoveredChains: ${uncoveredChains.length}`);
+    console.log(`🔍 [SEARCH STRATEGY] hotelNames: ${hotelNames.length}, hotelChains: ${hotelChains.length}, uncoveredChains: ${uncoveredChains.length}, specificHotelRequest: ${isSpecificHotelRequest}`);
+
+    // EXACT-MATCH FIRST FLOW (Phase 2 / sub-task C)
+    // When user named a single specific hotel, run exact-name SOAP first; if
+    // it returns 0 hits, fall back to a city-broad SOAP call for alternatives.
+    if (isSpecificHotelRequest) {
+      const specificName = requestedHotelNameForCopy;
+      console.log(`🎯 [EXACT-MATCH FIRST] Searching for specific hotel: "${specificName}"`);
+
+      const exactRequestBody = {
+        action: 'searchHotels',
+        data: {
+          ...eurovipsParams.hotelParams,
+          cityCode: cityCode,
+          hotelName: specificName,
+        },
+      };
+
+      const exactResponse = await invokeEurovipsSearch(exactRequestBody, `invoke EUROVIPS exact "${specificName}"`);
+
+      if (exactResponse.error) {
+        console.error('❌ [EXACT-MATCH FIRST] EUROVIPS API error:', exactResponse.error);
+        throw new Error(exactResponse.error.message);
+      }
+
+      const exactHits = tagEurovipsHotels(exactResponse.data.results || []);
+      console.log(`✅ [EXACT-MATCH FIRST] Exact name "${specificName}" returned ${exactHits.length} hits`);
+
+      if (exactHits.length > 0) {
+        responseMode = 'exact_match';
+        allHotels = exactHits;
+      } else {
+        // Fallback: city-broad SOAP call (no name filter) to surface alternatives
+        console.log(`🛟 [EXACT-MATCH FIRST] 0 hits — falling back to city-broad search for alternatives in "${cityCode}"`);
+
+        const fallbackRequestBody = {
+          action: 'searchHotels',
+          data: {
+            ...eurovipsParams.hotelParams,
+            cityCode: cityCode,
+            hotelName: '',
+          },
+        };
+
+        const fallbackResponse = await invokeEurovipsSearch(fallbackRequestBody, `invoke EUROVIPS city-broad fallback`);
+
+        if (fallbackResponse.error) {
+          console.error('❌ [EXACT-MATCH FIRST] EUROVIPS fallback error:', fallbackResponse.error);
+          // Treat as not-in-destination rather than throwing — gives user a recovery path.
+          responseMode = 'hotel_not_in_destination';
+          allHotels = [];
+        } else {
+          const fallbackHits = tagEurovipsHotels(fallbackResponse.data.results || []);
+          console.log(`✅ [EXACT-MATCH FIRST] Fallback returned ${fallbackHits.length} hotels for "${cityCode}"`);
+          if (fallbackHits.length > 0) {
+            responseMode = 'alternatives_no_availability';
+            allHotels = fallbackHits;
+          } else {
+            responseMode = 'hotel_not_in_destination';
+            allHotels = [];
+          }
+        }
+      }
+    }
 
     // STEP 1+2: Search by hotel names and uncovered chains in parallel (max 3 concurrent)
-    const searchTasks: { label: string; searchTerm: string }[] = [
-      ...hotelNames.map((name) => ({ label: `name:"${name}"`, searchTerm: name })),
-      ...uncoveredChains.map((chain) => ({ label: `chain:"${chain}"`, searchTerm: getSearchTermForChain(chain) })),
-    ];
+    // SKIPPED when isSpecificHotelRequest — that flow already populated `allHotels` above.
+    const searchTasks: { label: string; searchTerm: string }[] = isSpecificHotelRequest
+      ? []
+      : [
+          ...hotelNames.map((name) => ({ label: `name:"${name}"`, searchTerm: name })),
+          ...uncoveredChains.map((chain) => ({ label: `chain:"${chain}"`, searchTerm: getSearchTermForChain(chain) })),
+        ];
 
     if (searchTasks.length > 0) {
       console.log(`🏨 [PARALLEL-SEARCH] Making ${searchTasks.length} API requests (max 3 concurrent):`, searchTasks.map(t => t.label));
@@ -1141,7 +1222,10 @@ export const handleHotelSearch = async (
     }
 
     // STEP 3: Deduplication (if we had any searches)
-    if (hotelNames.length > 0 || uncoveredChains.length > 0) {
+    // SKIPPED when isSpecificHotelRequest — exact-match flow already populated `allHotels`.
+    if (isSpecificHotelRequest) {
+      // No-op — exact-match flow handled both fetch and (implicit) dedup.
+    } else if (hotelNames.length > 0 || uncoveredChains.length > 0) {
       console.log(`🔗 [COMBINED] Total hotels before deduplication: ${allHotels.length}`);
 
       const dedupMap = new Map<string, LocalHotelData>();
@@ -1375,7 +1459,14 @@ export const handleHotelSearch = async (
     // 🏨 HOTEL NAMES FILTER - Filter by specific hotel names if specified (supports multiple)
     // Only apply names filter if we searched ONLY by names (no uncovered chains)
     // If we also searched by chains, don't filter out the chain results
-    if (enrichedParsed.hotels?.hotelNames && enrichedParsed.hotels.hotelNames.length > 0 && uncoveredChains.length === 0) {
+    // EXACT-MATCH BYPASS: skip when in 'alternatives_no_availability' mode — we
+    // WANT to surface non-matching hotels as alternatives.
+    if (
+      responseMode !== 'alternatives_no_availability'
+      && enrichedParsed.hotels?.hotelNames
+      && enrichedParsed.hotels.hotelNames.length > 0
+      && uncoveredChains.length === 0
+    ) {
       const namesFilter = enrichedParsed.hotels.hotelNames;
       console.log(`🏨 [NAMES FILTER] Filtering hotels by specific names: ${namesFilter.join(', ')}`);
       console.log(`📊 [NAMES FILTER] Hotels before filter: ${destinationFilteredHotels.length}`);
@@ -1394,7 +1485,13 @@ export const handleHotelSearch = async (
     }
 
     // 🏨 HOTEL NAME FILTER - Filter by specific hotel name if specified (single, legacy)
-    if (enrichedParsed.hotels?.hotelName && !enrichedParsed.hotels?.hotelNames?.length) {
+    // EXACT-MATCH BYPASS: skip when in 'alternatives_no_availability' mode — we
+    // WANT to surface non-matching hotels as alternatives.
+    if (
+      responseMode !== 'alternatives_no_availability'
+      && enrichedParsed.hotels?.hotelName
+      && !enrichedParsed.hotels?.hotelNames?.length
+    ) {
       const nameFilter = enrichedParsed.hotels.hotelName;
       console.log(`🏨 [NAME FILTER] Filtering hotels by name: "${nameFilter}"`);
       console.log(`📊 [NAME FILTER] Hotels before filter: ${destinationFilteredHotels.length}`);
@@ -1475,11 +1572,36 @@ export const handleHotelSearch = async (
     }
 
     // Sort hotels by lowest price (minimum room price)
-    const sortedHotels = filteredHotels.sort((a: LocalHotelData, b: LocalHotelData) => {
-      const minPriceA = Math.min(...a.rooms.map(r => r.total_price));
-      const minPriceB = Math.min(...b.rooms.map(r => r.total_price));
-      return minPriceA - minPriceB;
-    });
+    // EXACT-MATCH BOOST: when in 'exact_match' mode, partition exact-name matches
+    // first, then sort each partition by price. This guarantees the user-requested
+    // hotel appears at the top, with cheaper non-matches following.
+    let sortedHotels: LocalHotelData[];
+    if (responseMode === 'exact_match' && requestedHotelNameForCopy) {
+      const matchesName: LocalHotelData[] = [];
+      const others: LocalHotelData[] = [];
+      for (const hotel of filteredHotels) {
+        if (hotelNameMatches(hotel.name, requestedHotelNameForCopy)) {
+          matchesName.push(hotel);
+        } else {
+          others.push(hotel);
+        }
+      }
+      const byPrice = (a: LocalHotelData, b: LocalHotelData) => {
+        const minPriceA = Math.min(...a.rooms.map(r => r.total_price));
+        const minPriceB = Math.min(...b.rooms.map(r => r.total_price));
+        return minPriceA - minPriceB;
+      };
+      matchesName.sort(byPrice);
+      others.sort(byPrice);
+      sortedHotels = [...matchesName, ...others];
+      console.log(`🎯 [EXACT-MATCH SORT] Boosted ${matchesName.length} exact-name match(es) above ${others.length} other(s)`);
+    } else {
+      sortedHotels = filteredHotels.sort((a: LocalHotelData, b: LocalHotelData) => {
+        const minPriceA = Math.min(...a.rooms.map(r => r.total_price));
+        const minPriceB = Math.min(...b.rooms.map(r => r.total_price));
+        return minPriceA - minPriceB;
+      });
+    }
 
     const PLANNER_VISIBLE_HOTELS_LIMIT = 8;
 
@@ -1562,7 +1684,11 @@ export const handleHotelSearch = async (
     console.log('🍽️ [HOTEL SEARCH] Requested meal plan:', requestedMealPlan || 'none (showing all)');
 
     // Pass already-filtered hotels to formatter (no need to filter again)
-    const formattedResponse = `${formatHotelResponse(hotels, responseLanguage)}${chainBalance ? `\n\n${formatChainBalanceNote(chainBalance, responseLanguage)}` : ''}`;
+    const formattedResponse = `${formatHotelResponse(hotels, responseLanguage, {
+      responseMode,
+      requestedHotelName: requestedHotelNameForCopy,
+      requestedCity: enrichedParsed.hotels?.city || '',
+    })}${chainBalance ? `\n\n${formatChainBalanceNote(chainBalance, responseLanguage)}` : ''}`;
 
     // 📊 BUILD EXTENDED METADATA for API responses
     const isPuntaCana = isPuntaCanaDestination(enrichedParsed.hotels?.city || '');
@@ -1599,7 +1725,12 @@ export const handleHotelSearch = async (
       }),
       ...(chainBalance && {
         chain_balance: chainBalance
-      })
+      }),
+      // Phase 2 / sub-task C — exact-match flow telemetry
+      hotel_response_mode: responseMode,
+      ...(requestedHotelNameForCopy && {
+        requested_hotel_name: requestedHotelNameForCopy,
+      }),
     };
 
     const result = {
@@ -1614,6 +1745,8 @@ export const handleHotelSearch = async (
           requestedRoomType: normalizedRoomType,
           requestedMealPlan: normalizedMealPlan,
           hotelSearchId, // 🔑 Key to retrieve ALL hotels from IndexedDB
+          hotelResponseMode: responseMode,
+          requestedHotelName: requestedHotelNameForCopy || undefined,
         },
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined
       }

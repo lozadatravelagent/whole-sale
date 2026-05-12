@@ -34,10 +34,6 @@
     "passenger": "Plan",
     "ariaGroup": "Chat mode",
     "tooltipNoAgency": "No agency assigned",
-    "bridgeTitle": {
-      "toAgency": "This request is best handled by quoting flights and hotels. Switch mode?",
-      "toPassenger": "This request works better by building an itinerary. Switch mode?"
-    },
     "bridgeSwitchTo": "Switch to {{otherMode}} and continue",
     "bridgeStay": "Stay in this mode"
   },
@@ -129,6 +125,10 @@
     "layoverLabel": "Layover",
     "layoverWithMax": "Layover ≤{{hours}}h",
     "flightsCount": "{{count}} flights",
+    "changeRoundtrip": "Search round trip",
+    "changePassengers": "Change passengers",
+    "changeOrigin": "Change origin",
+    "changeDate": "Change date",
     "timeRanges": {
       "earlyMorning": "Early morning",
       "morning": "Morning",

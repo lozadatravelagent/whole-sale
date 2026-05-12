@@ -44,7 +44,7 @@
   },
   {
     "id": "flights-vague-dates-001",
-    "description": "Flight request with vague month reference only, no explicit day — routes to COLLECT (missing exact date drops score below QUOTE threshold)",
+    "description": "Flight request with vague month reference only, no explicit day. Under the safe-default rule (Phase 1A), the parser-default 1 adult is not penalized, so origin+destination+actionable defaults push the score to the QUOTE threshold. Date precision can be confirmed downstream via the search-summary chip flow.",
     "input": {
       "message": "Quiero volar de Córdoba a Cancún para julio",
       "language": "es"
@@ -52,7 +52,7 @@
     "expected": {
       "requestType": "flights",
       "confidence_min": 0.7,
-      "route": "COLLECT",
+      "route": "QUOTE",
       "flights": {
         "origin": "Córdoba",
         "destination": "Cancún",

@@ -27,9 +27,9 @@ describe('OPERATIONAL ORDER — contract', () => {
     expect(PROMPT_CONTRACT_SNIPPETS).toContain('OPERATIONAL ORDER');
   });
 
-  it('STATIC_SYSTEM_PROMPT contains the OPERATIONAL ORDER section header', () => {
+  it('STATIC_SYSTEM_PROMPT contains the language-agnostic OPERATIONAL ORDER section', () => {
     expect(STATIC_SYSTEM_PROMPT).toMatch(
-      /## OPERATIONAL ORDER — RESPECT WHAT THE USER SAID FIRST/,
+      /## OPERATIONAL ORDER — RESPECT WHAT THE USER SAID FIRST \(LANGUAGE-AGNOSTIC\)/,
     );
   });
 
@@ -40,22 +40,49 @@ describe('OPERATIONAL ORDER — contract', () => {
     expect(STATIC_SYSTEM_PROMPT).toContain('"transfer"');
   });
 
-  it('STATIC_SYSTEM_PROMPT carries the 5 worked examples that exemplify the rule', () => {
-    // Hotel-first
+  it('instructs the LLM to detect ORDER SEMANTICALLY across languages', () => {
+    expect(STATIC_SYSTEM_PROMPT).toContain(
+      'detect ORDER SEMANTICALLY across languages',
+    );
+    expect(STATIC_SYSTEM_PROMPT).toContain(
+      'The output array uses canonical English values',
+    );
+  });
+
+  it('carries multilingual worked examples for hotel-first order', () => {
+    // Spanish
     expect(STATIC_SYSTEM_PROMPT).toContain('hotel en Cancún, seguro necesito vuelos');
+    // English
+    expect(STATIC_SYSTEM_PROMPT).toContain("I want a hotel in Cancun, I'll also need flights");
+    // Portuguese
+    expect(STATIC_SYSTEM_PROMPT).toContain('Quero hotel em Cancún, e também voos');
+    // canonical output appears at least once after these examples
     expect(STATIC_SYSTEM_PROMPT).toContain('productOrder: ["hotel", "flight"]');
-    // Flight-first
+  });
+
+  it('carries multilingual worked examples for flight-first order', () => {
     expect(STATIC_SYSTEM_PROMPT).toContain('Vuelos a Cancún en julio y después hotel');
+    expect(STATIC_SYSTEM_PROMPT).toContain('Flights to Cancun in July and then an all-inclusive hotel');
     expect(STATIC_SYSTEM_PROMPT).toContain('productOrder: ["flight", "hotel"]');
-    // Three products in user-expressed order
+  });
+
+  it('carries multilingual examples for three-product order (transfer→hotel→flight)', () => {
     expect(STATIC_SYSTEM_PROMPT).toContain('traslado del aeropuerto al hotel');
+    expect(STATIC_SYSTEM_PROMPT).toContain('Airport-to-hotel transfer, plus hotel and flights');
     expect(STATIC_SYSTEM_PROMPT).toContain('productOrder: ["transfer", "hotel", "flight"]');
-    // Paquete without expressed order → suppressed
-    expect(STATIC_SYSTEM_PROMPT).toContain('Paquete a Punta Cana');
-    expect(STATIC_SYSTEM_PROMPT).toContain('paquete sin orden expresado');
-    // Single product → suppressed
+  });
+
+  it('umbrella-word counter-examples cover both Spanish and English', () => {
+    expect(STATIC_SYSTEM_PROMPT).toContain('Paquete a Punta Cana con vuelo, hotel y traslados');
+    expect(STATIC_SYSTEM_PROMPT).toContain('Package to Punta Cana with flight, hotel and transfer');
+    expect(STATIC_SYSTEM_PROMPT).toContain('umbrella word');
+  });
+
+  it('single-product counter-example covers all three supported languages', () => {
     expect(STATIC_SYSTEM_PROMPT).toContain('Hotel Riu en Cancún');
-    expect(STATIC_SYSTEM_PROMPT).toContain('solo un producto');
+    expect(STATIC_SYSTEM_PROMPT).toContain('Riu hotel in Cancun');
+    expect(STATIC_SYSTEM_PROMPT).toContain('Hotel Riu em Cancún');
+    expect(STATIC_SYSTEM_PROMPT).toContain('only one product');
   });
 
   it('classic flight→hotel→transfer assumption is explicitly forbidden', () => {

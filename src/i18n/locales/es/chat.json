@@ -34,10 +34,6 @@
     "passenger": "Planificar",
     "ariaGroup": "Modo de chat",
     "tooltipNoAgency": "Sin agencia asignada",
-    "bridgeTitle": {
-      "toAgency": "Este pedido se resuelve mejor cotizando vuelos y hoteles. ¿Cambiamos de modo?",
-      "toPassenger": "Este pedido funciona mejor armando un itinerario. ¿Cambiamos de modo?"
-    },
     "bridgeSwitchTo": "Cambiar a {{otherMode}} y retomar",
     "bridgeStay": "Seguir en este modo"
   },
@@ -129,6 +125,10 @@
     "layoverLabel": "Escala",
     "layoverWithMax": "Escala ≤{{hours}}h",
     "flightsCount": "{{count}} vuelos",
+    "changeRoundtrip": "Buscar ida y vuelta",
+    "changePassengers": "Cambiar pasajeros",
+    "changeOrigin": "Cambiar origen",
+    "changeDate": "Cambiar fecha",
     "timeRanges": {
       "earlyMorning": "Madrugada",
       "morning": "Mañana",

@@ -1,4 +1,4 @@
-import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import type { ParsedTravelRequest, HotelRequest } from '@/services/aiMessageParser';
 import { detectMultipleHotelChains } from '../data/hotelChainAliases';
 import type { ContextState } from '../types/contextState';
 
@@ -27,58 +27,138 @@ function normalizeIntentText(value: string): string {
     .toLowerCase();
 }
 
-export function detectHotelPreferencesFromMessage(message: string) {
+// ---------------------------------------------------------------------------
+// LEGACY intent regexes (Spanish-only)
+//
+// As of prompt v17/v18 the parser emits these signals as semantic fields on
+// `ParsedTravelRequest` (`requestType`, `hotels`/`flights` blocks,
+// `hotels.mealPlan`, `hotels.roomType`, `hotels.hotelChains`,
+// `referencesCurrentPlan`). The regexes are retained ONLY as a defensive
+// fallback for the legacy `useMessageHandler.ts:isAddHotelRequest` branch
+// that runs BEFORE the LLM parser -- and for hotel-chain extraction (the
+// `hotelChainAliases.ts` registry has hundreds of variants the LLM hasn't
+// been trained on).
+//
+// REMOVE the message-only branches once all callers reliably emit v18+
+// semantic fields and the early add-hotel branch is migrated.
+// ---------------------------------------------------------------------------
+
+const LEGACY_HOTEL_MEAL_PLAN_RULES: Array<[NonNullable<HotelRequest['mealPlan']>, RegExp]> = [
+  ['all_inclusive', /(all\s+inclusive|todo\s+incluido)/],
+  ['half_board', /(media\s+pension|half\s+board)/],
+  ['room_only', /(solo\s+habitacion|room\s+only)/],
+  ['breakfast', /(desayuno|breakfast)/],
+];
+
+const LEGACY_HOTEL_ROOM_TYPE_RULES: Array<[NonNullable<HotelRequest['roomType']>, RegExp]> = [
+  ['triple', /\btriple\b/],
+  ['single', /\b(single|simple)\b/],
+  ['double', /\b(double|doble)\b/],
+];
+
+const LEGACY_PREVIOUS_CONTEXT_REGEX =
+  /\b(mism[ao]s?\s+busqueda|misma\s+consulta|mismo\s+vuelo|mismas?\s+fechas?|esas?\s+fechas?|lo\s+mismo\s+pero|igual\s+que\s+antes|como\s+antes|busqueda\s+anterior|busqueda\s+previa)\b/;
+
+// Explicit message-level intent regexes used by `applyExplicitServiceIntent`.
+// These are intentionally MESSAGE-LEVEL (not parser-based) because that
+// function distinguishes "user just wrote 'vuelo'" from "parser carried a
+// flights block from previous context". The parsed-payload helpers
+// `hasHotelIntent` / `hasFlightIntent` would conflate those two.
+// LEGACY because Spanish-only -- close the EN/PT gap when prompt v18 also
+// emits an `explicitlyMentions` field per service. Until then, keep these.
+const LEGACY_EXPLICIT_HOTEL_MENTION_REGEX =
+  /\b(hotel|hotels|hoteles|alojamiento|hospedaje|donde quedarme|donde alojarme)\b/;
+const LEGACY_EXPLICIT_FLIGHT_MENTION_REGEX =
+  /\b(vuelo|vuelos|avion|aereo|flight|flights)\b/;
+const LEGACY_HOTEL_REJECTION_REGEX =
+  /\b(no quiero hotel|sin hotel|solo vuelo|solo el vuelo|no necesito hotel)\b/;
+
+function legacyDetectMealPlanFromMessage(message: string): HotelRequest['mealPlan'] | undefined {
   const normalized = normalizeIntentText(message);
-
-  const mealPlan =
-    normalized.includes('all inclusive') || normalized.includes('todo incluido')
-      ? 'all_inclusive'
-      : normalized.includes('media pension') || normalized.includes('half board')
-        ? 'half_board'
-        : normalized.includes('solo habitacion') || normalized.includes('room only')
-          ? 'room_only'
-          : normalized.includes('desayuno') || normalized.includes('breakfast')
-            ? 'breakfast'
-            : undefined;
-
-  const roomType =
-    /\btriple\b/.test(normalized)
-      ? 'triple'
-      : /\b(single|simple)\b/.test(normalized)
-        ? 'single'
-        : /\b(double|doble)\b/.test(normalized)
-          ? 'double'
-          : undefined;
-
-  return {
-    hotelChains: detectMultipleHotelChains(message),
-    mealPlan,
-    roomType,
-  };
+  for (const [value, regex] of LEGACY_HOTEL_MEAL_PLAN_RULES) {
+    if (regex.test(normalized)) return value;
+  }
+  return undefined;
 }
 
-function hasHotelIntent(message: string, parsedRequest: ParsedTravelRequest): boolean {
+function legacyDetectRoomTypeFromMessage(message: string): HotelRequest['roomType'] | undefined {
   const normalized = normalizeIntentText(message);
+  for (const [value, regex] of LEGACY_HOTEL_ROOM_TYPE_RULES) {
+    if (regex.test(normalized)) return value;
+  }
+  return undefined;
+}
+
+/**
+ * Hotel preference extraction. Primary source is the parsed payload (parser
+ * v17/v18 already extracts `mealPlan`, `roomType`, `hotelChains`). The
+ * legacy message-regex path is retained for the early `isAddHotelRequest`
+ * branch in `useMessageHandler.ts` that runs BEFORE the LLM parser.
+ *
+ * `detectMultipleHotelChains` always runs against the message as a safety
+ * net for chain extraction -- see `hotelChainAliases.ts`.
+ */
+export function detectHotelPreferencesFromMessage(
+  parsedRequest: ParsedTravelRequest | null | undefined,
+  message?: string,
+): {
+  hotelChains: string[];
+  mealPlan: HotelRequest['mealPlan'] | undefined;
+  roomType: HotelRequest['roomType'] | undefined;
+} {
+  const parsedHotels = parsedRequest?.hotels;
+  const parsedChains = parsedHotels?.hotelChains;
+  const fallbackChains = message ? detectMultipleHotelChains(message) : [];
+  const hotelChains = parsedChains && parsedChains.length > 0 ? parsedChains : fallbackChains;
+
+  const mealPlan =
+    parsedHotels?.mealPlan
+    ?? (message ? legacyDetectMealPlanFromMessage(message) : undefined);
+
+  const roomType =
+    parsedHotels?.roomType
+    ?? (message ? legacyDetectRoomTypeFromMessage(message) : undefined);
+
+  return { hotelChains, mealPlan, roomType };
+}
+
+function hasHotelIntent(parsedRequest: ParsedTravelRequest): boolean {
   return (
     parsedRequest.requestType === 'hotels' ||
     parsedRequest.requestType === 'combined' ||
-    Boolean(parsedRequest.hotels) ||
-    /\b(hotel|hotels|hoteles|alojamiento|hospedaje|resort|resorts|all inclusive|todo incluido)\b/.test(normalized)
+    parsedRequest.requestType === 'packages' ||
+    Boolean(parsedRequest.hotels)
   );
 }
 
-function hasFlightIntent(message: string, parsedRequest: ParsedTravelRequest): boolean {
-  const normalized = normalizeIntentText(message);
+function hasFlightIntent(parsedRequest: ParsedTravelRequest): boolean {
   return (
     parsedRequest.requestType === 'flights' ||
     parsedRequest.requestType === 'combined' ||
-    Boolean(parsedRequest.flights) ||
-    /\b(vuelo|vuelos|pasaje|pasajes|aereo|aereos|avion|flight|flights)\b/.test(normalized)
+    parsedRequest.requestType === 'packages' ||
+    Boolean(parsedRequest.flights)
   );
 }
 
-function explicitlyReferencesPreviousContext(message: string): boolean {
-  return /\b(mism[ao]s?\s+busqueda|misma\s+consulta|mismo\s+vuelo|mismas?\s+fechas?|esas?\s+fechas?|lo\s+mismo\s+pero|igual\s+que\s+antes|como\s+antes|busqueda\s+anterior|busqueda\s+previa)\b/.test(normalizeIntentText(message));
+/**
+ * "Mismo vuelo" / "esas fechas" / "como antes" detection. Primary source is
+ * the parser's `referencesCurrentPlan` boolean (multilingual, prompt v18+).
+ * The legacy ES regex is retained as a defensive fallback for cached
+ * pre-v18 parses, and ALSO ORs with the parsed signal to keep the broader
+ * "previous search" semantic -- `referencesCurrentPlan` is specifically about
+ * the active plan/itinerary, while the legacy regex catches "misma busqueda"
+ * (i.e. previous flight/hotel search) which is broader.
+ */
+function explicitlyReferencesPreviousContext(
+  parsedRequest: ParsedTravelRequest | null | undefined,
+  message: string,
+): boolean {
+  // Type augmentation: `referencesCurrentPlan` is added by the schema-extender
+  // (Phase 4 / sub-task A). Read defensively via any-cast for forward-compat.
+  const fromParsed = (parsedRequest as { referencesCurrentPlan?: boolean | null } | null | undefined)
+    ?.referencesCurrentPlan;
+  if (fromParsed === true) return true;
+  return LEGACY_PREVIOUS_CONTEXT_REGEX.test(normalizeIntentText(message));
 }
 
 function messageMentions(message: string, value?: string): boolean {
@@ -91,10 +171,10 @@ function applyExplicitServiceIntent(
   message: string,
 ): { request: ParsedTravelRequest; changed: boolean; contextUsed: TurnIntentResolution['contextUsed']; reason?: string } {
   const normalized = normalizeIntentText(message);
-  const wantsHotel = /\b(hotel|hotels|hoteles|alojamiento|hospedaje|donde quedarme|donde alojarme)\b/.test(normalized);
-  const wantsFlight = /\b(vuelo|vuelos|avion|aereo|flight|flights)\b/.test(normalized);
-  const rejectsHotel = /\b(no quiero hotel|sin hotel|solo vuelo|solo el vuelo|no necesito hotel)\b/.test(normalized);
-  const referencesPrevious = explicitlyReferencesPreviousContext(message);
+  const wantsHotel = LEGACY_EXPLICIT_HOTEL_MENTION_REGEX.test(normalized);
+  const wantsFlight = LEGACY_EXPLICIT_FLIGHT_MENTION_REGEX.test(normalized);
+  const rejectsHotel = LEGACY_HOTEL_REJECTION_REGEX.test(normalized);
+  const referencesPrevious = explicitlyReferencesPreviousContext(parsedRequest, message);
 
   let request = parsedRequest;
   let changed = false;
@@ -200,7 +280,7 @@ export function enrichHotelIntentFromContext(
   flightCtx: ContextState['lastSearch']['flightsParams'],
   message: string,
 ): { request: ParsedTravelRequest; changed: boolean; contextUsed: TurnIntentResolution['contextUsed'] } {
-  if (!flightCtx || !hasHotelIntent(message, parsedRequest)) {
+  if (!flightCtx || !hasHotelIntent(parsedRequest)) {
     return { request: parsedRequest, changed: false, contextUsed: [] };
   }
 
@@ -212,7 +292,7 @@ export function enrichHotelIntentFromContext(
     !existingHotels.adults ||
     existingHotels.adultsExplicit === false;
 
-  const hotelPreferences = detectHotelPreferencesFromMessage(message);
+  const hotelPreferences = detectHotelPreferencesFromMessage(parsedRequest, message);
   const hasPreferenceContext = Boolean(
     hotelPreferences.roomType ||
     hotelPreferences.mealPlan ||
@@ -264,7 +344,7 @@ export function enrichFlightIntentFromContext(
   hotelCtx: ContextState['lastSearch']['hotelsParams'],
   message: string,
 ): { request: ParsedTravelRequest; changed: boolean; contextUsed: TurnIntentResolution['contextUsed'] } {
-  if (!hotelCtx || !hasFlightIntent(message, parsedRequest)) {
+  if (!hotelCtx || !hasFlightIntent(parsedRequest)) {
     return { request: parsedRequest, changed: false, contextUsed: [] };
   }
 

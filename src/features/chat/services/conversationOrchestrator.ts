@@ -1,15 +1,12 @@
 import type { ParsedTravelRequest, UserLanguage } from '@/services/aiMessageParser';
 import type { TripPlannerState, PlannerActivity, PlannerRestaurant } from '@/features/trip-planner/types';
 import type { ContextState } from '../types/contextState';
-import type { RouteResult } from './routeRequest';
+import type { RouteResult, RouterReason } from './routeRequest';
 import { isGenericPlaceholder } from './itineraryPipeline';
+import { buildEmiliaSearchNarrative } from './emiliaNarrative';
 import {
-  getConversationalMissingInfoCopy,
-  getPlanToQuoteCopy,
   getPlannerBlockCopy,
-  getTravelerCopy,
   joinCitiesPhrase,
-  LOCALE_BY_LANGUAGE,
 } from '@/features/chat/i18n/chatResultCopy';
 
 export interface ChatRecommendedPlace {
@@ -61,7 +58,7 @@ export interface ConversationTurnResolution {
   shouldAskMinimalQuestion: boolean;
   uiMeta: {
     route: RouteResult['route'];
-    reason: string;
+    reason: RouterReason;
     firstPlanHandledAs: 'standard_itinerary' | null;
     // PR 3 (C3): populated only for `mode_bridge` turns. Tells the UI which
     // mode to offer switching to in the bridge action chip (C4).
@@ -71,10 +68,21 @@ export interface ConversationTurnResolution {
 
 export type TravelContextBridgeKind = 'plan_to_quote' | 'quote_to_plan';
 
+/**
+ * Typed orchestrator-emitted reason codes. Used by the bridge resolver to
+ * label which direction the bridge went. Distinct from RouterReason — this is
+ * an orchestrator output, not a router output. The router-emitted
+ * `quote_active_plan` (a RouterReason) is what TRIGGERS the plan_to_quote
+ * bridge; this enum only describes the outcome.
+ */
+export type OrchestratorReason =
+  | 'plan_to_quote_bridge'
+  | 'quote_to_plan_bridge';
+
 export interface TravelContextBridgeResolution {
   kind: TravelContextBridgeKind | null;
   parsedRequest: ParsedTravelRequest;
-  reason: string | null;
+  reason: OrchestratorReason | null;
 }
 
 export interface DiscoveryVisualConfig {
@@ -98,13 +106,21 @@ const QUOTE_CONTEXT_REFERENCE_PATTERN =
   /\b(este|esta|ese|esa|el|la)\s+(viaje|plan|itinerario|recorrido|propuesta|cotizacion|cotización|busqueda|búsqueda|resultado|opcion|opción)\b|\b(esto|eso|lo\s+(anterior|que\s+armamos|que\s+cotizamos|que\s+buscamos))\b/i;
 const ITINERARY_FROM_CONTEXT_PATTERN =
   /\b(arma(me)?|armame|armá|planifica(me)?|itinerario|recorrido|ruta|dia\s+por\s+dia|día\s+por\s+día)\b/i;
-// Mirror of routeRequest's PLAN_INTENT (kept local to avoid a cross-module
-// import cycle). Used by guard G5 in resolveConversationTurn — when a user
-// in agency mode asks for a trip with high confidence + explicit planning
-// keywords, we skip the mode_bridge to passenger because that bridge would
-// force a useless extra turn.
-const PLAN_INTENT =
+// Used by guard G5 in resolveConversationTurn — when a user in agency mode
+// asks for a trip with high confidence + explicit planning keywords, we skip
+// the mode_bridge to passenger because that bridge would force a useless extra
+// turn.
+//
+// Phase 4: prefer the LLM-emitted semantic field `parsed.planIntent` (es/en/pt
+// detection in prompt v18). Spanish regex retained as legacy fallback for
+// pre-v18 cached parses. REMOVE after one release cycle.
+const LEGACY_PLAN_INTENT_REGEX =
   /\b(arma(me)?|planifica|itinerario|recorrido|ruta|circuito|viaje\s+por)\b/;
+
+function hasPlanIntent(parsed: ParsedTravelRequest, msg: string): boolean {
+  if (typeof parsed.planIntent === 'boolean') return parsed.planIntent;
+  return LEGACY_PLAN_INTENT_REGEX.test(msg);
+}
 
 function addDays(date: string, days: number): string | undefined {
   const parsedDate = new Date(`${date}T00:00:00`);
@@ -255,7 +271,7 @@ export function resolveTravelContextBridge(options: {
     return {
       kind: 'plan_to_quote',
       parsedRequest: buildQuoteRequestFromPlanner(message, parsedRequest, plannerState) || parsedRequest,
-      reason: 'quote_active_plan',
+      reason: 'plan_to_quote_bridge',
     };
   }
 
@@ -283,7 +299,7 @@ export function resolveTravelContextBridge(options: {
 
   return {
     kind: 'quote_to_plan',
-    reason: 'itinerary_from_quote_context',
+    reason: 'quote_to_plan_bridge',
     parsedRequest: {
       ...parsedRequest,
       requestType: 'itinerary',
@@ -303,76 +319,38 @@ export function resolveTravelContextBridge(options: {
   };
 }
 
+/**
+ * Phase 2 / sub-task D — Voice Layer wrapper.
+ *
+ * Delegates copy generation to `buildEmiliaSearchNarrative({mode:'plan_to_quote'})`
+ * while preserving the legacy `{response, data:{...}}` shape so the single
+ * call site (`useMessageHandler.ts:2582`) stays untouched. The narrative emits
+ * `quoteContext` in `output.data.quoteContext`; we re-wrap it under
+ * `data.quoteContext` and re-attach `messageType: 'quote_active_plan'` so the
+ * downstream handler reads the same fields it always did.
+ *
+ * The `missingQuoteFields` / `missingQuoteSlots` calculation stays here —
+ * it depends on planner-domain heuristics (`getPlanQuoteMissingFields`) the
+ * narrative module does not know about. We pass the result through `extras`.
+ */
 export function buildPlanToQuoteResponse(plannerState: TripPlannerState, language: UserLanguage = 'es') {
-  const copy = getPlanToQuoteCopy(language);
-  const segments = (plannerState.segments || [])
-    .slice()
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const segmentLabels = segments.length > 0
-    ? segments.map((segment) => `${segment.city}${segment.nights ? ` (${copy.night(segment.nights)})` : ''}`)
-    : (plannerState.destinations || []);
-  const days = plannerState.days || segments.reduce((total, segment) => total + (segment.nights || 0), 0);
-  const travelers = plannerState.travelers;
-  const travelerLabel = [
-    copy.adult(travelers?.adults || 1),
-    travelers?.children ? copy.child(travelers.children) : null,
-    travelers?.infants ? copy.infant(travelers.infants) : null,
-  ].filter(Boolean).join(', ');
-  const dateLabel = plannerState.isFlexibleDates
-    ? (() => {
-        const flexibleLabel = plannerState.flexibleMonth
-          ? new Date(`${plannerState.flexibleYear || new Date().getFullYear()}-${plannerState.flexibleMonth}-01T00:00:00`)
-            .toLocaleDateString(LOCALE_BY_LANGUAGE[language], { month: 'long', year: 'numeric' })
-          : copy.flexibleMonth;
-        return `${flexibleLabel}${days ? ` (${copy.day(days)})` : ''}`;
-      })()
-    : `${plannerState.startDate || copy.noStartDate}${plannerState.endDate ? ` ${copy.to} ${plannerState.endDate}` : ''}`;
   const missingQuoteFields = getPlanQuoteMissingFields(plannerState);
   const missingQuoteSlots = getPlanQuoteMissingSlots(plannerState);
-
-  const summary = [
-    segmentLabels.length > 0 ? segmentLabels.join(' → ') : copy.activePlan,
-    days ? copy.day(days) : null,
-    travelerLabel,
-    dateLabel,
-  ].filter(Boolean).join(' · ');
-
-  const response = missingQuoteFields.length > 0
-    ? copy.missing(summary, missingQuoteFields.join(language === 'en' ? ' and ' : language === 'pt' ? ' e ' : ' y '))
-    : copy.ready(summary);
-
+  const out = buildEmiliaSearchNarrative({
+    mode: 'plan_to_quote',
+    plannerState,
+    language,
+    extras: { missingQuoteFields, missingQuoteSlots },
+  });
+  const quoteContext = (out.data?.quoteContext as Record<string, unknown> | undefined) ?? null;
   return {
-    response,
+    response: out.text,
     data: {
       messageType: 'quote_active_plan',
-      quoteContext: {
-        source: 'active_planner',
-        title: plannerState.title,
-        destinations: plannerState.destinations || [],
-        days,
-        startDate: plannerState.startDate,
-        endDate: plannerState.endDate,
-        isFlexibleDates: plannerState.isFlexibleDates,
-        flexibleMonth: plannerState.flexibleMonth,
-        flexibleYear: plannerState.flexibleYear,
-        origin: plannerState.origin || null,
-        travelers: plannerState.travelers,
-        missingQuoteFields,
-        missingQuoteSlots,
-        segments: segments.map((segment) => ({
-          city: segment.city,
-          country: segment.country,
-          nights: segment.nights,
-          startDate: segment.startDate,
-          endDate: segment.endDate,
-        })),
-      },
+      quoteContext,
     },
   };
 }
-const FOOD_PATTERN = /\b(restaurantes?|gastronomia|gastronomía|comida|cena|cafes?|cafés)\b/i;
-const NEIGHBORHOOD_PATTERN = /\b(barrios?|zonas?)\b/i;
-
 function titleCase(value?: string | null): string {
   if (!value) return '';
   return value
@@ -382,41 +360,13 @@ function titleCase(value?: string | null): string {
     .join(' ');
 }
 
-function getRequestTypeFromParsed(parsed?: ParsedTravelRequest | null): ParsedTravelRequest['requestType'] | 'general' {
-  return parsed?.requestType || 'general';
-}
-
-function getKnownDestination(parsed?: ParsedTravelRequest | null): string | undefined {
-  if (!parsed) return undefined;
-  if (parsed.itinerary?.destinations?.length) return parsed.itinerary.destinations.join(', ');
-  if (parsed.hotels?.city) return parsed.hotels.city;
-  if (parsed.flights?.destination) return parsed.flights.destination;
-  if (parsed.packages?.destination) return parsed.packages.destination;
-  return undefined;
-}
-
-function getKnownDuration(parsed?: ParsedTravelRequest | null, language: UserLanguage = 'es'): string | undefined {
-  const days = parsed?.itinerary?.days;
-  if (!days) return undefined;
-  return getTravelerCopy(language).day(days);
-}
-
-function getKnownTravelers(parsed?: ParsedTravelRequest | null, language: UserLanguage = 'es'): string | undefined {
-  if (!parsed) return undefined;
-  const itineraryTravelers = parsed.itinerary?.travelers;
-  const adults = itineraryTravelers?.adults ?? parsed.hotels?.adults ?? parsed.flights?.adults;
-  const children = itineraryTravelers?.children ?? parsed.hotels?.children ?? parsed.flights?.children ?? 0;
-  const infants = itineraryTravelers?.infants ?? parsed.hotels?.infants ?? parsed.flights?.infants ?? 0;
-  if (!adults && !children && !infants) return undefined;
-
-  const copy = getTravelerCopy(language);
-  const parts: string[] = [];
-  if (adults && adults > 0) parts.push(copy.adult(adults));
-  if (children && children > 0) parts.push(copy.child(children));
-  if (infants && infants > 0) parts.push(copy.infant(infants));
-  return parts.join(copy.join);
-}
-
+// `normalizeMissingField` (used by `normalizedMissingFields` at the bottom of
+// the file) is retained here. The other helpers that previously composed the
+// missing-info copy (buildKnownContextLead, buildAskLine, getKnownDestination,
+// getKnownDuration, getKnownTravelers, getRequestTypeFromParsed) moved to
+// `emiliaNarrative.ts` as part of Phase 2 / sub-task D — the unified Voice
+// Layer. The wrapper above delegates to `buildEmiliaSearchNarrative` so the
+// 9 call sites in `useMessageHandler.ts` see byte-identical output.
 function normalizeMissingField(field: string): string {
   const normalized = normalizeText(field);
   if (!normalized) return field;
@@ -433,98 +383,30 @@ function normalizeMissingField(field: string): string {
   return normalized.replace(/\s+/g, '_');
 }
 
-function buildKnownContextLead(parsed?: ParsedTravelRequest | null, language: UserLanguage = 'es'): string {
-  const requestType = getRequestTypeFromParsed(parsed);
-  const destination = getKnownDestination(parsed);
-  const duration = getKnownDuration(parsed, language);
-  const travelers = getKnownTravelers(parsed, language);
-  const copy = getConversationalMissingInfoCopy(language).contextLead;
-
-  if (requestType === 'itinerary' && destination) {
-    const detail = [duration, travelers].filter(Boolean).join(' · ');
-    return copy.itinerary(detail, destination);
-  }
-
-  if (requestType === 'flights' && destination) {
-    return copy.flights(destination);
-  }
-
-  if (requestType === 'hotels' && destination) {
-    return copy.hotels(destination);
-  }
-
-  if (requestType === 'combined' && destination) {
-    return copy.combined(destination);
-  }
-
-  return copy.fallback;
-}
-
-function buildAskLine(requestType: ParsedTravelRequest['requestType'] | 'general', fields: string[], language: UserLanguage = 'es'): string {
-  const has = (field: string) => fields.includes(field);
-  const copy = getConversationalMissingInfoCopy(language).askLine;
-
-  if (has('origin') && has('dates')) {
-    return copy.originDates;
-  }
-  if (has('passengers') && has('dates')) {
-    return requestType === 'itinerary'
-      ? copy.passengersDatesItinerary
-      : copy.passengersDatesSearch;
-  }
-  if (has('origin')) return copy.origin;
-  if (has('dates')) {
-    return requestType === 'itinerary'
-      ? copy.datesItinerary
-      : copy.datesSearch;
-  }
-  if (has('duration')) return copy.duration;
-  if (has('passengers')) return copy.passengers;
-  if (has('budget')) return copy.budget;
-  if (has('destination')) return copy.destination;
-  return copy.fallback;
-}
-
-// PR 3 (C4): builds the body copy for a mode_bridge turn. Direction-specific,
-// no runtime interpolation of the mode label (avoids awkward translations like
-// "in Quote mode"). Consumer resolves the translation function via
-// react-i18next; the pure-function shape here makes it testable without the
-// i18n singleton.
+/**
+ * Phase 3 / sub-task A — Voice Layer wrapper (i18next cleanup).
+ *
+ * Now ALWAYS delegates to `buildEmiliaSearchNarrative({mode:'mode_bridge'})`.
+ * The legacy `t: TFunction` back-compat probe was removed along with the
+ * `chat.json:mode.bridgeTitle.*` keys; the lambda registry in
+ * `chatResultCopy.ts` (`getModeBridgeCopy`) is the single source of truth.
+ */
 export function buildModeBridgeMessage(options: {
   suggestedMode: 'agency' | 'passenger';
-  t: (key: string) => string;
-}): string {
-  const { suggestedMode, t } = options;
-  const key =
-    suggestedMode === 'agency'
-      ? 'mode.bridgeTitle.toAgency'
-      : 'mode.bridgeTitle.toPassenger';
-  return t(key);
-}
-
-export function buildConversationalMissingInfoMessage(options: {
-  parsedRequest?: ParsedTravelRequest | null;
-  missingFields?: string[];
-  fallbackMessage?: string;
   language?: UserLanguage;
 }): string {
-  const { parsedRequest, missingFields = [], fallbackMessage, language = 'es' } = options;
-  const requestType = getRequestTypeFromParsed(parsedRequest);
-  const normalizedFields = [...new Set(missingFields.map(normalizeMissingField))].slice(0, 2);
-
-  if (requestType === 'itinerary' && normalizedFields.includes('dates') && fallbackMessage) {
-    return fallbackMessage;
-  }
-
-  if (normalizedFields.length === 0) {
-    return fallbackMessage || getConversationalMissingInfoCopy(language).emptyFallback;
-  }
-
-  const lead = buildKnownContextLead(parsedRequest, language);
-  const askLine = buildAskLine(requestType, normalizedFields, language);
-
-  return `${lead} ${askLine}`;
+  const { suggestedMode, language } = options;
+  return buildEmiliaSearchNarrative({
+    mode: 'mode_bridge',
+    bridge: { suggestedMode },
+    language: language ?? 'es',
+  }).text;
 }
+
+// Phase 3 / sub-task C: `buildConversationalMissingInfoMessage` was deleted
+// after the 9 callers in `useMessageHandler.ts` switched to invoking
+// `buildEmiliaSearchNarrative({mode:'collect'})` directly. The narrative
+// module owns the empathic missing-info copy end-to-end now.
 
 function pushPlace(
   places: ChatRecommendedPlace[],
@@ -637,20 +519,18 @@ export function getDiscoveryVisualConfig(requestText: string, city?: string, lan
   };
 }
 
-function buildDiscoveryHeading(requestText: string, city: string, language: UserLanguage = 'es'): string {
-  const copy = getPlannerBlockCopy(language);
-  if (SPECIALIZED_CULTURE_PATTERN.test(requestText)) {
-    return copy.discoveryHeadingCulture(city);
-  }
-  if (FOOD_PATTERN.test(requestText)) {
-    return copy.discoveryHeadingFood(city);
-  }
-  if (NEIGHBORHOOD_PATTERN.test(requestText)) {
-    return copy.discoveryHeadingNeighborhood(city);
-  }
-  return copy.discoveryHeadingDefault(city);
-}
-
+/**
+ * Phase 3 / sub-task A — Voice Layer wrapper.
+ *
+ * Migrated from a local heading dispatcher + manual list builder to a single
+ * delegation into `buildEmiliaSearchNarrative({mode:'discovery', ...})`. The
+ * narrative is the single source of truth for the editorial voice (heading +
+ * bulleted places + cta). The signature is preserved so the only caller
+ * (`discoveryService.buildDiscoveryResponseFromToolResult`) needs no changes.
+ *
+ * Output is byte-identical with the legacy implementation for the same
+ * inputs (verified by snapshot diff during the migration).
+ */
 export function formatDiscoveryResponse(options: {
   city?: string;
   requestText: string;
@@ -658,19 +538,16 @@ export function formatDiscoveryResponse(options: {
   language?: UserLanguage;
 }): string {
   const language = options.language || 'es';
-  const copy = getPlannerBlockCopy(language);
-  const city = options.city || copy.fallbackPlace;
-  const finalPlaces = options.places.slice(0, 6);
-
-  if (finalPlaces.length === 0) {
-    return copy.discoveryEmpty(city);
-  }
-
-  const lines = finalPlaces.slice(0, 6).map((place) => `- ${place.name} — ${place.description || place.category}`);
-  const hasDays = /\b(1|2|3|4|5|6|7|8|9|10)\s+dias?\b/i.test(options.requestText);
-  const cta = hasDays ? copy.discoveryCtaWithDays(city) : copy.discoveryCtaDefault();
-
-  return `${buildDiscoveryHeading(options.requestText, city, language)}\n${lines.join('\n')}\n${cta}`;
+  const city = options.city ?? '';
+  return buildEmiliaSearchNarrative({
+    mode: 'discovery',
+    language,
+    discovery: {
+      city,
+      requestText: options.requestText,
+      places: options.places,
+    },
+  }).text;
 }
 
 function hasHotelCoverage(segment: TripPlannerState['segments'][number]): boolean {
@@ -912,7 +789,7 @@ export function resolveConversationTurn(options: {
   const isHighConfidenceExplicitItinerary =
     parsedRequest.requestType === 'itinerary' &&
     parsedRequest.confidence >= 0.85 &&
-    PLAN_INTENT.test(parsedRequest.originalMessage || '');
+    hasPlanIntent(parsedRequest, parsedRequest.originalMessage || '');
 
   const bridgeBlocked =
     previousMessageType === 'mode_bridge' ||

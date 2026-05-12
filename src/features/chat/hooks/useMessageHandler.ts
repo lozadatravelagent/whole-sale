@@ -8,9 +8,11 @@ import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePack
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
-import { routeRequest, buildSearchSummary, getInferredFieldDetails } from '../services/routeRequest';
+import { routeRequest, getInferredFieldDetails } from '../services/routeRequest';
+import { normalizeSearchIntent } from '../services/searchIntentNormalizer';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
-import { buildConversationalMissingInfoMessage, buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTurn, resolveTravelContextBridge } from '../services/conversationOrchestrator';
+import { buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTurn, resolveTravelContextBridge } from '../services/conversationOrchestrator';
+import { buildEmiliaSearchNarrative, type NarrativeChip } from '../services/emiliaNarrative';
 import { detectHotelPreferencesFromMessage, resolveTurnIntent } from '../services/turnIntentResolver';
 import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
@@ -234,13 +236,23 @@ function getPrimaryActionDestination(parsedRequest?: ParsedTravelRequest | null,
   return iataCodeToCityName(resolveToConcreteCity(raw));
 }
 
+/**
+ * Phase 2 / sub-task D — Voice Layer wrapper.
+ *
+ * Delegates to `buildEmiliaSearchNarrative({mode:'progress'})` so the
+ * itinerary "draft generating" placeholder shares Emilia's unified voice and
+ * gains en/pt support (was hardcoded ES). The local helpers
+ * `getPrimaryActionDestination` + IATA→city resolution stay here because they
+ * pull from React-side stores; we hand the resolved string to the narrative.
+ */
 function buildItineraryProgressMessage(parsedRequest: ParsedTravelRequest, plannerState?: TripPlannerState | null): string {
   const destination = getPrimaryActionDestination(parsedRequest, plannerState);
   const days = parsedRequest.itinerary?.days || plannerState?.days;
-  const destinationText = destination ? ` para ${destination}` : '';
-  const daysText = days ? ` de ${days} días` : '';
-
-  return `Ya tengo la base del viaje${destinationText}${daysText}. Estoy armando el itinerario completo y te lo muestro apenas termine.`;
+  return buildEmiliaSearchNarrative({
+    mode: 'progress',
+    language: parsedRequest.responseLanguage ?? 'es',
+    progress: { destination, days },
+  }).text;
 }
 
 function getStructuredPlannerData(structuredData?: unknown): TripPlannerState | null {
@@ -674,7 +686,9 @@ const useMessageHandler = (
       
       const flightCtx = persistentState?.lastSearch?.flightsParams || null;
       if (flightCtx) {
-        const hotelPreferences = detectHotelPreferencesFromMessage(currentMessage);
+        // No parsed payload yet -- this branch runs BEFORE the LLM parser, so
+        // pass null and let the function fall back to the legacy message regex.
+        const hotelPreferences = detectHotelPreferencesFromMessage(null, currentMessage);
         console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
         console.log('🏨 [INTENT] Flight context:', flightCtx);
         console.log('🏨 [INTENT] Persistent state:', persistentState);
@@ -1312,6 +1326,22 @@ const useMessageHandler = (
       );
       parsedRequest.responseLanguage = userLanguage;
 
+      // Deterministic normalization layer (Phase 1 + Phase 2 + Phase 4):
+      // Fills structural defaults the parser leaves for the client to derive:
+      //   Phase 1 — travelerType → adults, pax → roomType.
+      //   Phase 2 — partialStay (vuelo + hotel parcial) and relativeDateHint
+      //             (tomorrow / this_weekend / next_week / next_month).
+      //   Phase 4 — applyDateFallback: structural today+3 / checkin+7 fallback
+      //             for any dates still empty after upstream steps.
+      // The `new Date()` clock keeps the normalizer coherent with the same
+      // source feeding `currentDate` inside `aiMessageParser.parseMessageWithAI`.
+      // Pure function — see `searchIntentNormalizer.ts`. Runs AFTER
+      // `resolveTurnIntent` (below) so context-specific enrichments (e.g.
+      // hotel follow-up reusing the previous flight search's dates) win over
+      // the structural fallback. Phases 1+2 don't depend on the turn-intent
+      // pass; only the new Phase 4 fallback does.
+      // Explicit user values always win.
+
       // Phase 5: increment turn count after a successful parse. Failures here
       // do not break the flow.
       if (ctxEngState) {
@@ -1326,7 +1356,6 @@ const useMessageHandler = (
         payload: {
           requestType: parsedRequest.requestType,
           hasToolResult: Boolean(parsedRequest.placeDiscoveryResult),
-          hasOrchestration: Boolean(parsedRequest.orchestration),
         },
       });
 
@@ -1456,6 +1485,14 @@ const useMessageHandler = (
         });
       }
 
+      // Phase 4: search-intent normalizer (Phases 1+2+4). Runs AFTER
+      // `resolveTurnIntent` so that turn-intent enrichments (e.g. hotel
+      // follow-ups inheriting dates from the previous flight search) win over
+      // the structural date fallback. The normalizer's date fallback only
+      // fires if a date is still empty at this point. Pure function; explicit
+      // user values always win. See `searchIntentNormalizer.ts`.
+      parsedRequest = normalizeSearchIntent(parsedRequest, new Date());
+
       if (leadId) {
         // DEBT-15: write-only path. The reader (lead profile load + prompt
         // injection) was deleted; the model now retrieves lead history via
@@ -1467,20 +1504,13 @@ const useMessageHandler = (
         saveLeadAiProfile(nextLeadProfile).catch((e) => console.warn('⚠️ [LEAD_AI_PROFILE] Failed to save lead profile:', e));
       }
 
-      // Phase 2 Mirror mode: prefer the server-computed routeResult when the
-      // edge function shipped one in `parsedRequest.orchestration`. Falls back
-      // to local computation otherwise — this keeps the path resilient if the
-      // server's mirror fails or runs an older deploy.
       const routingStart = nowMs();
-      const routeResult =
-        parsedRequest.orchestration?.routeResult
-        ?? routeRequest(parsedRequest, plannerState);
+      const routeResult = routeRequest(parsedRequest, plannerState);
       emitLatency({
         stage: 'routing',
         latencyMs: nowMs() - routingStart,
         payload: {
           route: routeResult.route,
-          serverComputed: Boolean(parsedRequest.orchestration?.routeResult),
           requestType: parsedRequest.requestType,
         },
       });
@@ -1576,12 +1606,13 @@ const useMessageHandler = (
         console.log('🔄 [COLLECT] Router intercepting with focused question:', routeResult.reason, `(turn ${recentCollectCount + 1}/${MAX_COLLECT_TURNS})`);
         await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_collect');
 
-        const collectMessage = buildConversationalMissingInfoMessage({
-          parsedRequest,
+        const collectMessage = buildEmiliaSearchNarrative({
+          mode: 'collect',
+          normalized: parsedRequest,
           missingFields: routeResult.missingFields,
           fallbackMessage: routeResult.collectQuestion,
           language: userLanguage,
-        });
+        }).text;
 
         // Phase 2: additive pending_action emit. Router COLLECT fields are
         // already canonical (destination/dates/passengers/origin) — no rename.
@@ -1646,7 +1677,7 @@ const useMessageHandler = (
         const bridgeText = suggestedMode
           ? buildModeBridgeMessage({
               suggestedMode,
-              t: (key: string) => i18n.t(key, { ns: 'chat', defaultValue: key }),
+              language: userLanguage,
             })
           : '';
 
@@ -1882,8 +1913,9 @@ const useMessageHandler = (
             requestType: 'hotels',
           } as any);
 
-          const flightAskMessage = buildConversationalMissingInfoMessage({
-            parsedRequest,
+          const flightAskMessage = buildEmiliaSearchNarrative({
+            mode: 'collect',
+            normalized: parsedRequest,
             missingFields: flightVal.missingFields,
             fallbackMessage: generateMissingInfoMessage(
               flightVal.missingFieldsSpanish,
@@ -1892,7 +1924,7 @@ const useMessageHandler = (
               userLanguage,
             ),
             language: userLanguage,
-          });
+          }).text;
 
           if (ctxEngState) {
             ctxEngState = await emitPendingAction({
@@ -1938,8 +1970,9 @@ const useMessageHandler = (
             requestType: 'flights',
           } as any);
 
-          const hotelAskMessage = buildConversationalMissingInfoMessage({
-            parsedRequest,
+          const hotelAskMessage = buildEmiliaSearchNarrative({
+            mode: 'collect',
+            normalized: parsedRequest,
             missingFields: hotelVal.missingFields,
             fallbackMessage: generateMissingInfoMessage(
               hotelVal.missingFieldsSpanish,
@@ -1948,7 +1981,7 @@ const useMessageHandler = (
               userLanguage,
             ),
             language: userLanguage,
-          });
+          }).text;
 
           if (ctxEngState) {
             ctxEngState = await emitPendingAction({
@@ -1989,8 +2022,9 @@ const useMessageHandler = (
           // Neither side has enough info — fall back to the aggregated ask.
           await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_combined_missing');
 
-          const missingInfoMessage = buildConversationalMissingInfoMessage({
-            parsedRequest,
+          const missingInfoMessage = buildEmiliaSearchNarrative({
+            mode: 'collect',
+            normalized: parsedRequest,
             missingFields: [
               ...flightVal.missingFields,
               ...hotelVal.missingFields,
@@ -2005,7 +2039,7 @@ const useMessageHandler = (
               userLanguage
             ),
             language: userLanguage,
-          });
+          }).text;
 
           if (ctxEngState) {
             const dedupedLegacy = [
@@ -2095,8 +2129,9 @@ const useMessageHandler = (
           console.log('💾 [CONTEXT] Saving context state for failed validation (fire-and-forget)');
 
           // ✨ Use custom errorMessage if available (e.g., "only minors" case), otherwise generate standard message
-          const missingInfoMessage = validation.errorMessage || buildConversationalMissingInfoMessage({
-            parsedRequest,
+          const missingInfoMessage = validation.errorMessage || buildEmiliaSearchNarrative({
+            mode: 'collect',
+            normalized: parsedRequest,
             missingFields: validation.missingFields,
             fallbackMessage: generateMissingInfoMessage(
               validation.missingFieldsSpanish,
@@ -2105,7 +2140,7 @@ const useMessageHandler = (
               userLanguage
             ),
             language: userLanguage,
-          });
+          }).text;
 
           console.log('💬 [VALIDATION] Generated missing info message');
 
@@ -2161,7 +2196,20 @@ const useMessageHandler = (
           missingFieldsSpanish: validation.missingFieldsSpanish
         });
 
-        if (!validation.isValid) {
+        // Phase 4: the search-intent normalizer's `applyDateFallback` step now
+        // synthesizes today+3 / checkin+7 dates when the parser returns empty
+        // dates. That makes validation pass even when a more SPECIFIC
+        // flight-context source could fill the dates better. So we also force
+        // the enrichment branch when the city is missing OR all dates were
+        // inferred — both signal "the user did not give us hotel specifics yet,
+        // and a previous flight search has them."
+        const hotelCityMissing = !parsedRequest.hotels?.city || parsedRequest.hotels.city.length === 0;
+        const checkinIsInferred = (parsedRequest.hotels as any)?.checkinDateInferred === true;
+        const checkoutIsInferred = (parsedRequest.hotels as any)?.checkoutDateInferred === true;
+        const datesAreOnlyInferred = checkinIsInferred && checkoutIsInferred;
+        const shouldRunEnrichment = !validation.isValid || hotelCityMissing || datesAreOnlyInferred;
+
+        if (shouldRunEnrichment) {
           // ✨ CRITICAL: Check if this is a "only minors" error (has custom errorMessage)
           // If so, don't try to auto-enrich - the issue is specifically about adults
           if (validation.errorMessage) {
@@ -2216,14 +2264,26 @@ const useMessageHandler = (
 
           if (flightCtx) {
             console.log('🧩 [ENRICH] Filling missing hotel fields from flight context');
+            // Phase 4: treat normalizer-inferred dates (today+3 fallback) and
+            // the legacy `adultsExplicit=false` adults=1 as "fill targets".
+            // Flight context is a MORE SPECIFIC source than the structural
+            // fallback, so it must win when present.
+            const checkinPreferCtx = checkinIsInferred || !parsedRequest.hotels?.checkinDate;
+            const checkoutPreferCtx = checkoutIsInferred || !parsedRequest.hotels?.checkoutDate;
+            const adultsExplicit = parsedRequest.hotels?.adultsExplicit === true;
             parsedRequest.hotels = {
               // ✅ PRESERVE all existing hotel fields first (hotelChain, hotelName, roomType, mealPlan, etc.)
               ...parsedRequest.hotels,
               // Then fill in missing required fields from flight context
               city: parsedRequest.hotels?.city || flightCtx.destination,
-              checkinDate: parsedRequest.hotels?.checkinDate || flightCtx.departureDate,
-              checkoutDate: parsedRequest.hotels?.checkoutDate || (flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0]),
-              adults: parsedRequest.hotels?.adults || flightCtx.adults,
+              checkinDate: checkinPreferCtx ? flightCtx.departureDate : parsedRequest.hotels.checkinDate,
+              checkoutDate: checkoutPreferCtx
+                ? (flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0])
+                : parsedRequest.hotels.checkoutDate,
+              checkinDateInferred: checkinPreferCtx ? false : (parsedRequest.hotels as any)?.checkinDateInferred,
+              checkoutDateInferred: checkoutPreferCtx ? false : (parsedRequest.hotels as any)?.checkoutDateInferred,
+              adults: !adultsExplicit && flightCtx.adults ? flightCtx.adults : (parsedRequest.hotels?.adults || flightCtx.adults),
+              adultsExplicit: !adultsExplicit && flightCtx.adults ? true : adultsExplicit,
               children: parsedRequest.hotels?.children ?? flightCtx.children ?? 0,
               infants: parsedRequest.hotels?.infants ?? flightCtx.infants ?? 0
             } as any;
@@ -2249,8 +2309,9 @@ const useMessageHandler = (
               await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_hotel_revalidation');
 
               // ✨ Use custom errorMessage if available
-              const missingInfoMessage = reval.errorMessage || buildConversationalMissingInfoMessage({
-                parsedRequest,
+              const missingInfoMessage = reval.errorMessage || buildEmiliaSearchNarrative({
+                mode: 'collect',
+                normalized: parsedRequest,
                 missingFields: reval.missingFields,
                 fallbackMessage: generateMissingInfoMessage(
                   reval.missingFieldsSpanish,
@@ -2259,7 +2320,7 @@ const useMessageHandler = (
                   userLanguage
                 ),
                 language: userLanguage,
-              });
+              }).text;
 
               // Phase 2: additive pending_action emit (hotel slot-fill after enrich).
               if (ctxEngState && !reval.errorMessage) {
@@ -2295,14 +2356,15 @@ const useMessageHandler = (
               });
               return; // wait for user response
             }
-          } else {
+          } else if (!validation.isValid) {
             console.log('⚠️ [VALIDATION] Missing hotel required fields and no flight context available');
             // Store the current parsed request for future combination
             await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_hotel_missing');
 
             // ✨ Use custom errorMessage if available
-            const missingInfoMessage = validation.errorMessage || buildConversationalMissingInfoMessage({
-              parsedRequest,
+            const missingInfoMessage = validation.errorMessage || buildEmiliaSearchNarrative({
+              mode: 'collect',
+              normalized: parsedRequest,
               missingFields: validation.missingFields,
               fallbackMessage: generateMissingInfoMessage(
                 validation.missingFieldsSpanish,
@@ -2311,7 +2373,7 @@ const useMessageHandler = (
                 userLanguage
               ),
               language: userLanguage,
-            });
+            }).text;
 
             // Phase 2: additive pending_action emit (hotel slot-fill, no flight ctx).
             if (ctxEngState && !validation.errorMessage) {
@@ -2369,8 +2431,9 @@ const useMessageHandler = (
           console.log('⚠️ [VALIDATION] No destinations provided, requesting more info');
           await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_itinerary_missing');
 
-          const missingInfoMessage = buildConversationalMissingInfoMessage({
-            parsedRequest,
+          const missingInfoMessage = buildEmiliaSearchNarrative({
+            mode: 'collect',
+            normalized: parsedRequest,
             missingFields: ['destinations'],
             fallbackMessage: generateMissingInfoMessage(
               ['destino(s)'],
@@ -2382,7 +2445,7 @@ const useMessageHandler = (
               userLanguage
             ),
             language: userLanguage,
-          });
+          }).text;
 
           // Phase 2: additive pending_action emit (itinerary missing destinations).
           if (ctxEngState) {
@@ -2612,15 +2675,11 @@ const useMessageHandler = (
             // `show_places` when the tool returned ok=true, so this build should
             // succeed; the null branch is a defensive fallback for malformed
             // tool payloads (no city, no places, or no usable coordinates).
-            // Phase 2 Mirror mode: prefer the server-computed discovery
-            // mapping when present. Falls back to local computation otherwise.
-            const discoveryResult =
-              parsedRequest.orchestration?.discoveryResult
-              ?? buildDiscoveryResponseFromToolResult({
-                message: discoveryMessage,
-                placeDiscoveryResult: parsedRequest.placeDiscoveryResult,
-                language: userLanguage,
-              });
+            const discoveryResult = buildDiscoveryResponseFromToolResult({
+              message: discoveryMessage,
+              placeDiscoveryResult: parsedRequest.placeDiscoveryResult,
+              language: userLanguage,
+            });
             if (discoveryResult) {
               assistantResponse = discoveryResult.text;
               structuredData = {
@@ -2693,13 +2752,30 @@ const useMessageHandler = (
       });
 
       // === EMILIA: Prepend inferred-field summary when defaults were applied ===
+      // Phase 3 / sub-task C: capture the FULL NarrativeOutput (not just `.text`)
+      // so we can persist `narrative.chips` to the assistant message meta. The
+      // chip cluster in `ChatInterface.tsx` prefers these chips over the legacy
+      // `meta.emiliaRoute.inferredFields` derivation.
+      let narrativeChips: NarrativeChip[] | undefined;
       if (routeResult.inferredFields.length > 0 && assistantResponse && conversationTurn.responseMode !== 'show_places') {
         const inferredDetails = getInferredFieldDetails(parsedRequest);
         if (inferredDetails.length > 0) {
-          const summary = buildSearchSummary(parsedRequest, inferredDetails);
-          if (summary) {
-            assistantResponse = `${summary}\n\n${assistantResponse}`;
-            console.log('📋 [ROUTER] Prepended inferred-field summary:', summary);
+          const narrative = buildEmiliaSearchNarrative({
+            mode: 'search_summary',
+            normalized: parsedRequest,
+            defaultsApplied: inferredDetails,
+            language: parsedRequest.responseLanguage ?? userLanguage,
+          });
+          // Keep `buildSearchSummary` call alive for back-compat parity (and
+          // because the wrapper still has a single legacy call site here).
+          // The `narrative.text` is byte-equivalent to `buildSearchSummary`,
+          // so we use it directly to avoid a double-build.
+          if (narrative.text) {
+            assistantResponse = `${narrative.text}\n\n${assistantResponse}`;
+            console.log('📋 [ROUTER] Prepended inferred-field summary:', narrative.text);
+          }
+          if (narrative.chips && narrative.chips.length > 0) {
+            narrativeChips = narrative.chips;
           }
         }
       }
@@ -2848,6 +2924,7 @@ const useMessageHandler = (
                 reason: routeResult.reason,
                 inferredFields: routeResult.inferredFields,
               },
+              ...(narrativeChips ? { emiliaNarrative: { chips: narrativeChips } } : {}),
               conversationTurn,
               responseLanguage: userLanguage,
               client_id: assistantClientId,
@@ -3007,8 +3084,9 @@ const useMessageHandler = (
       setDraftPlannerFromRequest?.(mergedRequest);
       const validation = validateItineraryRequiredFields(mergedRequest.itinerary);
       if (!validation.isValid) {
-        const missingInfoMessage = buildConversationalMissingInfoMessage({
-          parsedRequest: mergedRequest,
+        const missingInfoMessage = buildEmiliaSearchNarrative({
+          mode: 'collect',
+          normalized: mergedRequest,
           missingFields: validation.missingFields,
           fallbackMessage: generateMissingInfoMessage(
             validation.missingFieldsSpanish,
@@ -3020,7 +3098,7 @@ const useMessageHandler = (
             userLanguage
           ),
           language: userLanguage,
-        });
+        }).text;
 
         // Phase 2: additive pending_action emit (planner date-selector revalidation).
         // This callback runs outside the main handleSendMessage turn loop, so we

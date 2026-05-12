@@ -1,17 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildConversationalMissingInfoMessage,
   deriveConversationGaps,
   extractRecommendedPlacesFromMeta,
   formatDiscoveryResponse,
   resolveConversationTurn,
 } from '@/features/chat/services/conversationOrchestrator';
+import { buildEmiliaSearchNarrative } from '@/features/chat/services/emiliaNarrative';
 import { buildDiscoveryResponseFromToolResult } from '@/features/chat/services/discoveryService';
 
 describe('conversationOrchestrator', () => {
-  it('builds a shorter conversational missing-info message', () => {
-    const message = buildConversationalMissingInfoMessage({
-      parsedRequest: {
+  // Phase 3 / sub-task C: `buildConversationalMissingInfoMessage` was removed
+  // after the 9 callers in `useMessageHandler.ts` switched to invoking
+  // `buildEmiliaSearchNarrative({mode:'collect'})` directly. The empathic
+  // missing-info copy now lives end-to-end inside the narrative module.
+  it('builds a shorter conversational missing-info message via the narrative collect mode', () => {
+    const message = buildEmiliaSearchNarrative({
+      mode: 'collect',
+      language: 'es',
+      normalized: {
         requestType: 'combined',
         flights: {
           origin: '',
@@ -31,7 +37,7 @@ describe('conversationOrchestrator', () => {
         originalMessage: 'Tokio y Kioto con vuelo y hotel',
       },
       missingFields: ['origin', 'dates', 'passengers'],
-    });
+    }).text;
 
     expect(message).toContain('Tokio');
     expect(message).toContain('desde qué ciudad');

@@ -66,13 +66,21 @@ vi.mock('../services/routeRequest', () => ({
     score: 0.9,
     missingFields: [],
     collectQuestion: null,
-    reason: 'test-route',
+    reason: 'high_definition',
     dimensions: {},
     inferredFields: {},
   }),
-  buildSearchSummary: vi.fn().mockReturnValue(''),
   getInferredFieldDetails: vi.fn().mockReturnValue([]),
 }));
+
+// Phase 3 / sub-task C: leave `buildEmiliaSearchNarrative` UNMOCKED here. The
+// `does not regenerate itinerary when quoting the active planner` test asserts
+// against the real `plan_to_quote` narrative copy ("Tengo el plan activo para
+// cotizar"), and `buildPlanToQuoteResponse` (kept as a wrapper in
+// conversationOrchestrator) delegates to the narrative module. Mocking it here
+// would short-circuit that text. The `useMessageHandler.test.ts` and
+// `useMessageHandler.routing.test.ts` files (which only need a stub) mock it
+// scoped to themselves.
 
 vi.mock('../services/conversationOrchestrator', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/conversationOrchestrator')>();
@@ -87,7 +95,6 @@ vi.mock('../services/conversationOrchestrator', async (importOriginal) => {
       uiMeta: {},
       turnNumber: 1,
     }),
-    buildConversationalMissingInfoMessage: vi.fn().mockReturnValue('missing info message'),
     buildModeBridgeMessage: vi.fn().mockReturnValue('bridge message'),
     formatDiscoveryResponse: vi.fn().mockReturnValue(''),
   };
@@ -760,7 +767,7 @@ describe('useMessageHandler', () => {
         score: 0.7,
         missingFields: [],
         collectQuestion: null,
-        reason: 'itinerary_from_quote_context',
+        reason: 'itinerary_request',
         dimensions: {},
         inferredFields: [],
       } as any);

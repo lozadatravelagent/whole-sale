@@ -8,12 +8,40 @@
  */
 
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import { buildEmiliaSearchNarrative } from './emiliaNarrative';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type EmiliaRoute = 'QUOTE' | 'COLLECT' | 'PLAN';
+
+/**
+ * Typed reason codes emitted by the deterministic router. Replaces the legacy
+ * free-form `string` field. The orchestrator consumes a separate
+ * `OrchestratorReason` union (defined in conversationOrchestrator.ts).
+ *
+ * load-bearing literals: `quote_active_plan` (used as a string equality check
+ * by the orchestrator G4 guard and the bridge resolver) and
+ * `quote_intent_incomplete` (used by the orchestrator's
+ * shouldAskMinimalQuestion heuristic).
+ */
+export type RouterReason =
+  | 'quote_active_plan'
+  | 'edit_existing_plan'
+  | 'itinerary_request'
+  | 'destination_too_vague'
+  | 'quote_intent_complete'
+  | 'quote_intent_incomplete'
+  | 'high_definition'
+  | 'needs_clarification'
+  | 'low_definition'
+  // NEW codes (Phase 2 / sub-task B):
+  | 'safe_defaults_applied'
+  | 'ordered_products_ready'
+  | 'hotel_exact_ready'
+  | 'origin_missing_no_geo'
+  | 'minor_ages_needed';
 
 export interface RouteResult {
   route: EmiliaRoute;
@@ -28,7 +56,7 @@ export interface RouteResult {
   missingFields: string[];
   inferredFields: string[];
   collectQuestion?: string;
-  reason: string;
+  reason: RouterReason;
 }
 
 export interface InferredField {
@@ -84,31 +112,82 @@ const COUNTRIES = new Set([
   'rumania', 'romania', 'rusia', 'russia',
 ]);
 
-const FAMILY_WORDS = /\b(familia|familias|familiar|flia)\b/i;
+// ---------------------------------------------------------------------------
+// LEGACY intent regexes (Spanish-only)
+//
+// As of prompt v18 these signals are emitted by the AI parser as semantic
+// fields on `ParsedTravelRequest`:
+//   - travelerType === 'family'      replaces LEGACY_FAMILY_WORDS_REGEX
+//   - quoteIntent === true           replaces LEGACY_QUOTE_INTENT_REGEX
+//   - planIntent === true            replaces LEGACY_PLAN_INTENT_REGEX
+//   - referencesCurrentPlan === true replaces LEGACY_CURRENT_PLAN_REFERENCE_REGEX
+//
+// These regexes are retained ONLY as a defensive fallback for cached/older
+// parser outputs that lack the semantic fields. Each helper below probes the
+// semantic field first and falls back to the regex when the field is
+// undefined.
+//
+// REMOVE after one release cycle once all callers reliably emit v18+
+// semantic fields (telemetry: zero `[router] legacy_fallback` events in 7d).
+// ---------------------------------------------------------------------------
 
-const QUOTE_INTENT =
+const LEGACY_FAMILY_WORDS_REGEX = /\b(familia|familias|familiar|flia)\b/i;
+
+const LEGACY_QUOTE_INTENT_REGEX =
   /\b(cotiz\w*|precio|presupuesto|valor|cuanto\s*(sale|cuesta|me\s*sale)|tarifa|busca(me)?|dame\s*(un\s*)?(vuelo|hotel|pasaje))\b/;
 
-const PLAN_INTENT =
+const LEGACY_PLAN_INTENT_REGEX =
   /\b(arma(me)?|planifica|itinerario|recorrido|ruta|circuito|viaje\s+por)\b/;
 
-const CURRENT_PLAN_REFERENCE =
+const LEGACY_CURRENT_PLAN_REFERENCE_REGEX =
   /\b(este|esta|ese|esa|el|la)\s+(viaje|plan|itinerario|recorrido|propuesta)\b|\b(esto|eso|lo\s+(anterior|que\s+armamos|que\s+te\s+propuse))\b/;
 
 // ---------------------------------------------------------------------------
-// COLLECT question templates
+// COLLECT question templates — moved to `chatResultCopy.ts` as
+// `COLLECT_QUESTIONS_COPY` (es/en/pt) so the Voice Layer can localize the
+// focused question. The legacy hardcoded ES map was deleted in Phase 3 / B.
 // ---------------------------------------------------------------------------
 
-const COLLECT_QUESTIONS: Record<string, string> = {
-  passengers: '¿Cuántas personas viajan? Por ejemplo: 2 adultos, o 2 adultos y 2 niños.',
-  passengers_and_dates: '¿Cuántas personas viajan y en qué fechas?',
-  dates: '¿En qué fechas viajás? Por ejemplo: del 15 al 22 de enero.',
-  dates_hotel: '¿Qué fechas de check-in y check-out necesitás?',
-  origin: '¿Desde qué ciudad salís?',
-  origin_and_dates: '¿Desde dónde viajás y en qué fechas?',
-  duration: '¿Cuántas noches te quedás?',
-  fallback: '¿Podés darme más detalles sobre tu viaje?',
-};
+// ---------------------------------------------------------------------------
+// Semantic-field helpers (Phase 4 / sub-task B)
+//
+// These helpers prefer the parser's semantic boolean fields (multilingual,
+// emitted by prompt v18+) and fall back to the legacy Spanish regexes only
+// when the field is undefined (older cached parses or missing parser
+// output). Internal — do not export.
+// ---------------------------------------------------------------------------
+
+function hasQuoteIntent(parsed: ParsedTravelRequest, msg: string): boolean {
+  if (typeof parsed.quoteIntent === 'boolean') return parsed.quoteIntent;
+  return LEGACY_QUOTE_INTENT_REGEX.test(msg);
+}
+
+function hasPlanIntent(parsed: ParsedTravelRequest, msg: string): boolean {
+  if (typeof parsed.planIntent === 'boolean') return parsed.planIntent;
+  return LEGACY_PLAN_INTENT_REGEX.test(msg);
+}
+
+function referencesCurrentPlan(parsed: ParsedTravelRequest, msg: string): boolean {
+  if (typeof parsed.referencesCurrentPlan === 'boolean') return parsed.referencesCurrentPlan;
+  return LEGACY_CURRENT_PLAN_REFERENCE_REGEX.test(msg);
+}
+
+function isFamilyTravel(parsed: ParsedTravelRequest, msg: string): boolean {
+  if (parsed.travelerType === 'family') return true;
+  // Pax-based inference: any explicit children present implies a family
+  // travel context regardless of language.
+  const flightChildren = parsed.flights?.children ?? 0;
+  const hotelChildren = parsed.hotels?.children ?? 0;
+  const itineraryChildren = parsed.itinerary?.travelers?.children ?? 0;
+  if (flightChildren > 0 || hotelChildren > 0 || itineraryChildren > 0) {
+    return true;
+  }
+  // Fall back to legacy regex only when travelerType wasn't set at all.
+  if (parsed.travelerType === undefined) {
+    return LEGACY_FAMILY_WORDS_REGEX.test(msg);
+  }
+  return false;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -145,8 +224,8 @@ function isQuoteActivePlanIntent(
   } | null,
 ): boolean {
   if (!hasActivePlannerState(plannerState)) return false;
-  if (!QUOTE_INTENT.test(msg)) return false;
-  if (CURRENT_PLAN_REFERENCE.test(msg)) return true;
+  if (!hasQuoteIntent(parsed, msg)) return false;
+  if (referencesCurrentPlan(parsed, msg)) return true;
   return parsed.requestType === 'itinerary' && parsed.itinerary?.editIntent === true;
 }
 
@@ -188,13 +267,22 @@ function scorePassengers(p: ParsedTravelRequest): number {
   const hotelPax = (p.hotels?.adults || 0) + (p.hotels?.children || 0) + (p.hotels?.infants || 0);
   const itineraryPax = (p.itinerary?.travelers?.adults || 0) + (p.itinerary?.travelers?.children || 0) + (p.itinerary?.travelers?.infants || 0);
 
-  // "Familia" defaults to 4 travelers in the parser, so it is actionable.
-  if (FAMILY_WORDS.test(msg)) {
+  // Safe-default rule: a default the parser deemed safe (adults=1, not explicit)
+  // is actionable, not missing. Score as 1.0. Genuine ambiguity — e.g. "familia"
+  // with no adult fallback applied — still returns 0.
+  const flightHasSafeDefault = p.flights?.adults === 1 && !p.flights.adultsExplicit;
+  const hotelHasSafeDefault = p.hotels?.adults === 1 && !p.hotels.adultsExplicit;
+
+  if (isFamilyTravel(p, msg)) {
     if (flightPax >= 4 || hotelPax >= 4 || itineraryPax >= 4) return 1.0;
+    // Parser fallback to adults=1 still counts as a safe default for "familia".
+    if (flightHasSafeDefault || hotelHasSafeDefault) return 1.0;
+    // Family signal with NO adults default applied → genuine ambiguity.
     if (!p.flights?.adultsExplicit && !p.hotels?.adultsExplicit) return 0;
   }
   if (p.flights?.adultsExplicit || p.hotels?.adultsExplicit) return 1.0;
-  // Default 1 adult is safe — score as 0.5 (implied, not explicit)
+  // Default 1 adult is a safe default — treat as actionable, not missing.
+  if (flightHasSafeDefault || hotelHasSafeDefault) return 1.0;
   return 0.5;
 }
 
@@ -218,25 +306,25 @@ function scoreComplexity(p: ParsedTravelRequest): number {
 // ---------------------------------------------------------------------------
 // COLLECT question builder
 // ---------------------------------------------------------------------------
+// Phase 3 / sub-task B — Voice Layer wrapper.
+//
+// Delegates to `buildEmiliaSearchNarrative({mode:'collect', style:'focused'})`
+// so all user-facing copy emits through ONE consistent voice. Signature
+// preserved for back-compat (consumer at `useMessageHandler.ts` reads
+// `routeResult.collectQuestion: string` as a fallback message). The new path
+// also gains en/pt support — the legacy implementation was hardcoded ES.
 
 function buildCollectQuestion(
   missing: string[],
   p: ParsedTravelRequest,
 ): string {
-  const needsDates = missing.includes('dates');
-  const needsPax = missing.includes('passengers');
-  const needsOrigin = missing.includes('origin');
-
-  if (needsPax && needsDates) return COLLECT_QUESTIONS.passengers_and_dates;
-  if (needsOrigin && needsDates) return COLLECT_QUESTIONS.origin_and_dates;
-  if (needsPax) return COLLECT_QUESTIONS.passengers;
-  if (needsDates) {
-    return p.requestType === 'hotels'
-      ? COLLECT_QUESTIONS.dates_hotel
-      : COLLECT_QUESTIONS.dates;
-  }
-  if (needsOrigin) return COLLECT_QUESTIONS.origin;
-  return COLLECT_QUESTIONS.fallback;
+  return buildEmiliaSearchNarrative({
+    mode: 'collect',
+    style: 'focused',
+    missingFields: missing,
+    normalized: p,
+    language: p.responseLanguage ?? 'es',
+  }).text;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,62 +359,107 @@ function detectInferredFields(p: ParsedTravelRequest): InferredField[] {
 // Search summary builder (non-blocking transparency)
 // ---------------------------------------------------------------------------
 
+/**
+ * Phase 2 / sub-task D — Voice Layer wrapper.
+ *
+ * The body delegates to `buildEmiliaSearchNarrative({mode:'search_summary'})`
+ * so we have ONE consistent voice across all 5 user-facing emitters. Signature
+ * is preserved for back-compat (the legacy single call site in
+ * `useMessageHandler.ts` stays untouched). The new path also gains en/pt
+ * support — the legacy implementation was hardcoded ES.
+ */
 export function buildSearchSummary(
   p: ParsedTravelRequest,
   inferred: InferredField[],
 ): string {
-  const parts: string[] = [];
+  return buildEmiliaSearchNarrative({
+    mode: 'search_summary',
+    normalized: p,
+    defaultsApplied: inferred,
+    language: p.responseLanguage ?? 'es',
+  }).text;
+}
 
-  if (p.requestType === 'flights' || p.requestType === 'combined') {
-    const f = p.flights;
-    if (f) {
-      let desc = `vuelo ${f.origin || '?'}→${f.destination || '?'}`;
-      if (f.departureDate) desc += `, ${formatDateShort(f.departureDate)}`;
-      if (f.returnDate) desc += ` al ${formatDateShort(f.returnDate)}`;
-      const pax = describePax(f.adults, f.children, f.infants);
-      if (pax) desc += `, ${pax}`;
-      parts.push(desc);
+// ---------------------------------------------------------------------------
+// Reason-code dispatch (Phase 2 / sub-task B)
+// ---------------------------------------------------------------------------
+
+/**
+ * Picks a router reason for the score >= QUOTE_THRESHOLD branch. Inspects the
+ * parsed request shape to detect whether the high score came from a
+ * hotel-exact match, a fully ordered multi-product request, parser-safe
+ * defaults, or a generic high-confidence signal.
+ */
+function pickHighScoreQuoteReason(
+  parsed: ParsedTravelRequest,
+  inferredFields: string[],
+): RouterReason {
+  // hotel-exact: hotels with exact dates + city + a hotelName/chain target
+  if (
+    parsed.requestType === 'hotels' &&
+    parsed.hotels?.checkinDate &&
+    parsed.hotels?.checkoutDate &&
+    parsed.hotels?.city &&
+    (parsed.hotels.hotelName || (parsed.hotels.hotelChains && parsed.hotels.hotelChains.length > 0))
+  ) {
+    return 'hotel_exact_ready';
+  }
+
+  // ordered multi-product request (combined/packages, or flights with explicit
+  // tripType + an ordered productOrder array)
+  const hasOrderedProducts = (parsed.productOrder?.length ?? 0) > 0;
+  if (hasOrderedProducts) {
+    if (
+      parsed.requestType === 'combined' ||
+      parsed.requestType === 'packages' ||
+      (parsed.requestType === 'flights' && Boolean(parsed.flights?.tripType))
+    ) {
+      return 'ordered_products_ready';
     }
   }
 
-  if (p.requestType === 'hotels' || p.requestType === 'combined') {
-    const h = p.hotels;
-    if (h) {
-      let desc = `hotel en ${h.city || '?'}`;
-      if (h.checkinDate) desc += `, ${formatDateShort(h.checkinDate)}`;
-      if (h.checkoutDate) desc += ` al ${formatDateShort(h.checkoutDate)}`;
-      const pax = describePax(h.adults, h.children, h.infants);
-      if (pax) desc += `, ${pax}`;
-      parts.push(desc);
-    }
+  // parser-safe defaults filled gaps (adults=1 default, one-way inferred, etc.)
+  if (inferredFields.length > 0) {
+    return 'safe_defaults_applied';
   }
 
-  if (parts.length === 0) return '';
-
-  const inferredLabels = inferred.map(i => i.label);
-  const base = `Busqué ${parts.join(' + ')}`;
-
-  if (inferredLabels.length > 0) {
-    return `${base}. _Datos asumidos: ${inferredLabels.join(', ')}._ Si querés cambiar algo, decime.`;
-  }
-  return base + '.';
+  // fallback: high score with no other distinguishing signal
+  return 'high_definition';
 }
 
-function formatDateShort(iso: string): string {
-  try {
-    const d = new Date(`${iso}T00:00:00`);
-    return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
-  } catch {
-    return iso;
+/**
+ * Picks a router reason for the score >= PLAN_THRESHOLD COLLECT branch.
+ * Detects the two priority cases (origin missing on flight-bearing requests,
+ * minor ages needed) and falls back to the generic clarification reason.
+ */
+function pickCollectReason(
+  parsed: ParsedTravelRequest,
+  missingFields: string[],
+): RouterReason {
+  // children mentioned but ages not provided — need ages for accurate quoting
+  const hasChildrenWithoutAges =
+    ((parsed.flights?.children ?? 0) > 0 &&
+      !(parsed.flights?.childrenAges && parsed.flights.childrenAges.length > 0)) ||
+    ((parsed.hotels?.children ?? 0) > 0 &&
+      !(parsed.hotels?.childrenAges && parsed.hotels.childrenAges.length > 0));
+  if (hasChildrenWithoutAges) {
+    return 'minor_ages_needed';
   }
-}
 
-function describePax(adults?: number, children?: number, infants?: number): string {
-  const parts: string[] = [];
-  if (adults && adults > 0) parts.push(`${adults} adulto${adults > 1 ? 's' : ''}`);
-  if (children && children > 0) parts.push(`${children} niño${children > 1 ? 's' : ''}`);
-  if (infants && infants > 0) parts.push(`${infants} bebé${infants > 1 ? 's' : ''}`);
-  return parts.join(', ');
+  // origin missing on a flight-bearing request. Spec intent: surface this
+  // distinct reason whenever a flight-bearing request needs origin and no
+  // geo hint is available so the UI can show a geo-aware prompt instead of
+  // the generic clarification ask. Note: the gate is not strict-only because
+  // the COLLECT branch only fires when score < QUOTE_THRESHOLD, which is
+  // unreachable when origin is the SOLE missing dimension under current
+  // scoring (other dimensions full → score 0.85 → QUOTE).
+  const isFlightBearing =
+    parsed.requestType === 'flights' || parsed.requestType === 'combined';
+  if (isFlightBearing && missingFields.includes('origin')) {
+    return 'origin_missing_no_geo';
+  }
+
+  return 'needs_clarification';
 }
 
 // ---------------------------------------------------------------------------
@@ -385,7 +518,7 @@ export function routeRequest(
   }
 
   // Explicit itinerary type or planning language → PLAN
-  if (parsed.requestType === 'itinerary' || PLAN_INTENT.test(msg)) {
+  if (parsed.requestType === 'itinerary' || hasPlanIntent(parsed, msg)) {
     return {
       route: 'PLAN',
       score,
@@ -424,7 +557,7 @@ export function routeRequest(
   }
 
   // Explicit quote intent with at least a city-level destination → QUOTE or COLLECT
-  if (QUOTE_INTENT.test(msg) && dimensions.destination >= 1.0) {
+  if (hasQuoteIntent(parsed, msg) && dimensions.destination >= 1.0) {
     if (score >= QUOTE_THRESHOLD) {
       return {
         route: 'QUOTE',
@@ -456,7 +589,7 @@ export function routeRequest(
       dimensions,
       missingFields,
       inferredFields,
-      reason: 'high_definition',
+      reason: pickHighScoreQuoteReason(parsed, inferredFields),
     };
   }
 
@@ -469,7 +602,7 @@ export function routeRequest(
       missingFields,
       inferredFields,
       collectQuestion: q,
-      reason: 'needs_clarification',
+      reason: pickCollectReason(parsed, missingFields),
     };
   }
 

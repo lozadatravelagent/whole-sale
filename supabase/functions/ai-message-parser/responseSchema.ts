@@ -149,6 +149,94 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
         "products were mentioned in a clear sequence. Omit (null) for single " +
         "product or when user said 'paquete' without an explicit order.",
     },
+    travelerType: {
+      type: ["string", "null"],
+      enum: ["solo", "couple", "family", "group", null],
+      description:
+        "Traveler composition inferred from natural language: 'couple' for " +
+        "pareja/novio/esposa, 'family' when kids/familia are mentioned, " +
+        "'group' for amigos/grupo, 'solo' for solo trips. Null when the cue " +
+        "is ambiguous.",
+    },
+    relativeDateHint: {
+      type: ["string", "null"],
+      enum: ["tomorrow", "this_weekend", "next_week", "next_month", null],
+      description:
+        "Canonical English enum for relative-date intent (mañana/tomorrow/" +
+        "amanhã, este finde/this weekend, próxima semana/next week, próximo " +
+        "mes/next month). Recognized multilingually; the client-side normalizer " +
+        "performs the actual date arithmetic. Omit when no relative-date cue " +
+        "is present or when the user gave explicit dates.",
+    },
+    partialStay: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        flightIntent: {
+          type: "string",
+          enum: ["one_way", "round_trip"],
+          description:
+            "Whether the flight portion is one-way (no return given) or " +
+            "round-trip (explicit return mentioned).",
+        },
+        hotelNights: {
+          type: ["number", "null"],
+          description:
+            "Number of paid hotel nights when explicitly stated by the user " +
+            "(e.g. 'hotel 3 noches'). Null/omitted when not specified.",
+        },
+        extendsBeyondHotel: {
+          type: "boolean",
+          description:
+            "True when the user signals they will continue the trip beyond " +
+            "the booked hotel without booking lodging (staying with a friend, " +
+            "family, road-tripping after, couch-surfing, etc.).",
+        },
+        signalsCaught: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Verbatim cue strings (in the user's language) that indicate the " +
+            "extends-beyond-hotel intent. Used for telemetry and audit.",
+        },
+      },
+      required: ["flightIntent", "extendsBeyondHotel", "signalsCaught"],
+      description:
+        "Emit when the user signals 'flight + partial hotel stay' intent " +
+        "(e.g. 'Cancún + hotel 3 noches, después me quedo con un amigo'). " +
+        "The client-side normalizer applies the consequence (one-way flight, " +
+        "checkout = checkin + hotelNights).",
+    },
+    quoteIntent: {
+      type: ["boolean", "null"],
+      description:
+        "Semantic intent flag: TRUE when the user expresses intent to GET A " +
+        "PRICE / SEARCH FOR AVAILABILITY (cotizame, dame precio, busca un " +
+        "vuelo, cuánto sale / quote me, get me a price, search for, how much " +
+        "is / me cota, qual o preço, busca um voo). Recognized multilingually " +
+        "from MEANING — never from surface keywords. False/omitted when the " +
+        "user is exploring without firm purchase intent.",
+    },
+    planIntent: {
+      type: ["boolean", "null"],
+      description:
+        "Semantic intent flag: TRUE when the user asks to BUILD AN ITINERARY " +
+        "/ ORGANIZE A TRIP STRUCTURE — not just price one product (armame un " +
+        "viaje, planifica un recorrido, circuito por… / build me a trip, plan " +
+        "a route, organize a trip through… / monta uma viagem, planeja um " +
+        "roteiro). Recognized multilingually from MEANING. Independent of " +
+        "quoteIntent — both can be true simultaneously.",
+    },
+    referencesCurrentPlan: {
+      type: ["boolean", "null"],
+      description:
+        "Semantic anaphora flag: TRUE when the user message refers to a " +
+        "previously-discussed plan/itinerary/quote via deictic markers (este " +
+        "viaje, ese plan, lo anterior, lo que armamos / this trip, that plan, " +
+        "the previous one, what we built / essa viagem, esse plano, o " +
+        "anterior). Recognized multilingually from MEANING. Combinable with " +
+        "quoteIntent and planIntent (e.g. 'cotizame este viaje').",
+    },
     // ---------------------------------------------------------------------
     // Missing-info / clarifying-question fields.
     // ---------------------------------------------------------------------

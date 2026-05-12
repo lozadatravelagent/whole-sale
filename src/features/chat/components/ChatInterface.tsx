@@ -316,6 +316,40 @@ const ChatInterface = React.memo(({
         .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
         .slice(0, 3)
     : [];
+  // Quick-action chips for inferred defaults (Emilia transparency).
+  // We surface a chip for each value Emilia inferred (adults default, one-way trip type,
+  // origin from geolocation, etc.) so users can correct in one tap.
+  // Phase 3 / sub-task C: prefer `meta.emiliaNarrative.chips` when the message
+  // carries narrative-emitted chips. Fall back to deriving chips from the
+  // legacy `meta.emiliaRoute.inferredFields` so older message history (pre-
+  // Phase 3) keeps rendering the same chip set.
+  const emiliaRoute = lastMeta?.emiliaRoute as { inferredFields?: unknown } | undefined;
+  const inferredFieldList = Array.isArray(emiliaRoute?.inferredFields)
+    ? (emiliaRoute.inferredFields as unknown[]).filter((value): value is string => typeof value === 'string')
+    : [];
+  const inferredFieldSet = new Set(inferredFieldList);
+  type NarrativeChipShape = {
+    id: string;
+    label: string;
+    icon?: string;
+    action: { kind: 'submit' | 'prefill'; text: string };
+  };
+  const emiliaNarrative = lastMeta?.emiliaNarrative as { chips?: unknown } | undefined;
+  const narrativeChips: NarrativeChipShape[] = Array.isArray(emiliaNarrative?.chips)
+    ? (emiliaNarrative!.chips as unknown[]).filter((chip): chip is NarrativeChipShape => {
+        if (!chip || typeof chip !== 'object') return false;
+        const c = chip as Record<string, unknown>;
+        const action = c.action as Record<string, unknown> | undefined;
+        return (
+          typeof c.id === 'string' &&
+          typeof c.label === 'string' &&
+          !!action &&
+          (action.kind === 'submit' || action.kind === 'prefill') &&
+          typeof action.text === 'string'
+        );
+      })
+    : [];
+  const hasNarrativeChips = narrativeChips.length > 0;
   const lastMessageText = typeof lastVisibleMessage?.content === 'string'
     ? lastVisibleMessage.content
     : (lastVisibleMessage?.content as { text?: string } | undefined)?.text || '';
@@ -502,6 +536,86 @@ const ChatInterface = React.memo(({
                       </button>
                     );
                   })}
+                </div>
+              )}
+              {/* Inferred-default chips: surface a 1-tap correction for each value Emilia
+                  assumed (adults default, one-way trip type, origin from geolocation, etc.).
+                  Mirrors the Gere "reglas default" §4.3 / §11 product spec.
+                  - "Buscar ida y vuelta" auto-submits a follow-up that re-runs the parser.
+                  - "Cambiar pasajeros" / "Cambiar origen" pre-fill the input so the user can finish typing.
+                  Phase 3 / sub-task C: prefer narrative-emitted chips when present
+                  (`meta.emiliaNarrative.chips`), and fall back to deriving the chip set
+                  from the legacy `meta.emiliaRoute.inferredFields` so existing message
+                  history (pre-Phase 3) renders identically. */}
+              {lastVisibleMessage?.role === 'assistant' && hasNarrativeChips && !isLoading && !isTyping && (
+                <div
+                  data-testid="inferred-defaults-chips"
+                  className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                >
+                  {narrativeChips.map((chip) => (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => {
+                        if (chip.action.kind === 'submit') {
+                          onSuggestedAction?.(chip.action.text);
+                        } else {
+                          onMessageChange(chip.action.text);
+                        }
+                      }}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{chip.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {lastVisibleMessage?.role === 'assistant' && !hasNarrativeChips && inferredFieldList.length > 0 && !isLoading && !isTyping && (
+                <div
+                  data-testid="inferred-defaults-chips"
+                  className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                >
+                  {inferredFieldSet.has('tripType') && (
+                    <button
+                      type="button"
+                      onClick={() => onSuggestedAction?.('Convertir a ida y vuelta')}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      <Plane className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{t('chips.changeRoundtrip')}</span>
+                    </button>
+                  )}
+                  {inferredFieldSet.has('adults') && (
+                    <button
+                      type="button"
+                      onClick={() => onMessageChange('Somos ')}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{t('chips.changePassengers')}</span>
+                    </button>
+                  )}
+                  {inferredFieldSet.has('origin') && (
+                    <button
+                      type="button"
+                      onClick={() => onMessageChange('Salimos desde ')}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      <Map className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{t('chips.changeOrigin')}</span>
+                    </button>
+                  )}
+                  {(inferredFieldSet.has('dates') || inferredFieldSet.has('departureDate')) && (
+                    <button
+                      type="button"
+                      onClick={() => onMessageChange('Cambiar fecha a ')}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                    >
+                      <Search className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{t('chips.changeDate')}</span>
+                    </button>
+                  )}
                 </div>
               )}
               {/* PR 3 (C4): mode_bridge turn chips — "switch" + "stay". Handlers are optional; C5 wires them from ChatFeature. */}

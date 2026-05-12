@@ -29,7 +29,9 @@ export interface HotelStaySegment {
     children?: number;
     childrenAges?: number[];
     infants?: number;
-    roomType?: 'single' | 'double' | 'triple';
+    roomType?: 'single' | 'double' | 'triple' | 'quadruple';
+    /** CLIENT-SIDE: see HotelRequest.roomTypeInferred. */
+    roomTypeInferred?: boolean;
     hotelChains?: string[];
     mealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
     freeCancellation?: boolean;
@@ -49,7 +51,28 @@ export interface HotelRequest {
     childrenAges?: number[]; // Edades de niños para paridad exacta con EUROVIPS
     infants?: number; // Bebés de 0-2 años
     // Campos opcionales de preferencias
-    roomType?: 'single' | 'double' | 'triple'; // Tipo de habitación (OPCIONAL - solo filtrar si usuario lo especifica)
+    roomType?: 'single' | 'double' | 'triple' | 'quadruple'; // Tipo de habitación (OPCIONAL - solo filtrar si usuario lo especifica)
+    /**
+     * CLIENT-SIDE flag set by `searchIntentNormalizer` when `roomType` was
+     * derived from passenger count or `travelerType` (i.e. NOT spoken by the
+     * user). Allows downstream UI/copy to disclose the inference. Never
+     * persisted by the Edge Function schema.
+     */
+    roomTypeInferred?: boolean;
+    /**
+     * CLIENT-SIDE flag set by `searchIntentNormalizer` when `checkoutDate`
+     * was derived from `partialStay.hotelNights` or a relative-date hint
+     * (i.e. NOT spoken by the user). Allows downstream UI/copy to disclose
+     * the inference. Never persisted by the Edge Function schema.
+     */
+    checkoutDateInferred?: boolean;
+    /**
+     * CLIENT-SIDE flag set by `searchIntentNormalizer` (Phase 4
+     * `applyDateFallback` step) when `checkinDate` was derived from the
+     * structural today+N fallback because no explicit nor relative date
+     * was available. Never persisted by the Edge Function schema.
+     */
+    checkinDateInferred?: boolean;
     hotelChains?: string[]; // Cadenas hoteleras - soporta múltiples cadenas (opcional)
     mealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only'; // Modalidad de alimentación (OPCIONAL - solo filtrar si usuario lo especifica)
     freeCancellation?: boolean; // Cancelación gratuita (opcional)
@@ -120,6 +143,7 @@ export interface PlannerEditIntent {
 }
 
 export type ProductKind = 'flight' | 'hotel' | 'transfer';
+export type TravelerType = 'solo' | 'couple' | 'family' | 'group';
 
 export interface ParsedTravelRequest {
     requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
@@ -130,12 +154,94 @@ export interface ParsedTravelRequest {
      * leave this undefined; the handler/UI then fall back to their default order.
      */
     productOrder?: ProductKind[];
+    /**
+     * Traveler composition inferred from natural-language cues:
+     *   - "pareja" / "novio" / "novia" / "esposa" / "marido" → 'couple'
+     *   - "familia" / "mi familia" / "con mis hijos" / kids mentioned → 'family'
+     *   - "viajo solo" / "una persona" / no qualifier → 'solo'
+     *   - "amigos" / "grupo" / "grupo de N" → 'group'
+     * Used downstream by editorial copy and hotel filters. Independent of
+     * adult/child counts (those live inside flights/hotels). Omitted when the
+     * cue is ambiguous; defaults are still applied via passenger rules.
+     */
+    travelerType?: TravelerType;
+    /**
+     * Canonical English enum for relative-date intent emitted by the LLM
+     * parser. Recognized multilingually (es/en/pt). The client-side
+     * `searchIntentNormalizer` performs the actual date arithmetic against
+     * the agency clock — the parser never computes ISO dates from this hint.
+     * Omitted when the user gave explicit dates or no relative-date cue.
+     */
+    relativeDateHint?: 'tomorrow' | 'this_weekend' | 'next_week' | 'next_month' | null;
+    /**
+     * "Vuelo + hotel parcial" intent: user wants a hotel for only part of the
+     * trip and will continue beyond it without booking lodging (staying with
+     * a friend/family, road-tripping, etc.). The LLM parser detects MEANING
+     * across languages; the client-side `searchIntentNormalizer` applies the
+     * consequence (one-way flight, recompute hotel checkout from
+     * `hotelNights`). Omitted when no partial-stay cue is present.
+     */
+    partialStay?: {
+        flightIntent: 'one_way' | 'round_trip';
+        hotelNights?: number;
+        extendsBeyondHotel: boolean;
+        signalsCaught: string[];
+    } | null;
+    /**
+     * Semantic intent flag emitted by the LLM parser: TRUE when the user
+     * expresses intent to GET A PRICE / SEARCH FOR AVAILABILITY (cotizame,
+     * dame precio, busca un vuelo / quote me, get me a price, search for /
+     * me cota, qual o preço, busca um voo). Recognized multilingually
+     * (es/en/pt) from MEANING — never from surface keywords. Consumed
+     * downstream by the router and turn-intent resolver to short-circuit
+     * Spanish-only regex heuristics.
+     */
+    quoteIntent?: boolean | null;
+    /**
+     * Semantic intent flag emitted by the LLM parser: TRUE when the user asks
+     * to BUILD AN ITINERARY / ORGANIZE A TRIP STRUCTURE — not just price one
+     * product (armame un viaje, planifica un recorrido / build me a trip,
+     * plan a route / monta uma viagem, planeja um roteiro). Recognized
+     * multilingually (es/en/pt). Independent of `quoteIntent` — both can be
+     * true simultaneously (e.g. "armame y cotizame un viaje por Europa").
+     */
+    planIntent?: boolean | null;
+    /**
+     * Semantic anaphora flag emitted by the LLM parser: TRUE when the user
+     * message refers to a previously-discussed plan/itinerary/quote via
+     * deictic markers (este viaje, ese plan, lo anterior / this trip, that
+     * plan, the previous one / essa viagem, esse plano, o anterior).
+     * Recognized multilingually (es/en/pt). Combinable with `quoteIntent` and
+     * `planIntent` (e.g. `quoteIntent=true + referencesCurrentPlan=true` for
+     * "cotizame este viaje").
+     */
+    referencesCurrentPlan?: boolean | null;
     flights?: {
         origin: string;
         destination: string;
         departureDate: string;
         returnDate?: string;
         tripType?: FlightTripType;
+        /**
+         * CLIENT-SIDE flag set by `searchIntentNormalizer` when `tripType` was
+         * derived from a relative-date hint or a partial-stay signal (i.e. NOT
+         * spoken by the user). Allows downstream UI/copy to disclose the
+         * inference. Never persisted by the Edge Function schema.
+         */
+        tripTypeInferred?: boolean;
+        /**
+         * CLIENT-SIDE flag set by `searchIntentNormalizer` (Phase 4
+         * `applyDateFallback` step) when `departureDate` was derived from the
+         * structural today+N fallback because no explicit nor relative date
+         * was available. Never persisted by the Edge Function schema.
+         */
+        departureDateInferred?: boolean;
+        /**
+         * CLIENT-SIDE flag set by `searchIntentNormalizer` (Phase 4
+         * `applyDateFallback` step) when `returnDate` was derived from the
+         * structural fallback (combined-mode default round-trip window).
+         */
+        returnDateInferred?: boolean;
         segments?: Array<{
             origin?: string;
             destination?: string;
@@ -258,40 +364,6 @@ export interface ParsedTravelRequest {
          * The dispatcher reads this to mutate domain state without re-resolving.
          */
         payload?: Record<string, unknown>;
-    } | null;
-    /**
-     * Phase 2 Mirror mode: server-side orchestration mirror. The edge
-     * function computes routing + discovery mapping post-parse and ships
-     * the results here. The frontend prefers these when present and falls
-     * back to local computation otherwise (no breaking change).
-     *
-     * Permissive shape to keep this module decoupled from the orchestrator
-     * service typings; concrete types live in
-     * `src/features/chat/services/{routeRequest, discoveryService}.ts`.
-     */
-    orchestration?: {
-        routeResult?: {
-            route: 'QUOTE' | 'COLLECT' | 'PLAN';
-            score: number;
-            dimensions: {
-                destination: number;
-                dates: number;
-                passengers: number;
-                origin: number;
-                complexity: number;
-            };
-            missingFields: string[];
-            inferredFields: string[];
-            collectQuestion?: string;
-            reason: string;
-        } | null;
-        discoveryResult?: {
-            text: string;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            discoveryContext: any;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            recommendedPlaces: any[];
-        } | null;
     } | null;
 }
 
@@ -596,6 +668,14 @@ function splitSimpleItineraryDestinations(destination: string): string[] {
     return destinations.length > 0 ? destinations : [destination];
 }
 
+/**
+ * LEGACY (Spanish-only) duration extractor. Phase 4 retired the main caller
+ * (`applyDefaultSearchAssumptions`). The remaining consumer is the
+ * deterministic Spanish itinerary fast-path
+ * (`tryParseSimpleItineraryDeterministically` and
+ * `completePendingRequestFromAnswer`). Multilingual duration handling now
+ * lives in the LLM prompt + structural normalizer fallback. Do not extend.
+ */
 function extractDurationDays(message: string): number | undefined {
     const normalized = normalizeHotelText(message);
     const numericDuration = normalized.match(/\b(\d{1,2})\s*(?:dias|dia|noches?)\b/);
@@ -651,6 +731,14 @@ function resolveDefaultSearchDates(
     };
 }
 
+/**
+ * LEGACY (Spanish-only) family-travelers inference. Phase 4 retired the main
+ * caller (`applyDefaultSearchAssumptions`). The remaining consumers are the
+ * deterministic Spanish fast-paths (`tryParseSimpleItineraryDeterministically`
+ * and `completePendingRequestFromAnswer`). Multilingual family handling now
+ * relies on the LLM emitting `travelerType: 'family'` plus explicit adults /
+ * children counts (Phase 1 normalizer step). Do not extend.
+ */
 function inferFamilyTravelersFromText(message: string): {
     adults: number;
     children: number;
@@ -1032,108 +1120,16 @@ function preservePendingContextIfNeeded(
     };
 }
 
-function applyDefaultSearchAssumptions(
-    request: ParsedTravelRequest,
-    message: string,
-    referenceDate: Date = new Date()
-): ParsedTravelRequest {
-    const defaultDates = resolveDefaultSearchDates(message, referenceDate);
-    const durationDays = extractDurationDays(message) || DEFAULT_SEARCH_DURATION_DAYS;
-    const familyTravelers = inferFamilyTravelersFromText(message);
-    const next = normalizeParsedFlightRequest({ ...request });
-
-    if ((next.requestType === 'flights' || next.requestType === 'combined') && next.flights) {
-        const flights = { ...next.flights };
-        if (flights.segments?.length) {
-            flights.segments = flights.segments.map((segment, index) => ({
-                ...segment,
-                departureDate: isValidIsoDate(segment.departureDate)
-                    ? segment.departureDate
-                    : addDaysToIsoDate(defaultDates.startDate, index * Math.max(1, durationDays)),
-            }));
-        }
-        if (!isValidIsoDate(flights.departureDate)) {
-            flights.departureDate = flights.segments?.[0]?.departureDate || defaultDates.startDate;
-        }
-        if (next.requestType === 'combined' && !isValidIsoDate(flights.returnDate)) {
-            flights.returnDate = defaultDates.endDate;
-        }
-        if (familyTravelers && !flights.adultsExplicit) {
-            flights.adults = familyTravelers.adults;
-            flights.adultsExplicit = true;
-            flights.children = familyTravelers.children;
-            flights.infants = familyTravelers.infants;
-        } else if (typeof flights.adults !== 'number' || flights.adults < 1) {
-            flights.adults = 1;
-            flights.children = flights.children ?? 0;
-            flights.infants = flights.infants ?? 0;
-        }
-        next.flights = normalizeFlightRequest(flights);
-    }
-
-    if ((next.requestType === 'hotels' || next.requestType === 'combined') && next.hotels) {
-        const hotels = { ...next.hotels };
-        if (hotels.segments?.length) {
-            let nextSegmentStart = defaultDates.startDate;
-            hotels.segments = hotels.segments.map((segment) => {
-                const checkinDate = isValidIsoDate(segment.checkinDate)
-                    ? segment.checkinDate
-                    : nextSegmentStart;
-                const checkoutDate = isValidIsoDate(segment.checkoutDate)
-                    ? segment.checkoutDate
-                    : addDaysToIsoDate(checkinDate, Math.max(1, durationDays));
-                nextSegmentStart = checkoutDate;
-                return {
-                    ...segment,
-                    checkinDate,
-                    checkoutDate,
-                    adults: familyTravelers && !segment.adultsExplicit
-                        ? familyTravelers.adults
-                        : (segment.adults && segment.adults > 0 ? segment.adults : hotels.adults),
-                    adultsExplicit: familyTravelers && !segment.adultsExplicit ? true : segment.adultsExplicit,
-                    children: familyTravelers && !segment.adultsExplicit ? familyTravelers.children : (segment.children ?? hotels.children ?? 0),
-                    childrenAges: familyTravelers && !segment.adultsExplicit ? familyTravelers.childrenAges : segment.childrenAges,
-                    infants: familyTravelers && !segment.adultsExplicit ? familyTravelers.infants : (segment.infants ?? hotels.infants),
-                };
-            });
-        }
-        if (!isValidIsoDate(hotels.checkinDate)) {
-            hotels.checkinDate = hotels.segments?.[0]?.checkinDate || defaultDates.startDate;
-        }
-        if (!isValidIsoDate(hotels.checkoutDate)) {
-            hotels.checkoutDate = hotels.segments?.[0]?.checkoutDate || defaultDates.endDate || addDaysToIsoDate(hotels.checkinDate, Math.max(1, durationDays));
-        }
-        if (familyTravelers && !hotels.adultsExplicit) {
-            hotels.adults = familyTravelers.adults;
-            hotels.adultsExplicit = true;
-            hotels.children = familyTravelers.children;
-            hotels.childrenAges = familyTravelers.childrenAges;
-            hotels.infants = familyTravelers.infants;
-        } else if (typeof hotels.adults !== 'number' || hotels.adults < 1) {
-            hotels.adults = 1;
-            hotels.children = hotels.children ?? 0;
-            hotels.infants = hotels.infants ?? 0;
-        }
-        next.hotels = hotels;
-    }
-
-    if (next.requestType === 'itinerary' && next.itinerary) {
-        const itinerary = { ...next.itinerary };
-        if (!itinerary.days || itinerary.days < 1) {
-            itinerary.days = DEFAULT_SEARCH_DURATION_DAYS;
-        }
-        if (familyTravelers && !itinerary.travelers?.adults) {
-            itinerary.travelers = {
-                adults: familyTravelers.adults,
-                children: familyTravelers.children,
-                infants: familyTravelers.infants,
-            };
-        }
-        next.itinerary = itinerary;
-    }
-
-    return next;
-}
+// NOTE: `applyDefaultSearchAssumptions` was retired in Phase 4. Its
+// responsibilities are now split:
+//   - LLM-handled (prompt v17/v18): family/duration/date semantic mapping
+//     ("una semana", "fin de semana", "para mi familia"). The model emits
+//     adults/children, ISO dates, and `travelerType` directly.
+//   - Normalizer-handled (`searchIntentNormalizer.applyDateFallback`): the
+//     structural today+3 / checkin+7 fallback that runs LAST in the chain
+//     after `applyTravelerTypeDefaults`, `applyRoomDerivation`,
+//     `applyPartialStay`, and `applyRelativeDates`.
+// See `docs/architecture/context-engineering-overview.md` for the runtime flow.
 
 export function tryParseSimpleItineraryDeterministically(
     message: string,
@@ -1340,8 +1336,9 @@ function stripTrailingPunctuation(value: string): string {
 function detectRoomTypeFromText(message: string): HotelStaySegment['roomType'] | undefined {
     const normalized = normalizeHotelText(message);
 
-    if (/\b(triple)\b/.test(normalized)) return 'triple';
-    if (/\b(double|doble|twin)\b/.test(normalized)) return 'double';
+    if (/\b(quadruple|quad|cuadruple|cuádruple|quadruplo|quádruplo)\b/.test(normalized)) return 'quadruple';
+    if (/\b(triple|triplo)\b/.test(normalized)) return 'triple';
+    if (/\b(double|doble|duplo|twin)\b/.test(normalized)) return 'double';
     if (/\b(single|simple|individual)\b/.test(normalized)) return 'single';
 
     return undefined;
@@ -1634,7 +1631,7 @@ function extractHotelSegmentsFromMessage(
             city: detectHotelCityFromText(chunk),
             checkinDate: dates.checkinDate,
             checkoutDate: dates.checkoutDate,
-            adults: adults ?? (detectRoomTypeFromText(chunk) === 'double' ? 2 : detectRoomTypeFromText(chunk) === 'triple' ? 3 : detectRoomTypeFromText(chunk) === 'single' ? 1 : undefined),
+            adults: adults ?? (detectRoomTypeFromText(chunk) === 'double' ? 2 : detectRoomTypeFromText(chunk) === 'triple' ? 3 : detectRoomTypeFromText(chunk) === 'quadruple' ? 4 : detectRoomTypeFromText(chunk) === 'single' ? 1 : undefined),
             adultsExplicit,
             roomType: detectRoomTypeFromText(chunk),
             mealPlan: detectMealPlanFromText(chunk),
@@ -2870,25 +2867,14 @@ async function processEdgeFunctionResponse(
         });
     }
 
-    // Phase 2 Mirror mode: server-computed orchestration. Frontend prefers
-    // these results when present, otherwise falls back to local computation
-    // in useMessageHandler. Logged for telemetry parity-check during rollout.
-    const orchestration =
-        (data?.meta?.orchestration ?? null) as ParsedTravelRequest['orchestration'];
-    if (orchestration) {
-        (mergedResult as ParsedTravelRequest).orchestration = orchestration;
-        console.log('🧭 [ORCHESTRATION] Server-computed mirror:', {
-            hasRouteResult: Boolean(orchestration.routeResult),
-            hasDiscoveryResult: Boolean(orchestration.discoveryResult),
-            route: orchestration.routeResult?.route,
-        });
-    }
-
-    const resultWithDefaults = applyDefaultSearchAssumptions(mergedResult, message);
-
-    console.log('🌍 [GEO-TRACE-2] After merge/post-processing destinations:', resultWithDefaults.itinerary?.destinations);
-    console.log('✅ AI parsing successful (merged with quick hints when missing):', resultWithDefaults);
-    return resultWithDefaults;
+    // Phase 4: structural defaults (today+3 / checkin+7) now live in
+    // `searchIntentNormalizer.applyDateFallback`, called downstream by
+    // `useMessageHandler`. The legacy `applyDefaultSearchAssumptions` was
+    // deleted along with its Spanish-regex helpers. The parser path returns
+    // the post-merge result directly.
+    console.log('🌍 [GEO-TRACE-2] After merge/post-processing destinations:', mergedResult.itinerary?.destinations);
+    console.log('✅ AI parsing successful (merged with quick hints when missing):', mergedResult);
+    return mergedResult;
 }
 
 async function buildStreamingQuickPreParserHints(message: string): Promise<Partial<ParsedTravelRequest>> {

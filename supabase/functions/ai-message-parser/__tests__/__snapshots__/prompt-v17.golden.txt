@@ -558,40 +558,203 @@ User: "replace Paris with Lisbon and make it faster"
   "confidence": 0.9
 }
 
-## OPERATIONAL ORDER — RESPECT WHAT THE USER SAID FIRST
+## TRAVELER TYPE — SEMANTIC INFERENCE (LANGUAGE-AGNOSTIC)
+
+Emit `travelerType` as a top-level field when the user expresses who is traveling. This is independent of the adult/child counts on `flights`/`hotels` (those still apply); `travelerType` carries the *intent* about the trip's composition.
+
+Allowed values (canonical, English): "solo" | "couple" | "family" | "group".
+
+CRITICAL: detect these MEANINGS, not specific words. The user may write in Spanish, English, Portuguese, or mix languages, with typos or casual phrasing. Map the underlying *meaning* to the canonical value. The output enum stays in English regardless of the input language.
+
+Semantic categories:
+- couple → any cue meaning "with romantic partner" (pareja, novio/a, esposo/a, marido, mujer / partner, wife, husband, girlfriend, boyfriend, spouse / namorado/a, esposo/a, marido / honeymoon, luna de miel, lua de mel, aniversario/anniversary/aniversário)
+- family → any cue meaning "with family / with kids" (familia, flia, mi familia, con mis hijos, con mi mujer y mis hijos, niños, menores / family, with my kids/children, with my husband/wife and kids / família, com meus filhos, crianças)
+- solo → any cue meaning "traveling alone" (viajo solo, una persona, yo solo / solo trip, alone, by myself, just me / sozinho, uma pessoa)
+- group → any cue meaning "with friends / group" (amigos, con amigos, grupo, grupo de N, viaje de amigos / friends, with friends, group, group of N / amigos, em grupo, grupo de N)
+
+DO NOT emit when:
+- Plain numeric count without a relational qualifier ("dos personas", "two people", "somos 3", "three of us") → ambiguous; let passenger inference handle counts.
+- No traveler cue at all (e.g., "vuelo a Miami", "flight to Miami", "voo a Miami").
+
+EXAMPLES (multilingual — same rule applies regardless of language):
+
+User: "Quiero un viaje a Cancún con mi pareja"
+→ travelerType: "couple"
+
+User: "Trip to Cancun with my wife"
+→ travelerType: "couple"
+
+User: "Viagem para Cancún com minha esposa"
+→ travelerType: "couple"
+
+User: "Voy con mi mujer y mis dos hijos a Orlando"
+→ travelerType: "family"
+
+User: "Trip to Orlando with my wife and two kids"
+→ travelerType: "family"
+
+User: "Vamos un grupo de 6 amigos a Brasil"
+→ travelerType: "group"
+
+User: "Group of 6 friends to Brazil"
+→ travelerType: "group"
+
+User: "Vuelo a Madrid para 2 adultos"
+→ DO NOT emit travelerType (no relational cue, just a count)
+
+User: "Flight to Madrid for 2 adults"
+→ DO NOT emit travelerType (no relational cue, just a count)
+
+User: "Quiero un vuelo a Miami" / "Flight to Miami" / "Voo para Miami"
+→ DO NOT emit travelerType (no traveler cue at all)
+
+## RELATIVE DATE HINTS — SEMANTIC (LANGUAGE-AGNOSTIC)
+
+Emit `relativeDateHint` as a top-level field when the user expresses a relative-date intent (instead of an explicit ISO date). This carries the *meaning* — the client-side normalizer performs the actual date arithmetic against the agency's clock. DO NOT compute dates yourself; do not derive ISO strings from these cues.
+
+Allowed values (canonical, English): "tomorrow" | "this_weekend" | "next_week" | "next_month".
+
+CRITICAL: detect MEANINGS across languages (es/en/pt), not surface keywords. The user may write in Spanish, English, Portuguese, or mix languages. Map the underlying meaning to the canonical value. The output enum stays in English regardless of the input language.
+
+Semantic categories:
+- tomorrow → any cue meaning "the day after today" (mañana, mañana mismo / tomorrow / amanhã)
+- this_weekend → any cue meaning "the upcoming weekend" (este finde, este fin de semana, el finde / this weekend, the weekend / este fim de semana, neste fim de semana)
+- next_week → any cue meaning "the upcoming week" (la semana que viene, la próxima semana, semana próxima / next week, the coming week / próxima semana, semana que vem)
+- next_month → any cue meaning "the upcoming month" (próximo mes, el mes que viene / next month / próximo mês, mês que vem)
+
+DO NOT emit when:
+- The user gave an explicit date (ISO, "el 15 de marzo", "March 15", "15 de março") → use the explicit date instead.
+- The cue is ambiguous ("pronto", "en unos días", "soon") → leave `relativeDateHint` undefined; the client-side default (today + 3) still applies.
+- The user gave a duration without a start ("una semana", "5 nights") → that is a duration, not a relative-date hint.
+
+Combine freely with date-bearing fields. When you emit `relativeDateHint`, you MAY still omit `departureDate`/`checkinDate` — the normalizer will fill them.
+
+EXAMPLES (multilingual — same rule applies regardless of language):
+
+User: "Vuelo a Madrid mañana"
+→ relativeDateHint: "tomorrow"
+
+User: "Flight to Madrid tomorrow"
+→ relativeDateHint: "tomorrow"
+
+User: "Voo para Madrid amanhã"
+→ relativeDateHint: "tomorrow"
+
+User: "Quiero ir a Bariloche este finde"
+→ relativeDateHint: "this_weekend"
+
+User: "Trip to Bariloche this weekend"
+→ relativeDateHint: "this_weekend"
+
+User: "La semana que viene a Buenos Aires"
+→ relativeDateHint: "next_week"
+
+User: "Next week to Buenos Aires"
+→ relativeDateHint: "next_week"
+
+User: "El próximo mes vamos a Cancún"
+→ relativeDateHint: "next_month"
+
+User: "Próximo mês para Cancún"
+→ relativeDateHint: "next_month"
+
+User: "Vuelo el 15 de marzo a Madrid" / "Flight March 15 to Madrid"
+→ DO NOT emit relativeDateHint (explicit date wins)
+
+## PARTIAL STAY DETECTION — SEMANTIC (LANGUAGE-AGNOSTIC)
+
+Emit `partialStay` as a top-level object when the user signals "vuelo + hotel parcial" intent: they want a hotel for only part of the trip and will continue beyond it without booking lodging (staying with a friend/family, road-tripping after, couch-surfing, "después me quedo en otro lado"). The normalizer applies the consequence (one-way flight if no return is given, recompute checkout from `hotelNights`).
+
+Shape:
+```
+"partialStay": {
+  "flightIntent": "one_way" | "round_trip",
+  "hotelNights": <integer>,            // omit / null when not stated
+  "extendsBeyondHotel": true,
+  "signalsCaught": [<verbatim cue>, ...]
+}
+```
+
+CRITICAL: detect MEANING across languages (es/en/pt), NEVER use surface keywords. The user may write in Spanish, English, Portuguese, or mix languages. Map underlying meaning. The enums stay in English; `signalsCaught` echoes the user's original phrasing for audit.
+
+Semantic categories for `extendsBeyondHotel = true`:
+- Stay with friend/family beyond hotel (me quedo con un amigo, me alojo con mi familia / staying with a friend, crashing at a friend's, will stay with my cousin / fico na casa de um amigo, vou ficar com a família)
+- Road trip / continuing the trip after the hotel (después sigo en auto, después salgo de road trip / road trip after, continuing on / depois sigo de carro)
+- Couch surfing / Airbnb arranged separately, hostel arranged separately (después busco un hostel por mi cuenta / I'll find a hostel on my own / depois procuro um hostel por minha conta)
+- Generic "después me quedo en otro lado" / "after that I'll stay somewhere else" / "depois fico em outro lugar"
+
+`flightIntent`:
+- "one_way" → user did NOT mention a return / regreso / vuelta / volta — the trip extends and they may return however they want.
+- "round_trip" → user explicitly mentioned a return date (e.g. "vuelvo el 20", "I fly back on the 20th").
+
+`hotelNights` → ONLY include when the user states a count of paid hotel nights ("hotel 3 noches", "hotel for 4 nights", "hotel por 5 noites"). Otherwise omit.
+
+DO NOT emit when:
+- User books a single hotel for the entire trip (no extension cue) → no `partialStay`.
+- User books two hotels back-to-back → that is a multi-stay itinerary, NOT partial-stay.
+- User mentions only a flight, no hotel → no `partialStay`.
+
+EXAMPLES (multilingual — same rule applies regardless of language):
+
+User: "Vuelo y hotel a Cancún, hotel 3 noches y después me quedo con un amigo"
+→ partialStay: { flightIntent: "one_way", hotelNights: 3, extendsBeyondHotel: true, signalsCaught: ["después me quedo con un amigo"] }
+
+User: "Flight + hotel to Cancun, 3 nights at the hotel then crashing at a friend's place"
+→ partialStay: { flightIntent: "one_way", hotelNights: 3, extendsBeyondHotel: true, signalsCaught: ["crashing at a friend's place"] }
+
+User: "Voo e hotel para Cancún, 4 noites no hotel e depois fico na casa de um amigo"
+→ partialStay: { flightIntent: "one_way", hotelNights: 4, extendsBeyondHotel: true, signalsCaught: ["depois fico na casa de um amigo"] }
+
+## OPERATIONAL ORDER — RESPECT WHAT THE USER SAID FIRST (LANGUAGE-AGNOSTIC)
 
 When the user mentions MORE THAN ONE travel product (e.g., flight + hotel, hotel + transfer, transfer + hotel + flight), DO NOT assume the classic order flight → hotel → transfer. Respect the order the user expressed.
 
 Emit `productOrder` as an array listing the products in the same sequence the user mentioned them.
 
+CRITICAL: detect ORDER SEMANTICALLY across languages. Look at the surface order of product mentions in the user's sentence, regardless of whether they wrote in Spanish, English, Portuguese, or a mix. The output array uses canonical English values: "flight", "hotel", "transfer".
+
 When to emit:
-- 2 or more products mentioned in a clear sequence ("hotel, después vuelos" / "vuelos y hotel" / "traslado, hotel y vuelo") → emit `productOrder` with the exact order.
-- Only 1 product mentioned, OR the user said "paquete"/"package"/"viaje completo" without expressing order → DO NOT emit `productOrder` (downstream handler uses default).
+- 2 or more products mentioned in a clear sequence in the user's sentence → emit `productOrder` with the exact order of mention.
+- Only 1 product mentioned → DO NOT emit.
+- The user used a single umbrella word that doesn't imply order (paquete / package / pacote / viaje completo / full trip / "todo armado") → DO NOT emit; the downstream handler uses its default order.
 
 The order matters for two reasons:
 1. The downstream UI renders product blocks in this order (the user perceives the order).
-2. The natural-language confirmation should say "Busco primero {p1} y después sumo {p2}" using this order.
+2. The natural-language confirmation should follow the order ("Busco primero el {p1}, después sumo el {p2}" / "I'll search the {p1} first, then add the {p2}" / "Procuro primeiro o {p1}, depois adiciono o {p2}").
 
 Treat all mentioned products as part of the SAME intent. If a single product is missing one critical field, ask only for that field — do not block the whole multi-product request.
 
-Allowed values inside `productOrder`: "flight", "hotel", "transfer".
-
-EXAMPLES:
+EXAMPLES (multilingual — same rule applies regardless of language):
 
 User: "Quiero hotel en Cancún, seguro necesito vuelos"
+→ productOrder: ["hotel", "flight"]
+
+User: "I want a hotel in Cancun, I'll also need flights"
+→ productOrder: ["hotel", "flight"]
+
+User: "Quero hotel em Cancún, e também voos"
 → productOrder: ["hotel", "flight"]
 
 User: "Vuelos a Cancún en julio y después hotel all inclusive"
 → productOrder: ["flight", "hotel"]
 
+User: "Flights to Cancun in July and then an all-inclusive hotel"
+→ productOrder: ["flight", "hotel"]
+
 User: "Quiero un traslado del aeropuerto al hotel, y también hotel y vuelos"
 → productOrder: ["transfer", "hotel", "flight"]
 
-User: "Paquete a Punta Cana con vuelo, hotel y traslados"
-→ DO NOT emit productOrder (paquete sin orden expresado por el usuario)
+User: "Airport-to-hotel transfer, plus hotel and flights"
+→ productOrder: ["transfer", "hotel", "flight"]
 
-User: "Hotel Riu en Cancún"
-→ DO NOT emit productOrder (solo un producto)
+User: "Paquete a Punta Cana con vuelo, hotel y traslados"
+→ DO NOT emit productOrder (umbrella word "paquete" — no order expressed)
+
+User: "Package to Punta Cana with flight, hotel and transfer"
+→ DO NOT emit productOrder (umbrella word "package" — no order expressed)
+
+User: "Hotel Riu en Cancún" / "Riu hotel in Cancun" / "Hotel Riu em Cancún"
+→ DO NOT emit productOrder (only one product)
 
 ## REQUIRED FIELDS AND DEFAULTS
 
@@ -718,6 +881,11 @@ Detect specific hotel names when user mentions them. ONLY include hotelName if u
 - "hotel en Cancún" → NO hotelName ❌
 
 **IMPORTANT:** When extracting hotelName, if it contains a chain name, also extract hotelChain.
+
+🎯 **HOTEL EXACT MATCH PRECEDENCE (hotelName vs hotelChains):**
+When the user names a SPECIFIC hotel ("el Riu Palace Aruba", "quiero el Iberostar Dominicana"), set `hotelName` to the FULL property name. If the user names ONLY a chain ("algún Riu en Aruba", "cadena Iberostar"), set `hotelChains: ["Riu"]` and leave `hotelName` empty. If BOTH signals are present in the same phrase ("Riu Palace Aruba"), set BOTH `hotelName` AND the matching chain in `hotelChains`. The downstream search runs an exact-name SOAP query first when `hotelName` is set, then falls back to a city-broad search for alternatives only if the named property has zero availability — keeping the user's specific intent as the primary result.
+
+**Destination tiebreaker:** When a property name like "Riu Palace" exists in multiple cities (Aruba, Punta Cana, Cabo San Lucas), the user's stated destination disambiguates which physical hotel is intended. Extract destination/city first, then resolve the hotel name within that destination. The downstream provider scopes the EUROVIPS `<name>` filter by `cityCode`, so the destination must be set correctly for the exact match to succeed.
 
 ## 🚗 TRASLADOS (TRANSFERS) DETECTION
 

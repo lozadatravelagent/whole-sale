@@ -65,12 +65,19 @@ vi.mock('../services/routeRequest', () => ({
     score: 0.9,
     missingFields: [],
     collectQuestion: null,
-    reason: 'test-route',
+    reason: 'high_definition',
     dimensions: { destination: 1, dates: 1, passengers: 1, origin: 1, complexity: 1 },
     inferredFields: [],
   }),
-  buildSearchSummary: vi.fn().mockReturnValue(''),
   getInferredFieldDetails: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock('../services/emiliaNarrative', () => ({
+  buildEmiliaSearchNarrative: vi.fn().mockReturnValue({
+    text: 'collect message',
+    chips: [],
+    meta: { inferredFields: [], voice: { mode: 'collect', tone: 'empathic' } },
+  }),
 }));
 
 vi.mock('../services/conversationOrchestrator', () => ({
@@ -81,9 +88,8 @@ vi.mock('../services/conversationOrchestrator', () => ({
     responseMode: 'standard',
     messageType: 'standard_response',
     normalizedMissingFields: [],
-    uiMeta: { route: 'QUOTE', reason: '', firstPlanHandledAs: null },
+    uiMeta: { route: 'QUOTE', reason: 'high_definition', firstPlanHandledAs: null },
   }),
-  buildConversationalMissingInfoMessage: vi.fn().mockReturnValue('collect message'),
   buildModeBridgeMessage: vi.fn().mockReturnValue('bridge message'),
   resolveTravelContextBridge: vi.fn(({ parsedRequest }: any) => ({
     kind: null,
@@ -145,6 +151,7 @@ import { addMessageViaSupabase } from '../services/messageService';
 import { routeRequest } from '../services/routeRequest';
 import { resolveConversationTurn } from '../services/conversationOrchestrator';
 import { detectIterationIntent, mergeIterationContext } from '../utils/iterationDetection';
+import { buildEmiliaSearchNarrative } from '../services/emiliaNarrative';
 import { buildProps, buildMessageRow, buildParsedRequest, DEFAULT_CONV_ID } from '@/test-utils/useMessageHandlerFactory';
 
 // ---------------------------------------------------------------------------
@@ -324,7 +331,7 @@ describe('useMessageHandler', () => {
         score: 0.4,
         missingFields: ['destination'],
         collectQuestion: '¿A dónde querés viajar?',
-        reason: 'missing destination',
+        reason: 'needs_clarification',
         dimensions: { destination: 0, dates: 1, passengers: 1, origin: 1, complexity: 1 },
         inferredFields: [],
       });
@@ -335,7 +342,7 @@ describe('useMessageHandler', () => {
         responseMode: 'needs_input',
         messageType: 'collect_question',
         normalizedMissingFields: ['destination'],
-        uiMeta: { route: 'COLLECT', reason: 'missing destination', firstPlanHandledAs: null },
+        uiMeta: { route: 'COLLECT', reason: 'needs_clarification', firstPlanHandledAs: null },
       });
 
       const p = buildProps();
@@ -355,6 +362,45 @@ describe('useMessageHandler', () => {
       expect((assistantCall![0].meta as any).messageType).toBe('collect_question');
     });
 
+    // Phase 3 / sub-task C: verify the migrated COLLECT call site invokes
+    // `buildEmiliaSearchNarrative({mode:'collect'})` directly (replacing the
+    // legacy `buildConversationalMissingInfoMessage` wrapper, which has been
+    // deleted from `conversationOrchestrator.ts`).
+    it('invokes buildEmiliaSearchNarrative with mode:collect from the COLLECT router branch', async () => {
+      vi.mocked(routeRequest).mockReturnValueOnce({
+        route: 'COLLECT',
+        score: 0.4,
+        missingFields: ['destination'],
+        collectQuestion: '¿A dónde querés viajar?',
+        reason: 'needs_clarification',
+        dimensions: { destination: 0, dates: 1, passengers: 1, origin: 1, complexity: 1 },
+        inferredFields: [],
+      });
+      vi.mocked(resolveConversationTurn).mockReturnValueOnce({
+        shouldAskMinimalQuestion: true,
+        shouldUseStandardItinerary: false,
+        executionBranch: 'ask_minimal',
+        responseMode: 'needs_input',
+        messageType: 'collect_question',
+        normalizedMissingFields: ['destination'],
+        uiMeta: { route: 'COLLECT', reason: 'needs_clarification', firstPlanHandledAs: null },
+      });
+
+      const p = buildProps();
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('quiero volar');
+      });
+
+      const narrativeCalls = vi.mocked(buildEmiliaSearchNarrative).mock.calls;
+      const collectCall = narrativeCalls.find((c) => (c[0] as any).mode === 'collect');
+      expect(collectCall).toBeDefined();
+      expect(((collectCall as any)[0]).missingFields).toEqual(['destination']);
+      expect(((collectCall as any)[0]).fallbackMessage).toBe('¿A dónde querés viajar?');
+    });
+
     it('falls through to search when shouldAskMinimalQuestion is false despite COLLECT route', async () => {
       // Build 3 prior collect messages so recentCollectCount reaches MAX_COLLECT_TURNS (3).
       // The orchestrator (mocked) receives that count and decides shouldAskMinimalQuestion: false.
@@ -370,7 +416,7 @@ describe('useMessageHandler', () => {
         score: 0.4,
         missingFields: ['destination'],
         collectQuestion: '¿A dónde querés viajar?',
-        reason: 'missing destination',
+        reason: 'needs_clarification',
         dimensions: { destination: 0, dates: 1, passengers: 1, origin: 1, complexity: 1 },
         inferredFields: [],
       });
@@ -381,7 +427,7 @@ describe('useMessageHandler', () => {
         responseMode: 'standard',
         messageType: 'standard_response',
         normalizedMissingFields: [],
-        uiMeta: { route: 'COLLECT', reason: 'exhausted', firstPlanHandledAs: null },
+        uiMeta: { route: 'COLLECT', reason: 'needs_clarification', firstPlanHandledAs: null },
       });
 
       const p = buildProps({ messages: [collectMsg, collectMsg, collectMsg] });
