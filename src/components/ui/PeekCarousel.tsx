@@ -53,10 +53,7 @@ export default function PeekCarousel<T>({
     width > 0
       ? Math.min(maxCardWidth, Math.max(minCardWidth, naturalCardWidth))
       : 0;
-  const effectivePeek =
-    width > 0 ? Math.max(peek, (width - cardWidth - 2 * gap) / 2) : peek;
-  const trackOffset =
-    width > 0 ? effectivePeek + gap - index * (cardWidth + gap) : 0;
+  const trackOffset = width > 0 ? peek - index * (cardWidth + gap) : 0;
 
   const canPrev = index > 0;
   const canNext = index < items.length - 1;
