@@ -131,21 +131,36 @@ export async function invokeEurovipsAsync(
     return { data: dispatchResponse.data as AsyncInvokeResponse['data'], error: null };
   }
 
-  // -------- Poll search_jobs until the background task settles ----------
+  // -------- Poll search_jobs via SECURITY DEFINER RPC until settled --------
+  //
+  // We use a SECURITY DEFINER function (`get_search_job_status`) instead of
+  // a direct `from('search_jobs').select().single()` because the table's
+  // RLS policy requires a leads → agencies → users JOIN to authorize a read.
+  // Brand-new conversations have no lead yet, so the policy returns 0 rows
+  // for the very case we care about. The RPC sidesteps that without
+  // weakening security: the jobId is a client-generated v4 UUID (122-bit
+  // secret) and only authenticated callers can invoke. See the migration
+  // `20260514150000_search_jobs_status_rpc.sql` for the full rationale.
   const deadline = Date.now() + maxWaitMs;
   let lastStatus: string | null = null;
 
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS);
 
-    const { data: jobRow, error: pollError } = await supabase
-      .from('search_jobs')
-      .select('status, results, error, completed_at')
-      .eq('id', jobId)
-      .single();
+    const { data: rpcRows, error: pollError } = await supabase.rpc(
+      'get_search_job_status',
+      { p_job_id: jobId },
+    );
 
     if (pollError) {
       console.warn(`⚠️ [ASYNC] Poll error for job ${jobId} (will retry):`, pollError.message);
+      continue;
+    }
+
+    const jobRow = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+    if (!jobRow) {
+      // Row not yet written by the edge function (race against the upsert).
+      // Treat as pending and retry on the next tick.
       continue;
     }
 
