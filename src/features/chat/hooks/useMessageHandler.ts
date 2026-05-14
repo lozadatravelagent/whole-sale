@@ -11,7 +11,7 @@ import { generateChatTitle } from '../utils/messageHelpers';
 import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
 import { routeRequest, getInferredFieldDetails } from '../services/routeRequest';
 import { normalizeSearchIntent } from '../services/searchIntentNormalizer';
-import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
+import { detectIterationIntent, mergeIterationContext, generateIterationExplanation, type IterationContext } from '../utils/iterationDetection';
 import { buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTurn, resolveTravelContextBridge } from '../services/conversationOrchestrator';
 import { buildEmiliaSearchNarrative, type NarrativeChip } from '../services/emiliaNarrative';
 import { buildSearchOpener } from '../services/emiliaSearchOpener';
@@ -174,6 +174,44 @@ function buildTravelerPhrase(
   language: I18nUserLanguage = 'es',
 ): string {
   return formatTravelerPhrase(travelers, language);
+}
+
+function isSearchRequestType(requestType?: ParsedTravelRequest['requestType']): requestType is 'flights' | 'hotels' | 'combined' {
+  return requestType === 'flights' || requestType === 'hotels' || requestType === 'combined';
+}
+
+function buildLlmIterationContext(parsedRequest: ParsedTravelRequest, persistentState?: ContextState | null): IterationContext | null {
+  const intent = parsedRequest.iterationIntent;
+  if (!intent?.isIteration || !persistentState?.lastSearch || !isSearchRequestType(parsedRequest.requestType)) {
+    return null;
+  }
+
+  const typeMap: Record<NonNullable<typeof intent.type>, IterationContext['iterationType']> = {
+    duration_change: 'stay_duration_modification',
+    destination_swap: 'destination_swap',
+    pax_change: 'filter_change',
+    preference_change: 'filter_change',
+    continuation: 'full_reuse',
+    unrelated: 'new_search',
+  };
+
+  const iterationType = intent.type ? typeMap[intent.type] : 'full_reuse';
+  if (iterationType === 'new_search') return null;
+
+  return {
+    isIteration: true,
+    iterationType,
+    baseRequestType: persistentState.lastSearch.requestType,
+    modifiedComponent:
+      parsedRequest.requestType === 'combined'
+        ? 'both'
+        : parsedRequest.requestType === 'flights'
+          ? 'flights'
+          : 'hotels',
+    preserveFields: [],
+    confidence: Math.max(parsedRequest.confidence || 0, 0.85),
+    matchedPattern: `llm:${intent.type || 'iteration'}`,
+  };
 }
 
 function getFirstPlannerCity(plannerState?: TripPlannerState | null): string {
@@ -1148,14 +1186,14 @@ const useMessageHandler = (
       console.log('🔍 [DEBUG] Persistent context state:', persistentState);
 
       // 🔄 ITERATION DETECTION: Check if this message is an iteration on previous search
-      const iterationContext = detectIterationIntent(currentMessage, persistentState);
+      const deterministicIterationContext = detectIterationIntent(currentMessage, persistentState);
       console.log('🔄 [ITERATION] Detection result:', {
-        isIteration: iterationContext.isIteration,
-        type: iterationContext.iterationType,
-        baseRequestType: iterationContext.baseRequestType,
-        modifiedComponent: iterationContext.modifiedComponent,
-        confidence: iterationContext.confidence,
-        matchedPattern: iterationContext.matchedPattern
+        isIteration: deterministicIterationContext.isIteration,
+        type: deterministicIterationContext.iterationType,
+        baseRequestType: deterministicIterationContext.baseRequestType,
+        modifiedComponent: deterministicIterationContext.modifiedComponent,
+        confidence: deterministicIterationContext.confidence,
+        matchedPattern: deterministicIterationContext.matchedPattern
       });
 
       // 🧹 Clean context for new conversations (first message)
@@ -1498,11 +1536,21 @@ const useMessageHandler = (
       // user values always win. See `searchIntentNormalizer.ts`.
       parsedRequest = normalizeSearchIntent(parsedRequest, new Date());
 
+      const llmIterationContext = buildLlmIterationContext(parsedRequest, persistentState);
+      const iterationContext = llmIterationContext || deterministicIterationContext;
+      if (llmIterationContext) {
+        console.log('🧠 [ITERATION] Using LLM iterationIntent as primary signal', {
+          type: parsedRequest.iterationIntent?.type,
+          modifiedFields: parsedRequest.iterationIntent?.modifiedFields,
+          requestType: parsedRequest.requestType,
+        });
+      }
+
       // Search refinements must be resolved before route/bridge selection.
       // Otherwise slot-only turns like "quiero una semana" can be parsed as
       // itinerary intent and trip the strict-mode bridge before the previous
       // search context has a chance to merge.
-      if (iterationContext.isIteration && persistentState) {
+      if (!llmIterationContext && iterationContext.isIteration && persistentState) {
         console.log('🔄 [ITERATION] Applying pre-route iteration merge');
         console.log('🔄 [ITERATION] Before merge - requestType:', parsedRequest.requestType);
         parsedRequest = mergeIterationContext(persistentState, parsedRequest, iterationContext);

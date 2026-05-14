@@ -670,6 +670,99 @@ describe('useMessageHandler', () => {
   // Iteration merge
   // -------------------------------------------------------------------------
   describe('handleSendMessage — iteration merge', () => {
+    it('uses parser iterationIntent as the primary refinement signal without regex merge', async () => {
+      const contextState = {
+        lastSearch: {
+          requestType: 'combined' as const,
+          timestamp: '2026-05-14T18:00:00Z',
+          flightsParams: {
+            origin: 'EZE',
+            destination: 'CUN',
+            departureDate: '2026-05-17',
+            returnDate: '2026-05-20',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+          hotelsParams: {
+            city: 'Cancun',
+            checkinDate: '2026-05-17',
+            checkoutDate: '2026-05-20',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+        },
+        constraintsHistory: [],
+        turnNumber: 1,
+        schemaVersion: 1,
+      };
+
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(
+        buildParsedRequest({
+          requestType: 'combined',
+          originalMessage: 'quiero una semana',
+          flights: {
+            origin: 'EZE',
+            destination: 'CUN',
+            departureDate: '2026-05-17',
+            returnDate: '2026-05-24',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+          hotels: {
+            city: 'Cancun',
+            checkinDate: '2026-05-17',
+            checkoutDate: '2026-05-24',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+          iterationIntent: {
+            isIteration: true,
+            type: 'duration_change',
+            modifiedFields: ['stayNights', 'flights.returnDate', 'hotels.checkoutDate'],
+          },
+        }) as any,
+      );
+
+      const p = buildProps({
+        messages: [buildMessageRow()],
+        preloadedContext: {
+          conversationId: DEFAULT_CONV_ID,
+          contextualMemory: null,
+          contextState,
+          leadId: null,
+        },
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('quiero una semana');
+      });
+
+      expect(vi.mocked(mergeIterationContext)).not.toHaveBeenCalled();
+      expect(vi.mocked(routeRequest)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestType: 'combined',
+          iterationIntent: expect.objectContaining({ type: 'duration_change' }),
+          flights: expect.objectContaining({ returnDate: '2026-05-24' }),
+          hotels: expect.objectContaining({ checkoutDate: '2026-05-24' }),
+        }),
+        null,
+      );
+      expect(vi.mocked(resolveConversationTurn)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parsedRequest: expect.objectContaining({ requestType: 'combined' }),
+          iterationContext: expect.objectContaining({
+            isIteration: true,
+            matchedPattern: 'llm:duration_change',
+          }),
+        }),
+      );
+    });
+
     it('calls mergeIterationContext when detectIterationIntent returns isIteration true and persistentState exists', async () => {
       const iterCtx = {
         isIteration: true,
