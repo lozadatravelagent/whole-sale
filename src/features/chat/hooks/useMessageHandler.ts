@@ -1984,6 +1984,9 @@ const useMessageHandler = (
             requestType: 'hotels',
           } as any);
 
+          // Internal ask kept only as `pending_action.prompt` so the backend
+          // knows what's missing. The user-visible text above the cards comes
+          // from the empathic opener — never the handler's technical listing.
           const flightAskMessage = buildEmiliaSearchNarrative({
             mode: 'collect',
             normalized: parsedRequest,
@@ -2010,7 +2013,11 @@ const useMessageHandler = (
             });
           }
 
-          const combinedResponseText = `${hotelResult.response}\n\n${flightAskMessage}`;
+          const opener = buildSearchOpener(
+            parsedRequest,
+            parsedRequest.responseLanguage ?? userLanguage,
+          );
+          const combinedResponseText = opener.text || hotelResult.response;
           await saveAndDisplayMessage({
             conversation_id: finalConversationId,
             role: 'assistant' as const,
@@ -2041,6 +2048,9 @@ const useMessageHandler = (
             requestType: 'flights',
           } as any);
 
+          // Internal ask kept only as `pending_action.prompt` so the backend
+          // knows what's missing. The user-visible text above the cards comes
+          // from the empathic opener — never the handler's technical listing.
           const hotelAskMessage = buildEmiliaSearchNarrative({
             mode: 'collect',
             normalized: parsedRequest,
@@ -2067,7 +2077,11 @@ const useMessageHandler = (
             });
           }
 
-          const combinedResponseText = `${flightResult.response}\n\n${hotelAskMessage}`;
+          const opener = buildSearchOpener(
+            parsedRequest,
+            parsedRequest.responseLanguage ?? userLanguage,
+          );
+          const combinedResponseText = opener.text || flightResult.response;
           await saveAndDisplayMessage({
             conversation_id: finalConversationId,
             role: 'assistant' as const,
