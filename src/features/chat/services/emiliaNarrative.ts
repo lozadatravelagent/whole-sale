@@ -471,6 +471,7 @@ function buildAskLine(
   const has = (field: string) => fields.includes(field);
 
   if (has('origin') && has('dates')) return copy.originDates;
+  if (has('origin') && has('destination')) return copy.originDestination;
   if (has('passengers') && has('dates')) {
     return requestType === 'itinerary' ? copy.passengersDatesItinerary : copy.passengersDatesSearch;
   }

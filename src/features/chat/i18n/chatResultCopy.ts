@@ -275,6 +275,7 @@ export const CONVERSATIONAL_MISSING_INFO_COPY = {
     },
     askLine: {
       originDates: 'Para cerrarte una propuesta concreta, decime desde qué ciudad salen y en qué fechas quieren viajar.',
+      originDestination: 'Para armarte una propuesta concreta, decime desde qué ciudad salen y a qué destino quieren ir.',
       passengersDatesItinerary: 'Para terminar de acomodarte la propuesta, decime cuántos viajan y en qué fechas les gustaría ir.',
       passengersDatesSearch: 'Para dejarte opciones concretas, decime cuántos viajan y en qué fechas quieren hacerlo.',
       origin: 'Para avanzar con una propuesta concreta, decime desde qué ciudad salen.',
@@ -298,6 +299,7 @@ export const CONVERSATIONAL_MISSING_INFO_COPY = {
     },
     askLine: {
       originDates: 'To close a concrete proposal, tell me the departure city and the travel dates.',
+      originDestination: 'To put together a concrete proposal, tell me the departure city and the destination.',
       passengersDatesItinerary: 'To finish shaping the proposal, tell me how many people are traveling and when you would like to go.',
       passengersDatesSearch: 'To show concrete options, tell me how many people are traveling and the dates.',
       origin: 'To move forward with a concrete proposal, tell me the departure city.',
@@ -321,6 +323,7 @@ export const CONVERSATIONAL_MISSING_INFO_COPY = {
     },
     askLine: {
       originDates: 'Para fechar uma proposta concreta, me diga de qual cidade saem e em quais datas querem viajar.',
+      originDestination: 'Para montar uma proposta concreta, me diga de qual cidade saem e para qual destino querem ir.',
       passengersDatesItinerary: 'Para terminar de ajustar a proposta, me diga quantas pessoas viajam e em quais datas gostariam de ir.',
       passengersDatesSearch: 'Para mostrar opções concretas, me diga quantas pessoas viajam e em quais datas.',
       origin: 'Para avançar com uma proposta concreta, me diga de qual cidade saem.',

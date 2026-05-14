@@ -109,6 +109,49 @@ describe('buildEmiliaSearchNarrative — per mode × per language', () => {
     expect(out.text).toContain('Tokio');
   });
 
+  // Regression: when origin AND destination are both missing (e.g. "quiero un
+  // vuelo para el mes que viene"), askLine must combine both questions in one
+  // turn instead of cascading to `origin` alone and ignoring `destination`.
+  const originDestInput: ParsedTravelRequest = {
+    requestType: 'flights',
+    confidence: 0.9,
+    originalMessage: 'quiero un vuelo para el mes que viene',
+    flights: { origin: '', destination: '', departureDate: '2026-06-15', adults: 1, children: 0 },
+  };
+
+  it('collect / es asks for origin AND destination together when both missing', () => {
+    const out = buildEmiliaSearchNarrative({
+      mode: 'collect',
+      language: 'es',
+      normalized: originDestInput,
+      missingFields: ['origin', 'destination'],
+    });
+    expect(out.text).toContain('desde qué ciudad');
+    expect(out.text).toContain('a qué destino');
+  });
+
+  it('collect / en asks for departure city AND destination together when both missing', () => {
+    const out = buildEmiliaSearchNarrative({
+      mode: 'collect',
+      language: 'en',
+      normalized: originDestInput,
+      missingFields: ['origin', 'destination'],
+    });
+    expect(out.text.toLowerCase()).toContain('departure city');
+    expect(out.text.toLowerCase()).toContain('destination');
+  });
+
+  it('collect / pt asks for departure city AND destination together when both missing', () => {
+    const out = buildEmiliaSearchNarrative({
+      mode: 'collect',
+      language: 'pt',
+      normalized: originDestInput,
+      missingFields: ['origin', 'destination'],
+    });
+    expect(out.text.toLowerCase()).toContain('cidade saem');
+    expect(out.text.toLowerCase()).toContain('destino');
+  });
+
   // -- plan_to_quote --------------------------------------------------------
   const plannerState: TripPlannerState = {
     id: 'plan-1',
