@@ -435,6 +435,13 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
             {/* Interactive selectors */}
             {hasCombinedTravel && combinedTravelData ? (
               <div className="space-y-3">
+                {messageText && messageText.trim().length > 0 && (
+                  <div className="emilia-message">
+                    <Suspense fallback={<div className="whitespace-pre-wrap text-muted-foreground">{messageText}</div>}>
+                      <MarkdownContent content={messageText} />
+                    </Suspense>
+                  </div>
+                )}
                 <LazySelectorErrorBoundary key={`combined-selector-${msg.id}`}>
                   <Suspense fallback={
                     <div className="h-64 bg-muted/30 animate-pulse rounded-lg flex items-center justify-center">

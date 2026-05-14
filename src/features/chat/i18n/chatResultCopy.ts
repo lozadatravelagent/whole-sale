@@ -1519,3 +1519,227 @@ export const getMissingInfoCopy = (language: UserLanguage = 'es') => MISSING_INF
 export const getResultSelectorCopy = (language: UserLanguage = 'es') => RESULT_SELECTOR_COPY[language] || RESULT_SELECTOR_COPY.es;
 export const getTypingStatusCopy = (language: UserLanguage = 'es') => TYPING_STATUS_COPY[language] || TYPING_STATUS_COPY.es;
 export const getPublicChatCopy = (language: UserLanguage = 'es') => PUBLIC_CHAT_COPY[language] || PUBLIC_CHAT_COPY.es;
+
+// ===========================================================================
+// SEARCH OPENER COPY — empathic narrative shown above flight/hotel cards.
+// Mirrors the "Respuestas esperadas" patterns from the product doc
+// (reglas default). All strings are composable clause fragments; the opener
+// builder in `emiliaSearchOpener.ts` assembles them into a final sentence.
+// ===========================================================================
+export const SEARCH_OPENER_COPY = {
+  es: {
+    openers: {
+      standard: 'Perfecto.',
+      family_no_ages: (n: number) => `Tomo ${n} personas para avanzar.`,
+    },
+    intent: {
+      flight_one_way: (dest: string) => `Busco vuelo solo ida a ${dest}`,
+      flight_round_trip: (dest: string) => `Busco vuelo ida y vuelta a ${dest}`,
+      hotel: (dest: string) => `Busco hotel en ${dest}`,
+      combined: (dest: string) => `Busco vuelo y hotel a ${dest}`,
+      package: (dest: string) => `Te busco paquete a ${dest}`,
+      package_with_products: (dest: string, products: string) =>
+        `Te busco paquete a ${dest} con ${products}`,
+      ordered_first: (productLabel: string, dest: string) =>
+        `Busco primero ${productLabel} en ${dest}`,
+      ordered_first_flight: (dest: string) => `Busco primero vuelo a ${dest}`,
+      ordered_next: (productLabel: string) => `Después sumo ${productLabel}`,
+      ordered_next_same_dates: (productLabel: string) =>
+        `Después sumo ${productLabel} para las mismas fechas`,
+      flight: 'vuelo',
+      flights: 'vuelos',
+      hotel_simple: 'hotel',
+      transfer: 'traslado',
+      and: 'y',
+      productListJoin: ', ',
+    },
+    pax: {
+      forAdults: (n: number) => (n === 1 ? 'para 1 adulto' : `para ${n} adultos`),
+      forPeople: (n: number) => `para ${n} personas`,
+      withChildren: (n: number) => (n === 1 ? 'y 1 niño' : `y ${n} niños`),
+      withInfants: (n: number) => (n === 1 ? 'y 1 bebé' : `y ${n} bebés`),
+    },
+    origin: {
+      fromCity: (city: string) => `saliendo desde ${city}`,
+      fromGeo: 'saliendo desde tu ubicación actual',
+    },
+    dates: {
+      tentativeIn3: 'con fecha tentativa dentro de 3 días',
+      tentativeIn3For7Nights: 'desde dentro de 3 días por 7 noches',
+      monthFirstWeek: (month: string) => `del 1 al 8 de ${month}`,
+      monthFirstDay: (month: string) => `con salida tentativa el 1 de ${month}`,
+      range: (from: string, to: string) => `del ${from} al ${to}`,
+      tomorrow: 'para mañana',
+      tomorrowFor7: 'desde mañana por 7 días',
+      weekendFriToSun: 'del próximo viernes al domingo',
+      nextWeekMonToMon: 'desde el próximo lunes por 7 noches',
+      nextMonthFirstWeek: 'del 1 al 8 del próximo mes',
+      nightsFrom: (start: string, nights: number) =>
+        nights === 1 ? `desde ${start} por 1 noche` : `desde ${start} por ${nights} noches`,
+      monthOnly: (month: string) => `en ${month}`,
+    },
+    room: {
+      single: 'en habitación single',
+      double: 'en habitación doble',
+      triple: 'en habitación triple',
+      quadruple: 'en habitación cuádruple',
+      twoDoubles: 'en 2 habitaciones dobles',
+    },
+    closings: {
+      adjustDate: 'Si querés otra fecha, lo ajusto.',
+      makeRoundTrip: 'Si querés, también puedo buscar ida y vuelta.',
+      adjustOriginOrDate: 'Si querés otra fecha o ciudad de salida, lo ajusto.',
+      adjustDateOrPax: 'Si querés otra fecha o cantidad de pasajeros, lo ajusto.',
+      adjustPaxOrRoom: 'Si viajás con más personas o querés otra habitación, lo ajusto.',
+      kidsAges: 'Si tus hijos son menores, pasame edades y ajusto la tarifa correctamente.',
+      generic: 'Si querés ajustar algo, decime.',
+    },
+    months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+    monthDayJoin: 'de',
+  },
+  en: {
+    openers: {
+      standard: 'Got it.',
+      family_no_ages: (n: number) => `I'll go with ${n} travelers to move forward.`,
+    },
+    intent: {
+      flight_one_way: (dest: string) => `I'll search a one-way flight to ${dest}`,
+      flight_round_trip: (dest: string) => `I'll search a round-trip flight to ${dest}`,
+      hotel: (dest: string) => `I'll search a hotel in ${dest}`,
+      combined: (dest: string) => `I'll search flight and hotel to ${dest}`,
+      package: (dest: string) => `I'll search a package to ${dest}`,
+      package_with_products: (dest: string, products: string) =>
+        `I'll search a package to ${dest} with ${products}`,
+      ordered_first: (productLabel: string, dest: string) =>
+        `I'll start with ${productLabel} in ${dest}`,
+      ordered_first_flight: (dest: string) => `I'll start with the flight to ${dest}`,
+      ordered_next: (productLabel: string) => `Then I'll add ${productLabel}`,
+      ordered_next_same_dates: (productLabel: string) =>
+        `Then I'll add ${productLabel} for the same dates`,
+      flight: 'flight',
+      flights: 'flights',
+      hotel_simple: 'hotel',
+      transfer: 'transfer',
+      and: 'and',
+      productListJoin: ', ',
+    },
+    pax: {
+      forAdults: (n: number) => (n === 1 ? 'for 1 adult' : `for ${n} adults`),
+      forPeople: (n: number) => `for ${n} people`,
+      withChildren: (n: number) => (n === 1 ? 'and 1 child' : `and ${n} children`),
+      withInfants: (n: number) => (n === 1 ? 'and 1 infant' : `and ${n} infants`),
+    },
+    origin: {
+      fromCity: (city: string) => `departing from ${city}`,
+      fromGeo: 'departing from your current location',
+    },
+    dates: {
+      tentativeIn3: 'with a tentative date 3 days from now',
+      tentativeIn3For7Nights: 'starting 3 days from now for 7 nights',
+      monthFirstWeek: (month: string) => `from the 1st to the 8th of ${month}`,
+      monthFirstDay: (month: string) => `with a tentative departure on ${month} 1`,
+      range: (from: string, to: string) => `from ${from} to ${to}`,
+      tomorrow: 'tomorrow',
+      tomorrowFor7: 'starting tomorrow for 7 days',
+      weekendFriToSun: 'from next Friday to Sunday',
+      nextWeekMonToMon: 'starting next Monday for 7 nights',
+      nextMonthFirstWeek: 'from the 1st to the 8th of next month',
+      nightsFrom: (start: string, nights: number) =>
+        nights === 1 ? `starting ${start} for 1 night` : `starting ${start} for ${nights} nights`,
+      monthOnly: (month: string) => `in ${month}`,
+    },
+    room: {
+      single: 'in a single room',
+      double: 'in a double room',
+      triple: 'in a triple room',
+      quadruple: 'in a quadruple room',
+      twoDoubles: 'in 2 double rooms',
+    },
+    closings: {
+      adjustDate: 'If you want a different date, I can adjust.',
+      makeRoundTrip: 'If you want, I can also search for a round-trip.',
+      adjustOriginOrDate: 'If you want a different date or origin city, I can adjust.',
+      adjustDateOrPax: 'If you want a different date or passenger count, I can adjust.',
+      adjustPaxOrRoom: 'If you travel with more people or want a different room, I can adjust.',
+      kidsAges: 'If your kids are minors, share their ages and I will adjust the fare.',
+      generic: 'Let me know if you want to adjust anything.',
+    },
+    months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+    monthDayJoin: '',
+  },
+  pt: {
+    openers: {
+      standard: 'Perfeito.',
+      family_no_ages: (n: number) => `Considero ${n} pessoas para avançar.`,
+    },
+    intent: {
+      flight_one_way: (dest: string) => `Busco voo só ida para ${dest}`,
+      flight_round_trip: (dest: string) => `Busco voo ida e volta para ${dest}`,
+      hotel: (dest: string) => `Busco hotel em ${dest}`,
+      combined: (dest: string) => `Busco voo e hotel para ${dest}`,
+      package: (dest: string) => `Busco pacote para ${dest}`,
+      package_with_products: (dest: string, products: string) =>
+        `Busco pacote para ${dest} com ${products}`,
+      ordered_first: (productLabel: string, dest: string) =>
+        `Começo com ${productLabel} em ${dest}`,
+      ordered_first_flight: (dest: string) => `Começo com o voo para ${dest}`,
+      ordered_next: (productLabel: string) => `Depois adiciono ${productLabel}`,
+      ordered_next_same_dates: (productLabel: string) =>
+        `Depois adiciono ${productLabel} para as mesmas datas`,
+      flight: 'voo',
+      flights: 'voos',
+      hotel_simple: 'hotel',
+      transfer: 'traslado',
+      and: 'e',
+      productListJoin: ', ',
+    },
+    pax: {
+      forAdults: (n: number) => (n === 1 ? 'para 1 adulto' : `para ${n} adultos`),
+      forPeople: (n: number) => `para ${n} pessoas`,
+      withChildren: (n: number) => (n === 1 ? 'e 1 criança' : `e ${n} crianças`),
+      withInfants: (n: number) => (n === 1 ? 'e 1 bebê' : `e ${n} bebês`),
+    },
+    origin: {
+      fromCity: (city: string) => `saindo de ${city}`,
+      fromGeo: 'saindo da sua localização atual',
+    },
+    dates: {
+      tentativeIn3: 'com data tentativa em 3 dias',
+      tentativeIn3For7Nights: 'em 3 dias por 7 noites',
+      monthFirstWeek: (month: string) => `de 1 a 8 de ${month}`,
+      monthFirstDay: (month: string) => `com saída tentativa no dia 1 de ${month}`,
+      range: (from: string, to: string) => `de ${from} a ${to}`,
+      tomorrow: 'para amanhã',
+      tomorrowFor7: 'a partir de amanhã por 7 dias',
+      weekendFriToSun: 'da próxima sexta ao domingo',
+      nextWeekMonToMon: 'a partir da próxima segunda por 7 noites',
+      nextMonthFirstWeek: 'de 1 a 8 do próximo mês',
+      nightsFrom: (start: string, nights: number) =>
+        nights === 1 ? `a partir de ${start} por 1 noite` : `a partir de ${start} por ${nights} noites`,
+      monthOnly: (month: string) => `em ${month}`,
+    },
+    room: {
+      single: 'em quarto single',
+      double: 'em quarto duplo',
+      triple: 'em quarto triplo',
+      quadruple: 'em quarto quádruplo',
+      twoDoubles: 'em 2 quartos duplos',
+    },
+    closings: {
+      adjustDate: 'Se quiser outra data, eu ajusto.',
+      makeRoundTrip: 'Se quiser, também posso buscar ida e volta.',
+      adjustOriginOrDate: 'Se quiser outra data ou cidade de saída, eu ajusto.',
+      adjustDateOrPax: 'Se quiser outra data ou quantidade de passageiros, eu ajusto.',
+      adjustPaxOrRoom: 'Se viaja com mais pessoas ou quer outro quarto, eu ajusto.',
+      kidsAges: 'Se os filhos são menores, me passe as idades e ajusto a tarifa.',
+      generic: 'Me diga se quiser ajustar algo.',
+    },
+    months: ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'],
+    monthDayJoin: 'de',
+  },
+} as const;
+
+export type SearchOpenerCopy = typeof SEARCH_OPENER_COPY['es'];
+
+export const getSearchOpenerCopy = (language: UserLanguage = 'es'): SearchOpenerCopy =>
+  (SEARCH_OPENER_COPY[language] as SearchOpenerCopy) || (SEARCH_OPENER_COPY.es as SearchOpenerCopy);
