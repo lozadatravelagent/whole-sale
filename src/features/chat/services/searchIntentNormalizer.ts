@@ -31,6 +31,7 @@
  */
 
 import type { HotelRequest, ParsedTravelRequest } from '@/services/aiMessageParser';
+import { SEARCH_START_OFFSET_DAYS, SEARCH_STAY_NIGHTS } from '@/services/searchDefaults';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -260,7 +261,7 @@ function applyRelativeDates(next: ParsedTravelRequest, now: Date): void {
   switch (hint) {
     case 'tomorrow': {
       start = addDays(now, 1);
-      end = addDays(start, 7); // default 7-night window
+      end = addDays(start, DEFAULT_FALLBACK_STAY_NIGHTS);
       break;
     }
     case 'this_weekend': {
@@ -290,7 +291,7 @@ function applyRelativeDates(next: ParsedTravelRequest, now: Date): void {
     }
     case 'next_month': {
       start = firstDayOfNextMonth(now);
-      end = addDays(start, 7);
+      end = addDays(start, DEFAULT_FALLBACK_STAY_NIGHTS);
       break;
     }
     default:
@@ -343,19 +344,10 @@ function applyRelativeDates(next: ParsedTravelRequest, now: Date): void {
 // Phase 4 — Structural date fallback
 // ---------------------------------------------------------------------------
 
-/**
- * Default offset (in days) from `now` for the synthesized start date when no
- * explicit nor relative date was provided. Mirrors the legacy
- * `DEFAULT_SEARCH_START_OFFSET_DAYS` constant from `aiMessageParser.ts`.
- */
-const DEFAULT_SEARCH_START_OFFSET_DAYS = 3;
-
-/**
- * Default duration (in days) added to a fallback start date to produce a
- * fallback end date for hotels/combined searches. Aligned with the 7-night
- * window used by `applyRelativeDates` for consistency.
- */
-const DEFAULT_FALLBACK_STAY_NIGHTS = 7;
+// Search default constants live in `@/services/searchDefaults`. The aliases
+// below preserve readability at call sites without re-declaring values.
+const DEFAULT_SEARCH_START_OFFSET_DAYS = SEARCH_START_OFFSET_DAYS;
+const DEFAULT_FALLBACK_STAY_NIGHTS = SEARCH_STAY_NIGHTS;
 
 /**
  * Applies structural date defaults LAST in the normalizer chain.
@@ -379,41 +371,10 @@ const DEFAULT_FALLBACK_STAY_NIGHTS = 7;
 function applyDateFallback(next: ParsedTravelRequest, now: Date): void {
   const fallbackStart = toIsoDate(addDays(now, DEFAULT_SEARCH_START_OFFSET_DAYS));
 
-  // ----- Flights -----
-  if (
-    (next.requestType === 'flights' || next.requestType === 'combined')
-    && next.flights
-  ) {
-    const flights = { ...next.flights };
-    let touched = false;
-
-    if (!flights.departureDate || flights.departureDate.length === 0) {
-      flights.departureDate = fallbackStart;
-      flights.departureDateInferred = true;
-      touched = true;
-    }
-
-    // Combined-mode round-trip return fallback. Skip when partial-stay or
-    // an upstream step locked tripType=one_way.
-    if (
-      next.requestType === 'combined'
-      && flights.tripType !== 'one_way'
-      && (!flights.returnDate || flights.returnDate.length === 0)
-    ) {
-      const startDate = new Date(`${flights.departureDate}T00:00:00.000Z`);
-      if (!Number.isNaN(startDate.getTime())) {
-        flights.returnDate = toIsoDate(addDays(startDate, DEFAULT_FALLBACK_STAY_NIGHTS));
-        flights.returnDateInferred = true;
-        touched = true;
-      }
-    }
-
-    if (touched) {
-      next.flights = flights;
-    }
-  }
-
   // ----- Hotels (and combined hotels) -----
+  // Runs BEFORE the flights branch so that combined-mode flight fallback can
+  // read the already-resolved hotels.checkoutDate for natural alignment
+  // (vs. blindly adding +SEARCH_STAY_NIGHTS to departureDate).
   if (
     (next.requestType === 'hotels' || next.requestType === 'combined')
     && next.hotels
@@ -438,6 +399,60 @@ function applyDateFallback(next: ParsedTravelRequest, now: Date): void {
 
     if (touched) {
       next.hotels = hotels;
+    }
+  }
+
+  // ----- Flights -----
+  if (
+    (next.requestType === 'flights' || next.requestType === 'combined')
+    && next.flights
+  ) {
+    const flights = { ...next.flights };
+    let touched = false;
+
+    if (!flights.departureDate || flights.departureDate.length === 0) {
+      flights.departureDate = fallbackStart;
+      flights.departureDateInferred = true;
+      touched = true;
+    }
+
+    // Combined-mode round-trip return fallback.
+    //
+    // The LLM defaults `tripType = 'one_way'` for any 1-segment request, but
+    // a `combined` request (flight + hotel) semantically implies a closed
+    // trip. We only respect `one_way` when it was set INTENTIONALLY by
+    // `partialStay` (which marks the user's "I'll continue beyond the hotel"
+    // signal). Otherwise, promote to `round_trip` and align returnDate to
+    // the hotel checkoutDate when available, falling back to
+    // departure + SEARCH_STAY_NIGHTS.
+    const isIntentionalOneWay =
+      flights.tripType === 'one_way'
+      && next.partialStay?.extendsBeyondHotel === true;
+
+    if (
+      next.requestType === 'combined'
+      && !isIntentionalOneWay
+      && (!flights.returnDate || flights.returnDate.length === 0)
+    ) {
+      const startDate = new Date(`${flights.departureDate}T00:00:00.000Z`);
+      if (!Number.isNaN(startDate.getTime())) {
+        // Prefer the hotel checkoutDate (semantically aligned) over the
+        // structural +N fallback. The hotels branch above guarantees
+        // checkoutDate is set when next.hotels exists.
+        const hotelCheckout = next.hotels?.checkoutDate;
+        flights.returnDate = hotelCheckout
+          || toIsoDate(addDays(startDate, DEFAULT_FALLBACK_STAY_NIGHTS));
+        flights.returnDateInferred = true;
+        if (flights.tripType !== 'round_trip') {
+          flights.tripType = 'round_trip';
+          flights.tripTypeInferred = true;
+        }
+        touched = true;
+      }
+    }
+
+    if (touched) {
+      next.flights = flights;
     }
   }
 }

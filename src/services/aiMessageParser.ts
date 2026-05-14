@@ -13,6 +13,11 @@ import {
     findCountryInMessageForCapital,
 } from '@/services/countryCapitalResolver';
 import { getMissingInfoCopy, getTypingStatusCopy, normalizeSupportedLanguage, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
+import {
+    SEARCH_START_OFFSET_DAYS,
+    SEARCH_STAY_NIGHTS,
+    DEFAULT_FAMILY_TRAVELERS_TOTAL,
+} from '@/services/searchDefaults';
 
 export { normalizeSupportedLanguage };
 export type { UserLanguage };
@@ -609,9 +614,11 @@ function toIsoDate(date: Date): string {
     return date.toISOString().split('T')[0];
 }
 
-const DEFAULT_SEARCH_START_OFFSET_DAYS = 3;
-const DEFAULT_SEARCH_DURATION_DAYS = 3;
-const DEFAULT_FAMILY_TRAVELERS = 4;
+// Search default constants live in `@/services/searchDefaults`. The aliases
+// below preserve readability at call sites without re-declaring values.
+const DEFAULT_SEARCH_START_OFFSET_DAYS = SEARCH_START_OFFSET_DAYS;
+const DEFAULT_SEARCH_DURATION_DAYS = SEARCH_STAY_NIGHTS;
+const DEFAULT_FAMILY_TRAVELERS = DEFAULT_FAMILY_TRAVELERS_TOTAL;
 
 function addDaysToIsoDate(dateString: string, daysToAdd: number): string {
     const date = new Date(`${dateString}T00:00:00`);

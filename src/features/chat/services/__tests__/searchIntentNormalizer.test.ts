@@ -1121,3 +1121,153 @@ describe('normalizeSearchIntent — applyDateFallback (Phase 4)', () => {
     expect(out.hotels?.checkoutDateInferred).toBe(true);
   });
 });
+
+// =============================================================================
+// Phase 4 — combined one_way promotion
+//
+// The LLM defaults `tripType = 'one_way'` for any 1-segment flight. When the
+// requestType is `combined`, this is semantically wrong — a flight+hotel
+// request implies a closed trip. The normalizer detects that case and
+// promotes to `round_trip`, aligning returnDate to the hotel checkoutDate
+// when available. The only one_way it respects in combined mode is the
+// INTENTIONAL one set by partialStay.extendsBeyondHotel=true.
+// =============================================================================
+
+describe('normalizeSearchIntent — combined one_way promotion', () => {
+  it('combined + month-only (LLM emits one_way for 1 segment) → promoted to round_trip aligned to hotel.checkoutDate', () => {
+    // Simulates "Vuelo + hotel a Madrid en julio" — LLM applies its
+    // 1-segment-one_way rule and resolves month to first-of-month. The
+    // normalizer should recognize this is a combined trip without
+    // partialStay and promote to round_trip aligned to the hotel.
+    const parsed = makeParsed({
+      requestType: 'combined',
+      flights: {
+        origin: 'EZE',
+        destination: 'MAD',
+        departureDate: '2026-07-01',
+        tripType: 'one_way',
+        adults: 2,
+        adultsExplicit: true,
+        children: 0,
+      },
+      hotels: {
+        city: 'Madrid',
+        checkinDate: '2026-07-01',
+        checkoutDate: '',
+        adults: 2,
+        adultsExplicit: true,
+        children: 0,
+      },
+    });
+
+    const out = normalizeSearchIntent(parsed, NOW_MONDAY);
+
+    // Hotels branch ran first and filled checkout = checkin + 7.
+    expect(out.hotels?.checkoutDate).toBe('2026-07-08');
+    expect(out.hotels?.checkoutDateInferred).toBe(true);
+    // Flights promoted: tripType → round_trip, returnDate aligned to hotel.
+    expect(out.flights?.tripType).toBe('round_trip');
+    expect(out.flights?.tripTypeInferred).toBe(true);
+    expect(out.flights?.returnDate).toBe('2026-07-08');
+    expect(out.flights?.returnDateInferred).toBe(true);
+  });
+
+  it('combined + explicit hotel.checkoutDate + LLM one_way → returnDate aligned to checkoutDate (no +7 blind fallback)', () => {
+    const parsed = makeParsed({
+      requestType: 'combined',
+      flights: {
+        origin: 'EZE',
+        destination: 'CUN',
+        departureDate: '2026-08-01',
+        tripType: 'one_way',
+        adults: 2,
+        adultsExplicit: true,
+        children: 0,
+      },
+      hotels: {
+        city: 'Cancún',
+        checkinDate: '2026-08-01',
+        checkoutDate: '2026-08-12', // user-explicit 11-night stay
+        adults: 2,
+        adultsExplicit: true,
+        children: 0,
+      },
+    });
+
+    const out = normalizeSearchIntent(parsed, NOW_MONDAY);
+
+    // Hotel checkout preserved (user-explicit, no inferred flag).
+    expect(out.hotels?.checkoutDate).toBe('2026-08-12');
+    expect(out.hotels?.checkoutDateInferred).toBeUndefined();
+    // Flights aligned to that 11-night window — NOT departureDate + 7.
+    expect(out.flights?.tripType).toBe('round_trip');
+    expect(out.flights?.tripTypeInferred).toBe(true);
+    expect(out.flights?.returnDate).toBe('2026-08-12');
+    expect(out.flights?.returnDateInferred).toBe(true);
+  });
+
+  it('combined + partialStay one_way (intentional) → respects one_way, no returnDate promotion', () => {
+    // Simulates "Vuelo a Madrid en julio + hotel 3 noches, después me quedo
+    // con un amigo" — partialStay.extendsBeyondHotel=true marks intentional
+    // one_way. The promotion logic MUST NOT fire here.
+    const parsed = makeParsed({
+      requestType: 'combined',
+      partialStay: {
+        flightIntent: 'one_way',
+        hotelNights: 3,
+        extendsBeyondHotel: true,
+        signalsCaught: ['después me quedo con un amigo'],
+      },
+      flights: {
+        origin: 'EZE',
+        destination: 'MAD',
+        departureDate: '2026-07-01',
+        tripType: 'one_way',
+        adults: 1,
+        adultsExplicit: true,
+        children: 0,
+      },
+      hotels: {
+        city: 'Madrid',
+        checkinDate: '2026-07-01',
+        checkoutDate: '',
+        adults: 1,
+        adultsExplicit: true,
+        children: 0,
+      },
+    });
+
+    const out = normalizeSearchIntent(parsed, NOW_MONDAY);
+
+    // partialStay resolves checkout via hotelNights (3 noches → +3).
+    expect(out.hotels?.checkoutDate).toBe('2026-07-04');
+    // tripType stays one_way (partialStay intentional), no returnDate.
+    expect(out.flights?.tripType).toBe('one_way');
+    expect(out.flights?.returnDate).toBeUndefined();
+    expect(out.flights?.returnDateInferred).toBeUndefined();
+  });
+
+  it('flights-only (no combined) + LLM one_way → respects one_way, no promotion', () => {
+    // Promotion is combined-only. A flights-only one_way is a legitimate
+    // user choice and must not be touched.
+    const parsed = makeParsed({
+      requestType: 'flights',
+      flights: {
+        origin: 'EZE',
+        destination: 'MAD',
+        departureDate: '2026-07-01',
+        tripType: 'one_way',
+        adults: 1,
+        adultsExplicit: true,
+        children: 0,
+      },
+    });
+
+    const out = normalizeSearchIntent(parsed, NOW_MONDAY);
+
+    expect(out.flights?.tripType).toBe('one_way');
+    expect(out.flights?.tripTypeInferred).toBeUndefined();
+    expect(out.flights?.returnDate).toBeUndefined();
+    expect(out.flights?.returnDateInferred).toBeUndefined();
+  });
+});

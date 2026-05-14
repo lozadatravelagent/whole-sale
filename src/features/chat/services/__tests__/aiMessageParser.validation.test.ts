@@ -52,7 +52,7 @@ describe('aiMessageParser validation', () => {
     expect(result?.itinerary?.travelers?.adults).toBe(2);
   });
 
-  it('defaults simple itinerary duration to 3 days when user omits days', () => {
+  it('defaults simple itinerary duration to 7 days when user omits days', () => {
     const result = tryParseSimpleItineraryDeterministically(
       'Armame un itinerario para Madrid',
       null,
@@ -61,7 +61,7 @@ describe('aiMessageParser validation', () => {
 
     expect(result?.requestType).toBe('itinerary');
     expect(result?.itinerary?.destinations).toEqual(['Madrid']);
-    expect(result?.itinerary?.days).toBe(3);
+    expect(result?.itinerary?.days).toBe(7);
   });
 
   it('keeps quote/provider requests on the CE parser path', () => {

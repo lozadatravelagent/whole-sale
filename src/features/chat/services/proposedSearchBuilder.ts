@@ -24,6 +24,7 @@
  */
 
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import { SEARCH_START_OFFSET_DAYS, SEARCH_STAY_NIGHTS } from '@/services/searchDefaults';
 import type { EmiliaProfile } from '@/features/chat/state/emiliaState';
 
 // ---------------------------------------------------------------------------
@@ -55,13 +56,11 @@ export interface SearchSeeds {
 // schema landed first.
 type ParsedWithSeeds = ParsedTravelRequest & { searchSeeds?: SearchSeeds | null };
 
-// ---------------------------------------------------------------------------
-// Defaults (mirror of `searchIntentNormalizer.ts` constants — kept in sync
-// rather than imported to avoid leaking that module's internals).
-// ---------------------------------------------------------------------------
-
-const DEFAULT_SEARCH_START_OFFSET_DAYS = 3;
-const DEFAULT_FALLBACK_STAY_NIGHTS = 7;
+// Search default constants live in `@/services/searchDefaults` (single source
+// of truth, mirrored to `supabase/functions/_shared/searchDefaults.ts` for the
+// edge runtime). Aliases below preserve readability at call sites.
+const DEFAULT_SEARCH_START_OFFSET_DAYS = SEARCH_START_OFFSET_DAYS;
+const DEFAULT_FALLBACK_STAY_NIGHTS = SEARCH_STAY_NIGHTS;
 
 // ---------------------------------------------------------------------------
 // Public types

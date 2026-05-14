@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type React from 'react';
 import { parseMessageWithAIStreaming, validateFlightRequiredFields, validateHotelRequiredFields, validateItineraryRequiredFields, generateMissingInfoMessage, detectMessageLanguage, normalizeSupportedLanguage } from '@/services/aiMessageParser';
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+import { SEARCH_STAY_NIGHTS } from '@/services/searchDefaults';
 import { normalizeFlightRequest } from '@/services/flightSegments';
 import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery, handleItineraryRequest } from '../services/searchHandlers';
 import { addMessageViaSupabase } from '../services/messageService';
@@ -13,6 +14,7 @@ import { normalizeSearchIntent } from '../services/searchIntentNormalizer';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation } from '../utils/iterationDetection';
 import { buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTurn, resolveTravelContextBridge } from '../services/conversationOrchestrator';
 import { buildEmiliaSearchNarrative, type NarrativeChip } from '../services/emiliaNarrative';
+import { buildSearchOpener } from '../services/emiliaSearchOpener';
 import { buildProposedSearch } from '../services/proposedSearchBuilder';
 import { detectHotelPreferencesFromMessage, resolveTurnIntent } from '../services/turnIntentResolver';
 import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
@@ -269,14 +271,15 @@ function buildSearchPrompt(
     : isUsableActionText(parsedRequest?.hotels?.checkoutDate)
       ? parsedRequest?.hotels?.checkoutDate
       : plannerState?.endDate;
-  // Hotel chip: when only checkin is known, default to a 3-night stay.
+  // Hotel chip: when only checkin is known, default to SEARCH_STAY_NIGHTS.
   // Why: EUROVIPS/SOFTUR times out on open-ended date ranges. A "desde el X"
   // prompt round-trips through the parser, which inflates the stay and times
-  // out the SOAP. The +3 default keeps the chip executable in one shot.
+  // out the SOAP. A bounded default window keeps the chip executable in one
+  // shot.
   if (kind === 'hotel' && startDate && !endDate) {
     const base = new Date(`${startDate}T00:00:00Z`);
     if (!Number.isNaN(base.getTime())) {
-      base.setUTCDate(base.getUTCDate() + 3);
+      base.setUTCDate(base.getUTCDate() + SEARCH_STAY_NIGHTS);
       endDate = base.toISOString().slice(0, 10);
     }
   }
@@ -727,7 +730,7 @@ const useMessageHandler = (
             hotels: {
               city: flightCtx.destination,
               checkinDate: flightCtx.departureDate,
-              checkoutDate: flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + 3 * 86400000).toISOString().split('T')[0],
+              checkoutDate: flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + SEARCH_STAY_NIGHTS * 86400000).toISOString().split('T')[0],
               adults: flightCtx.adults,
               children: flightCtx.children,
               infants: flightCtx.infants,
@@ -2816,13 +2819,17 @@ const useMessageHandler = (
         },
       });
 
-      // === EMILIA: Prepend inferred-field summary when defaults were applied ===
-      // Phase 3 / sub-task C: capture the FULL NarrativeOutput (not just `.text`)
-      // so we can persist `narrative.chips` to the assistant message meta. The
-      // chip cluster in `ChatInterface.tsx` prefers these chips over the legacy
-      // `meta.emiliaRoute.inferredFields` derivation.
+      // Whether the final assistant message will render flight/hotel cards.
+      // When true, the text above the cards must describe INTENT (per the
+      // product doc "reglas default" → "Respuestas esperadas"), not the
+      // technical "found N results at $X" response from the search handler.
+      const willRenderCardsForOpener = Boolean(
+        (structuredData as { combinedData?: unknown } | null | undefined)?.combinedData,
+      );
+
+      // === EMILIA: legacy narrative — chips always, text-prepend only when text-only ===
       let narrativeChips: NarrativeChip[] | undefined;
-      if (routeResult.inferredFields.length > 0 && assistantResponse && conversationTurn.responseMode !== 'show_places') {
+      if (routeResult.inferredFields.length > 0 && conversationTurn.responseMode !== 'show_places') {
         const inferredDetails = getInferredFieldDetails(parsedRequest);
         if (inferredDetails.length > 0) {
           const narrative = buildEmiliaSearchNarrative({
@@ -2831,17 +2838,32 @@ const useMessageHandler = (
             defaultsApplied: inferredDetails,
             language: parsedRequest.responseLanguage ?? userLanguage,
           });
-          // Keep `buildSearchSummary` call alive for back-compat parity (and
-          // because the wrapper still has a single legacy call site here).
-          // The `narrative.text` is byte-equivalent to `buildSearchSummary`,
-          // so we use it directly to avoid a double-build.
-          if (narrative.text) {
-            assistantResponse = `${narrative.text}\n\n${assistantResponse}`;
-            console.log('📋 [ROUTER] Prepended inferred-field summary:', narrative.text);
-          }
           if (narrative.chips && narrative.chips.length > 0) {
             narrativeChips = narrative.chips;
           }
+          // When NOT rendering cards, prepend the legacy summary to the
+          // handler's text response (preserves prior behavior for text-only
+          // turns). When cards will render, the empathic opener below replaces
+          // the entire `assistantResponse`, so we skip this prepend.
+          if (!willRenderCardsForOpener && narrative.text && assistantResponse) {
+            assistantResponse = `${narrative.text}\n\n${assistantResponse}`;
+            console.log('📋 [ROUTER] Prepended inferred-field summary:', narrative.text);
+          }
+        }
+      }
+
+      // === EMILIA: empathic opener replaces handler response when cards will render ===
+      // Mirrors "Respuestas esperadas" patterns from the product doc. The cards
+      // already show the search results — the text above describes intent,
+      // assumptions, and offers a way to adjust.
+      if (willRenderCardsForOpener) {
+        const opener = buildSearchOpener(
+          parsedRequest,
+          parsedRequest.responseLanguage ?? userLanguage,
+        );
+        if (opener.text) {
+          assistantResponse = opener.text;
+          console.log('💬 [OPENER] Replaced response with empathic opener:', opener.text);
         }
       }
 
@@ -2850,7 +2872,12 @@ const useMessageHandler = (
       console.log('📊 Structured data:', structuredData);
 
       removeAssistantStreamDraft();
-      assistantStreamDraft = startAssistantResponseStream(finalConversationId, assistantResponse);
+      // Skip the "typing" stream animation when the final message will render
+      // travel cards (combinedData). Otherwise the user sees text appear and
+      // then get replaced by cards — we want text + cards to land together.
+      assistantStreamDraft = willRenderCardsForOpener
+        ? null
+        : startAssistantResponseStream(finalConversationId, assistantResponse);
       if (assistantStreamDraft) {
         emitFirstVisibleResponse(parsedRequest.requestType, assistantResponse.length, 'final');
         setIsTyping(false, conversationIdForThisSearch);

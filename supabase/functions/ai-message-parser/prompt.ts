@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v19';
+export const PROMPT_VERSION = 'emilia-parser-v20';
 export const PROMPT_CONTRACT_SNIPPETS = [
   // v8 dropped the literal `IMPORTANTE: Siempre responde solo con JSON válido.`
   // line; Structured Outputs (response_format: json_schema) now enforces JSON
@@ -60,6 +60,13 @@ const LANGUAGE_NAMES: Record<NonNullable<BuildSystemPromptArgs['language']>, str
 //
 // Rule when editing: NO interpolations (`${...}`) in this string. If you need
 // dynamic content, add it to `buildDynamicContextBlock` instead.
+//
+// Numeric defaults below (start offset days, default stay nights) MUST stay in
+// sync with `supabase/functions/_shared/searchDefaults.ts` and its client
+// mirror `src/services/searchDefaults.ts`. The drift test
+// `src/services/__tests__/searchDefaults.drift.test.ts` scans this file for
+// `current date + N days` and `N-day default window` patterns and fails if
+// they diverge from the constants.
 // =============================================================================
 
 export const STATIC_SYSTEM_PROMPT = `
@@ -265,7 +272,7 @@ CRITICAL INSTRUCTION:
   * The DYNAMIC CONTEXT block below provides concrete worked examples for today's date — apply that pattern.
 - No date mentioned → current date + 3 days
 - If exact dates are missing but the user gave a duration ("5 días", "una semana"), use current date + 3 days as the start/check-in/departure date and derive the end/check-out/return date from that duration.
-- If exact dates AND duration are missing, use a 3-day default window starting current date + 3 days.
+- If exact dates AND duration are missing, use a 7-day default window starting current date + 3 days.
 - Round trip indicators: "vuelta", "regreso", "ida y vuelta" → require returnDate
 
 ## MULTI-CITY FLIGHT SEGMENTS
@@ -562,13 +569,13 @@ User: "Qué puedo hacer en Barcelona durante una semana?"
   "confidence": 0.9
 }
 
-Example D - Missing days (default to 3 days):
+Example D - Missing days (default to 7 days):
 User: "Quiero un itinerario para Madrid"
 {
   "requestType": "itinerary",
   "itinerary": {
     "destinations": ["Madrid"],
-    "days": 3
+    "days": 7
   },
   "confidence": 0.85
 }
@@ -1230,7 +1237,7 @@ User: "Paquete a Cancún todo incluido con traslados y seguro de viaje"
 
 **ITINERARY:**
 - Required: destinations (array of strings, at least 1), days (number > 0)
-- If days are missing but destination is present, set days = 3. Only ask when destination is missing.
+- If days are missing but destination is present, set days = 7. Only ask when destination is missing.
 
 **IMPORTANT PASSENGER RULES:**
 1. If NO passenger count mentioned at all → adults = 1, children = 0, infants = 0

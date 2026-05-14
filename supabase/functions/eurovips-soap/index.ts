@@ -97,13 +97,77 @@ function normalizeHotelName(name: string): string {
     .toLowerCase();
 }
 
+/**
+ * Domain preconditions for SOAP requests. SOFTUR is well-known to hang for
+ * 30+ seconds on malformed input (invalid city codes, open-ended ranges,
+ * inverted dates) instead of returning a quick error. Fail fast here so we
+ * don't burn the wall-clock budget on requests that can't succeed.
+ *
+ * Throws on violation; the caller surfaces the message in the standard
+ * "request failed" envelope upstream.
+ */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_STAY_NIGHTS = 30;
+const MAX_TRIP_DAYS = 365;
+
+function assertIsoDate(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !ISO_DATE_RE.test(value)) {
+    throw new Error(`invalid_input: ${field} must be ISO date YYYY-MM-DD, got ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+function diffDays(fromIso: string, toIso: string): number {
+  const from = new Date(`${fromIso}T00:00:00.000Z`).getTime();
+  const to = new Date(`${toIso}T00:00:00.000Z`).getTime();
+  if (Number.isNaN(from) || Number.isNaN(to)) return NaN;
+  return Math.round((to - from) / 86_400_000);
+}
+
+function assertCityCode(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`invalid_input: ${field} is required (got ${JSON.stringify(value)})`);
+  }
+  // SOFTUR codes are short alphanumeric tokens; reject obvious garbage that
+  // would force a full-inventory scan.
+  if (!/^[A-Za-z0-9]{2,10}$/.test(value.trim())) {
+    throw new Error(`invalid_input: ${field}="${value}" is not a valid city/airport code`);
+  }
+  return value.trim();
+}
+
+function assertStayRange(checkin: string, checkout: string): number {
+  const nights = diffDays(checkin, checkout);
+  if (!Number.isFinite(nights)) {
+    throw new Error(`invalid_input: cannot compute nights from ${checkin}/${checkout}`);
+  }
+  if (nights < 1) {
+    throw new Error(`invalid_input: stay range must be >= 1 night (got ${nights}; checkin=${checkin} checkout=${checkout})`);
+  }
+  if (nights > MAX_STAY_NIGHTS) {
+    throw new Error(`invalid_input: stay range exceeds ${MAX_STAY_NIGHTS} nights (got ${nights}; SOFTUR times out on long ranges)`);
+  }
+  return nights;
+}
+
+function assertDateRange(from: string, to: string, label: string): number {
+  const days = diffDays(from, to);
+  if (!Number.isFinite(days) || days < 0) {
+    throw new Error(`invalid_input: ${label} range must have from <= to (got ${from}/${to})`);
+  }
+  if (days > MAX_TRIP_DAYS) {
+    throw new Error(`invalid_input: ${label} range exceeds ${MAX_TRIP_DAYS} days (${from}/${to})`);
+  }
+  return days;
+}
+
 class EurovipsSOAPClient {
   baseUrl = 'https://eurovips.itraffic.com.ar/WSBridge_Euro/BridgeService.asmx';
   username = 'WSLOZADA';
   password = 'ROS.9624+';
   agency = '96175';
   currency = 'USD';
-  async makeSOAPRequest(soapBody, soapAction) {
+  async makeSOAPRequest(soapBody, soapAction, telemetryFields: Record<string, string | number> = {}) {
     const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <soap:Body>
@@ -113,6 +177,21 @@ class EurovipsSOAPClient {
     console.log(`📝 SOAP REQUEST [${soapAction}]:`, soapEnvelope.length, 'chars');
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+    const telemetryStartedAt = performance.now();
+    const telemetryFieldsStr = Object.entries(telemetryFields)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' ');
+    const emitTelemetry = (
+      outcome: 'ok' | 'timeout' | 'http_error' | 'fetch_error',
+      extra?: Record<string, string | number>,
+    ) => {
+      const ms = Math.round(performance.now() - telemetryStartedAt);
+      const extraStr = extra
+        ? ' ' + Object.entries(extra).map(([k, v]) => `${k}=${v}`).join(' ')
+        : '';
+      console.log(`[SOAP-TIMING] action=${soapAction} outcome=${outcome} ms=${ms}${telemetryFieldsStr ? ' ' + telemetryFieldsStr : ''}${extraStr}`);
+    };
 
     let response: Response;
     try {
@@ -129,19 +208,23 @@ class EurovipsSOAPClient {
     } catch (err) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
+        emitTelemetry('timeout');
         console.error(`❌ [makeSOAPRequest] Timed out after 30s [${soapAction}]`);
         throw new Error(`SOAP request timed out after 30s [${soapAction}]`);
       }
+      emitTelemetry('fetch_error', { err: String(err?.message ?? err).slice(0, 80) });
       throw err;
     }
     clearTimeout(timeoutId);
     if (!response.ok) {
       const errorText = await response.text();
+      emitTelemetry('http_error', { status: response.status });
       console.error(`❌ SOAP Error ${response.status}:`, errorText);
       // Include error details in exception for debugging
       throw new Error(`SOAP request failed: ${response.status} - ${errorText.substring(0, 500)}`);
     }
     const xmlResponse = await response.text();
+    emitTelemetry('ok', { bytes: xmlResponse.length });
     console.log(`📥 SOAP RESPONSE [${soapAction}]:`, xmlResponse.length, 'chars');
     return xmlResponse;
   }
@@ -189,6 +272,12 @@ class EurovipsSOAPClient {
     return this.parseAirlineListResponse(xmlResponse);
   }
   async searchHotels(params) {
+    // ---- Input preconditions (fail fast vs. burning the 30s SOAP timeout) ----
+    const cityCode = assertCityCode(params.cityCode, 'cityCode');
+    const checkinDate = assertIsoDate(params.checkinDate, 'checkinDate');
+    const checkoutDate = assertIsoDate(params.checkoutDate, 'checkoutDate');
+    const nights = assertStayRange(checkinDate, checkoutDate);
+
     // Build occupancy based on adults/children/infants
     const adults = params.adults || 1; // Default to 1 adult
     const children = params.children || 0;
@@ -208,9 +297,9 @@ class EurovipsSOAPClient {
     }
     const soapBody = `
     <searchHotelFaresRQ1 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
-      <cityLocation code="${params.cityCode}" xmlns="" />
-      <dateFrom xmlns="">${params.checkinDate}</dateFrom>
-      <dateTo xmlns="">${params.checkoutDate}</dateTo>
+      <cityLocation code="${cityCode}" xmlns="" />
+      <dateFrom xmlns="">${checkinDate}</dateFrom>
+      <dateTo xmlns="">${checkoutDate}</dateTo>
       <name xmlns="">${params.hotelName || ''}</name>
       <pos xmlns="">
         <id>${this.username}</id>
@@ -224,16 +313,31 @@ class EurovipsSOAPClient {
 ${occupantsXml}        </Ocuppancy>
       </FareTypeSelectionList>
     </searchHotelFaresRQ1>`;
-    const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchHotelFares');
+    const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchHotelFares', {
+      city: cityCode,
+      nights,
+      pax: adults + children + infants,
+      named: params.hotelName ? 1 : 0,
+    });
     return this.parseHotelSearchResponse(xmlResponse, params);
   }
   async searchFlights(params) {
+    // ---- Input preconditions ----
+    const originCode = assertCityCode(params.originCode, 'originCode');
+    const destinationCode = assertCityCode(params.destinationCode, 'destinationCode');
+    const departureDate = assertIsoDate(params.departureDate, 'departureDate');
+    let returnDate: string | undefined;
+    if (params.returnDate) {
+      returnDate = assertIsoDate(params.returnDate, 'returnDate');
+      assertDateRange(departureDate, returnDate, 'flight');
+    }
+
     const soapBody = `
     <searchAirFaresRQ1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
-      <departureLocation code="${params.originCode}" xmlns="" />
-      <arrivalLocation code="${params.destinationCode}" xmlns="" />
-      <dateFrom xmlns="">${params.departureDate}</dateFrom>
-      ${params.returnDate ? `<dateTo xmlns="">${params.returnDate}</dateTo>` : ''}
+      <departureLocation code="${originCode}" xmlns="" />
+      <arrivalLocation code="${destinationCode}" xmlns="" />
+      <dateFrom xmlns="">${departureDate}</dateFrom>
+      ${returnDate ? `<dateTo xmlns="">${returnDate}</dateTo>` : ''}
       <airline xmlns="" />
       <pos xmlns="">
         <id>${this.username}</id>
@@ -241,16 +345,26 @@ ${occupantsXml}        </Ocuppancy>
       </pos>
       <currency xmlns="">${this.currency}</currency>
     </searchAirFaresRQ1>`;
-    const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchAirFares');
+    const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchAirFares', {
+      origin: originCode,
+      dest: destinationCode,
+      tripType: returnDate ? 'round_trip' : 'one_way',
+    });
     return this.parseFlightSearchResponse(xmlResponse, params);
   }
   async searchPackages(params) {
+    // ---- Input preconditions ----
+    const cityCode = assertCityCode(params.cityCode, 'cityCode');
+    const dateFrom = assertIsoDate(params.dateFrom, 'dateFrom');
+    const dateTo = assertIsoDate(params.dateTo, 'dateTo');
+    const days = assertDateRange(dateFrom, dateTo, 'package');
+
     const soapBody = `
     <searchPackageFaresRQ1 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
       <Class xmlns="">${params.packageClass || 'AEROTERRESTRE'}</Class>
-      <cityLocation code="${params.cityCode}" xmlns="" />
-      <dateFrom xmlns="">${params.dateFrom}</dateFrom>
-      <dateTo xmlns="">${params.dateTo}</dateTo>
+      <cityLocation code="${cityCode}" xmlns="" />
+      <dateFrom xmlns="">${dateFrom}</dateFrom>
+      <dateTo xmlns="">${dateTo}</dateTo>
       <name xmlns="" />
       <keyword xmlns="" />
       <pos xmlns="">
@@ -259,15 +373,26 @@ ${occupantsXml}        </Ocuppancy>
       </pos>
       <currency xmlns="">${this.currency}</currency>
     </searchPackageFaresRQ1>`;
-    const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchPackageFares');
+    const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchPackageFares', {
+      city: cityCode,
+      days,
+      class: params.packageClass || 'AEROTERRESTRE',
+    });
     return this.parsePackageSearchResponse(xmlResponse, params);
   }
   async searchServices(params) {
+    // ---- Input preconditions ----
+    const cityCode = assertCityCode(params.cityCode, 'cityCode');
+    const dateFrom = assertIsoDate(params.dateFrom, 'dateFrom');
+    const dateToRaw = params.dateTo || params.dateFrom;
+    const dateTo = assertIsoDate(dateToRaw, 'dateTo');
+    const days = assertDateRange(dateFrom, dateTo, 'service');
+
     const soapBody = `
     <searchServiceFaresRQ1 xmlns="http://www.softur.com.ar/wsbridge/budget.wsdl">
-      <cityLocation code="${params.cityCode}" xmlns="" />
-      <dateFrom xmlns="">${params.dateFrom}</dateFrom>
-      <dateTo xmlns="">${params.dateTo || params.dateFrom}</dateTo>
+      <cityLocation code="${cityCode}" xmlns="" />
+      <dateFrom xmlns="">${dateFrom}</dateFrom>
+      <dateTo xmlns="">${dateTo}</dateTo>
       <name xmlns="" />
       <type xmlns="">${params.serviceType || '1'}</type>
       <pos xmlns="">
@@ -276,7 +401,11 @@ ${occupantsXml}        </Ocuppancy>
       </pos>
       <currency xmlns="">${this.currency}</currency>
     </searchServiceFaresRQ1>`;
-    const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchServiceFares');
+    const xmlResponse = await this.makeSOAPRequest(soapBody, 'searchServiceFares', {
+      city: cityCode,
+      days,
+      type: params.serviceType || '1',
+    });
     return this.parseServiceSearchResponse(xmlResponse, params);
   }
 
@@ -1547,6 +1676,13 @@ serve(async (req) => {
       } catch (error) {
         console.error('❌ Error in eurovips-soap function:', error);
 
+        // Domain precondition failures (assertCityCode / assertIsoDate /
+        // assertStayRange / assertDateRange) throw `invalid_input: <detail>`.
+        // Surface them as 400 with the detail so the caller can fix the
+        // request, instead of a generic 500.
+        const message = typeof error?.message === 'string' ? error.message : String(error);
+        const isInputError = message.startsWith('invalid_input:');
+
         // If jobId exists, mark job as failed (async mode)
         if (body?.jobId) {
           try {
@@ -1565,11 +1701,12 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({
           success: false,
-          error: 'Internal server error',
+          error: isInputError ? 'invalid_input' : 'Internal server error',
+          detail: isInputError ? message.slice('invalid_input:'.length).trim() : undefined,
           jobId: body?.jobId,
           timestamp: new Date().toISOString()
         }), {
-          status: 500,
+          status: isInputError ? 400 : 500,
           headers: {
             ...corsHeaders,
             'Content-Type': 'application/json'
