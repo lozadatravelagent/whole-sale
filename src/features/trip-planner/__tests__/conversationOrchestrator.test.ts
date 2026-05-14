@@ -772,6 +772,45 @@ describe('conversationOrchestrator', () => {
         });
         expect(resolution.executionBranch).toBe('mode_bridge');
       });
+
+      it('G7: LLM-signaled iteration alone suppresses mode_bridge (iterationContext.isIteration=false)', () => {
+        const resolution = resolveConversationTurn({
+          parsedRequest: {
+            ...itineraryPlanRequest,
+            iterationIntent: {
+              isIteration: true,
+              type: 'duration_change',
+              modifiedFields: ['itinerary.days'],
+              rationale: 'user adjusted trip length from 10 to 14 days',
+            },
+          },
+          routeResult: itineraryPlanRoute,
+          plannerState: null,
+          mode: 'agency',
+          iterationContext: {
+            isIteration: false,
+            iterationType: 'new_search',
+            baseRequestType: null,
+            modifiedComponent: null,
+            preserveFields: [],
+            confidence: 1.0,
+          },
+          ...baseFlags,
+        });
+        expect(resolution.executionBranch).not.toBe('mode_bridge');
+      });
+
+      it('G6/G7 negative: neither signal → mode_bridge fires (confirms bridge not accidentally disabled)', () => {
+        const resolution = resolveConversationTurn({
+          parsedRequest: itineraryPlanRequest,
+          routeResult: itineraryPlanRoute,
+          plannerState: null,
+          mode: 'agency',
+          // iterationContext omitted, parsedRequest.iterationIntent absent
+          ...baseFlags,
+        });
+        expect(resolution.executionBranch).toBe('mode_bridge');
+      });
     });
 
     // ---------------------------------------------------------------------

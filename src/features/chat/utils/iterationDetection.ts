@@ -44,7 +44,14 @@ export interface IterationContext {
   /**
    * Tipo de iteración detectada
    */
-  iterationType: 'hotel_modification' | 'flight_modification' | 'filter_change' | 'full_reuse' | 'new_search';
+  iterationType:
+    | 'hotel_modification'
+    | 'flight_modification'
+    | 'filter_change'
+    | 'full_reuse'
+    | 'stay_duration_modification'
+    | 'destination_swap'
+    | 'new_search';
 
   /**
    * Tipo de búsqueda base del contexto anterior
@@ -75,6 +82,21 @@ export interface IterationContext {
    * Detalles de modificación de vuelo (si aplica)
    */
   flightModification?: FlightModificationDetails;
+
+  /**
+   * Detalles de modificación de duración (si aplica)
+   */
+  stayModification?: {
+    nights: number;
+  };
+
+  /**
+   * Detalles de cambio de destino (si aplica)
+   */
+  destinationSwap?: {
+    newDestination: string;
+    oldDestination?: string;
+  };
 }
 
 /**
@@ -199,6 +221,35 @@ const FLIGHT_MODIFICATION_PATTERNS = [
     name: 'cabin_first',
     cabinClassValue: 'first'
   },
+];
+
+/**
+ * Patrones de modificación de duración de estadía
+ * El texto está NFD-normalizado (sin acentos), por eso "dias" / "noches" van sin tilde.
+ */
+const STAY_DURATION_PATTERNS: Array<{
+  pattern: RegExp;
+  name: string;
+  nights?: number;
+  captureNights?: boolean;
+}> = [
+  { pattern: /\b(?:por\s+|que\s+sea(?:n)?\s+)?(?:una?|1)\s+semana\b/i, name: 'una_semana', nights: 7 },
+  { pattern: /\b(?:por\s+|que\s+sea(?:n)?\s+)?(?:dos|2)\s+semanas\b/i, name: 'dos_semanas', nights: 14 },
+  { pattern: /\b(?:por\s+|que\s+sea(?:n)?\s+)?(?:una\s+)?quincena\b/i, name: 'una_quincena', nights: 15 },
+  { pattern: /\b(?:por\s+|que\s+sea(?:n)?\s+)?(\d{1,2})\s+dias?\b/i, name: 'n_dias', captureNights: true },
+  { pattern: /\b(?:por\s+|que\s+sea(?:n)?\s+)?(\d{1,2})\s+noches?\b/i, name: 'n_noches', captureNights: true },
+];
+
+/**
+ * Patrones de cambio de destino sobre una búsqueda previa.
+ * Captura grupo [1] = origen (opcional), [2] = destino nuevo (cuando hay dos),
+ * o [1] = destino nuevo (cuando es un solo capture).
+ */
+const DESTINATION_SWAP_PATTERNS: Array<{ pattern: RegExp; name: string }> = [
+  { pattern: /\b(?:en\s+vez\s+de|en\s+lugar\s+de|en\s+vez\s+a)\s+([\wáéíóúñ]+(?:\s+[\wáéíóúñ]+)?)[,\s]+(?:mejor\s+)?([\wáéíóúñ]+(?:\s+[\wáéíóúñ]+)?)\b/i, name: 'en_vez_de' },
+  { pattern: /\bcambi[aae]r?\s+([\wáéíóúñ]+(?:\s+[\wáéíóúñ]+)?)\s+por\s+([\wáéíóúñ]+(?:\s+[\wáéíóúñ]+)?)\b/i, name: 'cambiar_por' },
+  { pattern: /\bcambi[aae]r?\s+(?:el\s+)?destino\s+a\s+([\wáéíóúñ]+(?:\s+[\wáéíóúñ]+)?)\b/i, name: 'cambiar_destino' },
+  { pattern: /\b(?:mejor|prefiero)\s+(?:a\s+|en\s+)?([\wáéíóúñ]+(?:\s+[\wáéíóúñ]+)?)\b(?!\s+que)/i, name: 'mejor_destino' },
 ];
 
 /**
@@ -601,6 +652,86 @@ export function detectIterationIntent(
     } as IterationContext;
   }
 
+  // === CASOS DE MODIFICACIÓN DE DURACIÓN ===
+  // CASO 13: Stay duration change ("una semana", "10 días", "por una quincena")
+  // Requires previousContext to have flights/hotels/combined search
+  if (
+    (lastSearch.requestType === 'flights' ||
+      lastSearch.requestType === 'hotels' ||
+      lastSearch.requestType === 'combined') &&
+    !hasNewFlightParams &&
+    !likelyNewHotelSearch
+  ) {
+    for (const patternObj of STAY_DURATION_PATTERNS) {
+      const { pattern, name, nights, captureNights } = patternObj;
+      const match = pattern.exec(norm);
+      if (match) {
+        let resolvedNights = nights;
+        if (captureNights && match[1]) {
+          const n = parseInt(match[1], 10);
+          if (n >= 2 && n <= 30) {
+            resolvedNights = n;
+          } else {
+            continue;
+          }
+        }
+        if (!resolvedNights) continue;
+        console.log(`✅ [ITERATION] CASE 13: Stay duration modification → ${resolvedNights} nights (pattern: ${name})`);
+        return {
+          isIteration: true,
+          iterationType: 'stay_duration_modification',
+          baseRequestType: lastSearch.requestType,
+          modifiedComponent:
+            lastSearch.requestType === 'flights'
+              ? 'flights'
+              : lastSearch.requestType === 'combined'
+                ? 'both'
+                : 'hotels',
+          preserveFields: [...getAllFlightFields(), ...getAllHotelFields()],
+          confidence: 0.9,
+          matchedPattern: name,
+          stayModification: { nights: resolvedNights },
+        };
+      }
+    }
+  }
+
+  // === CASOS DE CAMBIO DE DESTINO ===
+  // CASO 14: Destination swap ("en vez de X, Y", "mejor Y", "cambia X por Y")
+  if (
+    lastSearch.requestType === 'flights' ||
+    lastSearch.requestType === 'hotels' ||
+    lastSearch.requestType === 'combined'
+  ) {
+    for (const patternObj of DESTINATION_SWAP_PATTERNS) {
+      const { pattern, name } = patternObj;
+      const match = pattern.exec(norm);
+      if (match) {
+        // 'en_vez_de' y 'cambiar_por' tienen dos capturas: [1]=old, [2]=new.
+        // 'mejor_destino' y 'cambiar_destino' tienen una sola: [1]=new.
+        const newDest = (match[2] || match[1] || '').trim();
+        const oldDest = match[2] ? match[1].trim() : undefined;
+        if (!newDest || newDest.length < 3) continue;
+        console.log(`✅ [ITERATION] CASE 14: Destination swap → ${oldDest || '?'} → ${newDest} (pattern: ${name})`);
+        return {
+          isIteration: true,
+          iterationType: 'destination_swap',
+          baseRequestType: lastSearch.requestType,
+          modifiedComponent:
+            lastSearch.requestType === 'flights'
+              ? 'flights'
+              : lastSearch.requestType === 'combined'
+                ? 'both'
+                : 'hotels',
+          preserveFields: [...getAllFlightFields(), ...getAllHotelFields()],
+          confidence: 0.85,
+          matchedPattern: name,
+          destinationSwap: { newDestination: newDest, oldDestination: oldDest },
+        };
+      }
+    }
+  }
+
   // DEFAULT: Nueva búsqueda
   console.log('ℹ️ [ITERATION] No iteration pattern matched → new_search');
   return {
@@ -862,6 +993,104 @@ export function mergeIterationContext(
 
     console.log('✅ [MERGE] Full reuse merge complete');
     return mergedRequest;
+  }
+
+  // Stay duration modification — recompute return/checkout dates from new nights
+  if (iterationContext.iterationType === 'stay_duration_modification') {
+    const newNights = iterationContext.stayModification?.nights;
+    if (!newNights || (!lastSearch.flightsParams && !lastSearch.hotelsParams)) {
+      return newParsedRequest;
+    }
+
+    const addDays = (isoDate: string, days: number): string => {
+      const d = new Date(isoDate + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const departureDate = lastSearch.flightsParams?.departureDate;
+    const checkinDate = lastSearch.hotelsParams?.checkinDate || departureDate;
+    const newReturnDate = departureDate ? addDays(departureDate, newNights) : undefined;
+    const newCheckoutDate = checkinDate ? addDays(checkinDate, newNights) : undefined;
+
+    const merged: ParsedTravelRequest = {
+      ...newParsedRequest,
+      requestType: lastSearch.requestType,
+      flights: lastSearch.flightsParams
+        ? {
+            ...lastSearch.flightsParams,
+            ...(newReturnDate && { returnDate: newReturnDate }),
+            tripType:
+              lastSearch.flightsParams.tripType === 'one_way'
+                ? 'round_trip'
+                : lastSearch.flightsParams.tripType,
+          }
+        : newParsedRequest.flights,
+      hotels: lastSearch.hotelsParams
+        ? {
+            ...lastSearch.hotelsParams,
+            ...(newCheckoutDate && { checkoutDate: newCheckoutDate }),
+          }
+        : newParsedRequest.hotels,
+      confidence: Math.max(newParsedRequest.confidence || 0, iterationContext.confidence),
+      originalMessage: newParsedRequest.originalMessage,
+    };
+
+    if (merged.flights) {
+      merged.flights = normalizeFlightRequest(merged.flights);
+    }
+
+    console.log('✅ [MERGE] Stay duration modification:', {
+      requestType: merged.requestType,
+      newNights,
+      departureDate: merged.flights?.departureDate,
+      returnDate: merged.flights?.returnDate,
+      checkinDate: merged.hotels?.checkinDate,
+      checkoutDate: merged.hotels?.checkoutDate,
+    });
+
+    return merged;
+  }
+
+  // Destination swap — replace destination across flights + hotels, keep everything else
+  if (iterationContext.iterationType === 'destination_swap') {
+    const newDest = iterationContext.destinationSwap?.newDestination;
+    if (!newDest) return newParsedRequest;
+
+    // Prefer AI-parsed destination (likely IATA-resolved for flights) over raw text
+    const aiFlightDest = newParsedRequest.flights?.destination;
+    const aiHotelCity = newParsedRequest.hotels?.city;
+
+    const merged: ParsedTravelRequest = {
+      ...newParsedRequest,
+      requestType: lastSearch.requestType,
+      flights: lastSearch.flightsParams
+        ? {
+            ...lastSearch.flightsParams,
+            destination: aiFlightDest || newDest,
+          }
+        : newParsedRequest.flights,
+      hotels: lastSearch.hotelsParams
+        ? {
+            ...lastSearch.hotelsParams,
+            city: aiHotelCity || newDest,
+          }
+        : newParsedRequest.hotels,
+      confidence: Math.max(newParsedRequest.confidence || 0, iterationContext.confidence),
+      originalMessage: newParsedRequest.originalMessage,
+    };
+
+    if (merged.flights) {
+      merged.flights = normalizeFlightRequest(merged.flights);
+    }
+
+    console.log('✅ [MERGE] Destination swap:', {
+      requestType: merged.requestType,
+      flightsDest: merged.flights?.destination,
+      hotelsCity: merged.hotels?.city,
+    });
+
+    return merged;
   }
 
   // Default: sin merge especial

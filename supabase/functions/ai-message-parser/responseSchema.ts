@@ -238,6 +238,54 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
         "quoteIntent and planIntent (e.g. 'cotizame este viaje').",
     },
     // ---------------------------------------------------------------------
+    // Iteration intent — emitted when `previousContext` is non-empty so the
+    // orchestrator can suppress mode_bridge and treat the turn as a refinement
+    // of the active search rather than a fresh request. The LLM has full
+    // conversation history + previousContext + current message and can
+    // reason about meaning across languages; downstream regex fallback
+    // (CASE 13/14 in `iterationDetection.ts`) acts as belt-and-suspenders.
+    // See prompt section "ITERATION INTENT DETECTION" for emission rules.
+    // ---------------------------------------------------------------------
+    iterationIntent: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        isIteration: { type: "boolean" },
+        type: {
+          type: ["string", "null"],
+          enum: [
+            "duration_change",
+            "destination_swap",
+            "pax_change",
+            "preference_change",
+            "continuation",
+            "unrelated",
+            null,
+          ],
+        },
+        modifiedFields: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Dotted paths against the request schema (e.g. 'flights.destination', " +
+            "'hotels.checkoutDate', 'itinerary.destinations'). Synthetic " +
+            "'stayNights' is allowed when stay duration changes.",
+        },
+        rationale: {
+          type: ["string", "null"],
+          description: "1-line debug explanation, optional.",
+        },
+      },
+      required: ["isIteration", "type", "modifiedFields"],
+      description:
+        "Iteration-intent signal. Emit when `previousContext` is non-empty and " +
+        "the user's new message is refining (or pivoting away from) the prior " +
+        "search/plan. Omit (or set isIteration=false, type=null) when no " +
+        "previousContext was provided. The orchestrator consumes this signal " +
+        "to keep the user on the same conversation track; the merged " +
+        "ParsedTravelRequest is still emitted alongside per SEARCH REFINEMENT.",
+    },
+    // ---------------------------------------------------------------------
     // Search seeds — exploratory-but-actionable hints. Emitted when the
     // user names a destination AND at least one of: traveler type, budget
     // hint, occasion hint, OR an adult count, but the request does not

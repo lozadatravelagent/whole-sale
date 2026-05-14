@@ -835,10 +835,16 @@ export function resolveConversationTurn(options: {
   //        search ("una semana", "en vez de Cancún, Punta Cana"). The
   //        iteration detector already merged the prior context; routing this
   //        turn to mode_bridge would interrupt the refinement loop.
+  //   G7 — LLM-signaled iteration: the parser emitted
+  //        `parsedRequest.iterationIntent.isIteration=true` after analyzing
+  //        the turn in context. Same intent as G6 but sourced from the LLM
+  //        instead of the regex fallback; either signal suppresses the bridge.
   const isHighConfidenceExplicitItinerary =
     parsedRequest.requestType === 'itinerary' &&
     parsedRequest.confidence >= 0.85 &&
     hasPlanIntent(parsedRequest, parsedRequest.originalMessage || '');
+
+  const llmSignaledIteration = Boolean(parsedRequest.iterationIntent?.isIteration);
 
   const bridgeBlocked =
     previousMessageType === 'mode_bridge' ||
@@ -846,7 +852,8 @@ export function resolveConversationTurn(options: {
     previousMessageType === 'quote_active_plan' ||
     Boolean(hasPendingAction && hasActivePlanner) ||
     isHighConfidenceExplicitItinerary ||
-    Boolean(iterationContext?.isIteration);
+    Boolean(iterationContext?.isIteration) || // G6 regex fallback
+    llmSignaledIteration;                     // G7 LLM signal
 
   let bridgeTarget: 'agency' | 'passenger' | null = null;
   if (!bridgeBlocked) {

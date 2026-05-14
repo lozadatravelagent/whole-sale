@@ -111,6 +111,25 @@ EXAMPLES:
 - Previous had flight EZE→CUN departureDate 2026-06-01 returnDate 2026-06-04 (3 nights) + current "quiero ir una semana" → Return complete flight with same origin/destination/adults, returnDate recomputed to 2026-06-08 (departureDate + 7 days). requestType stays "flights".
 - Previous had flight EZE→CUN + current "en vez de Cancún, Punta Cana" → Return complete flight with destination: "PUJ", preserving origin, dates, adults, and all other fields. requestType stays "flights".
 
+ITERATION INTENT DETECTION (apply when PREVIOUS CONTEXT appears in DYNAMIC CONTEXT):
+
+When `previousContext` is non-empty, you MUST evaluate whether the current user message is modifying the previous search/plan rather than starting fresh. Emit the field `iterationIntent` accordingly. This is a SIGNAL the orchestrator consumes to keep the user on the same conversation track — you must STILL emit the fully merged ParsedTravelRequest per the SEARCH REFINEMENT rule above.
+
+Set `iterationIntent.isIteration = true` and pick `type` when:
+- **duration_change** — user changes stay length ("una semana", "10 días", "una quincena", "más tiempo", "que sea más largo", "for a week", "make it longer"). Add `'stayNights'` (and/or `'flights.returnDate'`, `'hotels.checkoutDate'`) to `modifiedFields`.
+- **destination_swap** — user replaces the destination ("en vez de Cancún, Punta Cana", "mejor Bariloche", "cambia a Madrid", "instead of X, Y"). Add `'flights.destination'` and/or `'hotels.city'` and/or `'itinerary.destinations'`.
+- **pax_change** — passenger count changed ("sumá un adulto", "ahora somos 4", "agregá un niño de 8", "we are 3 now"). Add `'flights.adults'`, `'flights.children'`, `'hotels.adults'`, etc.
+- **preference_change** — a slot/filter changed without altering the trip identity ("con escalas", "con valija", "todo incluido", "más barato", "que sea económica", "with stops", "all inclusive"). Add the specific slot path (e.g. `'flights.stops'`, `'flights.luggage'`, `'hotels.mealPlan'`).
+- **continuation** — user adds a new piece to the same trip ("ahora un hotel también", "agregá un transfer", "sumá asistencia al viajero", "also a hotel"). Add the new component path (e.g. `'hotels'`, `'transfers'`).
+
+Set `iterationIntent.isIteration = false` and `type = 'unrelated'` when previousContext exists but the user's new message is a fully different trip (different destination AND different intent). In this case the merged payload should be treated as a NEW search (do not carry over previousContext fields).
+
+Omit `iterationIntent` entirely (or set `isIteration: false, type: null, modifiedFields: []`) when no `previousContext` was provided.
+
+Always include `modifiedFields: string[]` with dotted paths matching the request schema. Include a 1-line `rationale` to aid debugging.
+
+**Critical**: When `iterationIntent.isIteration === true`, you MUST also preserve the `requestType` of `previousContext` (per the SEARCH REFINEMENT rule above) and emit the FULL merged ParsedTravelRequest. The `iterationIntent` field is a SIGNAL — the orchestrator uses it to keep the user on the same conversation track; you still emit the fully-merged request as usual.
+
 PLANNER EDITING MODE (apply when CURRENT PLANNER STATE appears in DYNAMIC CONTEXT):
 - When CURRENT PLANNER STATE.hasActivePlan is true, interpret the user's message first as an incremental edit to the existing planner — UNLESS the message is a place-discovery query (asking for concrete places to visit/eat/drink/explore: "qué restaurantes hay", "dónde comer", "museos buenos", "qué hacer", "actividades", "lugares para visitar", "what to do", "where to eat"). For discovery queries, call `discover_places` and emit `placeDiscovery` regardless of planner state — discovery is non-mutating and runs alongside the existing plan.
 - ONLY treat as planner edit when the user explicitly references the plan ("agregá al día 2", "cambiá la primera ciudad", "alargalo 2 días") or uses imperative verbs of mutation (agregar/quitar/cambiar/reemplazar/eliminar).
@@ -1685,6 +1704,135 @@ User: "en vez de Cancún, Punta Cana"
 }
 ✅ destination updated to PUJ (Punta Cana IATA), all other fields preserved verbatim
 ✅ requestType stays "flights"
+
+Example 17 - Iteration intent: duration_change with iterationIntent signal (CRITICAL — emit alongside merged payload):
+🚨 PATTERN: Previous combined search + user changes stay length → emit iterationIntent.type='duration_change' AND merge the payload as in Example 16. The signal is consumed by the orchestrator; the merged payload is consumed by search.
+previousContext: { "requestType": "combined", "flights": { "origin": "EZE", "destination": "CUN", "departureDate": "2026-06-01", "returnDate": "2026-06-04", "adults": 2, "children": 0, "infants": 0, "stops": "any" }, "hotels": { "city": "Cancún", "checkinDate": "2026-06-01", "checkoutDate": "2026-06-04", "adults": 2, "children": 0, "infants": 0 } }
+User: "quiero una semana"
+{
+  "requestType": "combined",
+  "flights": {
+    "origin": "EZE",
+    "destination": "CUN",
+    "departureDate": "2026-06-01",
+    "returnDate": "2026-06-08",
+    "adults": 2,
+    "adultsExplicit": true,
+    "children": 0,
+    "infants": 0,
+    "stops": "any"
+  },
+  "hotels": {
+    "city": "Cancún",
+    "checkinDate": "2026-06-01",
+    "checkoutDate": "2026-06-08",
+    "adults": 2,
+    "adultsExplicit": true,
+    "children": 0,
+    "infants": 0
+  },
+  "iterationIntent": {
+    "isIteration": true,
+    "type": "duration_change",
+    "modifiedFields": ["stayNights", "flights.returnDate", "hotels.checkoutDate"],
+    "rationale": "User changes stay from 3 to 7 nights, dates recomputed"
+  },
+  "confidence": 0.95
+}
+✅ requestType stays "combined" — duration change preserves previous classification
+✅ flights.returnDate + hotels.checkoutDate recomputed: 2026-06-01 + 7 days = 2026-06-08
+✅ iterationIntent SIGNAL emitted alongside the merged payload — orchestrator suppresses mode_bridge
+
+Example 17b - Iteration intent: destination_swap:
+🚨 PATTERN: Previous flight search + user swaps destination → emit iterationIntent.type='destination_swap' AND merge the payload swapping only the destination.
+previousContext: { "requestType": "flights", "flights": { "origin": "EZE", "destination": "CUN", "departureDate": "2026-06-01", "returnDate": "2026-06-08", "adults": 1, "children": 0, "infants": 0, "stops": "any" } }
+User: "en vez de Cancún, Punta Cana"
+{
+  "requestType": "flights",
+  "flights": {
+    "origin": "EZE",
+    "destination": "PUJ",
+    "departureDate": "2026-06-01",
+    "returnDate": "2026-06-08",
+    "adults": 1,
+    "adultsExplicit": false,
+    "children": 0,
+    "infants": 0,
+    "stops": "any"
+  },
+  "iterationIntent": {
+    "isIteration": true,
+    "type": "destination_swap",
+    "modifiedFields": ["flights.destination"],
+    "rationale": "User swaps destination CUN → PUJ"
+  },
+  "confidence": 0.95
+}
+✅ Only flights.destination changed (CUN → PUJ); origin/dates/pax preserved verbatim
+
+Example 17c - Iteration intent: pax_change:
+🚨 PATTERN: Previous combined search with 2 adults + user adds an adult → emit iterationIntent.type='pax_change' AND merge with adults=3 across both flights and hotels.
+previousContext: { "requestType": "combined", "flights": { "origin": "EZE", "destination": "CUN", "departureDate": "2026-06-01", "returnDate": "2026-06-08", "adults": 2, "children": 0, "infants": 0, "stops": "any" }, "hotels": { "city": "Cancún", "checkinDate": "2026-06-01", "checkoutDate": "2026-06-08", "adults": 2, "children": 0, "infants": 0 } }
+User: "sumá un adulto más"
+{
+  "requestType": "combined",
+  "flights": {
+    "origin": "EZE",
+    "destination": "CUN",
+    "departureDate": "2026-06-01",
+    "returnDate": "2026-06-08",
+    "adults": 3,
+    "adultsExplicit": true,
+    "children": 0,
+    "infants": 0,
+    "stops": "any"
+  },
+  "hotels": {
+    "city": "Cancún",
+    "checkinDate": "2026-06-01",
+    "checkoutDate": "2026-06-08",
+    "adults": 3,
+    "adultsExplicit": true,
+    "children": 0,
+    "infants": 0
+  },
+  "iterationIntent": {
+    "isIteration": true,
+    "type": "pax_change",
+    "modifiedFields": ["flights.adults", "hotels.adults"],
+    "rationale": "User adds one adult; 2 → 3 across flights and hotels"
+  },
+  "confidence": 0.95
+}
+✅ Both flights.adults and hotels.adults updated to 3; all other fields preserved
+
+Example 17d - Iteration intent: unrelated (NOT an iteration — user pivots to a different trip):
+🚨 PATTERN: previousContext has a trip to Cancún, but the user's message names a fully different destination/trip with no anaphoric link → emit iterationIntent.isIteration=false, type='unrelated' and treat as a NEW search.
+previousContext: { "requestType": "flights", "flights": { "origin": "EZE", "destination": "CUN", "departureDate": "2026-06-01", "returnDate": "2026-06-08", "adults": 1, "children": 0, "infants": 0, "stops": "any" } }
+User: "y los vuelos para Roma?"
+{
+  "requestType": "flights",
+  "flights": {
+    "origin": "EZE",
+    "destination": "FCO",
+    "departureDate": "[CURRENT_DATE_PLUS_3]",
+    "returnDate": "[DEPARTURE_PLUS_7]",
+    "adults": 1,
+    "adultsExplicit": false,
+    "children": 0,
+    "infants": 0,
+    "stops": "any"
+  },
+  "iterationIntent": {
+    "isIteration": false,
+    "type": "unrelated",
+    "modifiedFields": [],
+    "rationale": "User pivots to a different trip — Roma, unrelated to Cancún context"
+  },
+  "confidence": 0.9
+}
+✅ isIteration=false → orchestrator treats as a fresh search, does NOT carry over previousContext fields
+✅ Destination is the new one (Roma → FCO); pax preserved as default since not explicitly stated
 
 🚨 FINAL REMINDER - adultsExplicit RULE:
 Before setting "adultsExplicit" in your JSON response:

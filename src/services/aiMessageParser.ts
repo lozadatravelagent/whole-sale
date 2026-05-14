@@ -150,6 +150,45 @@ export interface PlannerEditIntent {
 export type ProductKind = 'flight' | 'hotel' | 'transfer';
 export type TravelerType = 'solo' | 'couple' | 'family' | 'group';
 
+/**
+ * Iteration-intent signal emitted by the LLM parser when `previousContext`
+ * is non-empty. The model has access to conversation history + previousContext
+ * + the current message and can reason about meaning across languages — this
+ * moves iteration detection FROM brittle regex (CASE 13/14 in
+ * `src/features/chat/utils/iterationDetection.ts`) INTO the model. The regex
+ * layer remains as belt-and-suspenders fallback.
+ *
+ * Semantics for `type`:
+ *  - 'duration_change': stay length changed ("una semana", "10 días")
+ *  - 'destination_swap': destination replaced ("en vez de Cancún, Punta Cana")
+ *  - 'pax_change': passenger count changed ("sumá un adulto")
+ *  - 'preference_change': slot/filter changed without altering trip identity
+ *    ("con escalas", "all inclusive")
+ *  - 'continuation': new piece added to the same trip ("ahora un hotel también")
+ *  - 'unrelated': previousContext exists but the new message is a fully
+ *    different trip (different destination AND different intent) — paired
+ *    with isIteration=false
+ *  - null: no previousContext was provided
+ *
+ * `modifiedFields` uses dotted paths against the request schema
+ * ('flights.destination', 'hotels.checkoutDate', 'itinerary.destinations', …).
+ * A synthetic 'stayNights' is allowed when stay duration changes regardless
+ * of which sub-object(s) carry the resulting date adjustments.
+ */
+export interface IterationIntent {
+    isIteration: boolean;
+    type:
+        | 'duration_change'
+        | 'destination_swap'
+        | 'pax_change'
+        | 'preference_change'
+        | 'continuation'
+        | 'unrelated'
+        | null;
+    modifiedFields: string[];
+    rationale?: string;
+}
+
 export interface ParsedTravelRequest {
     requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
     /**
@@ -248,6 +287,15 @@ export interface ParsedTravelRequest {
         adults?: number | null;
         children?: number | null;
     } | null;
+    /**
+     * Iteration-intent signal emitted by the LLM parser when `previousContext`
+     * is non-empty. Consumed by `conversationOrchestrator` (G7 guard) to
+     * suppress `mode_bridge` and keep the user on the same refinement track.
+     * The merged ParsedTravelRequest is still emitted alongside per SEARCH
+     * REFINEMENT rules — this field is a SIGNAL, not a replacement for the
+     * merged payload. See `IterationIntent` for semantics.
+     */
+    iterationIntent?: IterationIntent | null;
     flights?: {
         origin: string;
         destination: string;

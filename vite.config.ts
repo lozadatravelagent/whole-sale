@@ -159,6 +159,7 @@ export default defineConfig(({ mode }) => ({
       'src/features/chat/state/__tests__/*.{test.ts,test.tsx}',
       'src/features/chat/sessions/__tests__/*.{test.ts,test.tsx}',
       'src/features/chat/services/__tests__/*.test.ts',
+      'src/features/chat/utils/__tests__/*.test.ts',
       'src/features/auth/__tests__/*.test.ts',
       'src/features/landing/__tests__/*.test.ts',
       'src/components/__tests__/*.test.ts',
