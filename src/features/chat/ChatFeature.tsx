@@ -142,6 +142,23 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     return () => { cancelled = true; };
   }, [selectedConversation, loadContextualMemory, loadContextState]);
 
+  const saveContextStateAndCache = useCallback(async (conversationId: string, contextState: ContextState) => {
+    setPreloadedContext((current) => {
+      if (!current && selectedConversation === conversationId) {
+        return {
+          conversationId,
+          contextualMemory: null,
+          contextState,
+          leadId: null,
+        };
+      }
+      if (current?.conversationId !== conversationId) return current;
+      return { ...current, contextState };
+    });
+
+    await saveContextState(conversationId, contextState);
+  }, [saveContextState, selectedConversation]);
+
   // Save message to DB and immediately add assistant messages to local state (no Realtime dependency)
   const saveAndDisplayMessage = useCallback(async (messageData: Parameters<typeof addMessageViaSupabase>[0]) => {
     const saved = await addMessageViaSupabase(messageData);
@@ -307,7 +324,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     saveContextualMemory,
     clearContextualMemory,
     loadContextState,
-    saveContextState,
+    saveContextStateAndCache,
     updateMessageStatus,
     updateConversationTitle,
     handleCheaperFlightsSearch,

@@ -4,6 +4,7 @@ import {
   detectIterationIntent,
   mergeIterationContext,
 } from '../iterationDetection';
+import { contextStateToPreviousRequest } from '../../types/contextState';
 import type {
   ContextState,
   FlightContextParams,
@@ -138,6 +139,30 @@ describe('detectIterationIntent — stay duration modification (CASE 13)', () =>
   it('returns no iteration when previous context is null', () => {
     const result = detectIterationIntent('una semana', null);
     expect(result.isIteration).toBe(false);
+  });
+});
+
+describe('contextStateToPreviousRequest', () => {
+  it('flattens lastSearch into the previousContext shape consumed by the parser', () => {
+    const ctx = makeCombinedContext();
+    const previous = contextStateToPreviousRequest(ctx);
+
+    expect(previous).toMatchObject({
+      requestType: 'combined',
+      flights: {
+        origin: 'EZE',
+        destination: 'CUN',
+        departureDate: '2026-05-15',
+        returnDate: '2026-05-18',
+        adults: 2,
+      },
+      hotels: {
+        city: 'Cancun',
+        checkinDate: '2026-05-15',
+        checkoutDate: '2026-05-18',
+        adults: 2,
+      },
+    });
   });
 });
 

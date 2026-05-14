@@ -337,6 +337,70 @@ describe('useMessageHandler', () => {
         expect.any(Function),
       );
     });
+
+    it('passes preloadedContext.contextState as flat previousContext to the parser', async () => {
+      const contextState = {
+        lastSearch: {
+          requestType: 'combined' as const,
+          timestamp: '2026-05-14T18:00:00Z',
+          flightsParams: {
+            origin: 'EZE',
+            destination: 'CUN',
+            departureDate: '2026-05-17',
+            returnDate: '2026-05-20',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+          hotelsParams: {
+            city: 'Cancun',
+            checkinDate: '2026-05-17',
+            checkoutDate: '2026-05-20',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+        },
+        constraintsHistory: [],
+        turnNumber: 1,
+        schemaVersion: 1,
+      };
+      const p = buildProps({
+        messages: [buildMessageRow()],
+        preloadedContext: {
+          conversationId: DEFAULT_CONV_ID,
+          contextualMemory: null,
+          contextState,
+          leadId: null,
+        },
+      });
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(MISSING_INFO_PARSED);
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('quiero una semana');
+      });
+
+      expect(vi.mocked(parseMessageWithAIStreaming)).toHaveBeenCalledWith(
+        'quiero una semana',
+        expect.objectContaining({
+          previousContext: expect.objectContaining({
+            requestType: 'combined',
+            flights: expect.objectContaining({
+              origin: 'EZE',
+              destination: 'CUN',
+              returnDate: '2026-05-20',
+            }),
+            hotels: expect.objectContaining({
+              city: 'Cancun',
+              checkoutDate: '2026-05-20',
+            }),
+          }),
+        }),
+        expect.any(String),
+        expect.any(Function),
+      );
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -633,6 +697,106 @@ describe('useMessageHandler', () => {
         expect.objectContaining({ lastSearch: { requestType: 'hotels' } }),
         expect.any(Object),
         iterCtx,
+      );
+    });
+
+    it('routes with the merged search payload before mode_bridge can evaluate the turn', async () => {
+      const iterCtx = {
+        isIteration: true,
+        iterationType: 'stay_duration_modification' as const,
+        baseRequestType: 'combined' as const,
+        modifiedComponent: 'both' as const,
+        preserveFields: [] as string[],
+        confidence: 0.9,
+        stayModification: { nights: 7 },
+      };
+      const contextState = {
+        lastSearch: {
+          requestType: 'combined' as const,
+          timestamp: '2026-05-14T18:00:00Z',
+          flightsParams: {
+            origin: 'EZE',
+            destination: 'CUN',
+            departureDate: '2026-05-17',
+            returnDate: '2026-05-20',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+          hotelsParams: {
+            city: 'Cancun',
+            checkinDate: '2026-05-17',
+            checkoutDate: '2026-05-20',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+        },
+        constraintsHistory: [],
+        turnNumber: 1,
+        schemaVersion: 1,
+      };
+      const mergedRequest = buildParsedRequest({
+        requestType: 'combined',
+        originalMessage: 'quiero una semana',
+        flights: {
+          origin: 'EZE',
+          destination: 'CUN',
+          departureDate: '2026-05-17',
+          returnDate: '2026-05-24',
+          adults: 2,
+          children: 0,
+          infants: 0,
+        },
+        hotels: {
+          city: 'Cancun',
+          checkinDate: '2026-05-17',
+          checkoutDate: '2026-05-24',
+          adults: 2,
+          children: 0,
+          infants: 0,
+        },
+      });
+
+      vi.mocked(detectIterationIntent).mockReturnValueOnce(iterCtx);
+      vi.mocked(mergeIterationContext).mockReturnValueOnce(mergedRequest);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(
+        buildParsedRequest({
+          requestType: 'itinerary',
+          originalMessage: 'quiero una semana',
+          planIntent: true,
+          itinerary: { destinations: [], days: 7 },
+        }) as any,
+      );
+
+      const p = buildProps({
+        messages: [buildMessageRow()],
+        preloadedContext: {
+          conversationId: DEFAULT_CONV_ID,
+          contextualMemory: null,
+          contextState,
+          leadId: null,
+        },
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('quiero una semana');
+      });
+
+      expect(vi.mocked(routeRequest)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestType: 'combined',
+          flights: expect.objectContaining({ returnDate: '2026-05-24' }),
+          hotels: expect.objectContaining({ checkoutDate: '2026-05-24' }),
+        }),
+        null,
+      );
+      expect(vi.mocked(resolveConversationTurn)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parsedRequest: expect.objectContaining({ requestType: 'combined' }),
+          iterationContext: iterCtx,
+        }),
       );
     });
 

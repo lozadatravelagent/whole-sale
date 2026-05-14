@@ -23,7 +23,7 @@ import { isDiscoveryQuery, extractCategoriesFromMessage, extractDestinationFromM
 import { resolveToolChoice } from '@/features/chat/services/toolChoicePolicy';
 import type { MessageRow } from '../types/chat';
 import type { ChatSuggestedAction } from '../types/chat';
-import type { ContextState } from '../types/contextState';
+import { contextStateToPreviousRequest, type ContextState } from '../types/contextState';
 import type { PlannerEditContext, PreloadedConversationKnowledge } from '../types/knowledge';
 import { supabase } from '@/integrations/supabase/client';
 import type { PlannerFieldProvenance, TripPlannerState } from '@/features/trip-planner/types';
@@ -1159,7 +1159,8 @@ const useMessageHandler = (
       });
 
       // 🧹 Clean context for new conversations (first message)
-      let contextToUse = null;
+      const previousSearchRequest = contextStateToPreviousRequest(persistentState);
+      let contextToUse: ParsedTravelRequest | null = null;
       const isFirstMessage = messages.length === 0;
       const hasNoStoredContext = !contextFromDB && !persistentState;
 
@@ -1170,7 +1171,7 @@ const useMessageHandler = (
         console.log('🧹 [NEW CONVERSATION] No stored context - falling back to planner context if available');
         contextToUse = plannerContextRequest || null;
       } else {
-        contextToUse = contextFromDB || plannerContextRequest || persistentState;
+        contextToUse = contextFromDB || plannerContextRequest || previousSearchRequest;
       }
       console.log('📝 [CONTEXT] Final context to use:', contextToUse);
 
@@ -1497,6 +1498,53 @@ const useMessageHandler = (
       // user values always win. See `searchIntentNormalizer.ts`.
       parsedRequest = normalizeSearchIntent(parsedRequest, new Date());
 
+      // Search refinements must be resolved before route/bridge selection.
+      // Otherwise slot-only turns like "quiero una semana" can be parsed as
+      // itinerary intent and trip the strict-mode bridge before the previous
+      // search context has a chance to merge.
+      if (iterationContext.isIteration && persistentState) {
+        console.log('🔄 [ITERATION] Applying pre-route iteration merge');
+        console.log('🔄 [ITERATION] Before merge - requestType:', parsedRequest.requestType);
+        parsedRequest = mergeIterationContext(persistentState, parsedRequest, iterationContext);
+        parsedRequest = normalizeSearchIntent(parsedRequest, new Date());
+        parsedRequest.responseLanguage = userLanguage;
+        console.log('🔄 [ITERATION] After merge - requestType:', parsedRequest.requestType);
+        console.log('🔄 [ITERATION] Merged request:', {
+          requestType: parsedRequest.requestType,
+          hasFlights: !!parsedRequest.flights,
+          hasHotels: !!parsedRequest.hotels,
+          flightsOrigin: parsedRequest.flights?.origin,
+          flightsDest: parsedRequest.flights?.destination,
+          returnDate: parsedRequest.flights?.returnDate,
+          hotelCity: parsedRequest.hotels?.city,
+          checkoutDate: parsedRequest.hotels?.checkoutDate,
+        });
+      }
+
+      // Legacy fallback for one common flight refinement when the regex
+      // iteration detector missed it. Kept pre-route so routing sees the
+      // corrected search payload.
+      if (!iterationContext.isIteration && /\bcon\s+escalas\b/i.test(currentMessage)) {
+        const baseFlights = parsedRequest?.flights || previousSearchRequest?.flights;
+        if (baseFlights?.origin && baseFlights?.destination && baseFlights?.departureDate && (baseFlights?.adults ?? 0) >= 1) {
+          console.log('🔀 [LEGACY FALLBACK] "con escalas" detected - forcing stops:with_stops');
+          parsedRequest = {
+            ...parsedRequest,
+            requestType: previousSearchRequest?.requestType === 'combined' ? 'combined' : 'flights',
+            flights: {
+              ...baseFlights,
+              stops: 'with_stops' as any,
+            },
+            ...(previousSearchRequest?.requestType === 'combined' && previousSearchRequest.hotels
+              ? { hotels: previousSearchRequest.hotels }
+              : {}),
+            confidence: parsedRequest?.confidence ?? 0.9,
+            originalMessage: currentMessage,
+            responseLanguage: userLanguage,
+          } as any;
+        }
+      }
+
       if (leadId) {
         // DEBT-15: write-only path. The reader (lead profile load + prompt
         // injection) was deleted; the model now retrieves lead history via
@@ -1776,62 +1824,9 @@ const useMessageHandler = (
         return;
       }
 
-      // Merge persistent state into parsed request where fields are missing (user intent wins over stored)
-      const mergeFlights = (a: any, b: any) => ({
-        ...(b || {}),
-        ...(a || {})
-      });
-      const mergeHotels = (a: any, b: any) => ({
-        ...(b || {}),
-        ...(a || {})
-      });
-      if (persistentState) {
-        if (parsedRequest.flights || persistentState.flights) {
-          parsedRequest.flights = mergeFlights(parsedRequest.flights, persistentState.flights);
-        }
-        if (parsedRequest.hotels || persistentState.hotels) {
-          parsedRequest.hotels = mergeHotels(parsedRequest.hotels, persistentState.hotels);
-        }
-      }
-
       console.log('✅ [MESSAGE FLOW] Step 9: AI parsing completed successfully');
       console.log('🎯 AI parsing result:', parsedRequest);
 
-      // 🔄 ITERATION MERGE: If this is an iteration, merge with previous context
-      // (previousParsedRequest React state was removed in Phase 6 — only persistentState now)
-      if (iterationContext.isIteration && persistentState) {
-        console.log('🔄 [ITERATION] Applying iteration merge');
-        console.log('🔄 [ITERATION] Before merge - requestType:', parsedRequest.requestType);
-        parsedRequest = mergeIterationContext(persistentState, parsedRequest, iterationContext);
-        console.log('🔄 [ITERATION] After merge - requestType:', parsedRequest.requestType);
-        console.log('🔄 [ITERATION] Merged request:', {
-          requestType: parsedRequest.requestType,
-          hasFlights: !!parsedRequest.flights,
-          hasHotels: !!parsedRequest.hotels,
-          flightsOrigin: parsedRequest.flights?.origin,
-          flightsDest: parsedRequest.flights?.destination,
-          stops: parsedRequest.flights?.stops,
-          hotelChains: parsedRequest.hotels?.hotelChains
-        });
-      }
-
-      // 🔄 LEGACY FALLBACK: "con escalas" heuristic (only if iteration system didn't handle it)
-      // This is kept as a fallback for cases where the new iteration system might miss the pattern
-      if (!iterationContext.isIteration && /\bcon\s+escalas\b/i.test(currentMessage)) {
-        const baseFlights = parsedRequest?.flights || (contextToUse as any)?.flights;
-        if (baseFlights?.origin && baseFlights?.destination && baseFlights?.departureDate && (baseFlights?.adults ?? 0) >= 1) {
-          console.log('🔀 [LEGACY FALLBACK] "con escalas" detected - forcing stops:with_stops');
-          parsedRequest = {
-            requestType: 'flights',
-            flights: {
-              ...baseFlights,
-              stops: 'with_stops' as any
-            },
-            confidence: parsedRequest?.confidence ?? 0.9,
-            originalMessage: currentMessage
-          } as any;
-        }
-      }
       parsedRequest.responseLanguage = userLanguage;
 
       // 6. Validate required fields (handle combined specially)

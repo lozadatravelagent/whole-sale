@@ -1,3 +1,5 @@
+import type { ParsedTravelRequest } from '@/services/aiMessageParser';
+
 /**
  * Context State Types
  * 
@@ -155,5 +157,22 @@ export function isValidContextState(obj: any): obj is ContextState {
   if (!Array.isArray(obj.constraintsHistory)) return false;
   if (typeof obj.turnNumber !== 'number') return false;
   return true;
+}
+
+/**
+ * Converts the persisted ContextState envelope into the flat previousContext
+ * shape consumed by the AI parser prompt and schema examples.
+ */
+export function contextStateToPreviousRequest(contextState: ContextState | null | undefined): ParsedTravelRequest | null {
+  const lastSearch = contextState?.lastSearch;
+  if (!lastSearch) return null;
+
+  return {
+    requestType: lastSearch.requestType,
+    confidence: 1,
+    originalMessage: 'previous_search_context',
+    ...(lastSearch.flightsParams ? { flights: lastSearch.flightsParams } : {}),
+    ...(lastSearch.hotelsParams ? { hotels: lastSearch.hotelsParams } : {}),
+  } as ParsedTravelRequest;
 }
 
