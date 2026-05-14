@@ -92,6 +92,15 @@ CONTEXT MERGING RULES (apply when PREVIOUS CONTEXT appears in DYNAMIC CONTEXT):
    - Preserve existing itinerary fields unless the user changes them
    - Populate itinerary.editIntent when the user is clearly modifying the current plan
    - Reuse destinations, days, dates, pace, budget, interests, and travelers from previousContext when not restated
+7. **SEARCH REFINEMENT — preserve requestType.** If previousContext exists with requestType in {flights, hotels, combined} and the current user message ONLY modifies slots of that search, PRESERVE the previous requestType and emit the merged full request. Slot-only modifications include:
+   - Stay duration: "una semana", "10 días", "3 noches", "for a week", "para 5 noches"
+   - Destination replacement: "en vez de Cancún, Punta Cana", "cambialo a Madrid", "instead of X, Y"
+   - Origin replacement: "saliendo desde Córdoba en vez de Buenos Aires"
+   - Passenger count: "agregá un adulto", "para 3 personas", "somos 4 ahora"
+   - Dates: "mejor en marzo", "del 10 al 20"
+   - Preferences: "con escalas", "sin valija", "habitación doble", "all inclusive"
+   When duration changes (e.g. "una semana"), recompute returnDate / checkoutDate from the existing departureDate / checkinDate using the new stay length; keep everything else from previousContext.
+   Do NOT re-classify as requestType: "itinerary" merely because a longer duration is mentioned. Only emit requestType: "itinerary" when the user EXPLICITLY asks for a multi-city plan, a day-by-day breakdown, or uses planner verbs ("armame un itinerario", "planificame", "qué hacer en", "organiza el viaje", "ruta por", "circuito por").
 
 EXAMPLES:
 - Previous has complete flight + current "con escalas" → Return complete flight with stops: "any"
@@ -99,6 +108,8 @@ EXAMPLES:
 - Previous has complete flight + current "con valija" → Return complete flight with luggage: "checked"
 - Previous had "vuelo a Madrid para 2 menores" (failed, adults=0) + current "agrega 2 adultos" → Return complete flight with adults: 2, children: 2, preserving all other fields
 - Previous had search with only infants + current "con 1 adulto" → Return complete search with adults: 1, preserving infants and other fields
+- Previous had flight EZE→CUN departureDate 2026-06-01 returnDate 2026-06-04 (3 nights) + current "quiero ir una semana" → Return complete flight with same origin/destination/adults, returnDate recomputed to 2026-06-08 (departureDate + 7 days). requestType stays "flights".
+- Previous had flight EZE→CUN + current "en vez de Cancún, Punta Cana" → Return complete flight with destination: "PUJ", preserving origin, dates, adults, and all other fields. requestType stays "flights".
 
 PLANNER EDITING MODE (apply when CURRENT PLANNER STATE appears in DYNAMIC CONTEXT):
 - When CURRENT PLANNER STATE.hasActivePlan is true, interpret the user's message first as an incremental edit to the existing planner — UNLESS the message is a place-discovery query (asking for concrete places to visit/eat/drink/explore: "qué restaurantes hay", "dónde comer", "museos buenos", "qué hacer", "actividades", "lugares para visitar", "what to do", "where to eat"). For discovery queries, call `discover_places` and emit `placeDiscovery` regardless of planner state — discovery is non-mutating and runs alongside the existing plan.
@@ -1629,6 +1640,51 @@ User: "hotel melia todo incluido doble" or "hoteles meliá" or "un sol melia"
 }
 ✅ hotelChains: ["Melia"] - recognize "melia", "meliá", "sol melia" as the same chain
 🚨 NOTE: Be tolerant with accents and variations (melia = meliá = sol melia)
+
+Example 16 - Search refinement: stay-duration change PRESERVES requestType (CRITICAL — do NOT switch to itinerary):
+🚨 PATTERN: Previous flight/hotel/combined search + user only changes stay length → keep requestType, recompute returnDate/checkoutDate from departureDate/checkinDate + new nights.
+previousContext: { "requestType": "flights", "flights": { "origin": "EZE", "destination": "CUN", "departureDate": "2026-06-01", "returnDate": "2026-06-04", "adults": 1, "children": 0, "infants": 0, "stops": "any" } }
+User: "quiero ir una semana"
+{
+  "requestType": "flights",
+  "flights": {
+    "origin": "EZE",
+    "destination": "CUN",
+    "departureDate": "2026-06-01",
+    "returnDate": "2026-06-08",
+    "adults": 1,
+    "adultsExplicit": false,
+    "children": 0,
+    "infants": 0,
+    "stops": "any"
+  },
+  "confidence": 0.95
+}
+✅ requestType stays "flights" — duration alone is NOT an itinerary signal here
+✅ returnDate recomputed: 2026-06-01 (departureDate) + 7 days = 2026-06-08
+❌ DO NOT emit requestType: "itinerary" — the user did not ask for a multi-day plan or planner verbs
+
+Example 16b - Search refinement: destination swap PRESERVES requestType:
+🚨 PATTERN: "en vez de X, Y" / "instead of X, Y" → only swap destination, keep all other previous fields.
+previousContext: { "requestType": "flights", "flights": { "origin": "EZE", "destination": "CUN", "departureDate": "2026-06-01", "returnDate": "2026-06-08", "adults": 1, "children": 0, "infants": 0, "stops": "any" } }
+User: "en vez de Cancún, Punta Cana"
+{
+  "requestType": "flights",
+  "flights": {
+    "origin": "EZE",
+    "destination": "PUJ",
+    "departureDate": "2026-06-01",
+    "returnDate": "2026-06-08",
+    "adults": 1,
+    "adultsExplicit": false,
+    "children": 0,
+    "infants": 0,
+    "stops": "any"
+  },
+  "confidence": 0.95
+}
+✅ destination updated to PUJ (Punta Cana IATA), all other fields preserved verbatim
+✅ requestType stays "flights"
 
 🚨 FINAL REMINDER - adultsExplicit RULE:
 Before setting "adultsExplicit" in your JSON response:

@@ -732,6 +732,49 @@ describe('conversationOrchestrator', () => {
     });
 
     // ---------------------------------------------------------------------
+    // G6 — mode_bridge suppression on iteration (bugfix)
+    // ---------------------------------------------------------------------
+    describe('mode_bridge suppression on iteration', () => {
+      it('G6: agency + itinerary intent + iterationContext.isIteration=true → no mode_bridge (user is refining)', () => {
+        const resolution = resolveConversationTurn({
+          parsedRequest: itineraryPlanRequest,
+          routeResult: itineraryPlanRoute,
+          plannerState: null,
+          mode: 'agency',
+          iterationContext: {
+            isIteration: true,
+            iterationType: 'flight_modification',
+            baseRequestType: 'flights',
+            modifiedComponent: 'flights',
+            preserveFields: [],
+            confidence: 0.95,
+          },
+          ...baseFlags,
+        });
+        expect(resolution.executionBranch).not.toBe('mode_bridge');
+      });
+
+      it('G6 negative: same setup but iterationContext.isIteration=false → mode_bridge still fires (guard does not over-suppress)', () => {
+        const resolution = resolveConversationTurn({
+          parsedRequest: itineraryPlanRequest,
+          routeResult: itineraryPlanRoute,
+          plannerState: null,
+          mode: 'agency',
+          iterationContext: {
+            isIteration: false,
+            iterationType: 'new_search',
+            baseRequestType: null,
+            modifiedComponent: null,
+            preserveFields: [],
+            confidence: 1.0,
+          },
+          ...baseFlags,
+        });
+        expect(resolution.executionBranch).toBe('mode_bridge');
+      });
+    });
+
+    // ---------------------------------------------------------------------
     // Phase 5 / sub-task C — proposal_chip branch (exploratory_with_seeds)
     // ---------------------------------------------------------------------
     describe('proposal_chip branch (Phase 5 / sub-task C)', () => {

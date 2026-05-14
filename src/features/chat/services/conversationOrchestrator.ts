@@ -1,6 +1,7 @@
 import type { ParsedTravelRequest, UserLanguage } from '@/services/aiMessageParser';
 import type { TripPlannerState, PlannerActivity, PlannerRestaurant } from '@/features/trip-planner/types';
 import type { ContextState } from '../types/contextState';
+import type { IterationContext } from '../utils/iterationDetection';
 import type { RouteResult, RouterReason } from './routeRequest';
 import { isGenericPlaceholder } from './itineraryPipeline';
 import { buildEmiliaSearchNarrative } from './emiliaNarrative';
@@ -676,6 +677,14 @@ export function resolveConversationTurn(options: {
    * pending_action with an active planner suppresses the bridge.
    */
   hasPendingAction?: boolean;
+  /**
+   * G6 — iteration on previous search. When the user is refining the active
+   * search (e.g. "una semana" after a 3-day flight quote, or "en vez de
+   * Cancún, Punta Cana"), `detectIterationIntent` returns `isIteration:true`.
+   * In that case the mode_bridge is suppressed: the user is mid-search, not
+   * asking to switch modes. Source: `../utils/iterationDetection`.
+   */
+  iterationContext?: IterationContext;
 }): ConversationTurnResolution {
   const {
     parsedRequest,
@@ -689,6 +698,7 @@ export function resolveConversationTurn(options: {
     previousMessageType,
     forceCurrentMode,
     hasPendingAction,
+    iterationContext,
   } = options;
 
   const hasActivePlanner = Boolean(plannerState && !plannerState.generationMeta?.isDraft);
@@ -821,6 +831,10 @@ export function resolveConversationTurn(options: {
   //        a useless extra turn before producing the requested plan. The
   //        standard_itinerary branch handles agency-mode itineraries fine
   //        (handleItineraryRequest tolerates !hasActivePlanner).
+  //   G6 — iteration on previous search: the user is refining an active
+  //        search ("una semana", "en vez de Cancún, Punta Cana"). The
+  //        iteration detector already merged the prior context; routing this
+  //        turn to mode_bridge would interrupt the refinement loop.
   const isHighConfidenceExplicitItinerary =
     parsedRequest.requestType === 'itinerary' &&
     parsedRequest.confidence >= 0.85 &&
@@ -831,7 +845,8 @@ export function resolveConversationTurn(options: {
     forceCurrentMode === true ||
     previousMessageType === 'quote_active_plan' ||
     Boolean(hasPendingAction && hasActivePlanner) ||
-    isHighConfidenceExplicitItinerary;
+    isHighConfidenceExplicitItinerary ||
+    Boolean(iterationContext?.isIteration);
 
   let bridgeTarget: 'agency' | 'passenger' | null = null;
   if (!bridgeBlocked) {

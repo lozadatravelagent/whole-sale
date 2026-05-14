@@ -1591,6 +1591,9 @@ const useMessageHandler = (
         // reflects the LATEST (post-resolution) pending_action; we already
         // cleared it above when the model resolved it via apply_slot_values.
         hasPendingAction: Boolean(ctxEngState?.pending_action),
+        // G6: suppress mode_bridge when the user is refining an active
+        // search (e.g. "una semana" after a 3-day flight quote).
+        iterationContext,
       });
 
       console.log('🧠 [CONVERSATION] Turn resolution:', conversationTurn);
