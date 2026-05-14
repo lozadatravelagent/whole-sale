@@ -167,6 +167,13 @@ class EurovipsSOAPClient {
   password = 'ROS.9624+';
   agency = '96175';
   currency = 'USD';
+  // SOAP timeout policy:
+  //   - Sync path (no jobId): 30s — HTTP wall-clock for the invoking client.
+  //   - Async path (jobId, runs under EdgeRuntime.waitUntil): 90s — we're no
+  //     longer in a user-facing HTTP response, so we can give SOFTUR more
+  //     headroom before failing the background job.
+  soapTimeoutMs = 30_000;
+
   async makeSOAPRequest(soapBody, soapAction, telemetryFields: Record<string, string | number> = {}) {
     const soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
@@ -176,7 +183,8 @@ class EurovipsSOAPClient {
 </soap:Envelope>`;
     console.log(`📝 SOAP REQUEST [${soapAction}]:`, soapEnvelope.length, 'chars');
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+    const timeoutMs = this.soapTimeoutMs;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     const telemetryStartedAt = performance.now();
     const telemetryFieldsStr = Object.entries(telemetryFields)
@@ -209,8 +217,8 @@ class EurovipsSOAPClient {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
         emitTelemetry('timeout');
-        console.error(`❌ [makeSOAPRequest] Timed out after 30s [${soapAction}]`);
-        throw new Error(`SOAP request timed out after 30s [${soapAction}]`);
+        console.error(`❌ [makeSOAPRequest] Timed out after ${timeoutMs / 1000}s [${soapAction}]`);
+        throw new Error(`SOAP request timed out after ${timeoutMs / 1000}s [${soapAction}]`);
       }
       emitTelemetry('fetch_error', { err: String(err?.message ?? err).slice(0, 80) });
       throw err;
@@ -1581,83 +1589,159 @@ serve(async (req) => {
             .eq('id', jobId);
         }
 
-        let results;
-
-        {
-          const client = new EurovipsSOAPClient();
-
+        // Executes the SOAP action against the EUROVIPS client. Pure async
+        // function — used both in the sync response path (no jobId) and the
+        // background path (waitUntil-scheduled, behind a jobId).
+        const executeAction = async (client: EurovipsSOAPClient) => {
           switch (action) {
             case 'getCountryList':
-              results = await client.getCountryList(data);
-              break;
+              return await client.getCountryList(data);
             case 'getAirlineList':
-              results = await client.getAirlineList();
-              break;
+              return await client.getAirlineList();
             case 'searchHotels':
               if (!data) throw new Error('Hotel search data is required');
-              results = await client.searchHotels(data);
-              break;
+              return await client.searchHotels(data);
             case 'searchFlights':
               if (!data) throw new Error('Flight search data is required');
-              results = await client.searchFlights(data);
-              break;
+              return await client.searchFlights(data);
             case 'searchPackages':
               if (!data) throw new Error('Package search data is required');
-              results = await client.searchPackages(data);
-              break;
+              return await client.searchPackages(data);
             case 'searchServices':
               if (!data) throw new Error('Service search data is required');
-              results = await client.searchServices(data);
-              break;
-            case 'makeBudget':
+              return await client.searchServices(data);
+            case 'makeBudget': {
               if (!data) throw new Error('makeBudget data is required');
               if (!data.fareId) throw new Error('fareId is required for makeBudget');
               if (!data.fareIdBroker) throw new Error('fareIdBroker is required for makeBudget');
-              results = await client.makeBudget(data);
+              const r = await client.makeBudget(data);
 
               // Get agency net price (Neto Agencia) from getBudget Pricing breakdown
               // AGENCY Total = CommissionablePrice - Commission + Gastos + IVA = Neto Agencia
-              if (results.success && results.budgetId) {
-                console.log('📋 [MAKE_BUDGET] Calling getBudget for Pricing breakdown, budgetId:', results.budgetId);
-                const budgetDetails = await client.getBudget(results.budgetId);
+              if (r.success && r.budgetId) {
+                console.log('📋 [MAKE_BUDGET] Calling getBudget for Pricing breakdown, budgetId:', r.budgetId);
+                const budgetDetails = await client.getBudget(r.budgetId);
                 if (budgetDetails.success && budgetDetails.commissionablePrice > 0) {
-                  console.log(`📋 [MAKE_BUDGET] PRICING → Neto Agencia (Total): ${budgetDetails.agencyTotal}, Importe Bruto (CommissionablePrice): ${budgetDetails.commissionablePrice}, Comisión: ${budgetDetails.commissionAmount}, makeBudget SubTotalAmount was: ${results.subTotalAmount}`);
-                  // Use AGENCY Total as the Neto Agencia (what the agency actually pays)
-                  results.subTotalAmount = budgetDetails.agencyTotal;
-                  results.agencyPricing = {
+                  console.log(`📋 [MAKE_BUDGET] PRICING → Neto Agencia (Total): ${budgetDetails.agencyTotal}, Importe Bruto (CommissionablePrice): ${budgetDetails.commissionablePrice}, Comisión: ${budgetDetails.commissionAmount}, makeBudget SubTotalAmount was: ${r.subTotalAmount}`);
+                  r.subTotalAmount = budgetDetails.agencyTotal;
+                  r.agencyPricing = {
                     netoAgencia: budgetDetails.agencyTotal,
                     importeBruto: budgetDetails.commissionablePrice,
                     comision: budgetDetails.commissionAmount || 0
                   };
                   if (budgetDetails.currency) {
-                    results.currency = budgetDetails.currency;
+                    r.currency = budgetDetails.currency;
                   }
                 } else {
-                  console.warn('⚠️ [MAKE_BUDGET] getBudget failed, keeping SubTotalAmount as fallback:', results.subTotalAmount);
+                  console.warn('⚠️ [MAKE_BUDGET] getBudget failed, keeping SubTotalAmount as fallback:', r.subTotalAmount);
                 }
               }
-              break;
+              return r;
+            }
             default:
               throw new Error(`Unknown action: ${action}`);
           }
+        };
 
-        }
-
-        // If jobId exists, update job with results (async mode)
+        // -----------------------------------------------------------------
+        // ASYNC PATH (jobId provided)
+        //
+        // SOFTUR can take longer than the HTTP wall-clock budget (30s) for
+        // catalog-heavy queries (e.g. CUN without hotelName filter). When
+        // the caller passes a jobId, we:
+        //   1. Upsert the job row to 'processing'.
+        //   2. Schedule the actual SOAP call under EdgeRuntime.waitUntil()
+        //      with a relaxed 90s SOAP timeout. The runtime keeps the
+        //      function alive until the task settles, independently of the
+        //      HTTP response.
+        //   3. Return 202 Accepted immediately. The caller subscribes via
+        //      Realtime or polls search_jobs by id until status flips to
+        //      'completed' / 'failed'.
+        // -----------------------------------------------------------------
         if (jobId) {
-          console.log(`✅ Async mode: Completing job ${jobId}`);
+          console.log(`🔄 Async mode: scheduling background task for job ${jobId}`);
+
+          // Upsert: create the row if a caller decides to provide its own
+          // jobId without going through search-coordinator. Existing rows
+          // (e.g. created by search-coordinator) are flipped to 'processing'.
           await supabase
             .from('search_jobs')
-            .update({
-              status: 'completed',
-              results: results,
-              cache_hit: false,
-              completed_at: new Date().toISOString()
-            })
-            .eq('id', jobId);
+            .upsert({
+              id: jobId,
+              conversation_id: body.conversationId ?? null,
+              search_type: action,
+              provider: 'EUROVIPS',
+              params: data ?? {},
+              status: 'processing',
+            }, { onConflict: 'id' });
 
-          console.log(`🔔 Job ${jobId} updated - Realtime will notify frontend`);
+          const backgroundTask = (async () => {
+            const t0 = performance.now();
+            try {
+              const client = new EurovipsSOAPClient();
+              client.soapTimeoutMs = 90_000;
+              const results = await executeAction(client);
+              const ms = Math.round(performance.now() - t0);
+              console.log(`✅ Async job ${jobId} completed in ${ms}ms`);
+              await supabase
+                .from('search_jobs')
+                .update({
+                  status: 'completed',
+                  results,
+                  cache_hit: false,
+                  completed_at: new Date().toISOString(),
+                })
+                .eq('id', jobId);
+            } catch (err) {
+              const ms = Math.round(performance.now() - t0);
+              const message = typeof err?.message === 'string' ? err.message : String(err);
+              console.error(`❌ Async job ${jobId} failed after ${ms}ms:`, message);
+              await supabase
+                .from('search_jobs')
+                .update({
+                  status: 'failed',
+                  error: message,
+                  completed_at: new Date().toISOString(),
+                })
+                .eq('id', jobId);
+            }
+          })();
+
+          // EdgeRuntime is a Supabase Deno global. `waitUntil` keeps the
+          // function instance alive until the promise settles, so the
+          // background task can finish well after the 202 ships.
+          // deno-lint-ignore no-explicit-any
+          const runtime = (globalThis as any).EdgeRuntime;
+          if (runtime && typeof runtime.waitUntil === 'function') {
+            runtime.waitUntil(backgroundTask);
+          } else {
+            // Fallback: in local dev or non-Supabase Deno runtime we just
+            // fire and forget. The function may exit before settle; that's
+            // acceptable for dev.
+            backgroundTask.catch(() => {});
+          }
+
+          return new Response(JSON.stringify({
+            success: true,
+            async: true,
+            jobId,
+            status: 'processing',
+            action,
+            timestamp: new Date().toISOString(),
+          }), {
+            status: 202,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          });
         }
+
+        // -----------------------------------------------------------------
+        // SYNC PATH (no jobId — legacy callers)
+        // -----------------------------------------------------------------
+        const client = new EurovipsSOAPClient();
+        const results = await executeAction(client);
 
         return new Response(JSON.stringify({
           success: true,
