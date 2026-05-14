@@ -28,6 +28,7 @@ import { expandDestinationsIfRegional, getInclusiveDateRangeDays, normalizePlann
 import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { getSearchHandlerCopy, getResponseFormatterCopy, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
+import { invokeEurovipsAsync } from './asyncSearchClient';
 
 /**
  * @internal SHARED SERVICE
@@ -1045,18 +1046,20 @@ export const handleHotelSearch = async (
     console.log('✅ [HOTEL SEARCH] City code resolved:', `"${enrichedParsed.hotels?.city}" → ${cityCode}`);
 
     const invokeEurovipsSearch = async (requestBody: unknown, label: string) => {
+      // Hotel searches on busy cities (CUN, MIA, BCN...) without a hotelName
+      // filter can take 30-60+ seconds in SOFTUR. Route through the async
+      // path so we don't hit the HTTP wall-clock budget. See
+      // `asyncSearchClient.ts` for the polling contract.
+      const body = requestBody as { action?: string; data?: unknown };
       const invokeStart = nowMs();
-      const response = await Promise.race([
-        supabase.functions.invoke('eurovips-soap', {
-          body: requestBody
-        }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('EUROVIPS search timed out after 45s')), 45_000)
-        ),
-      ]);
+      const response = await invokeEurovipsAsync({
+        action: body.action || 'searchHotels',
+        data: body.data,
+        maxWaitMs: 120_000,
+      });
       logTimingStep('HOTEL SEARCH', label, invokeStart, {
         hasError: Boolean(response.error),
-        hotels: response.data?.results?.length || 0,
+        hotels: (response.data?.results as unknown[] | undefined)?.length || 0,
       });
       return response;
     };

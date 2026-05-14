@@ -3089,16 +3089,19 @@ const useMessageHandler = (
         removeAssistantStreamDraft();
       }
 
-      // ✅ Hide indicators for THIS conversation (not the current one)
-      setIsLoading(false);
-      setIsTyping(false, conversationIdForThisSearch);
-      console.log('❌ [TYPING] Hiding typing indicator due to error for conversation:', conversationIdForThisSearch);
-
       toast({
         title: t('toasts.messageFailed.title'),
         description: t('toasts.messageFailed.description'),
         variant: "destructive",
       });
+    } finally {
+      // Architectural invariant: turn-end cleanup ALWAYS runs, regardless of how
+      // handleSendMessage exits (happy path, early return from any branch, or
+      // throw). Previously this lived only at the end of the happy path and in
+      // catch, so each new early-return branch had to remember to clear the
+      // spinner manually — and the "combined partial" branches forgot.
+      setIsLoading(false);
+      setIsTyping(false, conversationIdForThisSearch);
     }
   }, [
     selectedConversation,
