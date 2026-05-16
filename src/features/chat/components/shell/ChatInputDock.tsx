@@ -109,6 +109,9 @@ const ChatInputDock = React.memo(({
 
         <Textarea
           ref={(node) => {
+            // useRef/RefObject .current is readonly in TS but writable at runtime;
+            // casts satisfy the type while assigning the DOM node to both the
+            // internal ref and the optional external inputRef.
             (messageInputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
             if (inputRef) {
               (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
