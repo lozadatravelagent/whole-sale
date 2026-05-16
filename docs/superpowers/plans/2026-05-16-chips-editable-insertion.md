@@ -741,24 +741,40 @@ EOF
 
 ---
 
-### Task 7: Rewire Trip Planner Suggestion Chips (System 1) to insert text
+### Task 7: Rewire Trip Planner Suggestion Chips (System 1) — HYBRID by action type
+
+**REVISED** after Task 7 code review: `PlannerSuggestion.action` is heterogeneous.
+Inserting `.label` for ALL planner chips is a regression for confirm/modal actions
+(they have no text-prompt meaning). Final behavior is hybrid (see spec
+"Decisiones y supuestos confirmados" §3). An initial commit `a125aa4b` made all
+chips insert `.label`; this task supersedes it with a NEW commit.
 
 **Files:**
-- Modify: `src/features/trip-planner/components/TripPlannerWorkspace.tsx:1995-1997` (and add hook usage)
+- Modify: `src/features/trip-planner/components/TripPlannerWorkspace.tsx`
 
-`TripPlannerWorkspace` receives `message` and `onMessageChange` props (passed from ChatFeature at `ChatFeature.tsx:998-1004`). `SuggestionChips` is rendered at line 1995 with `onSuggestionClick={handleSuggestionClick}` (from `useSuggestionActions`). We reroute the click to insert `suggestion.label` into the planner draft instead of executing the action. No planner input ref is wired (focus is best-effort and harmless when absent).
+`TripPlannerWorkspace` receives the chat-draft value + setter as props `message` /
+`onMessageChange`. `useSuggestionActions(...)` returns `{ handleSuggestionClick, loadingActionId }`.
+`<SuggestionChips ... onSuggestionClick=... loadingAction={loadingActionId} />` is
+rendered around line ~2003.
+
+Action types (from `src/features/trip-planner/hooks/useSuggestionActions.ts`
+switch; read `PlannerSuggestion` for the exact `action` union):
+`search_transport`, `search_hotels`, `confirm_field`, `confirm_location_dates`,
+`select_dates`, `fill_slot`, `add_transfers`.
 
 - [ ] **Step 1: Add the import**
 
-With the other `@/features/chat` imports in `TripPlannerWorkspace.tsx`, add:
+With the other `@/features/chat` imports, add:
 
 ```typescript
 import { useChipInsertion } from '@/features/chat/hooks/useChipInsertion';
 ```
 
-- [ ] **Step 2: Create the insertion handler**
+- [ ] **Step 2: Keep `useSuggestionActions` AND add the insertion hook**
 
-Near where `handleSuggestionClick` is obtained from `useSuggestionActions` (around line 390), add:
+KEEP the existing `const { handleSuggestionClick, loadingActionId } = useSuggestionActions({...})`
+destructure (handleSuggestionClick is needed again for the direct/modal groups; do
+NOT remove it). Immediately after it, add:
 
 ```typescript
   const { insertChipText: insertPlannerChipText } = useChipInsertion({
@@ -767,38 +783,69 @@ Near where `handleSuggestionClick` is obtained from `useSuggestionActions` (arou
   });
 ```
 
-(`message` and `onMessageChange` are existing props of `TripPlannerWorkspace`. If their prop names differ in the destructure, use the actual draft value + setter props the component already receives from ChatFeature.)
+(Use the actual chat-draft value/setter prop names from `TripPlannerWorkspaceProps`
+— confirmed to be `message` / `onMessageChange`.)
 
-- [ ] **Step 3: Reroute the SuggestionChips click**
+- [ ] **Step 3: Hybrid dispatcher for SuggestionChips click**
 
-Replace (line 1997):
+Add a handler (place it near the hook, after `insertPlannerChipText`):
 
-```tsx
-              onSuggestionClick={handleSuggestionClick}
+```typescript
+  const handlePlannerSuggestion = useCallback((suggestion: PlannerSuggestion) => {
+    switch (suggestion.action) {
+      // Direct state-write confirmations: keep the original 1-click action, no text.
+      case 'confirm_field':
+      case 'confirm_location_dates':
+        handleSuggestionClick(suggestion);
+        break;
+      // Opens the date-selector modal AND seeds the editor with an LLM-readable
+      // intent so the choice is explicit in the draft.
+      case 'select_dates':
+        handleSuggestionClick(suggestion);
+        insertPlannerChipText('Quiero elegir las fechas exactas del viaje.');
+        break;
+      // Prompt-type chips: insert the label as an editable draft (no auto-send).
+      default:
+        insertPlannerChipText(suggestion.label);
+        break;
+    }
+  }, [handleSuggestionClick, insertPlannerChipText]);
 ```
 
-with:
+Ensure `useCallback` is imported from `react` (it almost certainly already is —
+verify) and `PlannerSuggestion` is imported (the file already imports planner
+types; add `PlannerSuggestion` to the existing type import from
+`@/features/trip-planner/types` if not already present).
+
+- [ ] **Step 4: Wire it to SuggestionChips**
+
+Replace the `<SuggestionChips>` prop:
 
 ```tsx
-              onSuggestionClick={(suggestion) => insertPlannerChipText(suggestion.label)}
+              onSuggestionClick={handlePlannerSuggestion}
 ```
 
-(`handleSuggestionClick` and `loadingActionId` from `useSuggestionActions` may remain declared; if `handleSuggestionClick` becomes unused and ESLint flags it, prefix it `void handleSuggestionClick;` is NOT acceptable — instead remove it from the destructure if and only if it is used nowhere else in the file. Verify with: `git grep -n "handleSuggestionClick" -- src/features/trip-planner/components/TripPlannerWorkspace.tsx`.)
+(`loadingActionId` stays passed to `loadingAction={loadingActionId}` as before — it
+is still meaningful because `handleSuggestionClick` fires for confirm/select.)
 
-- [ ] **Step 4: Lint + type-check**
+- [ ] **Step 5: Verify**
 
-Run: `npx tsc --noEmit -p tsconfig.json`
-Expected: no new errors.
+Run: `npx tsc --noEmit -p tsconfig.json 2>&1` → no errors mentioning
+`TripPlannerWorkspace`.
 
-Run: `npm run lint -- src/features/trip-planner/components/TripPlannerWorkspace.tsx`
-Expected: no new errors (resolve any unused-var error per Step 3).
+Run: `npm run lint` → no errors mentioning `TripPlannerWorkspace` (no unused-var:
+`handleSuggestionClick` IS now used inside `handlePlannerSuggestion`).
 
-- [ ] **Step 5: Commit**
+Run: `npm test -- src/features/trip-planner 2>&1` → 0 failed.
+Run: `npm test -- src/features/chat 2>&1` → still exactly the 4 deferred chip-test
+failures (Task 8), no new failing files.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/features/trip-planner/components/TripPlannerWorkspace.tsx
 git commit -m "$(cat <<'EOF'
-feat(trip-planner): suggestion chips insert editable text instead of acting
+feat(trip-planner): hybrid chip behavior — prompts insert text, confirm/modal keep action
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 EOF

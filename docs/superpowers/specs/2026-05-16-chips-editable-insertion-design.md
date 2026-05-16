@@ -141,8 +141,21 @@ Enter / Send → pipeline de envío existente (sin cambios).
 2. El cap de 3 chips visibles (`ChatInterface.tsx:317`, `.slice(0, 3)`) **se
    mantiene**. Los refinement chips compiten por `priority`; el esquema de
    prioridades concreto se define en el plan de implementación.
-3. En Trip Planner se inserta `suggestion.label` (no existe campo `prompt` en
-   `PlannerSuggestion`).
+3. **Trip Planner (Sistema 1) — comportamiento híbrido por tipo de acción.**
+   `PlannerSuggestion.action` es heterogéneo; insertar texto editable solo aplica
+   a los chips que son prompts. Reparto definitivo:
+   - **Solo acción directa (sin texto):** `confirm_field`, `confirm_location_dates`
+     → conservan `handleSuggestionClick` original (escritura de estado de 1 clic).
+   - **Modal + texto:** `select_dates` → llama `handleSuggestionClick` (abre el
+     modal selector de fechas vía `onOpenDateSelector`) **y además** inserta en el
+     input un texto entendible por el LLM (p. ej. `"Quiero elegir las fechas
+     exactas del viaje."`) para que la intención quede explícita en el editor.
+   - **Insertan texto editable (`suggestion.label`):** `search_transport`,
+     `search_hotels`, `fill_slot`, `add_transfers` (y cualquier acción futura no
+     listada → default a insertar `.label`).
+   Consecuencia: `handleSuggestionClick` y `loadingActionId` siguen vivos (no hay
+   código muerto). El supuesto original "se inserta `suggestion.label` para todos"
+   queda **revisado** por esta decisión (descubierta en code review de Task 7).
 4. Sistema 4 (Filter Chips) queda **fuera de alcance**.
 5. Separador de append = un espacio.
 6. `NarrativeChipShape.action.kind` se conserva en el tipo por compatibilidad pero
