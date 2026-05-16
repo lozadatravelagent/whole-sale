@@ -45,6 +45,12 @@ describe('useChipInsertion', () => {
     expect(onChange).toHaveBeenCalledWith('Hola mundo');
   });
 
+  it('appends a trailing-space chip string to existing text without double spaces', () => {
+    const { result, onChange } = setup('Quiero ir a Madrid');
+    act(() => result.current.insertChipText('Somos '));
+    expect(onChange).toHaveBeenCalledWith('Quiero ir a Madrid Somos ');
+  });
+
   it('does not throw when inputRef.current is null', () => {
     const onChange = vi.fn();
     const { result } = renderHook(() =>
