@@ -1621,6 +1621,19 @@ const useMessageHandler = (
         ? buildTurnContinuityIterationContext(parsedRequest, persistentState)
         : null;
       const iterationContext = llmIterationContext || turnContinuityIterationContext || deterministicIterationContext;
+      // The LLM signal (iterationIntent / turnContinuity) decides WHICH turn this
+      // is, but it does not carry the structured slot delta. The deterministic
+      // detector does (e.g. "Somos 4" → flightModification {adults: 4}). When an
+      // LLM-derived context wins but lacks that delta, inherit it so the merge
+      // does not silently fall back to the previous search's passenger count.
+      if (
+        iterationContext !== deterministicIterationContext &&
+        deterministicIterationContext.isIteration
+      ) {
+        iterationContext.flightModification ??= deterministicIterationContext.flightModification;
+        iterationContext.stayModification ??= deterministicIterationContext.stayModification;
+        iterationContext.destinationSwap ??= deterministicIterationContext.destinationSwap;
+      }
       if (llmIterationContext) {
         console.log('🧠 [ITERATION] Using LLM iterationIntent as primary signal', {
           type: parsedRequest.iterationIntent?.type,
