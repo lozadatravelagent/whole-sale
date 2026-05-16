@@ -82,4 +82,17 @@ describe('buildRefinementChips', () => {
     expect(chips.find((c) => c.id === 'refine-search')!.prompt).toContain('Cancún');
     expect(chips.find((c) => c.id === 'refine-duration')!.prompt).toContain('5');
   });
+
+  it('does NOT emit a round-trip chip when tripType is undefined (not explicitly one-way)', () => {
+    const chips = buildRefinementChips(
+      { flights: { origin: 'EZE', destination: 'MAD', departureDate: '2026-07-01', adults: 1, children: 0, infants: 0 } },
+      NOW,
+      'es',
+    );
+    expect(chips.find((c) => c.id === 'refine-roundtrip')).toBeUndefined();
+    const ids = chips.map((c) => c.id);
+    expect(ids).toContain('refine-passengers');
+    expect(ids).toContain('refine-duration');
+    expect(ids).toContain('refine-search');
+  });
 });

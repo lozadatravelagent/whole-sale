@@ -43,6 +43,7 @@ function paxPhrase(adults?: number, children?: number, infants?: number): string
  * Never throws. The inserted text uses SEARCH_STAY_NIGHTS for the inferred
  * return date so it matches the rest of the search-defaults architecture.
  */
+// _now reserved for future "relative to today" chips (e.g., "search sooner"); not consumed yet. _language reserved for future i18n; copy is Spanish by product scope.
 export function buildRefinementChips(
   source: RefinementSource,
   _now: Date,
@@ -60,6 +61,8 @@ export function buildRefinementChips(
   if (!hasFlightSearch && !hasHotelSearch) return [];
 
   // 1. Ida y Vuelta — only when the flight search is explicitly one-way.
+  // Priorities 1/4/5/6 — gaps (2,3) reserved for future refinement chips (e.g., cabin class, destination change).
+  // Only when the flight is EXPLICITLY one-way. tripType undefined or 'multi_city' => suppressed (we don't infer one-way from a missing returnDate).
   if (hasFlightSearch && f!.tripType === 'one_way') {
     const ret = addDaysToIso(f!.departureDate as string, SEARCH_STAY_NIGHTS);
     if (ret) {
