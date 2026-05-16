@@ -319,7 +319,7 @@ const ChatInterface = React.memo(({
     ? (lastMeta.suggestedActions as ChatSuggestedAction[])
         .filter((action) => typeof action?.label === 'string' && typeof action?.prompt === 'string')
         .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99))
-        .slice(0, 3)
+        .slice(0, 4)
     : [];
   // Quick-action chips for inferred defaults (Emilia transparency).
   // We surface a chip for each value Emilia inferred (adults default, one-way trip type,
@@ -520,7 +520,7 @@ const ChatInterface = React.memo(({
                 </div>
               )}
               {lastVisibleMessage?.role === 'assistant' && suggestedActions.length > 0 && !isLoading && !isTyping && (
-                <div className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex flex-nowrap gap-2 overflow-x-auto px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                   {suggestedActions.map((action) => {
                     const Icon =
                       action.type === 'flight' ? Plane :
@@ -534,7 +534,7 @@ const ChatInterface = React.memo(({
                         key={action.id}
                         type="button"
                         onClick={() => onChipInsert?.(action.prompt)}
-                        className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                        className="inline-flex max-w-[min(18rem,80vw)] shrink-0 items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                         title={action.prompt}
                       >
                         <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -556,14 +556,14 @@ const ChatInterface = React.memo(({
               {lastVisibleMessage?.role === 'assistant' && hasNarrativeChips && !isLoading && !isTyping && (
                 <div
                   data-testid="inferred-defaults-chips"
-                  className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                  className="flex flex-nowrap gap-2 overflow-x-auto px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                 >
                   {narrativeChips.map((chip) => (
                     <button
                       key={chip.id}
                       type="button"
                       onClick={() => onChipInsert?.(chip.action.text)}
-                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                      className="inline-flex max-w-[min(18rem,80vw)] shrink-0 items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Sparkles className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{chip.label}</span>
@@ -574,13 +574,13 @@ const ChatInterface = React.memo(({
               {lastVisibleMessage?.role === 'assistant' && !hasNarrativeChips && inferredFieldList.length > 0 && !isLoading && !isTyping && (
                 <div
                   data-testid="inferred-defaults-chips"
-                  className="flex flex-wrap gap-2 px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                  className="flex flex-nowrap gap-2 overflow-x-auto px-4 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                 >
                   {inferredFieldSet.has('tripType') && (
                     <button
                       type="button"
                       onClick={() => onChipInsert?.('Convertir a ida y vuelta')}
-                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                      className="inline-flex max-w-[min(18rem,80vw)] shrink-0 items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Plane className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{t('chips.changeRoundtrip')}</span>
@@ -590,7 +590,7 @@ const ChatInterface = React.memo(({
                     <button
                       type="button"
                       onClick={() => onChipInsert?.('Somos ')}
-                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                      className="inline-flex max-w-[min(18rem,80vw)] shrink-0 items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Sparkles className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{t('chips.changePassengers')}</span>
@@ -600,7 +600,7 @@ const ChatInterface = React.memo(({
                     <button
                       type="button"
                       onClick={() => onChipInsert?.('Salimos desde ')}
-                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                      className="inline-flex max-w-[min(18rem,80vw)] shrink-0 items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Map className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{t('chips.changeOrigin')}</span>
@@ -610,7 +610,7 @@ const ChatInterface = React.memo(({
                     <button
                       type="button"
                       onClick={() => onChipInsert?.('Cambiar fecha a ')}
-                      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
+                      className="inline-flex max-w-[min(18rem,80vw)] shrink-0 items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Search className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{t('chips.changeDate')}</span>

@@ -37,6 +37,39 @@ function paxPhrase(adults?: number, children?: number, infants?: number): string
   return parts.join(', ');
 }
 
+function productPassengers(
+  source: Partial<FlightContextParams> | Partial<HotelContextParams>,
+) {
+  return {
+    adults: Math.max(1, source.adults ?? 1),
+    children: Math.max(0, source.children ?? 0),
+    infants: Math.max(0, source.infants ?? 0),
+  };
+}
+
+function flightPrompt(f: Partial<FlightContextParams>, returnDate?: string): string {
+  const pax = productPassengers(f);
+  const base = returnDate
+    ? `vuelo a ${f.destination} del ${f.departureDate} al ${returnDate}`
+    : `vuelo a ${f.destination} el ${f.departureDate}`;
+  const origin = f.origin ? ` saliendo desde ${f.origin}` : '';
+  return `${base}${origin} para ${paxPhrase(pax.adults, pax.children, pax.infants)}`;
+}
+
+function hotelPrompt(h: Partial<HotelContextParams>): string {
+  const pax = productPassengers(h);
+  return `hotel en ${h.city} del ${h.checkinDate} al ${h.checkoutDate} para ${paxPhrase(pax.adults, pax.children, pax.infants)}`;
+}
+
+function combinedPrompt(f: Partial<FlightContextParams>, h: Partial<HotelContextParams>): string {
+  const pax = productPassengers(f.adults != null ? f : h);
+  const destination = h.city || f.destination;
+  const start = h.checkinDate || f.departureDate;
+  const end = h.checkoutDate || f.returnDate;
+  const origin = f.origin ? ` saliendo desde ${f.origin}` : '';
+  return `vuelo y hotel a ${destination} del ${start} al ${end}${origin} para ${paxPhrase(pax.adults, pax.children, pax.infants)}`;
+}
+
 /**
  * Derive post-search "refinement" chips from the parsed last search.
  * Pure and defensive: missing data => that chip is omitted; no search => [].
@@ -66,12 +99,28 @@ export function buildRefinementChips(
   if (hasFlightSearch && f!.tripType === 'one_way') {
     const ret = addDaysToIso(f!.departureDate as string, SEARCH_STAY_NIGHTS);
     if (ret) {
+      const prompt = flightPrompt(f!, ret);
       chips.push({
         id: 'refine-roundtrip',
         label: 'Ida y vuelta',
-        prompt: `Cambiá la búsqueda a ida y vuelta, volviendo el ${ret}`,
+        prompt,
         type: 'refine',
         priority: 1,
+        behavior: 'autocomplete',
+        intent: 'convert_to_round_trip',
+        template: 'vuelo a {destination} del {departureDate} al {returnDate} saliendo desde {origin} para {passengers}',
+        context: {
+          product: 'flight',
+          origin: f!.origin,
+          destination: f!.destination,
+          departureDate: f!.departureDate,
+          returnDate: ret,
+          passengers: productPassengers(f!),
+        },
+        editableFields: ['departureDate', 'returnDate', 'passengers'],
+        expectedRequestType: 'flights',
+        expectedProducts: ['flight'],
+        reasonCodes: ['autocomplete_chip_generated'],
       });
     }
   }
@@ -85,9 +134,34 @@ export function buildRefinementChips(
   chips.push({
     id: 'refine-passengers',
     label: 'Modificar pasajeros',
-    prompt: `Modificá los pasajeros (actualmente ${paxPhrase(adults, children, infants)})`,
+    prompt: hasFlightSearch && hasHotelSearch
+      ? combinedPrompt(f!, h!)
+      : hasFlightSearch
+        ? flightPrompt(f!, f!.returnDate)
+        : hotelPrompt(h!),
     type: 'refine',
     priority: 4,
+    behavior: 'autocomplete',
+    intent: 'change_passengers',
+    template: hasFlightSearch && hasHotelSearch
+      ? 'vuelo y hotel a {destination} del {departureDate} al {returnDate} saliendo desde {origin} para {passengers}'
+      : hasFlightSearch
+        ? 'vuelo a {destination} del {departureDate} al {returnDate} saliendo desde {origin} para {passengers}'
+        : 'hotel en {destination} del {checkinDate} al {checkoutDate} para {passengers}',
+    context: {
+      product: hasFlightSearch && hasHotelSearch ? 'combined' : hasFlightSearch ? 'flight' : 'hotel',
+      origin: f?.origin,
+      destination,
+      departureDate: f?.departureDate,
+      returnDate: f?.returnDate,
+      checkinDate: h?.checkinDate,
+      checkoutDate: h?.checkoutDate,
+      passengers: { adults, children, infants },
+    },
+    editableFields: ['passengers'],
+    expectedRequestType: hasFlightSearch && hasHotelSearch ? 'combined' : hasFlightSearch ? 'flights' : 'hotels',
+    expectedProducts: hasFlightSearch && hasHotelSearch ? ['flight', 'hotel'] : hasFlightSearch ? ['flight'] : ['hotel'],
+    reasonCodes: ['autocomplete_chip_generated'],
   });
 
   // 3. Agregar / quitar días.
@@ -97,21 +171,71 @@ export function buildRefinementChips(
   chips.push({
     id: 'refine-duration',
     label: 'Agregar o quitar días',
-    prompt:
-      nights != null
-        ? `Modificá la duración del viaje (actualmente ${nights} noches)`
-        : 'Modificá la duración del viaje',
+    prompt: hasFlightSearch && hasHotelSearch
+      ? combinedPrompt(f!, h!)
+      : hasFlightSearch
+        ? flightPrompt(f!, f!.returnDate)
+        : hotelPrompt(h!),
     type: 'refine',
     priority: 5,
+    behavior: 'autocomplete',
+    intent: 'change_duration',
+    template: hasFlightSearch && hasHotelSearch
+      ? 'vuelo y hotel a {destination} del {departureDate} al {returnDate} saliendo desde {origin} para {passengers}'
+      : hasFlightSearch
+        ? 'vuelo a {destination} del {departureDate} al {returnDate} saliendo desde {origin} para {passengers}'
+        : 'hotel en {destination} del {checkinDate} al {checkoutDate} para {passengers}',
+    context: {
+      product: hasFlightSearch && hasHotelSearch ? 'combined' : hasFlightSearch ? 'flight' : 'hotel',
+      origin: f?.origin,
+      destination,
+      departureDate: f?.departureDate,
+      returnDate: f?.returnDate,
+      checkinDate: h?.checkinDate,
+      checkoutDate: h?.checkoutDate,
+      passengers: productPassengers(hasFlightSearch ? f! : h!),
+    },
+    editableFields: ['departureDate', 'returnDate', 'checkinDate', 'checkoutDate'],
+    expectedRequestType: hasFlightSearch && hasHotelSearch ? 'combined' : hasFlightSearch ? 'flights' : 'hotels',
+    expectedProducts: hasFlightSearch && hasHotelSearch ? ['flight', 'hotel'] : hasFlightSearch ? ['flight'] : ['hotel'],
+    reasonCodes: [
+      'autocomplete_chip_generated',
+      ...(nights != null ? [`current_duration_${nights}_nights`] : []),
+    ],
   });
 
   // 4. Modificar la búsqueda (genérico).
   chips.push({
     id: 'refine-search',
     label: 'Modificar la búsqueda',
-    prompt: `Quiero modificar la búsqueda de ${destination}`,
+    prompt: hasFlightSearch && hasHotelSearch
+      ? combinedPrompt(f!, h!)
+      : hasFlightSearch
+        ? flightPrompt(f!, f!.returnDate)
+        : hotelPrompt(h!),
     type: 'refine',
     priority: 6,
+    behavior: 'autocomplete',
+    intent: 'modify_search',
+    template: hasFlightSearch && hasHotelSearch
+      ? 'vuelo y hotel a {destination} del {departureDate} al {returnDate} saliendo desde {origin} para {passengers}'
+      : hasFlightSearch
+        ? 'vuelo a {destination} del {departureDate} al {returnDate} saliendo desde {origin} para {passengers}'
+        : 'hotel en {destination} del {checkinDate} al {checkoutDate} para {passengers}',
+    context: {
+      product: hasFlightSearch && hasHotelSearch ? 'combined' : hasFlightSearch ? 'flight' : 'hotel',
+      origin: f?.origin,
+      destination,
+      departureDate: f?.departureDate,
+      returnDate: f?.returnDate,
+      checkinDate: h?.checkinDate,
+      checkoutDate: h?.checkoutDate,
+      passengers: productPassengers(hasFlightSearch ? f! : h!),
+    },
+    editableFields: ['destination', 'origin', 'departureDate', 'returnDate', 'checkinDate', 'checkoutDate', 'passengers'],
+    expectedRequestType: hasFlightSearch && hasHotelSearch ? 'combined' : hasFlightSearch ? 'flights' : 'hotels',
+    expectedProducts: hasFlightSearch && hasHotelSearch ? ['flight', 'hotel'] : hasFlightSearch ? ['flight'] : ['hotel'],
+    reasonCodes: ['autocomplete_chip_generated'],
   });
 
   return chips;

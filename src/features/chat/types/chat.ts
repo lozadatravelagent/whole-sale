@@ -5,6 +5,22 @@ export type ConversationRow = Database['public']['Tables']['conversations']['Row
 export type ConversationWorkspaceMode = Database['public']['Enums']['conversation_workspace_mode'];
 
 export type ChatSuggestedActionType = 'flight' | 'hotel' | 'itinerary' | 'quote' | 'refine';
+export type ChatSuggestedActionBehavior = 'autocomplete' | 'direct_action' | 'fallback';
+
+export interface ChatSuggestedActionContext {
+  product?: 'flight' | 'hotel' | 'combined' | 'package' | 'transfer';
+  origin?: string;
+  destination?: string;
+  departureDate?: string;
+  returnDate?: string;
+  checkinDate?: string;
+  checkoutDate?: string;
+  passengers?: {
+    adults?: number;
+    children?: number;
+    infants?: number;
+  };
+}
 
 export interface ChatSuggestedAction {
   id: string;
@@ -12,6 +28,14 @@ export interface ChatSuggestedAction {
   prompt: string;
   type: ChatSuggestedActionType;
   priority: number;
+  behavior?: ChatSuggestedActionBehavior;
+  intent?: string;
+  template?: string;
+  context?: ChatSuggestedActionContext;
+  editableFields?: string[];
+  expectedRequestType?: 'flights' | 'hotels' | 'combined' | 'packages' | 'services' | 'itinerary';
+  expectedProducts?: Array<'flight' | 'hotel' | 'package' | 'transfer' | 'service' | 'itinerary'>;
+  reasonCodes?: string[];
 }
 
 export interface ConversationWithAgency extends ConversationRow {

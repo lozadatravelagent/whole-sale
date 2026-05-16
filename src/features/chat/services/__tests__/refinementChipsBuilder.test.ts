@@ -24,7 +24,21 @@ describe('buildRefinementChips', () => {
     expect(roundtrip).toBeTruthy();
     expect(SEARCH_STAY_NIGHTS).toBe(7);
     expect(roundtrip!.prompt).toContain('2026-07-08');
+    expect(roundtrip!.prompt).toContain('MAD');
+    expect(roundtrip!.prompt).toContain('EZE');
+    expect(roundtrip!.prompt).toContain('2 adultos');
     expect(roundtrip!.type).toBe('refine');
+    expect(roundtrip!.behavior).toBe('autocomplete');
+    expect(roundtrip!.intent).toBe('convert_to_round_trip');
+    expect(roundtrip!.expectedRequestType).toBe('flights');
+    expect(roundtrip!.expectedProducts).toEqual(['flight']);
+    expect(roundtrip!.context).toMatchObject({
+      product: 'flight',
+      origin: 'EZE',
+      destination: 'MAD',
+      departureDate: '2026-07-01',
+      returnDate: '2026-07-08',
+    });
   });
 
   it('does NOT emit a round-trip chip when the flight is already round-trip', () => {
@@ -59,8 +73,13 @@ describe('buildRefinementChips', () => {
     expect(ids).toContain('refine-duration');
     expect(ids).toContain('refine-search');
     const pax = chips.find((c) => c.id === 'refine-passengers')!;
+    expect(pax.prompt).toContain('vuelo a MAD');
+    expect(pax.prompt).toContain('2026-07-01');
+    expect(pax.prompt).toContain('2026-07-08');
     expect(pax.prompt).toContain('2 adultos');
     expect(pax.prompt).toContain('1 niño');
+    expect(pax.intent).toBe('change_passengers');
+    expect(pax.editableFields).toEqual(['passengers']);
   });
 
   it('uses hotel params (city + dates) when there is no flight search', () => {
@@ -80,7 +99,48 @@ describe('buildRefinementChips', () => {
     expect(ids).toContain('refine-search');
     expect(ids).not.toContain('refine-roundtrip');
     expect(chips.find((c) => c.id === 'refine-search')!.prompt).toContain('Cancún');
-    expect(chips.find((c) => c.id === 'refine-duration')!.prompt).toContain('5');
+    expect(chips.find((c) => c.id === 'refine-duration')!.prompt).toContain('hotel en Cancún');
+    expect(chips.find((c) => c.id === 'refine-duration')!.reasonCodes).toContain('current_duration_5_nights');
+    expect(chips.find((c) => c.id === 'refine-duration')!.expectedRequestType).toBe('hotels');
+    expect(chips.find((c) => c.id === 'refine-duration')!.expectedProducts).toEqual(['hotel']);
+  });
+
+  it('emits complete autocomplete prompts and expected products for combined searches', () => {
+    const chips = buildRefinementChips(
+      {
+        flights: {
+          origin: 'EZE',
+          destination: 'CUN',
+          departureDate: '2026-07-01',
+          returnDate: '2026-07-08',
+          tripType: 'round_trip',
+          adults: 2,
+          children: 0,
+          infants: 0,
+        },
+        hotels: {
+          city: 'Cancún',
+          checkinDate: '2026-07-01',
+          checkoutDate: '2026-07-08',
+          adults: 2,
+          children: 0,
+          infants: 0,
+        },
+      },
+      NOW,
+      'es',
+    );
+
+    for (const chip of chips) {
+      expect(chip.behavior).toBe('autocomplete');
+      expect(chip.prompt).toContain('vuelo y hotel a Cancún');
+      expect(chip.prompt).toContain('2026-07-01');
+      expect(chip.prompt).toContain('2026-07-08');
+      expect(chip.prompt).toContain('2 adultos');
+      expect(chip.expectedRequestType).toBe('combined');
+      expect(chip.expectedProducts).toEqual(['flight', 'hotel']);
+      expect(chip.reasonCodes).toContain('autocomplete_chip_generated');
+    }
   });
 
   it('does NOT emit a round-trip chip when tripType is undefined (not explicitly one-way)', () => {

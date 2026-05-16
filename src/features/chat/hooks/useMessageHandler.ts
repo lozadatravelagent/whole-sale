@@ -489,10 +489,11 @@ function buildSuggestedActions(options: {
     });
   }
 
-  // Note: priority 4+ refine chips (passengers, duration) are dropped when quote/itinerary fill slots 0-2 post-search — intended.
+  // Keep four visible chips so the guided-prompt contract can expose the most likely
+  // refinement without hiding the core quote/search actions.
   return actions
     .sort((a, b) => a.priority - b.priority)
-    .slice(0, 3);
+    .slice(0, 4);
 }
 
 const ASSISTANT_STREAM_CHARS_PER_CHUNK = 96;
