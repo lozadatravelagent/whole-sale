@@ -774,6 +774,104 @@ describe('useMessageHandler', () => {
       );
     });
 
+    it('uses parser turnContinuity as semantic fallback when iterationIntent is absent', async () => {
+      const contextState = {
+        lastSearch: {
+          requestType: 'combined' as const,
+          timestamp: '2026-05-14T18:00:00Z',
+          flightsParams: {
+            origin: 'EZE',
+            destination: 'CUN',
+            departureDate: '2026-05-17',
+            returnDate: '2026-05-20',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+          hotelsParams: {
+            city: 'Cancun',
+            checkinDate: '2026-05-17',
+            checkoutDate: '2026-05-20',
+            adults: 2,
+            children: 0,
+            infants: 0,
+          },
+        },
+        constraintsHistory: [],
+        turnNumber: 1,
+        schemaVersion: 1,
+      };
+      const mergedRequest = buildParsedRequest({
+        requestType: 'combined',
+        originalMessage: 'más barato',
+        flights: contextState.lastSearch.flightsParams,
+        hotels: contextState.lastSearch.hotelsParams,
+      });
+
+      vi.mocked(detectIterationIntent).mockReturnValueOnce({
+        isIteration: false,
+        iterationType: 'new_search',
+        baseRequestType: null,
+        modifiedComponent: null,
+        preserveFields: [],
+        confidence: 0,
+      });
+      vi.mocked(mergeIterationContext).mockReturnValueOnce(mergedRequest);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(
+        buildParsedRequest({
+          requestType: 'general',
+          originalMessage: 'más barato',
+          confidence: 0.82,
+          turnContinuity: {
+            relation: 'refines_active_search',
+            target: 'last_search',
+            confidence: 0.91,
+            rationale: 'price refinement of active search',
+          },
+        }) as any,
+      );
+
+      const p = buildProps({
+        messages: [buildMessageRow()],
+        preloadedContext: {
+          conversationId: DEFAULT_CONV_ID,
+          contextualMemory: null,
+          contextState,
+          leadId: null,
+        },
+      });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('más barato');
+      });
+
+      expect(vi.mocked(mergeIterationContext)).toHaveBeenCalledWith(
+        contextState,
+        expect.objectContaining({
+          requestType: 'general',
+          turnContinuity: expect.objectContaining({ relation: 'refines_active_search' }),
+        }),
+        expect.objectContaining({
+          isIteration: true,
+          iterationType: 'full_reuse',
+          matchedPattern: 'llm-continuity:refines_active_search',
+        }),
+      );
+      expect(vi.mocked(routeRequest)).toHaveBeenCalledWith(
+        expect.objectContaining({ requestType: 'combined' }),
+        null,
+      );
+      expect(vi.mocked(resolveConversationTurn)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          iterationContext: expect.objectContaining({
+            isIteration: true,
+            matchedPattern: 'llm-continuity:refines_active_search',
+          }),
+        }),
+      );
+    });
+
     it('calls mergeIterationContext when detectIterationIntent returns isIteration true and persistentState exists', async () => {
       const iterCtx = {
         isIteration: true,

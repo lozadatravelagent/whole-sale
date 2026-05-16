@@ -42,6 +42,7 @@ export type RouterReason =
   | 'hotel_exact_ready'
   | 'origin_missing_no_geo'
   | 'minor_ages_needed'
+  | 'contradiction_detected'
   // Phase 5 / sub-task C: exploratory-but-actionable. The user named a
   // destination + traveler context but the request didn't cleanly map to a
   // QUOTE-ready payload. The orchestrator routes this to a one-click search
@@ -193,6 +194,20 @@ function isFamilyTravel(parsed: ParsedTravelRequest, msg: string): boolean {
     return LEGACY_FAMILY_WORDS_REGEX.test(msg);
   }
   return false;
+}
+
+function isCommercialPlanningIntent(parsed: ParsedTravelRequest): boolean {
+  return parsed.commercialIntent?.kind === 'trip_planning';
+}
+
+function isCommercialContradiction(parsed: ParsedTravelRequest): boolean {
+  return parsed.commercialIntent?.kind === 'contradiction_detected';
+}
+
+function isCommercialSearchIntent(parsed: ParsedTravelRequest): boolean {
+  const kind = parsed.commercialIntent?.kind;
+  if (!kind) return false;
+  return kind !== 'trip_planning' && kind !== 'contradiction_detected';
 }
 
 // ---------------------------------------------------------------------------
@@ -536,6 +551,62 @@ export function routeRequest(
       missingFields,
       inferredFields,
       reason: 'quote_active_plan',
+    };
+  }
+
+  if (isCommercialContradiction(parsed)) {
+    const q = parsed.message || buildCollectQuestion(missingFields, parsed);
+    return {
+      route: 'COLLECT',
+      score,
+      dimensions,
+      missingFields,
+      inferredFields,
+      collectQuestion: q,
+      reason: 'contradiction_detected',
+    };
+  }
+
+  if (isCommercialPlanningIntent(parsed)) {
+    return {
+      route: 'PLAN',
+      score,
+      dimensions,
+      missingFields,
+      inferredFields,
+      reason:
+        parsed.itinerary?.editIntent &&
+        plannerState &&
+        !plannerState.generationMeta?.isDraft
+          ? 'edit_existing_plan'
+          : 'itinerary_request',
+    };
+  }
+
+  // Commercial search intent wins over accidental planning language. This
+  // keeps agency shorthand like "paquete", "armame todo", or "cliente quiere"
+  // in the quote/search path unless the parser explicitly classified it as
+  // trip_planning above.
+  if (isCommercialSearchIntent(parsed) && dimensions.destination >= 0.5) {
+    if (score >= QUOTE_THRESHOLD) {
+      return {
+        route: 'QUOTE',
+        score,
+        dimensions,
+        missingFields,
+        inferredFields,
+        reason: pickHighScoreQuoteReason(parsed, inferredFields),
+      };
+    }
+    const q = parsed.message || buildCollectQuestion(missingFields, parsed);
+    return {
+      route: 'COLLECT',
+      score,
+      dimensions,
+      missingFields,
+      inferredFields,
+      collectQuestion: q,
+      reason: pickCollectReason(parsed, missingFields),
     };
   }
 

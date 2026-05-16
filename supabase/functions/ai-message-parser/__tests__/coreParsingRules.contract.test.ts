@@ -182,6 +182,21 @@ describe('§11 intent classification', () => {
   it('preloaded regions ("Caribe", "Europa", ...) stay verbatim for the planner', () => {
     expect(STATIC_SYSTEM_PROMPT).toContain('PRELOADED REGION DESTINATIONS');
   });
+
+  it('commercial agency intent is documented as semantic, not regex-driven', () => {
+    expect(STATIC_SYSTEM_PROMPT).toContain('COMMERCIAL INTENT — AGENCY SEARCH SEMANTICS');
+    expect(STATIC_SYSTEM_PROMPT).toContain('This is NOT a regex field');
+    expect(STATIC_SYSTEM_PROMPT).toContain('package_search');
+    expect(STATIC_SYSTEM_PROMPT).toContain('ordered_multi_product_search');
+    expect(STATIC_SYSTEM_PROMPT).toContain('Cancún julio pareja 7 noches');
+  });
+
+  it('turn continuity is documented as semantic context-first behavior', () => {
+    expect(STATIC_SYSTEM_PROMPT).toContain('TURN CONTINUITY — SECOND-TURN CONTEXT FIRST');
+    expect(STATIC_SYSTEM_PROMPT).toContain('assume continuity unless the user clearly starts a new trip');
+    expect(STATIC_SYSTEM_PROMPT).toContain('turnContinuity');
+    expect(STATIC_SYSTEM_PROMPT).toContain('new_independent_request');
+  });
 });
 
 // ---------------------------------------------------------------------------

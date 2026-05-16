@@ -18,6 +18,8 @@ export const PROMPT_CONTRACT_SNIPPETS = [
   'PARTIAL STAY DETECTION',
   'QUOTE INTENT',
   'PLAN INTENT',
+  'COMMERCIAL INTENT',
+  'TURN CONTINUITY',
   'CURRENT PLAN REFERENCE',
   'SEARCH SEEDS — EXPLORATORY INTENT',
   'SEARCH REFINEMENT — preserve requestType',
@@ -870,6 +872,113 @@ User: "Monta uma viagem pela Itália de 10 dias com Roma, Florença e Veneza"
 
 User: "Cotizame un vuelo a Roma" / "Get me a price for a flight to Rome" / "Me cota um voo para Roma"
 → planIntent: false (single product, no itinerary structure requested)
+
+## COMMERCIAL INTENT — AGENCY SEARCH SEMANTICS (LANGUAGE-AGNOSTIC)
+
+Emit \`commercialIntent\` when the user is trying to move a travel sale forward: search, quote, compare, refine, correct, package, or prepare an agency/client-facing option. Detect MEANING across languages and shorthand. This is NOT a regex field.
+
+Allowed shape:
+\`commercialIntent: { kind, agencyContext, confidence, rationale }\`
+
+\`kind\` values:
+- \`flight_search\` — unit flight/aereo/pasaje search.
+- \`hotel_search\` — unit hotel/alojamiento search, including subjective filters like good location, quiet, not old, all inclusive, near beach.
+- \`specific_hotel_search\` — exact hotel/property search ("Riu Palace Aruba", "Xcaret Arte", "Iberostar Selection Cancún"). Use hotelName/hotelChains as appropriate.
+- \`package_search\` — package/full-trip commercial quote ("paquete", "viaje completo", "armame todo") with flight/hotel/transfer products. In agency context this means QUOTE/SEARCH, not planner.
+- \`ordered_multi_product_search\` — 2+ products in an operational sequence ("primero hotel y después vuelo", "hotel, traslado y aéreo en ese orden"). Also emit \`productOrder\`.
+- \`budget_based_search\` — user leads with a budget amount and wants options.
+- \`price_sensitive_search\` — cheap/not expensive/good price/value-sensitive request.
+- \`family_trip_search\` — family/kids/Disney/Orlando/family-room commercial search.
+- \`premium_experience_search\` — premium/luxury/anniversary/honeymoon/high-end commercial search.
+- \`active_search_refinement\` — user filters/sorts/compares an already shown search ("más barato", "mejor ubicado", "opción 2", "solo directos").
+- \`correction\` — user changes one slot of active context ("no, para dos", "mejor desde Córdoba", "del 15 al 22", "sumale all inclusive").
+- \`add_product\` — user adds a product to active context ("agregá traslado", "sumale hotel", "también vuelos").
+- \`contradiction_detected\` — user gives incompatible instructions (solo ida + return range; adults only + children; single room for two).
+- \`trip_planning\` — true itinerary/planner request: route, day-by-day, multi-city plan, activities, or organized itinerary.
+
+\`agencyContext = true\` when the user speaks as an agent about a client/passenger: "cliente quiere", "me pidieron", "tengo una pareja", "para una clienta", "somos 3 adultos" in an agency quote context. In this case do NOT speak as if the agent is the traveler.
+
+Priority rules:
+- If \`commercialIntent.kind\` is any search/quote kind except \`trip_planning\`, prefer a commercial requestType (\`flights\`, \`hotels\`, \`combined\`, \`packages\`, or \`services\`) over \`itinerary\`.
+- Words like "paquete", "viaje completo", "armame todo", or "resolvé rápido para cliente" in agency context mean commercial quote/search unless the user explicitly asks for itinerary/day-by-day/route planning.
+- Planner is only for true \`trip_planning\` or active planner edits. "Cancún julio pareja 7 noches" is NOT planner; it is hotel/package search.
+- For contradictions, emit \`commercialIntent.kind = "contradiction_detected"\`, keep the usable fields, and ask one minimal question in \`message\`.
+- For corrections/refinements/add-ons, inherit active search context through previousContext/conversation history and emit the fully merged request when possible.
+
+EXAMPLES:
+
+User: "Cliente me pide Cancún en julio, son dos, algo all inclusive"
+→ commercialIntent: { kind: "hotel_search", agencyContext: true, confidence: 0.95, rationale: "agent asks for client hotel options" }
+→ requestType: "hotels", travelerType: "couple", hotels.city: "Cancún", hotels.mealPlan: "all_inclusive"
+
+User: "Primero veamos hotel en Cancún y después le sumamos aéreo"
+→ commercialIntent: { kind: "ordered_multi_product_search", agencyContext: true, confidence: 0.95, rationale: "explicit product order hotel then flight" }
+→ requestType: "combined", productOrder: ["hotel", "flight"]
+
+User: "Armame paquete para Punta Cana, pareja, julio"
+→ commercialIntent: { kind: "package_search", agencyContext: true, confidence: 0.95, rationale: "package quote request, not itinerary" }
+→ requestType: "combined" or "packages", travelerType: "couple", quoteIntent: true, planIntent: false
+
+User: "Cancún julio pareja 7 noches"
+→ commercialIntent: { kind: "hotel_search", agencyContext: true, confidence: 0.86, rationale: "agency shorthand with destination, month, couple and nights" }
+→ requestType: "hotels", travelerType: "couple", planIntent: false
+
+User: "Armame un itinerario por Europa 15 días"
+→ commercialIntent: { kind: "trip_planning", agencyContext: false, confidence: 0.95, rationale: "explicit itinerary build request" }
+→ requestType: "itinerary", planIntent: true
+
+## TURN CONTINUITY — SECOND-TURN CONTEXT FIRST (LANGUAGE-AGNOSTIC)
+
+Emit \`turnContinuity\` whenever DYNAMIC CONTEXT includes \`PREVIOUS CONTEXT\`, \`MEMORY STATE\` with active_refs/pending_action, or conversation history showing a recent search/proposal/plan. This field answers: "Does the current user message continue the immediately previous artifact?"
+
+Allowed shape:
+\`turnContinuity: { relation, target, confidence, rationale }\`
+
+\`relation\` values:
+- \`continues_previous\` — generic short continuation ("dale", "sí", "eso", "igual", "con eso").
+- \`answers_pending_question\` — the user answers a slot prompt or confirmation; target should be \`pending_action\`.
+- \`refines_active_search\` — filters/sorts/comparison on the last search ("más barato", "mejor ubicado", "solo directos", "no tan viejo").
+- \`selects_active_result\` — references an option/result ("opción 2", "la primera", "ese hotel", "el vuelo de la mañana").
+- \`adds_product\` — adds a product to the same trip ("sumale traslado", "también hotel", "agregá aéreo").
+- \`changes_slot\` — changes one slot ("para dos", "una semana", "mejor desde Córdoba", "del 15 al 22", "que sea Riu", "all inclusive").
+- \`new_independent_request\` — starts a clearly different trip/search.
+
+\`target\` values: \`last_search\`, \`active_plan\`, \`active_quote\`, \`pending_action\`, \`unknown\`.
+
+Default policy:
+- If this is the user's second meaningful message after Emilia produced a search/proposal/plan, assume continuity unless the user clearly starts a new trip.
+- Short, partial, corrective, comparative, or additive messages are continuity by default.
+- A message is \`new_independent_request\` only when it has a clear new trip identity: different destination AND different product/intent, with no reference to the previous artifact.
+- If uncertain between continuity and new request, choose continuity with lower confidence and emit the best merged request.
+- Continuity must be semantic, not regex-based. Do not require words like "same" or "previous".
+
+Interaction with other fields:
+- Still emit \`iterationIntent\` when you know WHAT changed (duration, destination, pax, preference, continuation). \`turnContinuity\` says WHETHER the turn belongs to previous context; \`iterationIntent\` says WHAT changed.
+- If \`relation = "new_independent_request"\`, set \`iterationIntent.isIteration = false\` / type \`unrelated\` when previousContext exists.
+- If \`target = "pending_action"\`, use the pending-action tools per <tool_selection> and emit the final JSON envelope after resolving.
+- Do not route continuity to planner or mode bridge merely because the user wrote a duration. "una semana" after a search modifies the search; it is not an itinerary request.
+
+EXAMPLES:
+
+PreviousContext: combined Cancún flight+hotel for 2 adults, 3 nights.
+User: "una semana"
+→ turnContinuity: { relation: "changes_slot", target: "last_search", confidence: 0.95, rationale: "short duration change on active search" }
+→ iterationIntent: { isIteration: true, type: "duration_change", modifiedFields: ["stayNights", "flights.returnDate", "hotels.checkoutDate"] }
+
+PreviousContext: hotel search Punta Cana.
+User: "algo más barato"
+→ turnContinuity: { relation: "refines_active_search", target: "last_search", confidence: 0.9, rationale: "price refinement of active hotel search" }
+→ iterationIntent: { isIteration: true, type: "preference_change", modifiedFields: ["hotels.pricePreference"] }
+
+PreviousContext: combined Cancún search.
+User: "opción 2 sumale traslado"
+→ turnContinuity: { relation: "selects_active_result", target: "last_search", confidence: 0.9, rationale: "selects a prior result and adds transfer" }
+→ iterationIntent: { isIteration: true, type: "continuation", modifiedFields: ["transfers"] }
+
+PreviousContext: Cancún July couple.
+User: "ahora quiero Madrid en octubre"
+→ turnContinuity: { relation: "new_independent_request", target: "unknown", confidence: 0.9, rationale: "new destination and month with no link to previous search" }
+→ iterationIntent: { isIteration: false, type: "unrelated", modifiedFields: [] }
 
 ## CURRENT PLAN REFERENCE — SEMANTIC (LANGUAGE-AGNOSTIC)
 

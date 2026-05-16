@@ -149,6 +149,88 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
         "products were mentioned in a clear sequence. Omit (null) for single " +
         "product or when user said 'paquete' without an explicit order.",
     },
+    commercialIntent: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        kind: {
+          type: "string",
+          enum: [
+            "flight_search",
+            "hotel_search",
+            "specific_hotel_search",
+            "package_search",
+            "ordered_multi_product_search",
+            "budget_based_search",
+            "price_sensitive_search",
+            "family_trip_search",
+            "premium_experience_search",
+            "active_search_refinement",
+            "correction",
+            "add_product",
+            "contradiction_detected",
+            "trip_planning",
+          ],
+          description:
+            "Agency/commercial search intent inferred semantically from the user message.",
+        },
+        agencyContext: {
+          type: ["boolean", "null"],
+          description:
+            "True when the user speaks as an agent about a client/passenger rather than as the traveler.",
+        },
+        confidence: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+        },
+        rationale: {
+          type: ["string", "null"],
+          description: "Short audit explanation for why this commercial intent was selected.",
+        },
+      },
+      required: ["kind", "agencyContext", "confidence", "rationale"],
+      description:
+        "Semantic commercial intent contract. Emit from meaning, not regex, for agency shorthand, packages, ordered product searches, subjective budget/quality requests, corrections/refinements, add-ons, contradictions, and true planner requests.",
+    },
+    turnContinuity: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      properties: {
+        relation: {
+          type: "string",
+          enum: [
+            "continues_previous",
+            "answers_pending_question",
+            "refines_active_search",
+            "selects_active_result",
+            "adds_product",
+            "changes_slot",
+            "new_independent_request",
+          ],
+          description:
+            "How the current user turn relates to the immediately previous assistant artifact.",
+        },
+        target: {
+          type: "string",
+          enum: ["last_search", "active_plan", "active_quote", "pending_action", "unknown"],
+          description:
+            "Conversation artifact the turn is continuing, if any.",
+        },
+        confidence: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+        },
+        rationale: {
+          type: ["string", "null"],
+          description: "Short audit explanation for the continuity decision.",
+        },
+      },
+      required: ["relation", "target", "confidence", "rationale"],
+      description:
+        "Semantic continuity contract. When previousContext, active_refs, pending_action, or recent search/proposal history exists, decide whether the user is continuing that context before classifying a new request. Prefer continuity for short partial second turns unless there is a clear new trip identity.",
+    },
     travelerType: {
       type: ["string", "null"],
       enum: ["solo", "couple", "family", "group", null],

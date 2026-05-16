@@ -243,6 +243,57 @@ function buildLlmIterationContext(parsedRequest: ParsedTravelRequest, persistent
   };
 }
 
+function buildTurnContinuityIterationContext(parsedRequest: ParsedTravelRequest, persistentState?: ContextState | null): IterationContext | null {
+  const continuity = parsedRequest.turnContinuity;
+  if (
+    !continuity ||
+    continuity.relation === 'new_independent_request' ||
+    continuity.relation === 'answers_pending_question' ||
+    continuity.target === 'pending_action' ||
+    !persistentState?.lastSearch ||
+    !isSearchRequestType(persistentState.lastSearch.requestType)
+  ) {
+    return null;
+  }
+
+  const target = continuity.target;
+  if (target !== 'last_search' && target !== 'unknown') return null;
+
+  const hasFlights = Boolean(parsedRequest.flights);
+  const hasHotels = Boolean(parsedRequest.hotels);
+  const baseRequestType = persistentState.lastSearch.requestType;
+  let iterationType: IterationContext['iterationType'] = 'full_reuse';
+  let modifiedComponent: IterationContext['modifiedComponent'] = null;
+
+  if (continuity.relation === 'changes_slot' || continuity.relation === 'refines_active_search') {
+    if (hasFlights && !hasHotels) {
+      iterationType = 'flight_modification';
+      modifiedComponent = baseRequestType === 'combined' ? 'flights' : 'flights';
+    } else if (hasHotels && !hasFlights) {
+      iterationType = baseRequestType === 'combined' ? 'hotel_modification' : 'full_reuse';
+      modifiedComponent = 'hotels';
+    } else if (hasFlights && hasHotels) {
+      iterationType = 'full_reuse';
+      modifiedComponent = 'both';
+    }
+  }
+
+  if (continuity.relation === 'adds_product' || continuity.relation === 'selects_active_result') {
+    iterationType = 'full_reuse';
+    modifiedComponent = hasFlights && hasHotels ? 'both' : hasFlights ? 'flights' : hasHotels ? 'hotels' : null;
+  }
+
+  return {
+    isIteration: true,
+    iterationType,
+    baseRequestType,
+    modifiedComponent,
+    preserveFields: [],
+    confidence: Math.max(parsedRequest.confidence || 0, continuity.confidence || 0, 0.8),
+    matchedPattern: `llm-continuity:${continuity.relation}`,
+  };
+}
+
 function getFirstPlannerCity(plannerState?: TripPlannerState | null): string {
   const segmentCity = [...(plannerState?.segments || [])]
     .sort((a, b) => (a.order || 0) - (b.order || 0))
@@ -1566,11 +1617,20 @@ const useMessageHandler = (
       parsedRequest = normalizeSearchIntent(parsedRequest, new Date());
 
       const llmIterationContext = buildLlmIterationContext(parsedRequest, persistentState);
-      const iterationContext = llmIterationContext || deterministicIterationContext;
+      const turnContinuityIterationContext = !llmIterationContext
+        ? buildTurnContinuityIterationContext(parsedRequest, persistentState)
+        : null;
+      const iterationContext = llmIterationContext || turnContinuityIterationContext || deterministicIterationContext;
       if (llmIterationContext) {
         console.log('🧠 [ITERATION] Using LLM iterationIntent as primary signal', {
           type: parsedRequest.iterationIntent?.type,
           modifiedFields: parsedRequest.iterationIntent?.modifiedFields,
+          requestType: parsedRequest.requestType,
+        });
+      } else if (turnContinuityIterationContext) {
+        console.log('🧠 [ITERATION] Using LLM turnContinuity as continuity signal', {
+          relation: parsedRequest.turnContinuity?.relation,
+          target: parsedRequest.turnContinuity?.target,
           requestType: parsedRequest.requestType,
         });
       }

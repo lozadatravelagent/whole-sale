@@ -626,3 +626,128 @@ describe('routeRequest — semantic isFamilyTravel (multilingual)', () => {
     expect(result.dimensions.passengers).toBe(1.0);
   });
 });
+
+describe('routeRequest — commercialIntent contract', () => {
+  it('keeps agency package shorthand in QUOTE even when planIntent is accidentally true', () => {
+    const parsed = makeParsed({
+      requestType: 'combined',
+      originalMessage: 'Armame paquete para Punta Cana, pareja, julio',
+      planIntent: true,
+      quoteIntent: true,
+      commercialIntent: {
+        kind: 'package_search',
+        agencyContext: true,
+        confidence: 0.95,
+        rationale: 'package quote request',
+      },
+      travelerType: 'couple',
+      flights: {
+        origin: 'Buenos Aires',
+        destination: 'Punta Cana',
+        departureDate: '2026-07-01',
+        returnDate: '2026-07-08',
+        adults: 2,
+        adultsExplicit: true,
+        children: 0,
+      },
+      hotels: {
+        city: 'Punta Cana',
+        checkinDate: '2026-07-01',
+        checkoutDate: '2026-07-08',
+        adults: 2,
+        adultsExplicit: true,
+        children: 0,
+        roomType: 'double',
+      },
+    });
+
+    const result = routeRequest(parsed);
+    expect(result.route).toBe('QUOTE');
+  });
+
+  it('respects ordered multi-product commercial intent before planner routing', () => {
+    const parsed = makeParsed({
+      requestType: 'combined',
+      originalMessage: 'Primero veamos hotel en Cancún y después le sumamos aéreo',
+      planIntent: true,
+      commercialIntent: {
+        kind: 'ordered_multi_product_search',
+        agencyContext: true,
+        confidence: 0.95,
+        rationale: 'explicit hotel then flight order',
+      },
+      productOrder: ['hotel', 'flight'],
+      flights: {
+        origin: 'Buenos Aires',
+        destination: 'Cancún',
+        departureDate: '2026-05-19',
+        returnDate: '2026-05-26',
+        adults: 1,
+        adultsExplicit: false,
+        children: 0,
+      },
+      hotels: {
+        city: 'Cancún',
+        checkinDate: '2026-05-19',
+        checkoutDate: '2026-05-26',
+        adults: 1,
+        adultsExplicit: false,
+        children: 0,
+      },
+    });
+
+    const result = routeRequest(parsed);
+    expect(result.route).toBe('QUOTE');
+    expect(result.reason).toBe('ordered_products_ready');
+  });
+
+  it('routes true commercial trip_planning to PLAN', () => {
+    const parsed = makeParsed({
+      requestType: 'itinerary',
+      originalMessage: 'Armame un itinerario por Europa 15 días',
+      planIntent: true,
+      commercialIntent: {
+        kind: 'trip_planning',
+        agencyContext: false,
+        confidence: 0.96,
+        rationale: 'explicit itinerary build',
+      },
+      itinerary: {
+        destinations: ['Europa'],
+        days: 15,
+        travelers: { adults: 1, children: 0, infants: 0 },
+      },
+    });
+
+    const result = routeRequest(parsed);
+    expect(result.route).toBe('PLAN');
+    expect(result.reason).toBe('itinerary_request');
+  });
+
+  it('routes commercial contradictions to COLLECT with a minimal question', () => {
+    const parsed = makeParsed({
+      requestType: 'flights',
+      originalMessage: 'Solo ida a Cancún del 10 al 17',
+      message: '¿El 17 lo querés usar como regreso o mantenemos solo ida?',
+      commercialIntent: {
+        kind: 'contradiction_detected',
+        agencyContext: true,
+        confidence: 0.94,
+        rationale: 'one-way conflicts with date range',
+      },
+      flights: {
+        origin: 'Buenos Aires',
+        destination: 'Cancún',
+        departureDate: '2026-07-10',
+        adults: 1,
+        adultsExplicit: false,
+        children: 0,
+      },
+    });
+
+    const result = routeRequest(parsed);
+    expect(result.route).toBe('COLLECT');
+    expect(result.reason).toBe('contradiction_detected');
+    expect(result.collectQuestion).toBe('¿El 17 lo querés usar como regreso o mantenemos solo ida?');
+  });
+});

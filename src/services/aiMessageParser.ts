@@ -149,6 +149,35 @@ export interface PlannerEditIntent {
 
 export type ProductKind = 'flight' | 'hotel' | 'transfer';
 export type TravelerType = 'solo' | 'couple' | 'family' | 'group';
+export type CommercialIntentKind =
+    | 'flight_search'
+    | 'hotel_search'
+    | 'specific_hotel_search'
+    | 'package_search'
+    | 'ordered_multi_product_search'
+    | 'budget_based_search'
+    | 'price_sensitive_search'
+    | 'family_trip_search'
+    | 'premium_experience_search'
+    | 'active_search_refinement'
+    | 'correction'
+    | 'add_product'
+    | 'contradiction_detected'
+    | 'trip_planning';
+export type TurnContinuityRelation =
+    | 'continues_previous'
+    | 'answers_pending_question'
+    | 'refines_active_search'
+    | 'selects_active_result'
+    | 'adds_product'
+    | 'changes_slot'
+    | 'new_independent_request';
+export type TurnContinuityTarget =
+    | 'last_search'
+    | 'active_plan'
+    | 'active_quote'
+    | 'pending_action'
+    | 'unknown';
 
 /**
  * Iteration-intent signal emitted by the LLM parser when `previousContext`
@@ -198,6 +227,34 @@ export interface ParsedTravelRequest {
      * leave this undefined; the handler/UI then fall back to their default order.
      */
     productOrder?: ProductKind[];
+    /**
+     * Commercial agency/search intent emitted by the LLM parser from meaning,
+     * not surface keywords. This is the semantic contract for agency-style
+     * shorthand ("cliente Cancún julio pareja all inclusive", "primero hotel",
+     * "paquete", "no tan caro", "opción 2 sumale traslado"). Downstream
+     * deterministic layers normalize defaults, inherit context, or route; regex
+     * remains only a fallback for old parser outputs.
+     */
+    commercialIntent?: {
+        kind: CommercialIntentKind;
+        agencyContext?: boolean | null;
+        confidence: number;
+        rationale?: string | null;
+    } | null;
+    /**
+     * Semantic continuity signal emitted before product routing. If there is
+     * previousContext, active_refs, pending_action, or an immediately preceding
+     * assistant search/proposal, the parser should first decide whether the
+     * current message continues that artifact. This keeps second-turn snippets
+     * ("una semana", "para dos", "más barato", "opción 2", "sumale traslado")
+     * on the prior search by intent rather than regex.
+     */
+    turnContinuity?: {
+        relation: TurnContinuityRelation;
+        target: TurnContinuityTarget;
+        confidence: number;
+        rationale?: string | null;
+    } | null;
     /**
      * Traveler composition inferred from natural-language cues:
      *   - "pareja" / "novio" / "novia" / "esposa" / "marido" → 'couple'
