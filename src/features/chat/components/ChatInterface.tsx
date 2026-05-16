@@ -75,6 +75,7 @@ interface ChatInterfaceProps {
    */
   onBridgeSwitch?: (suggestedMode: BridgeChatMode, originalText: string) => void;
   onBridgeStay?: (originalText: string) => void;
+  /** @deprecated Chips now call onChipInsert. Retained so existing ChatFeature call sites compile without changes; remove once all callers are migrated. */
   onSuggestedAction?: (prompt: string) => void;
   onChipInsert?: (text: string) => void;
   inputRef?: React.RefObject<HTMLTextAreaElement>;
@@ -336,6 +337,7 @@ const ChatInterface = React.memo(({
     id: string;
     label: string;
     icon?: string;
+    // kind preserved for schema back-compat; the call site now treats 'submit' and 'prefill' identically via onChipInsert.
     action: { kind: 'submit' | 'prefill'; text: string };
   };
   const emiliaNarrative = lastMeta?.emiliaNarrative as { chips?: unknown } | undefined;
