@@ -37,6 +37,7 @@ import type {
   PlannerPlaceCandidate,
   PlannerPlaceCategory,
   PlannerPlaceHotelCandidate,
+  PlannerSuggestion,
   PlannerSyncingFields,
   TripPlannerState,
 } from '../types';
@@ -388,7 +389,7 @@ export default function TripPlannerWorkspace({
   const openDateSelectorForSuggestion = useCallback(() => {
     setIsDateSelectionModalOpen(true);
   }, []);
-  const { loadingActionId } = useSuggestionActions({
+  const { handleSuggestionClick, loadingActionId } = useSuggestionActions({
     loadTransportForSegment: onLoadTransportForSegment,
     loadHotelsForSegment: onLoadHotelsForSegment,
     updateTripField: onUpdateTripField,
@@ -401,6 +402,22 @@ export default function TripPlannerWorkspace({
     value: message,
     onChange: onMessageChange,
   });
+
+  const handlePlannerSuggestion = useCallback((suggestion: PlannerSuggestion) => {
+    switch (suggestion.action) {
+      case 'confirm_field':
+      case 'confirm_location_dates':
+        handleSuggestionClick(suggestion);
+        break;
+      case 'select_dates':
+        handleSuggestionClick(suggestion);
+        insertPlannerChipText('Quiero elegir las fechas exactas del viaje.');
+        break;
+      default:
+        insertPlannerChipText(suggestion.label);
+        break;
+    }
+  }, [handleSuggestionClick, insertPlannerChipText]);
 
   const isAssumed = useCallback((field: keyof PlannerFieldProvenance) => plannerState?.fieldProvenance?.[field] === 'assumed', [plannerState?.fieldProvenance]);
   const fieldIsSyncing = useCallback((field: keyof PlannerSyncingFields) => Boolean(plannerState?.syncingFields?.[field]), [plannerState?.syncingFields]);
@@ -2000,7 +2017,7 @@ export default function TripPlannerWorkspace({
           {!isTyping && plannerState && !isDraftPlanner && (suggestions.length > 0 || agentDiscoveryCards.length > 0) && (
             <SuggestionChips
               suggestions={suggestions}
-              onSuggestionClick={(suggestion) => insertPlannerChipText(suggestion.label)}
+              onSuggestionClick={handlePlannerSuggestion}
               loadingAction={loadingActionId}
               discoveryCards={agentDiscoveryCards}
               onDiscoveryAdd={handleDiscoveryAdd}
