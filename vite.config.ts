@@ -142,7 +142,6 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 600,
   },
   test: {
-    environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],
     alias: {
       // Map Deno-style URL imports used by Supabase edge functions to local
