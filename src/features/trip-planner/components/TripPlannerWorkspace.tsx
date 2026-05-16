@@ -398,9 +398,11 @@ export default function TripPlannerWorkspace({
     onOpenDateSelector: openDateSelectorForSuggestion,
   });
 
+  const plannerInputRef = useRef<HTMLTextAreaElement>(null);
   const { insertChipText: insertPlannerChipText } = useChipInsertion({
     value: message,
     onChange: onMessageChange,
+    inputRef: plannerInputRef,
   });
 
   const handlePlannerSuggestion = useCallback((suggestion: PlannerSuggestion) => {
@@ -2051,6 +2053,7 @@ export default function TripPlannerWorkspace({
         isUploadingPdf={isUploadingPdf}
         onPdfUpload={onPdfUpload}
         selectedConversation={selectedConversation}
+        inputRef={plannerInputRef}
       />
     </div>
   );
