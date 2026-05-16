@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildRefinementChips } from '../refinementChipsBuilder';
 
-// Mirrors the dedupe/slice contract buildSuggestedActions applies after merging.
-describe('refinement chips merge contract', () => {
+// Verifies refine chips sort/slice correctly alongside base chips by priority.
+describe('buildRefinementChips — chip shape and priority ordering', () => {
   it('produces refine-typed chips that sort after quote/flight by priority', () => {
     const refine = buildRefinementChips(
       { flights: { origin: 'EZE', destination: 'MAD', departureDate: '2026-07-01', tripType: 'one_way', adults: 1, children: 0, infants: 0 } },

@@ -477,14 +477,7 @@ function buildSuggestedActions(options: {
   }
 
   for (const chip of buildRefinementChips(
-    {
-      flights: (parsedRequest as { flights?: unknown } | null | undefined)?.flights as
-        | Parameters<typeof buildRefinementChips>[0]['flights']
-        | undefined,
-      hotels: (parsedRequest as { hotels?: unknown } | null | undefined)?.hotels as
-        | Parameters<typeof buildRefinementChips>[0]['hotels']
-        | undefined,
-    },
+    { flights: parsedRequest?.flights, hotels: parsedRequest?.hotels },
     new Date(),
     language,
   )) {
@@ -496,6 +489,7 @@ function buildSuggestedActions(options: {
     });
   }
 
+  // Note: priority 4+ refine chips (passengers, duration) are dropped when quote/itinerary fill slots 0-2 post-search — intended.
   return actions
     .sort((a, b) => a.priority - b.priority)
     .slice(0, 3);
