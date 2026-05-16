@@ -1,19 +1,23 @@
 // @vitest-environment jsdom
 
 import { renderHook, act } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { useChipInsertion } from '../useChipInsertion';
+
+afterEach(() => {
+  document.body.querySelectorAll('textarea').forEach((n) => n.remove());
+});
 
 function setup(initialValue: string) {
   const onChange = vi.fn();
   const textarea = document.createElement('textarea');
   document.body.appendChild(textarea);
   const inputRef = { current: textarea };
-  const { result, rerender } = renderHook(
+  const { result } = renderHook(
     ({ value }: { value: string }) => useChipInsertion({ value, onChange, inputRef }),
     { initialProps: { value: initialValue } },
   );
-  return { result, rerender, onChange, textarea };
+  return { result, onChange, textarea };
 }
 
 describe('useChipInsertion', () => {
