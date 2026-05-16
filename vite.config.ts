@@ -154,6 +154,7 @@ export default defineConfig(({ mode }) => ({
     },
     include: [
       'src/features/trip-planner/__tests__/*.test.ts',
+      'src/features/trip-planner/utils/__tests__/*.test.ts',
       'src/features/chat/__tests__/*.test.ts',
       'src/features/chat/components/__tests__/*.test.tsx',
       'src/features/chat/hooks/__tests__/*.test.ts',

@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { useChatPanelResize } from '@/features/trip-planner/hooks/useAssistantResize';
+import { routePlannerSuggestion } from '../utils/plannerSuggestionRouter';
 import { useDragReorder } from '@/features/trip-planner/hooks/useDragReorder';
 import { useSegmentVisibility } from '@/features/trip-planner/hooks/useSegmentVisibility';
 import type {
@@ -406,19 +407,9 @@ export default function TripPlannerWorkspace({
   });
 
   const handlePlannerSuggestion = useCallback((suggestion: PlannerSuggestion) => {
-    switch (suggestion.action) {
-      case 'confirm_field':
-      case 'confirm_location_dates':
-        handleSuggestionClick(suggestion);
-        break;
-      case 'select_dates':
-        handleSuggestionClick(suggestion);
-        insertPlannerChipText('Quiero elegir las fechas exactas del viaje.');
-        break;
-      default:
-        insertPlannerChipText(suggestion.label);
-        break;
-    }
+    const route = routePlannerSuggestion(suggestion);
+    if (route.runDirectAction) handleSuggestionClick(suggestion);
+    if (route.insertText !== null) insertPlannerChipText(route.insertText);
   }, [handleSuggestionClick, insertPlannerChipText]);
 
   const isAssumed = useCallback((field: keyof PlannerFieldProvenance) => plannerState?.fieldProvenance?.[field] === 'assumed', [plannerState?.fieldProvenance]);
