@@ -142,6 +142,7 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 600,
   },
   test: {
+    environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],
     alias: {
       // Map Deno-style URL imports used by Supabase edge functions to local
@@ -156,6 +157,7 @@ export default defineConfig(({ mode }) => ({
       'src/features/trip-planner/__tests__/*.test.ts',
       'src/features/chat/__tests__/*.test.ts',
       'src/features/chat/components/__tests__/*.test.tsx',
+      'src/features/chat/hooks/__tests__/*.test.ts',
       'src/features/chat/state/__tests__/*.{test.ts,test.tsx}',
       'src/features/chat/sessions/__tests__/*.{test.ts,test.tsx}',
       'src/features/chat/services/__tests__/*.test.ts',
