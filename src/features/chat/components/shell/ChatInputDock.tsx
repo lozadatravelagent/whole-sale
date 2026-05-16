@@ -14,6 +14,8 @@ interface ChatInputDockProps {
   onPdfUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   selectedConversation?: string | null;
   className?: string;
+  /** Optional external ref to the textarea, used by useChipInsertion for focus/caret. */
+  inputRef?: React.RefObject<HTMLTextAreaElement>;
 }
 
 /**
@@ -31,6 +33,7 @@ const ChatInputDock = React.memo(({
   onPdfUpload,
   selectedConversation,
   className,
+  inputRef,
 }: ChatInputDockProps) => {
   const { t } = useTranslation('chat');
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -105,7 +108,15 @@ const ChatInputDock = React.memo(({
         </Button>
 
         <Textarea
-          ref={messageInputRef}
+          ref={(node) => {
+            // useRef/RefObject .current is readonly in TS but writable at runtime;
+            // casts satisfy the type while assigning the DOM node to both the
+            // internal ref and the optional external inputRef.
+            (messageInputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
+            if (inputRef) {
+              (inputRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
+            }
+          }}
           id="chat-message-input"
           name="message"
           value={value}

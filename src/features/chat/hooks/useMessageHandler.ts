@@ -21,6 +21,7 @@ import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
 import { isDiscoveryQuery, extractCategoriesFromMessage, extractDestinationFromMessage } from '@/features/chat/services/discoveryIntentGuard';
 import { resolveToolChoice } from '@/features/chat/services/toolChoicePolicy';
+import { buildRefinementChips } from '@/features/chat/services/refinementChipsBuilder';
 import type { MessageRow } from '../types/chat';
 import type { ChatSuggestedAction } from '../types/chat';
 import { contextStateToPreviousRequest, type ContextState } from '../types/contextState';
@@ -475,6 +476,20 @@ function buildSuggestedActions(options: {
     });
   }
 
+  for (const chip of buildRefinementChips(
+    { flights: parsedRequest?.flights, hotels: parsedRequest?.hotels },
+    new Date(),
+    language,
+  )) {
+    add({
+      label: chip.label,
+      prompt: chip.prompt,
+      type: chip.type,
+      priority: chip.priority,
+    });
+  }
+
+  // Note: priority 4+ refine chips (passengers, duration) are dropped when quote/itinerary fill slots 0-2 post-search — intended.
   return actions
     .sort((a, b) => a.priority - b.priority)
     .slice(0, 3);

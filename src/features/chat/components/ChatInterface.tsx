@@ -75,7 +75,10 @@ interface ChatInterfaceProps {
    */
   onBridgeSwitch?: (suggestedMode: BridgeChatMode, originalText: string) => void;
   onBridgeStay?: (originalText: string) => void;
+  /** @deprecated Chips now call onChipInsert. Retained so existing ChatFeature call sites compile without changes; remove once all callers are migrated. */
   onSuggestedAction?: (prompt: string) => void;
+  onChipInsert?: (text: string) => void;
+  inputRef?: React.RefObject<HTMLTextAreaElement>;
   /**
    * PR 3 (C6): forwarded to ChatHeader so the ModeSwitch can render. Both
    * optional — when missing (consumer branch) the switch doesn't render.
@@ -110,6 +113,8 @@ const ChatInterface = React.memo(({
   onBridgeSwitch,
   onBridgeStay,
   onSuggestedAction,
+  onChipInsert,
+  inputRef,
   hasAgency,
   onModeChange,
   headerVisibility = 'default',
@@ -332,6 +337,7 @@ const ChatInterface = React.memo(({
     id: string;
     label: string;
     icon?: string;
+    // kind preserved for schema back-compat; the call site now treats 'submit' and 'prefill' identically via onChipInsert.
     action: { kind: 'submit' | 'prefill'; text: string };
   };
   const emiliaNarrative = lastMeta?.emiliaNarrative as { chips?: unknown } | undefined;
@@ -527,7 +533,7 @@ const ChatInterface = React.memo(({
                       <button
                         key={action.id}
                         type="button"
-                        onClick={() => onSuggestedAction?.(action.prompt)}
+                        onClick={() => onChipInsert?.(action.prompt)}
                         className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                         title={action.prompt}
                       >
@@ -556,13 +562,7 @@ const ChatInterface = React.memo(({
                     <button
                       key={chip.id}
                       type="button"
-                      onClick={() => {
-                        if (chip.action.kind === 'submit') {
-                          onSuggestedAction?.(chip.action.text);
-                        } else {
-                          onMessageChange(chip.action.text);
-                        }
-                      }}
+                      onClick={() => onChipInsert?.(chip.action.text)}
                       className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Sparkles className="h-3.5 w-3.5 shrink-0" />
@@ -579,7 +579,7 @@ const ChatInterface = React.memo(({
                   {inferredFieldSet.has('tripType') && (
                     <button
                       type="button"
-                      onClick={() => onSuggestedAction?.('Convertir a ida y vuelta')}
+                      onClick={() => onChipInsert?.('Convertir a ida y vuelta')}
                       className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Plane className="h-3.5 w-3.5 shrink-0" />
@@ -589,7 +589,7 @@ const ChatInterface = React.memo(({
                   {inferredFieldSet.has('adults') && (
                     <button
                       type="button"
-                      onClick={() => onMessageChange('Somos ')}
+                      onClick={() => onChipInsert?.('Somos ')}
                       className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Sparkles className="h-3.5 w-3.5 shrink-0" />
@@ -599,7 +599,7 @@ const ChatInterface = React.memo(({
                   {inferredFieldSet.has('origin') && (
                     <button
                       type="button"
-                      onClick={() => onMessageChange('Salimos desde ')}
+                      onClick={() => onChipInsert?.('Salimos desde ')}
                       className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Map className="h-3.5 w-3.5 shrink-0" />
@@ -609,7 +609,7 @@ const ChatInterface = React.memo(({
                   {(inferredFieldSet.has('dates') || inferredFieldSet.has('departureDate')) && (
                     <button
                       type="button"
-                      onClick={() => onMessageChange('Cambiar fecha a ')}
+                      onClick={() => onChipInsert?.('Cambiar fecha a ')}
                       className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/60 bg-background px-3 py-1.5 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-primary hover:text-primary-foreground"
                     >
                       <Search className="h-3.5 w-3.5 shrink-0" />
@@ -679,6 +679,7 @@ const ChatInterface = React.memo(({
           isUploadingPdf={isUploadingPdf}
           onPdfUpload={onPdfUpload}
           selectedConversation={selectedConversation}
+          inputRef={inputRef}
         />
       </div>
     </div>

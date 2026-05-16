@@ -25,6 +25,7 @@ import { getLatestDiscoveryContext, hasChatContextPanelContent } from './utils/c
 import useContextualMemory from './hooks/useContextualMemory';
 import usePdfAnalysis from './hooks/usePdfAnalysis';
 import useMessageHandler from './hooks/useMessageHandler';
+import { useChipInsertion } from './hooks/useChipInsertion';
 // Phase 5 (Context Engineering) — feature-flagged side-effects only.
 import { useEmiliaState, useUpdateState } from './state/useEmiliaState';
 import { addMessageViaSupabase } from './services/messageService';
@@ -433,6 +434,13 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     if (!prompt.trim() || isLoading) return;
     handleSendMessageRaw(prompt);
   }, [handleSendMessageRaw, isLoading]);
+
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const { insertChipText } = useChipInsertion({
+    value: message,
+    onChange: setMessage,
+    inputRef: chatInputRef,
+  });
 
   // Handle Archive conversation
   const handleArchiveConversation = useCallback(async (conversationId: string, currentState: 'active' | 'closed') => {
@@ -955,6 +963,8 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                   onAddPlace={handleAddPlaceToCart}
                   accountType="consumer"
                   onSuggestedAction={handleSuggestedAction}
+                  onChipInsert={insertChipText}
+                  inputRef={chatInputRef}
                   headerVisibility="mobile-only"
                 />
               </div>
@@ -1074,6 +1084,8 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
                 onBridgeSwitch={handleBridgeSwitch}
                 onBridgeStay={handleBridgeStay}
                 onSuggestedAction={handleSuggestedAction}
+                onChipInsert={insertChipText}
+                inputRef={chatInputRef}
                 headerVisibility="mobile-only"
               />
             ) : (

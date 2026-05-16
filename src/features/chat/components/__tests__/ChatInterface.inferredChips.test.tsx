@@ -96,24 +96,31 @@ describe('ChatInterface inferred-default chips', () => {
     expect(screen.queryByRole('button', { name: /cambiar pasajeros/i })).toBeNull();
   });
 
-  it('auto-submits the round-trip prompt via onSuggestedAction when the tripType chip is clicked', () => {
+  it('inserts the round-trip prompt into the editable input via onChipInsert when the tripType chip is clicked', () => {
     const onSuggestedAction = vi.fn();
-    renderInterface(makeMessage(['tripType']), { onSuggestedAction });
+    const onChipInsert = vi.fn();
+    renderInterface(makeMessage(['tripType']), { onSuggestedAction, onChipInsert });
 
     fireEvent.click(screen.getByRole('button', { name: /buscar ida y vuelta/i }));
 
-    expect(onSuggestedAction).toHaveBeenCalledWith('Convertir a ida y vuelta');
+    // NEW: chip inserts text into the editable input (no auto-send).
+    expect(onChipInsert).toHaveBeenCalledWith('Convertir a ida y vuelta');
+    // OLD auto-send path must NOT fire.
+    expect(onSuggestedAction).not.toHaveBeenCalled();
   });
 
-  it('pre-fills the chat input via onMessageChange when the passengers chip is clicked', () => {
+  it('inserts the passengers pre-fill text into the editable input via onChipInsert when the passengers chip is clicked', () => {
     const onMessageChange = vi.fn();
     const onSuggestedAction = vi.fn();
-    renderInterface(makeMessage(['adults']), { onMessageChange, onSuggestedAction });
+    const onChipInsert = vi.fn();
+    renderInterface(makeMessage(['adults']), { onMessageChange, onSuggestedAction, onChipInsert });
 
     fireEvent.click(screen.getByRole('button', { name: /cambiar pasajeros/i }));
 
-    expect(onMessageChange).toHaveBeenCalledWith('Somos ');
-    // Should NOT auto-submit — passengers chip is a pre-fill flow.
+    // NEW: chip inserts text into the editable input via onChipInsert (no auto-send).
+    expect(onChipInsert).toHaveBeenCalledWith('Somos ');
+    // Old paths must NOT fire.
+    expect(onMessageChange).not.toHaveBeenCalled();
     expect(onSuggestedAction).not.toHaveBeenCalled();
   });
 
@@ -122,8 +129,9 @@ describe('ChatInterface inferred-default chips', () => {
   // The chip cluster prefers narrative chips over the legacy `inferredFields`
   // derivation when both are present. This covers the new path.
   // -------------------------------------------------------------------------
-  it('renders chips from meta.emiliaNarrative.chips and routes submit-kind clicks to onSuggestedAction', () => {
+  it('renders chips from meta.emiliaNarrative.chips and routes submit-kind clicks to onChipInsert', () => {
     const onSuggestedAction = vi.fn();
+    const onChipInsert = vi.fn();
     const message = makeMessage(['adults'], {
       emiliaNarrative: {
         chips: [
@@ -135,7 +143,7 @@ describe('ChatInterface inferred-default chips', () => {
         ],
       },
     });
-    renderInterface(message, { onSuggestedAction });
+    renderInterface(message, { onSuggestedAction, onChipInsert });
 
     const cluster = screen.getByTestId('inferred-defaults-chips');
     expect(cluster).toBeTruthy();
@@ -145,7 +153,10 @@ describe('ChatInterface inferred-default chips', () => {
     expect(screen.queryByRole('button', { name: /cambiar pasajeros/i })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /pasarlo a ida y vuelta/i }));
-    expect(onSuggestedAction).toHaveBeenCalledWith('Hacelo ida y vuelta');
+    // NEW: narrative submit-kind chip inserts text into the editable input (no auto-send).
+    expect(onChipInsert).toHaveBeenCalledWith('Hacelo ida y vuelta');
+    // OLD auto-send path must NOT fire.
+    expect(onSuggestedAction).not.toHaveBeenCalled();
   });
 
   it('falls back to inferredFields-derived chips when emiliaNarrative.chips is absent (back-compat)', () => {

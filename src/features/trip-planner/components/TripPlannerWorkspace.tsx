@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { useChatPanelResize } from '@/features/trip-planner/hooks/useAssistantResize';
+import { routePlannerSuggestion } from '../utils/plannerSuggestionRouter';
 import { useDragReorder } from '@/features/trip-planner/hooks/useDragReorder';
 import { useSegmentVisibility } from '@/features/trip-planner/hooks/useSegmentVisibility';
 import type {
@@ -37,6 +38,7 @@ import type {
   PlannerPlaceCandidate,
   PlannerPlaceCategory,
   PlannerPlaceHotelCandidate,
+  PlannerSuggestion,
   PlannerSyncingFields,
   TripPlannerState,
 } from '../types';
@@ -66,6 +68,7 @@ import LeadSelector from './LeadSelector';
 import { useAuth } from '@/contexts/AuthContext';
 import { updateTripLeadId } from '../services/tripService';
 import SuggestionChips from '@/features/chat/components/SuggestionChips';
+import { useChipInsertion } from '@/features/chat/hooks/useChipInsertion';
 import usePlannerSuggestions from '../hooks/usePlannerSuggestions';
 import useSuggestionActions from '../hooks/useSuggestionActions';
 import TripPlannerStarterTemplate from './TripPlannerStarterTemplate';
@@ -395,6 +398,19 @@ export default function TripPlannerWorkspace({
     onSendMessage: onSendMessageRaw,
     onOpenDateSelector: openDateSelectorForSuggestion,
   });
+
+  const plannerInputRef = useRef<HTMLTextAreaElement>(null);
+  const { insertChipText: insertPlannerChipText } = useChipInsertion({
+    value: message,
+    onChange: onMessageChange,
+    inputRef: plannerInputRef,
+  });
+
+  const handlePlannerSuggestion = useCallback((suggestion: PlannerSuggestion) => {
+    const route = routePlannerSuggestion(suggestion);
+    if (route.runDirectAction) handleSuggestionClick(suggestion);
+    if (route.insertText !== null) insertPlannerChipText(route.insertText);
+  }, [handleSuggestionClick, insertPlannerChipText]);
 
   const isAssumed = useCallback((field: keyof PlannerFieldProvenance) => plannerState?.fieldProvenance?.[field] === 'assumed', [plannerState?.fieldProvenance]);
   const fieldIsSyncing = useCallback((field: keyof PlannerSyncingFields) => Boolean(plannerState?.syncingFields?.[field]), [plannerState?.syncingFields]);
@@ -1994,7 +2010,7 @@ export default function TripPlannerWorkspace({
           {!isTyping && plannerState && !isDraftPlanner && (suggestions.length > 0 || agentDiscoveryCards.length > 0) && (
             <SuggestionChips
               suggestions={suggestions}
-              onSuggestionClick={handleSuggestionClick}
+              onSuggestionClick={handlePlannerSuggestion}
               loadingAction={loadingActionId}
               discoveryCards={agentDiscoveryCards}
               onDiscoveryAdd={handleDiscoveryAdd}
@@ -2028,6 +2044,7 @@ export default function TripPlannerWorkspace({
         isUploadingPdf={isUploadingPdf}
         onPdfUpload={onPdfUpload}
         selectedConversation={selectedConversation}
+        inputRef={plannerInputRef}
       />
     </div>
   );
