@@ -21,6 +21,7 @@ import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
 import { isDiscoveryQuery, extractCategoriesFromMessage, extractDestinationFromMessage } from '@/features/chat/services/discoveryIntentGuard';
 import { resolveToolChoice } from '@/features/chat/services/toolChoicePolicy';
+import { buildRefinementChips } from '@/features/chat/services/refinementChipsBuilder';
 import type { MessageRow } from '../types/chat';
 import type { ChatSuggestedAction } from '../types/chat';
 import { contextStateToPreviousRequest, type ContextState } from '../types/contextState';
@@ -472,6 +473,26 @@ function buildSuggestedActions(options: {
       prompt: copy.quotePlanPrompt,
       type: 'quote',
       priority: 0,
+    });
+  }
+
+  for (const chip of buildRefinementChips(
+    {
+      flights: (parsedRequest as { flights?: unknown } | null | undefined)?.flights as
+        | Parameters<typeof buildRefinementChips>[0]['flights']
+        | undefined,
+      hotels: (parsedRequest as { hotels?: unknown } | null | undefined)?.hotels as
+        | Parameters<typeof buildRefinementChips>[0]['hotels']
+        | undefined,
+    },
+    new Date(),
+    language,
+  )) {
+    add({
+      label: chip.label,
+      prompt: chip.prompt,
+      type: chip.type,
+      priority: chip.priority,
     });
   }
 
