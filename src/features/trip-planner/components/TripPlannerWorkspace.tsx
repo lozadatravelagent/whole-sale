@@ -66,6 +66,7 @@ import LeadSelector from './LeadSelector';
 import { useAuth } from '@/contexts/AuthContext';
 import { updateTripLeadId } from '../services/tripService';
 import SuggestionChips from '@/features/chat/components/SuggestionChips';
+import { useChipInsertion } from '@/features/chat/hooks/useChipInsertion';
 import usePlannerSuggestions from '../hooks/usePlannerSuggestions';
 import useSuggestionActions from '../hooks/useSuggestionActions';
 import TripPlannerStarterTemplate from './TripPlannerStarterTemplate';
@@ -387,13 +388,18 @@ export default function TripPlannerWorkspace({
   const openDateSelectorForSuggestion = useCallback(() => {
     setIsDateSelectionModalOpen(true);
   }, []);
-  const { handleSuggestionClick, loadingActionId } = useSuggestionActions({
+  const { loadingActionId } = useSuggestionActions({
     loadTransportForSegment: onLoadTransportForSegment,
     loadHotelsForSegment: onLoadHotelsForSegment,
     updateTripField: onUpdateTripField,
     plannerState,
     onSendMessage: onSendMessageRaw,
     onOpenDateSelector: openDateSelectorForSuggestion,
+  });
+
+  const { insertChipText: insertPlannerChipText } = useChipInsertion({
+    value: message,
+    onChange: onMessageChange,
   });
 
   const isAssumed = useCallback((field: keyof PlannerFieldProvenance) => plannerState?.fieldProvenance?.[field] === 'assumed', [plannerState?.fieldProvenance]);
@@ -1994,7 +2000,7 @@ export default function TripPlannerWorkspace({
           {!isTyping && plannerState && !isDraftPlanner && (suggestions.length > 0 || agentDiscoveryCards.length > 0) && (
             <SuggestionChips
               suggestions={suggestions}
-              onSuggestionClick={handleSuggestionClick}
+              onSuggestionClick={(suggestion) => insertPlannerChipText(suggestion.label)}
               loadingAction={loadingActionId}
               discoveryCards={agentDiscoveryCards}
               onDiscoveryAdd={handleDiscoveryAdd}
