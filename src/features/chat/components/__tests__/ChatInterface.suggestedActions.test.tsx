@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -47,8 +46,9 @@ const baseMessage: MessageRow = {
 } as MessageRow;
 
 describe('ChatInterface suggested actions', () => {
-  it('renders executable prompt chips and sends their prompt on click', () => {
+  it('renders executable prompt chips and inserts their prompt into the input on click', () => {
     const onSuggestedAction = vi.fn();
+    const onChipInsert = vi.fn();
 
     render(
       <ChatInterface
@@ -67,11 +67,15 @@ describe('ChatInterface suggested actions', () => {
         onPdfGenerated={vi.fn()}
         accountType="agent"
         onSuggestedAction={onSuggestedAction}
+        onChipInsert={onChipInsert}
       />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /buscar vuelos para cancun/i }));
 
-    expect(onSuggestedAction).toHaveBeenCalledWith('Quiero buscar vuelos para Cancun, Quintana Roo, Mexico.');
+    // NEW: chip inserts text into the editable input (no auto-send).
+    expect(onChipInsert).toHaveBeenCalledWith('Quiero buscar vuelos para Cancun, Quintana Roo, Mexico.');
+    // OLD auto-send path must NOT fire.
+    expect(onSuggestedAction).not.toHaveBeenCalled();
   });
 });
