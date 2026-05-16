@@ -37,6 +37,22 @@ describe('aiMessageParser validation', () => {
     expect(result.missingFields).toEqual(expect.arrayContaining(['checkinDate', 'checkoutDate']));
   });
 
+  it('requires returnDate when a flight request is explicitly round-trip', () => {
+    const result = validateFlightRequiredFields({
+      origin: 'Buenos Aires',
+      destination: 'MIA',
+      departureDate: '2026-08-01',
+      tripType: 'round_trip',
+      adults: 1,
+      children: 0,
+      infants: 0,
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.missingFields).toEqual(['returnDate']);
+    expect(result.missingFieldsSpanish).toEqual(['fecha de regreso']);
+  });
+
   it('parses simple itinerary requests locally', () => {
     const result = tryParseSimpleItineraryDeterministically(
       'Armame un itinerario por Japon de 15 dias en julio para 2 personas',

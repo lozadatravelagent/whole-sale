@@ -670,7 +670,7 @@ describe('useMessageHandler', () => {
   // Iteration merge
   // -------------------------------------------------------------------------
   describe('handleSendMessage — iteration merge', () => {
-    it('uses parser iterationIntent as the primary refinement signal without regex merge', async () => {
+    it('uses parser iterationIntent as the primary refinement signal before routing', async () => {
       const contextState = {
         lastSearch: {
           requestType: 'combined' as const,
@@ -742,7 +742,18 @@ describe('useMessageHandler', () => {
         await result.current.handleSendMessage('quiero una semana');
       });
 
-      expect(vi.mocked(mergeIterationContext)).not.toHaveBeenCalled();
+      expect(vi.mocked(mergeIterationContext)).toHaveBeenCalledWith(
+        contextState,
+        expect.objectContaining({
+          requestType: 'combined',
+          iterationIntent: expect.objectContaining({ type: 'duration_change' }),
+        }),
+        expect.objectContaining({
+          isIteration: true,
+          iterationType: 'stay_duration_modification',
+          matchedPattern: 'llm:duration_change',
+        }),
+      );
       expect(vi.mocked(routeRequest)).toHaveBeenCalledWith(
         expect.objectContaining({
           requestType: 'combined',

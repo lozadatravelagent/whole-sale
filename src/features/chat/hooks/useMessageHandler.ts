@@ -182,9 +182,17 @@ function isSearchRequestType(requestType?: ParsedTravelRequest['requestType']): 
 
 function buildLlmIterationContext(parsedRequest: ParsedTravelRequest, persistentState?: ContextState | null): IterationContext | null {
   const intent = parsedRequest.iterationIntent;
-  if (!intent?.isIteration || !persistentState?.lastSearch || !isSearchRequestType(parsedRequest.requestType)) {
+  if (!intent?.isIteration || !persistentState?.lastSearch || !isSearchRequestType(persistentState.lastSearch.requestType)) {
     return null;
   }
+
+  const modifiedFields = intent.modifiedFields || [];
+  const hasFlightModification =
+    modifiedFields.some(field => field.startsWith('flights.')) ||
+    Boolean(parsedRequest.flights);
+  const hasHotelModification =
+    modifiedFields.some(field => field.startsWith('hotels.')) ||
+    Boolean(parsedRequest.hotels);
 
   const typeMap: Record<NonNullable<typeof intent.type>, IterationContext['iterationType']> = {
     duration_change: 'stay_duration_modification',
@@ -195,7 +203,12 @@ function buildLlmIterationContext(parsedRequest: ParsedTravelRequest, persistent
     unrelated: 'new_search',
   };
 
-  const iterationType = intent.type ? typeMap[intent.type] : 'full_reuse';
+  let iterationType = intent.type ? typeMap[intent.type] : 'full_reuse';
+  if (iterationType === 'filter_change' && hasFlightModification) {
+    iterationType = 'flight_modification';
+  } else if (iterationType === 'filter_change' && hasHotelModification && persistentState.lastSearch.requestType === 'combined') {
+    iterationType = 'hotel_modification';
+  }
   if (iterationType === 'new_search') return null;
 
   return {
@@ -203,14 +216,30 @@ function buildLlmIterationContext(parsedRequest: ParsedTravelRequest, persistent
     iterationType,
     baseRequestType: persistentState.lastSearch.requestType,
     modifiedComponent:
-      parsedRequest.requestType === 'combined'
+      hasFlightModification && hasHotelModification
         ? 'both'
-        : parsedRequest.requestType === 'flights'
+        : hasFlightModification
           ? 'flights'
-          : 'hotels',
+          : hasHotelModification
+            ? 'hotels'
+            : null,
     preserveFields: [],
     confidence: Math.max(parsedRequest.confidence || 0, 0.85),
     matchedPattern: `llm:${intent.type || 'iteration'}`,
+    flightModification: hasFlightModification
+      ? {
+          ...(parsedRequest.flights?.adults !== undefined && { adults: parsedRequest.flights.adults }),
+          ...(parsedRequest.flights?.children !== undefined && { children: parsedRequest.flights.children }),
+          ...(parsedRequest.flights?.infants !== undefined && { infants: parsedRequest.flights.infants }),
+          ...(parsedRequest.flights?.tripType && { tripType: parsedRequest.flights.tripType }),
+          ...(parsedRequest.flights?.returnDate && { returnDate: parsedRequest.flights.returnDate }),
+          ...(parsedRequest.flights?.stops && { stops: parsedRequest.flights.stops as any }),
+          ...(parsedRequest.flights?.luggage && { luggage: parsedRequest.flights.luggage as any }),
+          ...(parsedRequest.flights?.preferredAirline && { airline: parsedRequest.flights.preferredAirline }),
+          ...(parsedRequest.flights?.maxLayoverHours !== undefined && { maxLayoverHours: parsedRequest.flights.maxLayoverHours }),
+          ...(parsedRequest.flights?.cabinClass && { cabinClass: parsedRequest.flights.cabinClass }),
+        }
+      : undefined,
   };
 }
 
@@ -1550,7 +1579,7 @@ const useMessageHandler = (
       // Otherwise slot-only turns like "quiero una semana" can be parsed as
       // itinerary intent and trip the strict-mode bridge before the previous
       // search context has a chance to merge.
-      if (!llmIterationContext && iterationContext.isIteration && persistentState) {
+      if (iterationContext.isIteration && persistentState) {
         console.log('🔄 [ITERATION] Applying pre-route iteration merge');
         console.log('🔄 [ITERATION] Before merge - requestType:', parsedRequest.requestType);
         parsedRequest = mergeIterationContext(persistentState, parsedRequest, iterationContext);

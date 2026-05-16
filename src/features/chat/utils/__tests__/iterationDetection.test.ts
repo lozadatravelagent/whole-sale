@@ -249,6 +249,148 @@ describe('mergeIterationContext — stay duration modification', () => {
   });
 });
 
+describe('detectIterationIntent — flight trip type modification', () => {
+  it('detects "ida y vuelta" as a flight modification over the last flight search', () => {
+    const ctx = makeCombinedContext({
+      requestType: 'flights',
+      flights: {
+        origin: 'Buenos Aires',
+        destination: 'MIA',
+        departureDate: '2026-08-01',
+        returnDate: undefined,
+        tripType: 'one_way',
+        adults: 1,
+      },
+    });
+
+    const result = detectIterationIntent('ida y vuelta', ctx);
+
+    expect(result.isIteration).toBe(true);
+    expect(result.iterationType).toBe('flight_modification');
+    expect(result.baseRequestType).toBe('flights');
+    expect(result.flightModification?.tripType).toBe('round_trip');
+  });
+
+  it('promotes a previous one-way flight to round-trip without losing route, date, or pax', () => {
+    const ctx = makeCombinedContext({
+      requestType: 'flights',
+      flights: {
+        origin: 'Buenos Aires',
+        destination: 'MIA',
+        departureDate: '2026-08-01',
+        returnDate: undefined,
+        tripType: 'one_way',
+        adults: 1,
+      },
+    });
+    const iter = detectIterationIntent('ida y vuelta', ctx);
+
+    const merged = mergeIterationContext(
+      ctx,
+      makeParsed({
+        requestType: 'missing_info_request',
+        originalMessage: 'ida y vuelta',
+        missingFields: ['origin', 'destination', 'departureDate', 'returnDate'],
+      }),
+      iter,
+    );
+
+    expect(merged.requestType).toBe('flights');
+    expect(merged.flights?.origin).toBe('Buenos Aires');
+    expect(merged.flights?.destination).toBe('MIA');
+    expect(merged.flights?.departureDate).toBe('2026-08-01');
+    expect(merged.flights?.adults).toBe(1);
+    expect(merged.flights?.tripType).toBe('round_trip');
+    expect(merged.flights?.returnDate).toBeUndefined();
+  });
+});
+
+describe('detectIterationIntent — passenger modification', () => {
+  it('detects "Somos 3" as a passenger update over the last flight search', () => {
+    const ctx = makeCombinedContext({
+      requestType: 'flights',
+      flights: {
+        origin: 'Buenos Aires',
+        destination: 'CUN',
+        departureDate: '2026-05-19',
+        returnDate: undefined,
+        tripType: 'one_way',
+        adults: 1,
+      },
+    });
+
+    const result = detectIterationIntent('Somos 3', ctx);
+
+    expect(result.isIteration).toBe(true);
+    expect(result.iterationType).toBe('flight_modification');
+    expect(result.baseRequestType).toBe('flights');
+    expect(result.modifiedComponent).toBe('flights');
+    expect(result.flightModification?.adults).toBe(3);
+  });
+
+  it('updates only passenger count without losing flight route, date, or trip type', () => {
+    const ctx = makeCombinedContext({
+      requestType: 'flights',
+      flights: {
+        origin: 'Buenos Aires',
+        destination: 'CUN',
+        departureDate: '2026-05-19',
+        returnDate: undefined,
+        tripType: 'one_way',
+        adults: 1,
+      },
+    });
+    const iter = detectIterationIntent('Somos 3', ctx);
+
+    const merged = mergeIterationContext(
+      ctx,
+      makeParsed({
+        requestType: 'flights',
+        originalMessage: 'Somos 3',
+        flights: {
+          adults: 3,
+          children: 0,
+        } as ParsedTravelRequest['flights'],
+      }),
+      iter,
+    );
+
+    expect(merged.requestType).toBe('flights');
+    expect(merged.flights?.origin).toBe('Buenos Aires');
+    expect(merged.flights?.destination).toBe('CUN');
+    expect(merged.flights?.departureDate).toBe('2026-05-19');
+    expect(merged.flights?.tripType).toBe('one_way');
+    expect(merged.flights?.adults).toBe(3);
+    expect(merged.flights?.children).toBe(0);
+  });
+
+  it('keeps combined search aligned when passenger count changes', () => {
+    const ctx = makeCombinedContext({
+      flights: {
+        adults: 2,
+        children: 0,
+      },
+      hotels: {
+        adults: 2,
+        children: 0,
+      },
+    });
+    const iter = detectIterationIntent('para 3 personas', ctx);
+
+    const merged = mergeIterationContext(
+      ctx,
+      makeParsed({ requestType: 'flights', originalMessage: 'para 3 personas' }),
+      iter,
+    );
+
+    expect(merged.requestType).toBe('combined');
+    expect(merged.flights?.adults).toBe(3);
+    expect(merged.hotels?.adults).toBe(3);
+    expect(merged.flights?.destination).toBe('CUN');
+    expect(merged.hotels?.city).toBe('Cancun');
+  });
+});
+
 describe('mergeIterationContext — destination swap', () => {
   it('swaps destination from CUN → PUJ keeping origin, dates, and pax intact', () => {
     const ctx = makeCombinedContext({

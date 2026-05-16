@@ -214,6 +214,48 @@ describe('resolveConversationTurn mode bridge', () => {
     expect(turn.uiMeta.suggestedMode).toBe('passenger');
   });
 
+  it('does not bridge when the LLM marks the turn as an iteration', () => {
+    const turn = resolveConversationTurn({
+      parsedRequest: {
+        requestType: 'itinerary',
+        confidence: 0.7,
+        originalMessage: 'ida y vuelta',
+        itinerary: {
+          destinations: ['Cancun'],
+        },
+        iterationIntent: {
+          isIteration: true,
+          type: 'pax_change',
+          modifiedFields: ['flights.adults'],
+        },
+      },
+      routeResult: {
+        route: 'PLAN',
+        score: 0.22,
+        missingFields: ['origin', 'dates'],
+        collectQuestion: null,
+        reason: 'low_definition',
+        dimensions: {
+          destination: 0.5,
+          dates: 0,
+          passengers: 0.5,
+          origin: 0,
+          complexity: 0.5,
+        },
+        inferredFields: [],
+      },
+      plannerState: null,
+      hasPersistentContext: true,
+      hasPreviousParsedRequest: false,
+      recentCollectCount: 0,
+      maxCollectTurns: 3,
+      mode: 'agency',
+    });
+
+    expect(turn.executionBranch).not.toBe('mode_bridge');
+    expect(turn.uiMeta.suggestedMode).toBeUndefined();
+  });
+
   it('stops asking minimal questions once the collect cap is exhausted', () => {
     const turn = resolveConversationTurn({
       parsedRequest: {

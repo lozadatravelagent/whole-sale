@@ -1474,6 +1474,18 @@ function detectAdultsFromText(message: string): { adults?: number; adultsExplici
         };
     }
 
+    const groupCount = normalized.match(/\b(?:somos|viajamos|vamos|seremos|we\s+are|we're)\s+(\d+|un|una|uno|dos|tres|cuatro|cinco|seis)\b/i);
+    if (groupCount) {
+        const rawCount = groupCount[1].toLowerCase();
+        const count = /^\d+$/.test(rawCount) ? parseInt(rawCount, 10) : numberWords[rawCount];
+        if (count) {
+            return {
+                adults: Math.max(1, count),
+                adultsExplicit: true
+            };
+        }
+    }
+
     if (/\b(una persona|un adulto|1 adulto)\b/i.test(normalized)) {
         return {
             adults: 1,
@@ -1887,6 +1899,11 @@ export function validateFlightRequiredFields(flights?: ParsedTravelRequest['flig
         missingFieldsSpanish.push('cantidad de pasajeros');
     }
 
+    if (normalizedFlights.tripType === 'round_trip' && !isValidIsoDate(normalizedFlights.returnDate)) {
+        missingFields.push('returnDate');
+        missingFieldsSpanish.push('fecha de regreso');
+    }
+
     return {
         isValid: missingFields.length === 0,
         missingFields,
@@ -2087,6 +2104,7 @@ function localizeMissingField(field: string, language: UserLanguage): string {
         origen: fields.origen,
         destino: fields.destino,
         'fecha de salida': fields.fechaSalida,
+        'fecha de regreso': fields.fechaRegreso || fields.fechaSalida,
         'fecha de entrada': fields.fechaEntrada,
         'fecha de salida hotel': fields.checkout,
         'cantidad de pasajeros': fields.pasajeros,
@@ -2127,6 +2145,9 @@ function generateFieldExamples(missingFieldsSpanish: string[], language: UserLan
                 break;
             case 'fecha de salida':
                 examples.push(copyExamples.fechaSalida);
+                break;
+            case 'fecha de regreso':
+                examples.push(copyExamples.fechaRegreso || copyExamples.fechaSalida);
                 break;
             case 'cantidad de pasajeros':
                 examples.push(copyExamples.pasajeros);
@@ -2654,8 +2675,12 @@ export async function parseMessageWithAI(
 
         // Pasajeros
         const paxMatch = normalized.match(/(\d+)\s*(personas|pasajeros|adultos)/i);
+        const groupPaxMatch = normalized.match(/\b(?:somos|viajamos|vamos|seremos|we\s+are|we're)\s+(\d{1,2})\b/i);
         if (paxMatch) {
             const adt = Math.max(1, parseInt(paxMatch[1], 10));
+            quick.flights = { ...(quick.flights || ({} as any)), adults: adt, children: 0 } as any;
+        } else if (groupPaxMatch) {
+            const adt = Math.max(1, parseInt(groupPaxMatch[1], 10));
             quick.flights = { ...(quick.flights || ({} as any)), adults: adt, children: 0 } as any;
         } else if (/una persona|un pasajero|un adulto/i.test(normalized)) {
             quick.flights = { ...(quick.flights || ({} as any)), adults: 1, children: 0 } as any;
@@ -3058,8 +3083,11 @@ async function buildStreamingQuickPreParserHints(message: string): Promise<Parti
             }
         }
         const paxMatch = normalized.match(/(\d+)\s*(personas|pasajeros|adultos)/i);
+        const groupPaxMatch = normalized.match(/\b(?:somos|viajamos|vamos|seremos|we\s+are|we're)\s+(\d{1,2})\b/i);
         if (paxMatch) {
             quick.flights = { ...(quick.flights || ({} as any)), adults: Math.max(1, parseInt(paxMatch[1], 10)), children: 0 } as any;
+        } else if (groupPaxMatch) {
+            quick.flights = { ...(quick.flights || ({} as any)), adults: Math.max(1, parseInt(groupPaxMatch[1], 10)), children: 0 } as any;
         }
 
         const { detectAirlineInText } = await import('@/features/chat/data/airlineAliases');

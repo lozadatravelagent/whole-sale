@@ -25,10 +25,14 @@ export interface FlightModificationDetails {
   stops?: 'direct' | 'with_stops' | 'one_stop' | 'two_stops';
   luggage?: 'backpack' | 'carry_on' | 'checked';
   airline?: string;
+  tripType?: 'one_way' | 'round_trip' | 'multi_city';
+  returnDate?: string;
   departureTimePreference?: string;
   arrivalTimePreference?: string;
   maxLayoverHours?: number;
   adults?: number; // Used when adding adults after "only minors" error
+  children?: number;
+  infants?: number;
   cabinClass?: 'economy' | 'premium_economy' | 'business' | 'first';
 }
 
@@ -111,6 +115,77 @@ const normalizeText = (text: string): string => {
     .trim();
 };
 
+const NUMBER_WORDS: Record<string, number> = {
+  un: 1,
+  una: 1,
+  uno: 1,
+  one: 1,
+  dos: 2,
+  two: 2,
+  tres: 3,
+  three: 3,
+  cuatro: 4,
+  four: 4,
+  cinco: 5,
+  five: 5,
+  seis: 6,
+  six: 6,
+  siete: 7,
+  seven: 7,
+  ocho: 8,
+  eight: 8,
+  nueve: 9,
+  nine: 9,
+};
+
+function parseCount(value?: string): number | undefined {
+  if (!value) return undefined;
+  if (/^\d+$/.test(value)) return parseInt(value, 10);
+  return NUMBER_WORDS[value.toLowerCase()];
+}
+
+function extractPassengerModification(norm: string): Pick<FlightModificationDetails, 'adults' | 'children' | 'infants'> | null {
+  const countToken = '(\\d{1,2}|un|una|uno|one|dos|two|tres|three|cuatro|four|cinco|five|seis|six|siete|seven|ocho|eight|nueve|nine)';
+  let adults: number | undefined;
+  let children: number | undefined;
+  let infants: number | undefined;
+
+  const explicitAdults = new RegExp(`\\b${countToken}\\s+(?:adultos?|adults?)\\b`, 'i').exec(norm);
+  if (explicitAdults) adults = parseCount(explicitAdults[1]);
+
+  const explicitChildren = new RegExp(`\\b${countToken}\\s+(?:ninos?|niños?|menores?|children|kids?)\\b`, 'i').exec(norm);
+  if (explicitChildren) children = parseCount(explicitChildren[1]);
+
+  const explicitInfants = new RegExp(`\\b${countToken}\\s+(?:bebes?|bebés?|infantes?|infants?|babies)\\b`, 'i').exec(norm);
+  if (explicitInfants) infants = parseCount(explicitInfants[1]);
+
+  if (adults === undefined) {
+    const totalPaxPatterns = [
+      new RegExp(`\\b(?:somos|viajamos|vamos|seremos|we\\s+are|we're)\\s+${countToken}\\b`, 'i'),
+      new RegExp(`\\b(?:para|for)\\s+${countToken}\\s+(?:personas?|pasajeros?|pax|people|passengers?)\\b`, 'i'),
+      new RegExp(`\\b${countToken}\\s+(?:personas?|pasajeros?|pax|people|passengers?)\\b`, 'i'),
+      new RegExp(`\\b${countToken}\\s+of\\s+us\\b`, 'i'),
+    ];
+
+    for (const pattern of totalPaxPatterns) {
+      const match = pattern.exec(norm);
+      const count = parseCount(match?.[1]);
+      if (count !== undefined) {
+        adults = count;
+        break;
+      }
+    }
+  }
+
+  if (adults === undefined && children === undefined && infants === undefined) return null;
+
+  return {
+    ...(adults !== undefined && { adults: Math.max(1, adults) }),
+    ...(children !== undefined && { children: Math.max(0, children) }),
+    ...(infants !== undefined && { infants: Math.max(0, infants) }),
+  };
+}
+
 /**
  * Patrones que indican referencia al contexto previo
  */
@@ -166,6 +241,9 @@ const NEW_FLIGHT_PARAMS_PATTERNS = [
  * Patrones que indican modificación de vuelo (escalas, aerolínea, etc.)
  */
 const FLIGHT_MODIFICATION_PATTERNS = [
+  // Tipo de viaje
+  { pattern: /\b(ida\s+y\s+vuelta|round\s*trip|con\s+vuelta|con\s+regreso|vuelta\s+tambien|vuelta\s+también|tambien\s+vuelta|también\s+vuelta|agreg(?:a|ame|ar)?\s+(?:la\s+)?vuelta|sum(?:a|ame|ar)?\s+(?:la\s+)?vuelta)\b/i, name: 'round_trip', tripTypeValue: 'round_trip' },
+  { pattern: /\b(solo\s+ida|one\s*way|sin\s+vuelta|sin\s+regreso)\b/i, name: 'one_way', tripTypeValue: 'one_way' },
   // Escalas
   { pattern: /\b(con\s+escalas?|con\s+conexion)\b/i, name: 'con_escalas', stopsValue: 'with_stops' },
   { pattern: /\b(sin\s+escalas?|vuelo\s+directo|solo\s+directo|directos?)\b/i, name: 'sin_escalas', stopsValue: 'direct' },
@@ -318,11 +396,13 @@ export function detectIterationIntent(
     maxLayoverHours?: number;
     adultsToAdd?: number;
     cabinClassValue?: 'economy' | 'premium_economy' | 'business' | 'first';
+    tripTypeValue?: 'one_way' | 'round_trip' | 'multi_city';
   } = {};
   for (const patternObj of FLIGHT_MODIFICATION_PATTERNS) {
     const { pattern, name } = patternObj;
     const stopsValue = (patternObj as any).stopsValue;
     const luggageValue = (patternObj as any).luggageValue;
+    const tripTypeValue = (patternObj as any).tripTypeValue;
     const airlineChange = (patternObj as any).airlineChange;
     const timeType = (patternObj as any).timeType;
     const extractHours = (patternObj as any).extractHours;
@@ -333,7 +413,7 @@ export function detectIterationIntent(
     if (match) {
       hasFlightMod = true;
       flightModPattern = name;
-      flightModDetails = { stopsValue, luggageValue, airlineChange };
+      flightModDetails = { stopsValue, luggageValue, airlineChange, tripTypeValue };
 
       // ✨ Extraer preferencia de horario
       if (timeType === 'departure' && match[2]) {
@@ -384,6 +464,11 @@ export function detectIterationIntent(
   const hasNewFlightParams = NEW_FLIGHT_PARAMS_PATTERNS.some(pattern => pattern.test(norm));
   if (hasNewFlightParams) {
     console.log('⚠️ [ITERATION] New flight params detected - likely NOT hotel-only iteration');
+  }
+
+  const passengerModification = extractPassengerModification(norm);
+  if (passengerModification) {
+    console.log('✅ [ITERATION] Passenger modification detected:', passengerModification);
   }
 
   // Detectar si parece una NUEVA búsqueda de hotel completa (no una iteración)
@@ -521,13 +606,53 @@ export function detectIterationIntent(
 
   // ========== CASOS DE ITERACIÓN DE VUELO ==========
 
-  // CASO 7: Modificación de escalas (con escalas, sin escalas, directo, etc.)
+  // CASO 7: Cambio de pasajeros sobre una búsqueda activa
+  if (passengerModification && !hasNewFlightParams && (lastSearch.requestType === 'flights' || lastSearch.requestType === 'combined')) {
+    const baseType = lastSearch.requestType;
+    const preserveHotel = baseType === 'combined';
+
+    console.log('✅ [ITERATION] CASE 7: Passenger modification → flight_modification');
+    return {
+      isIteration: true,
+      iterationType: 'flight_modification',
+      baseRequestType: baseType,
+      modifiedComponent: preserveHotel ? 'both' : 'flights',
+      preserveFields: preserveHotel ? getAllHotelFields() : [],
+      confidence: 0.95,
+      matchedPattern: 'passenger_modification',
+      flightModification: passengerModification,
+    };
+  }
+
+  // CASO 8: Cambio de tipo de viaje sobre una búsqueda de vuelo existente
+  if (hasFlightMod && flightModDetails.tripTypeValue && !hasNewFlightParams) {
+    if (lastSearch.requestType === 'flights' || lastSearch.requestType === 'combined') {
+      const baseType = lastSearch.requestType;
+      const preserveHotel = baseType === 'combined';
+
+      console.log(`✅ [ITERATION] CASE 8: Flight trip type modification → flight_modification (${flightModDetails.tripTypeValue})`);
+      return {
+        isIteration: true,
+        iterationType: 'flight_modification',
+        baseRequestType: baseType,
+        modifiedComponent: 'flights',
+        preserveFields: preserveHotel ? getAllHotelFields() : [],
+        confidence: 0.95,
+        matchedPattern: flightModPattern,
+        flightModification: {
+          tripType: flightModDetails.tripTypeValue,
+        },
+      };
+    }
+  }
+
+  // CASO 9: Modificación de escalas (con escalas, sin escalas, directo, etc.)
   if (hasFlightMod && flightModDetails.stopsValue && !hasNewFlightParams) {
     // Puede ser sobre vuelo solo o sobre combined (manteniendo hotel si había)
     const baseType = lastSearch.requestType;
     const preserveHotel = baseType === 'combined';
 
-    console.log(`✅ [ITERATION] CASE 7: Flight stops modification → flight_modification (${flightModDetails.stopsValue})`);
+    console.log(`✅ [ITERATION] CASE 9: Flight stops modification → flight_modification (${flightModDetails.stopsValue})`);
     return {
       isIteration: true,
       iterationType: 'flight_modification',
@@ -543,12 +668,12 @@ export function detectIterationIntent(
     } as IterationContext & { flightModification?: { stops?: string; luggage?: string; airline?: string } };
   }
 
-  // CASO 8: Modificación de equipaje
+  // CASO 10: Modificación de equipaje
   if (hasFlightMod && flightModDetails.luggageValue && !hasNewFlightParams) {
     const baseType = lastSearch.requestType;
     const preserveHotel = baseType === 'combined';
 
-    console.log(`✅ [ITERATION] CASE 8: Flight luggage modification → flight_modification (${flightModDetails.luggageValue})`);
+    console.log(`✅ [ITERATION] CASE 10: Flight luggage modification → flight_modification (${flightModDetails.luggageValue})`);
     return {
       isIteration: true,
       iterationType: 'flight_modification',
@@ -563,7 +688,7 @@ export function detectIterationIntent(
     } as IterationContext & { flightModification?: { stops?: string; luggage?: string; airline?: string } };
   }
 
-  // CASO 9: Cambio de aerolínea
+  // CASO 11: Cambio de aerolínea
   if ((hasFlightMod && flightModDetails.airlineChange) || mentionsAirline) {
     // Si menciona aerolínea pero no hay nuevos params de vuelo, es iteración
     if (!hasNewFlightParams && (lastSearch.requestType === 'flights' || lastSearch.requestType === 'combined')) {
@@ -574,7 +699,7 @@ export function detectIterationIntent(
       const airlineCode = detectedAirline?.code;
       const airlineName = detectedAirline?.name;
 
-      console.log(`✅ [ITERATION] CASE 9: Flight airline change → flight_modification (${airlineName || 'unknown'} → ${airlineCode || '?'})`);
+      console.log(`✅ [ITERATION] CASE 11: Flight airline change → flight_modification (${airlineName || 'unknown'} → ${airlineCode || '?'})`);
       return {
         isIteration: true,
         iterationType: 'flight_modification',
@@ -590,12 +715,12 @@ export function detectIterationIntent(
     }
   }
 
-  // CASO 10: "lo mismo pero" con modificación de vuelo
+  // CASO 12: "lo mismo pero" con modificación de vuelo
   if (/\b(lo\s+mismo\s+pero|la\s+misma\s+pero)\b/i.test(norm) && hasFlightMod) {
     const baseType = lastSearch.requestType;
     const preserveHotel = baseType === 'combined';
 
-    console.log('✅ [ITERATION] CASE 10: "lo mismo pero" with flight change → flight_modification');
+    console.log('✅ [ITERATION] CASE 12: "lo mismo pero" with flight change → flight_modification');
     return {
       isIteration: true,
       iterationType: 'flight_modification',
@@ -611,13 +736,13 @@ export function detectIterationIntent(
     } as IterationContext & { flightModification?: { stops?: string; luggage?: string; airline?: string } };
   }
 
-  // CASO 11: "agrega X adultos" después de error "solo menores"
+  // CASO 13: "agrega X adultos" después de error "solo menores"
   // Este caso permite al usuario corregir búsquedas donde solo especificó menores
   if (hasFlightMod && flightModDetails.adultsToAdd && flightModDetails.adultsToAdd > 0) {
     const baseType = lastSearch.requestType;
     const preserveHotel = baseType === 'combined';
 
-    console.log(`✅ [ITERATION] CASE 11: Add ${flightModDetails.adultsToAdd} adults → flight_modification (passenger_update)`);
+    console.log(`✅ [ITERATION] CASE 13: Add ${flightModDetails.adultsToAdd} adults → flight_modification (passenger_update)`);
     return {
       isIteration: true,
       iterationType: 'flight_modification',
@@ -632,12 +757,12 @@ export function detectIterationIntent(
     } as IterationContext;
   }
 
-  // CASO 12: Modificación de cabin class (business, primera, economy, premium)
+  // CASO 14: Modificación de cabin class (business, primera, economy, premium)
   if (hasFlightMod && flightModDetails.cabinClassValue && !hasNewFlightParams) {
     const baseType = lastSearch.requestType;
     const preserveHotel = baseType === 'combined';
 
-    console.log(`✅ [ITERATION] CASE 12: Cabin class modification → flight_modification (${flightModDetails.cabinClassValue})`);
+    console.log(`✅ [ITERATION] CASE 14: Cabin class modification → flight_modification (${flightModDetails.cabinClassValue})`);
     return {
       isIteration: true,
       iterationType: 'flight_modification',
@@ -653,7 +778,7 @@ export function detectIterationIntent(
   }
 
   // === CASOS DE MODIFICACIÓN DE DURACIÓN ===
-  // CASO 13: Stay duration change ("una semana", "10 días", "por una quincena")
+  // CASO 15: Stay duration change ("una semana", "10 días", "por una quincena")
   // Requires previousContext to have flights/hotels/combined search
   if (
     (lastSearch.requestType === 'flights' ||
@@ -676,7 +801,7 @@ export function detectIterationIntent(
           }
         }
         if (!resolvedNights) continue;
-        console.log(`✅ [ITERATION] CASE 13: Stay duration modification → ${resolvedNights} nights (pattern: ${name})`);
+        console.log(`✅ [ITERATION] CASE 15: Stay duration modification → ${resolvedNights} nights (pattern: ${name})`);
         return {
           isIteration: true,
           iterationType: 'stay_duration_modification',
@@ -697,7 +822,7 @@ export function detectIterationIntent(
   }
 
   // === CASOS DE CAMBIO DE DESTINO ===
-  // CASO 14: Destination swap ("en vez de X, Y", "mejor Y", "cambia X por Y")
+  // CASO 16: Destination swap ("en vez de X, Y", "mejor Y", "cambia X por Y")
   if (
     lastSearch.requestType === 'flights' ||
     lastSearch.requestType === 'hotels' ||
@@ -712,7 +837,7 @@ export function detectIterationIntent(
         const newDest = (match[2] || match[1] || '').trim();
         const oldDest = match[2] ? match[1].trim() : undefined;
         if (!newDest || newDest.length < 3) continue;
-        console.log(`✅ [ITERATION] CASE 14: Destination swap → ${oldDest || '?'} → ${newDest} (pattern: ${name})`);
+        console.log(`✅ [ITERATION] CASE 16: Destination swap → ${oldDest || '?'} → ${newDest} (pattern: ${name})`);
         return {
           isIteration: true,
           iterationType: 'destination_swap',
@@ -889,6 +1014,13 @@ export function mergeIterationContext(
     // 2. Si no, usar el contexto anterior (puede ser 0 si era "solo menores")
     // 3. Fallback a 1
     const adultsCount = flightMod?.adults ?? lastSearch.flightsParams?.adults ?? 1;
+    const childrenCount = flightMod?.children ?? lastSearch.flightsParams?.children ?? 0;
+    const infantsCount = flightMod?.infants ?? lastSearch.flightsParams?.infants ?? 0;
+    const nextTripType = flightMod?.tripType ?? newParsedRequest.flights?.tripType ?? lastSearch.flightsParams?.tripType;
+    const nextReturnDate =
+      flightMod?.tripType === 'one_way'
+        ? undefined
+        : flightMod?.returnDate ?? newParsedRequest.flights?.returnDate ?? lastSearch.flightsParams?.returnDate;
 
     const mergedRequest: ParsedTravelRequest = {
       ...newParsedRequest,
@@ -899,12 +1031,15 @@ export function mergeIterationContext(
         origin: lastSearch.flightsParams?.origin || '',
         destination: lastSearch.flightsParams?.destination || '',
         departureDate: lastSearch.flightsParams?.departureDate || '',
-        returnDate: lastSearch.flightsParams?.returnDate,
-        tripType: lastSearch.flightsParams?.tripType,
-        segments: lastSearch.flightsParams?.segments,
+        ...(nextReturnDate && { returnDate: nextReturnDate }),
+        tripType: nextTripType,
+        segments:
+          nextTripType === 'one_way'
+            ? lastSearch.flightsParams?.segments?.slice(0, 1)
+            : lastSearch.flightsParams?.segments,
         adults: adultsCount,  // ✨ Usar adultos calculados (puede venir de "agrega X adultos")
-        children: lastSearch.flightsParams?.children || 0,
-        infants: lastSearch.flightsParams?.infants || 0,
+        children: childrenCount,
+        infants: infantsCount,
         // Preservar valores anteriores por defecto
         stops: lastSearch.flightsParams?.stops,
         preferredAirline: lastSearch.flightsParams?.preferredAirline,
@@ -921,6 +1056,8 @@ export function mergeIterationContext(
         ...(flightMod?.arrivalTimePreference && { arrivalTimePreference: flightMod.arrivalTimePreference }),
         ...(flightMod?.maxLayoverHours !== undefined && { maxLayoverHours: flightMod.maxLayoverHours }),
         ...(flightMod?.cabinClass && { cabinClass: flightMod.cabinClass }),
+        ...(flightMod?.tripType && { tripType: flightMod.tripType }),
+        ...(flightMod?.returnDate && { returnDate: flightMod.returnDate }),
         // También permitir overrides del AI parser
         ...(newParsedRequest.flights?.stops && { stops: newParsedRequest.flights.stops }),
         ...(newParsedRequest.flights?.preferredAirline && { preferredAirline: newParsedRequest.flights.preferredAirline }),
@@ -929,6 +1066,8 @@ export function mergeIterationContext(
         ...(newParsedRequest.flights?.arrivalTimePreference && { arrivalTimePreference: newParsedRequest.flights.arrivalTimePreference }),
         ...(newParsedRequest.flights?.maxLayoverHours !== undefined && { maxLayoverHours: newParsedRequest.flights.maxLayoverHours }),
         ...(newParsedRequest.flights?.cabinClass && { cabinClass: newParsedRequest.flights.cabinClass }),
+        ...(!flightMod?.tripType && newParsedRequest.flights?.tripType && { tripType: newParsedRequest.flights.tripType }),
+        ...(newParsedRequest.flights?.returnDate && { returnDate: newParsedRequest.flights.returnDate }),
       },
 
       // Preservar hotel si era búsqueda combined (actualizando adultos también)
@@ -938,8 +1077,8 @@ export function mergeIterationContext(
           checkinDate: lastSearch.hotelsParams.checkinDate,
           checkoutDate: lastSearch.hotelsParams.checkoutDate,
           adults: flightMod?.adults ?? lastSearch.hotelsParams.adults,  // ✨ Actualizar adultos en hotel también
-          children: lastSearch.hotelsParams.children || 0,
-          infants: lastSearch.hotelsParams.infants || 0,
+          children: flightMod?.children ?? lastSearch.hotelsParams.children ?? 0,
+          infants: flightMod?.infants ?? lastSearch.hotelsParams.infants ?? 0,
           roomType: lastSearch.hotelsParams.roomType,
           mealPlan: lastSearch.hotelsParams.mealPlan,
           hotelChains: lastSearch.hotelsParams.hotelChains,  // ✅ UPDATED: Changed to plural
@@ -961,6 +1100,8 @@ export function mergeIterationContext(
       flightsOrigin: mergedRequest.flights?.origin,
       flightsDest: mergedRequest.flights?.destination,
       stops: mergedRequest.flights?.stops,
+      tripType: mergedRequest.flights?.tripType,
+      returnDate: mergedRequest.flights?.returnDate,
       luggage: mergedRequest.flights?.luggage,
       airline: mergedRequest.flights?.preferredAirline,
       adults: mergedRequest.flights?.adults,  // ✨ Log adults count
