@@ -302,6 +302,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
 
   // PDF analysis hooks
   const {
+    lastPdfAnalysis,
     isUploadingPdf,
     handlePdfUpload,
     handleCheaperFlightsSearch,
@@ -328,6 +329,7 @@ const ChatFeature = ({ mode = 'b2b' }: ChatFeatureProps = {}) => {
     saveContextStateAndCache,
     updateMessageStatus,
     updateConversationTitle,
+    lastPdfAnalysis,
     handleCheaperFlightsSearch,
     handlePdfPriceChange,
     setIsLoading,

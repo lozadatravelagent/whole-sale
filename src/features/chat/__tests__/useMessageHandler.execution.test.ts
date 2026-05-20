@@ -182,6 +182,7 @@ function renderHandler(p: ReturnType<typeof buildProps>) {
     p.saveContextState,
     p.updateMessageStatus,
     p.updateConversationTitle,
+    p.lastPdfAnalysis,
     p.handleCheaperFlightsSearch,
     p.handlePriceChangeRequest,
     p.setIsLoading,

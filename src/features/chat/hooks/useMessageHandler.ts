@@ -8,7 +8,7 @@ import { normalizeFlightRequest } from '@/services/flightSegments';
 import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery, handleItineraryRequest } from '../services/searchHandlers';
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
-import { isAddHotelRequest, isCheaperFlightRequest, isPriceChangeRequest } from '../utils/intentDetection';
+import { runLegacyIntentGates } from '../services/legacyIntentGates';
 import { routeRequest, getInferredFieldDetails } from '../services/routeRequest';
 import { normalizeSearchIntent } from '../services/searchIntentNormalizer';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation, type IterationContext } from '../utils/iterationDetection';
@@ -571,6 +571,9 @@ const useMessageHandler = (
   saveContextState: (conversationId: string, state: any) => Promise<void>,
   updateMessageStatus: (messageId: string, status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed') => Promise<any>,
   updateConversationTitle: (conversationId: string, title: string) => Promise<void>,
+  // Needed by the legacy intent-gate registry (cheaper_flights /
+  // price_change preconditions). Comes from `usePdfAnalysis`.
+  lastPdfAnalysis: { conversationId?: string; analysis?: unknown } | null,
   handleCheaperFlightsSearch: (message: string) => Promise<string | null>,
   handlePriceChangeRequest: (message: string) => Promise<{ response: string; modifiedPdfUrl?: string } | null>,
   setIsLoading: (loading: boolean) => void,
@@ -736,311 +739,32 @@ const useMessageHandler = (
       return;
     }
 
-    // Check if this is a cheaper flights search request for a previously uploaded PDF
-    if (isCheaperFlightRequest(currentMessage)) {
-      console.log('✈️ [CHEAPER FLIGHTS] Detected cheaper flights search request for previous PDF');
-
-      // Clear the input immediately
-      setMessage('');
-
-      // Run the cheaper flights search in the background
-      (async () => {
-        setIsLoading(true);
-        try {
-          // Generate unique client_id for idempotency
-          const clientId = crypto.randomUUID();
-          console.log('🔑 [CHEAPER FLIGHTS] Generated client_id:', clientId);
-
-          // ⚡ Optimistic UI update - add user message to UI immediately
-          const optimisticUserMessage = {
-            id: `temp-${clientId}`,
-            conversation_id: currentConversationId,
-            role: 'user' as const,
-            content: { text: currentMessage.trim() },
-            meta: { status: 'sending', client_id: clientId, messageType: 'cheaper_flights_request' },
-            created_at: new Date().toISOString()
-          };
-
-          // Add to local messages immediately (Realtime will replace with real message from DB)
-          addOptimisticMessage(optimisticUserMessage as any);
-
-          // Add user message to database (in background)
-          await saveAndDisplayMessage({
-            conversation_id: currentConversationId,
-            role: 'user' as const,
-            content: { text: currentMessage.trim() },
-            meta: { status: 'sent', messageType: 'cheaper_flights_request', client_id: clientId }
-          });
-
-          const responseMessage = await handleCheaperFlightsSearch(currentMessage);
-
-          if (responseMessage) {
-            // Send response message
-            await saveAndDisplayMessage({
-              conversation_id: currentConversationId,
-              role: 'assistant' as const,
-              content: {
-                text: responseMessage,
-                metadata: {
-                  type: 'cheaper_flights_search',
-                  originalRequest: currentMessage
-                }
-              },
-              meta: {
-                status: 'sent',
-                messageType: 'cheaper_flights_response'
-              }
-            });
-          }
-
-          setIsLoading(false);
-
-        } catch (error) {
-          console.error('❌ Error searching for cheaper flights:', error);
-
-          await saveAndDisplayMessage({
-            conversation_id: currentConversationId,
-            role: 'assistant' as const,
-            content: {
-              text: `❌ **Error en la búsqueda de vuelos**\n\nNo pude buscar vuelos alternativos en este momento. Esto puede deberse a:\n\n• Problemas temporales con el servicio de búsqueda\n• El PDF no contiene información de vuelos válida\n• Error de conectividad\n\n¿Podrías intentarlo nuevamente o proporcionarme manualmente los detalles del vuelo?`
-            },
-            meta: {
-              status: 'sent',
-              messageType: 'error_response'
-            }
-          });
-
-          setIsLoading(false);
-        }
-      })();
-
-      return; // Exit early, don't process as regular message
-    }
-
-    // If user asks to add a hotel for same dates after flight results, coerce to combined using last flight context
-    if (isAddHotelRequest(currentMessage)) {
-      // Load persistent context state first, then fallback to other sources
-      const persistentState = await loadContextState(currentConversationId) as ContextState | null;
-      
-      const flightCtx = persistentState?.lastSearch?.flightsParams || null;
-      if (flightCtx) {
-        // No parsed payload yet -- this branch runs BEFORE the LLM parser, so
-        // pass null and let the function fall back to the legacy message regex.
-        const hotelPreferences = detectHotelPreferencesFromMessage(null, currentMessage);
-        console.log('🏨 [INTENT] Add hotel detected, reusing flight context for combined search');
-        console.log('🏨 [INTENT] Flight context:', flightCtx);
-        console.log('🏨 [INTENT] Persistent state:', persistentState);
-        setMessage('');
-        setIsLoading(true);
-        try {
-          // Generate unique client_id for idempotency
-          const clientId = crypto.randomUUID();
-          console.log('🔑 [ADD HOTEL] Generated client_id:', clientId);
-
-          // ⚡ Optimistic UI update - add user message to UI immediately
-          const optimisticUserMessage = {
-            id: `temp-${clientId}`,
-            conversation_id: currentConversationId,
-            role: 'user' as const,
-            content: { text: currentMessage.trim() },
-            meta: { status: 'sending', client_id: clientId, messageType: 'add_hotel_intent' },
-            created_at: new Date().toISOString()
-          };
-
-          // Add to local messages immediately (Realtime will replace with real message from DB)
-          addOptimisticMessage(optimisticUserMessage as any);
-
-          // Save user's intent message into conversation (in background)
-          await saveAndDisplayMessage({
-            conversation_id: currentConversationId,
-            role: 'user' as const,
-            content: { text: currentMessage.trim() },
-            meta: { status: 'sent', messageType: 'add_hotel_intent', client_id: clientId }
-          });
-
-          // Build a hotels-only request using flight context (city/dates/pax inferred)
-          const hotelsParsed: ParsedTravelRequest = {
-            requestType: 'hotels',
-            hotels: {
-              city: flightCtx.destination,
-              checkinDate: flightCtx.departureDate,
-              checkoutDate: flightCtx.returnDate || new Date(new Date(flightCtx.departureDate).getTime() + SEARCH_STAY_NIGHTS * 86400000).toISOString().split('T')[0],
-              adults: flightCtx.adults,
-              children: flightCtx.children,
-              infants: flightCtx.infants,
-              ...(hotelPreferences.roomType ? { roomType: hotelPreferences.roomType } : {}),
-              ...(hotelPreferences.mealPlan ? { mealPlan: hotelPreferences.mealPlan } : {}),
-              ...(hotelPreferences.hotelChains.length > 0 ? { hotelChains: hotelPreferences.hotelChains } : {})
-            },
-            confidence: 0.9,
-            originalMessage: currentMessage
-          } as any;
-
-          console.log('🏨 [INTENT] Hotel request built:', {
-            city: hotelsParsed.hotels?.city,
-            checkinDate: hotelsParsed.hotels?.checkinDate,
-            checkoutDate: hotelsParsed.hotels?.checkoutDate,
-            adults: hotelsParsed.hotels?.adults,
-            flightCtx: flightCtx
-          });
-
-          // Persist context for follow-ups
-          await saveContextualMemory(currentConversationId, hotelsParsed);
-
-          // Run HOTELS search only
-          const hotelResult = await handleHotelSearch(hotelsParsed);
-
-          await saveAndDisplayMessage({
-            conversation_id: currentConversationId,
-            role: 'assistant' as const,
-            content: { text: hotelResult.response },
-            meta: hotelResult.data ? { ...hotelResult.data, responseLanguage: userLanguage } : { responseLanguage: userLanguage }
-          });
-
-          setMessage('');
-          setIsLoading(false);
-          return;
-        } catch (err) {
-          console.error('❌ [INTENT] Add hotel flow failed:', err);
-          setIsLoading(false);
-          // fall through to normal flow
-        }
-      } else {
-        console.warn('⚠️ [INTENT] Add hotel detected but no flight context found');
-        console.warn('⚠️ [INTENT] Available sources:', {
-          persistentState,
-        });
-        // Continue to normal AI parsing flow
-      }
-    }
-
-    // Check if this is a price change request for a previously uploaded PDF
-    if (isPriceChangeRequest(currentMessage)) {
-      console.log('💰 [PRICE CHANGE] Detected price change request for previous PDF');
-
-      // Clear the input immediately
-      setMessage('');
-
-      // Run the price change process in the background
-      (async () => {
-        setIsLoading(true);
-        try {
-          // Generate unique client_id for idempotency
-          const clientId = crypto.randomUUID();
-          console.log('🔑 [PRICE CHANGE] Generated client_id:', clientId);
-
-          // ⚡ Optimistic UI update - add user message to UI immediately
-          const optimisticUserMessage = {
-            id: `temp-${clientId}`,
-            conversation_id: currentConversationId,
-            role: 'user' as const,
-            content: { text: currentMessage.trim() },
-            meta: { status: 'sending', client_id: clientId, messageType: 'price_change_request' },
-            created_at: new Date().toISOString()
-          };
-
-          // Add to local messages immediately (Realtime will replace with real message from DB)
-          addOptimisticMessage(optimisticUserMessage as any);
-
-          // Show typing indicator while processing price change
-          setIsTyping(true, currentConversationId);
-          setTypingMessage(typingCopy.changingPrice, currentConversationId);
-
-          // Add user message to database (in background)
-          await saveAndDisplayMessage({
-            conversation_id: currentConversationId,
-            role: 'user' as const,
-            content: { text: currentMessage.trim() },
-            meta: { status: 'sent', messageType: 'price_change_request', client_id: clientId }
-          });
-
-          // Update typing message while generating PDF
-          setTypingMessage(typingCopy.generatingPdf, currentConversationId);
-
-          const result = await handlePriceChangeRequest(currentMessage);
-
-          // CRITICAL: If no PDF exists, handlePriceChangeRequest returns null
-          if (!result) {
-            console.log('❌ [PRICE CHANGE] No PDF analysis found for this conversation');
-
-            // Inform user they need to upload a PDF first
-            await saveAndDisplayMessage({
-              conversation_id: currentConversationId,
-              role: 'assistant' as const,
-              content: {
-                text: '❌ **No hay PDF analizado**\n\nPara modificar precios, primero necesito que subas o arrastres un PDF con la cotización que deseas modificar.\n\n📄 Una vez que analice el PDF, podré ayudarte a cambiar los precios según lo que necesites.'
-              },
-              meta: {
-                status: 'sent',
-                messageType: 'error_no_pdf'
-              }
-            });
-
-            // Clear typing indicator AND message
-            setTypingMessage('', currentConversationId);
-            setIsTyping(false, currentConversationId);
-            setIsLoading(false);
-            return; // Exit early - PDF validation failed
-          }
-
-          // PDF exists and price change was processed
-          if (result) {
-            // Add assistant response
-            await saveAndDisplayMessage({
-              conversation_id: currentConversationId,
-              role: 'assistant' as const,
-              content: {
-                text: result.response,
-                pdfUrl: result.modifiedPdfUrl,
-                metadata: {
-                  type: 'price_change_response',
-                  hasModifiedPdf: !!result.modifiedPdfUrl
-                }
-              },
-              meta: {
-                status: 'sent',
-                messageType: result.modifiedPdfUrl ? 'pdf_generated' : 'price_change_response'
-              }
-            });
-
-            if (result.modifiedPdfUrl) {
-              toast({
-                title: t('toasts.pdfModified.title'),
-                description: t('toasts.pdfModified.description'),
-              });
-            }
-          }
-        } catch (error) {
-          console.error('❌ Error processing price change request:', error);
-
-          // Send error message to user
-          await saveAndDisplayMessage({
-            conversation_id: currentConversationId,
-            role: 'assistant' as const,
-            content: {
-              text: '❌ **Error al procesar cambio de precio**\n\nNo pude procesar tu solicitud de cambio de precio. Por favor, verifica que:\n\n• El PDF esté correctamente analizado\n• El precio que indicaste sea un número válido\n• Intenta nuevamente en unos momentos'
-            },
-            meta: {
-              status: 'sent',
-              messageType: 'error_response'
-            }
-          });
-
-          toast({
-            title: t('toasts.priceChangeFailed.title'),
-            description: t('toasts.priceChangeFailed.description'),
-            variant: "destructive",
-          });
-        } finally {
-          // Clear typing indicator AND message
-          setTypingMessage('', currentConversationId);
-          setIsTyping(false, currentConversationId);
-          setIsLoading(false);
-        }
-      })();
-
-      return; // Exit early, don't continue with normal flow
-    }
+    // Pre-Emilia legacy intent gates (cheaper flights / add hotel / price
+    // change). See src/features/chat/services/legacyIntentGates.ts and
+    // docs/superpowers/specs/2026-05-19-legacy-intent-gate-registry-design.md.
+    const gateOutcome = await runLegacyIntentGates(currentMessage, {
+      conversationId: currentConversationId,
+      message: currentMessage,
+      lastPdfAnalysis,
+      loadContextState,
+      setMessage,
+      setIsLoading,
+      setIsTyping,
+      setTypingMessage,
+      typingCopy,
+      addOptimisticMessage,
+      saveAndDisplayMessage,
+      handleCheaperFlightsSearch,
+      handlePriceChangeRequest,
+      handleHotelSearch,
+      saveContextualMemory,
+      detectHotelPreferencesFromMessage,
+      searchStayNights: SEARCH_STAY_NIGHTS,
+      userLanguage,
+      toast,
+      t,
+    });
+    if (gateOutcome === 'handled') return;
 
     setMessage('');
     setIsLoading(true);

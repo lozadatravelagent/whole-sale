@@ -45,6 +45,7 @@ function buildDefaultProps() {
     saveContextState: vi.fn().mockResolvedValue(undefined) as unknown as (id: string, s: ContextState) => Promise<void>,
     updateMessageStatus: vi.fn().mockResolvedValue(undefined),
     updateConversationTitle: vi.fn().mockResolvedValue(undefined),
+    lastPdfAnalysis: null as { conversationId?: string; analysis?: unknown } | null,
     handleCheaperFlightsSearch: vi.fn().mockResolvedValue(null) as unknown as (msg: string) => Promise<string | null>,
     handlePriceChangeRequest: vi.fn().mockResolvedValue(null),
     setIsLoading: vi.fn(),
