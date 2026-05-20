@@ -18,6 +18,40 @@ function addDaysToIso(iso: string, days: number): string | null {
   return new Date(ms + days * 86_400_000).toISOString().slice(0, 10);
 }
 
+const MONTH_NAMES_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+] as const;
+
+/**
+ * Render an ISO yyyy-mm-dd (or yyyy-mm-ddTHH:MM:SSZ) date as friendly Spanish
+ * for display in chip prompts. Pure mask: the chip's `context` still carries
+ * the canonical ISO so downstream consumers (telemetry, deterministic
+ * fallbacks, structured replays) are unaffected.
+ *
+ *   2026-05-23 + now in 2026  →  "23 de Mayo"
+ *   2027-05-23 + now in 2026  →  "23 de Mayo de 2027"
+ *
+ * Defensive: returns the input unchanged on unparseable strings and an empty
+ * string on nullish input so callers don't have to guard.
+ */
+export function formatIsoDateToSpanish(
+  iso: string | null | undefined,
+  now: Date,
+): string {
+  if (iso == null || iso === '') return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!match) return iso;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return iso;
+  const monthName = MONTH_NAMES_ES[month - 1];
+  return year === now.getUTCFullYear()
+    ? `${day} de ${monthName}`
+    : `${day} de ${monthName} de ${year}`;
+}
+
 /** Whole nights between two ISO yyyy-mm-dd dates; null if unparseable. */
 function nightsBetween(startIso: string, endIso: string): number | null {
   const a = Date.parse(`${startIso}T00:00:00.000Z`);
@@ -47,25 +81,37 @@ function productPassengers(
   };
 }
 
-function flightPrompt(f: Partial<FlightContextParams>, returnDate?: string): string {
+function flightPrompt(
+  f: Partial<FlightContextParams>,
+  returnDate: string | undefined,
+  now: Date,
+): string {
   const pax = productPassengers(f);
-  const base = returnDate
-    ? `vuelo a ${f.destination} del ${f.departureDate} al ${returnDate}`
-    : `vuelo a ${f.destination} el ${f.departureDate}`;
+  const dep = formatIsoDateToSpanish(f.departureDate, now);
+  const ret = returnDate ? formatIsoDateToSpanish(returnDate, now) : '';
+  const base = ret
+    ? `vuelo a ${f.destination} del ${dep} al ${ret}`
+    : `vuelo a ${f.destination} el ${dep}`;
   const origin = f.origin ? ` saliendo desde ${f.origin}` : '';
   return `${base}${origin} para ${paxPhrase(pax.adults, pax.children, pax.infants)}`;
 }
 
-function hotelPrompt(h: Partial<HotelContextParams>): string {
+function hotelPrompt(h: Partial<HotelContextParams>, now: Date): string {
   const pax = productPassengers(h);
-  return `hotel en ${h.city} del ${h.checkinDate} al ${h.checkoutDate} para ${paxPhrase(pax.adults, pax.children, pax.infants)}`;
+  const checkin = formatIsoDateToSpanish(h.checkinDate, now);
+  const checkout = formatIsoDateToSpanish(h.checkoutDate, now);
+  return `hotel en ${h.city} del ${checkin} al ${checkout} para ${paxPhrase(pax.adults, pax.children, pax.infants)}`;
 }
 
-function combinedPrompt(f: Partial<FlightContextParams>, h: Partial<HotelContextParams>): string {
+function combinedPrompt(
+  f: Partial<FlightContextParams>,
+  h: Partial<HotelContextParams>,
+  now: Date,
+): string {
   const pax = productPassengers(f.adults != null ? f : h);
   const destination = h.city || f.destination;
-  const start = h.checkinDate || f.departureDate;
-  const end = h.checkoutDate || f.returnDate;
+  const start = formatIsoDateToSpanish(h.checkinDate || f.departureDate, now);
+  const end = formatIsoDateToSpanish(h.checkoutDate || f.returnDate, now);
   const origin = f.origin ? ` saliendo desde ${f.origin}` : '';
   return `vuelo y hotel a ${destination} del ${start} al ${end}${origin} para ${paxPhrase(pax.adults, pax.children, pax.infants)}`;
 }
@@ -76,10 +122,12 @@ function combinedPrompt(f: Partial<FlightContextParams>, h: Partial<HotelContext
  * Never throws. The inserted text uses SEARCH_STAY_NIGHTS for the inferred
  * return date so it matches the rest of the search-defaults architecture.
  */
-// _now reserved for future "relative to today" chips (e.g., "search sooner"); not consumed yet. _language reserved for future i18n; copy is Spanish by product scope.
+// `now` is the display reference: chip prompts omit the year when the search
+// is in the same calendar year as `now`. _language reserved for future i18n;
+// copy is Spanish by product scope.
 export function buildRefinementChips(
   source: RefinementSource,
-  _now: Date,
+  now: Date,
   _language: string,
 ): ChatSuggestedAction[] {
   const chips: ChatSuggestedAction[] = [];
@@ -99,7 +147,7 @@ export function buildRefinementChips(
   if (hasFlightSearch && f!.tripType === 'one_way') {
     const ret = addDaysToIso(f!.departureDate as string, SEARCH_STAY_NIGHTS);
     if (ret) {
-      const prompt = flightPrompt(f!, ret);
+      const prompt = flightPrompt(f!, ret, now);
       chips.push({
         id: 'refine-roundtrip',
         label: 'Ida y vuelta',
@@ -135,10 +183,10 @@ export function buildRefinementChips(
     id: 'refine-passengers',
     label: 'Modificar pasajeros',
     prompt: hasFlightSearch && hasHotelSearch
-      ? combinedPrompt(f!, h!)
+      ? combinedPrompt(f!, h!, now)
       : hasFlightSearch
-        ? flightPrompt(f!, f!.returnDate)
-        : hotelPrompt(h!),
+        ? flightPrompt(f!, f!.returnDate, now)
+        : hotelPrompt(h!, now),
     type: 'refine',
     priority: 4,
     behavior: 'autocomplete',
@@ -172,10 +220,10 @@ export function buildRefinementChips(
     id: 'refine-duration',
     label: 'Agregar o quitar días',
     prompt: hasFlightSearch && hasHotelSearch
-      ? combinedPrompt(f!, h!)
+      ? combinedPrompt(f!, h!, now)
       : hasFlightSearch
-        ? flightPrompt(f!, f!.returnDate)
-        : hotelPrompt(h!),
+        ? flightPrompt(f!, f!.returnDate, now)
+        : hotelPrompt(h!, now),
     type: 'refine',
     priority: 5,
     behavior: 'autocomplete',
@@ -209,10 +257,10 @@ export function buildRefinementChips(
     id: 'refine-search',
     label: 'Modificar la búsqueda',
     prompt: hasFlightSearch && hasHotelSearch
-      ? combinedPrompt(f!, h!)
+      ? combinedPrompt(f!, h!, now)
       : hasFlightSearch
-        ? flightPrompt(f!, f!.returnDate)
-        : hotelPrompt(h!),
+        ? flightPrompt(f!, f!.returnDate, now)
+        : hotelPrompt(h!, now),
     type: 'refine',
     priority: 6,
     behavior: 'autocomplete',
