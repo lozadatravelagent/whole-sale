@@ -145,6 +145,7 @@ function renderHandler(p: ReturnType<typeof buildProps>) {
     p.saveContextState,
     p.updateMessageStatus,
     p.updateConversationTitle,
+    p.lastPdfAnalysis,
     p.handleCheaperFlightsSearch,
     p.handlePriceChangeRequest,
     p.setIsLoading,
@@ -220,8 +221,13 @@ describe('useMessageHandler', () => {
       expect(vi.mocked(parseMessageWithAIStreaming)).not.toHaveBeenCalled();
     });
 
-    it('cheaper flights guard — clears input and skips parseMessageWithAI', async () => {
-      const p = buildProps();
+    it('cheaper flights guard — clears input and skips parseMessageWithAI (PDF present)', async () => {
+      // With the legacy-intent-gate registry, the cheaper_flights gate now
+      // requires a PDF that matches the current conversation. Set one so
+      // the gate handles the message (same end behavior as pre-registry).
+      const p = buildProps({
+        lastPdfAnalysis: { conversationId: DEFAULT_CONV_ID, analysis: {} },
+      });
       const { result } = renderHandler(p);
 
       // 'vuelos mas baratos' matches isCheaperFlightRequest keyword list (normalized)
@@ -233,21 +239,45 @@ describe('useMessageHandler', () => {
       expect(vi.mocked(parseMessageWithAIStreaming)).not.toHaveBeenCalled();
     });
 
-    it('cheaper flights guard — calls handleCheaperFlightsSearch with the original message', async () => {
-      const p = buildProps();
+    it('cheaper flights guard — calls handleCheaperFlightsSearch with the original message (PDF present)', async () => {
+      const p = buildProps({
+        lastPdfAnalysis: { conversationId: DEFAULT_CONV_ID, analysis: {} },
+      });
       const { result } = renderHandler(p);
 
       await act(async () => {
         await result.current.handleSendMessage('vuelos mas baratos');
-        // Flush the async IIFE that runs the actual cheaper-flights call
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
       });
 
       expect(p.handleCheaperFlightsSearch).toHaveBeenCalledWith('vuelos mas baratos');
     });
 
-    it('price change guard — clears input and skips parseMessageWithAI', async () => {
-      const p = buildProps();
+    it('cheaper flights guard — without PDF, falls through to Emilia (no swallowed message)', async () => {
+      // Spec: the registry replaces the previous swallow-the-message
+      // behavior with a silent fall-through. parseMessageWithAIStreaming
+      // must be invoked so Emilia handles the search.
+      const p = buildProps({ lastPdfAnalysis: null });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('vuelos mas baratos');
+      });
+
+      expect(p.handleCheaperFlightsSearch).not.toHaveBeenCalled();
+      expect(vi.mocked(parseMessageWithAIStreaming)).toHaveBeenCalled();
+    });
+
+    it('price change guard — clears input and skips parseMessageWithAI (PDF present)', async () => {
+      const p = buildProps({
+        lastPdfAnalysis: { conversationId: DEFAULT_CONV_ID, analysis: {} },
+        // The gate's run body falls through if the price-change handler
+        // returns null (defensive — PDF state vanished between checks), so
+        // wire a real-looking success here to keep the gate in the
+        // "handled" branch.
+        handlePriceChangeRequest: vi
+          .fn()
+          .mockResolvedValue({ response: 'ok', modifiedPdfUrl: undefined }) as any,
+      });
       const { result } = renderHandler(p);
 
       // 'cambiar precio a 1000' matches isPriceChangeRequest patterns + has a number
@@ -257,6 +287,20 @@ describe('useMessageHandler', () => {
 
       expect(p.setMessage).toHaveBeenCalledWith('');
       expect(vi.mocked(parseMessageWithAIStreaming)).not.toHaveBeenCalled();
+    });
+
+    it('price change guard — without PDF, falls through to Emilia (no dead-end response)', async () => {
+      // Spec: the registry replaces the previous "❌ No hay PDF analizado"
+      // dead-end with a silent fall-through to Emilia.
+      const p = buildProps({ lastPdfAnalysis: null });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('cambiar precio a 1000');
+      });
+
+      expect(p.handlePriceChangeRequest).not.toHaveBeenCalled();
+      expect(vi.mocked(parseMessageWithAIStreaming)).toHaveBeenCalled();
     });
   });
 
