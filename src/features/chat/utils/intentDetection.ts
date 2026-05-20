@@ -143,12 +143,16 @@ export const isPriceChangeRequest = (message: string): boolean => {
   // CRITICAL: Exclude messages that are clearly flight/hotel search requests
   // If message contains origin/destination patterns, it's a search, NOT a price change
   const isSearchRequest = (
-    // Has "desde X a/para/hasta Y" pattern (flight search)
-    /\bdesde\s+\w+\s+(a|para|hasta)\s+\w+/i.test(norm) ||
+    // Has "desde <origin> a/para/hasta <destination>" pattern — origin may be
+    // multi-word (e.g. "Buenos Aires"), so accept word + space chars before the
+    // connector. Non-greedy so the connector binds to the first one.
+    /\bdesde\s+[\w\s]+?\s+(a|para|hasta)\s+\w+/i.test(norm) ||
     // Has date patterns with "el" or month names without price change verbs
     (/\b(el|fecha|dia)\s+\d{1,2}\b/i.test(norm) && !/\b(cambiar?|modificar?|ajustar?)\b/i.test(norm)) ||
     // Has "buscar", "quiero", "necesito" + "vuelo/hotel" (search intent)
-    (/\b(buscar?|quiero|necesito|mostrar?|ver)\s+(vuelo|hotel|pasaje)/i.test(norm))
+    (/\b(buscar?|quiero|necesito|mostrar?|ver)\s+(vuelo|hotel|pasaje)/i.test(norm)) ||
+    // ISO date range (e.g. "2026-05-22 ... 2026-05-29") is a strong search signal
+    /\b\d{4}-\d{2}-\d{2}\b[\s\S]*?\b\d{4}-\d{2}-\d{2}\b/.test(norm)
   );
 
   if (isSearchRequest) {
@@ -204,9 +208,11 @@ export const isPriceChangeRequest = (message: string): boolean => {
     /\b(\d+)\s*%\s*(m[aá]s|menos|arriba|abajo)/i,
     /\b(m[aá]s|menos)\s+(\d+)\s*%/i,
 
-    // NUEVO: Simple operators: "+X" or "-X"
-    /\+\s*\$?\s*(\d+)/,
-    /-\s*\$?\s*(\d+)/,
+    // NUEVO: Simple operators: "+X" or "-X". The lookbehind prevents the
+    // hyphen inside ISO dates ("2026-05-22") or hyphenated codes ("100-50")
+    // from being read as a relative adjustment.
+    /(?<![\d-])\+\s*\$?\s*(\d+)/,
+    /(?<![\d-])-\s*\$?\s*(\d+)/,
 
     // NUEVO: Price order references: "el más barato/caro a [number]"
     /\b(?:el\s+)?m[aá]s\s+(barato|caro|econ[oó]mico)\s+(?:a|en|por)?\s*[\d$]/i
@@ -326,8 +332,8 @@ export const extractRelativeAdjustment = (message: string): RelativeAdjustment |
     { regex: /rest[aá]le?\s+(\d+)/i, op: 'subtract' as const },
     { regex: /baj[aá](?:lo|le)?\s+(\d+)/i, op: 'subtract' as const },
     { regex: /sub[ií](?:lo|le)?\s+(\d+)/i, op: 'add' as const },
-    { regex: /\+\s*\$?\s*(\d+)/, op: 'add' as const },
-    { regex: /-\s*\$?\s*(\d+)/, op: 'subtract' as const },
+    { regex: /(?<![\d-])\+\s*\$?\s*(\d+)/, op: 'add' as const },
+    { regex: /(?<![\d-])-\s*\$?\s*(\d+)/, op: 'subtract' as const },
     { regex: /(\d+)\s*%\s*m[aá]s/i, op: 'percent_add' as const },
     { regex: /(\d+)\s*%\s*menos/i, op: 'percent_subtract' as const },
     { regex: /m[aá]s\s+(\d+)\s*%/i, op: 'percent_add' as const },
