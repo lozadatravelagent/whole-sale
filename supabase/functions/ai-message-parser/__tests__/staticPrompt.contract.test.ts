@@ -135,6 +135,53 @@ describe('STATIC_SYSTEM_PROMPT — source file integrity', () => {
 // buildSystemPrompt composition contract
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// PENDING ACTION — multi-slot fill rules (v23)
+//
+// These assertions pin the architectural contract that pending_action slot
+// fills must (a) split multi-slot user replies by surface pattern and
+// (b) mirror the same values into the final JSON envelope. They are deeper
+// than the byte-level golden because they target the *load-bearing wording*
+// rather than the whole file — so a future refactor that reshuffles other
+// sections cannot silently delete this rule.
+// ---------------------------------------------------------------------------
+
+describe('STATIC_SYSTEM_PROMPT — PENDING ACTION slot-fill contract', () => {
+  it('explicitly tells the model to split "X a Y" patterns into ordered fields', () => {
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/MULTI-SLOT PATTERNS/);
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/"X a Y"/);
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/fields\[0\]\s*=\s*X,\s*fields\[1\]\s*=\s*Y/);
+  });
+
+  it('establishes the flight-route convention: X is origin, Y is destination', () => {
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/origin \(X\).*destination \(Y\)/);
+  });
+
+  it('forbids stuffing the whole "X a Y" phrase into a single slot', () => {
+    // This is the exact failure mode the v23 rules exist to prevent.
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/NEVER stuff a multi-word route phrase/);
+  });
+
+  it('requires apply_slot_values values to be mirrored into the JSON envelope', () => {
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/JSON ENVELOPE MIRROR/);
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/MUST also appear in the final JSON envelope/);
+  });
+
+  it('includes the canonical field-name to envelope-path mapping', () => {
+    // The mapping is what lets the model produce a structurally correct
+    // envelope. We pin a few representative entries; the full list lives
+    // in the golden.
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/`origin`\s+→\s+`flights\.origin`/);
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/`destination`\s+→\s+`flights\.destination`/);
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/`city`\s+→\s+`hotels\.city`/);
+  });
+
+  it('keeps the awaiting_user_confirmation arm intact (no v22 regression)', () => {
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/kind="awaiting_user_confirmation"/);
+    expect(STATIC_SYSTEM_PROMPT).toMatch(/confirm_pending_action/);
+  });
+});
+
 describe('buildSystemPrompt composition', () => {
   const baseArgs = {
     currentDate: '2026-05-03',

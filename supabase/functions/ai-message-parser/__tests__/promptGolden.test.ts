@@ -25,8 +25,8 @@ import { PROMPT_VERSION, STATIC_SYSTEM_PROMPT } from '../prompt.ts';
 
 // Update this when bumping PROMPT_VERSION. Forces a single conscious touchpoint
 // rather than two independent edits that could drift.
-const EXPECTED_PROMPT_VERSION = 'emilia-parser-v22';
-const GOLDEN_FILE_PATH = './__snapshots__/prompt-v22.golden.txt';
+const EXPECTED_PROMPT_VERSION = 'emilia-parser-v23';
+const GOLDEN_FILE_PATH = './__snapshots__/prompt-v23.golden.txt';
 
 describe('STATIC_SYSTEM_PROMPT golden file', () => {
   it('PROMPT_VERSION matches EXPECTED_PROMPT_VERSION (bump both together)', () => {

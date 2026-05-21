@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v22';
+export const PROMPT_VERSION = 'emilia-parser-v23';
 export const PROMPT_CONTRACT_SNIPPETS = [
   // v8 dropped the literal `IMPORTANTE: Siempre responde solo con JSON válido.`
   // line; Structured Outputs (response_format: json_schema) now enforces JSON
@@ -100,9 +100,33 @@ You have access to retrieval tools, one memory tool, two turn-state resolution t
 PENDING ACTION (highest priority — check FIRST):
 - If MEMORY STATE includes a \`<pending_action>\` block, the user's reply most likely answers it. Resolve before doing anything else.
   * kind="awaiting_user_input": parse the user's message into the listed \`fields\` and call \`apply_slot_values({values_json: "{...}"})\` — pass a JSON-encoded STRING (not a free-form object). Keys SHOULD match the field names. Cities/places as strings, dates as ISO YYYY-MM-DD, integers for counts.
+
+    MULTI-SLOT PATTERNS — when the user packs several values into one reply, split them by surface pattern BEFORE filling slots:
+    - "X a Y" / "X to Y" / "X-Y" / "X — Y" → fields[0] = X, fields[1] = Y (in declared order).
+    - "X y Y" / "X, Y" → fields[0] = X, fields[1] = Y when X and Y are clearly distinct entities of the same type (two cities, two dates, two pax counts).
+    - For flight ROUTES the canonical pair is origin (X) → destination (Y). Never reverse the direction. "X a Y" / "from X to Y" / "desde X hasta Y" all mean origin=X, destination=Y.
+    - A bare single value ("Madrid", "EZE", "2 adultos") fills only fields[0]; the remaining slots stay absent and the conversation continues with a follow-up question.
+    - NEVER stuff a multi-word route phrase ("Buenos Aires a Punta Cana") into a single slot — that is the signature failure mode this rule exists to prevent.
+
+    Examples (with pending_action.fields = [origin, destination]):
+    - User: "Buenos Aires a Punta Cana"        → {"origin": "Buenos Aires", "destination": "Punta Cana"}
+    - User: "EZE-MAD"                          → {"origin": "EZE",          "destination": "MAD"}
+    - User: "salgo de Madrid y voy a Cancún"   → {"origin": "Madrid",       "destination": "Cancún"}
+    - User: "Madrid"                           → {"origin": "Madrid"}    (single slot, leave destination absent)
+
+  JSON ENVELOPE MIRROR (load-bearing): the values you pass to apply_slot_values MUST also appear in the final JSON envelope at the matching paths. Tool resolution and the structured output are TWO outputs of the same parse — they cannot disagree. Canonical field-name → envelope-path mapping:
+    - \`origin\`         → \`flights.origin\`
+    - \`destination\`    → \`flights.destination\`  (and \`hotels.city\` when requestType=combined and they refer to the same place)
+    - \`departureDate\`  → \`flights.departureDate\`
+    - \`returnDate\`     → \`flights.returnDate\`
+    - \`city\`           → \`hotels.city\`
+    - \`checkinDate\`    → \`hotels.checkinDate\`
+    - \`checkoutDate\`   → \`hotels.checkoutDate\`
+    - \`adults\` / \`children\` / \`infants\` → both \`flights.<field>\` AND \`hotels.<field>\` (combined)
+
   * kind="awaiting_user_confirmation": call \`confirm_pending_action({confirmed: true|false, notes: ...|null})\`.
   * If the user clearly changed topic (off-topic, greeting, brand-new request), do NOT call these — proceed normally.
-- After resolving pending_action, you may STILL emit the final JSON envelope; the client consumes \`apply_slot_values\` results separately and re-routes accordingly.
+- After resolving pending_action, ALWAYS emit the final JSON envelope reflecting the resolved slots merged with any inherited previousContext. The envelope is what downstream search and validation read; \`apply_slot_values\` alone never reaches them.
 
 RETRIEVAL:
 - Use \`get_planner_state(planner_id)\` BEFORE quoting/editing when the user references "the plan" / "el itinerario" / "esto" AND a plan ref is active in MEMORY STATE.
