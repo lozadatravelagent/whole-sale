@@ -149,7 +149,7 @@ vi.mock('../services/leadAiProfileService', () => ({
 // ---------------------------------------------------------------------------
 
 import useMessageHandler from '../hooks/useMessageHandler';
-import { hasFlexibleItineraryDateSelection, hasUsableItineraryDates, parseMessageWithAI, parseMessageWithAIStreaming } from '@/services/aiMessageParser';
+import { hasFlexibleItineraryDateSelection, hasUsableItineraryDates, parseMessageWithAI, parseMessageWithAIStreaming, validateFlightRequiredFields, validateHotelRequiredFields } from '@/services/aiMessageParser';
 import {
   handleFlightSearch,
   handleHotelSearch,
@@ -1063,6 +1063,144 @@ describe('useMessageHandler', () => {
 
       const loadingCalls = vi.mocked(p.setIsLoading).mock.calls.map(c => c[0]);
       expect(loadingCalls[loadingCalls.length - 1]).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Architectural guarantee — every actionable parsed turn must persist its
+  // intent snapshot so the next turn's parser has previousContext. The bug
+  // that motivated this suite: turn 1 said "vuelos a Madrid y después hotel",
+  // validation ran the hotel branch alone (partial flow) and returned early
+  // WITHOUT calling saveContextualMemory. Turn 2's "buscame los vuelos para
+  // esa fecha" then saw `previousContext: null` and could not resolve the
+  // anaphora — the router degraded to PLAN/low_definition → mode_bridge.
+  //
+  // The fix is structural: a `finally` block writes the snapshot once per
+  // turn through `persistTurnIntentSnapshot`, regardless of which branch
+  // produced the user-visible response. These tests pin the guarantee down
+  // at the integration boundary so future early-returns can't regress it.
+  // ---------------------------------------------------------------------------
+  describe('handleSendMessage — turn intent persistence (architectural)', () => {
+    it('persists the combined snapshot when the partial flow runs hotels alone (the original bug)', async () => {
+      vi.mocked(validateFlightRequiredFields).mockReturnValueOnce({
+        isValid: false,
+        missingFields: ['origin'],
+        missingFieldsSpanish: ['origen'],
+      } as any);
+      vi.mocked(validateHotelRequiredFields).mockReturnValueOnce({
+        isValid: true,
+        missingFields: [],
+        missingFieldsSpanish: [],
+      } as any);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
+        requestType: 'combined',
+        originalMessage: 'Primero vuelos a Madrid y después hotel',
+        flights: { destination: 'MAD', adults: 1 },
+        hotels: { city: 'Madrid', checkinDate: '2026-05-23', checkoutDate: '2026-05-30', adults: 1 },
+      }) as any);
+
+      const p = buildProps();
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Primero vuelos a Madrid y después hotel');
+      });
+
+      // The next turn's parser reads `loadContextualMemory(conversationId)`.
+      // If we didn't persist here, turn 2 sees null and "esa fecha" can't
+      // be resolved → router lows-out → mode_bridge. The whole point of the
+      // architectural fix is making this assertion hold.
+      expect(p.saveContextualMemory).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ requestType: 'combined' }),
+      );
+    });
+
+    it('persists the symmetric partial: flight valid, hotel missing', async () => {
+      vi.mocked(validateFlightRequiredFields).mockReturnValueOnce({
+        isValid: true,
+        missingFields: [],
+        missingFieldsSpanish: [],
+      } as any);
+      vi.mocked(validateHotelRequiredFields).mockReturnValueOnce({
+        isValid: false,
+        missingFields: ['city'],
+        missingFieldsSpanish: ['ciudad'],
+      } as any);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
+        requestType: 'combined',
+        originalMessage: 'vuelos a Madrid y un hotel',
+        flights: { origin: 'EZE', destination: 'MAD', departureDate: '2026-05-23', adults: 1 },
+        hotels: { adults: 1 } as any, // intentionally lacks city
+      }) as any);
+
+      const p = buildProps();
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('vuelos a Madrid y un hotel');
+      });
+
+      expect(p.saveContextualMemory).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ requestType: 'combined' }),
+      );
+    });
+
+    it('persists the snapshot when a flight-only request lacks required fields and asks for them', async () => {
+      vi.mocked(validateFlightRequiredFields).mockReturnValueOnce({
+        isValid: false,
+        missingFields: ['origin'],
+        missingFieldsSpanish: ['origen'],
+      } as any);
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
+        requestType: 'flights',
+        originalMessage: 'vuelo a Madrid',
+        flights: { destination: 'MAD', adults: 1 },
+      }) as any);
+
+      const p = buildProps();
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('vuelo a Madrid');
+      });
+
+      expect(p.saveContextualMemory).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          requestType: 'flights',
+          flights: expect.objectContaining({ destination: 'MAD' }),
+        }),
+      );
+    });
+
+    // Note: the rule that non-actionable parses (general / missing_info_request)
+    // are skipped lives in `shouldPersistIntent` (covered by the
+    // `turnIntentPersistence.test.ts` unit suite). Asserting it at the
+    // integration boundary is brittle because other pre-existing call sites
+    // in handleSendMessage may write contextual memory regardless of intent.
+
+    it('a persistence failure does not break the turn', async () => {
+      const persistError = new Error('persistence-down');
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
+        requestType: 'flights',
+        originalMessage: 'vuelo a Madrid desde EZE',
+        flights: { origin: 'EZE', destination: 'MAD', departureDate: '2026-06-01', adults: 1 },
+      }) as any);
+
+      const p = buildProps({
+        saveContextualMemory: vi.fn().mockRejectedValue(persistError) as any,
+      });
+      const { result } = renderHandler(p);
+
+      // The turn should NOT throw even if persistence rejects: the finally
+      // block swallows the error and lets the user-visible response stand.
+      await expect(
+        act(async () => {
+          await result.current.handleSendMessage('vuelo a Madrid desde EZE');
+        }),
+      ).resolves.not.toThrow();
     });
   });
 });

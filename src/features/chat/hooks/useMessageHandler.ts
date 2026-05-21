@@ -9,6 +9,7 @@ import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePack
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { runLegacyIntentGates } from '../services/legacyIntentGates';
+import { persistTurnIntentSnapshot } from '../services/turnIntentPersistence';
 import { routeRequest, getInferredFieldDetails } from '../services/routeRequest';
 import { normalizeSearchIntent } from '../services/searchIntentNormalizer';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation, type IterationContext } from '../utils/iterationDetection';
@@ -905,6 +906,15 @@ const useMessageHandler = (
       setIsTyping(false, conversationIdForThisSearch);
     };
 
+    // Architectural guarantee (see services/turnIntentPersistence.ts):
+    // every turn that produces an actionable parsed intent must persist it
+    // through `saveContextualMemory` before exiting. We host the snapshot at
+    // outer-function scope so the finally block can read the final value of
+    // parsedRequest regardless of which branch (search, partial, mode_bridge,
+    // ask_minimal, error, …) handled the user-visible response. The branch
+    // logic stays untouched.
+    let parsedRequest: ParsedTravelRequest | null = null;
+
     try {
       // 1. Generate unique client_id for idempotency (prevents duplicates)
       // Using crypto.randomUUID() - native browser/Node API, no external deps needed
@@ -1159,7 +1169,7 @@ const useMessageHandler = (
         discoveryGuard: preParseDiscoveryGuard,
       });
 
-      let parsedRequest = await parseMessageWithAIStreaming(
+      parsedRequest = await parseMessageWithAIStreaming(
         currentMessage,
         {
           plannerContext: plannerEditContext,
@@ -3001,6 +3011,20 @@ const useMessageHandler = (
       // spinner manually — and the "combined partial" branches forgot.
       setIsLoading(false);
       setIsTyping(false, conversationIdForThisSearch);
+
+      // Same invariant, applied to memory: persist the parsed intent snapshot
+      // so the next turn's parser receives `previousContext`. Without this,
+      // early-return branches that successfully parsed an intent (partial
+      // validation, mode_bridge, ask_minimal, …) leave the conversation
+      // amnesic and the parser cannot resolve anaphora across turns. The
+      // helper filters non-actionable parses and swallows persistence errors
+      // so a failed write never breaks the turn.
+      // See: src/features/chat/services/turnIntentPersistence.ts
+      await persistTurnIntentSnapshot(
+        finalConversationId,
+        parsedRequest,
+        saveContextualMemory,
+      );
     }
   }, [
     selectedConversation,
