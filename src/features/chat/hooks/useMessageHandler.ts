@@ -10,6 +10,7 @@ import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { runLegacyIntentGates } from '../services/legacyIntentGates';
 import { persistTurnIntentSnapshot } from '../services/turnIntentPersistence';
+import { inferCrossProductSlots } from '../services/combinedRequestNormalization';
 import { routeRequest, getInferredFieldDetails } from '../services/routeRequest';
 import { normalizeSearchIntent } from '../services/searchIntentNormalizer';
 import { detectIterationIntent, mergeIterationContext, generateIterationExplanation, type IterationContext } from '../utils/iterationDetection';
@@ -852,26 +853,11 @@ const useMessageHandler = (
           console.warn('⚠️ [MEMORY] Failed to save contextual memory:', e);
         });
     };
-    const persistContextualMemoryBeforeAsk = async (request: ParsedTravelRequest, stage: string) => {
-      const persistStart = nowMs();
-      try {
-        await saveContextualMemory(finalConversationId, request);
-        emitLatency({
-          stage,
-          latencyMs: nowMs() - persistStart,
-          payload: { requestType: request.requestType, critical: true },
-        });
-      } catch (e) {
-        emitLatency({
-          stage,
-          latencyMs: nowMs() - persistStart,
-          status: 'error',
-          error: e,
-          payload: { requestType: request.requestType, critical: true },
-        });
-        console.warn('⚠️ [MEMORY] Failed to save contextual memory before asking:', e);
-      }
-    };
+    // Note: `persistContextualMemoryBeforeAsk` was removed in favor of the
+    // architectural finally-block guarantee in
+    // `persistTurnIntentSnapshot`. The 7 ad-hoc save sites it served are
+    // now redundant; the finally block writes once per turn for every
+    // actionable parsed intent. See services/turnIntentPersistence.ts.
     const clearContextualMemoryInBackground = (stage: string) => {
       const clearStart = nowMs();
       void clearContextualMemory(finalConversationId)
@@ -1559,7 +1545,6 @@ const useMessageHandler = (
 
       if (conversationTurn.shouldAskMinimalQuestion && routeResult.collectQuestion && !shouldPushToDelivery) {
         console.log('🔄 [COLLECT] Router intercepting with focused question:', routeResult.reason, `(turn ${recentCollectCount + 1}/${MAX_COLLECT_TURNS})`);
-        await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_collect');
 
         const collectMessage = buildEmiliaSearchNarrative({
           mode: 'collect',
@@ -1844,6 +1829,15 @@ const useMessageHandler = (
         parsedRequest.hotels = undefined;
       }
 
+      // Cross-product slot inference for combined requests. The parser
+      // captures destination/dates on whichever product the user named
+      // first; when the user says "vuelo a X y después hotel" the hotel
+      // city is left empty and the validator would ask for a destination
+      // the user already gave. The inference syncs city/dates between
+      // the two product slots in both directions, NEVER overwriting
+      // explicit user input. See services/combinedRequestNormalization.ts.
+      parsedRequest = inferCrossProductSlots(parsedRequest);
+
       // Combined flow: validate both and send ONE aggregated prompt
       if (parsedRequest.requestType === 'combined') {
         console.log('🌟 [VALIDATION] Combined request - validating flights and hotels');
@@ -2000,7 +1994,6 @@ const useMessageHandler = (
 
         if (!flightOk && !hotelOk) {
           // Neither side has enough info — fall back to the aggregated ask.
-          await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_combined_missing');
 
           const missingInfoMessage = buildEmiliaSearchNarrative({
             mode: 'collect',
@@ -2077,7 +2070,6 @@ const useMessageHandler = (
           console.log('⚠️ [VALIDATION] Missing required fields, requesting more info');
 
           // Store the current parsed request for future combination
-          await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_flight_missing');
 
           // ✨ CRITICAL: Also save to context state for iteration detection (e.g., "agrega X adultos")
           // This ensures the iteration system can access the failed search context
@@ -2196,7 +2188,6 @@ const useMessageHandler = (
             console.log('⚠️ [VALIDATION] "Only minors" error detected - skipping auto-enrich');
 
             // Store context for iteration detection (enables "agrega X adultos")
-            await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_hotel_minors');
 
             const contextStateForFailedSearch: ContextState = {
               lastSearch: {
@@ -2286,7 +2277,6 @@ const useMessageHandler = (
               // proceed without asking
             } else {
               // Store the current parsed request for future combination
-              await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_hotel_revalidation');
 
               // ✨ Use custom errorMessage if available
               const missingInfoMessage = reval.errorMessage || buildEmiliaSearchNarrative({
@@ -2339,7 +2329,6 @@ const useMessageHandler = (
           } else if (!validation.isValid) {
             console.log('⚠️ [VALIDATION] Missing hotel required fields and no flight context available');
             // Store the current parsed request for future combination
-            await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_hotel_missing');
 
             // ✨ Use custom errorMessage if available
             const missingInfoMessage = validation.errorMessage || buildEmiliaSearchNarrative({
@@ -2409,7 +2398,6 @@ const useMessageHandler = (
         // Hard requirement: at least 1 destination
         if (!parsedRequest.itinerary?.destinations?.length) {
           console.log('⚠️ [VALIDATION] No destinations provided, requesting more info');
-          await persistContextualMemoryBeforeAsk(parsedRequest, 'context_memory_save_itinerary_missing');
 
           const missingInfoMessage = buildEmiliaSearchNarrative({
             mode: 'collect',

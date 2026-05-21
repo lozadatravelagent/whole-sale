@@ -52,11 +52,17 @@ export function shouldPersistIntent(
 
   switch (t) {
     case 'general':
-    case 'missing_info_request' as ParsedTravelRequest['requestType']:
-      // 'missing_info_request' is emitted when the parser can't pin down a
-      // concrete intent; persisting that as "last known state" would corrupt
-      // the next turn's previousContext.
+      // Chitchat / "hola" — no slot data the next turn can build on.
       return false;
+
+    case 'missing_info_request' as ParsedTravelRequest['requestType']:
+      // The parser asked the user for something (the COLLECT path).
+      // Persisting this preserves conversation continuity: the next turn
+      // sees `previousContext.requestType === 'missing_info_request'` and
+      // its `originalMessage` / `missingFields`, which downstream
+      // SEARCH-REFINEMENT-adjacent logic uses to interpret the user's reply
+      // as a fill-in of the previously-asked slot.
+      return true;
 
     case 'flights':
       return Boolean(parsed.flights?.destination || parsed.flights?.origin);

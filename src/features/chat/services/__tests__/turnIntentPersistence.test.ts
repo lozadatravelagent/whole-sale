@@ -36,9 +36,19 @@ describe('shouldPersistIntent', () => {
     expect(shouldPersistIntent(undefined)).toBe(false);
   });
 
-  it('returns false for non-actionable conversation types', () => {
+  it('returns false for general chitchat (no slot data)', () => {
     expect(shouldPersistIntent(makeRequest({ requestType: 'general' }))).toBe(false);
-    expect(shouldPersistIntent(makeRequest({ requestType: 'missing_info_request' as any }))).toBe(false);
+  });
+
+  it('returns true for missing_info_request to preserve COLLECT-loop continuity', () => {
+    // The COLLECT branch produces this when the parser asks the user for a
+    // missing slot. The next turn's parser needs `originalMessage` and
+    // `missingFields` to interpret the user reply as a fill-in.
+    expect(
+      shouldPersistIntent(
+        makeRequest({ requestType: 'missing_info_request' as any }),
+      ),
+    ).toBe(true);
   });
 
   it('returns true for a flights request with at least a destination', () => {

@@ -1181,6 +1181,55 @@ describe('useMessageHandler', () => {
     // integration boundary is brittle because other pre-existing call sites
     // in handleSendMessage may write contextual memory regardless of intent.
 
+    it('infers hotel.city from flights.destination for combined requests before validation runs', async () => {
+      // The Punta Cana case: user says "Primero vuelos a Punta Cana y después
+      // hotel" — parser captures flights.destination='PUJ' but leaves
+      // hotels.city empty. Without the inference, the validator would ask
+      // the user for a destination they already gave. With the inference,
+      // hotels.city is filled in BEFORE validation, so the validator only
+      // asks for genuinely missing slots.
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
+        requestType: 'combined',
+        originalMessage: 'Primero vuelos a Punta Cana y después hotel',
+        flights: { destination: 'PUJ', adults: 1 },
+        hotels: { adults: 1 } as any,
+      }) as any);
+
+      const p = buildProps();
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Primero vuelos a Punta Cana y después hotel');
+      });
+
+      // The validator should receive an inferred hotel city.
+      expect(vi.mocked(validateHotelRequiredFields)).toHaveBeenCalledWith(
+        expect.objectContaining({ city: 'PUJ' }),
+        expect.anything(),
+      );
+    });
+
+    it('infers flights.destination from hotels.city when the user named the destination on the hotel side', async () => {
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
+        requestType: 'combined',
+        originalMessage: 'hotel en Madrid y unos vuelos',
+        flights: { adults: 1 } as any,
+        hotels: { city: 'Madrid', adults: 1 },
+      }) as any);
+
+      const p = buildProps();
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('hotel en Madrid y unos vuelos');
+      });
+
+      expect(vi.mocked(validateFlightRequiredFields)).toHaveBeenCalledWith(
+        expect.objectContaining({ destination: 'Madrid' }),
+        expect.anything(),
+      );
+    });
+
     it('a persistence failure does not break the turn', async () => {
       const persistError = new Error('persistence-down');
       vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
