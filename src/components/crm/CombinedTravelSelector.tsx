@@ -583,9 +583,11 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   ]);
 
   const activeHotels = useMemo(() => {
-    // When no meal plan filter is active, prefer segment hotels (preserves chain interleaving).
-    // Only use cache results when user has actively selected a meal plan filter.
-    const hotels = (hasHotelCache && activeMealPlan) ? filteredHotels : activeBaseHotels;
+    // Cuando hay CUALQUIER filtro activo del cache (meal plan o precio), usamos los
+    // resultados filtrados. Sin filtros, mostramos los hoteles base del segmento
+    // (preserva el orden original / interleaving de cadenas).
+    const hasActiveCacheFilter = !!activeMealPlan || !!activeHotelPriceRange;
+    const hotels = (hasHotelCache && hasActiveCacheFilter) ? filteredHotels : activeBaseHotels;
 
     if (!hasGroupedHotelSegments || !activeHotelSegment) {
       return hotels;
@@ -597,6 +599,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     activeHotelSegment,
     activeHotelSegmentIndex,
     activeMealPlan,
+    activeHotelPriceRange,
     filteredHotels,
     hasGroupedHotelSegments,
     hasHotelCache,
