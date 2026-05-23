@@ -536,6 +536,14 @@ export interface CombinedTravelResults {
   // Hotel filter preferences from user request
   requestedRoomType?: 'single' | 'double' | 'triple';
   requestedMealPlan?: 'all_inclusive' | 'breakfast' | 'half_board' | 'room_only';
+  /** Lower bound (inclusive) of the price range the user asked for. Currency assumed USD unless hotelSearchPriceCurrency overrides. */
+  hotelSearchPriceMin?: number;
+  /** Upper bound (inclusive) of the price range the user asked for. */
+  hotelSearchPriceMax?: number;
+  /** Currency in which the user expressed the price range (default USD). */
+  hotelSearchPriceCurrency?: 'USD' | 'EUR' | 'ARS' | 'BRL' | 'MXN';
+  /** Basis of the price range (default 'night'). */
+  hotelSearchPriceBasis?: 'night' | 'stay' | 'person';
   // Flight search ID for IndexedDB lookup (dynamic filtering)
   flightSearchId?: string;
   // Hotel search ID for IndexedDB lookup (dynamic filtering)

@@ -1,5 +1,6 @@
 import type { HotelData } from '@/types';
 import type { MealPlanType } from '@/utils/roomFilters';
+import type { PriceRangeFilter } from '../types/hotelSearchCache';
 import { filterRooms } from '@/utils/roomFilters';
 
 /**
@@ -26,6 +27,46 @@ export function getMinPricePerNight(hotel: HotelData): number {
 }
 
 /**
+ * Filtra hoteles por rango de precio por noche.
+ * - `range === null` (o ambos extremos null) → no se aplica filtro.
+ * - `min` solo → excluye hoteles más baratos que `min`.
+ * - `max` solo → excluye hoteles más caros que `max`.
+ * - Hoteles sin precio resoluble (Infinity) se excluyen cuando hay filtro activo.
+ */
+export function filterHotelsByPriceRange(
+  hotels: HotelData[],
+  range: PriceRangeFilter | null,
+): HotelData[] {
+  if (!range || (range.min == null && range.max == null)) return hotels;
+
+  return hotels.filter(hotel => {
+    const price = getMinPricePerNight(hotel);
+    if (!Number.isFinite(price)) return false;
+    if (range.min != null && price < range.min) return false;
+    if (range.max != null && price > range.max) return false;
+    return true;
+  });
+}
+
+/**
+ * Calcula los límites min/max de precio por noche en una búsqueda.
+ * Útil para inicializar sliders y validar inputs del usuario.
+ * Retorna `null` si ningún hotel tiene precio resoluble.
+ */
+export function calculatePriceRangeBounds(hotels: HotelData[]): { min: number; max: number } | null {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const hotel of hotels) {
+    const price = getMinPricePerNight(hotel);
+    if (!Number.isFinite(price)) continue;
+    if (price < min) min = price;
+    if (price > max) max = price;
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return { min, max };
+}
+
+/**
  * Verifica si un hotel tiene al menos una habitación que coincide con el plan de comidas
  */
 function hotelHasMealPlan(hotel: HotelData, mealPlan: MealPlanType): boolean {
@@ -48,14 +89,17 @@ export function filterHotelsByMealPlan(
 }
 
 /**
- * Filtra hoteles y retorna Top N ordenados por precio
+ * Filtra hoteles por plan de comida + rango de precio, ordena por precio y limita a Top N.
+ * `priceRange` es opcional para mantener compatibilidad con call sites antiguos.
  */
 export function filterAndLimitHotels(
   hotels: HotelData[],
   mealPlan: MealPlanType | null,
-  limit: number = 5
+  limit: number = 5,
+  priceRange: PriceRangeFilter | null = null,
 ): HotelData[] {
-  const filtered = filterHotelsByMealPlan(hotels, mealPlan);
+  const filteredByMealPlan = filterHotelsByMealPlan(hotels, mealPlan);
+  const filtered = filterHotelsByPriceRange(filteredByMealPlan, priceRange);
 
   // Ordenar por precio mínimo por noche (ascendente)
   const sorted = [...filtered].sort((a, b) => {

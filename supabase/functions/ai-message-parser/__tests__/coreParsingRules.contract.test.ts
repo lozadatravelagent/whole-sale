@@ -191,6 +191,15 @@ describe('§11 intent classification', () => {
     expect(STATIC_SYSTEM_PROMPT).toContain('Cancún julio pareja 7 noches');
   });
 
+  it('agency natural-language elicitation is documented for incomplete commercial asks', () => {
+    expect(STATIC_SYSTEM_PROMPT).toContain('AGENCY NATURAL LANGUAGE + INTENT ELICITATION');
+    expect(STATIC_SYSTEM_PROMPT).toContain('Cliente quiere Caribe en julio');
+    expect(STATIC_SYSTEM_PROMPT).toContain('destinationKind');
+    expect(STATIC_SYSTEM_PROMPT).toContain('missingDecision');
+    expect(STATIC_SYSTEM_PROMPT).toContain('agencyLanguageSignals');
+    expect(STATIC_SYSTEM_PROMPT).toContain('"ai", "all inclusive"');
+  });
+
   it('turn continuity is documented as semantic context-first behavior', () => {
     expect(STATIC_SYSTEM_PROMPT).toContain('TURN CONTINUITY — SECOND-TURN CONTEXT FIRST');
     expect(STATIC_SYSTEM_PROMPT).toContain('assume continuity unless the user clearly starts a new trip');

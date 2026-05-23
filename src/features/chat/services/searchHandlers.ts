@@ -938,6 +938,10 @@ export const handleHotelSearch = async (
             requestType: 'hotels-only' as const,
             requestedRoomType: primarySegment?.roomType,
             requestedMealPlan: primarySegment?.mealPlan,
+            hotelSearchPriceMin: parsed.hotels?.priceMin,
+            hotelSearchPriceMax: parsed.hotels?.priceMax,
+            hotelSearchPriceCurrency: parsed.hotels?.priceCurrency,
+            hotelSearchPriceBasis: parsed.hotels?.pricePer,
             hotelSearchId: hotelSearchIds[0],
             hotelSearchIds
           }
@@ -1747,6 +1751,10 @@ export const handleHotelSearch = async (
           requestType: 'hotels-only' as const,
           requestedRoomType: normalizedRoomType,
           requestedMealPlan: normalizedMealPlan,
+          hotelSearchPriceMin: parsed.hotels?.priceMin,
+          hotelSearchPriceMax: parsed.hotels?.priceMax,
+          hotelSearchPriceCurrency: parsed.hotels?.priceCurrency,
+          hotelSearchPriceBasis: parsed.hotels?.pricePer,
           hotelSearchId, // 🔑 Key to retrieve ALL hotels from IndexedDB
           hotelResponseMode: responseMode,
           requestedHotelName: requestedHotelNameForCopy || undefined,

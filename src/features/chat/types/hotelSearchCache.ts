@@ -12,6 +12,15 @@ export interface MealPlanDistribution {
 }
 
 /**
+ * Rango de precio por noche aplicado por el usuario. `null` en cualquier extremo
+ * significa "sin tope". El objeto completo en `null` significa "sin filtro de precio".
+ */
+export interface PriceRangeFilter {
+  min: number | null;
+  max: number | null;
+}
+
+/**
  * Cache de resultados de hoteles
  */
 export interface HotelSearchResultsCache {
@@ -21,11 +30,17 @@ export interface HotelSearchResultsCache {
   /** Plan de comida seleccionado (null = sin filtro) */
   activeMealPlan: MealPlanType | null;
 
+  /** Rango de precio por noche aplicado (null = sin filtro de precio) */
+  activePriceRange: PriceRangeFilter | null;
+
   /** Resultados visibles después de aplicar filtro */
   displayedResults: HotelData[];
 
   /** Distribución de planes de comida (calculada sobre TODOS los hoteles) */
   distribution: MealPlanDistribution;
+
+  /** Min/Max observados en la búsqueda original (para sliders y validación de UI) */
+  priceRangeBounds: { min: number; max: number } | null;
 
   /** Timestamp de cuando se cachearon los resultados */
   timestamp: number;

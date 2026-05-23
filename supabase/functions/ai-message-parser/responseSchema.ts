@@ -398,6 +398,51 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
           type: ["string", "null"],
           enum: ["solo", "couple", "family", "group", null],
         },
+        destinationKind: {
+          type: ["string", "null"],
+          enum: ["city", "region", "country", "vibe", null],
+          description:
+            "Granularity of the destination as spoken. Use region/country/vibe " +
+            "for broad commercial asks like Caribe, Brasil, playa, Europa.",
+        },
+        dateWindow: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          properties: {
+            kind: {
+              type: "string",
+              enum: ["exact", "month", "default", "missing"],
+            },
+            month: { type: ["string", "null"] },
+            startDate: { type: ["string", "null"] },
+            endDate: { type: ["string", "null"] },
+          },
+          required: ["kind"],
+        },
+        agencyLanguageSignals: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Short signals that show agency/vendor language: cliente quiere, " +
+            "me pidieron, tengo una pareja, pax, clienta, pasajero.",
+        },
+        softPreferences: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Subjective preferences captured verbatim/canonically: lindo, " +
+            "no se vaya mucho, cerca playa, all inclusive, si hay.",
+        },
+        missingDecision: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["destination", "passengers", "dates", "product", "budget", "origin"],
+          },
+          description:
+            "Business decisions still needed before a precise quote can run. " +
+            "Use this for incomplete agency language; do not use it as an error.",
+        },
         budgetHint: {
           type: ["string", "null"],
           enum: ["budget", "mid", "premium", "luxury", null],
@@ -425,10 +470,10 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
       },
       required: ["productsImplied"],
       description:
-        "Exploratory-but-actionable hints. Emit when the user names a " +
-        "destination AND at least one of {travelerType, budgetHint, " +
-        "occasionHint, adults}, even if requestType resolves to 'general' " +
-        "or 'missing_info_request'. Always include `productsImplied` (≥1).",
+        "Exploratory or incomplete agency-commercial hints. Emit when the " +
+        "user names a destination, region, country, or vibe with commercial " +
+        "agency intent, even if passengers/product/dates are missing. Always " +
+        "include `productsImplied` (≥1) and optional `missingDecision`.",
     },
     // ---------------------------------------------------------------------
     // Missing-info / clarifying-question fields.

@@ -42,7 +42,14 @@ export interface HotelStaySegment {
     freeCancellation?: boolean;
     roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view';
     roomCount?: number;
+    priceMin?: number;
+    priceMax?: number;
+    priceCurrency?: HotelPriceCurrency;
+    pricePer?: HotelPriceBasis;
 }
+
+export type HotelPriceCurrency = 'USD' | 'EUR' | 'ARS' | 'BRL' | 'MXN';
+export type HotelPriceBasis = 'night' | 'stay' | 'person';
 
 export interface HotelRequest {
     city: string;
@@ -83,6 +90,14 @@ export interface HotelRequest {
     freeCancellation?: boolean; // Cancelación gratuita (opcional)
     roomView?: 'mountain_view' | 'beach_view' | 'city_view' | 'garden_view'; // Tipo de habitación (opcional)
     roomCount?: number; // Cantidad de habitaciones (opcional, default 1)
+    /** Lower bound of accepted price. Interpretation depends on pricePer (default 'night'). */
+    priceMin?: number;
+    /** Upper bound of accepted price. Interpretation depends on pricePer (default 'night'). */
+    priceMax?: number;
+    /** Currency the user spoke in. Defaults to USD when omitted. */
+    priceCurrency?: HotelPriceCurrency;
+    /** Basis the price is computed against. Defaults to 'night'. */
+    pricePer?: HotelPriceBasis;
     segments?: HotelStaySegment[];
 }
 
@@ -337,6 +352,16 @@ export interface ParsedTravelRequest {
      */
     searchSeeds?: {
         destination?: string | null;
+        destinationKind?: 'city' | 'region' | 'country' | 'vibe' | null;
+        dateWindow?: {
+            kind: 'exact' | 'month' | 'default' | 'missing';
+            month?: string | null;
+            startDate?: string | null;
+            endDate?: string | null;
+        } | null;
+        agencyLanguageSignals?: string[];
+        softPreferences?: string[];
+        missingDecision?: Array<'destination' | 'passengers' | 'dates' | 'product' | 'budget' | 'origin'>;
         travelerType?: 'solo' | 'couple' | 'family' | 'group' | null;
         budgetHint?: 'budget' | 'mid' | 'premium' | 'luxury' | null;
         occasionHint?: 'anniversary' | 'honeymoon' | 'birthday' | 'business' | 'leisure' | null;

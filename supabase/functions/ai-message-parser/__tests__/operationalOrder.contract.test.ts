@@ -104,3 +104,29 @@ describe('OPERATIONAL ORDER — response schema', () => {
     expect(items.enum).toEqual(['flight', 'hotel', 'transfer']);
   });
 });
+
+describe('INTENT ELICITATION — response schema', () => {
+  it('searchSeeds exposes optional elicitation fields without changing required fields', () => {
+    const props = PARSED_TRAVEL_REQUEST_SCHEMA.properties as Record<string, unknown>;
+    const searchSeeds = props.searchSeeds as Record<string, unknown>;
+    expect(searchSeeds).toBeDefined();
+    expect(searchSeeds.required).toEqual(['productsImplied']);
+
+    const seedProps = searchSeeds.properties as Record<string, Record<string, unknown>>;
+    const destinationKind = seedProps.destinationKind;
+    const dateWindow = seedProps.dateWindow as { properties: Record<string, Record<string, unknown>> };
+    const missingDecision = seedProps.missingDecision as { items: Record<string, unknown> };
+    expect(destinationKind.enum).toEqual(['city', 'region', 'country', 'vibe', null]);
+    expect(dateWindow.properties.kind.enum).toEqual(['exact', 'month', 'default', 'missing']);
+    expect(seedProps.agencyLanguageSignals.type).toBe('array');
+    expect(seedProps.softPreferences.type).toBe('array');
+    expect(missingDecision.items.enum).toEqual([
+      'destination',
+      'passengers',
+      'dates',
+      'product',
+      'budget',
+      'origin',
+    ]);
+  });
+});

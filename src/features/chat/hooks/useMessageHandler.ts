@@ -18,6 +18,7 @@ import { buildModeBridgeMessage, buildPlanToQuoteResponse, resolveConversationTu
 import { buildEmiliaSearchNarrative, type NarrativeChip } from '../services/emiliaNarrative';
 import { buildSearchOpener } from '../services/emiliaSearchOpener';
 import { buildProposedSearch } from '../services/proposedSearchBuilder';
+import { resolveIntentElicitation } from '../services/intentElicitationLayer';
 import { detectHotelPreferencesFromMessage, resolveTurnIntent } from '../services/turnIntentResolver';
 import { resolveEffectiveMode } from '../utils/resolveEffectiveMode';
 import { buildDiscoveryResponseFromToolResult } from '../services/discoveryService';
@@ -1429,6 +1430,69 @@ const useMessageHandler = (
             responseLanguage: userLanguage,
           } as any;
         }
+      }
+
+      const intentElicitation = effectiveMode === 'agency'
+        ? resolveIntentElicitation(parsedRequest, {
+            contextState: persistentState,
+            emiliaState: ctxEngState,
+            defaults: {
+              defaultOrigin: ctxEngState?.profile.default_origin_city ?? null,
+            },
+            language: userLanguage,
+          })
+        : null;
+
+      if (
+        intentElicitation &&
+        (intentElicitation.action === 'guide_with_chips' || intentElicitation.action === 'ask_minimal') &&
+        !shouldPushToDelivery
+      ) {
+        console.log('🎯 [INTENT ELICITATION] Emitting guided agency intent turn', {
+          action: intentElicitation.action,
+          missingDecision: intentElicitation.missingDecision,
+          chipCount: intentElicitation.chips.length,
+        });
+
+        if (ctxEngState && intentElicitation.pendingAction) {
+          ctxEngState = await emitPendingAction({
+            ctxEngState,
+            action: intentElicitation.pendingAction,
+          });
+        }
+
+        await saveAndDisplayMessage({
+          conversation_id: finalConversationId,
+          role: 'assistant' as const,
+          content: { text: intentElicitation.message || '' },
+          meta: {
+            status: 'sent',
+            messageType: 'intent_elicitation',
+            responseMode: 'guided_intent',
+            originalRequest: parsedRequest,
+            requestText: parsedRequest.originalMessage || currentMessage,
+            intentElicitation: {
+              action: intentElicitation.action,
+              explicitIntent: intentElicitation.explicitIntent,
+              known: intentElicitation.known,
+              missingDecision: intentElicitation.missingDecision,
+              probableNextIntents: intentElicitation.probableNextIntents,
+              confidence: intentElicitation.confidence,
+              rationale: intentElicitation.rationale,
+            },
+            pendingAction: intentElicitation.pendingAction,
+            suggestedActions: intentElicitation.chips,
+          },
+        });
+
+        setIsTyping(false, conversationIdForThisSearch);
+        setIsLoading(false);
+        flowTimer.end('intent_elicitation emitted', {
+          action: intentElicitation.action,
+          missingDecision: intentElicitation.missingDecision,
+          chipCount: intentElicitation.chips.length,
+        });
+        return;
       }
 
       if (leadId) {

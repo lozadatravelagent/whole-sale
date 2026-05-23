@@ -37,6 +37,9 @@ export interface EvalTurn {
   user: string;
   expected_intent: string;
   expected_tools: string[];
+  expected_branch?: string;
+  expected_chips?: string[];
+  forbid_tools?: string[];
 }
 
 export interface EvalCase {
@@ -94,6 +97,12 @@ export function loadDataset(filePath: string): EvalDataset {
       }
       if (!Array.isArray(t.expected_tools)) {
         throw new Error(`turn missing expected_tools in case ${c.id}: ${JSON.stringify(t)}`);
+      }
+      if (t.expected_chips !== undefined && !Array.isArray(t.expected_chips)) {
+        throw new Error(`turn expected_chips must be an array in case ${c.id}: ${JSON.stringify(t)}`);
+      }
+      if (t.forbid_tools !== undefined && !Array.isArray(t.forbid_tools)) {
+        throw new Error(`turn forbid_tools must be an array in case ${c.id}: ${JSON.stringify(t)}`);
       }
     }
   }

@@ -1,0 +1,227 @@
+{
+  "meta": {
+    "title": "WholeSale Connect AI — Flow Explorer",
+    "subtitle": "Click a flow to trace it across the architecture",
+    "version": "1.0.0",
+    "updated": "2026-05-12"
+  },
+  "layers": [
+    { "id": "ui",       "label": "UI Components",    "column": 1, "color": "#60a5fa" },
+    { "id": "hook",     "label": "Hooks / Context",  "column": 2, "color": "#c084fc" },
+    { "id": "service",  "label": "Client Services",  "column": 3, "color": "#22d3ee" },
+    { "id": "server",   "label": "Server (Edge / Fastify)", "column": 4, "color": "#fb923c" },
+    { "id": "db",       "label": "Database",         "column": 5, "color": "#4ade80" },
+    { "id": "external", "label": "External APIs",    "column": 6, "color": "#f87171" }
+  ],
+  "nodes": [
+    { "id": "chat-page",            "label": "ChatPage",            "sub": "pages/Chat.tsx",                          "layer": "ui",       "row": 1, "desc": "Top-level chat route. Wraps sidebar + thread + composer." },
+    { "id": "chat-composer",        "label": "ChatComposer",        "sub": "features/chat/components",                "layer": "ui",       "row": 2, "desc": "Input + submit handler. Emits user message events." },
+    { "id": "chat-sidebar",         "label": "ChatSidebar",         "sub": "features/chat/components",                "layer": "ui",       "row": 3, "desc": "Conversation list. 'Nueva conversación' button." },
+    { "id": "trip-planner-ws",      "label": "TripPlannerWorkspace","sub": "features/trip-planner/components",        "layer": "ui",       "row": 4, "desc": "Trip planner canvas: map + destinations + panels." },
+    { "id": "trip-planner-map",     "label": "TripPlannerMap",      "sub": "Mapbox GL component",                     "layer": "ui",       "row": 5, "desc": "Mapbox GL map with markers, popups, viewport events." },
+    { "id": "leads-kanban",         "label": "LeadsKanban",         "sub": "components/crm",                          "layer": "ui",       "row": 6, "desc": "Trello-style board. Sections + lead cards." },
+    { "id": "admin-users",          "label": "UserManagement",      "sub": "pages/admin (OWNER/SUPERADMIN/ADMIN)",    "layer": "ui",       "row": 7, "desc": "Invite + manage users. Role hierarchy enforced." },
+    { "id": "login-page",           "label": "LoginPage",           "sub": "pages/Login.tsx",                         "layer": "ui",       "row": 8, "desc": "Supabase auth UI." },
+
+    { "id": "auth-context",         "label": "AuthContext",         "sub": "contexts/AuthContext.tsx",                "layer": "hook",     "row": 1, "desc": "Loads session + public.users row. Provides role/agency helpers." },
+    { "id": "use-chat",             "label": "useChat",             "sub": "hooks/useChat.ts",                        "layer": "hook",     "row": 2, "desc": "Conversation state + 5-layer dedup + Realtime subs." },
+    { "id": "use-chat-state",       "label": "useChatState",        "sub": "features/chat/hooks",                     "layer": "hook",     "row": 3, "desc": "Active conversation, typing, workspace mode." },
+    { "id": "use-message-handler",  "label": "useMessageHandler",   "sub": "features/chat/hooks",                     "layer": "hook",     "row": 4, "desc": "Submits message, calls parser, dispatches results." },
+    { "id": "use-trip-planner",     "label": "useTripPlanner",      "sub": "features/trip-planner/useTripPlanner.ts", "layer": "hook",     "row": 5, "desc": "Composition root over 7 specialized planner hooks." },
+    { "id": "use-places-orch",      "label": "usePlacesOrchestrator","sub": "features/trip-planner/hooks",            "layer": "hook",     "row": 6, "desc": "CATEGORY_POLICY: eager + viewport fetching, cache." },
+    { "id": "use-lead-manager",     "label": "useLeadManager",      "sub": "features/crm/hooks",                      "layer": "hook",     "row": 7, "desc": "Lead CRUD, filtering, sorting, Realtime." },
+
+    { "id": "supabase-client",      "label": "supabase-js client",  "sub": "integrations/supabase/client.ts",         "layer": "service",  "row": 1, "desc": "Typed client. Auth + DB + Realtime + functions.invoke()." },
+    { "id": "ai-parser-client",     "label": "aiMessageParser",     "sub": "services/aiMessageParser.ts",             "layer": "service",  "row": 2, "desc": "Client wrapper calling /functions/v1/ai-message-parser." },
+    { "id": "route-request",        "label": "routeRequest",        "sub": "features/chat/services/routeRequest.ts",  "layer": "service",  "row": 3, "desc": "Deterministic 5-dim scorer → QUOTE | COLLECT | PLAN. <1ms." },
+    { "id": "conv-orchestrator",    "label": "conversationOrchestrator","sub": "features/chat/services",              "layer": "service",  "row": 4, "desc": "Decides branch: standard_search | standard_itinerary | ask_minimal | mode_bridge | proposal_chip." },
+    { "id": "itinerary-pipeline",   "label": "itineraryPipeline",   "sub": "features/chat/services",                  "layer": "service",  "row": 5, "desc": "Produces CanonicalItineraryResult from standard_itinerary branch." },
+    { "id": "search-handlers",      "label": "searchHandlers",      "sub": "features/chat/services/searchHandlers.ts","layer": "service",  "row": 6, "desc": "Orchestrates flight/hotel/combined search calls." },
+    { "id": "pdf-generator",        "label": "customPdfGenerator",  "sub": "services/pdf/customPdfGenerator.ts",      "layer": "service",  "row": 7, "desc": "jsPDF + html2canvas. Uploads to Supabase Storage." },
+    { "id": "indexeddb-cache",      "label": "IndexedDB cache",     "sub": "services/indexedDBStorage.ts",            "layer": "service",  "row": 8, "desc": "FlightSearchDB: flights (30m), geocoding (7d), plannerState." },
+
+    { "id": "fastify-search",       "label": "Fastify /v1/search",  "sub": "api/src/routes/v1/search.ts",             "layer": "server",   "row": 1, "desc": "Public API gateway. CORS → Auth → RateLimit → Search executor." },
+    { "id": "ai-message-parser-fn", "label": "ai-message-parser",   "sub": "supabase/functions/ai-message-parser",    "layer": "server",   "row": 2, "desc": "LLM entry. Bootstraps EmiliaState, runs tool loop, persists state." },
+    { "id": "tool-loop",            "label": "runToolLoop",         "sub": "_shared/llm/toolLoop",                    "layer": "server",   "row": 3, "desc": "3 iterations max, 8s/tool, 25s total. Structured outputs." },
+    { "id": "memory-tools",         "label": "memoryTools",         "sub": "_shared/memoryTools.ts",                  "layer": "server",   "row": 4, "desc": "save_memory_note. PII + speculation + instruction regex guards." },
+    { "id": "pending-action-tools", "label": "pendingActionTools",  "sub": "_shared/pendingActionTools.ts",           "layer": "server",   "row": 5, "desc": "apply_slot_values, confirm_pending_action, propose_planner_addition." },
+    { "id": "places-viewport-fn",   "label": "places-viewport",     "sub": "supabase/functions/places-viewport",      "layer": "server",   "row": 6, "desc": "Multi-point search 1-3 circles, 18 call cap, signature cache, 429 cooldown." },
+    { "id": "starling-fn",          "label": "starling-flights",    "sub": "supabase/functions/starling-flights",     "layer": "server",   "row": 7, "desc": "Starling TVC client. OAuth (1h cached) + GetFlightAvailability." },
+    { "id": "eurovips-fn",          "label": "eurovips-soap",       "sub": "supabase/functions/eurovips-soap",        "layer": "server",   "row": 8, "desc": "EUROVIPS SOAP bridge. searchHotels, searchFlights, searchPackages." },
+    { "id": "travel-itinerary-fn",  "label": "travel-itinerary",    "sub": "supabase/functions/travel-itinerary",     "layer": "server",   "row": 9, "desc": "Builds itinerary. skeleton=gpt-4.1-mini, full=gpt-4.1." },
+    { "id": "create-user-fn",       "label": "create-user",         "sub": "supabase/functions/create-user",          "layer": "server",   "row": 10, "desc": "Admin-only. Validates role hierarchy. Inserts auth.users + public.users." },
+
+    { "id": "conversations-table",  "label": "conversations",       "sub": "RLS by agency_id",                        "layer": "db",       "row": 1, "desc": "Chat sessions. channel (wa/web), state, workspace_mode." },
+    { "id": "messages-table",       "label": "messages",            "sub": "RLS via conversations",                   "layer": "db",       "row": 2, "desc": "role (user/assistant/system), content jsonb, client_id (dedup)." },
+    { "id": "agent-states-table",   "label": "agent_states",        "sub": "keyed by conversation_id",                "layer": "db",       "row": 3, "desc": "EmiliaState JSONB. Per-conversation, NO cross-conv memory." },
+    { "id": "leads-table",          "label": "leads",               "sub": "RLS by agency + assignee",                "layer": "db",       "row": 4, "desc": "status enum, contact, trip jsonb, conversation_id link." },
+    { "id": "users-table",          "label": "users (public)",      "sub": "fk auth.users",                           "layer": "db",       "row": 5, "desc": "role, tenant_id, agency_id, account_type, preferred_language." },
+    { "id": "agencies-table",       "label": "agencies",            "sub": "tenant scoped",                           "layer": "db",       "row": 6, "desc": "branding jsonb, pdf_provider, custom_template_ids." },
+    { "id": "activities-table",     "label": "activities",          "sub": "audit trail",                             "layer": "db",       "row": 7, "desc": "lead_created, status_changed, quote_sent. Realtime feeds dashboard." },
+    { "id": "auth-users",           "label": "auth.users",          "sub": "Supabase Auth",                           "layer": "db",       "row": 8, "desc": "JWT claims trigger populates agency_id/tenant_id/user_role." },
+
+    { "id": "openai",               "label": "OpenAI",              "sub": "gpt-4.1 / gpt-4.1-mini / gpt-5-nano",     "layer": "external", "row": 1, "desc": "Chat completions. Structured Outputs. Routed by modelPolicy.ts." },
+    { "id": "foursquare-api",       "label": "Foursquare",          "sub": "V3 (key) or V2 (client+secret)",          "layer": "external", "row": 2, "desc": "Places search/details/photos. 429 → Retry-After cooldown." },
+    { "id": "starling-api",         "label": "Starling TVC",        "sub": "flight aggregator",                       "layer": "external", "row": 3, "desc": "GetFlightAvailability. OAuth token 1h TTL." },
+    { "id": "eurovips-api",         "label": "EUROVIPS",            "sub": "SOAP wholesale",                          "layer": "external", "row": 4, "desc": "Hotels, flights, packages, services. XML responses." },
+    { "id": "mapbox-api",           "label": "Mapbox GL",           "sub": "tiles + geocoding",                       "layer": "external", "row": 5, "desc": "VITE_MAPBOX_TOKEN. Telemetry disabled." },
+    { "id": "upstash-redis",        "label": "Upstash Redis",       "sub": "REST API",                                "layer": "external", "row": 6, "desc": "Rate limit sliding window + idempotency cache (5min TTL)." },
+    { "id": "wikipedia-api",        "label": "Wikipedia",           "sub": "MediaWiki API",                           "layer": "external", "row": 7, "desc": "Photo fallback for places without Foursquare images." },
+    { "id": "railway",              "label": "Railway",             "sub": "Docker deploys",                          "layer": "external", "row": 8, "desc": "Hosts frontend (serve -s dist) and Fastify API." },
+    { "id": "cloudflare-worker",    "label": "Cloudflare Worker",   "sub": "proxy",                                   "layer": "external", "row": 9, "desc": "/v1/* → Railway, /search/* → Supabase Edge." }
+  ],
+  "flows": [
+    {
+      "id": "new-chat",
+      "title": "New Chat",
+      "icon": "💬",
+      "description": "User clicks 'Nueva conversación' in the sidebar. A row is inserted in conversations, RLS validates the agency_id from JWT claims, and Realtime echoes the row back so the UI selects it.",
+      "steps": [
+        { "from": "chat-sidebar",        "to": "use-chat",            "label": "click 'Nueva conversación'", "payload": "createConversation()" },
+        { "from": "use-chat",            "to": "supabase-client",     "label": "insert row",                 "payload": "{ tenant_id, agency_id, channel:'web', state:'active' }" },
+        { "from": "supabase-client",     "to": "conversations-table", "label": "INSERT (RLS check)",         "payload": "JWT claim agency_id must match row.agency_id" },
+        { "from": "conversations-table", "to": "use-chat",            "label": "postgres_changes event",     "payload": "{ eventType:'INSERT', new: {...row} }" },
+        { "from": "use-chat",            "to": "use-chat-state",      "label": "set active",                 "payload": "setActiveConversation(newId)" },
+        { "from": "use-chat-state",      "to": "chat-page",           "label": "render thread",              "payload": "thread mounts empty, composer focused" }
+      ]
+    },
+    {
+      "id": "emilia-chat",
+      "title": "Emilia Chat (full turn)",
+      "icon": "🤖",
+      "description": "User submits a message. Client optimistically renders, calls ai-message-parser, which bootstraps EmiliaState, runs the tool loop against OpenAI, persists state and returns a structured parsed request that the orchestrator routes.",
+      "steps": [
+        { "from": "chat-composer",        "to": "use-message-handler","label": "submit text",                "payload": "{ text, conversationId, clientId }" },
+        { "from": "use-message-handler",  "to": "supabase-client",    "label": "optimistic insert",          "payload": "INSERT messages (role:'user', client_id, content)" },
+        { "from": "supabase-client",      "to": "messages-table",     "label": "persist + dedup",            "payload": "client_id ensures no double-insert on Realtime echo" },
+        { "from": "use-message-handler",  "to": "ai-parser-client",   "label": "parseUserMessage",           "payload": "{ text, history, clientEmiliaState }" },
+        { "from": "ai-parser-client",     "to": "ai-message-parser-fn","label": "POST /functions/v1/...",    "payload": "Authorization: Bearer <jwt>" },
+        { "from": "ai-message-parser-fn", "to": "agent-states-table", "label": "bootstrap state",            "payload": "SELECT state by conv_id (or use clientEmiliaState to skip ~30ms)" },
+        { "from": "ai-message-parser-fn", "to": "tool-loop",          "label": "runToolLoop",                "payload": "{ model:'gpt-4.1-mini', iterationCap:3, perToolTimeoutMs:8000 }" },
+        { "from": "tool-loop",            "to": "openai",             "label": "chat.completions",           "payload": "tools: [9 fn schemas], response_format: structured" },
+        { "from": "openai",               "to": "tool-loop",          "label": "tool_calls",                 "payload": "[apply_slot_values, save_memory_note]" },
+        { "from": "tool-loop",            "to": "pending-action-tools","label": "execute parallel",          "payload": "8s timeout per tool" },
+        { "from": "tool-loop",            "to": "openai",             "label": "send results → final turn", "payload": "tool result messages appended" },
+        { "from": "openai",               "to": "tool-loop",          "label": "final JSON",                 "payload": "{ requestType, payload, meta }" },
+        { "from": "ai-message-parser-fn", "to": "agent-states-table", "label": "batch UPDATE",               "payload": "memory notes + pending_action + meta in single write" },
+        { "from": "ai-message-parser-fn", "to": "ai-parser-client",   "label": "response",                   "payload": "{ requestType, payload, pendingActionResolution }" },
+        { "from": "ai-parser-client",     "to": "route-request",      "label": "score request",              "payload": "5-dim scoring → QUOTE | COLLECT | PLAN" },
+        { "from": "route-request",        "to": "conv-orchestrator",  "label": "orchestrate",                "payload": "{ routeResult, mode, pendingAction, plannerState }" },
+        { "from": "conv-orchestrator",    "to": "use-message-handler","label": "branch decision",            "payload": "standard_search | standard_itinerary | ask_minimal | mode_bridge | proposal_chip" }
+      ]
+    },
+    {
+      "id": "agency-flow",
+      "title": "Agency Flow (QUOTE)",
+      "icon": "🏢",
+      "description": "Agency mode + high-confidence QUOTE route. Orchestrator dispatches a real search through the Fastify gateway, which hits Starling for flights and EUROVIPS for hotels in parallel. Results render as cards.",
+      "steps": [
+        { "from": "conv-orchestrator",  "to": "search-handlers", "label": "standard_search branch", "payload": "{ origin, destination, dates, pax }" },
+        { "from": "search-handlers",    "to": "fastify-search",  "label": "POST /v1/search",        "payload": "{ type:'combined', criteria }" },
+        { "from": "fastify-search",     "to": "upstash-redis",   "label": "rate limit check",       "payload": "key: ratelimit:{apiKey}:{minute}" },
+        { "from": "fastify-search",     "to": "upstash-redis",   "label": "idempotency cache",      "payload": "GET idempotency:{requestHash}" },
+        { "from": "fastify-search",     "to": "starling-fn",     "label": "flight search (parallel)","payload": "{ origin, dest, depart, return, pax }" },
+        { "from": "starling-fn",        "to": "starling-api",    "label": "GetFlightAvailability",  "payload": "OAuth bearer, JSON body" },
+        { "from": "fastify-search",     "to": "eurovips-fn",     "label": "hotel search (parallel)","payload": "{ city, checkIn, checkOut, rooms }" },
+        { "from": "eurovips-fn",        "to": "eurovips-api",    "label": "searchHotels SOAP",      "payload": "XML envelope" },
+        { "from": "fastify-search",     "to": "upstash-redis",   "label": "cache result",           "payload": "SET idempotency:{requestHash} TTL=300" },
+        { "from": "fastify-search",     "to": "search-handlers", "label": "combined results",       "payload": "{ flights:[...], hotels:[...] }" },
+        { "from": "search-handlers",    "to": "indexeddb-cache", "label": "cache flights (30m)",    "payload": "FlightSearchDB.flights.put" },
+        { "from": "search-handlers",    "to": "chat-composer",   "label": "render cards",           "payload": "flight + hotel carousels in thread" }
+      ]
+    },
+    {
+      "id": "passenger-flow",
+      "title": "Passenger Flow (PLAN)",
+      "icon": "🧳",
+      "description": "Passenger mode + PLAN route. Itinerary pipeline produces a CanonicalItineraryResult, the trip planner workspace opens and renders the multi-city plan on Mapbox.",
+      "steps": [
+        { "from": "conv-orchestrator",     "to": "itinerary-pipeline",  "label": "standard_itinerary branch","payload": "{ destinations[], days, preferences }" },
+        { "from": "itinerary-pipeline",    "to": "travel-itinerary-fn", "label": "POST /functions/v1/...",  "payload": "{ cities, durations, season }" },
+        { "from": "travel-itinerary-fn",   "to": "openai",              "label": "skeleton + segments",     "payload": "gpt-4.1-mini (skeleton) then gpt-4.1 (full)" },
+        { "from": "openai",                "to": "travel-itinerary-fn", "label": "structured itinerary",    "payload": "JSON: { segments: [{ city, days, anchors }] }" },
+        { "from": "travel-itinerary-fn",  "to": "itinerary-pipeline",  "label": "CanonicalItineraryResult","payload": "normalized shape" },
+        { "from": "itinerary-pipeline",    "to": "use-trip-planner",    "label": "load plan",               "payload": "plannerActions.setPlan(...)" },
+        { "from": "use-trip-planner",      "to": "trip-planner-ws",     "label": "open workspace",          "payload": "auto-open on PLAN confirmed" },
+        { "from": "trip-planner-ws",       "to": "use-places-orch",     "label": "eager fetch",             "payload": "EAGER_FETCH_CATEGORIES = [restaurant, museum, activity, sights]" },
+        { "from": "use-places-orch",       "to": "places-viewport-fn",  "label": "places search",           "payload": "{ bounds, categories, segment_id }" },
+        { "from": "places-viewport-fn",    "to": "foursquare-api",      "label": "search_nearby",           "payload": "1-3 search points, radius=5000m" },
+        { "from": "places-viewport-fn",    "to": "use-places-orch",     "label": "places + cooldown info",  "payload": "{ places, cooldownRemainingS? }" },
+        { "from": "use-places-orch",       "to": "trip-planner-map",    "label": "render markers",          "payload": "Mapbox markers per category" },
+        { "from": "trip-planner-map",      "to": "mapbox-api",          "label": "tiles + style",           "payload": "VITE_MAPBOX_TOKEN" }
+      ]
+    },
+    {
+      "id": "contexto-flow",
+      "title": "Contexto Flow (memory lifecycle)",
+      "icon": "🧠",
+      "description": "The Context Engineering memory lifecycle. save_memory_note is gated by regex (PII, speculation, instructions), persists to session_memory, gets consolidated into global_memory and re-injected on next turn — all per-conversation, no cross-conv leaks.",
+      "steps": [
+        { "from": "openai",               "to": "tool-loop",          "label": "tool_call save_memory_note","payload": "{ note: 'cliente prefiere vuelos directos' }" },
+        { "from": "tool-loop",            "to": "memory-tools",       "label": "executeSaveMemoryNote",     "payload": "{ note, kind, lifecycle:'session' }" },
+        { "from": "memory-tools",         "to": "memory-tools",       "label": "regex guards",              "payload": "REJECT if matches: PII (passport/SSN), instruction ('remember that'), speculation ('maybe')" },
+        { "from": "memory-tools",         "to": "tool-loop",          "label": "accepted note",             "payload": "{ accepted:true, id, lifecycle:'session' }" },
+        { "from": "tool-loop",            "to": "ai-message-parser-fn","label": "stage in state",           "payload": "state.session_memory.notes.push(note)" },
+        { "from": "ai-message-parser-fn", "to": "ai-message-parser-fn","label": "consolidate?",              "payload": "if turn_count % N == 0: drain session → global_memory" },
+        { "from": "ai-message-parser-fn", "to": "agent-states-table", "label": "batch UPDATE state",        "payload": "single write: session + global + meta.last_consolidated_at" },
+        { "from": "agent-states-table",   "to": "ai-message-parser-fn","label": "next turn bootstrap",      "payload": "SELECT state → renderStateForSystemPrompt" },
+        { "from": "ai-message-parser-fn", "to": "tool-loop",          "label": "inject memories",           "payload": "<memories>: top-6 global + top-8 session in system prompt" }
+      ]
+    },
+    {
+      "id": "llm-functions",
+      "title": "LLM Functions (tool loop)",
+      "icon": "🛠",
+      "description": "Inside runToolLoop. Up to 3 iterations of tool_calls. Each tool has an 8s cap. The 9 tools split into 5 retrieval, 1 memory, 2 turn-state, 1 planner proposal. State is read at start, mutations are staged and persisted in one batched UPDATE.",
+      "steps": [
+        { "from": "ai-message-parser-fn", "to": "tool-loop",          "label": "enter loop",                "payload": "iteration=0, tools=[9 schemas]" },
+        { "from": "tool-loop",            "to": "openai",             "label": "completion #1",             "payload": "msgs + state injected in system prompt" },
+        { "from": "openai",               "to": "tool-loop",          "label": "tool_calls (parallel)",     "payload": "[discover_places, get_recent_searches]" },
+        { "from": "tool-loop",            "to": "places-viewport-fn", "label": "discover_places handler",   "payload": "Foursquare semantic search via shared service" },
+        { "from": "tool-loop",            "to": "agent-states-table", "label": "get_recent_searches",       "payload": "SELECT top-N searches from state.trip_history" },
+        { "from": "tool-loop",            "to": "tool-loop",          "label": "8s cap per tool",           "payload": "Promise.race with timeout" },
+        { "from": "tool-loop",            "to": "openai",             "label": "completion #2 (with results)","payload": "iteration=1, tool result messages appended" },
+        { "from": "openai",               "to": "tool-loop",          "label": "tool_calls (pending_action)","payload": "[apply_slot_values, propose_planner_addition]" },
+        { "from": "tool-loop",            "to": "pending-action-tools","label": "executeApplySlotValues",   "payload": "merge values into pending_action.applied" },
+        { "from": "tool-loop",            "to": "pending-action-tools","label": "executeProposePlannerAddition","payload": "stages pending_action.payload (proposal, NOT direct mutation)" },
+        { "from": "tool-loop",            "to": "openai",             "label": "completion #3 (final)",     "payload": "iteration=2, structured response demanded" },
+        { "from": "openai",               "to": "tool-loop",          "label": "final JSON response",       "payload": "{ requestType, payload, meta: { pendingActionResolution } }" },
+        { "from": "tool-loop",            "to": "ai-message-parser-fn","label": "return result",            "payload": "{ output, tool_invocations, iterations: 3 }" }
+      ]
+    },
+    {
+      "id": "invite-user",
+      "title": "Invite New User",
+      "icon": "✉️",
+      "description": "An ADMIN or higher invites a new SELLER. Role hierarchy is validated (can_create_user_with_role), auth.users row is created with magic-link email, public.users row is created with agency_id pinned.",
+      "steps": [
+        { "from": "admin-users",     "to": "auth-context",    "label": "check permissions",         "payload": "canCreateUserWithRole(targetRole)" },
+        { "from": "admin-users",     "to": "supabase-client", "label": "functions.invoke('create-user')","payload": "{ email, role:'SELLER', agency_id }" },
+        { "from": "supabase-client",  "to": "create-user-fn",  "label": "POST with JWT",             "payload": "Authorization: Bearer <invoker_jwt>" },
+        { "from": "create-user-fn",   "to": "auth-users",      "label": "verify caller",             "payload": "decode JWT, fetch role from public.users" },
+        { "from": "create-user-fn",   "to": "users-table",     "label": "role hierarchy guard",      "payload": "SQL: can_create_user_with_role(target_role)" },
+        { "from": "create-user-fn",   "to": "auth-users",      "label": "create auth user",          "payload": "admin.createUser({ email, email_confirm:false })" },
+        { "from": "auth-users",       "to": "create-user-fn",  "label": "new user id",               "payload": "{ id: uuid }" },
+        { "from": "create-user-fn",   "to": "users-table",     "label": "insert profile row",        "payload": "{ id, email, role, tenant_id, agency_id, account_type:'agent' }" },
+        { "from": "create-user-fn",   "to": "agencies-table",  "label": "verify agency",             "payload": "SELECT agencies WHERE id=agency_id AND tenant_id matches caller" },
+        { "from": "create-user-fn",   "to": "admin-users",     "label": "success + invite sent",     "payload": "{ ok:true, user, inviteUrl }" }
+      ]
+    },
+    {
+      "id": "deploy-build",
+      "title": "Deploy / Build Flow",
+      "icon": "🚀",
+      "description": "git push to main triggers three independent deployments: Railway builds the frontend (Vite → serve), Railway builds the Fastify API (Docker), and Supabase Edge Functions are deployed via CLI. Cloudflare Worker routes traffic.",
+      "steps": [
+        { "from": "login-page",         "to": "railway",          "label": "git push main → frontend",  "payload": "npm ci → npm run build → npx serve -s dist -p $PORT" },
+        { "from": "railway",            "to": "cloudflare-worker","label": "frontend deployed",         "payload": "Railway public URL pinned to CF Worker route" },
+        { "from": "fastify-search",     "to": "railway",          "label": "git push → api/ Dockerfile","payload": "Docker single-stage. Health check: GET /v1/health" },
+        { "from": "railway",            "to": "cloudflare-worker","label": "API deployed",              "payload": "/v1/* → Railway API URL" },
+        { "from": "ai-message-parser-fn","to": "railway",         "label": "(does NOT deploy here)",    "payload": "Edge functions skip Railway" },
+        { "from": "ai-message-parser-fn","to": "cloudflare-worker","label": "supabase functions deploy","payload": "Deno bundles → Supabase Edge runtime" },
+        { "from": "cloudflare-worker",  "to": "upstash-redis",    "label": "/search/* routed",          "payload": "Routed to Supabase project URL" },
+        { "from": "cloudflare-worker",  "to": "openai",           "label": "(traffic flows)",           "payload": "Edge fns use OPENAI_API_KEY secret (supabase secrets set)" }
+      ]
+    }
+  ]
+}

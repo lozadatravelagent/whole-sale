@@ -174,6 +174,14 @@ async function handleHotelCompletion(ctx: DispatchContext): Promise<void> {
   });
 }
 
+async function handleIntentElicitation(ctx: DispatchContext): Promise<void> {
+  const { resolution } = ctx;
+  console.log('[PENDING-ACTION] intent_elicitation observed:', {
+    applied: resolution.applied,
+    complete: resolution.complete,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Itinerary completion (mutating)
 // ---------------------------------------------------------------------------
@@ -382,6 +390,7 @@ const handlers: Record<string, Handler> = {
   combined_completion: handleCombinedCompletion,
   flight_completion: handleFlightCompletion,
   hotel_completion: handleHotelCompletion,
+  intent_elicitation: handleIntentElicitation,
   itinerary_completion: handleItineraryCompletion,
   add_places_to_itinerary: handleAddPlacesToItinerary,
 };

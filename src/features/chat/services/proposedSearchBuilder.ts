@@ -43,6 +43,16 @@ export type SeedOccasionHint =
 
 export interface SearchSeeds {
   destination?: string | null;
+  destinationKind?: 'city' | 'region' | 'country' | 'vibe' | null;
+  dateWindow?: {
+    kind: 'exact' | 'month' | 'default' | 'missing';
+    month?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+  } | null;
+  agencyLanguageSignals?: string[];
+  softPreferences?: string[];
+  missingDecision?: Array<'destination' | 'passengers' | 'dates' | 'product' | 'budget' | 'origin'>;
   travelerType?: SeedTravelerType | null;
   budgetHint?: SeedBudgetHint | null;
   occasionHint?: SeedOccasionHint | null;

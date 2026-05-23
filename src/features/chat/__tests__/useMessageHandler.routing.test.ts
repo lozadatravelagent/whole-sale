@@ -97,6 +97,19 @@ vi.mock('../services/proposedSearchBuilder', () => ({
   }),
 }));
 
+vi.mock('../services/intentElicitationLayer', () => ({
+  resolveIntentElicitation: vi.fn().mockReturnValue({
+    action: 'ignore',
+    explicitIntent: 'general',
+    known: [],
+    missingDecision: [],
+    probableNextIntents: [],
+    chips: [],
+    confidence: 0,
+    rationale: 'test default',
+  }),
+}));
+
 vi.mock('../services/conversationOrchestrator', () => ({
   resolveConversationTurn: vi.fn().mockReturnValue({
     shouldAskMinimalQuestion: false,
@@ -170,6 +183,7 @@ import { resolveConversationTurn } from '../services/conversationOrchestrator';
 import { detectIterationIntent, mergeIterationContext } from '../utils/iterationDetection';
 import { buildEmiliaSearchNarrative } from '../services/emiliaNarrative';
 import { buildProposedSearch } from '../services/proposedSearchBuilder';
+import { resolveIntentElicitation } from '../services/intentElicitationLayer';
 import { buildProps, buildMessageRow, buildParsedRequest, DEFAULT_CONV_ID } from '@/test-utils/useMessageHandlerFactory';
 
 // ---------------------------------------------------------------------------
@@ -226,6 +240,16 @@ const MISSING_INFO_PARSED = buildParsedRequest({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(resolveIntentElicitation).mockReturnValue({
+    action: 'ignore',
+    explicitIntent: 'general',
+    known: [],
+    missingDecision: [],
+    probableNextIntents: [],
+    chips: [],
+    confidence: 0,
+    rationale: 'test default',
+  });
 });
 
 describe('useMessageHandler', () => {
@@ -664,6 +688,88 @@ describe('useMessageHandler', () => {
       expect(meta.messageType).toBe('search_proposal');
       expect(meta.emiliaNarrative).toBeUndefined();
       expect(assistantCall![0].content).toEqual({ text: 'fallback collect message' });
+    });
+  });
+
+  describe('handleSendMessage — intent_elicitation branch', () => {
+    it('persists a guided intent message with autocomplete chips before routing', async () => {
+      const parsedRequest = buildParsedRequest({
+        requestType: 'missing_info_request',
+        originalMessage: 'Cliente quiere Caribe en julio',
+        commercialIntent: {
+          kind: 'package_search',
+          agencyContext: true,
+          confidence: 0.86,
+        } as any,
+        searchSeeds: {
+          destination: 'Caribe',
+          destinationKind: 'region',
+          dateWindow: { kind: 'month', month: 'julio' },
+          agencyLanguageSignals: ['cliente quiere'],
+          softPreferences: ['playa'],
+          missingDecision: ['destination', 'passengers'],
+          productsImplied: ['package'],
+          adults: null,
+          children: null,
+        } as any,
+      });
+      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(parsedRequest as any);
+      vi.mocked(resolveIntentElicitation).mockReturnValueOnce({
+        action: 'guide_with_chips',
+        explicitIntent: 'package_search',
+        known: ['agency_context', 'region:Caribe', 'date:month'],
+        missingDecision: ['destination', 'passengers'],
+        probableNextIntents: ['choose_destination', 'define_passengers', 'package_search'],
+        message: 'Perfecto. Entiendo búsqueda de playa en Caribe para julio. Para llevarlo a cotización, podemos arrancar por un destino concreto.',
+        chips: [
+          {
+            id: 'intent-elicit-destination-cancun',
+            label: 'Cancún',
+            prompt: 'paquete a Cancún en julio para 1 adulto',
+            type: 'quote',
+            priority: 1,
+            behavior: 'autocomplete',
+            intent: 'intent_elicitation',
+            expectedRequestType: 'combined',
+            expectedProducts: ['package'],
+          },
+        ],
+        pendingAction: {
+          kind: 'awaiting_user_input',
+          for: 'intent_elicitation',
+          fields: ['destination', 'passengers'],
+          prompt: 'Perfecto. Entiendo búsqueda de playa en Caribe para julio.',
+          issuedAt: '2026-05-22T00:00:00.000Z',
+          payload: { searchSeeds: (parsedRequest as any).searchSeeds },
+        },
+        confidence: 0.86,
+        rationale: 'commercial agency intent needs a business decision before routing',
+      } as any);
+
+      const p = buildProps({ chatMode: 'agency' });
+      const { result } = renderHandler(p);
+
+      await act(async () => {
+        await result.current.handleSendMessage('Cliente quiere Caribe en julio');
+      });
+
+      expect(vi.mocked(routeRequest)).not.toHaveBeenCalled();
+      const assistantCall = vi.mocked(addMessageViaSupabase).mock.calls.find(
+        (c) => c[0].role === 'assistant'
+      );
+      expect(assistantCall).toBeDefined();
+      expect(assistantCall![0].content).toEqual({
+        text: expect.stringContaining('Entiendo búsqueda de playa en Caribe'),
+      });
+      const meta = assistantCall![0].meta as any;
+      expect(meta.messageType).toBe('intent_elicitation');
+      expect(meta.pendingAction.for).toBe('intent_elicitation');
+      expect(meta.suggestedActions).toHaveLength(1);
+      expect(meta.suggestedActions[0]).toMatchObject({
+        label: 'Cancún',
+        behavior: 'autocomplete',
+        expectedRequestType: 'combined',
+      });
     });
   });
 

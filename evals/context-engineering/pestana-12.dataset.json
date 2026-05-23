@@ -1,0 +1,75 @@
+{
+  "$schema_note": "Dataset inicial de Pestaña 12 para Emilia agencia. El runner actual es skeleton; estos campos fijan intent, branch, chips y herramientas esperadas para la futura evaluación real.",
+  "cases": [
+    {
+      "id": "p12-001-client-cancun-july-ai",
+      "description": "Agente pide Cancún en julio para dos con all inclusive; debe ejecutar búsqueda comercial, no planner.",
+      "turns": [
+        {
+          "user": "Cliente me pide Cancún en julio, son dos, algo all inclusive",
+          "expected_intent": "hotels",
+          "expected_branch": "standard_search",
+          "expected_tools": [],
+          "forbid_tools": ["discover_places"],
+          "expected_chips": ["Sumar vuelo", "Cambiar fechas", "Ver más económico", "Sumar traslado"]
+        }
+      ]
+    },
+    {
+      "id": "p12-002-punta-cana-soft-budget",
+      "description": "Agente trae pareja, destino concreto y preferencia blanda sin fechas; debe guiar con chips de decisión.",
+      "turns": [
+        {
+          "user": "Tengo una pareja que quiere Punta Cana, hotel lindo pero que no se vaya mucho",
+          "expected_intent": "missing_info_request",
+          "expected_branch": "intent_elicitation",
+          "expected_tools": [],
+          "forbid_tools": ["discover_places"],
+          "expected_chips": ["Usar 7 noches", "Paquete completo", "Ver más económico"]
+        }
+      ]
+    },
+    {
+      "id": "p12-003-compressed-cancun-chains",
+      "description": "Shorthand de agencia con cadenas y AI; debe parsear cadenas, pasajeros y all inclusive.",
+      "turns": [
+        {
+          "user": "Cancun julio 2 pax riu iberostar ai",
+          "expected_intent": "hotels",
+          "expected_branch": "standard_search",
+          "expected_tools": [],
+          "forbid_tools": ["discover_places"],
+          "expected_chips": ["Sumar vuelo", "Cambiar fechas", "Buscar similares", "Ver más económico"]
+        }
+      ]
+    },
+    {
+      "id": "p12-004-broad-caribe-july",
+      "description": "Región amplia con mes y contexto de cliente; no debe inventar destino, debe elicitar destino/pax.",
+      "turns": [
+        {
+          "user": "Cliente quiere Caribe en julio",
+          "expected_intent": "missing_info_request",
+          "expected_branch": "intent_elicitation",
+          "expected_tools": [],
+          "forbid_tools": ["discover_places"],
+          "expected_chips": ["Cancún", "Punta Cana", "Aruba", "Definir pasajeros"]
+        }
+      ]
+    },
+    {
+      "id": "p12-005-flight-madrid-october",
+      "description": "Shorthand de vuelo con mes y 1 pax; debe quedar en búsqueda aérea si hay origen por perfil o pedir origen mínimo.",
+      "turns": [
+        {
+          "user": "aereo madrid octubre 1 pax",
+          "expected_intent": "flights",
+          "expected_branch": "standard_search",
+          "expected_tools": [],
+          "forbid_tools": ["discover_places"],
+          "expected_chips": ["Ida y vuelta", "Sumar hotel", "Cambiar fecha", "Agregar pasajeros"]
+        }
+      ]
+    }
+  ]
+}

@@ -443,21 +443,34 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
   } = useSearchResultsCache(combinedData.flightSearchId);
 
   // Hook para cache de resultados y filtrado dinámico de hoteles
-  // Pasa el searchId para cargar TODOS los hoteles desde IndexedDB
+  // Pasa el searchId para cargar TODOS los hoteles desde IndexedDB.
+  // El rango de precio inicial proviene del parser cuando el usuario lo
+  // pidió en el mensaje original (ej: "entre 2000 y 3000").
+  const hotelInitialPriceRange = useMemo(
+    () => ({
+      min: combinedData.hotelSearchPriceMin ?? null,
+      max: combinedData.hotelSearchPriceMax ?? null,
+    }),
+    [combinedData.hotelSearchPriceMin, combinedData.hotelSearchPriceMax],
+  );
+
   const {
     displayedResults: filteredHotels,
     activeMealPlan,
+    activePriceRange: activeHotelPriceRange,
     distribution: hotelDistribution,
     totalCount: hotelTotalCount,
     filteredCount: hotelFilteredCount,
     hasCache: hasHotelCache,
     setMealPlan,
+    setPriceRange: setHotelPriceRange,
     cacheResults: cacheHotelResults,
     clearCache: clearHotelCache,
   } = useHotelResultsCache(
     combinedData.hotelSegments?.length
       ? combinedData.hotelSegments.find((segment, index) => `${segment.segmentId || 'hotel-segment'}-${index}` === activeHotelSegmentId)?.hotelSearchId
-      : combinedData.hotelSearchId
+      : combinedData.hotelSearchId,
+    hotelInitialPriceRange,
   );
 
   const groupedHotelSegments = useMemo<GroupedHotelSegment[]>(
@@ -1455,14 +1468,16 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
               </Card>
             )}
 
-            {/* Dynamic Filter Chips for Hotels - Solo Plan de Comidas */}
+            {/* Dynamic Filter Chips for Hotels - Plan de Comidas + Precio */}
             {!activeHotelSegment?.error && hasHotelCache && hotelDistribution && (
               <HotelFilterChips
                 distribution={hotelDistribution}
                 activeMealPlan={activeMealPlan}
+                activePriceRange={activeHotelPriceRange}
                 totalCount={hotelTotalCount}
                 filteredCount={hotelFilteredCount}
                 onMealPlanChange={setMealPlan}
+                onPriceRangeChange={setHotelPriceRange}
                 language={language}
               />
             )}
