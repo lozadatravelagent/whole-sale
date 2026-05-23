@@ -17,6 +17,7 @@ import { authMiddleware } from './middleware/auth.js';
 import { rateLimitMiddleware } from './middleware/rateLimit.js';
 import { healthRoutes } from './routes/v1/health.js';
 import { searchRoutes } from './routes/v1/search.js';
+import { emiliaTurnRoutes } from './routes/v1/emiliaTurn.js';
 
 // Initialize Fastify with Pino logger
 const fastify = Fastify({
@@ -45,6 +46,7 @@ await fastify.register(async (protectedRoutes) => {
 
   // Register search routes
   await protectedRoutes.register(searchRoutes, { prefix: '/v1' });
+  await protectedRoutes.register(emiliaTurnRoutes, { prefix: '/v1' });
 }, { prefix: '' });
 
 // Global error handler
@@ -86,6 +88,7 @@ try {
   console.log(`✅ Fastify API Gateway listening on http://${HOST}:${PORT}`);
   console.log(`📊 Health check: http://${HOST}:${PORT}/v1/health`);
   console.log(`🔍 Search endpoint: http://${HOST}:${PORT}/v1/search`);
+  console.log(`💬 Emilia turn endpoint: http://${HOST}:${PORT}/v1/emilia/turn`);
 } catch (err) {
   console.error('❌ Failed to start server:', err);
   fastify.log.error(err);

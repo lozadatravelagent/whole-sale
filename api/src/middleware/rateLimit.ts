@@ -33,9 +33,9 @@ export async function rateLimitMiddleware(
   });
 
   const rateLimitResult = await checkRateLimitRedis(apiKey.id, {
-    minute: apiKey.rate_limit_per_minute,
-    hour: apiKey.rate_limit_per_hour,
-    day: apiKey.rate_limit_per_day,
+    minute: apiKey.rate_limit_per_minute ?? 100,
+    hour: apiKey.rate_limit_per_hour ?? 1000,
+    day: apiKey.rate_limit_per_day ?? 10000,
   });
 
   // Add rate limit headers to response

@@ -12,19 +12,20 @@ export interface ApiKey {
   id: string;
   key_prefix: string;
   key_hash: string;
-  tenant_id: string;
+  tenant_id: string | null;
   agency_id: string | null;
   scopes: string[];
-  rate_limit_per_minute: number;
-  rate_limit_per_hour: number;
-  rate_limit_per_day: number;
+  rate_limit_per_minute: number | null;
+  rate_limit_per_hour: number | null;
+  rate_limit_per_day: number | null;
   name: string | null;
-  environment: string;
-  is_active: boolean;
+  environment: string | null;
+  is_active: boolean | null;
   expires_at: string | null;
-  created_at: string;
+  created_at: string | null;
+  created_by: string | null;
   last_used_at: string | null;
-  usage_count: number;
+  usage_count: number | null;
 }
 
 export interface AuthResult {
@@ -145,8 +146,11 @@ export async function validateKey(
  * Check if API key has required scope
  */
 export function checkScopes(apiKey: ApiKey, requiredScope: string): boolean {
-  // 'search:*' grants all search scopes
-  if (apiKey.scopes.includes('search:*')) {
+  const namespace = requiredScope.split(':')[0];
+  const wildcardScope = `${namespace}:*`;
+
+  // '<namespace>:*' grants all scopes within that namespace.
+  if (apiKey.scopes.includes(wildcardScope)) {
     return true;
   }
 
