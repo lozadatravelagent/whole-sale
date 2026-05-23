@@ -21,7 +21,7 @@
  *   `saveContextualMemory`. The branch logic stays untouched.
  *
  * What counts as "actionable":
- *   - One of `flights | hotels | combined | itinerary | packages | services`
+ *   - One of `flights | hotels | combined | itinerary | services`
  *   - At least one product-shaped slot has data (e.g. a destination,
  *     city, or itinerary destination). A combined turn whose flight slot
  *     is invalid but whose hotel slot is valid still counts — that is the
@@ -81,7 +81,6 @@ export function shouldPersistIntent(
       return Array.isArray(destinations) && destinations.length > 0;
     }
 
-    case 'packages':
     case 'services':
       // Less structured shapes; trust the parser's classification.
       return true;

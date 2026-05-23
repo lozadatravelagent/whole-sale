@@ -162,9 +162,8 @@ function describeIntent(
   destination: string,
   copy: SearchOpenerCopy,
 ): string {
-  // Packages take priority — there's an explicit `packages` payload or a
-  // package intent with transfer+flight+hotel.
-  if (parsed.requestType === 'packages' || (products.includes('transfer') && products.includes('flight') && products.includes('hotel'))) {
+  // Full commercial bundle: transfer + flight + hotel.
+  if (products.includes('transfer') && products.includes('flight') && products.includes('hotel')) {
     const productList = formatProductList(products, copy);
     return productList
       ? copy.intent.package_with_products(destination, productList)
@@ -238,11 +237,11 @@ function describePax(parsed: ParsedTravelRequest, copy: SearchOpenerCopy): strin
 }
 
 function pickAdults(p: ParsedTravelRequest): number | undefined {
-  return p.flights?.adults ?? p.hotels?.adults ?? p.packages?.adults ?? p.itinerary?.travelers?.adults;
+  return p.flights?.adults ?? p.hotels?.adults ?? p.itinerary?.travelers?.adults;
 }
 
 function pickChildren(p: ParsedTravelRequest): number | undefined {
-  return p.flights?.children ?? p.hotels?.children ?? p.packages?.children ?? p.itinerary?.travelers?.children;
+  return p.flights?.children ?? p.hotels?.children ?? p.itinerary?.travelers?.children;
 }
 
 function pickInfants(p: ParsedTravelRequest): number | undefined {
@@ -341,14 +340,6 @@ function pickDates(parsed: ParsedTravelRequest): DateInfo | null {
       endInferred: Boolean(parsed.hotels.checkoutDateInferred),
     };
   }
-  if (parsed.packages?.dateFrom) {
-    return {
-      startISO: parsed.packages.dateFrom,
-      endISO: parsed.packages.dateTo,
-      startInferred: false,
-      endInferred: false,
-    };
-  }
   return null;
 }
 
@@ -416,8 +407,7 @@ function needsRoundTrip(parsed: ParsedTravelRequest): boolean {
     Boolean(parsed.flights?.returnDate) ||
     parsed.flights?.tripType === 'round_trip' ||
     parsed.flights?.tripType === 'multi_city' ||
-    parsed.requestType === 'combined' ||
-    parsed.requestType === 'packages'
+    parsed.requestType === 'combined'
   );
 }
 
@@ -464,7 +454,7 @@ function pickClosing(
   // One-way assumed (flight without return) → offer round-trip.
   const isOneWay = parsed.flights && !parsed.flights.returnDate && parsed.flights.tripType !== 'multi_city'
     && (!parsed.flights.tripType || Boolean(parsed.flights.tripTypeInferred));
-  if (isOneWay && !parsed.hotels && !parsed.packages) {
+  if (isOneWay && !parsed.hotels) {
     return copy.closings.makeRoundTrip;
   }
 
@@ -513,7 +503,6 @@ function pickDestination(parsed: ParsedTravelRequest): string | null {
   return (
     parsed.flights?.destination ||
     parsed.hotels?.city ||
-    parsed.packages?.destination ||
     parsed.itinerary?.destinations?.[0] ||
     null
   );

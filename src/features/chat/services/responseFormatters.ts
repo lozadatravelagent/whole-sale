@@ -4,8 +4,8 @@ import type {
   LocalHotelChainBalance,
   LocalHotelSegmentResult,
   LocalCombinedTravelResults,
+  LocalServiceData,
 } from '@/types/external';
-import type { LocalPackageData, LocalServiceData } from '@/types/external';
 import { generateFlightItinerary } from './flightTransformer';
 import { formatDuration } from '../utils/flightHelpers';
 import { translateRoomDescription, translateRoomTypeTitle, translateFlightInfo, translateBaggage } from '../utils/translations';
@@ -510,26 +510,6 @@ export const formatMultiSegmentHotelResponse = (
   });
 
   response += copy.reviewSegments as string;
-  return response;
-};
-
-export const formatPackageResponse = (packages: LocalPackageData[], language: UserLanguage = 'es') => {
-  const copy = getResponseFormatterCopy(language);
-  if (packages.length === 0) {
-    return copy.noPackages;
-  }
-
-  let response = copy.packagesAvailable(packages.length);
-
-  packages.slice(0, 5).forEach((pkg) => {
-    response += `---\n\n`;
-    response += `🎒 **${pkg.name}**\n`;
-    response += `📍 ${pkg.destination}\n`;
-    response += `💰 **${copy.packagePrice}:** ${pkg.price} ${pkg.currency}\n`;
-    response += `${copy.packageDuration(pkg.duration)}\n\n`;
-  });
-
-  response += copy.selectPackages;
   return response;
 };
 

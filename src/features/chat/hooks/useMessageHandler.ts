@@ -5,7 +5,7 @@ import { parseMessageWithAIStreaming, validateFlightRequiredFields, validateHote
 import type { ParsedTravelRequest } from '@/services/aiMessageParser';
 import { SEARCH_STAY_NIGHTS } from '@/services/searchDefaults';
 import { normalizeFlightRequest } from '@/services/flightSegments';
-import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handlePackageSearch, handleServiceSearch, handleGeneralQuery, handleItineraryRequest } from '../services/searchHandlers';
+import { handleFlightSearch, handleHotelSearch, handleCombinedSearch, handleServiceSearch, handleGeneralQuery, handleItineraryRequest } from '../services/searchHandlers';
 import { addMessageViaSupabase } from '../services/messageService';
 import { generateChatTitle } from '../utils/messageHelpers';
 import { runLegacyIntentGates } from '../services/legacyIntentGates';
@@ -334,7 +334,7 @@ function resolveToConcreteCity(raw: string): string {
 // it back to the human label ('París') so the chip reads naturally and the
 // resulting prompt feeds the parser a city name. The parser then re-applies
 // IATA via formatForStarling for flights, and EUROVIPS keeps city names for
-// hotels/packages — see formatForEurovips in aiMessageParser.ts.
+// hotels — see formatForEurovips in aiMessageParser.ts.
 function getPrimaryActionDestination(parsedRequest?: ParsedTravelRequest | null, plannerState?: TripPlannerState | null): string {
   const plannerCity = getFirstPlannerCity(plannerState);
   if (plannerCity) return resolveDisplayCity(plannerCity);
@@ -345,7 +345,6 @@ function getPrimaryActionDestination(parsedRequest?: ParsedTravelRequest | null,
   const itineraryDestination = parsedRequest?.itinerary?.destinations?.map(normalizeActionText).find(Boolean);
   const raw = normalizeActionText(parsedRequest?.flights?.destination)
     || normalizeActionText(parsedRequest?.hotels?.city)
-    || normalizeActionText(parsedRequest?.packages?.destination)
     || normalizeActionText(itineraryDestination);
   return resolveDisplayCity(resolveToConcreteCity(raw));
 }
@@ -2626,14 +2625,6 @@ const useMessageHandler = (
           assistantResponse = hotelResult.response;
           structuredData = hotelResult.data;
           console.log('✅ [MESSAGE FLOW] Hotel search completed');
-          break;
-        }
-        case 'packages': {
-          console.log('🎒 [MESSAGE FLOW] Step 12d: Processing package search');
-          const packageResult = await handlePackageSearch(parsedRequest);
-          assistantResponse = packageResult.response;
-          structuredData = packageResult.data;
-          console.log('✅ [MESSAGE FLOW] Package search completed');
           break;
         }
         case 'services': {

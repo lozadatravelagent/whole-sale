@@ -14,7 +14,7 @@
 //     • No `$ref` cycles, no `format`, no `pattern`/`minLength`/etc.
 //
 //   `ParsedTravelRequest` is too large for this:
-//     • `flights`, `hotels`, `itinerary`, `packages`, `services` are deeply
+//     • `flights`, `hotels`, `itinerary`, `services` are deeply
 //       nested optional sub-objects with their own conditional fields (e.g.
 //       luggage only when user mentions baggage, mealPlan only when food is
 //       mentioned). The parser prompt has dozens of "DO NOT include X unless
@@ -73,7 +73,6 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
       enum: [
         "flights",
         "hotels",
-        "packages",
         "services",
         "combined",
         "general",
@@ -111,10 +110,6 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
       description:
         "Hotel request. Shape governed by prompt rules (roomType/mealPlan/" +
         "hotelChains only when user explicitly mentions them).",
-    },
-    packages: {
-      type: ["object", "null"],
-      additionalProperties: true,
     },
     services: {
       type: ["object", "null"],
@@ -191,7 +186,7 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
       },
       required: ["kind", "agencyContext", "confidence", "rationale"],
       description:
-        "Semantic commercial intent contract. Emit from meaning, not regex, for agency shorthand, packages, ordered product searches, subjective budget/quality requests, corrections/refinements, add-ons, contradictions, and true planner requests.",
+        "Semantic commercial intent contract. Emit from meaning, not regex, for agency shorthand, bundled flight+hotel requests, ordered product searches, subjective budget/quality requests, corrections/refinements, add-ons, contradictions, and true planner requests.",
     },
     turnContinuity: {
       type: ["object", "null"],
@@ -462,7 +457,7 @@ export const PARSED_TRAVEL_REQUEST_SCHEMA: Record<string, unknown> = {
           type: "array",
           items: {
             type: "string",
-            enum: ["flight", "hotel", "transfer", "package"],
+            enum: ["flight", "hotel", "transfer"],
           },
         },
         adults: { type: ["number", "null"] },

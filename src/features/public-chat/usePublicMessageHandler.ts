@@ -7,7 +7,6 @@ import {
   handleFlightSearch,
   handleHotelSearch,
   handleCombinedSearch,
-  handlePackageSearch,
   handleServiceSearch,
   handleItineraryRequest,
   handleGeneralQuery,
@@ -28,7 +27,7 @@ export interface PublicMessage {
   data?: { combinedData?: LocalCombinedTravelResults; responseLanguage?: UserLanguage };
 }
 
-const SEARCH_TYPES = new Set(['flights', 'hotels', 'combined', 'packages', 'services', 'itinerary']);
+const SEARCH_TYPES = new Set(['flights', 'hotels', 'combined', 'services', 'itinerary']);
 
 export function usePublicMessageHandler() {
   const initialLanguage = normalizeSupportedLanguage(i18n.language);
@@ -170,11 +169,6 @@ export function usePublicMessageHandler() {
             const result = await handleCombinedSearch(parsed);
             responseText = result.response;
             resultData = result.data?.combinedData ? { combinedData: result.data.combinedData, responseLanguage: userLanguage } : undefined;
-            break;
-          }
-          case 'packages': {
-            const result = await handlePackageSearch(parsed);
-            responseText = result.response;
             break;
           }
           case 'services': {

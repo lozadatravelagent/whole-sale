@@ -66,7 +66,7 @@ describe('resolveIntentElicitation', () => {
           agencyLanguageSignals: ['cliente quiere'],
           softPreferences: ['playa'],
           missingDecision: ['destination', 'passengers'],
-          productsImplied: ['package'],
+          productsImplied: ['flight', 'hotel'],
           adults: null,
           children: null,
         },
@@ -89,9 +89,10 @@ describe('resolveIntentElicitation', () => {
     expect(result.chips[0]).toMatchObject({
       behavior: 'autocomplete',
       expectedRequestType: 'combined',
-      expectedProducts: ['package'],
+      expectedProducts: ['flight', 'hotel'],
     });
-    expect(result.chips[0].prompt).toContain('paquete a Cancún en julio para 1 adulto');
+    expect(result.chips[0].prompt).toContain('vuelo y hotel a Cancún en julio para 1 adulto');
+    expect(result.chips[0].prompt).not.toContain('paquete');
   });
 
   it('guides when a concrete destination has soft preferences but no dates', () => {

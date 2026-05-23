@@ -8,7 +8,7 @@ export type ChatSuggestedActionType = 'flight' | 'hotel' | 'itinerary' | 'quote'
 export type ChatSuggestedActionBehavior = 'autocomplete' | 'direct_action' | 'fallback';
 
 export interface ChatSuggestedActionContext {
-  product?: 'flight' | 'hotel' | 'combined' | 'package' | 'transfer';
+  product?: 'flight' | 'hotel' | 'combined' | 'transfer';
   origin?: string;
   destination?: string;
   departureDate?: string;
@@ -33,8 +33,8 @@ export interface ChatSuggestedAction {
   template?: string;
   context?: ChatSuggestedActionContext;
   editableFields?: string[];
-  expectedRequestType?: 'flights' | 'hotels' | 'combined' | 'packages' | 'services' | 'itinerary';
-  expectedProducts?: Array<'flight' | 'hotel' | 'package' | 'transfer' | 'service' | 'itinerary'>;
+  expectedRequestType?: 'flights' | 'hotels' | 'combined' | 'services' | 'itinerary';
+  expectedProducts?: Array<'flight' | 'hotel' | 'transfer' | 'service' | 'itinerary'>;
   reasonCodes?: string[];
 }
 

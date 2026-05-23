@@ -309,7 +309,7 @@ function scorePassengers(p: ParsedTravelRequest): number {
 
 function scoreOrigin(p: ParsedTravelRequest): number {
   if (p.flights?.origin) return 1.0;
-  if (p.requestType === 'hotels' || p.requestType === 'packages') return 1.0;
+  if (p.requestType === 'hotels') return 1.0;
   if (p.requestType === 'itinerary') return 0.5; // can be inferred later
   return 0;
 }
@@ -426,13 +426,12 @@ function pickHighScoreQuoteReason(
     return 'hotel_exact_ready';
   }
 
-  // ordered multi-product request (combined/packages, or flights with explicit
+  // ordered multi-product request (combined, or flights with explicit
   // tripType + an ordered productOrder array)
   const hasOrderedProducts = (parsed.productOrder?.length ?? 0) > 0;
   if (hasOrderedProducts) {
     if (
       parsed.requestType === 'combined' ||
-      parsed.requestType === 'packages' ||
       (parsed.requestType === 'flights' && Boolean(parsed.flights?.tripType))
     ) {
       return 'ordered_products_ready';
@@ -532,8 +531,7 @@ export function routeRequest(
   if (dimensions.passengers === 0) missingFields.push('passengers');
   if (
     dimensions.origin === 0 &&
-    parsed.requestType !== 'hotels' &&
-    parsed.requestType !== 'packages'
+    parsed.requestType !== 'hotels'
   ) {
     missingFields.push('origin');
   }

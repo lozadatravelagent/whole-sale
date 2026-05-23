@@ -458,6 +458,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     displayedResults: filteredHotels,
     activeMealPlan,
     activePriceRange: activeHotelPriceRange,
+    priceRangeBounds: hotelPriceRangeBounds,
     distribution: hotelDistribution,
     totalCount: hotelTotalCount,
     filteredCount: hotelFilteredCount,
@@ -1474,6 +1475,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                 distribution={hotelDistribution}
                 activeMealPlan={activeMealPlan}
                 activePriceRange={activeHotelPriceRange}
+                priceRangeBounds={hotelPriceRangeBounds}
                 totalCount={hotelTotalCount}
                 filteredCount={hotelFilteredCount}
                 onMealPlanChange={setMealPlan}

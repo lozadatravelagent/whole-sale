@@ -113,8 +113,7 @@ describe('shouldPersistIntent', () => {
     ).toBe(false);
   });
 
-  it('returns true for packages and services request types (less structured slots)', () => {
-    expect(shouldPersistIntent(makeRequest({ requestType: 'packages' }))).toBe(true);
+  it('returns true for services request type (less structured slots)', () => {
     expect(shouldPersistIntent(makeRequest({ requestType: 'services' }))).toBe(true);
   });
 });

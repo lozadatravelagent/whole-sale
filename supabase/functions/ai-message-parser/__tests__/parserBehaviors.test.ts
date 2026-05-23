@@ -310,7 +310,7 @@ describe('augmentMultiCitySegmentsFromMessage', () => {
 // ===========================================================================
 //
 // Behavior under test:
-//   - For hotels.city, packages.destination, services.city: replace any country
+//   - For hotels.city and services.city: replace any country
 //     name with that country's capital (e.g. "España" → "Madrid").
 //   - For flights.origin/destination AND every segment.origin/destination: same.
 //   - For hotels.segments[].city: same.
@@ -392,18 +392,6 @@ describe('normalizeLocationsToCountryCapitals', () => {
     expect(out.flights.segments[1].destination).toBe('Buenos Aires');
   });
 
-  it('replaces packages.destination when it is a country', () => {
-    const out = normalizeLocationsToCountryCapitals({
-      requestType: 'packages',
-      packages: {
-        destination: 'México',
-        dateFrom: '2026-07-01',
-        dateTo: '2026-07-10',
-      },
-    });
-    expect(out.packages.destination).toBe('Mexico City');
-  });
-
   it('replaces services.city when it is a country', () => {
     const out = normalizeLocationsToCountryCapitals({
       requestType: 'services',
@@ -462,17 +450,17 @@ describe('normalizeLocationsToCountryCapitals', () => {
     expect(out.flights.adults).toBe(1);
   });
 
-  it('mixed parsed object with all three location-bearing branches normalizes each independently', () => {
+  it('mixed parsed object with location-bearing branches normalizes each independently', () => {
     const out = normalizeLocationsToCountryCapitals({
       requestType: 'combined',
       flights: { origin: 'Argentina', destination: 'España', departureDate: '2026-06-01' },
       hotels: { city: 'Italia', checkinDate: '2026-06-02', checkoutDate: '2026-06-08' },
-      packages: { destination: 'Francia', dateFrom: '2026-06-01', dateTo: '2026-06-08' },
+      services: { city: 'Francia', dateFrom: '2026-06-01' },
     });
     expect(out.flights.origin).toBe('Buenos Aires');
     expect(out.flights.destination).toBe('Madrid');
     expect(out.hotels.city).toBe('Rome');
-    expect(out.packages.destination).toBe('Paris');
+    expect(out.services.city).toBe('Paris');
   });
 });
 

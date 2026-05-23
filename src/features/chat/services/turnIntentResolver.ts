@@ -126,7 +126,6 @@ function hasHotelIntent(parsedRequest: ParsedTravelRequest): boolean {
   return (
     parsedRequest.requestType === 'hotels' ||
     parsedRequest.requestType === 'combined' ||
-    parsedRequest.requestType === 'packages' ||
     Boolean(parsedRequest.hotels)
   );
 }
@@ -135,7 +134,6 @@ function hasFlightIntent(parsedRequest: ParsedTravelRequest): boolean {
   return (
     parsedRequest.requestType === 'flights' ||
     parsedRequest.requestType === 'combined' ||
-    parsedRequest.requestType === 'packages' ||
     Boolean(parsedRequest.flights)
   );
 }
@@ -396,8 +394,6 @@ function resolveIntentFromRequest(request: ParsedTravelRequest): ResolvedTurnInt
       return 'itinerary';
     case 'services':
       return 'service_search';
-    case 'packages':
-      return 'package_search';
     default:
       return 'general';
   }

@@ -105,7 +105,6 @@ function mapRequestTypeToTripType(requestType: string): 'hotel' | 'flight' | 'pa
   switch (requestType) {
     case 'flights': return 'flight';
     case 'hotels': return 'hotel';
-    case 'packages': return 'package';
     case 'services': return 'package'; // Services se trata como package
     case 'combined': return 'package'; // Combined se trata como package
     default: return 'package';
@@ -360,9 +359,6 @@ function generateLeadName(travelInfo: ExtractedTravelInfo, parsedRequest?: Parse
     } else if (parsedRequest.requestType === 'hotels' && parsedRequest.hotels) {
       tripType = 'Hotel';
       destination = parsedRequest.hotels.city || '';
-    } else if (parsedRequest.requestType === 'packages' && parsedRequest.packages) {
-      tripType = 'Paquete';
-      destination = parsedRequest.packages.destination || '';
     } else if (parsedRequest.requestType === 'combined') {
       tripType = 'Paquete';
       if (parsedRequest.flights) {

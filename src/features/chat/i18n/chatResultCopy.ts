@@ -237,8 +237,7 @@ export const SEARCH_HANDLER_COPY = {
   es: {
     checkedBaggageWarning: '⚠️ **Equipaje de bodega**\n\nNo encontré opciones con equipaje de bodega incluido en todos los tramos. Te muestro alternativas que cumplen el resto de tus filtros para que puedas agregar bodega en la tarifa.\n\n',
     partialResultsNotice: '⚠️ Pude recuperar resultados parciales. Te muestro lo disponible ahora y podés reintentar el proveedor que falló.\n\n',
-    generalQuery: '¡Hola! Soy Emilia, tu asistente de viajes. Puedo ayudarte con:\n\n✈️ **Búsqueda de vuelos**\n🏨 **Búsqueda de hoteles**\n🎒 **Búsqueda de paquetes**\n🚌 **Servicios y transfers**\n🗺️ **Itinerarios de viaje**\n\nDime qué necesitas con fechas y destinos específicos.',
-    packageError: '❌ Error buscando paquetes. Intenta con un destino específico.',
+    generalQuery: '¡Hola! Soy Emilia, tu asistente de viajes. Puedo ayudarte con:\n\n✈️ **Búsqueda de vuelos**\n🏨 **Búsqueda de hoteles**\n🧳 **Vuelo + hotel**\n🚌 **Servicios y transfers**\n🗺️ **Itinerarios de viaje**\n\nDime qué necesitas con fechas y destinos específicos.',
     serviceError: '❌ Error buscando servicios. Verifica la ciudad y fechas.',
     cityNotFound: (city: string) => `❌ **Ciudad no encontrada**\n\nNo pude encontrar "${city}" en la base de datos de EUROVIPS.\n\n🔍 **Verifica que el nombre esté bien escrito:**\n- Ejemplos: "Punta Cana", "Cancún", "Madrid", "Barcelona"\n- Puedes escribir con o sin acentos\n\n💡 **¿Buscabas otra ciudad cercana?**\nIntenta con el nombre de la ciudad principal del destino.`,
     unknownCity: 'desconocida',
@@ -246,8 +245,7 @@ export const SEARCH_HANDLER_COPY = {
   en: {
     checkedBaggageWarning: '⚠️ **Checked baggage**\n\nI could not find options with checked baggage included on every segment. I am showing alternatives that match the rest of your filters so baggage can be added to the fare.\n\n',
     partialResultsNotice: '⚠️ I could recover partial results. I am showing what is available now, and you can retry the provider that failed.\n\n',
-    generalQuery: 'Hi. I am Emilia, your AI travel assistant. I can help you with:\n\n✈️ **Flight searches**\n🏨 **Hotel searches**\n🎒 **Packages**\n🚌 **Services and transfers**\n🗺️ **Travel itineraries**\n\nTell me what you need with specific dates and destinations.',
-    packageError: '❌ Error searching packages. Try a specific destination.',
+    generalQuery: 'Hi. I am Emilia, your AI travel assistant. I can help you with:\n\n✈️ **Flight searches**\n🏨 **Hotel searches**\n🧳 **Flight + hotel**\n🚌 **Services and transfers**\n🗺️ **Travel itineraries**\n\nTell me what you need with specific dates and destinations.',
     serviceError: '❌ Error searching services. Check the city and dates.',
     cityNotFound: (city: string) => `❌ **City not found**\n\nI could not find "${city}" in the EUROVIPS database.\n\n🔍 **Check the spelling:**\n- Examples: "Punta Cana", "Cancun", "Madrid", "Barcelona"\n- Accents are optional\n\n💡 **Looking for a nearby city?**\nTry the main city of the destination.`,
     unknownCity: 'unknown',
@@ -255,8 +253,7 @@ export const SEARCH_HANDLER_COPY = {
   pt: {
     checkedBaggageWarning: '⚠️ **Bagagem despachada**\n\nNão encontrei opções com bagagem despachada incluída em todos os trechos. Estou mostrando alternativas que cumprem o restante dos filtros para que a bagagem seja adicionada à tarifa.\n\n',
     partialResultsNotice: '⚠️ Consegui recuperar resultados parciais. Estou mostrando o que está disponível agora, e você pode tentar novamente o provedor que falhou.\n\n',
-    generalQuery: 'Olá. Sou Emilia, sua assistente de viagens com IA. Posso ajudar com:\n\n✈️ **Busca de voos**\n🏨 **Busca de hotéis**\n🎒 **Pacotes**\n🚌 **Serviços e traslados**\n🗺️ **Roteiros de viagem**\n\nMe diga o que precisa com datas e destinos específicos.',
-    packageError: '❌ Erro ao buscar pacotes. Tente um destino específico.',
+    generalQuery: 'Olá. Sou Emilia, sua assistente de viagens com IA. Posso ajudar com:\n\n✈️ **Busca de voos**\n🏨 **Busca de hotéis**\n🧳 **Voo + hotel**\n🚌 **Serviços e traslados**\n🗺️ **Roteiros de viagem**\n\nMe diga o que precisa com datas e destinos específicos.',
     serviceError: '❌ Erro ao buscar serviços. Verifique a cidade e as datas.',
     cityNotFound: (city: string) => `❌ **Cidade não encontrada**\n\nNão consegui encontrar "${city}" na base de dados do EUROVIPS.\n\n🔍 **Verifique a grafia:**\n- Exemplos: "Punta Cana", "Cancún", "Madrid", "Barcelona"\n- Acentos são opcionais\n\n💡 **Procurando outra cidade próxima?**\nTente o nome da cidade principal do destino.`,
     unknownCity: 'desconhecida',
@@ -1043,7 +1040,7 @@ export const PUBLIC_CHAT_COPY = {
     room: 'Habitación',
   },
   en: {
-    welcome: 'Hi, I am **Emilia**, your AI travel assistant. Tell me what trip you are looking for and I will help you find the best options.\n\nI can search **flights**, **hotels**, **packages**, and more.',
+    welcome: 'Hi, I am **Emilia**, your AI travel assistant. Tell me what trip you are looking for and I will help you find the best options.\n\nI can search **flights**, **hotels**, **flight + hotel**, and more.',
     quickPrompts: [
       'Flights from Buenos Aires to Cancun, March 15 to 22, 2 adults with checked baggage',
       'All-inclusive hotel in Punta Cana, April 10 to 17, 2 adults',
@@ -1053,7 +1050,7 @@ export const PUBLIC_CHAT_COPY = {
     crmSync: 'CRM sync',
     liveDemo: 'Live demo',
     demoTitle: 'Try Emilia in action',
-    demoDescription: 'Ask a real flight, hotel, or package question and see how Vibook turns it into an operational response for your team.',
+    demoDescription: 'Ask a real flight, hotel, or flight + hotel question and see how Vibook turns it into an operational response for your team.',
     online: 'Online',
     searchCount: (used: number, max: number) => `${used}/${max} searches`,
     panelDescription: 'Ask for an itinerary and see how it combines search, commercial context, and assisted response.',
@@ -1064,7 +1061,7 @@ export const PUBLIC_CHAT_COPY = {
     paywallTitle: 'You reached the free search limit',
     paywallDescription: 'Create your account to keep using Emilia without restrictions.',
     paywallBenefits: [
-      'Unlimited flight, hotel, and package searches',
+      'Unlimited flight, hotel, and flight + hotel searches',
       'Custom PDF quotes for your clients',
       'Full CRM with lead tracking',
       'Performance reports and metrics',
@@ -1248,11 +1245,6 @@ export const getSuggestedActionCopy = (language: UserLanguage = 'es') =>
 
 export const RESPONSE_FORMATTER_COPY = {
   es: {
-    noPackages: '🎒 **Búsqueda de Paquetes**\n\nNo encontré paquetes disponibles. Intenta con otro destino o fechas.',
-    packagesAvailable: (count: number) => `🎒 **${count} Paquetes Disponibles**\n\n`,
-    packageDuration: (days: number) => `📅 **Duración:** ${getTravelerCopy('es').day(days)}`,
-    packagePrice: 'Precio',
-    selectPackages: '\n📋 Selecciona los paquetes que prefieras para tu cotización.',
     noServices: '🚌 **Búsqueda de Servicios**\n\nNo encontré servicios disponibles. Verifica la ciudad y fechas.',
     servicesAvailable: (count: number) => `🚌 **${count} Servicios Disponibles**\n\n`,
     servicePrice: 'Precio',
@@ -1280,11 +1272,6 @@ export const RESPONSE_FORMATTER_COPY = {
     itineraryClosingPrompt: '✨ ¿Te gustaría que busque vuelos u hoteles para este viaje? Solo dímelo y te ayudo a cotizar.',
   },
   en: {
-    noPackages: '🎒 **Package Search**\n\nI could not find available packages. Try another destination or dates.',
-    packagesAvailable: (count: number) => `🎒 **${count} Available Packages**\n\n`,
-    packageDuration: (days: number) => `📅 **Duration:** ${getTravelerCopy('en').day(days)}`,
-    packagePrice: 'Price',
-    selectPackages: '\n📋 Select the packages you prefer to generate your quote.',
     noServices: '🚌 **Service Search**\n\nI could not find available services. Check the city and dates.',
     servicesAvailable: (count: number) => `🚌 **${count} Available Services**\n\n`,
     servicePrice: 'Price',
@@ -1297,7 +1284,7 @@ export const RESPONSE_FORMATTER_COPY = {
     transfersAvailable: (count: number) => `🚐 **${count} Available Transfers**\n\n`,
     transferOption: (n: number) => `Option ${n}`,
     transferMaxPax: (n: number) => `max ${n} pax`,
-    flightServiceUnavailable: '❌ **Flight service temporarily unavailable**\n\nOur flight search services are being updated. In the meantime:\n\n✈️ **I can help you with:**\n- General destination information\n- Hotel queries\n- Tour packages\n\n📞 **For immediate flight searches:**\nContact our team directly for personalized assistance.',
+    flightServiceUnavailable: '❌ **Flight service temporarily unavailable**\n\nOur flight search services are being updated. In the meantime:\n\n✈️ **I can help you with:**\n- General destination information\n- Hotel queries\n- Flight + hotel quote prep\n\n📞 **For immediate flight searches:**\nContact our team directly for personalized assistance.',
     hotelServiceUnavailable: '❌ **Hotel service temporarily unavailable**\n\nOur hotel search services are being configured. In the meantime:\n\n🏨 **I can help you with:**\n- General destination recommendations\n- City information\n- Trip planning\n\n📞 **For hotel bookings:**\nOur team can assist you with personalized quotes.',
     itineraryFallback: '🗺️ The itinerary could not be generated. Please try again.',
     itineraryDestinations: 'Destinations',
@@ -1312,11 +1299,6 @@ export const RESPONSE_FORMATTER_COPY = {
     itineraryClosingPrompt: '✨ Would you like me to search flights or hotels for this trip? Just say so and I will help you quote it.',
   },
   pt: {
-    noPackages: '🎒 **Busca de Pacotes**\n\nNão encontrei pacotes disponíveis. Tente outro destino ou datas.',
-    packagesAvailable: (count: number) => `🎒 **${count} Pacotes Disponíveis**\n\n`,
-    packageDuration: (days: number) => `📅 **Duração:** ${getTravelerCopy('pt').day(days)}`,
-    packagePrice: 'Preço',
-    selectPackages: '\n📋 Selecione os pacotes que preferir para gerar sua cotação.',
     noServices: '🚌 **Busca de Serviços**\n\nNão encontrei serviços disponíveis. Verifique a cidade e as datas.',
     servicesAvailable: (count: number) => `🚌 **${count} Serviços Disponíveis**\n\n`,
     servicePrice: 'Preço',

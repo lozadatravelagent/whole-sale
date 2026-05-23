@@ -1,4 +1,4 @@
-export const PROMPT_VERSION = 'emilia-parser-v25';
+export const PROMPT_VERSION = 'emilia-parser-v26';
 export const PROMPT_CONTRACT_SNIPPETS = [
   // v8 dropped the literal `IMPORTANTE: Siempre responde solo con JSON válido.`
   // line; Structured Outputs (response_format: json_schema) now enforces JSON
@@ -241,7 +241,7 @@ PLANNER EDITING MODE (apply when CURRENT PLANNER STATE appears in DYNAMIC CONTEX
 - If the user explicitly asks to start over, use action: "restart_plan" and do not preserve the existing plan except as background.
 - For simple preference edits, also set the concrete itinerary fields when clear: budgetLevel, pace, travelers, interests, constraints, dates, days, or destinations.
 
-TASK: Extract structured data for flights, hotels, packages, services, combined, or itinerary requests.
+TASK: Extract structured data for flights, hotels, services, combined, or itinerary requests.
 
 **FLIGHT REQUEST INTENTION DETECTION (CRITICAL):**
 
@@ -836,7 +836,7 @@ User: "Voo e hotel para Cancún, 4 noites no hotel e depois fico na casa de um a
 
 ## QUOTE INTENT — SEMANTIC (LANGUAGE-AGNOSTIC)
 
-Emit \`quoteIntent\` as a top-level boolean when the user expresses intent to GET A PRICE / SEARCH FOR AVAILABILITY of a concrete travel product. This carries the *meaning* of "go look up prices / show me what's available", independent of which product (\`flights\`, \`hotels\`, \`packages\`) is being quoted.
+Emit \`quoteIntent\` as a top-level boolean when the user expresses intent to GET A PRICE / SEARCH FOR AVAILABILITY of a concrete travel product. This carries the *meaning* of "go look up prices / show me what's available", independent of which product (\`flights\`, \`hotels\`, \`combined\`, \`services\`) is being quoted.
 
 Allowed values: \`true\` | \`false\` | omit.
 
@@ -908,7 +908,7 @@ Allowed shape:
 - \`flight_search\` — unit flight/aereo/pasaje search.
 - \`hotel_search\` — unit hotel/alojamiento search, including subjective filters like good location, quiet, not old, all inclusive, near beach.
 - \`specific_hotel_search\` — exact hotel/property search ("Riu Palace Aruba", "Xcaret Arte", "Iberostar Selection Cancún"). Use hotelName/hotelChains as appropriate.
-- \`package_search\` — package/full-trip commercial quote ("paquete", "viaje completo", "armame todo") with flight/hotel/transfer products. In agency context this means QUOTE/SEARCH, not planner.
+- \`package_search\` — package/full-trip commercial quote ("paquete", "viaje completo", "armame todo") with flight/hotel/transfer products. In agency context this means QUOTE/SEARCH, not planner. Always emit \`requestType: "combined"\` for agency package language because the production search path composes flight + hotel. Do not emit \`requestType: "packages"\`; that legacy branch has been removed.
 - \`ordered_multi_product_search\` — 2+ products in an operational sequence ("primero hotel y después vuelo", "hotel, traslado y aéreo en ese orden"). Also emit \`productOrder\`.
 - \`budget_based_search\` — user leads with a budget amount and wants options.
 - \`price_sensitive_search\` — cheap/not expensive/good price/value-sensitive request.
@@ -923,7 +923,7 @@ Allowed shape:
 \`agencyContext = true\` when the user speaks as an agent about a client/passenger: "cliente quiere", "me pidieron", "tengo una pareja", "para una clienta", "somos 3 adultos" in an agency quote context. In this case do NOT speak as if the agent is the traveler.
 
 Priority rules:
-- If \`commercialIntent.kind\` is any search/quote kind except \`trip_planning\`, prefer a commercial requestType (\`flights\`, \`hotels\`, \`combined\`, \`packages\`, or \`services\`) over \`itinerary\`.
+- If \`commercialIntent.kind\` is any search/quote kind except \`trip_planning\`, prefer a commercial requestType (\`flights\`, \`hotels\`, \`combined\`, or \`services\`) over \`itinerary\`.
 - Words like "paquete", "viaje completo", "armame todo", or "resolvé rápido para cliente" in agency context mean commercial quote/search unless the user explicitly asks for itinerary/day-by-day/route planning.
 - Planner is only for true \`trip_planning\` or active planner edits. "Cancún julio pareja 7 noches" is NOT planner; it is hotel/package search.
 - For contradictions, emit \`commercialIntent.kind = "contradiction_detected"\`, keep the usable fields, and ask one minimal question in \`message\`.
@@ -941,7 +941,7 @@ User: "Primero veamos hotel en Cancún y después le sumamos aéreo"
 
 User: "Armame paquete para Punta Cana, pareja, julio"
 → commercialIntent: { kind: "package_search", agencyContext: true, confidence: 0.95, rationale: "package quote request, not itinerary" }
-→ requestType: "combined" or "packages", travelerType: "couple", quoteIntent: true, planIntent: false
+→ requestType: "combined", travelerType: "couple", quoteIntent: true, planIntent: false
 
 User: "Cancún julio pareja 7 noches"
 → commercialIntent: { kind: "hotel_search", agencyContext: true, confidence: 0.86, rationale: "agency shorthand with destination, month, couple and nights" }
@@ -996,7 +996,7 @@ Examples:
 User: "Cliente quiere Caribe en julio"
 → commercialIntent: { kind: "package_search", agencyContext: true, confidence: 0.86, rationale: "agency client asks for broad beach region in a month" }
 → requestType: "missing_info_request"
-→ searchSeeds: { destination: "Caribe", destinationKind: "region", dateWindow: { kind: "month", month: "julio" }, agencyLanguageSignals: ["cliente quiere"], softPreferences: ["playa"], missingDecision: ["destination", "passengers"], productsImplied: ["package"], adults: null, children: null }
+→ searchSeeds: { destination: "Caribe", destinationKind: "region", dateWindow: { kind: "month", month: "julio" }, agencyLanguageSignals: ["cliente quiere"], softPreferences: ["playa"], missingDecision: ["destination", "passengers"], productsImplied: ["flight", "hotel"], adults: null, children: null }
 
 User: "Tengo una pareja que quiere Punta Cana, hotel lindo pero que no se vaya mucho"
 → commercialIntent: { kind: "price_sensitive_search", agencyContext: true, confidence: 0.9, rationale: "seller has a client couple with soft hotel and budget preferences" }
@@ -1136,14 +1136,14 @@ Field semantics:
 - \`adults\`, \`children\` — copy what the user said if it appears.
 
 DO NOT emit \`searchSeeds\` when:
-- The message is a precise QUOTE-ready request (\`requestType\` is \`'flights'\`/\`'hotels'\`/\`'combined'\`/\`'packages'\` with all fields). The structured blocks already carry the info.
+- The message is a precise QUOTE-ready request (\`requestType\` is \`'flights'\`/\`'hotels'\`/\`'combined'\` with all fields). The structured blocks already carry the info.
 - The message is purely conversational with no destination ("hola", "qué onda con Cancún", "dame opciones").
 - The user is editing an active plan (use \`editIntent\` instead).
 
 EXAMPLES (multilingual — same rule applies regardless of language):
 
 User: "Cliente quiere Caribe en julio"
-→ searchSeeds: { destination: "Caribe", destinationKind: "region", dateWindow: { kind: "month", month: "julio" }, agencyLanguageSignals: ["cliente quiere"], softPreferences: ["playa"], missingDecision: ["destination", "passengers"], productsImplied: ["package"], adults: null, children: null }
+→ searchSeeds: { destination: "Caribe", destinationKind: "region", dateWindow: { kind: "month", month: "julio" }, agencyLanguageSignals: ["cliente quiere"], softPreferences: ["playa"], missingDecision: ["destination", "passengers"], productsImplied: ["flight", "hotel"], adults: null, children: null }
 
 User: "Quiero algo premium en Riviera Maya para aniversario, dos personas"
 → searchSeeds: { destination: "Riviera Maya", destinationKind: "region", dateWindow: { kind: "missing" }, travelerType: "couple", budgetHint: "premium", occasionHint: "anniversary", missingDecision: ["dates"], productsImplied: ["flight", "hotel"], adults: 2, children: 0 }

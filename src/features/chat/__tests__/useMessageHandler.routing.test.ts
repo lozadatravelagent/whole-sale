@@ -36,7 +36,6 @@ vi.mock('../services/searchHandlers', () => ({
   handleFlightSearch: vi.fn().mockResolvedValue({ response: 'flight results', data: {} }),
   handleHotelSearch: vi.fn().mockResolvedValue({ response: 'hotel results', data: {} }),
   handleCombinedSearch: vi.fn().mockResolvedValue({ response: 'combined results', data: {} }),
-  handlePackageSearch: vi.fn().mockResolvedValue({ response: 'package results', data: {} }),
   handleServiceSearch: vi.fn().mockResolvedValue({ response: 'service results', data: {} }),
   handleGeneralQuery: vi.fn().mockResolvedValue('general results'),
   handleItineraryRequest: vi.fn().mockResolvedValue({ response: 'itinerary results', data: {} }),
@@ -725,13 +724,13 @@ describe('useMessageHandler', () => {
           {
             id: 'intent-elicit-destination-cancun',
             label: 'Cancún',
-            prompt: 'paquete a Cancún en julio para 1 adulto',
+            prompt: 'vuelo y hotel a Cancún en julio para 1 adulto',
             type: 'quote',
             priority: 1,
             behavior: 'autocomplete',
             intent: 'intent_elicitation',
             expectedRequestType: 'combined',
-            expectedProducts: ['package'],
+            expectedProducts: ['flight', 'hotel'],
           },
         ],
         pendingAction: {

@@ -67,6 +67,79 @@ export function calculatePriceRangeBounds(hotels: HotelData[]): { min: number; m
 }
 
 /**
+ * Bucket de precio por noche generado dinámicamente desde los bounds reales
+ * de la búsqueda. Los buckets son intervalos abiertos a la derecha excepto
+ * el último: `[min, max)` para los intermedios y `[min, max]` para el final.
+ */
+export interface PriceBucket {
+  id: string;
+  min: number | null;
+  max: number | null;
+  label: string;
+}
+
+/** Redondea hacia el múltiplo más cercano de `step`. */
+function roundToStep(value: number, step: number): number {
+  return Math.round(value / step) * step;
+}
+
+/** Devuelve un step "humano" según la magnitud del rango. */
+function pickStep(range: number): number {
+  if (range >= 5000) return 500;
+  if (range >= 2000) return 250;
+  if (range >= 1000) return 100;
+  if (range >= 500) return 50;
+  if (range >= 200) return 25;
+  return 10;
+}
+
+/**
+ * Construye N buckets contiguos dentro de los bounds dados, redondeados a un
+ * step legible (25/50/100/250/500). Devuelve `[]` si los bounds son inválidos
+ * o si min === max (no tiene sentido segmentar).
+ *
+ * Diseño: el primer bucket abre sin `min` (`<X`) y el último cierra sin `max`
+ * (`≥Y`) para capturar lo que cae justo en los extremos por redondeo.
+ */
+export function buildPriceBuckets(
+  bounds: { min: number; max: number } | null,
+  count: number = 4,
+): PriceBucket[] {
+  if (!bounds || !Number.isFinite(bounds.min) || !Number.isFinite(bounds.max)) return [];
+  if (bounds.max <= bounds.min) return [];
+
+  const span = bounds.max - bounds.min;
+  const step = pickStep(span);
+  const lo = Math.max(0, roundToStep(bounds.min, step));
+  const hi = roundToStep(bounds.max, step);
+
+  if (hi <= lo) return [];
+
+  const segmentSize = Math.max(step, roundToStep((hi - lo) / count, step));
+  const edges: number[] = [];
+  for (let i = 1; i < count; i++) {
+    const edge = lo + segmentSize * i;
+    if (edge >= hi) break;
+    edges.push(edge);
+  }
+
+  const buckets: PriceBucket[] = [];
+  buckets.push({ id: `lt-${edges[0] ?? hi}`, min: null, max: edges[0] ?? hi, label: `< ${edges[0] ?? hi}` });
+  for (let i = 0; i < edges.length - 1; i++) {
+    buckets.push({
+      id: `${edges[i]}-${edges[i + 1]}`,
+      min: edges[i],
+      max: edges[i + 1],
+      label: `${edges[i]}–${edges[i + 1]}`,
+    });
+  }
+  if (edges.length > 0) {
+    buckets.push({ id: `gte-${edges[edges.length - 1]}`, min: edges[edges.length - 1], max: null, label: `≥ ${edges[edges.length - 1]}` });
+  }
+  return buckets;
+}
+
+/**
  * Verifica si un hotel tiene al menos una habitación que coincide con el plan de comidas
  */
 function hotelHasMealPlan(hotel: HotelData, mealPlan: MealPlanType): boolean {

@@ -22,7 +22,7 @@ interface IntentSearchSeeds {
   travelerType?: 'solo' | 'couple' | 'family' | 'group' | null;
   budgetHint?: 'budget' | 'mid' | 'premium' | 'luxury' | null;
   occasionHint?: 'anniversary' | 'honeymoon' | 'birthday' | 'business' | 'leisure' | null;
-  productsImplied?: Array<'flight' | 'hotel' | 'transfer' | 'package'>;
+  productsImplied?: Array<'flight' | 'hotel' | 'transfer'>;
   adults?: number | null;
   children?: number | null;
 }
@@ -78,7 +78,7 @@ function getSeeds(parsed: ParsedTravelRequest): IntentSearchSeeds | null {
 }
 
 function hasStructuredSearch(parsed: ParsedTravelRequest): boolean {
-  return Boolean(parsed.flights || parsed.hotels || parsed.packages || parsed.services || parsed.transfers);
+  return Boolean(parsed.flights || parsed.hotels || parsed.services || parsed.transfers);
 }
 
 function isAgencyCommercial(parsed: ParsedTravelRequest, seeds: IntentSearchSeeds | null): boolean {
@@ -97,7 +97,7 @@ function isPlannerOrDiscovery(parsed: ParsedTravelRequest): boolean {
 }
 
 function hasPassengerSignal(parsed: ParsedTravelRequest, seeds: IntentSearchSeeds | null): boolean {
-  const adults = parsed.flights?.adults ?? parsed.hotels?.adults ?? parsed.packages?.adults ?? seeds?.adults;
+  const adults = parsed.flights?.adults ?? parsed.hotels?.adults ?? seeds?.adults;
   return Boolean((typeof adults === 'number' && adults > 0) || seeds?.travelerType);
 }
 
@@ -105,7 +105,6 @@ function hasDateSignal(parsed: ParsedTravelRequest, seeds: IntentSearchSeeds | n
   return Boolean(
     parsed.flights?.departureDate ||
     parsed.hotels?.checkinDate ||
-    parsed.packages?.dateFrom ||
     parsed.itinerary?.startDate ||
     (seeds?.dateWindow && seeds.dateWindow.kind !== 'missing'),
   );
@@ -115,7 +114,6 @@ function hasDestinationSignal(parsed: ParsedTravelRequest, seeds: IntentSearchSe
   return Boolean(
     parsed.flights?.destination ||
     parsed.hotels?.city ||
-    parsed.packages?.destination ||
     parsed.services?.city ||
     seeds?.destination,
   );
@@ -126,7 +124,6 @@ function hasProductSignal(parsed: ParsedTravelRequest, seeds: IntentSearchSeeds 
     parsed.requestType === 'flights' ||
     parsed.requestType === 'hotels' ||
     parsed.requestType === 'combined' ||
-    parsed.requestType === 'packages' ||
     parsed.requestType === 'services' ||
     Boolean(seeds?.productsImplied?.length)
   );
@@ -135,7 +132,7 @@ function hasProductSignal(parsed: ParsedTravelRequest, seeds: IntentSearchSeeds 
 function collectKnown(parsed: ParsedTravelRequest, seeds: IntentSearchSeeds | null): string[] {
   const known: string[] = [];
   if (isAgencyCommercial(parsed, seeds)) known.push('agency_context');
-  const destination = parsed.flights?.destination ?? parsed.hotels?.city ?? parsed.packages?.destination ?? seeds?.destination;
+  const destination = parsed.flights?.destination ?? parsed.hotels?.city ?? seeds?.destination;
   if (destination) known.push(`${seeds?.destinationKind ?? 'destination'}:${destination}`);
   if (hasDateSignal(parsed, seeds)) known.push(`date:${seeds?.dateWindow?.kind ?? 'structured'}`);
   if (hasPassengerSignal(parsed, seeds)) known.push('passengers');
@@ -155,7 +152,8 @@ function deriveMissing(parsed: ParsedTravelRequest, seeds: IntentSearchSeeds | n
   if (!hasDateSignal(parsed, seeds)) missing.add('dates');
   if (!hasProductSignal(parsed, seeds)) missing.add('product');
   const products = new Set(seeds?.productsImplied ?? []);
-  const needsOrigin = parsed.requestType === 'flights' || parsed.requestType === 'combined' || products.has('flight');
+  const destinationIsConcrete = destinationKind !== 'region' && destinationKind !== 'country' && destinationKind !== 'vibe';
+  const needsOrigin = destinationIsConcrete && (parsed.requestType === 'flights' || parsed.requestType === 'combined' || products.has('flight'));
   if (needsOrigin && !parsed.flights?.origin && !defaultOrigin) missing.add('origin');
   return Array.from(missing);
 }
@@ -177,14 +175,14 @@ function monthLabel(seeds: IntentSearchSeeds | null, language: UserLanguage): st
 
 function baseRequestPhrase(destination: string, seeds: IntentSearchSeeds | null, adults: number, language: UserLanguage): string {
   const date = monthLabel(seeds, language);
-  if (language === 'en') return `package to ${destination} in ${date} for ${adults} adult${adults > 1 ? 's' : ''}`;
-  if (language === 'pt') return `pacote para ${destination} em ${date} para ${adults} adulto${adults > 1 ? 's' : ''}`;
-  return `paquete a ${destination} en ${date} para ${adults} adulto${adults > 1 ? 's' : ''}`;
+  if (language === 'en') return `flight and hotel to ${destination} in ${date} for ${adults} adult${adults > 1 ? 's' : ''}`;
+  if (language === 'pt') return `voo e hotel para ${destination} em ${date} para ${adults} adulto${adults > 1 ? 's' : ''}`;
+  return `vuelo y hotel a ${destination} en ${date} para ${adults} adulto${adults > 1 ? 's' : ''}`;
 }
 
 function productForExpected(seeds: IntentSearchSeeds | null): ChatSuggestedAction['expectedProducts'] {
-  const products = seeds?.productsImplied ?? ['package'];
-  return products.map((product) => (product === 'hotel' ? 'hotel' : product === 'flight' ? 'flight' : product === 'transfer' ? 'transfer' : 'package'));
+  const products = seeds?.productsImplied ?? ['flight', 'hotel'];
+  return products.flatMap((product) => (product === 'hotel' ? ['hotel' as const] : product === 'flight' ? ['flight' as const] : ['transfer' as const]));
 }
 
 function makeChip(args: {
@@ -209,7 +207,7 @@ function makeChip(args: {
     context: args.context,
     editableFields: [],
     expectedRequestType: args.expectedRequestType ?? 'combined',
-    expectedProducts: args.expectedProducts ?? ['package'],
+    expectedProducts: args.expectedProducts ?? ['flight', 'hotel'],
     reasonCodes: args.reasonCodes ?? ['intent_elicitation'],
   };
 }
@@ -224,7 +222,7 @@ function destinationChoices(destination: string): string[] {
 
 function buildGuidanceChips(parsed: ParsedTravelRequest, seeds: IntentSearchSeeds | null, missing: MissingDecision[], language: UserLanguage): ChatSuggestedAction[] {
   const chips: ChatSuggestedAction[] = [];
-  const destination = (seeds?.destination ?? parsed.hotels?.city ?? parsed.flights?.destination ?? parsed.packages?.destination ?? '').trim();
+  const destination = (seeds?.destination ?? parsed.hotels?.city ?? parsed.flights?.destination ?? '').trim();
   const adults = seeds?.adults ?? (seeds?.travelerType === 'couple' ? 2 : 1);
 
   if (missing.includes('destination')) {
@@ -236,8 +234,8 @@ function buildGuidanceChips(parsed: ParsedTravelRequest, seeds: IntentSearchSeed
         prompt: baseRequestPhrase(choice, seeds, adults, language),
         priority: index + 1,
         expectedRequestType: 'combined',
-        expectedProducts: ['package'],
-        context: { product: 'package', destination: choice, passengers: { adults } },
+        expectedProducts: ['flight', 'hotel'],
+        context: { product: 'combined', destination: choice, passengers: { adults } },
         reasonCodes: ['choose_destination'],
       }));
     });
@@ -263,8 +261,8 @@ function buildGuidanceChips(parsed: ParsedTravelRequest, seeds: IntentSearchSeed
   if (destination && (missing.includes('product') || !missing.includes('destination'))) {
     const productPrompt = baseRequestPhrase(destination, seeds, adults, language);
     chips.push(makeChip({
-      id: 'full-package',
-      label: language === 'en' ? 'Full package' : language === 'pt' ? 'Pacote completo' : 'Paquete completo',
+      id: 'flight-hotel',
+      label: language === 'en' ? 'Flight + hotel' : language === 'pt' ? 'Voo + hotel' : 'Vuelo + hotel',
       prompt: productPrompt,
       priority: 3,
       expectedRequestType: 'combined',
@@ -294,14 +292,14 @@ function buildGuidanceChips(parsed: ParsedTravelRequest, seeds: IntentSearchSeed
       prompt: destination
         ? baseRequestPhrase(destination, seeds, 2, language)
         : language === 'en'
-          ? 'package to Cancún in July for 2 adults'
+          ? 'flight and hotel to Cancún in July for 2 adults'
           : language === 'pt'
-            ? 'pacote para Cancún em julho para 2 adultos'
-            : 'paquete a Cancún en julio para 2 adultos',
+            ? 'voo e hotel para Cancún em julho para 2 adultos'
+            : 'vuelo y hotel a Cancún en julio para 2 adultos',
       priority: 4,
       expectedRequestType: 'combined',
-      expectedProducts: ['package'],
-      context: destination ? { product: 'package', destination, passengers: { adults: 2 } } : undefined,
+      expectedProducts: ['flight', 'hotel'],
+      context: destination ? { product: 'combined', destination, passengers: { adults: 2 } } : undefined,
       reasonCodes: ['define_passengers'],
     }));
   }

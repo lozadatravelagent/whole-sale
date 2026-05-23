@@ -189,6 +189,7 @@ describe('§11 intent classification', () => {
     expect(STATIC_SYSTEM_PROMPT).toContain('package_search');
     expect(STATIC_SYSTEM_PROMPT).toContain('ordered_multi_product_search');
     expect(STATIC_SYSTEM_PROMPT).toContain('Cancún julio pareja 7 noches');
+    expect(STATIC_SYSTEM_PROMPT).toContain('Do not emit `requestType: "packages"`');
   });
 
   it('agency natural-language elicitation is documented for incomplete commercial asks', () => {

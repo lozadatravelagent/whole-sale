@@ -235,13 +235,6 @@ export function normalizeLocationsToCountryCapitals(parsed: any): any {
     };
   }
 
-  if (nextParsed.packages?.destination) {
-    nextParsed.packages = {
-      ...nextParsed.packages,
-      destination: normalizeDestinationToCapitalIfCountry(nextParsed.packages.destination),
-    };
-  }
-
   if (nextParsed.services?.city) {
     nextParsed.services = {
       ...nextParsed.services,

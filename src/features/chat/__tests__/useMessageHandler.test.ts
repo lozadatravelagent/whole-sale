@@ -36,7 +36,6 @@ vi.mock('../services/searchHandlers', () => ({
   handleFlightSearch: vi.fn().mockResolvedValue({ response: 'flight results', data: {} }),
   handleHotelSearch: vi.fn().mockResolvedValue({ response: 'hotel results', data: {} }),
   handleCombinedSearch: vi.fn().mockResolvedValue({ response: 'combined results', data: {} }),
-  handlePackageSearch: vi.fn().mockResolvedValue({ response: 'package results', data: {} }),
   handleServiceSearch: vi.fn().mockResolvedValue({ response: 'service results', data: {} }),
   handleGeneralQuery: vi.fn().mockResolvedValue({ response: 'general results', data: {} }),
   handleItineraryRequest: vi.fn().mockResolvedValue({ response: 'itinerary results', data: {} }),

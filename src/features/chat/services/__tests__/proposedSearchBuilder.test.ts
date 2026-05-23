@@ -181,12 +181,12 @@ describe('buildProposedSearch — canonical anniversary case', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildProposedSearch — family/Cancún', () => {
-  it('produces a "paquete familiar económico" label for family + budget + package', () => {
+  it('produces a "vuelo + hotel económico" label for family + budget', () => {
     const seeds: SearchSeeds = {
       destination: 'Cancún',
       travelerType: 'family',
       budgetHint: 'budget',
-      productsImplied: ['package'],
+      productsImplied: ['flight', 'hotel'],
       adults: 2,
       children: 2,
     };
@@ -196,7 +196,7 @@ describe('buildProposedSearch — family/Cancún', () => {
       language: 'es',
     });
     expect(result!.principalChipLabel).toBe(
-      'Buscar paquete familiar económico a Cancún',
+      'Buscar vuelo + hotel económico a Cancún',
     );
     expect(result!.principalSubmitText).toContain('Cancún');
     expect(result!.principalSubmitText).toContain('2 adultos');

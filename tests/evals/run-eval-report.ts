@@ -87,7 +87,7 @@ interface GoldenFixture {
 // We re-implement the minimum shape so the script has zero imports from
 // src/ (avoids needing the full Vite alias resolution outside of vitest).
 
-type RequestType = 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
+type RequestType = 'flights' | 'hotels' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
 
 interface MinimalParsed {
   requestType: RequestType;
@@ -218,7 +218,7 @@ function routeRequestInline(p: MinimalParsed): RouteResult {
 
   let originScore = 0;
   if (p.flights?.origin) originScore = 1.0;
-  else if (p.requestType === 'hotels' || p.requestType === 'packages') originScore = 1.0;
+  else if (p.requestType === 'hotels') originScore = 1.0;
   else if (p.requestType === 'itinerary') originScore = 0.5;
 
   const complexityScore = 1.0;
@@ -242,7 +242,7 @@ function routeRequestInline(p: MinimalParsed): RouteResult {
   if (dims.destination === 0) missingFields.push('destination');
   if (dims.dates === 0) missingFields.push('dates');
   if (dims.passengers === 0) missingFields.push('passengers');
-  if (dims.origin === 0 && p.requestType !== 'hotels' && p.requestType !== 'packages') {
+  if (dims.origin === 0 && p.requestType !== 'hotels') {
     missingFields.push('origin');
   }
 

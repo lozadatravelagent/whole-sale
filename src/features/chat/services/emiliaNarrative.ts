@@ -99,7 +99,7 @@ export interface NarrativeInput {
   /** Inferred fields from the deterministic router (e.g., adults defaulted, one_way assumed). */
   defaultsApplied?: InferredField[];
   /** Search dispatch order (for future use; surfaced in chip metadata). */
-  searchOrder?: ('flights' | 'hotels' | 'packages' | 'itinerary')[];
+  searchOrder?: ('flights' | 'hotels' | 'itinerary')[];
   /** Missing fields the user still needs to provide. Drives `collect` copy. */
   missingFields?: string[];
   /**
@@ -489,7 +489,6 @@ function getKnownDestination(parsed?: ParsedTravelRequest | null): string | unde
   if (parsed.itinerary?.destinations?.length) return parsed.itinerary.destinations.join(', ');
   if (parsed.hotels?.city) return parsed.hotels.city;
   if (parsed.flights?.destination) return parsed.flights.destination;
-  if (parsed.packages?.destination) return parsed.packages.destination;
   return undefined;
 }
 

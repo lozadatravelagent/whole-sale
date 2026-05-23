@@ -234,7 +234,7 @@ export interface IterationIntent {
 }
 
 export interface ParsedTravelRequest {
-    requestType: 'flights' | 'hotels' | 'packages' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
+    requestType: 'flights' | 'hotels' | 'services' | 'combined' | 'general' | 'missing_info_request' | 'itinerary';
     /**
      * Order in which the user mentioned the products. Emitted by the LLM parser
      * only when 2+ products were mentioned in an explicit sequence (see prompt
@@ -365,7 +365,7 @@ export interface ParsedTravelRequest {
         travelerType?: 'solo' | 'couple' | 'family' | 'group' | null;
         budgetHint?: 'budget' | 'mid' | 'premium' | 'luxury' | null;
         occasionHint?: 'anniversary' | 'honeymoon' | 'birthday' | 'business' | 'leisure' | null;
-        productsImplied: ('flight' | 'hotel' | 'transfer' | 'package')[];
+        productsImplied: ('flight' | 'hotel' | 'transfer')[];
         adults?: number | null;
         children?: number | null;
     } | null;
@@ -433,14 +433,6 @@ export interface ParsedTravelRequest {
     travelAssistance?: {
         included: boolean; // Si el usuario solicitó seguro/asistencia
         coverageAmount?: number; // Monto de cobertura si se especificó
-    };
-    packages?: {
-        destination: string;
-        dateFrom: string;
-        dateTo: string;
-        packageClass: 'AEROTERRESTRE' | 'TERRESTRE' | 'AEREO';
-        adults: number;
-        children: number;
     };
     services?: {
         city: string;
@@ -640,13 +632,6 @@ function normalizeLocationsToCountryCapitals(parsed: ParsedTravelRequest): Parse
                     })),
                 }
                 : {}),
-        };
-    }
-
-    if (nextParsed.packages?.destination) {
-        nextParsed.packages = {
-            ...nextParsed.packages,
-            destination: normalizeDestinationToCapitalIfCountry(nextParsed.packages.destination),
         };
     }
 
@@ -3349,9 +3334,6 @@ export function validateParsedRequest(parsed: ParsedTravelRequest): boolean {
         case 'hotels':
             return validateHotelRequiredFields(normalizedParsed.hotels).isValid;
 
-        case 'packages':
-            return !!(normalizedParsed.packages?.destination && normalizedParsed.packages?.dateFrom && normalizedParsed.packages?.dateTo);
-
         case 'services':
             return !!(normalizedParsed.services?.city && normalizedParsed.services?.dateFrom);
 
@@ -3398,15 +3380,6 @@ export function formatForEurovips(parsed: ParsedTravelRequest) {
             children: primaryHotelRequest.children,
             childrenAges: primaryHotelRequest.childrenAges || [],
             infants: primaryHotelRequest.infants
-        };
-    }
-
-    if (normalizedParsed.packages) {
-        result.packageParams = {
-            cityCode: normalizedParsed.packages.destination,
-            dateFrom: normalizedParsed.packages.dateFrom,
-            dateTo: normalizedParsed.packages.dateTo,
-            packageClass: normalizedParsed.packages.packageClass
         };
     }
 

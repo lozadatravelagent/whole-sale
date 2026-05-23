@@ -12,10 +12,10 @@ import {
   hasUsableItineraryDates,
   resolveItineraryDateRange
 } from '@/services/aiMessageParser';
-import type { LocalHotelData, LocalHotelSegmentResult, FlightData, LocalHotelChainBalance, LocalHotelChainQuota, LocalPackageData, LocalServiceData } from '@/types/external';
+import type { LocalHotelData, LocalHotelSegmentResult, FlightData, LocalHotelChainBalance, LocalHotelChainQuota, LocalServiceData } from '@/types/external';
 import type { SearchResult } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
-import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatPackageResponse, formatServiceResponse, formatCombinedResponse, formatChainBalanceNote, type HotelResponseMode } from './responseFormatters';
+import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatServiceResponse, formatCombinedResponse, formatChainBalanceNote, type HotelResponseMode } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
 import { filterRooms, normalizeCapacity, normalizeMealPlan } from '@/utils/roomFilters';
@@ -1791,39 +1791,6 @@ export const handleHotelSearch = async (
 
     return {
       response: getResponseFormatterCopy(errorLanguage).hotelServiceUnavailable,
-      data: null
-    };
-  }
-};
-
-export const handlePackageSearch = async (parsed: ParsedTravelRequest): Promise<SearchResult> => {
-  try {
-    const eurovipsParams = formatForEurovips(parsed);
-    const cityCode = await getCityCode(parsed.packages?.destination || '');
-
-    const response = await supabase.functions.invoke('eurovips-soap', {
-      body: {
-        action: 'searchPackages',
-        data: {
-          ...eurovipsParams.packageParams,
-          cityCode: cityCode
-        }
-      }
-    });
-
-    const allPackages: LocalPackageData[] = response.data.results || [];
-    // Sort packages by price (lowest first) and limit to 5
-    const packages = allPackages
-      .sort((a, b) => (a.price || 0) - (b.price || 0))
-      .slice(0, 5);
-
-    return {
-      response: formatPackageResponse(packages, (parsed.responseLanguage || 'es') as UserLanguage),
-      data: null
-    };
-  } catch (error) {
-    return {
-      response: getSearchHandlerCopy((parsed.responseLanguage || 'es') as UserLanguage).packageError,
       data: null
     };
   }

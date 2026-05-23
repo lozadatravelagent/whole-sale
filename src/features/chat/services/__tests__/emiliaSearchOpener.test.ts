@@ -372,9 +372,9 @@ describe('buildSearchOpener — §9 multiproducto ordenado', () => {
     expect(out.text).toContain('en habitación doble');
   });
 
-  it('§9.8 paquete sin orden → "Te busco paquete a Punta Cana con vuelo, hotel y traslado"', () => {
+  it('§9.8 vuelo + hotel + traslado sin orden → incluye los tres productos', () => {
     const parsed = makeParsed({
-      requestType: 'packages',
+      requestType: 'combined',
       flights: {
         origin: 'Buenos Aires',
         destination: 'Punta Cana',
@@ -399,7 +399,7 @@ describe('buildSearchOpener — §9 multiproducto ordenado', () => {
       transfers: { included: true, type: 'in_out' },
     });
     const out = buildSearchOpener(parsed, 'es');
-    expect(out.text).toContain('Te busco paquete a Punta Cana');
+    expect(out.text).toContain('Punta Cana');
     expect(out.text).toContain('vuelo');
     expect(out.text).toContain('hotel');
     expect(out.text).toContain('traslado');

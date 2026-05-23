@@ -37,7 +37,6 @@ vi.mock('../services/searchHandlers', () => ({
   handleFlightSearch: vi.fn().mockResolvedValue({ response: 'flight results', data: {} }),
   handleHotelSearch: vi.fn().mockResolvedValue({ response: 'hotel results', data: {} }),
   handleCombinedSearch: vi.fn().mockResolvedValue({ response: 'combined results', data: {} }),
-  handlePackageSearch: vi.fn().mockResolvedValue({ response: 'package results', data: {} }),
   handleServiceSearch: vi.fn().mockResolvedValue({ response: 'service results', data: {} }),
   handleGeneralQuery: vi.fn().mockResolvedValue('general query response'),
   handleItineraryRequest: vi.fn().mockResolvedValue({ response: 'itinerary results', data: {} }),
@@ -154,7 +153,6 @@ import {
   handleFlightSearch,
   handleHotelSearch,
   handleCombinedSearch,
-  handlePackageSearch,
   handleServiceSearch,
   handleGeneralQuery,
   handleItineraryRequest,
@@ -242,7 +240,6 @@ beforeEach(() => {
   vi.mocked(handleFlightSearch).mockResolvedValue({ response: 'flight results', data: {} } as any);
   vi.mocked(handleHotelSearch).mockResolvedValue({ response: 'hotel results', data: {} } as any);
   vi.mocked(handleCombinedSearch).mockResolvedValue({ response: 'combined results', data: {} } as any);
-  vi.mocked(handlePackageSearch).mockResolvedValue({ response: 'package results', data: {} } as any);
   vi.mocked(handleServiceSearch).mockResolvedValue({ response: 'service results', data: {} } as any);
   vi.mocked(handleGeneralQuery).mockResolvedValue('general query response' as any);
   vi.mocked(handleItineraryRequest).mockResolvedValue({ response: 'itinerary results', data: {} } as any);
@@ -592,24 +589,6 @@ describe('useMessageHandler', () => {
 
       expect(vi.mocked(handleGeneralQuery)).toHaveBeenCalledWith(
         expect.objectContaining({ requestType: 'general' })
-      );
-    });
-
-    it('calls handlePackageSearch for requestType packages', async () => {
-      vi.mocked(parseMessageWithAIStreaming).mockResolvedValue(buildParsedRequest({
-        requestType: 'packages',
-        originalMessage: 'busco un paquete de viaje',
-      }) as any);
-
-      const p = buildProps();
-      const { result } = renderHandler(p);
-
-      await act(async () => {
-        await result.current.handleSendMessage('busco un paquete de viaje');
-      });
-
-      expect(vi.mocked(handlePackageSearch)).toHaveBeenCalledWith(
-        expect.objectContaining({ requestType: 'packages' })
       );
     });
 

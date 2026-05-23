@@ -1,8 +1,10 @@
+import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
 import type { MealPlanType } from '@/utils/roomFilters';
 import type { PriceRangeFilter } from '../types/hotelSearchCache';
+import { buildPriceBuckets, type PriceBucket } from '../utils/hotelFilterPipeline';
 import { getResultSelectorCopy, normalizeSupportedLanguage, type UserLanguage } from '../i18n/chatResultCopy';
 
 interface MealPlanDistribution {
@@ -12,30 +14,18 @@ interface MealPlanDistribution {
   room_only: number;
 }
 
-/**
- * Buckets predefinidos de rango de precio por noche. Los labels son intencionalmente
- * cortos para caber en un chip; la suma sin tope superior usa `∞`.
- */
-const PRICE_BUCKETS: Array<{ id: string; min: number | null; max: number | null; label: string }> = [
-  { id: 'lt-1500', min: null, max: 1500, label: '< 1500' },
-  { id: '1500-2500', min: 1500, max: 2500, label: '1500–2500' },
-  { id: '2500-3500', min: 2500, max: 3500, label: '2500–3500' },
-  { id: '3500-5000', min: 3500, max: 5000, label: '3500–5000' },
-  { id: 'gt-5000', min: 5000, max: null, label: '> 5000' },
-];
-
 function rangeMatchesBucket(
-  range: PriceRangeFilter | null,
-  bucket: (typeof PRICE_BUCKETS)[number],
+  range: PriceRangeFilter | null | undefined,
+  bucket: PriceBucket,
 ): boolean {
   if (!range) return false;
   return range.min === bucket.min && range.max === bucket.max;
 }
 
 function formatActiveRange(range: PriceRangeFilter): string {
-  if (range.min != null && range.max != null) return `${range.min}–${range.max}`;
-  if (range.min != null) return `≥ ${range.min}`;
-  if (range.max != null) return `≤ ${range.max}`;
+  if (range.min != null && range.max != null) return `${Math.round(range.min)}–${Math.round(range.max)}`;
+  if (range.min != null) return `≥ ${Math.round(range.min)}`;
+  if (range.max != null) return `≤ ${Math.round(range.max)}`;
   return '';
 }
 
@@ -46,6 +36,8 @@ interface HotelFilterChipsProps {
   activeMealPlan: MealPlanType | null;
   /** Rango de precio por noche actualmente aplicado */
   activePriceRange?: PriceRangeFilter | null;
+  /** Bounds reales (min/max por noche) de la búsqueda actual; null si no hay datos */
+  priceRangeBounds?: { min: number; max: number } | null;
   /** Total de hoteles antes de filtrar */
   totalCount: number;
   /** Hoteles después de filtrar */
@@ -61,6 +53,7 @@ export function HotelFilterChips({
   distribution,
   activeMealPlan,
   activePriceRange = null,
+  priceRangeBounds = null,
   totalCount,
   filteredCount,
   onMealPlanChange,
@@ -76,6 +69,9 @@ export function HotelFilterChips({
     { value: 'room_only', label: copy.mealPlans.room_only },
   ];
 
+  const priceBuckets = useMemo(() => buildPriceBuckets(priceRangeBounds, 4), [priceRangeBounds]);
+  const showPriceRow = Boolean(onPriceRangeChange) && priceBuckets.length > 0;
+
   const handleMealPlanClick = (mealPlan: MealPlanType) => {
     if (activeMealPlan === mealPlan) {
       onMealPlanChange(null);
@@ -84,7 +80,7 @@ export function HotelFilterChips({
     }
   };
 
-  const handlePriceBucketClick = (bucket: (typeof PRICE_BUCKETS)[number]) => {
+  const handlePriceBucketClick = (bucket: PriceBucket) => {
     if (!onPriceRangeChange) return;
     if (rangeMatchesBucket(activePriceRange, bucket)) {
       onPriceRangeChange(null);
@@ -142,12 +138,12 @@ export function HotelFilterChips({
         )}
       </div>
 
-      {onPriceRangeChange && (
+      {showPriceRow && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] uppercase tracking-wide text-muted-foreground/70">
             USD / noche
           </span>
-          {PRICE_BUCKETS.map(bucket => {
+          {priceBuckets.map(bucket => {
             const isSelected = rangeMatchesBucket(activePriceRange, bucket);
             return (
               <Badge
@@ -164,7 +160,7 @@ export function HotelFilterChips({
               </Badge>
             );
           })}
-          {activePriceRange && !PRICE_BUCKETS.some(b => rangeMatchesBucket(activePriceRange, b)) && (
+          {activePriceRange && !priceBuckets.some(b => rangeMatchesBucket(activePriceRange, b)) && (
             <Badge variant="default" className="text-xs px-2 py-0.5 ring-1 ring-primary">
               {formatActiveRange(activePriceRange)}
             </Badge>

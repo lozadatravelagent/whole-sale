@@ -31,7 +31,7 @@ import type { EmiliaProfile } from '@/features/chat/state/emiliaState';
 // SearchSeeds contract (mirror of the schema-agent's shape)
 // ---------------------------------------------------------------------------
 
-export type SeedProduct = 'flight' | 'hotel' | 'transfer' | 'package';
+export type SeedProduct = 'flight' | 'hotel' | 'transfer';
 export type SeedTravelerType = 'solo' | 'couple' | 'family' | 'group';
 export type SeedBudgetHint = 'budget' | 'mid' | 'premium' | 'luxury';
 export type SeedOccasionHint =
@@ -332,9 +332,8 @@ function pickProductPhrase(products: SeedProduct[], copy: CopyBundle): {
   const hasFlight = set.has('flight');
   const hasHotel = set.has('hotel');
   const hasTransfer = set.has('transfer');
-  const hasPackage = set.has('package');
 
-  if (hasPackage || (hasFlight && hasHotel && hasTransfer)) {
+  if (hasFlight && hasHotel && hasTransfer) {
     return { phrase: copy.productPackageWithAll, hasFlight: true, hasHotel: true, hasPackage: true };
   }
   if (hasFlight && hasHotel) {
