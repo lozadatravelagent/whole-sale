@@ -454,6 +454,33 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
     [combinedData.hotelSearchPriceMin, combinedData.hotelSearchPriceMax],
   );
 
+  // Mapa hotel.id → precio por noche derivado de makeBudget (lo que se ve en la card).
+  // Cuando está poblado, los chips/filtros lo usan en vez del room.price_per_night crudo
+  // de la búsqueda inicial — así "< $300" matchea contra el precio real visible.
+  // Convención (igual que el PDF builder, línea 1039): exactPrice.price es TOTAL de la
+  // estadía → dividir por hotel.nights para obtener per-night.
+  const exactPriceMap = useMemo<Record<string, number | undefined>>(() => {
+    const allHotels: HotelData[] = [];
+    if (combinedData.hotels?.length) allHotels.push(...combinedData.hotels);
+    if (combinedData.hotelSegments?.length) {
+      combinedData.hotelSegments.forEach(segment => {
+        if (segment.hotels?.length) allHotels.push(...segment.hotels);
+      });
+    }
+
+    const map: Record<string, number | undefined> = {};
+    for (const hotel of allHotels) {
+      const firstRoom = hotel.rooms?.[0];
+      if (!firstRoom) continue;
+      const priceKey = `${hotel.id}-${firstRoom.occupancy_id}`;
+      const entry = exactPrices[priceKey];
+      if (!entry || !entry.price) continue;
+      const nights = hotel.nights && hotel.nights > 0 ? hotel.nights : 1;
+      map[hotel.id] = entry.price / nights;
+    }
+    return map;
+  }, [exactPrices, combinedData.hotels, combinedData.hotelSegments]);
+
   const {
     displayedResults: filteredHotels,
     activeMealPlan,
@@ -472,6 +499,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
       ? combinedData.hotelSegments.find((segment, index) => `${segment.segmentId || 'hotel-segment'}-${index}` === activeHotelSegmentId)?.hotelSearchId
       : combinedData.hotelSearchId,
     hotelInitialPriceRange,
+    exactPriceMap,
   );
 
   const groupedHotelSegments = useMemo<GroupedHotelSegment[]>(

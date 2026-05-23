@@ -14,9 +14,28 @@ export interface MealPlanDistribution {
 }
 
 /**
- * Obtiene el precio mínimo por noche de un hotel (de todas sus habitaciones)
+ * Mapa de precios exactos por noche por hotel (clave = hotel.id).
+ * Se popula con el resultado de `makeBudget` post-búsqueda — refleja el
+ * `agencyPricing.netoAgencia` real, que es lo que el usuario ve en la tarjeta.
+ * Cuando hay un precio exacto, los chips/filtros lo prefieren sobre el
+ * `room.price_per_night` crudo de la búsqueda inicial.
  */
-export function getMinPricePerNight(hotel: HotelData): number {
+export type ExactPricePerNightMap = Record<string, number | undefined>;
+
+/**
+ * Obtiene el precio mínimo por noche de un hotel.
+ * Prefiere el precio exacto de `makeBudget` (lo que se muestra en la card)
+ * y cae al `room.price_per_night` crudo de EUROVIPS como fallback.
+ */
+export function getMinPricePerNight(
+  hotel: HotelData,
+  exactPrices?: ExactPricePerNightMap,
+): number {
+  const exact = exactPrices?.[hotel.id];
+  if (typeof exact === 'number' && Number.isFinite(exact) && exact > 0) {
+    return exact;
+  }
+
   if (!hotel.rooms?.length) return Infinity;
 
   const prices = hotel.rooms
@@ -36,11 +55,12 @@ export function getMinPricePerNight(hotel: HotelData): number {
 export function filterHotelsByPriceRange(
   hotels: HotelData[],
   range: PriceRangeFilter | null,
+  exactPrices?: ExactPricePerNightMap,
 ): HotelData[] {
   if (!range || (range.min == null && range.max == null)) return hotels;
 
   return hotels.filter(hotel => {
-    const price = getMinPricePerNight(hotel);
+    const price = getMinPricePerNight(hotel, exactPrices);
     if (!Number.isFinite(price)) return false;
     if (range.min != null && price < range.min) return false;
     if (range.max != null && price > range.max) return false;
@@ -53,11 +73,14 @@ export function filterHotelsByPriceRange(
  * Útil para inicializar sliders y validar inputs del usuario.
  * Retorna `null` si ningún hotel tiene precio resoluble.
  */
-export function calculatePriceRangeBounds(hotels: HotelData[]): { min: number; max: number } | null {
+export function calculatePriceRangeBounds(
+  hotels: HotelData[],
+  exactPrices?: ExactPricePerNightMap,
+): { min: number; max: number } | null {
   let min = Infinity;
   let max = -Infinity;
   for (const hotel of hotels) {
-    const price = getMinPricePerNight(hotel);
+    const price = getMinPricePerNight(hotel, exactPrices);
     if (!Number.isFinite(price)) continue;
     if (price < min) min = price;
     if (price > max) max = price;
@@ -170,14 +193,15 @@ export function filterAndLimitHotels(
   mealPlan: MealPlanType | null,
   limit: number = 5,
   priceRange: PriceRangeFilter | null = null,
+  exactPrices?: ExactPricePerNightMap,
 ): HotelData[] {
   const filteredByMealPlan = filterHotelsByMealPlan(hotels, mealPlan);
-  const filtered = filterHotelsByPriceRange(filteredByMealPlan, priceRange);
+  const filtered = filterHotelsByPriceRange(filteredByMealPlan, priceRange, exactPrices);
 
-  // Ordenar por precio mínimo por noche (ascendente)
+  // Ordenar por precio mínimo por noche (ascendente) — usa exactPrice cuando hay
   const sorted = [...filtered].sort((a, b) => {
-    const priceA = getMinPricePerNight(a);
-    const priceB = getMinPricePerNight(b);
+    const priceA = getMinPricePerNight(a, exactPrices);
+    const priceB = getMinPricePerNight(b, exactPrices);
     return priceA - priceB;
   });
 

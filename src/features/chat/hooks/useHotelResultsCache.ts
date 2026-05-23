@@ -6,6 +6,7 @@ import {
   filterAndLimitHotels,
   calculateMealPlanDistribution,
   calculatePriceRangeBounds,
+  type ExactPricePerNightMap,
 } from '../utils/hotelFilterPipeline';
 import { getHotelsFromStorage } from '../services/hotelStorageService';
 
@@ -29,7 +30,11 @@ export interface InitialPriceRange {
  * 3. Usuario selecciona filtros via chips
  * 4. setMealPlan() / setPriceRange() filtra localmente y muestra nuevo Top 5
  */
-export function useHotelResultsCache(searchId?: string, initialPriceRange?: InitialPriceRange) {
+export function useHotelResultsCache(
+  searchId?: string,
+  initialPriceRange?: InitialPriceRange,
+  exactPrices?: ExactPricePerNightMap,
+) {
   const [cache, setCache] = useState<HotelSearchResultsCache | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -52,10 +57,10 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
 
       if (hotels && hotels.length > 0) {
         const distribution = calculateMealPlanDistribution(hotels);
-        const priceRangeBounds = calculatePriceRangeBounds(hotels);
+        const priceRangeBounds = calculatePriceRangeBounds(hotels, exactPrices);
         const initial = buildInitialPriceRange();
 
-        const displayed = filterAndLimitHotels(hotels, null, TOP_N_DISPLAY, initial);
+        const displayed = filterAndLimitHotels(hotels, null, TOP_N_DISPLAY, initial, exactPrices);
 
         setCache({
           allResults: hotels,
@@ -76,7 +81,7 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
     }
 
     setIsLoading(false);
-  }, [buildInitialPriceRange]);
+  }, [buildInitialPriceRange, exactPrices]);
 
   // Auto-load desde IndexedDB cuando cambia searchId
   useEffect(() => {
@@ -84,6 +89,23 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
       loadFromStorage(searchId);
     }
   }, [searchId, loadFromStorage]);
+
+  // Cuando llegan precios exactos (makeBudget), recalcula bounds + Top N para
+  // que los chips reflejen el precio real visible en la card, no el crudo de búsqueda.
+  useEffect(() => {
+    if (!cache || !exactPrices || Object.keys(exactPrices).length === 0) return;
+
+    const priceRangeBounds = calculatePriceRangeBounds(cache.allResults, exactPrices);
+    const displayed = filterAndLimitHotels(
+      cache.allResults,
+      cache.activeMealPlan,
+      TOP_N_DISPLAY,
+      cache.activePriceRange,
+      exactPrices,
+    );
+
+    setCache((prev) => prev ? { ...prev, priceRangeBounds, displayedResults: displayed } : prev);
+  }, [exactPrices]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * Cachea resultados de hoteles directamente (fallback si no hay IndexedDB)
@@ -95,10 +117,10 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
     }
 
     const distribution = calculateMealPlanDistribution(results);
-    const priceRangeBounds = calculatePriceRangeBounds(results);
+    const priceRangeBounds = calculatePriceRangeBounds(results, exactPrices);
     const initial = buildInitialPriceRange();
 
-    const displayed = filterAndLimitHotels(results, null, TOP_N_DISPLAY, initial);
+    const displayed = filterAndLimitHotels(results, null, TOP_N_DISPLAY, initial, exactPrices);
 
     setCache({
       allResults: results,
@@ -111,7 +133,7 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
     });
 
     console.log(`📦 [HOTEL CACHE] Cached ${results.length} hotels for filtering`);
-  }, [buildInitialPriceRange]);
+  }, [buildInitialPriceRange, exactPrices]);
 
   /**
    * Establece el plan de comida y recalcula los resultados visibles
@@ -124,6 +146,7 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
       mealPlan,
       TOP_N_DISPLAY,
       cache.activePriceRange,
+      exactPrices,
     );
 
     setCache((prev) => ({
@@ -134,7 +157,7 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
     }));
 
     console.log(`🔍 [HOTEL CACHE] Applied meal plan filter: ${mealPlan || 'none'}, showing ${displayed.length} hotels`);
-  }, [cache]);
+  }, [cache, exactPrices]);
 
   /**
    * Establece el rango de precio por noche y recalcula los resultados visibles
@@ -155,6 +178,7 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
       cache.activeMealPlan,
       TOP_N_DISPLAY,
       normalized,
+      exactPrices,
     );
 
     setCache((prev) => ({
@@ -166,21 +190,21 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
     console.log(
       `🔍 [HOTEL CACHE] Applied price filter: ${normalized ? JSON.stringify(normalized) : 'none'}, showing ${displayed.length} hotels`,
     );
-  }, [cache]);
+  }, [cache, exactPrices]);
 
   /**
    * Limpia los filtros (plan de comida + rango de precio).
    */
   const clearFilter = useCallback(() => {
     if (!cache) return;
-    const displayed = filterAndLimitHotels(cache.allResults, null, TOP_N_DISPLAY, null);
+    const displayed = filterAndLimitHotels(cache.allResults, null, TOP_N_DISPLAY, null, exactPrices);
     setCache((prev) => ({
       ...prev!,
       activeMealPlan: null,
       activePriceRange: null,
       displayedResults: displayed,
     }));
-  }, [cache]);
+  }, [cache, exactPrices]);
 
   /**
    * Limpia el cache completamente
@@ -203,8 +227,9 @@ export function useHotelResultsCache(searchId?: string, initialPriceRange?: Init
       cache.activeMealPlan,
       cache.allResults.length,
       cache.activePriceRange,
+      exactPrices,
     ).length;
-  }, [cache]);
+  }, [cache, exactPrices]);
 
   return {
     // Estado
