@@ -104,12 +104,12 @@ function isAllowedPuntaCanaHotel(hotelName: string): boolean {
 /**
  * Aplica whitelist de Punta Cana si el destino es Punta Cana.
  *
- * IMPORTANTE: Si el usuario especificó hotelChain, permite TODOS los hoteles de esa cadena.
+ * IMPORTANTE: Si el usuario especificó cadenas, permite TODOS los hoteles de esas cadenas.
  */
 export function applyDestinationWhitelist(
   hotels: Hotel[],
   city: string,
-  requestedChain?: string
+  requestedChains?: string | string[]
 ): Hotel[] {
   // Solo aplicar filtro para Punta Cana
   if (!isPuntaCanaDestination(city)) {
@@ -119,20 +119,29 @@ export function applyDestinationWhitelist(
   console.log('🌴 [PUNTA CANA FILTER] Applying special hotel whitelist');
   console.log(`📊 [PUNTA CANA FILTER] Hotels before filter: ${hotels.length}`);
 
-  if (requestedChain) {
-    console.log(`🏨 [PUNTA CANA FILTER] User requested chain: "${requestedChain}" - allowing all hotels from this chain`);
+  const chainList = Array.isArray(requestedChains)
+    ? requestedChains
+    : requestedChains
+      ? [requestedChains]
+      : [];
+  const normalizedChains = Array.from(
+    new Map(
+      chainList
+        .map(chain => chain.trim())
+        .filter(Boolean)
+        .map(chain => [normalizeText(chain), chain])
+    ).values()
+  );
+
+  if (normalizedChains.length > 0) {
+    console.log(`🏨 [PUNTA CANA FILTER] User requested chains: ${normalizedChains.join(', ')} - allowing all hotels from these chains`);
   }
 
   const filteredHotels = hotels.filter(hotel => {
-    // FIRST: If user requested a specific chain, allow ALL hotels from that chain
-    if (requestedChain) {
-      const normalizedHotelName = normalizeText(hotel.name);
-      const normalizedChain = normalizeText(requestedChain);
-
-      if (normalizedHotelName.includes(normalizedChain)) {
-        console.log(`✅ [PUNTA CANA FILTER] Allowed (matches requested chain "${requestedChain}"): "${hotel.name}"`);
-        return true;
-      }
+    // FIRST: If user requested specific chains, allow ALL hotels from any of those chains
+    if (normalizedChains.length > 0 && hotelBelongsToAnyChain(hotel.name, normalizedChains)) {
+      console.log(`✅ [PUNTA CANA FILTER] Allowed (matches requested chains): "${hotel.name}"`);
+      return true;
     }
 
     // SECOND: Check against the whitelist for non-chain-specific requests

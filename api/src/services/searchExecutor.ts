@@ -29,13 +29,88 @@ import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSeg
 import { transformFare, type TransformOptions } from './flightTransformer.js';
 import { matchesLuggagePreference } from './baggageUtils.js';
 import { filterFlightsByTimePreference, timePreferenceToRange, timeRangeToLabel } from './timeSlotMapper.js';
-import { getSearchTermForChain } from '../data/hotelChainAliases.js';
+import {
+  getSearchTermForChain,
+  hotelBelongsToChain,
+  normalizeHotelChainName
+} from '../data/hotelChainAliases.js';
 
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
 
 const PROVIDER_TIMEOUT_MS = 45000; // 45 seconds (Starling puede tardar 20-30s en búsquedas internacionales)
+const HOTEL_RESULT_CURRENCY = 'USD';
+
+function normalizeHotelCurrencyUsd(hotel: any): any {
+  return {
+    ...hotel,
+    currency: HOTEL_RESULT_CURRENCY,
+    rooms: Array.isArray(hotel?.rooms)
+      ? hotel.rooms.map((room: any) => ({
+        ...room,
+        currency: HOTEL_RESULT_CURRENCY
+      }))
+      : hotel?.rooms
+  };
+}
+
+function normalizeHotelText(value: unknown): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+function normalizeHotelChains(hotels: any): string[] {
+  const values = [
+    ...(Array.isArray(hotels?.hotelChains) ? hotels.hotelChains : []),
+    hotels?.hotelChain
+  ];
+  const seen = new Set<string>();
+  const chains: string[] = [];
+
+  for (const value of values) {
+    const chain = typeof value === 'string' ? normalizeHotelChainName(value.trim()) : '';
+    if (!chain) continue;
+
+    const key = normalizeHotelText(chain);
+    if (seen.has(key)) continue;
+
+    seen.add(key);
+    chains.push(chain);
+  }
+
+  return chains;
+}
+
+function getProviderSearchTermForChain(chain: string): string {
+  return getSearchTermForChain(normalizeHotelChainName(chain));
+}
+
+function hotelMatchesRequestedChain(hotel: any, chain: string): boolean {
+  const hotelName = typeof hotel?.name === 'string' ? hotel.name : '';
+  if (!hotelName) return false;
+
+  return hotelBelongsToChain(hotelName, chain) ||
+    hotelBelongsToChain(hotelName, getProviderSearchTermForChain(chain));
+}
+
+function filterHotelsByRequestedChains(hotels: any[], chains: string[]): any[] {
+  if (chains.length === 0) return hotels;
+
+  const filtered = hotels.filter((hotel) =>
+    chains.some((chain) => hotelMatchesRequestedChain(hotel, chain))
+  );
+
+  if (filtered.length === 0 && hotels.length > 0) {
+    console.warn('[HOTEL_SEARCH] Chain post-filter removed all hotels; returning provider results to avoid false empty search');
+    return hotels;
+  }
+
+  return filtered;
+}
 
 /**
  * Invoke Supabase Edge Function with timeout
@@ -97,18 +172,16 @@ async function invokeWithTimeout<T>(
 function interleaveHotelsByChain(hotels: any[], chains: string[]): any[] {
   if (chains.length <= 1) return hotels;
 
-  // Group hotels by chain
   const byChain = new Map<string, any[]>();
-  chains.forEach(c => byChain.set(c.toLowerCase(), []));
+  const unassigned: any[] = [];
+  chains.forEach(c => byChain.set(normalizeHotelText(c), []));
 
-  // Categorize each hotel into its chain group
   for (const hotel of hotels) {
-    const hotelName = (hotel.name || '').toLowerCase();
-    for (const chain of chains) {
-      if (hotelName.includes(chain.toLowerCase())) {
-        byChain.get(chain.toLowerCase())!.push(hotel);
-        break; // Hotel belongs to first matching chain
-      }
+    const chain = chains.find((candidate) => hotelMatchesRequestedChain(hotel, candidate));
+    if (chain) {
+      byChain.get(normalizeHotelText(chain))!.push(hotel);
+    } else {
+      unassigned.push(hotel);
     }
   }
 
@@ -117,17 +190,15 @@ function interleaveHotelsByChain(hotels: any[], chains: string[]): any[] {
     console.log(`📍 [INTERLEAVE] ${chain}: ${chainHotels.length} hotels`);
   }
 
-  // Round-robin interleave (take one from each chain until we have enough)
   const result: any[] = [];
   let round = 0;
-  const maxResults = 10; // Get more initially, will be filtered to 5 later
 
-  while (result.length < maxResults) {
+  while (result.length < hotels.length) {
     let addedThisRound = false;
 
     for (const chain of chains) {
-      const chainHotels = byChain.get(chain.toLowerCase())!;
-      if (round < chainHotels.length && result.length < maxResults) {
+      const chainHotels = byChain.get(normalizeHotelText(chain))!;
+      if (round < chainHotels.length && result.length < hotels.length) {
         result.push(chainHotels[round]);
         console.log(`✅ [INTERLEAVE] Round ${round + 1}: Added "${chainHotels[round].name}" from ${chain}`);
         addedThisRound = true;
@@ -137,6 +208,8 @@ function interleaveHotelsByChain(hotels: any[], chains: string[]): any[] {
     if (!addedThisRound) break; // No more hotels to add from any chain
     round++;
   }
+
+  result.push(...unassigned);
 
   console.log(`📊 [INTERLEAVE] Final interleaved count: ${result.length} hotels`);
   return result;
@@ -209,6 +282,10 @@ function resolveAdultsWithExplicitGuard(
 function getMinRoomPrice(hotel: any): number {
   if (!Array.isArray(hotel?.rooms) || hotel.rooms.length === 0) return Number.POSITIVE_INFINITY;
   return Math.min(...hotel.rooms.map((room: any) => room?.total_price || Number.POSITIVE_INFINITY));
+}
+
+function sortHotelsByMinRoomPrice(hotels: any[]): any[] {
+  return [...hotels].sort((a: any, b: any) => getMinRoomPrice(a) - getMinRoomPrice(b));
 }
 
 function extractBrokerCode(hotel: any): string {
@@ -656,8 +733,8 @@ async function executeHotelSearch(
   // - If hotelChains has 1 chain → Single request with that chain
   // - If only hotelName → Single request with that name
   // - If nothing → Single request without filter
-  const hotelChains = hotels.hotelChains || [];
-  const hotelName = hotels.hotelName || '';
+  const hotelChains = normalizeHotelChains(hotels);
+  const hotelName = typeof hotels.hotelName === 'string' ? hotels.hotelName.trim() : '';
 
   // Base params for all requests
   const childrenCount = hotels.children || 0;
@@ -686,7 +763,7 @@ async function executeHotelSearch(
           try {
             const result = await invokeWithTimeout(supabase, 'eurovips-soap', {
               action: 'searchHotels',
-              data: { ...baseParams, hotelName: getSearchTermForChain(chain) }
+              data: { ...baseParams, hotelName: getProviderSearchTermForChain(chain) }
             });
             const hotels = (result as any)?.results || [];
             console.log(`✅ [MULTI-CHAIN] Chain "${chain}": received ${hotels.length} hotels`);
@@ -729,12 +806,9 @@ async function executeHotelSearch(
 
       console.log(`✅ [MULTI-CHAIN] After deduplication: ${allHotels.length} hotels`);
 
-      // Interleave results round-robin if multiple chains
-      allHotels = interleaveHotelsByChain(allHotels, hotelChains);
-
     } else {
       // ✅ SINGLE REQUEST: Use first chain, hotelName, or no filter
-      const nameFilter = hotelChains[0] ? getSearchTermForChain(hotelChains[0]) : (hotelName || '');
+      const nameFilter = hotelChains[0] ? getProviderSearchTermForChain(hotelChains[0]) : (hotelName || '');
 
       if (nameFilter) {
         console.log(`🏨 [HOTEL_SEARCH] Applying name filter to EUROVIPS: "${nameFilter}"`);
@@ -769,12 +843,20 @@ async function executeHotelSearch(
 
   console.log('[HOTEL_SEARCH] Found', totalFromProvider, 'hotels from provider');
 
+  if (!hotelName && hotelChains.length > 0) {
+    const beforeChainFilter = allHotels.length;
+    allHotels = filterHotelsByRequestedChains(allHotels, hotelChains);
+    if (hotelChains.length > 1) {
+      allHotels = interleaveHotelsByChain(allHotels, hotelChains);
+    }
+    console.log(`[HOTEL_SEARCH] Chain post-filter: ${beforeChainFilter} → ${allHotels.length} hotels`);
+  }
+
   // ✅ STEP 1: Apply destination-specific filters (e.g., Punta Cana whitelist)
-  // Pass first chain if available (for whitelist bypass logic)
   allHotels = applyDestinationWhitelist(
     allHotels,
     hotels.city || '',
-    hotelChains[0] || hotelName // Pass first chain or hotelName for whitelist bypass
+    hotelChains.length > 0 ? hotelChains : hotelName
   );
   const afterWhitelist = allHotels.length;
 
@@ -786,13 +868,13 @@ async function executeHotelSearch(
   );
 
   // ✅ STEP 3: Sort by price and limit to top 5
-  const sortedHotels = filteredHotels
-    .sort((a: any, b: any) => {
-      const minPriceA = Math.min(...a.rooms.map((r: any) => r.total_price));
-      const minPriceB = Math.min(...b.rooms.map((r: any) => r.total_price));
-      return minPriceA - minPriceB;
-    })
-    .slice(0, 5);
+  const usdHotels = filteredHotels.map(normalizeHotelCurrencyUsd);
+
+  const priceSortedHotels = sortHotelsByMinRoomPrice(usdHotels);
+  const rankedHotels = !hotelName && hotelChains.length > 1
+    ? interleaveHotelsByChain(priceSortedHotels, hotelChains)
+    : priceSortedHotels;
+  const sortedHotels = rankedHotels.slice(0, 5);
 
   console.log('[HOTEL_SEARCH] Final result:', sortedHotels.length, 'hotels');
 
@@ -801,6 +883,7 @@ async function executeHotelSearch(
     hotels.city?.toLowerCase().includes('cana');
 
   const metadata: any = {};
+  metadata.currency = HOTEL_RESULT_CURRENCY;
 
   // Destination rules metadata
   if (isPuntaCana) {
