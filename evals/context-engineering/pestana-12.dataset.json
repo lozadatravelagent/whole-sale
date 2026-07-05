@@ -53,7 +53,8 @@
           "expected_branch": "intent_elicitation",
           "expected_tools": [],
           "forbid_tools": ["discover_places"],
-          "expected_chips": ["Cancún", "Punta Cana", "Aruba", "Definir pasajeros"]
+          "expected_chips": ["Cancún", "Punta Cana", "Aruba", "Definir pasajeros"],
+          "chip_prompt_policy": "chips de destino deben autocompletar 'vuelo y hotel ...', no 'paquete ...', para evitar el flujo legacy packages"
         }
       ]
     },

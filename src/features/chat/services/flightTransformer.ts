@@ -557,7 +557,7 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
         description: getTaxDescription(tax.Code)
       })),
       luggage: hasFreeBaggage,
-      provider: 'TVC',
+      provider: 'STARLING',
       contentOwner: fare.ContentOwner || '',
       ownContent: fare.OwnContent || false,
       transactionId: tvcData.TransactionID || '',
@@ -845,8 +845,9 @@ export const transformStarlingResults = async (tvcData: any, parsedRequest?: Par
     console.log(`💺 [CABIN CLASS FILTER] ${beforeCount} → ${filteredFlights.length} flights (${cabinPreference})`);
   }
 
-  // Sort by price (lowest first) - do NOT limit here
-  // All flights are returned for localStorage caching, limit happens in searchHandlers
+  // Sort by price (lowest first) - do NOT limit or dedupe here.
+  // Dedup by distinct price (fewest escalas on ties) happens in searchHandlers, AFTER all
+  // search filters (layover/time/baggage), mirroring the backend executors.
   const transformedFlights = filteredFlights
     .sort((a, b) => (a.price.amount || 0) - (b.price.amount || 0));
 

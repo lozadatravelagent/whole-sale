@@ -58,7 +58,7 @@ const LANGUAGE_NAMES: Record<NonNullable<BuildSystemPromptArgs['language']>, str
 //
 // Why a single immutable constant: OpenAI's automatic prompt caching (gpt-4.1+)
 // matches by PREFIX, byte-for-byte. The first dynamic byte breaks the cache.
-// To maximize the cacheable prefix (~15k tokens) we keep ALL per-turn variation
+// To maximize the cacheable prefix (~32k tokens) we keep ALL per-turn variation
 // out of this string and emit it from `buildDynamicContextBlock` AT THE END,
 // after this constant.
 //

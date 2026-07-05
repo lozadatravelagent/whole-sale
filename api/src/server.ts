@@ -15,6 +15,7 @@ import { corsOptions } from './middleware/cors.js';
 import { correlationMiddleware } from './middleware/correlation.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimitMiddleware } from './middleware/rateLimit.js';
+import { usageRecordMiddleware, usageStartMiddleware } from './middleware/usage.js';
 import { healthRoutes } from './routes/v1/health.js';
 import { searchRoutes } from './routes/v1/search.js';
 import { emiliaTurnRoutes } from './routes/v1/emiliaTurn.js';
@@ -41,8 +42,10 @@ await fastify.register(healthRoutes, { prefix: '/v1' });
 // Register protected routes (requires auth + rate limiting)
 await fastify.register(async (protectedRoutes) => {
   // Apply auth and rate limit middleware to all routes in this scope
+  protectedRoutes.addHook('onRequest', usageStartMiddleware);
   protectedRoutes.addHook('onRequest', authMiddleware);
   protectedRoutes.addHook('onRequest', rateLimitMiddleware);
+  protectedRoutes.addHook('onResponse', usageRecordMiddleware);
 
   // Register search routes
   await protectedRoutes.register(searchRoutes, { prefix: '/v1' });

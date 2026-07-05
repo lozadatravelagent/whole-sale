@@ -30,6 +30,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: SearchRequest }>('/search', async (request, reply) => {
     const startTime = Date.now();
     const { request_id, prompt, conversation_history, previous_context } = request.body;
+    request.apiUsageRequestId = request_id;
 
     // Validate request_id format
     const requestIdPattern = /^(req_[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
@@ -52,6 +53,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
     const cacheResult = await checkCacheRedis(request_id);
 
     if (cacheResult.exists && cacheResult.data) {
+      request.apiUsageCached = true;
       request.logger.info('CACHE_HIT', `Returning cached response for request_id: ${request_id}`, {
         cached_at: cacheResult.cached_at
       });

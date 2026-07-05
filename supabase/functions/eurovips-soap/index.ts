@@ -624,9 +624,7 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
       const fareIdInternalMatch = xmlResponse.match(/<FareId[^>]*>(EV\d+)<\/FareId>/i);
       const fareIdInternal = fareIdInternalMatch ? fareIdInternalMatch[1] : null;
 
-      // Extract currency
-      const currencyMatch = xmlResponse.match(/currency="([A-Z]{3})"/i);
-      const currency = currencyMatch ? currencyMatch[1] : 'USD';
+      const currency = this.currency;
 
       console.log('📋 [MAKE_BUDGET] Parsed successfully:');
       console.log('   budgetId:', budgetId);
@@ -711,9 +709,7 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
         console.log('📋 [GET_BUDGET] No Pricing blocks found');
       }
 
-      // Extract currency
-      const currencyMatch = xmlResponse.match(/currency="([A-Z]{3})"/i);
-      const currency = currencyMatch ? currencyMatch[1] : 'USD';
+      const currency = this.currency;
 
       console.log('📋 [GET_BUDGET] FINAL → commissionablePrice:', commissionablePrice, 'agencyTotal:', agencyTotal, 'commissionAmount:', commissionAmount, 'currency:', currency);
 
@@ -1025,8 +1021,7 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
       if (totalPrice <= 0) {
         return null;
       }
-      // Get currency from FareList or use default
-      const currency = fareListEl?.getAttribute('currency') || this.currency;
+      const currency = this.currency;
       // Parse room information from FareList
       const rooms = [];
       if (fareListEl) {
@@ -1129,6 +1124,7 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
         check_in: params.checkinDate,
         check_out: params.checkoutDate,
         nights: nights,
+        currency: currency,
         rooms: rooms,
         policy_cancellation: this.getTextContent(hotelEl, 'CancellationPolicy') || '',
         policy_lodging: this.getTextContent(hotelEl, 'LodgingPolicy') || '',
@@ -1629,9 +1625,7 @@ serve(async (req) => {
                     importeBruto: budgetDetails.commissionablePrice,
                     comision: budgetDetails.commissionAmount || 0
                   };
-                  if (budgetDetails.currency) {
-                    r.currency = budgetDetails.currency;
-                  }
+                  r.currency = client.currency;
                 } else {
                   console.warn('⚠️ [MAKE_BUDGET] getBudget failed, keeping SubTotalAmount as fallback:', r.subTotalAmount);
                 }

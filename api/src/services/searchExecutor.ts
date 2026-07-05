@@ -27,6 +27,7 @@ import {
 import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.js';
 import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSegments.js';
 import { transformFare, type TransformOptions } from './flightTransformer.js';
+import { selectDistinctPriceFlights } from './flightSelection.js';
 import { matchesLuggagePreference } from './baggageUtils.js';
 import { filterFlightsByTimePreference, timePreferenceToRange, timeRangeToLabel } from './timeSlotMapper.js';
 import {
@@ -40,6 +41,10 @@ import {
 // =============================================================================
 
 const PROVIDER_TIMEOUT_MS = 45000; // 45 seconds (Starling puede tardar 20-30s en búsquedas internacionales)
+const EUROVIPS_ASYNC_POLL_INTERVAL_MS = 2000;
+const EUROVIPS_ASYNC_MAX_WAIT_MS = 120000;
+const HOTEL_CHAIN_ASYNC_THRESHOLD = 3;
+const HOTEL_CHAIN_CONCURRENCY_LIMIT = 2;
 const HOTEL_RESULT_CURRENCY = 'USD';
 
 function normalizeHotelCurrencyUsd(hotel: any): any {
@@ -241,6 +246,131 @@ function calculateLayoverHours(arrivalSegment: any, departureSegment: any): numb
     console.error('[LAYOVER_CALC] Error calculating layover:', error);
     return 0;
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createJobId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < tasks.length) {
+      const currentIndex = nextIndex++;
+      results[currentIndex] = await tasks[currentIndex]();
+    }
+  }
+
+  const workerCount = Math.min(Math.max(limit, 1), tasks.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
+}
+
+async function pollEurovipsJob(
+  supabase: ReturnType<typeof createClient>,
+  jobId: string
+): Promise<any> {
+  const deadline = Date.now() + EUROVIPS_ASYNC_MAX_WAIT_MS;
+  let lastStatus = '';
+
+  while (Date.now() < deadline) {
+    await sleep(EUROVIPS_ASYNC_POLL_INTERVAL_MS);
+
+    const { data, error } = await supabase
+      .from('search_jobs')
+      .select('status, results, error, completed_at')
+      .eq('id', jobId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(`[EUROVIPS_ASYNC] Poll failed for job ${jobId}:`, error.message);
+      continue;
+    }
+    const jobRow = data as {
+      status?: string | null;
+      results?: unknown;
+      error?: string | null;
+      completed_at?: string | null;
+    } | null;
+    if (!jobRow) continue;
+
+    const status = String(jobRow.status || '');
+    if (status !== lastStatus) {
+      console.log(`[EUROVIPS_ASYNC] Job ${jobId} status: ${status}`);
+      lastStatus = status;
+    }
+
+    if (status === 'completed') {
+      return {
+        success: true,
+        action: 'searchHotels',
+        results: jobRow.results || [],
+        jobId,
+        cached: false,
+        provider: 'EUROVIPS',
+        timestamp: jobRow.completed_at || new Date().toISOString()
+      };
+    }
+
+    if (status === 'failed') {
+      throw new Error(jobRow.error || `EUROVIPS async job ${jobId} failed`);
+    }
+  }
+
+  throw new Error(`EUROVIPS async job ${jobId} timed out after ${EUROVIPS_ASYNC_MAX_WAIT_MS}ms`);
+}
+
+async function invokeEurovipsSearch(
+  supabase: ReturnType<typeof createClient>,
+  body: { action: string; data: Record<string, unknown> },
+  useAsync: boolean
+): Promise<any> {
+  if (!useAsync) {
+    return await invokeWithTimeout<any>(supabase, 'eurovips-soap', body);
+  }
+
+  const jobId = createJobId();
+  console.log(`[EUROVIPS_ASYNC] Dispatching ${body.action} as job ${jobId}`);
+
+  const dispatch = await supabase.functions.invoke('eurovips-soap', {
+    body: {
+      ...body,
+      jobId
+    }
+  });
+
+  if (dispatch.error) {
+    throw new Error(dispatch.error.message || 'EUROVIPS async dispatch failed');
+  }
+
+  const payload = dispatch.data as any;
+  if (payload?.success === false) {
+    throw new Error(payload.detail || payload.error || 'EUROVIPS async dispatch failed');
+  }
+
+  if (!payload?.async) {
+    console.log(`[EUROVIPS_ASYNC] ${body.action} answered synchronously for job ${jobId}`);
+    return payload;
+  }
+
+  return await pollEurovipsJob(supabase, jobId);
 }
 
 function normalizeChildrenAges(childrenAges: unknown, childrenCount: number): number[] {
@@ -635,9 +765,8 @@ async function executeFlightSearch(
     console.log(`📊 [LUGGAGE FILTER] Flights: ${beforeLuggage} → ${flights_results.length} (excluded: ${luggageFilterExcluded})`);
   }
 
-  // ✅ STEP 4: Sort by price and limit to top 5
-  flights_results.sort((a: any, b: any) => (a.price.amount || 0) - (b.price.amount || 0));
-  const finalFlights = flights_results.slice(0, 5);
+  // ✅ STEP 4: One flight per distinct price (fewest escalas on ties), all distinct prices — no cap
+  const finalFlights = selectDistinctPriceFlights(flights_results);
 
   console.log('[FLIGHT_SEARCH] Final result:', finalFlights.length, 'flights');
 
@@ -695,7 +824,8 @@ async function executeFlightSearch(
       items: finalFlights,
       // NEW: Search reference for full results
       searchId: searchId,
-      fullResultsAvailable: flights_results.length > 5,
+      // All distinct-price flights are returned; nothing is withheld
+      fullResultsAvailable: false,
       totalResults: flights_results.length
     },
     metadata: Object.keys(metadata).length > 0 ? metadata : undefined
@@ -751,28 +881,37 @@ async function executeHotelSearch(
 
   let allHotels: any[] = [];
   let totalFromProvider = 0;
+  const providerErrors: Array<{ chain?: string; message: string }> = [];
+  const shouldUseAsyncEurovips = !hotelName && (
+    hotelChains.length === 0 ||
+    hotelChains.length >= HOTEL_CHAIN_ASYNC_THRESHOLD ||
+    (parsedRequest.type === 'combined' && hotelChains.length > 1)
+  );
 
   try {
     if (hotelChains.length > 1) {
       // ✅ MULTI-CHAIN: Make N parallel requests (1 per chain)
-      console.log(`🏨 [MULTI-CHAIN] Making ${hotelChains.length} parallel API requests for chains:`, hotelChains);
+      console.log(`🏨 [MULTI-CHAIN] Making ${hotelChains.length} API requests for chains (${shouldUseAsyncEurovips ? 'async' : 'sync'}):`, hotelChains);
 
-      const chainResults = await Promise.all(
-        hotelChains.map(async (chain: string) => {
+      const chainResults = await runWithConcurrency(
+        hotelChains.map((chain: string) => async () => {
           console.log(`📤 [MULTI-CHAIN] Requesting hotels for chain: "${chain}"`);
           try {
-            const result = await invokeWithTimeout(supabase, 'eurovips-soap', {
+            const result = await invokeEurovipsSearch(supabase, {
               action: 'searchHotels',
               data: { ...baseParams, hotelName: getProviderSearchTermForChain(chain) }
-            });
+            }, shouldUseAsyncEurovips);
             const hotels = (result as any)?.results || [];
             console.log(`✅ [MULTI-CHAIN] Chain "${chain}": received ${hotels.length} hotels`);
             return { chain, hotels };
-          } catch (error) {
-            console.error(`❌ [MULTI-CHAIN] Chain "${chain}" failed:`, error);
+          } catch (error: any) {
+            const message = error?.message || String(error);
+            providerErrors.push({ chain, message });
+            console.error(`❌ [MULTI-CHAIN] Chain "${chain}" failed:`, message);
             return { chain, hotels: [] };
           }
-        })
+        }),
+        HOTEL_CHAIN_CONCURRENCY_LIMIT
       );
 
       // Flatten all results
@@ -806,6 +945,21 @@ async function executeHotelSearch(
 
       console.log(`✅ [MULTI-CHAIN] After deduplication: ${allHotels.length} hotels`);
 
+      if (allHotels.length === 0 && providerErrors.length > 0) {
+        return {
+          status: 'error',
+          type: 'hotels',
+          error: {
+            message: 'Hotel provider failed for all requested chains',
+            details: providerErrors
+          },
+          metadata: {
+            provider_errors: providerErrors,
+            async_eurovips: shouldUseAsyncEurovips
+          }
+        };
+      }
+
     } else {
       // ✅ SINGLE REQUEST: Use first chain, hotelName, or no filter
       const nameFilter = hotelChains[0] ? getProviderSearchTermForChain(hotelChains[0]) : (hotelName || '');
@@ -819,10 +973,10 @@ async function executeHotelSearch(
       console.log(`📤 [HOTEL_SEARCH] Calling eurovips-soap Edge Function`);
       console.log(`   → cityCode: ${cityCode}, dates: ${hotels.checkinDate} to ${hotels.checkoutDate}, adults: ${inferredAdults}`);
 
-      const response = await invokeWithTimeout(supabase, 'eurovips-soap', {
+      const response = await invokeEurovipsSearch(supabase, {
         action: 'searchHotels',
         data: { ...baseParams, hotelName: nameFilter }
-      });
+      }, shouldUseAsyncEurovips);
 
       allHotels = (response as any)?.results || [];
       totalFromProvider = allHotels.length;
@@ -919,6 +1073,10 @@ async function executeHotelSearch(
       applied_to: 'EUROVIPS <name> field'
     };
   }
+  if (providerErrors.length > 0) {
+    metadata.provider_errors = providerErrors;
+  }
+  metadata.async_eurovips = shouldUseAsyncEurovips;
 
   // NEW: Generate searchId for full results reference
   const searchId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -993,6 +1151,12 @@ async function executeCombinedSearch(
     ...flightMetadata,
     ...hotelMetadata
   };
+  if (flightResult.status === 'error' || hotelResult.status === 'error') {
+    combinedMetadata.partial_errors = {
+      ...(flightResult.status === 'error' ? { flights: flightResult.error } : {}),
+      ...(hotelResult.status === 'error' ? { hotels: hotelResult.error } : {})
+    };
+  }
 
   // Determine overall status: completed only if both succeeded
   const overallStatus = flightResult.status === 'error' || hotelResult.status === 'error'

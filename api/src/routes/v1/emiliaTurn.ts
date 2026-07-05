@@ -81,10 +81,18 @@ export async function emiliaTurnRoutes(fastify: FastifyInstance) {
     }
 
     const body = parsedBody.data;
+    const apiTurnBody: EmiliaTurnRequest = {
+      ...body,
+      mode: 'agency',
+      workspace_mode: 'standard',
+      planner_state: null,
+    };
+    request.apiUsageRequestId = body.request_id;
     const turnId = generateSearchId().replace(/^srch_/, 'turn_');
 
     const cacheResult = await checkCacheRedis(body.request_id);
     if (cacheResult.exists && cacheResult.data) {
+      request.apiUsageCached = true;
       request.logger.info('CACHE_HIT', `Returning cached Emilia turn for request_id: ${body.request_id}`, {
         cached_at: cacheResult.cached_at,
       });
@@ -95,13 +103,17 @@ export async function emiliaTurnRoutes(fastify: FastifyInstance) {
       request.logger.info('EMILIA_TURN_INVOKE', 'Calling emilia-turn Edge runtime', {
         request_id: body.request_id,
         conversation_id: body.conversation_id,
+        requested_mode: body.mode,
+        requested_workspace_mode: body.workspace_mode,
+        effective_mode: apiTurnBody.mode,
+        effective_workspace_mode: apiTurnBody.workspace_mode,
         api_key_prefix: request.apiKey.key_prefix,
       });
 
       const edgeStart = Date.now();
       const edgeResponse = await fastify.supabase.functions.invoke('emilia-turn', {
         body: {
-          ...body,
+          ...apiTurnBody,
           api_key_context: {
             id: request.apiKey.id,
             key_prefix: request.apiKey.key_prefix,

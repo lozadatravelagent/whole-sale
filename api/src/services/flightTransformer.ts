@@ -402,7 +402,7 @@ export function transformFare(fare: any, index: number, tvcData: any, options: T
         })),
         // Baggage analysis for filtering
         baggageAnalysis: baggageAnalysis,
-        provider: 'TVC',
+        provider: 'STARLING',
         transactionId: tvcData?.TransactionID || ''
     };
 }

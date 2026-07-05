@@ -225,6 +225,7 @@ function extractHotelContext(hotelData: any): any {
     // Optional fields (preserve if exist)
     ...(hotelData.roomType && { roomType: hotelData.roomType }),
     ...(hotelData.mealPlan && { mealPlan: hotelData.mealPlan }),
+    ...(Array.isArray(hotelData.hotelChains) && hotelData.hotelChains.length > 0 && { hotelChains: hotelData.hotelChains }),
     ...(hotelData.hotelChain && { hotelChain: hotelData.hotelChain }),
     ...(hotelData.hotelName && { hotelName: hotelData.hotelName })
   };

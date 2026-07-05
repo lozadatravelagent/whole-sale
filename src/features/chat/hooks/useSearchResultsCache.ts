@@ -8,8 +8,6 @@ import {
 } from '../utils/filterPipeline';
 import { getFlightsFromStorage } from '../services/flightStorageService';
 
-const TOP_N_DISPLAY = 5;
-
 /**
  * Hook para cachear resultados de búsqueda y aplicar filtros localmente
  *
@@ -17,7 +15,7 @@ const TOP_N_DISPLAY = 5;
  * 1. Al montar, intenta cargar vuelos de localStorage usando searchId
  * 2. Si existe, cachea para filtrado dinámico
  * 3. Usuario aplica filtro via chip
- * 4. applyFilter() filtra localmente y muestra nuevo Top 5
+ * 4. applyFilter() filtra localmente y actualiza los resultados visibles
  */
 export function useSearchResultsCache(searchId?: string) {
   const [cache, setCache] = useState<SearchResultsCache | null>(null);
@@ -35,7 +33,7 @@ export function useSearchResultsCache(searchId?: string) {
       if (flights && flights.length > 0) {
         const distribution = calculateDistribution(flights);
 
-        // Ordenar por precio y tomar Top 5 para display inicial
+        // Ordenar por precio para display inicial (todos los precios distintos)
         const sorted = [...flights].sort(
           (a, b) => (a.price.amount || 0) - (b.price.amount || 0)
         );
@@ -43,7 +41,7 @@ export function useSearchResultsCache(searchId?: string) {
         setCache({
           allResults: flights,
           activeFilters: getDefaultFilters(),
-          displayedResults: sorted.slice(0, TOP_N_DISPLAY),
+          displayedResults: sorted,
           distribution,
           timestamp: Date.now(),
         });
@@ -77,7 +75,7 @@ export function useSearchResultsCache(searchId?: string) {
 
     const distribution = calculateDistribution(results);
 
-    // Ordenar por precio y tomar Top 5 para display inicial
+    // Ordenar por precio para display inicial (todos los precios distintos)
     const sorted = [...results].sort(
       (a, b) => (a.price.amount || 0) - (b.price.amount || 0)
     );
@@ -85,7 +83,7 @@ export function useSearchResultsCache(searchId?: string) {
     setCache({
       allResults: results,
       activeFilters: getDefaultFilters(),
-      displayedResults: sorted.slice(0, TOP_N_DISPLAY),
+      displayedResults: sorted,
       distribution,
       timestamp: Date.now(),
     });
@@ -106,11 +104,11 @@ export function useSearchResultsCache(searchId?: string) {
       // Filtrar desde allResults
       const filtered = applyFilters(cache.allResults, newFilters);
 
-      // Ordenar por precio y tomar Top 5
+      // Ordenar por precio (todos los precios distintos)
       const sorted = [...filtered].sort(
         (a, b) => (a.price.amount || 0) - (b.price.amount || 0)
       );
-      const displayed = sorted.slice(0, TOP_N_DISPLAY);
+      const displayed = sorted;
 
       // Recalcular distribución basada en resultados filtrados
       const newDistribution = calculateDistribution(filtered);
@@ -151,7 +149,7 @@ export function useSearchResultsCache(searchId?: string) {
     setCache((prev) => ({
       ...prev!,
       activeFilters: defaultFilters,
-      displayedResults: sorted.slice(0, TOP_N_DISPLAY),
+      displayedResults: sorted,
       distribution: calculateDistribution(cache.allResults),
     }));
   }, [cache]);

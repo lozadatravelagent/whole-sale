@@ -15,6 +15,7 @@ import {
 import type { LocalHotelData, LocalHotelSegmentResult, FlightData, LocalHotelChainBalance, LocalHotelChainQuota, LocalServiceData } from '@/types/external';
 import type { SearchResult } from '../types/chat';
 import { transformStarlingResults } from './flightTransformer';
+import { selectDistinctPriceFlights } from './flightSelection';
 import { formatFlightResponse, formatHotelResponse, formatMultiSegmentHotelResponse, formatServiceResponse, formatCombinedResponse, formatChainBalanceNote, type HotelResponseMode } from './responseFormatters';
 import { getCityCode } from '@/services/cityCodeMapping';
 import { airlineResolver } from './airlineResolver';
@@ -751,6 +752,11 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       }
     }
 
+    // Final step: one flight per distinct price (fewest escalas on ties), all distinct prices — no cap.
+    // Runs AFTER all search filters (layover/time/baggage) so we dedupe the fully-filtered set,
+    // mirroring the backend executors which dedupe as their last step.
+    flights = selectDistinctPriceFlights(flights);
+
     // If user didn't specify stops, show mixed results (no filtering). Optionally we could prefer direct-first ordering later.
     console.log('✅ [FLIGHT SEARCH] Step 5: Flight data transformed successfully');
     console.log('✈️ Flights found:', flights.length);
@@ -806,9 +812,8 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       returnDate: parsed.flights?.returnDate,
     });
 
-    // Limit flights stored in DB to 5 (UI will get full list from localStorage)
-    const MAX_FLIGHTS_FOR_DB = 5;
-    const flightsForDb = flights.slice(0, MAX_FLIGHTS_FOR_DB);
+    // Return all distinct-price flights (already deduped in the transformer); no DB cap
+    const flightsForDb = flights;
 
     const result = {
       response: responseWithWarnings,
