@@ -1331,27 +1331,28 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
                     >
                       <CardContent className="p-3">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center space-x-3">
+                        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex min-w-0 flex-1 basis-[190px] items-center gap-3">
                             {!isCartMode && (
                               <Checkbox
                                 data-testid={`select-flight-${flight.id || index}`}
                                 checked={isSelected}
                                 onCheckedChange={() => handleFlightToggle(flight.id!)}
+                                className="shrink-0"
                               />
                             )}
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <Plane className="h-3 w-3 text-primary" />
-                                <span className="font-medium text-sm">{flight.airline.name}</span>
-                                <Badge variant="secondary" className="text-xs px-1 py-0">{flight.airline.code}</Badge>
+                            <div className="min-w-0">
+                              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                                <Plane className="h-3 w-3 shrink-0 text-primary" />
+                                <span className="min-w-0 truncate text-sm font-medium">{flight.airline.name}</span>
+                                <Badge variant="secondary" className="shrink-0 px-1 py-0 text-xs">{flight.airline.code}</Badge>
                                 {flight.cabin?.brandName && (
                                   <Badge
                                     variant={
                                       flight.cabin.class === 'F' ? 'destructive' :
                                       ['C', 'J'].includes(flight.cabin.class) ? 'default' : 'secondary'
                                     }
-                                    className="text-xs px-1 py-0"
+                                    className="shrink-0 px-1 py-0 text-xs"
                                   >
                                     {formatCabinBrand(flight.cabin.brandName)}
                                   </Badge>
@@ -1365,8 +1366,8 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                               </div>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-lg font-bold text-primary">
+                          <div className="ml-auto min-w-fit shrink-0 text-right">
+                            <div className="whitespace-nowrap text-lg font-bold text-primary">
                               {formatPrice(flight.price.amount, flight.price.currency)}
                             </div>
                             <div className="text-xs text-muted-foreground">
