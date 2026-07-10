@@ -1,6 +1,10 @@
-// Contracts for external travel API providers (Starling, EUROVIPS, Hotelbeds).
+// Contracts for external travel API providers (Starling, EUROVIPS, Hotelbeds, Delfos).
 // These types describe raw data shapes returned by third-party APIs and are
 // consumed by multiple features (chat, trip-planner, public-chat).
+
+import type { ProviderOfferMeta, TravelSearchProvider } from '@/types';
+
+export type { ProviderOfferMeta, TravelSearchProvider };
 
 export interface FlightData {
   id: string;
@@ -180,7 +184,9 @@ export interface FlightData {
     description?: string;
   }>;
   luggage?: boolean;
-  provider: string;
+  provider: string | TravelSearchProvider;
+  providerOfferId?: string;
+  providerMeta?: ProviderOfferMeta;
   contentOwner?: string;
   ownContent?: boolean;
   transactionId?: string;
@@ -237,7 +243,9 @@ export interface LocalHotelData {
   search_childrenAges?: number[];
   policy_cancellation?: string;
   policy_lodging?: string;
-  provider?: 'EUROVIPS' | 'HOTELBEDS';
+  provider?: TravelSearchProvider;
+  providerOfferId?: string;
+  providerMeta?: ProviderOfferMeta;
 }
 
 export interface LocalHotelChainQuota {

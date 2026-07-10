@@ -30,6 +30,9 @@ import { buildEditorialData } from '@/features/trip-planner/editorial';
 import { createDebugTimer, logTimingStep, nowMs } from '@/utils/debugTiming';
 import { getSearchHandlerCopy, getResponseFormatterCopy, type UserLanguage } from '@/features/chat/i18n/chatResultCopy';
 import { invokeEurovipsAsync } from './asyncSearchClient';
+import { isDelfosSearchEnabledClient } from './providers/flags';
+import { mergeFlights } from './providers/mergeFlights';
+import { mergeHotels } from './providers/mergeHotels';
 
 /**
  * @internal SHARED SERVICE
@@ -486,27 +489,88 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
       ]);
     };
 
+    const invokeDelfosFlightSearch = async (): Promise<FlightData[]> => {
+      if (!isDelfosSearchEnabledClient()) return [];
+      const legs = (starlingParams as { Legs?: Array<{ DepartureAirportCity?: string; ArrivalAirportCity?: string; FlightDate?: string }> })?.Legs || [];
+      const segments = legs.map((leg) => ({
+        origin: leg.DepartureAirportCity || '',
+        destination: leg.ArrivalAirportCity || '',
+        departureDate: leg.FlightDate || '',
+      }));
+      try {
+        const delfosResponse = await Promise.race([
+          supabase.functions.invoke('delfos-api', {
+            body: {
+              action: 'searchFlights',
+              data: {
+                segments,
+                adults: parsed.flights?.adults || 1,
+                children: parsed.flights?.children || 0,
+                infants: parsed.flights?.infants || 0,
+                tripType: parsed.flights?.tripType,
+                maxResults: 20,
+              },
+            },
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Delfos search timed out after 45s')), 45_000),
+          ),
+        ]);
+        if (delfosResponse.error) {
+          console.warn('⚠️ [FLIGHT SEARCH] Delfos error:', delfosResponse.error.message);
+          return [];
+        }
+        if (delfosResponse.data?.skipped || delfosResponse.data?.code === 'UNSUPPORTED_ITINERARY') {
+          console.log('ℹ️ [FLIGHT SEARCH] Delfos skipped (unsupported itinerary)');
+          return [];
+        }
+        if (delfosResponse.data?.success === false) {
+          console.warn('⚠️ [FLIGHT SEARCH] Delfos failed:', delfosResponse.data?.detail);
+          return [];
+        }
+        const items = Array.isArray(delfosResponse.data?.results) ? delfosResponse.data.results : [];
+        console.log(`✅ [FLIGHT SEARCH] Delfos returned ${items.length} flights`);
+        return items as FlightData[];
+      } catch (err) {
+        console.warn('⚠️ [FLIGHT SEARCH] Delfos invoke failed:', err);
+        return [];
+      }
+    };
+
     console.log('📤 [FLIGHT SEARCH] Step 2: About to call Starling API (Supabase Edge Function)');
     const invokeStart = nowMs();
-    const response = await invokeStarlingSearch(starlingParams);
+    const delfosEnabled = isDelfosSearchEnabledClient();
+    const [response, delfosFlightsEarly] = await Promise.all([
+      invokeStarlingSearch(starlingParams).catch((err) => ({ error: err, data: null })),
+      invokeDelfosFlightSearch(),
+    ]);
     logTimingStep('FLIGHT SEARCH', 'invoke Starling initial search', invokeStart, {
       hasError: Boolean(response.error),
+      delfos: delfosFlightsEarly.length,
     });
 
     console.log('✅ [FLIGHT SEARCH] Step 3: Starling API response received');
     console.log('📨 Response status:', response.error ? 'ERROR' : 'SUCCESS');
 
-    if (response.error) {
+    if (response.error && delfosFlightsEarly.length === 0) {
       console.error('❌ [FLIGHT SEARCH] Starling API error:', response.error);
-      throw new Error(response.error.message);
+      throw new Error(response.error.message || String(response.error));
     }
 
     console.log('📊 [FLIGHT SEARCH] Raw response data:', response.data);
 
     console.log('🔄 [FLIGHT SEARCH] Step 4: Transforming Starling results');
     const transformStart = nowMs();
-    const flightData = response.data?.data || response.data;
-    let flights = await transformStarlingResults(flightData, parsed);
+    let flights: FlightData[] = [];
+    if (!response.error && response.data) {
+      const flightData = response.data?.data || response.data;
+      flights = await transformStarlingResults(flightData, parsed);
+      flights = flights.map((f) => ({ ...f, provider: f.provider || 'STARLING' }));
+    }
+    if (delfosEnabled && delfosFlightsEarly.length > 0) {
+      flights = mergeFlights([flights, delfosFlightsEarly]) as FlightData[];
+      console.log(`🔀 [FLIGHT SEARCH] Merged multi-provider flights: ${flights.length}`);
+    }
     logTimingStep('FLIGHT SEARCH', 'transformStarlingResults initial', transformStart, {
       flights: flights.length,
     });
@@ -1090,6 +1154,44 @@ export const handleHotelSearch = async (
 
     let allHotels: LocalHotelData[] = [];
 
+    const delfosHotelPromise: Promise<LocalHotelData[]> = isDelfosSearchEnabledClient()
+      ? (async () => {
+          try {
+            const children = enrichedParsed.hotels?.children || 0;
+            const childrenAges = normalizeChildrenAges(enrichedParsed.hotels?.childrenAges, children);
+            const delfosResponse = await Promise.race([
+              supabase.functions.invoke('delfos-api', {
+                body: {
+                  action: 'searchHotels',
+                  data: {
+                    checkIn: enrichedParsed.hotels?.checkinDate,
+                    checkOut: enrichedParsed.hotels?.checkoutDate,
+                    adults: enrichedParsed.hotels?.adults || 1,
+                    children,
+                    infants: enrichedParsed.hotels?.infants || 0,
+                    childrenAges,
+                    city: enrichedParsed.hotels?.city,
+                  },
+                },
+              }),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('Delfos hotel search timed out after 45s')), 45_000),
+              ),
+            ]);
+            if (delfosResponse.error || delfosResponse.data?.success === false) {
+              console.warn('⚠️ [HOTEL SEARCH] Delfos error:', delfosResponse.error?.message || delfosResponse.data?.detail);
+              return [];
+            }
+            const items = Array.isArray(delfosResponse.data?.results) ? delfosResponse.data.results : [];
+            console.log(`✅ [HOTEL SEARCH] Delfos returned ${items.length} hotels`);
+            return items as LocalHotelData[];
+          } catch (err) {
+            console.warn('⚠️ [HOTEL SEARCH] Delfos invoke failed:', err);
+            return [];
+          }
+        })()
+      : Promise.resolve([]);
+
     // =====================================================================
     // EXACT-MATCH MODE — Phase 2 / sub-task C
     // When the user names a SPECIFIC single hotel (hotelName, OR hotelNames
@@ -1384,10 +1486,18 @@ export const handleHotelSearch = async (
       allHotels = tagEurovipsHotels(response.data.results || []);
     }
 
-    // 🔍 DEBUG: Log all hotel names received from EUROVIPS
-    console.log(`📋 [EUROVIPS RESPONSE] Received ${allHotels.length} hotels:`);
+    // Multi-provider merge: EUROVIPS results + Delfos (ADR-003)
+    const delfosHotels = await delfosHotelPromise;
+    if (delfosHotels.length > 0) {
+      const beforeMerge = allHotels.length;
+      allHotels = mergeHotels([allHotels, delfosHotels]) as LocalHotelData[];
+      console.log(`🔀 [HOTEL SEARCH] Merged EUROVIPS(${beforeMerge}) + Delfos(${delfosHotels.length}) → ${allHotels.length}`);
+    }
+
+    // 🔍 DEBUG: Log all hotel names received from providers
+    console.log(`📋 [HOTEL RESPONSE] Received ${allHotels.length} hotels (multi-provider):`);
     allHotels.forEach((hotel, index: number) => {
-      console.log(`   ${index + 1}. "${hotel.name}"`);
+      console.log(`   ${index + 1}. "${hotel.name}" [${hotel.provider || 'EUROVIPS'}]`);
     });
 
     // Attach search occupancy to each hotel so downstream components (CombinedTravelSelector, makeBudget) know the passenger mix

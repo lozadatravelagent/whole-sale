@@ -8,6 +8,17 @@ export type LeadStatus = 'new' | 'quoted' | 'negotiating' | 'won' | 'lost';
 export type IntegrationStatus = 'active' | 'pending' | 'disabled';
 export type ProviderCode = 'EUROVIPS' | 'LOZADA' | 'DELFOS' | 'ICARO' | 'STARLING' | 'HOTELBEDS';
 
+/** Providers that can appear on search result items (flights / hotels). */
+export type TravelSearchProvider = 'STARLING' | 'EUROVIPS' | 'DELFOS' | 'HOTELBEDS';
+
+/** Opaque offer TTL / upstream hints for multi-provider search (booking later). */
+export interface ProviderOfferMeta {
+  priceableUntil?: string;
+  expiresAt?: string;
+  /** Upstream source inside an aggregator, e.g. lleego | dingus */
+  sourceProvider?: string;
+}
+
 // Database entities
 export interface Tenant {
   id: string;
@@ -330,6 +341,9 @@ export interface FlightData {
     included: boolean; // Si el usuario lo solicitó
     type?: 'in' | 'out' | 'in_out'; // Tipo de traslado solicitado
   };
+  provider?: TravelSearchProvider;
+  providerOfferId?: string;
+  providerMeta?: ProviderOfferMeta;
 }
 
 export interface PdfGenerationRequest {
@@ -492,7 +506,9 @@ export interface HotelData {
   segmentCheckIn?: string;
   segmentCheckOut?: string;
   segmentOrder?: number;
-  provider?: 'EUROVIPS' | 'HOTELBEDS';
+  provider?: TravelSearchProvider;
+  providerOfferId?: string;
+  providerMeta?: ProviderOfferMeta;
 }
 
 // Extended hotel data with selected room for PDF generation

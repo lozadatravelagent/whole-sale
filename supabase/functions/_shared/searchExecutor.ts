@@ -18,6 +18,10 @@ import {
 import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.ts';
 import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSegments.ts';
 import { selectDistinctPriceFlights } from './flightSelection.ts';
+import { isDelfosSearchEnabled } from './providers/flags.ts';
+import { mergeFlights } from './providers/mergeFlights.ts';
+import { mergeHotels } from './providers/mergeHotels.ts';
+import type { ProviderErrorEntry, TravelSearchProvider } from './providers/types.ts';
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -342,6 +346,86 @@ async function pollEurovipsJob(
   throw new Error(`EUROVIPS async job ${jobId} timed out after ${EUROVIPS_ASYNC_MAX_WAIT_MS}ms`);
 }
 
+/**
+ * Search flights via Delfos edge adapter (canonical items).
+ * Returns empty + skip on UNSUPPORTED_ITINERARY so multi-city stays Starling-only.
+ */
+async function searchDelfosFlights(
+  supabase: ReturnType<typeof createClient>,
+  normalizedFlights: any,
+  flightSegments: Array<{ origin: string; destination: string; departureDate: string }>,
+): Promise<{ items: any[]; skipped?: boolean; error?: string }> {
+  const segments = flightSegments.map((segment) => {
+    const { originCode, destinationCode } = resolveFlightCodes(segment.origin, segment.destination);
+    return {
+      origin: originCode,
+      destination: destinationCode,
+      departureDate: segment.departureDate,
+    };
+  });
+
+  try {
+    const response = await invokeWithTimeout<any>(supabase, 'delfos-api', {
+      action: 'searchFlights',
+      data: {
+        segments,
+        adults: normalizedFlights?.adults || 1,
+        children: normalizedFlights?.children || 0,
+        infants: normalizedFlights?.infants || 0,
+        tripType: normalizedFlights?.tripType,
+        maxResults: 20,
+      },
+    });
+
+    if (response?.skipped || response?.code === 'UNSUPPORTED_ITINERARY') {
+      return { items: [], skipped: true };
+    }
+    if (response?.success === false) {
+      return { items: [], error: response.detail || response.error || 'Delfos flight search failed' };
+    }
+    const items = Array.isArray(response?.results) ? response.results : [];
+    return { items: items.map((f: any) => ({ ...f, provider: f.provider || 'DELFOS' })) };
+  } catch (error: any) {
+    return { items: [], error: error?.message || String(error) };
+  }
+}
+
+async function searchDelfosHotels(
+  supabase: ReturnType<typeof createClient>,
+  hotels: any,
+  adults: number,
+  childrenAges: number[],
+): Promise<{ items: any[]; error?: string }> {
+  try {
+    const response = await invokeWithTimeout<any>(supabase, 'delfos-api', {
+      action: 'searchHotels',
+      data: {
+        checkIn: hotels.checkinDate,
+        checkOut: hotels.checkoutDate,
+        adults,
+        children: hotels.children || 0,
+        infants: hotels.infants || 0,
+        childrenAges,
+        city: hotels.city,
+      },
+    });
+
+    if (response?.success === false) {
+      return { items: [], error: response.detail || response.error || 'Delfos hotel search failed' };
+    }
+    const items = Array.isArray(response?.results) ? response.results : [];
+    return {
+      items: items.map((h: any) => ({
+        ...h,
+        provider: h.provider || 'DELFOS',
+        city: h.city || hotels.city || '',
+      })),
+    };
+  } catch (error: any) {
+    return { items: [], error: error?.message || String(error) };
+  }
+}
+
 async function invokeEurovipsSearch(
   supabase: ReturnType<typeof createClient>,
   body: { action: string; data: Record<string, unknown> },
@@ -518,6 +602,16 @@ async function executeFlightSearch(
   console.log('[FLIGHT_SEARCH] Converting city names to IATA codes...');
   console.log(`   Trip type: "${normalizedFlights?.tripType || 'one_way'}"`);
 
+  const providersSearched: TravelSearchProvider[] = ['STARLING'];
+  const providersSucceeded: TravelSearchProvider[] = [];
+  const providerErrors: ProviderErrorEntry[] = [];
+  const delfosEnabled = isDelfosSearchEnabled();
+  if (delfosEnabled) providersSearched.push('DELFOS');
+  // Kick Delfos in parallel with Starling (ADR-003 fan-out)
+  const delfosPromise = delfosEnabled
+    ? searchDelfosFlights(supabase, normalizedFlights, flightSegments)
+    : Promise.resolve({ items: [] as any[], skipped: true as boolean | undefined, error: undefined as string | undefined });
+
   // Build Starling API request - passengers
   const passengers: Array<{ Count: number; Type: string }> = [];
 
@@ -570,6 +664,7 @@ async function executeFlightSearch(
 
   // Call starling-flights Edge Function with timeout
   let response;
+  let starlingHardError: string | null = null;
   try {
     response = await invokeWithTimeout(supabase, 'starling-flights', {
       action: 'searchFlights',
@@ -577,14 +672,9 @@ async function executeFlightSearch(
     });
   } catch (error) {
     console.error('[FLIGHT_SEARCH] Starling API error:', error);
-    return {
-      status: 'error',
-      type: 'flights',
-      error: {
-        message: error.message || 'Flight search failed',
-        details: error
-      }
-    };
+    starlingHardError = error.message || 'Flight search failed';
+    providerErrors.push({ provider: 'STARLING', message: starlingHardError });
+    response = null;
   }
 
   // ============================================================================
@@ -603,33 +693,22 @@ async function executeFlightSearch(
   // }
   // ============================================================================
 
-  const tvcResponse = response.data || response;
+  const tvcResponse = response ? (response.data || response) : null;
 
   // Extract fares from TVC response (Fares or Recommendations depending on API version)
   const rawFares = tvcResponse?.Fares || tvcResponse?.Recommendations || [];
 
   console.log('[FLIGHT_SEARCH] TVC Response received:', {
-    success: response.success,
+    success: response?.success,
     hasFares: !!tvcResponse?.Fares,
     hasRecommendations: !!tvcResponse?.Recommendations,
-    faresCount: rawFares.length,
-    transactionId: tvcResponse?.TransactionID
+    faresCount: rawFares?.length || 0,
+    transactionId: tvcResponse?.TransactionID,
+    starlingHardError,
   });
 
-  if (!rawFares || rawFares.length === 0) {
-    console.log('[FLIGHT_SEARCH] No fares found in TVC response');
-    return {
-      status: 'completed',
-      type: 'flights',
-      flights: {
-        count: 0,
-        items: []
-      }
-    };
-  }
-
-  // Transform TVC fares to our standard flight format
-  let flights_results = rawFares.map((fare: any, index: number) => {
+  // Transform TVC fares to our standard flight format (empty if Starling failed / no fares)
+  let flights_results = (rawFares || []).map((fare: any, index: number) => {
     const legs = fare.Legs || [];
     const firstLeg = legs[0] || {};
     const firstOption = firstLeg.Options?.[0] || {};
@@ -733,7 +812,43 @@ async function executeFlightSearch(
     };
   });
 
+  if (flights_results.length > 0) {
+    providersSucceeded.push('STARLING');
+  } else if (!starlingHardError) {
+    console.log('[FLIGHT_SEARCH] No fares found in TVC response');
+  }
+
   console.log('[FLIGHT_SEARCH] Transformed', flights_results.length, 'flights from TVC');
+
+  // Merge Delfos inventory when enabled (partial failure OK)
+  const delfosResult = await delfosPromise;
+  if (delfosEnabled && !delfosResult.skipped) {
+    if (delfosResult.error) {
+      providerErrors.push({ provider: 'DELFOS', message: delfosResult.error });
+      console.warn('[FLIGHT_SEARCH] Delfos error:', delfosResult.error);
+    } else {
+      if (delfosResult.items.length > 0) providersSucceeded.push('DELFOS');
+      console.log('[FLIGHT_SEARCH] Delfos returned', delfosResult.items.length, 'flights');
+      flights_results = mergeFlights([flights_results, delfosResult.items]);
+      console.log('[FLIGHT_SEARCH] Merged flights total:', flights_results.length);
+    }
+  }
+
+  if (flights_results.length === 0 && starlingHardError && providersSucceeded.length === 0) {
+    return {
+      status: 'error',
+      type: 'flights',
+      error: {
+        message: starlingHardError,
+        details: { provider_errors: providerErrors },
+      },
+      metadata: {
+        providers_searched: providersSearched,
+        providers_succeeded: providersSucceeded,
+        provider_errors: providerErrors,
+      },
+    };
+  }
 
   // ✅ CRITICAL FIX: Filter by maxLayoverHours if specified (mirrors chat internal logic)
   // This ensures API searches respect layover duration constraints just like internal chat
@@ -823,6 +938,15 @@ async function executeFlightSearch(
     metadata.light_fare_airlines = getLightFareAirlines();
   }
 
+  metadata.providers_searched = providersSearched;
+  metadata.providers_succeeded = providersSucceeded;
+  if (providerErrors.length > 0) metadata.provider_errors = providerErrors;
+  metadata.provider_counts = {
+    starling: providersSucceeded.includes('STARLING') ? flights_results.filter((f: any) => f.provider === 'STARLING').length : 0,
+    delfos: providersSucceeded.includes('DELFOS') ? finalFlights.filter((f: any) => f.provider === 'DELFOS').length : 0,
+    merged_total: finalFlights.length,
+  };
+
   return {
     status: 'completed',
     type: 'flights',
@@ -876,14 +1000,20 @@ async function executeHotelSearch(
   };
 
   let eurovipsHotels: any[] = [];
-  const providersSearched: string[] = ['EUROVIPS'];
-  const providersSucceeded: string[] = [];
-  const providerErrors: Array<{ chain?: string; message: string }> = [];
+  let delfosHotels: any[] = [];
+  const providersSearched: TravelSearchProvider[] = ['EUROVIPS'];
+  const providersSucceeded: TravelSearchProvider[] = [];
+  const providerErrors: ProviderErrorEntry[] = [];
   const shouldUseAsyncEurovips = !hotelName && (
     hotelChains.length === 0 ||
     hotelChains.length >= HOTEL_CHAIN_ASYNC_THRESHOLD ||
     (parsedRequest.type === 'combined' && hotelChains.length > 1)
   );
+  const delfosEnabled = isDelfosSearchEnabled();
+  if (delfosEnabled) providersSearched.push('DELFOS');
+  const delfosPromise = delfosEnabled
+    ? searchDelfosHotels(supabase, hotels, inferredAdults, childrenAges)
+    : Promise.resolve({ items: [] as any[], error: undefined as string | undefined });
 
   try {
     if (hotelName) {
@@ -909,7 +1039,7 @@ async function executeHotelSearch(
             return chainHotels;
           } catch (error: any) {
             const message = error?.message || String(error);
-            providerErrors.push({ chain, message });
+            providerErrors.push({ provider: 'EUROVIPS', chain, message });
             console.error(`❌ [HOTEL_SEARCH] Chain "${chain}" failed:`, message);
             return [];
           }
@@ -936,12 +1066,25 @@ async function executeHotelSearch(
     }
 
     console.log(`[HOTEL_SEARCH] EUROVIPS returned ${eurovipsHotels.length} hotels`);
-    if (eurovipsHotels.length === 0 && providerErrors.length > 0) {
+
+    const delfosResult = await delfosPromise;
+    if (delfosEnabled) {
+      if (delfosResult.error) {
+        providerErrors.push({ provider: 'DELFOS', message: delfosResult.error });
+        console.warn('[HOTEL_SEARCH] Delfos error:', delfosResult.error);
+      } else {
+        delfosHotels = delfosResult.items;
+        if (delfosHotels.length > 0) providersSucceeded.push('DELFOS');
+        console.log(`[HOTEL_SEARCH] Delfos returned ${delfosHotels.length} hotels`);
+      }
+    }
+
+    if (eurovipsHotels.length === 0 && delfosHotels.length === 0 && providerErrors.length > 0) {
       return {
         status: 'error',
         type: 'hotels',
         error: {
-          message: 'Hotel provider failed for all requested chains',
+          message: 'Hotel provider failed for all requested providers/chains',
           details: providerErrors
         },
         metadata: {
@@ -954,14 +1097,33 @@ async function executeHotelSearch(
     }
   } catch (error: any) {
     console.error('[HOTEL_SEARCH] EUROVIPS failed:', error?.message);
-    return {
-      status: 'error',
-      type: 'hotels',
-      error: {
-        message: error?.message || 'Hotel search failed',
-        details: error
-      }
-    };
+    providerErrors.push({
+      provider: 'EUROVIPS',
+      message: error?.message || 'Hotel search failed',
+    });
+    // Still try Delfos if it was running in parallel
+    const delfosResult = await delfosPromise;
+    if (delfosEnabled && !delfosResult.error && delfosResult.items.length > 0) {
+      delfosHotels = delfosResult.items;
+      providersSucceeded.push('DELFOS');
+    } else if (delfosEnabled && delfosResult.error) {
+      providerErrors.push({ provider: 'DELFOS', message: delfosResult.error });
+    }
+    if (delfosHotels.length === 0) {
+      return {
+        status: 'error',
+        type: 'hotels',
+        error: {
+          message: error?.message || 'Hotel search failed',
+          details: { provider_errors: providerErrors },
+        },
+        metadata: {
+          providers_searched: providersSearched,
+          providers_succeeded: providersSucceeded,
+          provider_errors: providerErrors,
+        },
+      };
+    }
   }
 
   const deduped = new Map<string, any>();
@@ -976,10 +1138,13 @@ async function executeHotelSearch(
     }
   }
 
-  let allHotels = Array.from(deduped.values());
+  const eurovipsDeduped = Array.from(deduped.values());
+  let allHotels = mergeHotels([eurovipsDeduped, delfosHotels]);
   const totalFromProvider = allHotels.length;
 
-  console.log(`[HOTEL_SEARCH] Merged: ${eurovipsHotels.length} → ${totalFromProvider} hotels (after dedup)`);
+  console.log(
+    `[HOTEL_SEARCH] Merged: eurovips=${eurovipsDeduped.length} delfos=${delfosHotels.length} → ${totalFromProvider} hotels (after multi-provider merge)`,
+  );
 
   if (!hotelName && hotelChains.length > 0) {
     const beforeChainFilter = allHotels.length;
@@ -1010,14 +1175,13 @@ async function executeHotelSearch(
     hotels.mealPlan
   );
 
-  // ✅ STEP 3: Sort by price and limit to top 5
+  // STEP 3: Sort by price and return all matching hotels
   const usdHotels = filteredHotels.map(normalizeHotelCurrencyUsd);
 
   const sortedHotels = usdHotels
     .sort((a: any, b: any) => {
       return getMinRoomPrice(a) - getMinRoomPrice(b);
-    })
-    .slice(0, 5);
+    });
 
   console.log('[HOTEL_SEARCH] Final result:', sortedHotels.length, 'hotels');
 
@@ -1073,7 +1237,8 @@ async function executeHotelSearch(
   }
   metadata.async_eurovips = shouldUseAsyncEurovips;
   metadata.provider_counts = {
-    eurovips: eurovipsHotels.length,
+    eurovips: eurovipsDeduped.length,
+    delfos: delfosHotels.length,
     merged_total: totalFromProvider,
   };
 
