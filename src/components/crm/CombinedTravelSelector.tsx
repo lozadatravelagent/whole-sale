@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { FlightData, HotelData, HotelDataWithSelectedRoom, CombinedTravelResults } from '@/types';
+import { FlightData, HotelData, HotelDataWithSelectedRoom, CombinedTravelResults, type TravelSearchProvider } from '@/types';
 import { generateFlightPdf, generateCombinedTravelPdf } from '@/services/pdf/customPdfGenerator';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import { useSearchResultsCache } from '@/features/chat/hooks/useSearchResultsCache';
@@ -49,6 +49,43 @@ import { supabase } from '@/integrations/supabase/client';
 
 const ensureHttps = (url: string) =>
   url.startsWith('http://') ? url.replace('http://', 'https://') : url;
+
+const PROVIDER_LABELS: Record<TravelSearchProvider, string> = {
+  STARLING: 'Starling',
+  EUROVIPS: 'EUROVIPS',
+  DELFOS: 'Delfos',
+  HOTELBEDS: 'Hotelbeds',
+};
+
+const normalizeTravelProvider = (
+  provider: string | undefined,
+  fallback: TravelSearchProvider
+): TravelSearchProvider => {
+  const value = provider?.toUpperCase();
+  return value && value in PROVIDER_LABELS ? value as TravelSearchProvider : fallback;
+};
+
+const getProviderLabel = (provider: string | undefined, fallback: TravelSearchProvider) =>
+  PROVIDER_LABELS[normalizeTravelProvider(provider, fallback)];
+
+function ProviderBanner({
+  provider,
+  fallback,
+  label
+}: {
+  provider?: string;
+  fallback: TravelSearchProvider;
+  label: string;
+}) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-2 rounded-md border bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
+      <span className="font-medium">{label}</span>
+      <Badge variant="secondary" className="shrink-0 px-2 py-0 text-xs">
+        {getProviderLabel(provider, fallback)}
+      </Badge>
+    </div>
+  );
+}
 
 interface CombinedTravelSelectorProps {
   combinedData: CombinedTravelResults;
@@ -1331,6 +1368,7 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                       className={`transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
                     >
                       <CardContent className="p-3">
+                        <ProviderBanner provider={flight.provider} fallback="STARLING" label={copy.provider} />
                         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                           <div className="flex min-w-0 flex-1 basis-[190px] items-center gap-3">
                             {!isCartMode && (
@@ -1531,9 +1569,10 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                   return (
                     <Card
                       data-testid={`hotel-card-${hotel.id || 'unknown'}`}
-                      className={`${isCartMode ? 'h-[28rem]' : 'h-[25rem]'} overflow-hidden transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                      className={`${isCartMode ? 'h-[29rem]' : 'h-[26rem]'} overflow-hidden transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
                     >
                       <CardContent className="flex h-full flex-col p-4">
+                        <ProviderBanner provider={hotel.provider} fallback="EUROVIPS" label={copy.provider} />
                         <div className="mb-2 flex min-h-[5.25rem] items-start gap-3">
                           {/* Checkbox */}
                           {!isCartMode && (

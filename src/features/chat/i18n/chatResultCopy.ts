@@ -582,6 +582,7 @@ export const RESULT_SELECTOR_COPY = {
   es: {
     flights: 'Vuelos',
     hotels: 'Hoteles',
+    provider: 'Proveedor',
     outbound: 'IDA',
     return: 'REGRESO',
     flightLeg: (legType: string) => `Vuelo ${legType}`,
@@ -694,6 +695,7 @@ export const RESULT_SELECTOR_COPY = {
   en: {
     flights: 'Flights',
     hotels: 'Hotels',
+    provider: 'Provider',
     outbound: 'OUTBOUND',
     return: 'RETURN',
     flightLeg: (legType: string) => `${legType} flight`,
@@ -806,6 +808,7 @@ export const RESULT_SELECTOR_COPY = {
   pt: {
     flights: 'Voos',
     hotels: 'Hotéis',
+    provider: 'Fornecedor',
     outbound: 'IDA',
     return: 'VOLTA',
     flightLeg: (legType: string) => `Voo ${legType}`,

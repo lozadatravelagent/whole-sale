@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { HotelData } from '@/types';
+import { HotelData, type TravelSearchProvider } from '@/types';
 import RoomGroupSelector from '@/components/ui/RoomGroupSelector';
 import { makeBudget, resolveHotelOccupancyForBudget } from '@/services/hotelSearch';
 import {
@@ -32,6 +32,43 @@ interface HotelSelectorProps {
   hotels: HotelData[];
   onPdfGenerated?: (pdfUrl: string) => void;
   responseLanguage?: UserLanguage | string;
+}
+
+const PROVIDER_LABELS: Record<TravelSearchProvider, string> = {
+  STARLING: 'Starling',
+  EUROVIPS: 'EUROVIPS',
+  DELFOS: 'Delfos',
+  HOTELBEDS: 'Hotelbeds',
+};
+
+const normalizeTravelProvider = (
+  provider: string | undefined,
+  fallback: TravelSearchProvider
+): TravelSearchProvider => {
+  const value = provider?.toUpperCase();
+  return value && value in PROVIDER_LABELS ? value as TravelSearchProvider : fallback;
+};
+
+const getProviderLabel = (provider: string | undefined, fallback: TravelSearchProvider) =>
+  PROVIDER_LABELS[normalizeTravelProvider(provider, fallback)];
+
+function ProviderBanner({
+  provider,
+  fallback,
+  label
+}: {
+  provider?: string;
+  fallback: TravelSearchProvider;
+  label: string;
+}) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-2 rounded-md border bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
+      <span className="font-medium">{label}</span>
+      <Badge variant="secondary" className="shrink-0 px-2 py-0 text-xs">
+        {getProviderLabel(provider, fallback)}
+      </Badge>
+    </div>
+  );
 }
 
 const HotelSelector: React.FC<HotelSelectorProps> = ({
@@ -295,6 +332,7 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
               onClick={() => handleHotelToggle(hotel.id)}
             >
               <CardContent className="p-4">
+                <ProviderBanner provider={hotel.provider} fallback="EUROVIPS" label={copy.provider} />
                 <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-3">
                     <Checkbox

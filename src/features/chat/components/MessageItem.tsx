@@ -8,7 +8,7 @@ const ReactMarkdown = lazy(() => import('react-markdown'));
 const CombinedTravelSelector = lazy(() => import('@/components/crm/CombinedTravelSelector'));
 import type { MessageRow } from '../types/chat';
 import type { LocalCombinedTravelResults, LocalHotelData, LocalHotelSegmentResult } from '@/types/external';
-import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData } from '@/types';
+import type { CombinedTravelResults, FlightData as GlobalFlightData, HotelData as GlobalHotelData, TravelSearchProvider } from '@/types';
 import { getMessageContent, getMessageStatusIconType, formatTime } from '../utils/messageHelpers';
 import { getCityNameFromCode } from '../utils/flightHelpers';
 import { useChatDataTranslations } from '../hooks/useChatDataTranslations';
@@ -35,6 +35,16 @@ interface MessageMetaWithPlanner {
   plannerPromptAction?: string;
   originalRequest?: ParsedTravelRequest;
 }
+
+const normalizeTravelProvider = (
+  provider: unknown,
+  fallback: TravelSearchProvider
+): TravelSearchProvider => {
+  const value = typeof provider === 'string' ? provider.toUpperCase() : '';
+  return value === 'STARLING' || value === 'EUROVIPS' || value === 'DELFOS' || value === 'HOTELBEDS'
+    ? value
+    : fallback;
+};
 
 function LazySelectorErrorFallback({ onRetry }: { onRetry: () => void }) {
   const { t } = useTranslation('chat');
@@ -240,6 +250,9 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
       search_children: hotel.search_children,
       search_childrenAges: hotel.search_childrenAges,
       search_infants: hotel.search_infants,
+      provider: normalizeTravelProvider(hotel.provider, 'EUROVIPS'),
+      providerOfferId: hotel.providerOfferId,
+      providerMeta: hotel.providerMeta,
       segmentId: segment && typeof segmentOrder === 'number' ? buildSegmentId(segment, segmentOrder) : undefined,
       segmentCity: segment?.city,
       segmentCheckIn: segment?.checkinDate,
@@ -383,7 +396,10 @@ const MessageItem = React.memo(({ msg, onPdfGenerated, onOpenPlannerDateSelector
         // 🚗 TRASLADOS - Preserve from flight data
         transfers: flight.transfers,
         // 🏥 ASISTENCIA MÉDICA / SEGURO - Preserve from flight data
-        travel_assistance: flight.travel_assistance
+        travel_assistance: flight.travel_assistance,
+        provider: normalizeTravelProvider(flight.provider, 'STARLING'),
+        providerOfferId: flight.providerOfferId,
+        providerMeta: flight.providerMeta
       })),
       hotels: localData.hotels.map(hotel => convertLocalHotel(hotel)),
       hotelSegments: localData.hotelSegments?.map((segment, segmentOrder) => ({
