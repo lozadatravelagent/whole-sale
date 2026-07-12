@@ -29,7 +29,7 @@ import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSeg
 import { transformFare, type TransformOptions } from './flightTransformer.js';
 import { selectDistinctPriceFlights } from './flightSelection.js';
 import { isDelfosSearchEnabled } from './providers/flags.js';
-import { mergeFlights } from './providers/mergeFlights.js';
+import { mergeFlights, normalizeFlightAirlines } from './providers/mergeFlights.js';
 import { mergeHotels } from './providers/mergeHotels.js';
 import type { ProviderErrorEntry, TravelSearchProvider } from './providers/types.js';
 import { matchesLuggagePreference } from './baggageUtils.js';
@@ -715,6 +715,8 @@ async function executeFlightSearch(
       flights_results = mergeFlights([flights_results, delfosResult.items]);
     }
   }
+
+  flights_results = normalizeFlightAirlines(flights_results);
 
   if (flights_results.length === 0 && starlingHardError && providersSucceeded.length === 0) {
     return {

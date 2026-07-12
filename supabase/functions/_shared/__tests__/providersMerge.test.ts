@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeFlights } from '../providers/mergeFlights.ts';
+import { mergeFlights, normalizeAirline, normalizeFlightAirlines } from '../providers/mergeFlights.ts';
 import { mergeHotels } from '../providers/mergeHotels.ts';
 import { parseEnvFlag } from '../providers/flags.ts';
 
@@ -71,6 +71,43 @@ describe('mergeFlights', () => {
       base(`f${i}`, 100 + i, 'STARLING', String(100 + i)),
     );
     expect(mergeFlights([batch], { cap: 3 })).toHaveLength(3);
+  });
+});
+
+describe('normalizeAirline', () => {
+  it.each([
+    ['JJ', 'LATAM Airlines Brasil'],
+    ['XL', 'LATAM Airlines Ecuador'],
+    ['LA', 'LATAM Airlines'],
+    ['CM', 'Copa Airlines'],
+  ])('normalizes %s to its commercial name', (code, name) => {
+    expect(normalizeAirline({ code, name: code })).toEqual({ code, name });
+  });
+
+  it('preserves a valid provider name', () => {
+    expect(normalizeAirline({ code: 'AA', name: 'American Airlines' })).toEqual({
+      code: 'AA',
+      name: 'American Airlines',
+    });
+  });
+
+  it('falls back safely for an unknown code', () => {
+    expect(normalizeAirline({ code: 'ZZ', name: 'ZZ' })).toEqual({ code: 'ZZ', name: 'ZZ' });
+    expect(normalizeAirline({ code: 'ZZ' })).toEqual({ code: 'ZZ', name: 'ZZ' });
+  });
+
+  it('trims and uppercases codes from airline.code or airline.name', () => {
+    expect(normalizeAirline({ code: ' jj ', name: ' jj ' })).toEqual({
+      code: 'JJ',
+      name: 'LATAM Airlines Brasil',
+    });
+    expect(normalizeAirline({ name: ' cm ' })).toEqual({ code: 'CM', name: 'Copa Airlines' });
+  });
+
+  it('normalizes flight items without changing their other fields', () => {
+    expect(normalizeFlightAirlines([{ id: 'f1', airline: { code: ' la ', name: 'LA' } }])).toEqual([
+      { id: 'f1', airline: { code: 'LA', name: 'LATAM Airlines' } },
+    ]);
   });
 });
 

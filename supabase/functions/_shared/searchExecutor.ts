@@ -19,7 +19,7 @@ import { resolveFlightCodes, resolveHotelCode } from './cityCodeResolver.ts';
 import { getNormalizedFlightSegments, normalizeFlightRequest } from './flightSegments.ts';
 import { selectDistinctPriceFlights } from './flightSelection.ts';
 import { isDelfosSearchEnabled } from './providers/flags.ts';
-import { mergeFlights } from './providers/mergeFlights.ts';
+import { mergeFlights, normalizeFlightAirlines } from './providers/mergeFlights.ts';
 import { mergeHotels } from './providers/mergeHotels.ts';
 import type { ProviderErrorEntry, TravelSearchProvider } from './providers/types.ts';
 
@@ -833,6 +833,8 @@ async function executeFlightSearch(
       console.log('[FLIGHT_SEARCH] Merged flights total:', flights_results.length);
     }
   }
+
+  flights_results = normalizeFlightAirlines(flights_results);
 
   if (flights_results.length === 0 && starlingHardError && providersSucceeded.length === 0) {
     return {
