@@ -516,20 +516,37 @@ export const handleFlightSearch = async (parsed: ParsedTravelRequest): Promise<S
             setTimeout(() => reject(new Error('Delfos search timed out after 45s')), 45_000),
           ),
         ]);
+        // Non-2xx from edge: supabase-js sets error and often nulls data — recover body.
+        let payload: any = delfosResponse.data;
         if (delfosResponse.error) {
-          console.warn('⚠️ [FLIGHT SEARCH] Delfos error:', delfosResponse.error.message);
-          return [];
+          try {
+            const ctx = (delfosResponse.error as { context?: Response })?.context;
+            if (ctx && typeof ctx.json === 'function') {
+              payload = await ctx.json();
+            }
+          } catch {
+            // keep payload as data/null
+          }
+          console.warn('⚠️ [FLIGHT SEARCH] Delfos HTTP error:', {
+            message: delfosResponse.error.message,
+            detail: payload?.detail || payload?.error || null,
+            code: payload?.code || payload?.error || null,
+            status: payload?.status || null,
+          });
+          if (!payload || payload.success === false) return [];
         }
-        if (delfosResponse.data?.skipped || delfosResponse.data?.code === 'UNSUPPORTED_ITINERARY') {
+        if (payload?.skipped || payload?.code === 'UNSUPPORTED_ITINERARY') {
           console.log('ℹ️ [FLIGHT SEARCH] Delfos skipped (unsupported itinerary)');
           return [];
         }
-        if (delfosResponse.data?.success === false) {
-          console.warn('⚠️ [FLIGHT SEARCH] Delfos failed:', delfosResponse.data?.detail);
+        if (payload?.success === false) {
+          console.warn('⚠️ [FLIGHT SEARCH] Delfos failed:', payload?.detail || payload?.error);
           return [];
         }
-        const items = Array.isArray(delfosResponse.data?.results) ? delfosResponse.data.results : [];
-        console.log(`✅ [FLIGHT SEARCH] Delfos returned ${items.length} flights`);
+        const items = Array.isArray(payload?.results) ? payload.results : [];
+        console.log(`✅ [FLIGHT SEARCH] Delfos returned ${items.length} flights`, {
+          meta: payload?.meta || null,
+        });
         return items as FlightData[];
       } catch (err) {
         console.warn('⚠️ [FLIGHT SEARCH] Delfos invoke failed:', err);

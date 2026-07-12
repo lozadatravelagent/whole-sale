@@ -185,7 +185,12 @@ export default function PlannerHotelInventorySection({
                         </div>
                         <p className="trip-planner-body mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
                           <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
-                          <span className="truncate">{hotel.address || hotel.city}</span>
+                          <span className="line-clamp-2 min-w-0 break-words" title={hotel.address || hotel.city}>
+                            {(() => {
+                              const loc = hotel.address || hotel.city || '';
+                              return loc.length > 80 ? `${loc.slice(0, 80).trimEnd()}…` : loc;
+                            })()}
+                          </span>
                         </p>
                         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                           <span>{formatPlannerRoomLabel(hotel)}</span>

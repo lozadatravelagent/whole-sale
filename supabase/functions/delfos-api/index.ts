@@ -93,15 +93,34 @@ async function delfosFetch(
           : response.status === 401 || response.status === 403
             ? 'DELFOS_AUTH'
             : json?.code || 'delfos_error';
+    const message =
+      json?.detail || json?.title || text.slice(0, 200) || `Delfos HTTP ${response.status}`;
+    console.error('[DELFOS] upstream error', {
+      path,
+      status: response.status,
+      code,
+      message,
+      problemCode: json?.code,
+      instance: json?.instance,
+    });
     return {
       ok: false,
       status: response.status,
       code,
-      message: json?.detail || json?.title || text.slice(0, 200) || `Delfos HTTP ${response.status}`,
+      message,
     };
   }
 
   return { ok: true, data: json };
+}
+
+/** Defensive extract — public contract is data.offers; tolerate alternates. */
+function extractOffers(payload: any): any[] {
+  if (Array.isArray(payload?.data?.offers)) return payload.data.offers;
+  if (Array.isArray(payload?.offers)) return payload.offers;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.results)) return payload.results;
+  return [];
 }
 
 serve(async (req) => {
@@ -186,6 +205,11 @@ serve(async (req) => {
           console.log('[DELFOS] searchFlights', JSON.stringify(built.body));
           const result = await delfosFetch('/v1/flights/search', built.body, config, requestId);
           if (!result.ok) {
+            console.error('[DELFOS] searchFlights failed', {
+              status: result.status,
+              code: result.code,
+              detail: result.message,
+            });
             return jsonResponse(
               {
                 success: false,
@@ -198,8 +222,23 @@ serve(async (req) => {
             );
           }
 
-          const offers = result.data?.data?.offers || [];
+          const offers = extractOffers(result.data);
           const mapped = mapDelfosFlightOffers(offers, built.ctx);
+          const rawKeys =
+            result.data && typeof result.data === 'object' ? Object.keys(result.data) : [];
+          console.log('[DELFOS] searchFlights ok', {
+            raw_count: offers.length,
+            mapped_count: mapped.length,
+            meta_count: result.data?.meta?.count,
+            response_keys: rawKeys,
+            sample_offer_id: offers[0]?.offer_id || null,
+          });
+          if (offers.length === 0) {
+            console.warn('[DELFOS] searchFlights empty offers from upstream', {
+              meta: result.data?.meta ?? null,
+              response_keys: rawKeys,
+            });
+          }
           return jsonResponse({
             success: true,
             action: 'searchFlights',
@@ -233,6 +272,11 @@ serve(async (req) => {
           console.log('[DELFOS] searchHotels', JSON.stringify(built.body));
           const result = await delfosFetch('/v1/hotels/search', built.body, config, requestId);
           if (!result.ok) {
+            console.error('[DELFOS] searchHotels failed', {
+              status: result.status,
+              code: result.code,
+              detail: result.message,
+            });
             return jsonResponse(
               {
                 success: false,
@@ -245,8 +289,14 @@ serve(async (req) => {
             );
           }
 
-          const offers = result.data?.data?.offers || [];
+          const offers = extractOffers(result.data);
           const mapped = mapDelfosHotelOffers(offers, built.ctx);
+          console.log('[DELFOS] searchHotels ok', {
+            raw_count: offers.length,
+            mapped_count: mapped.length,
+            meta_count: result.data?.meta?.count,
+            hotels_searched: result.data?.meta?.hotels_searched,
+          });
           return jsonResponse({
             success: true,
             action: 'searchHotels',

@@ -826,7 +826,7 @@ function parseHotelElement(hotelEl: Element, params: HotelSearchParams, index: n
       city,
       address,
       phone: phone || undefined,
-      description: roomFeatures || undefined,
+      description: roomFeatures ? cleanHotelText(roomFeatures, 120) || undefined : undefined,
       images: extractPictures(hotelEl),
       rooms,
       check_in: checkIn,
@@ -1008,9 +1008,12 @@ function parseFareElement(fareEl: Element, index: number, defaultRoomType: strin
 
     console.log(`🔑 [FARE] type=${fareType}, uniqueRoomId=${uniqueRoomId}, xmlOccupancyId=${xmlOccupancyId}, FareIdBroker=${fareIdBroker}`);
 
+    // Cap description: EUROVIPS Fare Description often includes cancel policies + URLs
+    const shortDescription = cleanHotelText(description, 120) || roomType;
+
     return {
       type: roomType,
-      description: description,
+      description: shortDescription,
       price_per_night: pricePerNight, // Neto Agencia por noche
       total_price: totalPrice, // NETO AGENCIA: (Base - 15% comisión) + gastos + IVA
       currency: currency,
@@ -1141,41 +1144,52 @@ function parseDefaultRoom(hotelEl: Element): HotelRoom | null {
 }
 
 /**
- * Clean address string by removing garbage data (URLs, policy text, etc.)
- * and limiting to reasonable length
+ * Clean free-text hotel fields (address / description) by removing garbage
+ * that EUROVIPS often concatenates (URLs, policies, cancel charges) and
+ * limiting to a reasonable length so cards don't stretch.
  */
-function cleanAddress(raw: string): string {
+function cleanHotelText(raw: string, maxLength = 100): string {
   if (!raw) return '';
 
-  // Remove URLs
-  let cleaned = raw.replace(/https?:\/\/[^\s]+/g, '');
+  // Remove URLs (with or without scheme, including cloudflare image hosts)
+  let cleaned = raw
+    .replace(/https?:\/\/[^\s]+/gi, ' ')
+    .replace(/(?:www\.)?[a-z0-9-]+\.(?:cloudfront\.net|cloudflare|dingus-services\.com)[^\s]*/gi, ' ');
 
   // Cut at common garbage patterns
   const cutPatterns = [
     /Si selecciona dos/i,
     /POLITICA NO REEMBOLSABLE/i,
-    /Cargo de Cancelación/i,
+    /Cargo de Cancelaci[oó]n/i,
+    /INDICADO ENTRE PARENTESIS/i,
+    /REGIMEN[;:]/i,
     /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/, // ISO dates
     /\(\d+\)\s+[A-Z]{2,}/, // Room codes like (1) JUNIOR SUITE
   ];
 
   for (const pattern of cutPatterns) {
     const match = cleaned.match(pattern);
-    if (match && match.index !== undefined) {
+    if (match && match.index !== undefined && match.index > 0) {
       cleaned = cleaned.substring(0, match.index);
+    } else if (match && match.index === 0) {
+      // Entire field is policy garbage — drop it
+      return '';
     }
   }
 
-  // Remove phone numbers (10+ digits)
-  cleaned = cleaned.replace(/\d{10,}/g, '');
+  // Remove phone numbers (10+ digits) and collapse whitespace
+  cleaned = cleaned.replace(/\d{10,}/g, ' ').replace(/\s+/g, ' ').trim();
 
-  // Trim and limit length
-  cleaned = cleaned.trim();
-  if (cleaned.length > 100) {
-    cleaned = cleaned.substring(0, 100).trim();
+  if (cleaned.length > maxLength) {
+    cleaned = cleaned.substring(0, maxLength).trim();
   }
 
   return cleaned;
+}
+
+/** @deprecated use cleanHotelText — kept as alias for call sites */
+function cleanAddress(raw: string): string {
+  return cleanHotelText(raw, 100);
 }
 
 function getTextContent(element: Element, selectors: string): string {

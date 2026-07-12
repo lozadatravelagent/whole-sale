@@ -1628,7 +1628,14 @@ const CombinedTravelSelector: React.FC<CombinedTravelSelectorProps> = ({
                                 </div>
                               )}
                               {hotel.address && (
-                                <div className="text-xs truncate">{hotel.address.slice(0, 80)}</div>
+                                <div
+                                  className="line-clamp-2 break-words text-xs"
+                                  title={hotel.address}
+                                >
+                                  {hotel.address.length > 80
+                                    ? `${hotel.address.slice(0, 80).trimEnd()}…`
+                                    : hotel.address}
+                                </div>
                               )}
                               <div className="flex min-w-0 items-center space-x-4">
                                 <div className="flex min-w-0 items-center space-x-1">

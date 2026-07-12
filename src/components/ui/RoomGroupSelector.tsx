@@ -47,6 +47,15 @@ interface RoomGroupSelectorProps {
     language?: UserLanguage | string;
 }
 
+/** Max chars for room description on cards — EUROVIPS often dumps policies/URLs here. */
+const MAX_ROOM_DESCRIPTION_CHARS = 90;
+
+function truncateText(value: string, max: number): string {
+    const trimmed = value.trim();
+    if (trimmed.length <= max) return trimmed;
+    return `${trimmed.slice(0, max).trimEnd()}…`;
+}
+
 const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
     rooms,
     selectedRoomId,
@@ -381,8 +390,16 @@ const RoomGroupSelector: React.FC<RoomGroupSelectorProps> = ({
                                                 )}
 
                                                 {room.description && room.description !== room.type && (
-                                                    <p className={`text-xs text-muted-foreground ${compact ? 'line-clamp-2' : ''}`}>
-                                                        {translateRoomDescription(room.description)}
+                                                    <p
+                                                        className={`text-xs text-muted-foreground break-words ${
+                                                            compact ? 'line-clamp-2' : 'line-clamp-3'
+                                                        }`}
+                                                        title={translateRoomDescription(room.description)}
+                                                    >
+                                                        {truncateText(
+                                                            translateRoomDescription(room.description),
+                                                            compact ? MAX_ROOM_DESCRIPTION_CHARS : MAX_ROOM_DESCRIPTION_CHARS * 2,
+                                                        )}
                                                     </p>
                                                 )}
 

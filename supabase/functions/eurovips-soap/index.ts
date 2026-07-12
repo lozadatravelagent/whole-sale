@@ -98,6 +98,43 @@ function normalizeHotelName(name: string): string {
 }
 
 /**
+ * Sanitize EUROVIPS free-text fields that often concatenate policies, URLs
+ * and cancel charges into address/description — keeps hotel cards short.
+ */
+function cleanHotelText(raw: string, maxLength = 100): string {
+  if (!raw) return '';
+
+  let cleaned = raw
+    .replace(/https?:\/\/[^\s]+/gi, ' ')
+    .replace(/(?:www\.)?[a-z0-9-]+\.(?:cloudfront\.net|cloudflare|dingus-services\.com)[^\s]*/gi, ' ');
+
+  const cutPatterns = [
+    /Si selecciona dos/i,
+    /POLITICA NO REEMBOLSABLE/i,
+    /Cargo de Cancelaci[oó]n/i,
+    /INDICADO ENTRE PARENTESIS/i,
+    /REGIMEN[;:]/i,
+    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
+    /\(\d+\)\s+[A-Z]{2,}/,
+  ];
+
+  for (const pattern of cutPatterns) {
+    const match = cleaned.match(pattern);
+    if (match && match.index !== undefined && match.index > 0) {
+      cleaned = cleaned.substring(0, match.index);
+    } else if (match && match.index === 0) {
+      return '';
+    }
+  }
+
+  cleaned = cleaned.replace(/\d{10,}/g, ' ').replace(/\s+/g, ' ').trim();
+  if (cleaned.length > maxLength) {
+    cleaned = cleaned.substring(0, maxLength).trim();
+  }
+  return cleaned;
+}
+
+/**
  * Domain preconditions for SOAP requests. SOFTUR is well-known to hang for
  * 30+ seconds on malformed input (invalid city codes, open-ended ranges,
  * inverted dates) instead of returning a quick error. Fail fast here so we
@@ -991,7 +1028,8 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
     try {
       const uniqueId = hotelEl.getAttribute('UniqueId') || `hotel_${Date.now()}_${index}`;
       const hotelName = this.getTextContent(hotelEl, 'Name') || this.getTextContent(hotelEl, 'HotelName') || 'Unknown Hotel';
-      const address = this.getTextContent(hotelEl, 'HotelAddress') || this.getTextContent(hotelEl, 'Address') || '';
+      const rawAddress = this.getTextContent(hotelEl, 'HotelAddress') || this.getTextContent(hotelEl, 'Address') || '';
+      const address = cleanHotelText(rawAddress, 100);
       // Calculate nights first
       const checkIn = new Date(params.checkinDate);
       const checkOut = new Date(params.checkoutDate);
@@ -1038,7 +1076,8 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
           const base = baseMatch ? parseFloat(baseMatch[1]) : 0;
           const tax = taxMatch ? parseFloat(taxMatch[1]) : 0;
           const roomTotal = base + tax; // Total for entire stay
-          const description = this.getTextContent(fareEl, 'Description') || fareType;
+          const rawDescription = this.getTextContent(fareEl, 'Description') || fareType;
+          const description = cleanHotelText(rawDescription, 120) || fareType;
 
           // Parse Ocuppancy node to get REAL room type (more reliable than Fare.type)
           const ocuppancyEl = fareEl.querySelector('Ocuppancy, ocuppancy');
@@ -1119,7 +1158,7 @@ ${buildOccupancyXml()}               </bud1:FareTypeSelectionList>
         address: address,
         phone: this.getTextContent(hotelEl, 'Phone, Telephone') || '',
         website: this.getTextContent(hotelEl, 'Website') || undefined,
-        description: this.getTextContent(hotelEl, 'Description') || undefined,
+        description: cleanHotelText(this.getTextContent(hotelEl, 'Description') || '', 120) || undefined,
         images: this.extractPictures(hotelEl),
         check_in: params.checkinDate,
         check_out: params.checkoutDate,

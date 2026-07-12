@@ -184,9 +184,14 @@ export function PlannerHotelInventoryDetailBody({
             <div>
               <h3 className="text-2xl font-semibold tracking-tight text-foreground">{hotel.name}</h3>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
-                <span className="flex items-start gap-1.5">
+                <span className="flex min-w-0 items-start gap-1.5">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{hotel.address || hotel.city}</span>
+                  <span className="line-clamp-2 break-words" title={hotel.address || hotel.city}>
+                    {(() => {
+                      const loc = hotel.address || hotel.city || '';
+                      return loc.length > 100 ? `${loc.slice(0, 100).trimEnd()}…` : loc;
+                    })()}
+                  </span>
                 </span>
                 {hotel.phone && (
                   <span className="flex items-center gap-1.5">
@@ -234,8 +239,14 @@ export function PlannerHotelInventoryDetailBody({
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 Resumen
               </p>
-              <p className="mt-3 text-sm leading-6 text-foreground">
-                {hotel.description || roomLabel}
+              <p
+                className="mt-3 line-clamp-4 break-words text-sm leading-6 text-foreground"
+                title={hotel.description || roomLabel}
+              >
+                {(() => {
+                  const text = hotel.description || roomLabel || '';
+                  return text.length > 220 ? `${text.slice(0, 220).trimEnd()}…` : text;
+                })()}
               </p>
             </section>
           )}
@@ -280,8 +291,13 @@ export function PlannerHotelInventoryDetailBody({
                             )}
                           </div>
                           {room.description && room.description !== room.type && (
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                              {room.description}
+                            <p
+                              className="mt-1 line-clamp-2 break-words text-xs leading-5 text-muted-foreground"
+                              title={room.description}
+                            >
+                              {room.description.length > 90
+                                ? `${room.description.slice(0, 90).trimEnd()}…`
+                                : room.description}
                             </p>
                           )}
                           {typeof room.availability === 'number' && (

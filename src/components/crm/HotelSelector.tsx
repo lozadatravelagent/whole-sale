@@ -365,8 +365,8 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                       </div>
 
                       {hotel.address && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          📧 {hotel.address}
+                        <div className="mt-1 max-w-xl truncate text-xs text-muted-foreground" title={hotel.address}>
+                          📧 {hotel.address.slice(0, 80)}{hotel.address.length > 80 ? '…' : ''}
                         </div>
                       )}
 
@@ -413,11 +413,16 @@ const HotelSelector: React.FC<HotelSelectorProps> = ({
                   />
                 )}
 
-                {/* Hotel Info */}
+                {/* Hotel Info — cap length: EUROVIPS often injects policies/URLs here */}
                 {hotel.description && (
-                  <div className="mt-3 pt-3 border-t border-border/50">
-                    <div className="text-sm text-muted-foreground">
-                      {hotel.description}
+                  <div className="mt-3 border-t border-border/50 pt-3">
+                    <div
+                      className="line-clamp-2 break-words text-sm text-muted-foreground"
+                      title={hotel.description}
+                    >
+                      {hotel.description.length > 120
+                        ? `${hotel.description.slice(0, 120).trimEnd()}…`
+                        : hotel.description}
                     </div>
                   </div>
                 )}
