@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mergeFlights, normalizeAirline, normalizeFlightAirlines } from '../providers/mergeFlights.ts';
+import { AIRLINE_CATALOG_SIZE, AIRLINE_NAMES_BY_IATA } from '../providers/airlineCatalog.ts';
+import { AIRLINE_NAMES_BY_IATA as API_AIRLINE_NAMES_BY_IATA } from '../../../../api/src/services/providers/airlineCatalog.ts';
 import { mergeHotels } from '../providers/mergeHotels.ts';
 import { parseEnvFlag } from '../providers/flags.ts';
 
@@ -102,6 +104,26 @@ describe('normalizeAirline', () => {
       name: 'LATAM Airlines Brasil',
     });
     expect(normalizeAirline({ name: ' cm ' })).toEqual({ code: 'CM', name: 'Copa Airlines' });
+  });
+
+  it('normalizes Arajet from DM', () => {
+    expect(normalizeAirline({ code: 'DM', name: 'DM' })).toEqual({ code: 'DM', name: 'Arajet' });
+  });
+
+  it('uses current names for reassigned or rebranded codes', () => {
+    expect(normalizeAirline({ code: '4M', name: '4M' }).name).toBe('Mavi Gök Airlines (MGA)');
+    expect(normalizeAirline({ code: 'VE', name: 'VE' }).name).toBe('Clic Air');
+  });
+
+  it('normalizes every airline in the versioned catalog', () => {
+    expect(AIRLINE_CATALOG_SIZE).toBe(383);
+    for (const [code, name] of Object.entries(AIRLINE_NAMES_BY_IATA)) {
+      expect(normalizeAirline({ code, name: code })).toEqual({ code, name });
+    }
+  });
+
+  it('keeps the Supabase and Fastify catalogs identical', () => {
+    expect(AIRLINE_NAMES_BY_IATA).toEqual(API_AIRLINE_NAMES_BY_IATA);
   });
 
   it('normalizes flight items without changing their other fields', () => {

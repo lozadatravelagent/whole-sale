@@ -4,13 +4,7 @@
  */
 
 import { DEFAULT_FLIGHT_MERGE_CAP } from './types.ts';
-
-const AIRLINE_NAMES_BY_IATA: Readonly<Record<string, string>> = {
-  JJ: 'LATAM Airlines Brasil',
-  XL: 'LATAM Airlines Ecuador',
-  LA: 'LATAM Airlines',
-  CM: 'Copa Airlines',
-};
+import { AIRLINE_NAMES_BY_IATA } from './airlineCatalog.ts';
 
 function normalizeIataCode(value: unknown): string {
   return typeof value === 'string' ? value.trim().toUpperCase() : '';
