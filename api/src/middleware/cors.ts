@@ -23,5 +23,7 @@ export const corsOptions = {
     'X-RateLimit-Reset',
     'X-RateLimit-Window',
     'X-Correlation-ID',
+    'Location',
+    'Retry-After',
   ],
 };

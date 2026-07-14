@@ -13,6 +13,7 @@ declare module 'fastify' {
     apiUsageCached?: boolean;
     apiUsageRequestId?: string;
     apiUsageErrorCode?: string;
+    apiUsageBillable?: boolean;
   }
 }
 
@@ -64,6 +65,7 @@ export async function usageRecordMiddleware(
       status_code: reply.statusCode,
       duration_ms: durationMs,
       cached: Boolean(request.apiUsageCached),
+      billable: request.apiUsageBillable !== false,
       error_code: request.apiUsageErrorCode || null,
       user_agent: request.headers['user-agent'] || null,
       metadata: {

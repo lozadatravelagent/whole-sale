@@ -32,11 +32,24 @@ export async function rateLimitMiddleware(
     api_key_prefix: apiKey.key_prefix
   });
 
-  const rateLimitResult = await checkRateLimitRedis(apiKey.id, {
+  const isEmiliaStatusPoll = request.method === 'GET'
+    && request.url.startsWith('/v1/emilia/turns/');
+  const baseLimits = {
     minute: apiKey.rate_limit_per_minute ?? 100,
     hour: apiKey.rate_limit_per_hour ?? 1000,
     day: apiKey.rate_limit_per_day ?? 10000,
-  });
+  };
+  const rateLimitResult = await checkRateLimitRedis(
+    apiKey.id,
+    isEmiliaStatusPoll
+      ? {
+          minute: Math.max(baseLimits.minute * 6, 300),
+          hour: Math.max(baseLimits.hour * 6, 6000),
+          day: Math.max(baseLimits.day * 6, 60000),
+        }
+      : baseLimits,
+    isEmiliaStatusPoll ? 'emilia-status' : 'requests',
+  );
 
   // Add rate limit headers to response
   reply.header('X-RateLimit-Limit', rateLimitResult.limit.toString());

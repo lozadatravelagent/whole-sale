@@ -54,7 +54,8 @@ export interface RateLimitResult {
  */
 export async function checkRateLimitRedis(
   apiKeyId: string,
-  limits: { minute: number; hour: number; day: number }
+  limits: { minute: number; hour: number; day: number },
+  namespace = 'requests',
 ): Promise<RateLimitResult> {
   const now = Date.now();
   const windows = [
@@ -65,7 +66,7 @@ export async function checkRateLimitRedis(
 
   for (const { name, seconds, limit } of windows) {
     const windowStart = Math.floor(now / (seconds * 1000));
-    const key = `ratelimit:${apiKeyId}:${name}:${windowStart}`;
+    const key = `ratelimit:${namespace}:${apiKeyId}:${name}:${windowStart}`;
 
     // Pipeline: INCR + EXPIRE (atomic operation)
     const pipeline = redis.pipeline();
@@ -93,7 +94,7 @@ export async function checkRateLimitRedis(
   }
 
   // All rate limits passed - return current minute window stats
-  const minuteKey = `ratelimit:${apiKeyId}:minute:${Math.floor(now / 60000)}`;
+  const minuteKey = `ratelimit:${namespace}:${apiKeyId}:minute:${Math.floor(now / 60000)}`;
   const currentCount = (await redis.get<number>(minuteKey)) || 0;
 
   return {
@@ -131,8 +132,11 @@ export interface CheckCacheResult {
  * @param request_id - Unique request identifier (UUID or req_<string>)
  * @returns CheckCacheResult with exists, data, cached_at
  */
-export async function checkCacheRedis(request_id: string): Promise<CheckCacheResult> {
-  const key = `idempotency:${request_id}`;
+export async function checkCacheRedis(
+  request_id: string,
+  api_key_id: string,
+): Promise<CheckCacheResult> {
+  const key = `idempotency:${api_key_id}:${request_id}`;
 
   try {
     const cached = await redis.get<CachedResponse>(key);
@@ -169,7 +173,7 @@ export async function saveCacheRedis(
   response_data: any,
   api_key_id: string
 ): Promise<boolean> {
-  const key = `idempotency:${request_id}`;
+  const key = `idempotency:${api_key_id}:${request_id}`;
 
   const cached: CachedResponse = {
     request_id,

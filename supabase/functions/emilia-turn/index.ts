@@ -20,6 +20,8 @@ type WorkspaceMode = 'standard' | 'planner' | 'companion';
 type Language = 'es' | 'en' | 'pt';
 type MessageRole = 'user' | 'assistant' | 'system';
 
+const EMILIA_TURN_DEADLINE_MS = 300_000;
+
 interface ApiKeyContext {
   id: string;
   key_prefix: string;
@@ -115,6 +117,12 @@ function errorResponse(error: HttpError): Response {
       ...(error.details !== undefined ? { details: error.details } : {}),
     },
   }, error.status);
+}
+
+function assertWithinTurnDeadline(startedAt: number, stage: string) {
+  if (Date.now() - startedAt >= EMILIA_TURN_DEADLINE_MS) {
+    throw new HttpError('EMILIA_TURN_DEADLINE', `Emilia turn exceeded its deadline before ${stage}`, 504);
+  }
 }
 
 function assertServiceRole(req: Request) {
@@ -284,6 +292,7 @@ async function insertMessage(
   role: MessageRole,
   text: string,
   meta: Record<string, unknown>,
+  clientId: string,
 ) {
   const { data, error } = await supabase
     .from('messages')
@@ -292,10 +301,23 @@ async function insertMessage(
       role,
       content: { text },
       meta,
-      client_id: crypto.randomUUID(),
+      client_id: clientId,
     })
     .select('id, role, content, meta, created_at')
     .single();
+
+  if (error?.code === '23505') {
+    const { data: existing, error: existingError } = await supabase
+      .from('messages')
+      .select('id, role, content, meta, created_at')
+      .eq('conversation_id', conversationId)
+      .eq('client_id', clientId)
+      .single();
+
+    if (!existingError && existing) {
+      return normalizeMessageRow(existing as Record<string, unknown>);
+    }
+  }
 
   if (error || !data) {
     throw new HttpError('MESSAGE_INSERT_FAILED', error?.message || 'Failed to insert message', 500);
@@ -307,6 +329,36 @@ async function insertMessage(
     .eq('id', conversationId);
 
   return normalizeMessageRow(data as Record<string, unknown>);
+}
+
+async function deterministicMessageClientId(
+  apiKeyId: string,
+  requestId: string,
+  role: 'user' | 'assistant',
+): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${apiKeyId}:${requestId}:${role}`),
+  ));
+  digest[6] = (digest[6] & 0x0f) | 0x50;
+  digest[8] = (digest[8] & 0x3f) | 0x80;
+  const hex = Array.from(digest.slice(0, 16), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function findMessageByClientId(
+  supabase: ReturnType<typeof createClient>,
+  conversationId: string,
+  clientId: string,
+) {
+  const { data } = await supabase
+    .from('messages')
+    .select('id, role, content, meta, created_at')
+    .eq('conversation_id', conversationId)
+    .eq('client_id', clientId)
+    .maybeSingle();
+
+  return data ? normalizeMessageRow(data as Record<string, unknown>) : null;
 }
 
 async function loadConversationHistory(
@@ -1398,35 +1450,47 @@ function buildPlannerData(searchResults?: SearchResults | null): unknown {
   return searchResults.itinerary;
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  const startedAt = Date.now();
-
-  try {
-    assertServiceRole(req);
-    if (req.method !== 'POST') {
-      throw new HttpError('METHOD_NOT_ALLOWED', 'Only POST is allowed', 405);
-    }
-
-    const body = validateRequest(await req.json() as EmiliaTurnRequest);
+async function executeTurn(
+  body: EmiliaTurnRequest,
+  supabase: ReturnType<typeof createClient>,
+  startedAt: number,
+): Promise<Record<string, unknown>> {
     const apiKey = body.api_key_context!;
     const requestedMode = body.mode || 'agency';
     const requestedWorkspaceMode = body.workspace_mode || 'standard';
     const mode: Mode = 'agency';
     const workspaceMode: WorkspaceMode = 'standard';
     const language = body.language || detectLanguage(body.message);
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
     const conversation = await resolveConversation(supabase, body, apiKey, workspaceMode);
     const conversationId = String(conversation.id);
+
+    const [userClientId, assistantClientId] = await Promise.all([
+      deterministicMessageClientId(apiKey.id, body.request_id, 'user'),
+      deterministicMessageClientId(apiKey.id, body.request_id, 'assistant'),
+    ]);
+    const existingAssistant = await findMessageByClientId(supabase, conversationId, assistantClientId);
+    if (existingAssistant) {
+      const existingMeta = asRecord(existingAssistant.meta) || {};
+      const existingUser = await findMessageByClientId(supabase, conversationId, userClientId);
+      return {
+        success: true,
+        request_id: body.request_id,
+        conversation_id: conversationId,
+        user_message: existingUser,
+        assistant_message: existingAssistant,
+        emilia: {
+          parsed_request: existingMeta.parsedRequest,
+          route_result: existingMeta.routeResult,
+          conversation_turn: existingMeta.conversationTurn,
+          pending_action: existingMeta.pendingAction,
+        },
+        metadata: {
+          runtime: 'emilia-turn',
+          replayed: true,
+          total_time_ms: Date.now() - startedAt,
+        },
+      };
+    }
 
     const userMessage = await insertMessage(supabase, conversationId, 'user', body.message, {
       status: 'sent',
@@ -1440,7 +1504,7 @@ serve(async (req) => {
       requested_workspace_mode: requestedWorkspaceMode,
       language,
       external_conversation_ref: body.external_conversation_ref || null,
-    });
+    }, userClientId);
 
     const conversationHistoryPromise = loadConversationHistory(supabase, conversationId, userMessage.id);
     const [contextualMemory, persistentState, previousAssistantMeta, conversationHistory] = await Promise.all([
@@ -1486,6 +1550,7 @@ serve(async (req) => {
       },
     });
     const parseTimeMs = Date.now() - parseStartedAt;
+    assertWithinTurnDeadline(startedAt, 'routing');
 
     if (parserResponse.error || !parserResponse.data?.success) {
       throw new HttpError('AI_PARSE_ERROR', parserResponse.error?.message || parserResponse.data?.error || 'AI parser failed', 502);
@@ -1553,6 +1618,7 @@ serve(async (req) => {
       const searchStartedAt = Date.now();
       searchResults = await executeSearch(parsedRequest, supabase);
       searchTimeMs = Date.now() - searchStartedAt;
+      assertWithinTurnDeadline(startedAt, 'state persistence');
     }
 
     const pendingAction = conversationTurn.responseMode === 'needs_input'
@@ -1662,9 +1728,10 @@ serve(async (req) => {
       'assistant',
       assistantText,
       assistantMeta,
+      assistantClientId,
     );
 
-    return jsonResponse({
+    return {
       success: true,
       request_id: body.request_id,
       conversation_id: conversationId,
@@ -1683,7 +1750,131 @@ serve(async (req) => {
         search_time_ms: searchTimeMs,
         total_time_ms: Date.now() - startedAt,
       },
+    };
+}
+
+interface EmiliaTurnJobRow {
+  id: string;
+  payload: EmiliaTurnRequest;
+  attempt: number;
+  max_attempts: number;
+}
+
+function firstTurnJob(data: unknown): EmiliaTurnJobRow | null {
+  if (Array.isArray(data)) {
+    return (data[0] as EmiliaTurnJobRow | undefined) || null;
+  }
+  return data && typeof data === 'object' ? data as EmiliaTurnJobRow : null;
+}
+
+async function processTurnJob(
+  supabase: ReturnType<typeof createClient>,
+  job: EmiliaTurnJobRow,
+  workerId: string,
+) {
+  const heartbeat = setInterval(() => {
+    void supabase.rpc('heartbeat_emilia_turn_job', {
+      p_job_id: job.id,
+      p_worker_id: workerId,
+      p_stage: 'agent_running',
+      p_lease_seconds: 90,
     });
+  }, 15_000);
+
+  try {
+    const result = await executeTurn(validateRequest(job.payload), supabase, Date.now());
+    const { error } = await supabase.rpc('finish_emilia_turn_job', {
+      p_job_id: job.id,
+      p_worker_id: workerId,
+      p_result: result,
+      p_error: null,
+      p_retryable: false,
+    });
+    if (error) {
+      console.error('[EMILIA_TURN_JOB] completion failed:', error.message);
+    }
+  } catch (error) {
+    const httpError = error instanceof HttpError
+      ? error
+      : new HttpError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Internal server error', 500);
+    const retryable = httpError.status === 429 || httpError.status >= 500;
+    const { error: finishError } = await supabase.rpc('finish_emilia_turn_job', {
+      p_job_id: job.id,
+      p_worker_id: workerId,
+      p_result: null,
+      p_error: {
+        code: httpError.code,
+        message: httpError.message,
+        status: httpError.status,
+      },
+      p_retryable: retryable,
+    });
+    if (finishError) {
+      console.error('[EMILIA_TURN_JOB] failure persistence failed:', finishError.message);
+    }
+  } finally {
+    clearInterval(heartbeat);
+  }
+}
+
+async function startTurnJob(
+  supabase: ReturnType<typeof createClient>,
+  jobId: string,
+): Promise<boolean> {
+  const edgeRuntime = (globalThis as typeof globalThis & {
+    EdgeRuntime?: { waitUntil(promise: Promise<unknown>): void };
+  }).EdgeRuntime;
+  if (!edgeRuntime) {
+    throw new HttpError('EDGE_RUNTIME_UNAVAILABLE', 'Background task runtime is unavailable', 500);
+  }
+
+  const workerId = crypto.randomUUID();
+  const { data, error } = await supabase.rpc('claim_emilia_turn_job', {
+    p_job_id: jobId,
+    p_worker_id: workerId,
+    p_lease_seconds: 90,
+  });
+  if (error) {
+    throw new HttpError('JOB_CLAIM_FAILED', error.message, 500);
+  }
+
+  const job = firstTurnJob(data);
+  if (!job) return false;
+
+  edgeRuntime.waitUntil(processTurnJob(supabase, job, workerId));
+  return true;
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    assertServiceRole(req);
+    if (req.method !== 'POST') {
+      throw new HttpError('METHOD_NOT_ALLOWED', 'Only POST is allowed', 405);
+    }
+
+    const rawBody = await req.json() as EmiliaTurnRequest | { action?: string; job_id?: string };
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    if ('action' in rawBody && rawBody.action === 'start_job') {
+      const jobId = requireString(rawBody.job_id, 'job_id');
+      if (!isUuid(jobId)) {
+        throw new HttpError('INVALID_JOB_ID', 'job_id must be a UUID', 400);
+      }
+      const claimed = await startTurnJob(supabase, jobId);
+      return jsonResponse({ success: true, job_id: jobId, claimed }, 202);
+    }
+
+    const startedAt = Date.now();
+    const result = await executeTurn(validateRequest(rawBody as EmiliaTurnRequest), supabase, startedAt);
+    return jsonResponse(result);
   } catch (error) {
     console.error('[EMILIA_TURN] error:', error);
     if (error instanceof HttpError) return errorResponse(error);

@@ -1005,6 +1005,7 @@ serve(async (req) => {
                 messages: parserMessages,
                 temperature: 0.1,
                 maxTokens: 1800,
+                timeoutMs: 12_000,
                 // Same Structured Outputs schema as the tool-loop path so the
                 // resilience fallback also returns shape-valid JSON.
                 responseFormat: buildResponseFormat(),
@@ -1028,6 +1029,7 @@ serve(async (req) => {
               messages: parserMessages,
               temperature: 0.1,
               maxTokens: 1800,
+              timeoutMs: 12_000,
               // Same Structured Outputs schema as the tool-loop path so the
               // resilience fallback also returns shape-valid JSON.
               responseFormat: buildResponseFormat(),

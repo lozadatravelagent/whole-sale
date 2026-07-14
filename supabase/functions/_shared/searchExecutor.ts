@@ -32,6 +32,7 @@ const EUROVIPS_ASYNC_POLL_INTERVAL_MS = 2000;
 const EUROVIPS_ASYNC_MAX_WAIT_MS = 120000;
 const HOTEL_CHAIN_ASYNC_THRESHOLD = 3;
 const HOTEL_CHAIN_CONCURRENCY_LIMIT = 2;
+const HOTEL_CHAIN_MAX_COUNT = 4;
 const HOTEL_RESULT_CURRENCY = 'USD';
 const HOTEL_CHAIN_SEARCH_TERMS: Record<string, string> = {
   riu: 'RIU',
@@ -104,7 +105,10 @@ function normalizeHotelChains(hotels: any): string[] {
     chains.push(chain);
   }
 
-  return chains;
+  if (chains.length > HOTEL_CHAIN_MAX_COUNT) {
+    console.warn(`[HOTEL_SEARCH] Limiting ${chains.length} requested chains to ${HOTEL_CHAIN_MAX_COUNT} to stay within the turn deadline`);
+  }
+  return chains.slice(0, HOTEL_CHAIN_MAX_COUNT);
 }
 
 function getSearchTermForChain(chain: string): string {

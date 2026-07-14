@@ -15,6 +15,8 @@ export interface OpenAiChatCompletionInput {
    * (Structured Outputs) shapes are accepted.
    */
   responseFormat?: Record<string, unknown>;
+  timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 function usesMaxCompletionTokens(model: string): boolean {
@@ -42,14 +44,36 @@ export async function requestOpenAiChatCompletion<T = any>(
     body.temperature = input.temperature ?? 0;
   }
 
-  const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${input.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(input.signal?.reason);
+  if (input.signal?.aborted) abortFromCaller();
+  input.signal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, input.timeoutMs ?? 30_000);
+
+  let openaiResponse: Response;
+  try {
+    openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${input.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`OpenAI API request timed out after ${input.timeoutMs ?? 30_000}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    input.signal?.removeEventListener('abort', abortFromCaller);
+  }
 
   if (!openaiResponse.ok) {
     const errorText = await openaiResponse.text();

@@ -50,7 +50,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
       request_id
     });
 
-    const cacheResult = await checkCacheRedis(request_id);
+    const cacheResult = await checkCacheRedis(request_id, request.apiKey!.id);
 
     if (cacheResult.exists && cacheResult.data) {
       request.apiUsageCached = true;
